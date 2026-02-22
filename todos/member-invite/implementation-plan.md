@@ -80,36 +80,36 @@ feat(invite): add token generation, bot resolution, and deep link helpers
 
 **File(s):** `teleclaude/notifications/email.py` (new)
 
-- [ ] Create `teleclaude/notifications/email.py`
-- [ ] `async send_email(to: str, subject: str, html_body: str, text_body: str | None = None, *, smtp_host: str = "smtp-relay.brevo.com", smtp_port: int = 587) -> None`
-- [ ] Read credentials from env: `BREVO_SMTP_USER`, `BREVO_SMTP_PASS`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`
-- [ ] Use `aiosmtplib` for async SMTP or `smtplib` in a thread via `asyncio.to_thread`
-- [ ] Build MIME multipart message: HTML body + plain text alternative
-- [ ] Raise `ValueError` if credentials missing, `RuntimeError` on SMTP failure
+- [x] Create `teleclaude/notifications/email.py`
+- [x] `async send_email(to: str, subject: str, html_body: str, text_body: str | None = None, *, smtp_host: str = "smtp-relay.brevo.com", smtp_port: int = 587) -> None`
+- [x] Read credentials from env: `BREVO_SMTP_USER`, `BREVO_SMTP_PASS`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`
+- [x] Use `aiosmtplib` for async SMTP or `smtplib` in a thread via `asyncio.to_thread`
+- [x] Build MIME multipart message: HTML body + plain text alternative
+- [x] Raise `ValueError` if credentials missing, `RuntimeError` on SMTP failure
 
 ### Task 2.2: Create invite email template
 
 **File(s):** `templates/emails/member-invite.html` (new), `templates/emails/member-invite.txt` (new)
 
-- [ ] Create `templates/emails/member-invite.html` — responsive HTML email with:
+- [x] Create `templates/emails/member-invite.html` — responsive HTML email with:
   - Greeting: "Hi {name},"
   - Intro: "You now have a personal AI assistant. Pick any platform below to start chatting:"
   - Three styled button links: Telegram (blue), Discord (indigo), WhatsApp (green)
   - Buttons that have no link (None) are hidden or shown as "coming soon"
   - Footer: "Just click one — you'll land in a private conversation. Your assistant knows who you are."
   - Sign-off: "— {sender_name}"
-- [ ] Create `templates/emails/member-invite.txt` — plain text fallback with the same info
-- [ ] Template uses `{name}`, `{telegram_link}`, `{discord_link}`, `{whatsapp_link}`, `{sender_name}`, `{org_name}` placeholders (simple str.format)
+- [x] Create `templates/emails/member-invite.txt` — plain text fallback with the same info
+- [x] Template uses `{name}`, `{telegram_link}`, `{discord_link}`, `{whatsapp_link}`, `{sender_name}`, `{org_name}` placeholders (simple str.format)
 
 ### Task 2.3: Create invite email composition function
 
 **File(s):** `teleclaude/invite.py`
 
-- [ ] Add `async send_invite_email(name: str, email: str, links: dict[str, str | None], org_name: str = "InstruktAI", sender_name: str = "Your Admin") -> None`
-- [ ] Load templates from `templates/emails/member-invite.{html,txt}`
-- [ ] Substitute placeholders
-- [ ] Call `send_email()` with subject "Welcome to {org_name} — Your Personal AI Assistant"
-- [ ] If `BREVO_SMTP_USER` is missing, print links to stdout as fallback (graceful degradation)
+- [x] Add `async send_invite_email(name: str, email: str, links: dict[str, str | None], org_name: str = "InstruktAI", sender_name: str = "Your Admin") -> None`
+- [x] Load templates from `templates/emails/member-invite.{html,txt}`
+- [x] Substitute placeholders
+- [x] Call `send_email()` with subject "Welcome to {org_name} — Your Personal AI Assistant"
+- [x] If `BREVO_SMTP_USER` is missing, print links to stdout as fallback (graceful degradation)
 
 **Step: Run tests**
 
