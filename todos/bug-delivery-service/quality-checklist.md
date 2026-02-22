@@ -25,8 +25,8 @@ Ownership:
 - [x] Requirements traced to implemented behavior
 - [x] Deferrals justified and not hiding required scope — no deferrals exist
 - [x] Findings written in `review-findings.md`
-- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES
-- [ ] Critical issues resolved or explicitly blocked — R1-F1 pending fix
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES (Round 2)
+- [ ] Critical issues resolved or explicitly blocked — R1-F1 partially fixed, still requires `review: changes_requested` handling
 - [x] Test coverage and regression risk assessed
 
 ## Finalize Gates (Finalizer)
