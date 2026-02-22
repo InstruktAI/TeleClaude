@@ -4,13 +4,54 @@ import { auth } from "@/auth";
 import { daemonStream } from "@/lib/proxy/daemon-client";
 import { buildIdentityHeaders } from "@/lib/proxy/identity-headers";
 
+/**
+ * Extract text content from an AI SDK UIMessage parts array.
+ */
+function partsToText(parts: unknown): string {
+  if (!Array.isArray(parts)) return "";
+  return parts
+    .filter(
+      (p: unknown): p is { type: string; text: string } =>
+        typeof p === "object" && p !== null && (p as { type: string }).type === "text",
+    )
+    .map((p) => p.text)
+    .join("\n\n");
+}
+
+/**
+ * Transform AI SDK request body to daemon ChatStreamRequest format.
+ *
+ * AI SDK sends: { sessionId, messages: UIMessage[], callSettings, system, ... }
+ * Daemon expects: { sessionId, messages?: [{role, content}], since_timestamp? }
+ */
+function toDaemonBody(body: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {
+    sessionId: body.sessionId,
+  };
+
+  if (body.since_timestamp) {
+    result.since_timestamp = body.since_timestamp;
+  }
+
+  if (Array.isArray(body.messages) && body.messages.length > 0) {
+    result.messages = body.messages.map(
+      (msg: { role?: string; content?: string; parts?: unknown }) => ({
+        role: msg.role ?? "user",
+        content: msg.content ?? partsToText(msg.parts),
+      }),
+    );
+  }
+
+  return result;
+}
+
 export async function POST(request: NextRequest) {
   const session = await auth();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body;
+  let body: Record<string, unknown>;
   try {
     body = await request.json();
   } catch (err) {
@@ -24,7 +65,7 @@ export async function POST(request: NextRequest) {
     const res = await daemonStream({
       method: "POST",
       path: "/api/chat/stream",
-      body,
+      body: toDaemonBody(body),
       headers: buildIdentityHeaders(session),
     });
 

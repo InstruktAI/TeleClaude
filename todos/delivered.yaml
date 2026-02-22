@@ -1,4 +1,10 @@
 # Delivered work items. Newest first.
+- slug: todo-remove-cli-option
+  date: '2026-02-23'
+  title: Add telec todo remove <slug> CLI command and R keybinding in TUI PreparationView
+  outcome: DELIVERED
+  commit: 18d2fcc69883b60275767d14db974b9a25967180
+
 - slug: fix-demo-runner
   date: '2026-02-22'
   title: 'Redesign demo system: replace shell-command demo field with demo.md'

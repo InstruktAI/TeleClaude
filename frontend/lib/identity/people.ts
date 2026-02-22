@@ -17,10 +17,16 @@ let cachedPeople: Person[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL_MS = 60_000;
 
+function expandHome(p: string): string {
+  if (p.startsWith("~/")) return resolve(process.env.HOME ?? "", p.slice(2));
+  return p;
+}
+
 function loadConfig(): TeleClaudeGlobalConfig {
-  const configPath =
+  const configPath = expandHome(
     process.env.TELECLAUDE_CONFIG_PATH ??
-    resolve(process.env.HOME ?? "", ".teleclaude", "teleclaude.yml");
+    resolve(process.env.HOME ?? "", ".teleclaude", "teleclaude.yml"),
+  );
 
   try {
     const raw = readFileSync(configPath, "utf-8");

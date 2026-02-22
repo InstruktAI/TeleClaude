@@ -29,7 +29,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           pass: process.env.SMTP_PASS,
         },
       },
-      from: process.env.EMAIL_FROM ?? "TeleClaude <noreply@teleclaude.dev>",
+      from: process.env.EMAIL_FROM,
       maxAge: 3 * 60,
       generateVerificationToken() {
         return Math.floor(100000 + Math.random() * 900000).toString();

@@ -23,7 +23,7 @@ export async function sendVerificationRequest(
 
   const result = await transport.sendMail({
     to: email,
-    from: provider.from ?? "TeleClaude <noreply@teleclaude.dev>",
+    from: provider.from,
     subject: "Your TeleClaude login code",
     text: `Your verification code is: ${token}\n\nThis code expires in 3 minutes.\n\nIf you did not request this code, please ignore this email.`,
     html: `

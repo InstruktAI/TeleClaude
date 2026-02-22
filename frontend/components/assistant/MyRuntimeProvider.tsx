@@ -1,15 +1,78 @@
 "use client";
 
-import { type ReactNode, useMemo, useCallback, useState, useEffect } from "react";
+import {
+  type ReactNode,
+  useMemo,
+  useCallback,
+  useState,
+  useEffect,
+  useRef,
+} from "react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import {
-  useChatRuntime,
+  useAISDKRuntime,
   AssistantChatTransport,
 } from "@assistant-ui/react-ai-sdk";
+import { useChat } from "@ai-sdk/react";
+import type { UIMessage } from "ai";
+import type { MessageInfo } from "@/lib/api/types";
 
 interface Props {
   sessionId: string;
   children: ReactNode;
+}
+
+/**
+ * Detect system-injected "user" messages that shouldn't appear as human input.
+ * These are task notifications, hook feedback, context continuations, etc.
+ */
+function isSystemInjected(text: string): boolean {
+  const t = text.trimStart();
+  return (
+    t.startsWith("<task-notification>") ||
+    t.startsWith("Stop hook feedback:") ||
+    t.startsWith("This session is being continued from a previous conversation") ||
+    t === "[Request interrupted by user]" ||
+    t.startsWith("<system-reminder>")
+  );
+}
+
+/**
+ * Convert daemon MessageInfo[] to AI SDK UIMessage[] format.
+ * Groups consecutive same-role text messages into a single message.
+ * Filters system-injected noise and reclassifies automated messages.
+ */
+function toUIMessages(messages: MessageInfo[]): UIMessage[] {
+  const result: UIMessage[] = [];
+  let current: UIMessage | null = null;
+
+  for (const msg of messages) {
+    if (msg.type !== "text") continue;
+
+    // System-injected "user" messages get reclassified as assistant
+    let role: "user" | "assistant";
+    if (msg.role === "user" && isSystemInjected(msg.text)) {
+      role = "assistant";
+    } else {
+      role = msg.role === "user" ? "user" : "assistant";
+    }
+
+    if (current && current.role === role) {
+      const lastPart = current.parts[current.parts.length - 1];
+      if (lastPart && lastPart.type === "text") {
+        lastPart.text += "\n\n" + msg.text;
+      }
+    } else {
+      current = {
+        id: `hist-${msg.file_index}-${msg.entry_index}`,
+        role,
+        parts: [{ type: "text" as const, text: msg.text }],
+      };
+      result.push(current);
+    }
+  }
+
+  return result;
 }
 
 export function MyRuntimeProvider({ sessionId, children }: Props) {
@@ -20,7 +83,6 @@ export function MyRuntimeProvider({ sessionId, children }: Props) {
     setError(err.message || "An error occurred with the chat stream");
   }, []);
 
-  // Clear error when session changes
   useEffect(() => {
     setError(null);
   }, [sessionId]);
@@ -34,10 +96,42 @@ export function MyRuntimeProvider({ sessionId, children }: Props) {
     [sessionId],
   );
 
-  const runtime = useChatRuntime({
+  const chat = useChat({
+    id: sessionId,
     transport,
     onError: handleError,
   });
+
+  // Load session history into useChat on mount / session change
+  const loadedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (loadedRef.current === sessionId) return;
+    loadedRef.current = sessionId;
+
+    fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((data: { messages?: MessageInfo[] }) => {
+        if (data.messages && data.messages.length > 0) {
+          const uiMessages = toUIMessages(data.messages);
+          chat.setMessages(uiMessages);
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to load session history:", err);
+      });
+  }, [sessionId, chat]);
+
+  const runtime = useAISDKRuntime(chat);
+
+  // Wire transport to runtime for streaming
+  useEffect(() => {
+    if (transport instanceof AssistantChatTransport) {
+      transport.setRuntime(runtime);
+    }
+  }, [transport, runtime]);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
