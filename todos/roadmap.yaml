@@ -50,3 +50,5 @@
 - slug: fix-demo-runner
   after:
   - demo-runner
+- slug: bug-delivery-service
+  description: 'Fire-and-forget bug pipeline: telec bugs report + autonomous fix/review/merge'
