@@ -1,8 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: bugs-round-1
-  description: 'TUI visual bugs: slug color not inverting on row selection, TUI pane
-    background not updating after SIGUSR1 dark/light toggle'
 - slug: demo-runner
   description: Demo runner CLI, build-phase demo artifact, conversational interface
 - slug: fix-demo-runner
@@ -36,7 +33,3 @@
 - slug: consolidate-methodology-skills
   description: Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
     for cross-agent distribution
-- slug: new-bug-key-in-todos-pane
-  after:
-  - bug-delivery-service
-  description: TUI 'b' key for bug creation + telec bugs create CLI command

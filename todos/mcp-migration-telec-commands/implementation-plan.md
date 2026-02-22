@@ -47,26 +47,26 @@ CLI subcommand → REST endpoint, help text → `@exec` in spec doc.
 `build_context_output()` directly. `teleclaude__help` relocates to
 `telec infra help` (static text, no endpoint needed).
 
-| Group    | Tool               | REST Endpoint                      | Backend Function                            |
-| -------- | ------------------ | ---------------------------------- | ------------------------------------------- |
-| sessions | run-agent-command  | `POST /tools/sessions/command`     | `create_session(auto_command=...)`          |
-| sessions | stop-notifications | `POST /tools/sessions/unsubscribe` | `unregister_listener()`                     |
-| workflow | next-prepare       | `POST /tools/workflow/prepare`     | `next_prepare()`                            |
-| workflow | next-work          | `POST /tools/workflow/work`        | `next_work()`                               |
-| workflow | next-maintain      | `POST /tools/workflow/maintain`    | `next_maintain()`                           |
-| workflow | mark-phase         | `POST /tools/workflow/mark-phase`  | `mark_phase()`                              |
-| workflow | set-dependencies   | `POST /tools/workflow/set-deps`    | `set_dependencies()`                        |
-| infra    | deploy             | `POST /tools/infra/deploy`         | `redis_transport.send_system_command()`     |
-| infra    | mark-agent-status  | `POST /tools/infra/agent-status`   | `db.mark_agent_*()`                         |
-| delivery | send-result        | `POST /tools/delivery/result`      | `client.send_message()`                     |
-| delivery | render-widget      | `POST /tools/delivery/widget`      | `client.send_message()` + widget render     |
-| delivery | escalate           | `POST /tools/delivery/escalate`    | `DiscordAdapter.create_escalation_thread()` |
+| Group    | Tool               | REST Endpoint                | Backend Function                            |
+| -------- | ------------------ | ---------------------------- | ------------------------------------------- |
+| sessions | run-agent-command  | `POST /sessions/run`         | `create_session(auto_command=...)`          |
+| sessions | stop-notifications | `POST /sessions/unsubscribe` | `unregister_listener()`                     |
+| workflow | next-prepare       | `POST /workflow/prepare`     | `next_prepare()`                            |
+| workflow | next-work          | `POST /workflow/work`        | `next_work()`                               |
+| workflow | next-maintain      | `POST /workflow/maintain`    | `next_maintain()`                           |
+| workflow | mark-phase         | `POST /workflow/mark-phase`  | `mark_phase()`                              |
+| workflow | set-dependencies   | `POST /workflow/set-deps`    | `set_dependencies()`                        |
+| infra    | deploy             | `POST /infra/deploy`         | `redis_transport.send_system_command()`     |
+| infra    | mark-agent-status  | `POST /infra/agent-status`   | `db.mark_agent_*()`                         |
+| delivery | send-result        | `POST /delivery/result`      | `client.send_message()`                     |
+| delivery | render-widget      | `POST /delivery/widget`      | `client.send_message()` + widget render     |
+| delivery | escalate           | `POST /delivery/escalate`    | `DiscordAdapter.create_escalation_thread()` |
 
 Channels already have REST endpoints at `/api/channels/` (publish and list).
 CLI channels subcommands call these existing endpoints directly.
 
-New endpoints are namespaced under `/tools/` to separate them from
-existing TUI-facing endpoints.
+New endpoints follow the same resource-based pattern as existing ones
+(`/sessions`, `/computers`, `/projects`). No artificial namespace prefixes.
 
 ### CLI Command Mapping (22 new + `telec docs` existing)
 
@@ -79,22 +79,22 @@ full content with comma-separated IDs). No new CLI command needed for it.
 | `telec sessions start --computer --project --title` | `POST /sessions` (existing)              |
 | `telec sessions send --id --message`                | `POST /sessions/{id}/message` (existing) |
 | `telec sessions tail --id [--tail ...]`             | `GET /sessions/{id}/messages` (existing) |
-| `telec sessions command --computer --command`       | `POST /tools/sessions/command`           |
-| `telec sessions unsubscribe --id`                   | `POST /tools/sessions/unsubscribe`       |
+| `telec sessions run --computer --command`           | `POST /sessions/run`                     |
+| `telec sessions unsubscribe --id`                   | `POST /sessions/unsubscribe`             |
 | `telec sessions end --id`                           | `DELETE /sessions/{id}` (existing)       |
-| `telec workflow prepare [--slug ...]`               | `POST /tools/workflow/prepare`           |
-| `telec workflow work [--slug ...]`                  | `POST /tools/workflow/work`              |
-| `telec workflow maintain`                           | `POST /tools/workflow/maintain`          |
-| `telec workflow mark-phase --slug --phase --status` | `POST /tools/workflow/mark-phase`        |
-| `telec workflow set-deps --slug --after`            | `POST /tools/workflow/set-deps`          |
+| `telec workflow prepare [--slug ...]`               | `POST /workflow/prepare`                 |
+| `telec workflow work [--slug ...]`                  | `POST /workflow/work`                    |
+| `telec workflow maintain`                           | `POST /workflow/maintain`                |
+| `telec workflow mark-phase --slug --phase --status` | `POST /workflow/mark-phase`              |
+| `telec workflow set-deps --slug --after`            | `POST /workflow/set-deps`                |
 | `telec infra computers`                             | `GET /computers` (existing)              |
 | `telec infra projects --computer`                   | `GET /projects` (existing)               |
-| `telec infra deploy [--computers ...]`              | `POST /tools/infra/deploy`               |
-| `telec infra agent-status --agent --status`         | `POST /tools/infra/agent-status`         |
-| `telec delivery result --session-id --content`      | `POST /tools/delivery/result`            |
+| `telec infra deploy [--computers ...]`              | `POST /infra/deploy`                     |
+| `telec infra agent-status --agent --status`         | `POST /infra/agent-status`               |
+| `telec delivery result --session-id --content`      | `POST /delivery/result`                  |
 | `telec delivery file --session-id --path`           | `POST /sessions/{id}/file` (existing)    |
-| `telec delivery widget --session-id --data`         | `POST /tools/delivery/widget`            |
-| `telec delivery escalate --customer --reason`       | `POST /tools/delivery/escalate`          |
+| `telec delivery widget --session-id --data`         | `POST /delivery/widget`                  |
+| `telec delivery escalate --customer --reason`       | `POST /delivery/escalate`                |
 | `telec channels publish --channel --payload`        | `POST /api/channels/{name}/publish`      |
 | `telec channels list [--project]`                   | `GET /api/channels/`                     |
 
@@ -102,38 +102,39 @@ full content with comma-separated IDs). No new CLI command needed for it.
 
 ## Phase 1: REST API Tool Endpoints
 
-### Task 1.1: Create tool routes module
+### Task 1.1: Create new route modules
 
-**File(s):** `teleclaude/api/tool_routes.py` (new)
+**File(s):** `teleclaude/api/` (new files per resource group)
 
-Create a FastAPI APIRouter with the 12 new endpoints. Each endpoint:
+Add 12 new REST endpoints across resource groups. Each endpoint:
 
 - Extracts typed parameters from the request body
 - Reads `X-Caller-Session-Id` header
 - Calls the appropriate backend function
 - Returns JSON result
 
-The router needs access to `AdapterClient`, `DaemonCache`, `db`, and
+New endpoints extend existing resource paths (`/sessions/run` sits next to
+`POST /sessions`). They follow the same patterns as existing endpoints in
+`api_server.py` — resource-based paths, no artificial namespacing.
+
+The routers need access to `AdapterClient`, `DaemonCache`, `db`, and
 `RedisTransport` — pass these via FastAPI dependency injection or app state,
-same pattern as existing endpoints in `api_server.py`.
+same pattern as existing endpoints.
 
 For workflow endpoints, import from `teleclaude.workflow.state_machines`.
-For context, import from `teleclaude.context_selection.api`.
 For channels, import from `teleclaude.channels.publisher`.
 
-- [ ] Create `teleclaude/api/tool_routes.py` with `APIRouter(prefix="/tools")`
-- [ ] Implement sessions group (2 endpoints: command, unsubscribe)
-- [ ] Implement workflow group (5 endpoints)
-- [ ] Implement infra group (2 endpoints: deploy, agent-status)
-- [ ] Implement delivery group (3 endpoints: result, widget, escalate)
+- [ ] Add session endpoints (`/sessions/run`, `/sessions/unsubscribe`)
+- [ ] Add workflow endpoints (`/workflow/prepare`, `/workflow/work`, `/workflow/maintain`, `/workflow/mark-phase`, `/workflow/set-deps`)
+- [ ] Add infra endpoints (`/infra/deploy`, `/infra/agent-status`)
+- [ ] Add delivery endpoints (`/delivery/result`, `/delivery/widget`, `/delivery/escalate`)
       (Channels: use existing `/api/channels/` endpoints — no new routes needed)
 
-### Task 1.2: Mount tool router on API server
+### Task 1.2: Mount new routers on API server
 
 **File(s):** `teleclaude/api_server.py`
 
-- [ ] Import `tool_router` from `teleclaude.api.tool_routes`
-- [ ] Mount via `self.app.include_router(tool_router)` in `__init__`
+- [ ] Import and mount new routers via `include_router()` in `__init__`
 - [ ] Pass required dependencies via app state (same pattern as existing routes)
 
 ---
@@ -264,9 +265,9 @@ Add `@exec` directive sections for each baseline tool:
 
 <!-- @exec: telec sessions send -h -->
 
-### `telec sessions command`
+### `telec sessions run`
 
-<!-- @exec: telec sessions command -h -->
+<!-- @exec: telec sessions run -h -->
 
 ### `telec sessions tail`
 
@@ -318,10 +319,10 @@ Test tool subcommands against a running daemon:
 
 | File                              | Action  | Purpose                                                  |
 | --------------------------------- | ------- | -------------------------------------------------------- |
-| `teleclaude/api/tool_routes.py`   | **new** | 12 REST API endpoints for tools                          |
-| `teleclaude/cli/tool_client.py`   | **new** | Sync HTTP client for CLI tool calls                      |
+| `teleclaude/api/` route modules   | **new** | 12 REST endpoints across resource groups                 |
+| `teleclaude/cli/tool_client.py`   | **new** | Sync HTTP client for CLI calls                           |
 | `teleclaude/cli/tool_commands.py` | **new** | Subcommand group handlers with rich help                 |
-| `teleclaude/api_server.py`        | modify  | Mount tool router                                        |
+| `teleclaude/api_server.py`        | modify  | Mount new routers                                        |
 | `teleclaude/cli/telec.py`         | modify  | New enum values, CLI_SURFACE, dispatch, enrich docs help |
 | `docs/.../telec-cli.md`           | modify  | Add @exec directives for baseline tools                  |
 
