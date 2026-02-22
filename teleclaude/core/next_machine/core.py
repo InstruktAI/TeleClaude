@@ -2092,16 +2092,25 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
 
         # Bugs use next-bugs-fix instead of next-build
         is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
-        command = "next-bugs-fix" if is_bug else "next-build"
 
-        return format_tool_call(
-            command=command,
-            args=resolved_slug,
-            project=cwd,
-            guidance=guidance,
-            subfolder=f"trees/{resolved_slug}",
-            next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
-        )
+        if is_bug:
+            return format_tool_call(
+                command="next-bugs-fix",
+                args=resolved_slug,
+                project=cwd,
+                guidance=guidance,
+                subfolder=f"trees/{resolved_slug}",
+                next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+            )
+        else:
+            return format_tool_call(
+                command="next-build",
+                args=resolved_slug,
+                project=cwd,
+                guidance=guidance,
+                subfolder=f"trees/{resolved_slug}",
+                next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+            )
 
     # 8. Check review status
     if not await asyncio.to_thread(is_review_approved, worktree_cwd, resolved_slug):
