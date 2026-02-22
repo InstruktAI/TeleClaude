@@ -20,7 +20,7 @@ from teleclaude.cli.tui.prep_tree import build_dep_tree
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
-from teleclaude.cli.tui.widgets.modals import CreateTodoModal, StartSessionModal
+from teleclaude.cli.tui.widgets.modals import CreateBugModal, CreateTodoModal, StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
@@ -55,6 +55,7 @@ class PreparationView(Widget, can_focus=True):
         ("plus", "expand_all", "Expand all"),
         ("minus", "collapse_all", "Collapse all"),
         ("n", "new_todo", "New todo"),
+        ("b", "new_bug", "New bug"),
         ("p", "prepare", "Prepare"),
         ("s", "start_work", "Start work"),
     ]
@@ -484,6 +485,45 @@ class PreparationView(Widget, can_focus=True):
             )
 
         self.app.push_screen(CreateTodoModal(), callback=_on_modal_result)
+
+    def action_new_bug(self) -> None:
+        """b: create a new bug via modal."""
+
+        def _on_modal_result(slug: str | None) -> None:
+            if not slug:
+                return
+            # Find project root from first known project path, or cwd
+            project_root = None
+            for path in self._slug_to_project_path.values():
+                project_root = path
+                break
+
+            if not project_root:
+                import os
+
+                project_root = os.getcwd()
+
+            from pathlib import Path
+
+            from teleclaude.todo_scaffold import create_bug_skeleton
+
+            try:
+                create_bug_skeleton(Path(project_root), slug, description="")
+            except (ValueError, FileExistsError) as exc:
+                self.app.notify(str(exc), severity="error")
+                return
+
+            # Open bug.md in editor
+            filepath = f"{project_root}/todos/{slug}/bug.md"
+            self.post_message(
+                DocEditRequest(
+                    doc_id=filepath,
+                    command=self._editor_command(filepath),
+                    title=f"Editing: {slug}/bug.md",
+                )
+            )
+
+        self.app.push_screen(CreateBugModal(), callback=_on_modal_result)
 
     def action_prepare(self) -> None:
         """p: directly start a prepare session with defaults."""

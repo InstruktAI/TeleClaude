@@ -367,49 +367,13 @@ def test_file_row_slug_scoped_finds_parent():
 
 ---
 
-### Task 5: Add `b` Keybinding to TUI PreparationView
+### Task 5: Add `b` Keybinding to TUI PreparationView ✓
 
 **File(s):** `teleclaude/cli/tui/views/preparation.py`
 
-**Prerequisite:** `bug-delivery-service` must be built first.
-
-**Steps:**
-
-1. Add keybinding to `BINDINGS` list:
-   ```python
-   ("b", "new_bug", "New bug"),
-   ```
-2. Add `action_new_bug()` method following the same pattern as `action_new_todo()`:
-   - Push `CreateBugModal()` screen (see Task 6).
-   - On result, resolve project root from `_slug_to_project_path`.
-   - Call `create_bug_skeleton(Path(project_root), slug, description="")`.
-   - Post `DocEditRequest` with filepath to `bug.md`:
-     ```python
-     filepath = f"{project_root}/todos/{slug}/bug.md"
-     DocEditRequest(
-         doc_id=filepath,
-         command=self._editor_command(filepath),
-         title=f"Editing: {slug}/bug.md",
-     )
-     ```
-   - Handle `ValueError` and `FileExistsError` with `self.app.notify()`.
-
-**Verification:** Press `b` in TUI → modal appears → enter slug → `bug.md` opens in editor.
-
----
-
-### Task 6: Create Bug Modal
+### Task 6: Create Bug Modal ✓
 
 **File(s):** `teleclaude/cli/tui/widgets/modals.py`
-
-**Steps:**
-
-1. Create `CreateBugModal` as a minimal variant of `CreateTodoModal`:
-   - Same structure: slug input, `SLUG_PATTERN` validation, Enter/Esc.
-   - Different title: "New Bug" instead of "New Todo".
-2. The class is ~48 lines — duplication cost is minimal and the title distinction is user-facing.
-
-**Verification:** Modal renders with "New Bug" title, validates slug, returns slug on Enter.
 
 ---
 
