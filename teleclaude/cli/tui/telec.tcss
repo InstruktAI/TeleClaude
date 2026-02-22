@@ -17,14 +17,18 @@ Screen {
     background: $background;
 }
 
-/* ── Global hover/focus suppression ───────────────────── */
-/* Kill Textual default hover/focus backgrounds on tree widgets.
+/* ── Global hover/focus/active suppression ────────────── */
+/* Kill Textual default interaction backgrounds on tree widgets.
    Modal form elements (#modal-box inputs/buttons) keep focus. */
 Widget:hover {
     background: transparent;
 }
 
 Widget:focus {
+    background: transparent;
+}
+
+Widget:active {
     background: transparent;
 }
 

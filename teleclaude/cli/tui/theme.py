@@ -419,9 +419,10 @@ _TELECLAUDE_LIGHT_THEME = Theme(
 
 _TELECLAUDE_DARK_AGENT_THEME = Theme(
     name="teleclaude-dark-agent",
-    # Agent variant: Warm primary/secondary
-    primary="#d7af87",  # Claude normal (warm orange)
-    secondary="#af875f",  # Claude muted (warm brown)
+    # Neutral structural colors — NOT agent-specific.
+    # Buttons, inputs, selects inherit from these.
+    primary="#808080",  # Neutral gray for UI chrome
+    secondary="#626262",  # Slightly darker neutral
     accent="#585858",  # Muted focus indicator (unchanged)
     foreground="#d0d0d0",  # Soft light gray
     background=get_terminal_background(),
@@ -436,9 +437,10 @@ _TELECLAUDE_DARK_AGENT_THEME = Theme(
 
 _TELECLAUDE_LIGHT_AGENT_THEME = Theme(
     name="teleclaude-light-agent",
-    # Agent variant: Warm primary/secondary
-    primary="#875f00",  # Claude normal (warm brown/gold)
-    secondary="#af875f",  # Claude muted (warm light brown)
+    # Neutral structural colors — NOT agent-specific.
+    # Buttons, inputs, selects inherit from these.
+    primary="#808080",  # Neutral gray for UI chrome
+    secondary="#9e9e9e",  # Slightly lighter neutral
     accent="#a8a8a8",  # Muted focus indicator (unchanged)
     foreground="#303030",  # Near-black text
     background=get_terminal_background(),
