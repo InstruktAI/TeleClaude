@@ -1136,6 +1136,60 @@ def _handle_todo_validate(args: list[str]) -> None:
         print("✓ All active todos are valid")
 
 
+def _extract_demo_blocks(content: str) -> list[tuple[int, str, bool, str]]:
+    """Extract fenced bash code blocks from demo.md content.
+
+    Returns list of (line_number, block_content, skipped, skip_reason) tuples.
+    Blocks preceded by <!-- skip-validation: reason --> are marked as skipped.
+    """
+    import re
+
+    blocks: list[tuple[int, str, bool, str]] = []
+    skip_pattern = re.compile(r"<!--\s*skip-validation:\s*(.+?)\s*-->")
+
+    lines = content.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        # Check for skip-validation comment
+        skip_match = skip_pattern.search(line)
+        if skip_match:
+            skip_reason = skip_match.group(1)
+            # Look for the next bash fence
+            j = i + 1
+            while j < len(lines) and lines[j].strip() == "":
+                j += 1
+            if j < len(lines) and lines[j].strip().startswith("```bash"):
+                block_start = j + 1
+                block_lines = []
+                k = block_start
+                while k < len(lines) and lines[k].strip() != "```":
+                    block_lines.append(lines[k])
+                    k += 1
+                blocks.append((j + 1, "\n".join(block_lines), True, skip_reason))
+                i = k + 1
+                continue
+            i += 1
+            continue
+
+        # Check for bash fence
+        if line.strip().startswith("```bash"):
+            block_start = i + 1
+            block_lines = []
+            k = block_start
+            while k < len(lines) and lines[k].strip() != "```":
+                block_lines.append(lines[k])
+                k += 1
+            blocks.append((i + 1, "\n".join(block_lines), False, ""))
+            i = k + 1
+            continue
+
+        i += 1
+
+    return blocks
+
+
 def _handle_todo_demo(args: list[str]) -> None:
     """Handle telec todo demo - run or list demo artifacts."""
     import json
@@ -1195,7 +1249,7 @@ def _handle_todo_demo(args: list[str]) -> None:
         print("No demos available")
         raise SystemExit(0)
 
-    # No slug: list all demos
+    # No slug: list all demos (unchanged — reads snapshot.json for metadata)
     if slug is None:
         print(f"Available demos ({len(demo_entries)}):\n")
         print(f"{'Slug':<30} {'Title':<50} {'Version':<10} {'Delivered'}")
@@ -1203,12 +1257,62 @@ def _handle_todo_demo(args: list[str]) -> None:
         for demo_slug, snapshot in demo_entries:
             title = snapshot.get("title", "")
             version = snapshot.get("version", "")
-            # Use delivered_date with fallback to delivered for forward compatibility
             delivered = snapshot.get("delivered_date", snapshot.get("delivered", ""))
             print(f"{demo_slug:<30} {title:<50} {version:<10} {delivered}")
         raise SystemExit(0)
 
-    # With slug: find and run the demo
+    # With slug: find demo.md or fall back to snapshot.json demo field
+    # Search order: todos/{slug}/demo.md (during build), demos/{slug}/demo.md (after delivery)
+    demo_md_path: Path | None = None
+    for candidate in [
+        project_root / "todos" / slug / "demo.md",
+        demos_dir / slug / "demo.md",
+    ]:
+        if candidate.exists():
+            demo_md_path = candidate
+            break
+
+    # If demo.md found, run code block extraction
+    if demo_md_path is not None:
+        print(f"Running demo validation: {slug}\n")
+        print(f"Source: {demo_md_path.relative_to(project_root)}\n")
+
+        content = demo_md_path.read_text(encoding="utf-8")
+        blocks = _extract_demo_blocks(content)
+
+        if not blocks:
+            print("Demo has guided steps only (no executable blocks)")
+            raise SystemExit(0)
+
+        executable = [(ln, blk, reason) for ln, blk, skipped, reason in blocks if not skipped]
+        skipped = [(ln, blk, reason) for ln, blk, skipped, reason in blocks if skipped]
+
+        if skipped:
+            for ln, _blk, reason in skipped:
+                print(f"  SKIP  block at line {ln}: {reason}")
+            print()
+
+        if not executable:
+            print("All code blocks skipped. Demo has guided steps only.")
+            raise SystemExit(0)
+
+        passed = 0
+        for ln, block, _reason in executable:
+            preview = block.strip().split("\n")[0][:60]
+            print(f"  RUN   block at line {ln}: {preview}")
+            result = subprocess.run(block, shell=True, cwd=project_root)
+            if result.returncode != 0:
+                print(f"  FAIL  block at line {ln} exited with {result.returncode}")
+                raise SystemExit(1)
+            print(f"  PASS  block at line {ln}")
+            passed += 1
+
+        print(f"\nDemo validation passed: {passed}/{len(executable)} blocks")
+        if skipped:
+            print(f"Skipped: {len(skipped)} blocks")
+        raise SystemExit(0)
+
+    # Fallback: snapshot.json demo field (backward compatibility)
     demo_path = demos_dir / slug
     snapshot_path = demo_path / "snapshot.json"
 
@@ -1233,13 +1337,11 @@ def _handle_todo_demo(args: list[str]) -> None:
         )
         raise SystemExit(0)
 
-    # Check for demo field
     demo_command = snapshot.get("demo")
     if not demo_command:
-        print(f"Warning: Demo '{slug}' has no 'demo' field. Skipping execution.")
+        print(f"Warning: Demo '{slug}' has no demo.md or 'demo' field. Skipping execution.")
         raise SystemExit(0)
 
-    # Execute the demo command
     print(f"Running demo: {slug} (v{demo_version})\n")
     result = subprocess.run(demo_command, shell=True, cwd=demo_path)
     raise SystemExit(result.returncode)

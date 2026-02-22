@@ -13,25 +13,25 @@ procedure docs, spec docs, todo scaffold, and existing demos. No MCP changes.
 
 **File:** `teleclaude/cli/telec.py`
 
-- [ ] When running a demo with slug: look for `demo.md` in two locations: 1. `todos/{slug}/demo.md` (during build, before delivery) 2. `demos/{slug}/demo.md` (after delivery)
+- [x] When running a demo with slug: look for `demo.md` in two locations: 1. `todos/{slug}/demo.md` (during build, before delivery) 2. `demos/{slug}/demo.md` (after delivery)
       Fall back to `snapshot.json` `demo` field for backward compatibility
-- [ ] If `demo.md` exists: extract all fenced ```bash code blocks
-- [ ] Execute each block sequentially via `subprocess.run(block, shell=True, cwd=project_root)`
-- [ ] Report per-block pass/fail with the block content as context
-- [ ] Exit 0 only if all blocks pass, exit 1 on first failure
-- [ ] If no code blocks found but demo.md exists: exit 0 with note
+- [x] If `demo.md` exists: extract all fenced ```bash code blocks
+- [x] Execute each block sequentially via `subprocess.run(block, shell=True, cwd=project_root)`
+- [x] Report per-block pass/fail with the block content as context
+- [x] Exit 0 only if all blocks pass, exit 1 on first failure
+- [x] If no code blocks found but demo.md exists: exit 0 with note
       "Demo has guided steps only (no executable blocks)"
-- [ ] Keep the listing mode (`telec todo demo` with no slug) unchanged — it reads
+- [x] Keep the listing mode (`telec todo demo` with no slug) unchanged — it reads
       snapshot.json for title/version/date
 
 ### Task 1.2: Code block extraction utility
 
 **File:** `teleclaude/cli/telec.py` (inline, no separate module)
 
-- [ ] Simple regex: extract content between ` ```bash ` and ` ``` ` fences
-- [ ] Skip blocks preceded by `<!-- skip-validation: reason -->` comment
-- [ ] Return list of (line_number, block_content, skipped) tuples for reporting
-- [ ] Report skipped blocks with their reason (visibility, not silence)
+- [x] Simple regex: extract content between ` ```bash ` and ` ``` ` fences
+- [x] Skip blocks preceded by `<!-- skip-validation: reason -->` comment
+- [x] Return list of (line_number, block_content, skipped) tuples for reporting
+- [x] Report skipped blocks with their reason (visibility, not silence)
 
 ## Phase 2: Write demo.md for existing demos
 
