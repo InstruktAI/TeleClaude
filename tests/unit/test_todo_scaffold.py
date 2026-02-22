@@ -16,12 +16,17 @@ def test_create_todo_skeleton_creates_expected_files(tmp_path: Path) -> None:
     assert (todo_dir / "requirements.md").exists()
     assert (todo_dir / "implementation-plan.md").exists()
     assert (todo_dir / "quality-checklist.md").exists()
+    assert (todo_dir / "demo.md").exists()
     assert (todo_dir / "state.yaml").exists()
     assert (todo_dir / "input.md").exists()
 
     # Verify input.md has correct heading
     content = (todo_dir / "input.md").read_text()
     assert "# Input: sample-slug" in content
+
+    # Verify demo.md has correct heading
+    demo_content = (todo_dir / "demo.md").read_text()
+    assert "# Demo: sample-slug" in demo_content
 
 
 def test_create_todo_skeleton_rejects_existing(tmp_path: Path) -> None:

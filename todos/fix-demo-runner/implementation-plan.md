@@ -139,27 +139,27 @@ procedure docs, spec docs, todo scaffold, and existing demos. No MCP changes.
 
 **File:** `teleclaude/todo_scaffold.py`
 
-- [ ] Add `demo.md` template to the scaffold
-- [ ] Update docstring to reflect 6 files
+- [x] Add `demo.md` template to the scaffold
+- [x] Update docstring to reflect 6 files
 
 **File:** `templates/todos/demo.md`
 
-- [ ] Create template with heading and placeholder for architect
+- [x] Create template with heading and placeholder for architect
 
 ### Task 5.2: Update prepare-draft guidance
 
 **File:** The prepare-draft procedure doc or command artifact that references it
 
-- [ ] Add demo.md drafting as a prepare-draft artifact
-- [ ] Architect defines: what medium is the delivery shown in? What does the user
+- [x] Add demo.md drafting as a prepare-draft artifact
+- [x] Architect defines: what medium is the delivery shown in? What does the user
       observe? What commands validate it works?
-- [ ] Draft doesn't need to be perfect — builder refines
+- [x] Draft doesn't need to be perfect — builder refines
 
 ## Phase 6: Validation
 
-- [ ] `telec todo demo themed-primary-color` exits 0 (code blocks pass)
-- [ ] `telec todo demo tui-markdown-editor` exits 0
-- [ ] `telec todo create test-demo-scaffold` → `todos/test-demo-scaffold/demo.md` exists
+- [x] `telec todo demo themed-primary-color` exits 0 (code blocks pass)
+- [x] `telec todo demo tui-markdown-editor` exits 0
+- [x] `telec todo create test-demo-scaffold` → `todos/test-demo-scaffold/demo.md` exists
       (clean up after)
-- [ ] Review all updated docs for internal consistency
-- [ ] `make lint`
+- [x] Review all updated docs for internal consistency
+- [x] `make lint`
