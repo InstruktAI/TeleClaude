@@ -1,7 +1,6 @@
 {
   "slug": "tui-markdown-editor",
   "title": "TUI Markdown Editor & Todo Creation",
-  "sequence": "001",
   "version": "0.1.0",
   "delivered_date": "2026-02-21",
   "merge_commit": "66bb82ca",

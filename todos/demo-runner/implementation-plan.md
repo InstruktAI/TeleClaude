@@ -22,10 +22,10 @@ Replace the post-finalize demo creation flow with build-phase demo artifacts and
 
 **File(s):** `demos/001-tui-markdown-editor/`, `demos/002-themed-primary-color/`
 
-- [ ] Rename `demos/001-tui-markdown-editor/` → `demos/tui-markdown-editor/`
-- [ ] Rename `demos/002-themed-primary-color/` → `demos/themed-primary-color/`
-- [ ] Remove `sequence` field from both `snapshot.json` files
-- [ ] Remove `demo.sh` from both folders
+- [x] Rename `demos/001-tui-markdown-editor/` → `demos/tui-markdown-editor/`
+- [x] Rename `demos/002-themed-primary-color/` → `demos/themed-primary-color/`
+- [x] Remove `sequence` field from both `snapshot.json` files
+- [x] Remove `demo.sh` from both folders
 
 ---
 
