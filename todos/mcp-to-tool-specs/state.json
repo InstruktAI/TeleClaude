@@ -7,17 +7,14 @@
     "assessed": true,
     "todos": [
       "mcp-migration-telec-commands",
-      "mcp-migration-tool-spec-docs",
-      "mcp-migration-context-integration",
       "mcp-migration-agent-config",
-      "mcp-migration-delete-mcp",
-      "mcp-migration-doc-updates"
+      "mcp-migration-delete-mcp"
     ]
   },
   "dor": {
-    "last_assessed_at": "2026-02-18T14:30:00Z",
+    "last_assessed_at": "2026-02-22T12:00:00Z",
     "score": 8,
-    "status": "ready",
+    "status": "pass",
     "schema_version": 1,
     "blockers": [],
     "actions_taken": {

@@ -233,7 +233,7 @@ class TelecApp(App[str | None]):
         # Start WebSocket for push updates
         self.api.start_websocket(
             callback=self._on_ws_event,
-            subscriptions=["sessions", "projects", "todos"],
+            subscriptions=["sessions", "preparation", "todos"],
         )
 
         logger.trace("[PERF] on_mount api+ws done dt=%.3f", _t.monotonic() - _m0)

@@ -1,4 +1,4 @@
-# Quality Checklist: mcp-migration-context-integration
+# Quality Checklist: fix-demo-runner
 
 This checklist is the execution projection of `definition-of-done.md` for this todo.
 
@@ -16,6 +16,7 @@ Ownership:
 - [ ] Lint passes (`make lint`)
 - [ ] No silent deferrals in implementation plan
 - [ ] Code committed
+- [ ] Demo is runnable and verified
 - [ ] Working tree clean
 - [ ] Comments/docstrings updated where behavior changed
 

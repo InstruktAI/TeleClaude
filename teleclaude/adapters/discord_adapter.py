@@ -1017,27 +1017,32 @@ class DiscordAdapter(UiAdapter):
         return False
 
     def _is_help_desk_message(self, message: object) -> bool:
-        """Check if a message originates from the configured help desk forum.
+        """Check if a message originates from a managed forum (help desk or sessions).
 
         When ``_help_desk_channel_id`` is not configured, all messages are
-        accepted (dev/test mode).  Otherwise the message must come from the
-        forum itself or from a thread whose parent is the forum.
+        accepted (dev/test mode).  Otherwise the message must come from
+        the help desk forum, the admin sessions forum, or a thread whose
+        parent is one of those forums.
         """
         if self._help_desk_channel_id is None:
             return True
 
+        managed_ids = {self._help_desk_channel_id}
+        if self._all_sessions_channel_id is not None:
+            managed_ids.add(self._all_sessions_channel_id)
+
         channel = getattr(message, "channel", None)
         channel_id = self._parse_optional_int(getattr(channel, "id", None))
-        if channel_id == self._help_desk_channel_id:
+        if channel_id in managed_ids:
             return True
 
         parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
-        if parent_id == self._help_desk_channel_id:
+        if parent_id in managed_ids:
             return True
 
         parent_obj = getattr(channel, "parent", None)
         parent_obj_id = self._parse_optional_int(getattr(parent_obj, "id", None))
-        if parent_obj_id == self._help_desk_channel_id:
+        if parent_obj_id in managed_ids:
             return True
 
         return False
@@ -1285,6 +1290,9 @@ class DiscordAdapter(UiAdapter):
             getattr(forum_channel, "create_thread", None), label="Discord forum create_thread"
         )
 
+        # Discord channel names must be 1-100 characters
+        if len(title) > 100:
+            title = title[:97] + "..."
         result = await create_thread_fn(name=title, content=content)
         thread = getattr(result, "thread", None)
         if thread is None and isinstance(result, tuple) and result:

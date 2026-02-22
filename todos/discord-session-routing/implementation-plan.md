@@ -1,4 +1,4 @@
-# Implementation Plan: mcp-migration-doc-updates
+# Implementation Plan: discord-session-routing
 
 ## Overview
 

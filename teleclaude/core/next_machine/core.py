@@ -2055,6 +2055,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         await asyncio.to_thread(
             mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
         )
+        await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
         try:
             guidance = await compose_agent_guidance(db)
         except RuntimeError as exc:

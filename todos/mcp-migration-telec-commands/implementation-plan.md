@@ -2,7 +2,9 @@
 
 ## Overview
 
-Add 14 new REST API endpoints and 24 telec CLI subcommands. The approach:
+Add 14 new REST API endpoints and 24 telec CLI subcommands. Write rich `--help`
+text with behavioral guidance and examples. Update the telec-cli spec doc
+with `@exec` directives for baseline tools. The approach:
 
 1. New REST endpoints in a separate FastAPI router (`teleclaude/api/tool_routes.py`)
    to avoid bloating `api_server.py` further. Each endpoint is a thin wrapper around
@@ -10,10 +12,13 @@ Add 14 new REST API endpoints and 24 telec CLI subcommands. The approach:
 2. A shared sync HTTP helper (`teleclaude/cli/tool_client.py`) for one-shot CLI calls
    to the daemon — simpler than the async `TelecAPIClient` which is designed for the TUI.
 3. CLI subcommand handlers in `teleclaude/cli/tool_commands.py`, one handler per group.
+   Each handler includes rich `--help` with behavioral guidance migrated from MCP
+   tool descriptions and usage examples covering every parameter/input shape.
 4. Wire new groups into `CLI_SURFACE`, `TelecCommand` enum, and dispatch.
+5. Update the telec-cli spec doc with `<!-- @exec: telec <cmd> -h -->` for baseline tools.
 
 No new business logic. All work is wiring: REST endpoint → backend function,
-CLI subcommand → REST endpoint.
+CLI subcommand → REST endpoint, help text → `@exec` in spec doc.
 
 ### Key Design Decisions
 
@@ -25,6 +30,9 @@ CLI subcommand → REST endpoint.
    This is distinct from existing human-friendly commands (`telec list`, etc.).
 4. **`caller_session_id` injection** — Read from `$TMPDIR/teleclaude_session_id`,
    sent as `X-Caller-Session-Id` header on every API call.
+5. **Help text as documentation** — The `--help` output carries the full behavioral
+   contract from MCP tool descriptions. Examples cover every parameter and shape.
+   The telec-cli spec doc inlines baseline help via `@exec` directives.
 
 ### Endpoint Design for the 14 Missing Tools
 
@@ -53,32 +61,32 @@ existing TUI-facing endpoints.
 
 ### CLI Command Mapping (all 24 tools)
 
-| `telec` subcommand                                   | REST Endpoint                            |
-| ---------------------------------------------------- | ---------------------------------------- |
-| `telec context query [--areas ...] [--ids]`          | `POST /tools/context/query`              |
-| `telec context help`                                 | `GET /tools/context/help`                |
-| `telec sessions list [--computer ...]`               | `GET /sessions` (existing)               |
-| `telec sessions create --computer --project --title` | `POST /sessions` (existing)              |
-| `telec sessions message --id --message`              | `POST /sessions/{id}/message` (existing) |
-| `telec sessions data --id [--tail ...]`              | `GET /sessions/{id}/messages` (existing) |
-| `telec sessions command --computer --command`        | `POST /tools/sessions/command`           |
-| `telec sessions unsubscribe --id`                    | `POST /tools/sessions/unsubscribe`       |
-| `telec sessions end --id`                            | `DELETE /sessions/{id}` (existing)       |
-| `telec workflow prepare [--slug ...]`                | `POST /tools/workflow/prepare`           |
-| `telec workflow work [--slug ...]`                   | `POST /tools/workflow/work`              |
-| `telec workflow maintain`                            | `POST /tools/workflow/maintain`          |
-| `telec workflow mark-phase --slug --phase --status`  | `POST /tools/workflow/mark-phase`        |
-| `telec workflow set-deps --slug --after`             | `POST /tools/workflow/set-deps`          |
-| `telec infra computers`                              | `GET /computers` (existing)              |
-| `telec infra projects --computer`                    | `GET /projects` (existing)               |
-| `telec infra deploy [--computers ...]`               | `POST /tools/infra/deploy`               |
-| `telec infra agent-status --agent --status`          | `POST /tools/infra/agent-status`         |
-| `telec delivery result --session-id --content`       | `POST /tools/delivery/result`            |
-| `telec delivery file --session-id --path`            | `POST /sessions/{id}/file` (existing)    |
-| `telec delivery widget --session-id --data`          | `POST /tools/delivery/widget`            |
-| `telec delivery escalate --customer --reason`        | `POST /tools/delivery/escalate`          |
-| `telec channels publish --channel --payload`         | `POST /api/channels/{name}/publish`      |
-| `telec channels list [--project]`                    | `GET /api/channels/`                     |
+| `telec` subcommand                                  | REST Endpoint                            |
+| --------------------------------------------------- | ---------------------------------------- |
+| `telec context query [--areas ...] [--ids]`         | `POST /tools/context/query`              |
+| `telec context help`                                | `GET /tools/context/help`                |
+| `telec sessions list [--computer ...]`              | `GET /sessions` (existing)               |
+| `telec sessions start --computer --project --title` | `POST /sessions` (existing)              |
+| `telec sessions send --id --message`                | `POST /sessions/{id}/message` (existing) |
+| `telec sessions tail --id [--tail ...]`             | `GET /sessions/{id}/messages` (existing) |
+| `telec sessions command --computer --command`       | `POST /tools/sessions/command`           |
+| `telec sessions unsubscribe --id`                   | `POST /tools/sessions/unsubscribe`       |
+| `telec sessions end --id`                           | `DELETE /sessions/{id}` (existing)       |
+| `telec workflow prepare [--slug ...]`               | `POST /tools/workflow/prepare`           |
+| `telec workflow work [--slug ...]`                  | `POST /tools/workflow/work`              |
+| `telec workflow maintain`                           | `POST /tools/workflow/maintain`          |
+| `telec workflow mark-phase --slug --phase --status` | `POST /tools/workflow/mark-phase`        |
+| `telec workflow set-deps --slug --after`            | `POST /tools/workflow/set-deps`          |
+| `telec infra computers`                             | `GET /computers` (existing)              |
+| `telec infra projects --computer`                   | `GET /projects` (existing)               |
+| `telec infra deploy [--computers ...]`              | `POST /tools/infra/deploy`               |
+| `telec infra agent-status --agent --status`         | `POST /tools/infra/agent-status`         |
+| `telec delivery result --session-id --content`      | `POST /tools/delivery/result`            |
+| `telec delivery file --session-id --path`           | `POST /sessions/{id}/file` (existing)    |
+| `telec delivery widget --session-id --data`         | `POST /tools/delivery/widget`            |
+| `telec delivery escalate --customer --reason`       | `POST /tools/delivery/escalate`          |
+| `telec channels publish --channel --payload`        | `POST /api/channels/{name}/publish`      |
+| `telec channels list [--project]`                   | `GET /api/channels/`                     |
 
 ---
 
@@ -159,7 +167,7 @@ def _read_caller_session_id() -> str | None:
 
 ---
 
-## Phase 3: CLI Subcommand Groups
+## Phase 3: CLI Subcommand Groups with Rich Help
 
 ### Task 3.1: Create tool command handlers
 
@@ -170,49 +178,31 @@ One handler function per group. Each handler:
 1. Parses subcommand and flags from args
 2. Calls `tool_api_call()` with appropriate method/path/params
 3. Prints JSON to stdout via `json.dumps(result, indent=2)`
+4. Has rich `--help` with behavioral guidance and examples
 
-```python
-def handle_sessions(args: list[str]) -> None:
-    if not args:
-        print(_sessions_help(), file=sys.stderr)
-        sys.exit(1)
-    subcmd, rest = args[0], args[1:]
-    if subcmd == "list":
-        result = tool_api_call("GET", "/sessions", params=_parse_kv(rest))
-    elif subcmd == "create":
-        result = tool_api_call("POST", "/sessions", json=_parse_kv(rest))
-    ...
-    print(json.dumps(result, indent=2))
-```
+The help text for each subcommand must:
 
-- [ ] Implement `handle_sessions(args)` — list, create, message, data, command, unsubscribe, end
+- Carry behavioral guidance from MCP tool descriptions (timer patterns,
+  reason gates, required workflows, etc.)
+- Include usage examples covering every parameter and input shape
+- Use structured format: Usage, Description, Arguments, Options, Examples
+
+Source material for behavioral guidance: `teleclaude/mcp/tool_definitions.py`
+contains the rich description strings that must transfer to help text.
+
+- [ ] Implement `handle_sessions(args)` — list, start, send, tail, command, unsubscribe, end
 - [ ] Implement `handle_workflow(args)` — prepare, work, maintain, mark-phase, set-deps
 - [ ] Implement `handle_infra(args)` — computers, projects, deploy, agent-status
 - [ ] Implement `handle_delivery(args)` — result, file, widget, escalate
 - [ ] Implement `handle_channels(args)` — publish, list
 - [ ] Implement `handle_context(args)` — query, help
-- [ ] Each handler has `--help` support
+- [ ] Each handler has rich `--help` with examples covering all parameters
 
 ### Task 3.2: Add CLI surface definitions and dispatch
 
 **File(s):** `teleclaude/cli/telec.py`
 
 Add new entries to `CLI_SURFACE`, `TelecCommand`, and `_handle_cli_command()`:
-
-```python
-class TelecCommand(str, Enum):
-    # ... existing ...
-    SESSIONS = "sessions"
-    WORKFLOW = "workflow"
-    INFRA = "infra"
-    DELIVERY = "delivery"
-    CHANNELS = "channels"
-    CONTEXT = "context"
-```
-
-Add `CLI_SURFACE` entries with subcommands and flags for each group.
-Update `_handle_cli_command()` dispatch to route to `handle_*` functions.
-Update completion handler for new groups.
 
 - [ ] Add 6 new enum values to `TelecCommand`
 - [ ] Add 6 new entries to `CLI_SURFACE` with subcommands and flags
@@ -232,27 +222,74 @@ Update completion handler for new groups.
 
 ---
 
-## Phase 4: Validation
+## Phase 4: Telec-CLI Spec Doc + Validation
 
-### Task 4.1: Functional tests
+### Task 4.1: Update telec-cli spec doc with @exec directives
+
+**File(s):** `docs/global/general/spec/tools/telec-cli.md`
+
+Add `@exec` directive sections for each baseline tool:
+
+```markdown
+## CLI surface
+
+<!-- @exec: telec -h -->
+
+## Baseline tools
+
+### `telec docs`
+
+<!-- @exec: telec docs -h -->
+
+### `telec list`
+
+<!-- @exec: telec list -h -->
+
+### `telec start`
+
+<!-- @exec: telec sessions start -h -->
+
+### `telec send`
+
+<!-- @exec: telec sessions send -h -->
+
+### `telec command`
+
+<!-- @exec: telec sessions command -h -->
+
+### `telec tail`
+
+<!-- @exec: telec sessions tail -h -->
+
+### `telec deploy`
+
+<!-- @exec: telec infra deploy -h -->
+```
+
+- [ ] Update telec-cli spec doc with baseline tool `@exec` directives
+- [ ] Run `telec sync` to verify expansion
+- [ ] Verify expanded output in AGENTS.md includes rich help with examples
+
+### Task 4.2: Functional tests
 
 Test tool subcommands against a running daemon:
 
 - [ ] Test `telec sessions list` returns valid JSON
-- [ ] Test `telec sessions create` with required params
+- [ ] Test `telec sessions start` with required params
 - [ ] Test `telec workflow prepare --slug test-slug`
 - [ ] Test `telec infra computers` returns computer list
 - [ ] Test `telec channels list` returns JSON
 - [ ] Test `telec context help` returns help text
 
-### Task 4.2: Error handling tests
+### Task 4.3: Help text quality verification
 
-- [ ] Test with daemon down (socket missing): stderr error, exit code 1
-- [ ] Test with invalid subcommand: help text shown to stderr
-- [ ] Test with missing required params: error message
-- [ ] Verify `caller_session_id` header sent when env var present
+- [ ] Verify every subcommand `--help` includes Examples section
+- [ ] Verify every parameter appears in at least one example
+- [ ] Verify behavioral guidance from MCP descriptions is present
+- [ ] Verify complex tools (render_widget) have multiple examples
+      covering different input shapes
 
-### Task 4.3: Regression tests
+### Task 4.4: Regression tests
 
 - [ ] Run `make lint`
 - [ ] Run `make test`
@@ -265,18 +302,19 @@ Test tool subcommands against a running daemon:
 
 ## File Summary
 
-| File                              | Action  | Purpose                                |
-| --------------------------------- | ------- | -------------------------------------- |
-| `teleclaude/api/tool_routes.py`   | **new** | 14 REST API endpoints for tools        |
-| `teleclaude/cli/tool_client.py`   | **new** | Sync HTTP client for CLI tool calls    |
-| `teleclaude/cli/tool_commands.py` | **new** | Subcommand group handlers              |
-| `teleclaude/api_server.py`        | modify  | Mount tool router                      |
-| `teleclaude/cli/telec.py`         | modify  | New enum values, CLI_SURFACE, dispatch |
+| File                              | Action  | Purpose                                  |
+| --------------------------------- | ------- | ---------------------------------------- |
+| `teleclaude/api/tool_routes.py`   | **new** | 14 REST API endpoints for tools          |
+| `teleclaude/cli/tool_client.py`   | **new** | Sync HTTP client for CLI tool calls      |
+| `teleclaude/cli/tool_commands.py` | **new** | Subcommand group handlers with rich help |
+| `teleclaude/api_server.py`        | modify  | Mount tool router                        |
+| `teleclaude/cli/telec.py`         | modify  | New enum values, CLI_SURFACE, dispatch   |
+| `docs/.../telec-cli.md`           | modify  | Add @exec directives for baseline tools  |
 
 ## Scope Note
 
-This is 3 new files + 2 modifications. The new code is mechanical (wiring
+This is 3 new files + 3 modifications. The new code is mechanical (wiring
 existing backend functions through REST → CLI), but there are 24 subcommands
 and 14 new endpoints — total volume is significant. If a builder runs into
 context pressure, the natural split point is: Phase 1-2 (API + client) as
-one session, Phase 3-4 (CLI + validation) as a second.
+one session, Phase 3-4 (CLI + help + validation) as a second.

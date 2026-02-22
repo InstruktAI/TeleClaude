@@ -2,11 +2,14 @@
 
 ## Goal
 
-Eliminate the MCP server entirely and replace all 25 `teleclaude__*` MCP tools with
-bash-invocable tool specs loaded via the system prompt and progressive disclosure
-through `get_context`. This removes ~3,400 lines of MCP infrastructure (server,
-wrapper, handlers, definitions, connection management) and replaces them with
-new `telec` subcommands and markdown tool spec docs.
+Eliminate the MCP server entirely and replace all 24 `teleclaude__*` MCP tools with
+`telec` CLI subcommands. The CLI `--help` output IS the tool documentation — no
+separate tool spec docs needed. Progressive disclosure happens via `@exec` directives
+in the telec-cli spec doc, which `telec sync` expands inline.
+
+This removes ~3,400 lines of MCP infrastructure (server, wrapper, handlers,
+definitions, connection management) and replaces them with CLI subcommands
+backed by the existing daemon REST API.
 
 ## Context
 
@@ -22,18 +25,23 @@ The existing tool spec pattern **already works** — `memory-management-api`,
 CLAUDE.md or get_context and invoked via bash. This migration extends that proven
 pattern to cover all agent-facing operations.
 
+The `<!-- @exec: telec <cmd> -h -->` directive in doc snippets auto-generates
+inline documentation at `telec sync` time. The CLI surface IS the documentation
+surface. No separate doc layer.
+
 ## Scope
 
 ### In scope
 
-- Extend `telec` CLI with tool subcommands as the unified invocation surface
-- Write 25 tool spec doc snippets organized in 6 taxonomy groups
-- Set up progressive disclosure (baseline vs on-demand tools)
-- Extend `telec` CLI with tool subcommands calling the existing REST API
+- Extend `telec` CLI with subcommands for all 24 tools, calling the existing REST API
+- Extend the REST API with new endpoints where needed (14 of 24 tools lack endpoints)
+- Write rich `--help` text for each subcommand preserving the behavioral guidance
+  from MCP tool descriptions (timer patterns, reason gates, workflows)
+- Include usage examples in `--help` covering every parameter and input shape
+- Update telec-cli spec doc with `@exec` directives for baseline tools
 - Remove MCP server, wrapper, handlers, tool definitions, and all connection management
-- Update CLAUDE.md baseline to reference new tool specs instead of MCP
-- Update all architecture/policy docs that reference MCP tools
-- Migrate role-based filtering to context-selection-based disclosure
+- Update AGENTS.master.md baseline to reference telec CLI instead of MCP
+- Update architecture/policy docs that reference MCP tools
 - Remove `mark_agent_unavailable` (legacy alias for `mark_agent_status`)
 
 ### Out of scope
@@ -47,10 +55,11 @@ pattern to cover all agent-facing operations.
 
 ## Success Criteria
 
-- [ ] All 24 tools (25 minus legacy alias) have tool spec doc snippets
-- [ ] `telec` subcommands can invoke every tool and return JSON
-- [ ] Baseline tools load in agent system prompt without MCP
-- [ ] Advanced tools are discoverable via get_context
+- [ ] All 24 tools accessible via `telec` subcommands returning JSON
+- [ ] Every subcommand has rich `--help` with behavioral guidance and examples
+- [ ] Example coverage heuristic met: every parameter/input shape touched at least once
+- [ ] Baseline tools inlined in telec-cli spec doc via `@exec` directives
+- [ ] Non-baseline tools discoverable via `telec --help` index
 - [ ] Role-based access control preserved via context-selection filtering
 - [ ] No MCP server process running in daemon
 - [ ] No `mcp-wrapper.py` in agent session config
@@ -59,78 +68,79 @@ pattern to cover all agent-facing operations.
 - [ ] All MCP-related code deleted (mcp_server.py, mcp/, mcp-wrapper.py)
 - [ ] Architecture and policy docs updated
 
-## Tool Taxonomy
+## CLI Help as Documentation
 
-```
-docs/project/spec/tools/
-├── context/           # Knowledge & orientation
-│   ├── get-context    # Doc snippet retrieval (baseline)
-│   └── help           # TeleClaude capabilities (baseline)
-├── sessions/          # Session lifecycle
-│   ├── list-sessions  # List active sessions (baseline)
-│   ├── start-session  # Start AI session (baseline)
-│   ├── send-message   # Message a session (baseline)
-│   ├── get-session-data # Retrieve transcript (baseline)
-│   ├── run-agent-command # Start session with command (on-demand)
-│   ├── stop-notifications # Unsubscribe events (on-demand)
-│   └── end-session    # Terminate session (on-demand)
-├── workflow/          # Orchestration & planning (on-demand)
-│   ├── next-prepare   # Preparation state machine
-│   ├── next-work      # Build state machine
-│   ├── next-maintain  # Maintenance stub
-│   ├── mark-phase     # Mark phase complete
-│   └── set-dependencies # Set work item deps
-├── infrastructure/    # Computers & deployment (on-demand)
-│   ├── list-computers # Network computers
-│   ├── list-projects  # Project directories
-│   ├── deploy         # Deploy to remotes
-│   └── mark-agent-status # Agent availability
-├── delivery/          # Output & communication (on-demand)
-│   ├── send-result    # Formatted output to user
-│   ├── send-file      # File to user
-│   ├── render-widget  # Rich widget UI
-│   └── escalate       # Escalate to human admin
-└── channels/          # Pub/sub messaging (on-demand)
-    ├── publish        # Publish to Redis Stream
-    └── channels-list  # List active channels
-```
+### Hard requirement: example coverage
 
-## Progressive Disclosure
+Every `telec` subcommand `--help` output must include usage examples that
+collectively cover every input parameter and input shape at least once.
 
-**Baseline (always loaded in system prompt):**
+For simple tools (flags with string/boolean values), a single example showing
+all flags may suffice. For complex tools with nested JSON input (e.g.,
+`render_widget`), multiple examples are required to illustrate enough of the
+surface that agents won't guess wrong.
 
-- `context/get-context` — Foundation of knowledge retrieval
-- `context/help` — Orientation
-- `sessions/list-sessions` — Most common read
-- `sessions/start-session` — Most common write
-- `sessions/send-message` — Most common interaction
-- `sessions/get-session-data` — Monitoring sessions
+**Heuristic:** every parameter or distinct input shape must appear in at least
+one example. The examples section of `--help` is not decoration — it is the
+primary teaching mechanism for agents.
 
-**On-demand (loaded via get_context when relevant):**
+### Progressive disclosure via `@exec`
 
-- `sessions/` advanced: end-session, stop-notifications, run-agent-command
-- `workflow/` entire group (only for orchestrator roles)
-- `infrastructure/` entire group (only for admin/ops roles)
-- `delivery/` entire group (when agent needs to output to user)
-- `channels/` entire group (advanced pub/sub)
+The telec-cli spec doc (`docs/global/general/spec/tools/telec-cli.md`) uses
+`<!-- @exec: telec <cmd> -h -->` directives. When `telec sync` runs, these
+expand to the full help output inline. This gives agents:
+
+- **Level 1 (index):** `telec -h` — brief one-line descriptions of all commands
+- **Level 2 (detail):** Full `--help` with parameters, behavioral guidance,
+  and examples — inlined for baseline tools, available via bash for others
+
+### Baseline tools (always inlined in detail)
+
+| CLI Command     | Purpose                                        |
+| --------------- | ---------------------------------------------- |
+| `telec docs`    | Context/knowledge retrieval (already exists)   |
+| `telec list`    | Session discovery (already exists)             |
+| `telec start`   | Session creation with workflow guidance        |
+| `telec send`    | Message sending with timer pattern             |
+| `telec command` | Slash command dispatch with timer pattern      |
+| `telec tail`    | Transcript retrieval with supervision guidance |
+| `telec deploy`  | Remote deployment with workflow                |
+
+### Non-baseline tools (discoverable via index)
+
+- Session lifecycle: `end`, `unsubscribe`
+- Workflow: `prepare`, `work`, `maintain`, `mark`, `set-deps`
+- Infrastructure: `computers`, `projects`, `agent-status`
+- Delivery: `result`, `send-file`, `widget`, `escalate`
+- Channels: `publish`, `channels`
+
+## Breakdown
+
+This work is split into 3 sub-todos (down from the original 6):
+
+1. **mcp-migration-telec-commands** — Add CLI subcommands with rich `--help`,
+   extend REST API, update telec-cli spec doc with `@exec` directives
+2. **mcp-migration-agent-config** — Remove MCP from agent bootstrap, validate
+   all workflows work via telec
+3. **mcp-migration-delete-mcp** — Delete all MCP code, update remaining docs
 
 ## Constraints
 
 - `telec` tool subcommands must work without daemon running (graceful error: "daemon unavailable")
-- Tool specs must include both `telec` invocation and raw curl equivalent
+- `--help` must include both invocation syntax and behavioral guidance from MCP descriptions
 - Backward compatibility period: MCP server can coexist during migration but
   is removed at completion
-- `get_context` itself transitions from MCP tool to `telec context query` — this
+- `get_context` itself transitions from MCP tool to `telec docs` — this
   is the most sensitive migration step since it's the bootstrap mechanism
 
 ## Risks
 
 - **get_context bootstrap chicken-and-egg**: get_context is currently an MCP tool.
-  Moving it to bash means the agent must know `telec context query` from the
+  Moving it to bash means the agent must know `telec docs` from the
   system prompt before it can discover other tools. Mitigation: baseline in CLAUDE.md.
-- **Agent reliability**: Bash/curl invocations are less reliable than structured
-  MCP tool calls. Mitigation: `telec` subcommands provide structured invocation
-  with validation and JSON output.
+- **Agent reliability**: Bash invocations are less structured than MCP tool calls.
+  Mitigation: `telec` subcommands provide structured invocation with validation
+  and JSON output. Rich examples in `--help` prevent misuse.
 - **Multi-agent coordination**: MCP wrapper injects `caller_session_id`.
   `telec` must replicate this from `$TMPDIR/teleclaude_session_id`.
 - **Role filtering migration**: Currently MCP wrapper filters tools by role.

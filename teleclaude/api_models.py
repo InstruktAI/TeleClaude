@@ -241,7 +241,7 @@ class ProjectsInitialDataDTO(BaseModel):  # type: ignore[explicit-any]
 
     model_config = ConfigDict(frozen=True)
 
-    projects: list[ProjectDTO | ProjectWithTodosDTO]
+    projects: list[ProjectWithTodosDTO | ProjectDTO]
     computer: str | None = None
 
 

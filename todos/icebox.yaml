@@ -1,8 +1,5 @@
 # Parked work items. Promote back to roadmap.yaml when priority changes.
 
-- slug: mcp-migration-tc-cli
-  group: mcp-to-tool-specs
-  description: 'Phase 1: Extend telec with tool subcommands and daemon JSON-RPC endpoint'
 - slug: multi-user-db-abstraction
   group: multi-user-system-install
   description: 'Phase 0: Configurable database engine (SQLite default, PostgreSQL

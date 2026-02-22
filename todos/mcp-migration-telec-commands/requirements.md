@@ -4,7 +4,12 @@
 
 Add `telec` subcommands for all 24 agent tools, calling the existing daemon
 REST API over the Unix socket. Extend the REST API with new endpoints where
-needed. This creates the invocation backbone that replaces MCP tool calls.
+needed. Write rich `--help` text with behavioral guidance and usage examples
+that cover every parameter and input shape. Update the telec-cli spec doc
+with `@exec` directives for baseline tool detail.
+
+This creates the invocation backbone AND the documentation layer that
+replaces MCP tool calls.
 
 ## Scope
 
@@ -23,15 +28,141 @@ needed. This creates the invocation backbone that replaces MCP tool calls.
 - `caller_session_id` injection from `$TMPDIR/teleclaude_session_id`
 - JSON output to stdout, human-readable errors to stderr
 - Graceful degradation when daemon is unavailable
-- `--help` for each group and subcommand
+- Rich `--help` for each subcommand (see Help Text Requirements below)
+- Update `docs/global/general/spec/tools/telec-cli.md` with `@exec` directives
+  for baseline tools
+- Run `telec sync` to verify `@exec` expansion works
 - Remove `telec claude`, `telec gemini`, `telec codex` aliases (unused by agents)
 
 ### Out of scope
 
-- Tool spec documentation (Phase 2, separate todo)
-- Context-selection / AGENTS.md updates (Phase 3)
-- MCP removal (later phase)
+- MCP removal (Phase 3, separate todo)
+- Agent session config changes (Phase 2, separate todo)
 - New CLI binary (we extend `telec`)
+
+## Help Text Requirements
+
+### Structure
+
+Every `--help` output must include:
+
+1. **Usage line** — invocation syntax with positional args and flags
+2. **Description** — what the tool does (1-3 sentences)
+3. **Behavioral guidance** — when/how to use it, workflow patterns, constraints
+   (migrated from MCP tool `description` fields)
+4. **Arguments/Options** — all parameters with types, defaults, enums, required markers
+5. **Examples** — usage examples covering every parameter and input shape
+
+### Hard requirement: example coverage
+
+Every input parameter and distinct input shape must be touched by at least
+one example. This is the primary teaching mechanism for agents.
+
+**For simple tools** (string/boolean flags): a few examples showing common
+and edge-case invocations. Every flag must appear in at least one example.
+
+**For complex tools** (JSON input like `render_widget`): multiple examples
+illustrating different section types, nested structures, and variant
+combinations. The examples must cover enough of the discriminated union
+surface that an agent can construct valid input without guessing.
+
+**Coverage heuristic:** if you added a parameter, there must be an example
+using it. If you have a JSON input with multiple shape variants, each
+variant needs at least one example.
+
+### Example: what rich `--help` looks like
+
+```
+Usage: telec start <computer> --project <path> --title <text> [options]
+
+  Start a new AI agent session on a computer.
+
+  REQUIRED WORKFLOW:
+  1) Run `telec projects <computer>` first to discover available projects
+  2) Use the exact path from that output in --project
+  3) Returns session_id
+
+  After dispatching: start a 5-minute background timer
+  (sleep 300 in background). Wait for notification. If timer fires
+  with no notification, check with `telec tail <session_id>`.
+
+Arguments:
+  computer                       Target computer name (required)
+
+Options:
+  --project <path>               Absolute project path from `telec projects` (required)
+  --title <text>                 Session title (required)
+  --agent <claude|gemini|codex>  Agent type (default: claude)
+  --mode <fast|med|slow>         Model tier (default: slow)
+  --message <text>               Initial prompt; omit for interactive session
+  --direct                       Skip notification subscription (peer-to-peer)
+
+Examples:
+  # Start a Claude session on the workstation
+  telec start workstation --project /home/user/myapp --title "Debug auth flow"
+
+  # Start a fast Gemini session with an initial task
+  telec start raspi --project /home/pi/app --title "Review PR" \
+    --agent gemini --mode fast --message "Read README and summarize"
+
+  # Peer-to-peer session (no notification subscription)
+  telec start workstation --project /home/user/app --title "Collab" --direct
+```
+
+### Source material for behavioral guidance
+
+The MCP tool definitions in `teleclaude/mcp/tool_definitions.py` contain
+rich description text with:
+
+- Timer patterns (`REMOTE_AI_TIMER_INSTRUCTION`)
+- Reason gates and cadence gates (`get_session_data`)
+- Required workflows (`start_session` list_projects prerequisite)
+- Section type references (`render_widget`)
+- Role constraints (`escalate` customer-only)
+
+This guidance must transfer to the `--help` output, not be lost.
+
+## Telec-CLI Spec Doc Update
+
+The existing spec doc at `docs/global/general/spec/tools/telec-cli.md` already
+uses `<!-- @exec: telec -h -->` and `<!-- @exec: telec docs -h -->`. Extend it
+with `@exec` directives for all baseline tools:
+
+```markdown
+## CLI surface
+
+<!-- @exec: telec -h -->
+
+## Baseline tools
+
+### `telec docs`
+
+<!-- @exec: telec docs -h -->
+
+### `telec list`
+
+<!-- @exec: telec list -h -->
+
+### `telec start`
+
+<!-- @exec: telec start -h -->
+
+### `telec send`
+
+<!-- @exec: telec send -h -->
+
+### `telec command`
+
+<!-- @exec: telec command -h -->
+
+### `telec tail`
+
+<!-- @exec: telec tail -h -->
+
+### `telec deploy`
+
+<!-- @exec: telec deploy -h -->
+```
 
 ## Existing REST API Coverage
 
@@ -55,14 +186,16 @@ The remaining 14 need new REST endpoints on the daemon API server.
 ## Success Criteria
 
 - [ ] `telec sessions list` returns JSON session list
-- [ ] `telec sessions create --computer local --project /path --title "Test"` creates session
-- [ ] `telec sessions message --session-id X --message "hello"` sends message
+- [ ] `telec sessions start --computer local --project /path --title "Test"` creates session
+- [ ] `telec sessions send --session-id X --message "hello"` sends message
 - [ ] `telec workflow prepare --slug my-item` returns preparation state
 - [ ] `telec infra computers` returns computer list
 - [ ] `telec infra deploy` triggers deployment
 - [ ] `telec delivery result --session-id X --content "done"` sends result
 - [ ] `telec channels list` returns active channels
 - [ ] `telec --help` shows new subcommand groups alongside existing ones
+- [ ] Every subcommand `--help` has examples covering all parameters
+- [ ] Baseline tool `@exec` directives expand correctly in `telec sync`
 - [ ] Daemon down → clear error message, non-zero exit code
 - [ ] `caller_session_id` injected on every API call
 - [ ] Output is valid JSON parseable by agents

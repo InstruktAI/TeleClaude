@@ -5,39 +5,26 @@
 - slug: fix-demo-runner
   description: Fix demo runner - missing demo field in existing snapshots + /next-demo
     session_id bug in render_widget
+  after:
+  - demo-runner
 - slug: state-yaml-migration
   description: Migrate todo state.json to state.yaml for human-readable state files
 - slug: mcp-migration-telec-commands
   group: mcp-to-tool-specs
-  description: 'Phase 1: Add telec subcommands for all 24 tools, calling the existing
-    REST API (extend API where needed)'
-- slug: mcp-migration-tool-spec-docs
-  group: mcp-to-tool-specs
-  description: 'Phase 2: Write 24 tool spec doc snippets in 6 taxonomy groups'
-- slug: mcp-migration-context-integration
-  group: mcp-to-tool-specs
-  after:
-  - mcp-migration-telec-commands
-  - mcp-migration-tool-spec-docs
-  description: 'Phase 3: Update AGENTS.master.md baseline to reference tool specs,
-    regenerate AGENTS.md'
+  description: 'Phase 1: Add telec subcommands for all 24 tools with rich --help,
+    extend REST API, update telec-cli spec doc with @exec directives'
 - slug: mcp-migration-agent-config
   group: mcp-to-tool-specs
   after:
-  - mcp-migration-context-integration
-  description: 'Phase 4: Remove MCP from agent session configs, validate all agent
-    types'
+  - mcp-migration-telec-commands
+  description: 'Phase 2: Remove MCP from agent session configs, validate all agent
+    types and workflows'
 - slug: mcp-migration-delete-mcp
   group: mcp-to-tool-specs
   after:
   - mcp-migration-agent-config
-  description: 'Phase 5: Delete all MCP server code, wrapper, handlers, definitions
-    (~3,400 lines)'
-- slug: mcp-migration-doc-updates
-  group: mcp-to-tool-specs
-  after:
-  - mcp-migration-delete-mcp
-  description: 'Phase 6: Update architecture and policy docs, rewrite MCP references'
+  description: 'Phase 3: Delete all MCP server code (~3,400 lines), update architecture
+    and policy docs'
 - slug: project-aware-bug-routing
 - slug: rolling-session-titles
   description: Re-summarize session titles based on the last 3 user inputs instead
@@ -47,8 +34,8 @@
 - slug: unified-roadmap-assembly
   after:
   - mcp-to-tool-specs
-- slug: fix-demo-runner
-  after:
-  - demo-runner
 - slug: bug-delivery-service
   description: 'Fire-and-forget bug pipeline: telec bugs report + autonomous fix/review/merge'
+- slug: discord-session-routing
+  description: Per-project Discord forums, role-based routing, adapter-specific titles,
+    enriched footer

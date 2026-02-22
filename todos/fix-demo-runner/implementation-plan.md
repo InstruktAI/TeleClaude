@@ -1,4 +1,4 @@
-# Implementation Plan: mcp-migration-tool-spec-docs
+# Implementation Plan: fix-demo-runner
 
 ## Overview
 

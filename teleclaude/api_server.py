@@ -35,6 +35,7 @@ from teleclaude.api_models import (
     ProjectDTO,
     ProjectsInitialDataDTO,
     ProjectsInitialEventDTO,
+    ProjectWithTodosDTO,
     RefreshDataDTO,
     RefreshEventDTO,
     SendMessageRequest,
@@ -1454,16 +1455,48 @@ class APIServer:
                 # Send current projects from cache for this computer
                 if self.cache:
                     cached_projects = self.cache.get_projects(computer if computer != "local" else None)
-                    projects: list[ProjectDTO] = []
+                    projects: list[ProjectDTO | ProjectWithTodosDTO] = []
                     for proj in cached_projects:
-                        projects.append(
-                            ProjectDTO(
-                                computer=proj.computer or "",
-                                name=proj.name,
-                                path=proj.path,
-                                description=proj.description,
+                        comp = proj.computer or ""
+                        if data_type == "preparation":
+                            todos = self.cache.get_todos(comp or config.computer.name, proj.path, include_stale=True)
+                            projects.append(
+                                ProjectWithTodosDTO(
+                                    computer=comp,
+                                    name=proj.name,
+                                    path=proj.path,
+                                    description=proj.description,
+                                    todos=[
+                                        TodoDTO(
+                                            slug=t.slug,
+                                            status=t.status,
+                                            description=t.description,
+                                            computer=comp or config.computer.name,
+                                            project_path=proj.path,
+                                            has_requirements=t.has_requirements,
+                                            has_impl_plan=t.has_impl_plan,
+                                            build_status=t.build_status,
+                                            review_status=t.review_status,
+                                            dor_score=t.dor_score,
+                                            deferrals_status=t.deferrals_status,
+                                            findings_count=t.findings_count,
+                                            files=t.files,
+                                            after=t.after,
+                                            group=t.group,
+                                        )
+                                        for t in todos
+                                    ],
+                                )
                             )
-                        )
+                        else:
+                            projects.append(
+                                ProjectDTO(
+                                    computer=comp,
+                                    name=proj.name,
+                                    path=proj.path,
+                                    description=proj.description,
+                                )
+                            )
 
                     event = ProjectsInitialEventDTO(
                         event="projects_initial" if data_type == "projects" else "preparation_initial",
