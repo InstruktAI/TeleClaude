@@ -105,17 +105,17 @@ Replace the post-finalize demo creation flow with build-phase demo artifacts and
 
 **File(s):** `tests/unit/test_next_machine_demo.py`
 
-- [ ] Remove tests for `demo.sh` existence and executability (`test_demo_sh_semver_*` tests, lines ~206-359)
-- [ ] Remove tests for demo dispatch in `POST_COMPLETION["next-finalize"]` (`test_post_completion_finalize_includes_demo_step`, `test_post_completion_finalize_demo_before_cleanup`, `test_post_completion_finalize_demo_is_non_blocking`)
-- [ ] Remove test for `POST_COMPLETION["next-demo"]` entry (`test_post_completion_has_next_demo_entry`, `test_post_completion_next_demo_has_end_session`)
-- [ ] Update folder naming expectations: slug-based, no sequence numbers
-- [ ] Keep schema field tests but note that actual deployed snapshots use variant names — tests validate the spec-standard schema for new demos
-- [ ] Add tests for CLI runner: list, run by slug, semver gate, missing demo field, nonexistent slug, empty demos dir
-- [ ] Ensure `make test` passes
+- [x] Remove tests for `demo.sh` existence and executability (`test_demo_sh_semver_*` tests, lines ~206-359)
+- [x] Remove tests for demo dispatch in `POST_COMPLETION["next-finalize"]` (`test_post_completion_finalize_includes_demo_step`, `test_post_completion_finalize_demo_before_cleanup`, `test_post_completion_finalize_demo_is_non_blocking`)
+- [x] Remove test for `POST_COMPLETION["next-demo"]` entry (`test_post_completion_has_next_demo_entry`, `test_post_completion_next_demo_has_end_session`)
+- [x] Update folder naming expectations: slug-based, no sequence numbers
+- [x] Keep schema field tests but note that actual deployed snapshots use variant names — tests validate the spec-standard schema for new demos
+- [x] Add tests for CLI runner: list, run by slug, semver gate, missing demo field, nonexistent slug, empty demos dir
+- [x] Ensure `make test` passes
 
 ### Task 4.2: Quality checks
 
-- [ ] Run `make lint`
+- [x] Run `make lint`
 - [ ] Verify no unchecked implementation tasks remain
 
 ---
