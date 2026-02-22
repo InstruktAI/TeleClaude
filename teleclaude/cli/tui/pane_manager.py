@@ -1055,11 +1055,15 @@ class TmuxPaneManager:
             border_style = f"fg={inactive_bg},bg={inactive_bg}"
             self._run_tmux("set", "-w", "-t", self._tui_pane_id, "pane-border-style", border_style)
             self._run_tmux("set", "-w", "-t", self._tui_pane_id, "pane-active-border-style", border_style)
+            # Force tmux to re-evaluate styles based on current focus state
+            self._run_tmux("refresh-client")
         else:
             self._run_tmux("set", "-pu", "-t", self._tui_pane_id, "window-style")
             self._run_tmux("set", "-pu", "-t", self._tui_pane_id, "window-active-style")
             self._run_tmux("set", "-wu", "-t", self._tui_pane_id, "pane-border-style")
             self._run_tmux("set", "-wu", "-t", self._tui_pane_id, "pane-active-border-style")
+            # Force tmux to re-evaluate styles based on current focus state
+            self._run_tmux("refresh-client")
 
     def _set_doc_pane_background(self, pane_id: str, *, agent: str = "") -> None:
         """Apply styling for doc preview panes (glow/less).

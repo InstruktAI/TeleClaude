@@ -1,8 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: bugs-round-1
-  description: 'TUI visual bugs: slug color not inverting on row selection, TUI pane
-    background not updating after SIGUSR1 dark/light toggle'
 - slug: demo-runner
   description: Demo runner CLI, build-phase demo artifact, conversational interface
 - slug: fix-demo-runner
