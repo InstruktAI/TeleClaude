@@ -61,16 +61,16 @@ procedure docs, spec docs, todo scaffold, and existing demos. No MCP changes.
 
 **File:** `docs/global/software-development/procedure/lifecycle/build.md`
 
-- [ ] Add demo validation as a pre-completion step (after tests, before clean tree check):
+- [x] Add demo validation as a pre-completion step (after tests, before clean tree check):
       "Run `telec todo demo {slug}`. All code blocks must exit 0."
-- [ ] Add escape hatch: "If demo.md has no executable blocks or the delivery
+- [x] Add escape hatch: "If demo.md has no executable blocks or the delivery
       cannot be demonstrated, note the exception in demo.md with reasoning."
 
 ### Task 3.2: Update quality checklist template
 
 **File:** `templates/todos/quality-checklist.md`
 
-- [ ] Make the "Demo is runnable and verified" gate more specific:
+- [x] Make the "Demo is runnable and verified" gate more specific:
       "Demo validated (`telec todo demo {slug}` exits 0, or exception noted)"
 
 ## Phase 4: Command artifact and docs
@@ -79,38 +79,38 @@ procedure docs, spec docs, todo scaffold, and existing demos. No MCP changes.
 
 **File:** `agents/commands/next-demo.md`
 
-- [ ] Purpose: conversational presenter that reads `demo.md` and walks the user through
-- [ ] No slug: list available demos (via `telec todo demo`), ask which to present
-- [ ] With slug: read `demos/{slug}/demo.md`, execute steps sequentially
-- [ ] For code blocks: run via Bash, show output to user, narrate results
-- [ ] For guided steps: operate the system (TUI keys, CLI, API) and narrate
-- [ ] For verification: check assertions, report pass/fail to user
-- [ ] On failure: offer to run `telec bugs report` with the failure context
-- [ ] After successful demo: read `snapshot.json` and celebrate with the five acts
+- [x] Purpose: conversational presenter that reads `demo.md` and walks the user through
+- [x] No slug: list available demos (via `telec todo demo`), ask which to present
+- [x] With slug: read `demos/{slug}/demo.md`, execute steps sequentially
+- [x] For code blocks: run via Bash, show output to user, narrate results
+- [x] For guided steps: operate the system (TUI keys, CLI, API) and narrate
+- [x] For verification: check assertions, report pass/fail to user
+- [x] On failure: offer to run `telec bugs report` with the failure context
+- [x] After successful demo: read `snapshot.json` and celebrate with the five acts
       narrative — conversationally, not as a fixed widget
-- [ ] Drop all render_widget/celebration-widget references
+- [x] Drop all render_widget/celebration-widget references
 
 ### Task 4.2: Update demo procedure doc
 
 **File:** `docs/global/software-development/procedure/lifecycle/demo.md`
 
-- [ ] Replace "The demo field" section with demo.md framework description
-- [ ] Creation lifecycle: architect drafts in prepare (how to prove it works),
+- [x] Replace "The demo field" section with demo.md framework description
+- [x] Creation lifecycle: architect drafts in prepare (how to prove it works),
       builder refines with real implementation knowledge in build
-- [ ] Demo validator: `telec todo demo` extracts code blocks, runs them, build gate
-- [ ] Presentation: AI reads demo.md, executes all steps, operates the system,
+- [x] Demo validator: `telec todo demo` extracts code blocks, runs them, build gate
+- [x] Presentation: AI reads demo.md, executes all steps, operates the system,
       narrates to user
-- [ ] Testability default: almost everything should have executable code blocks.
+- [x] Testability default: almost everything should have executable code blocks.
       The AI can spin up its own TUI instance, run Playwright, start sessions.
       `<!-- skip-validation: reason -->` for the rare exception.
-- [ ] Non-destructive rule: demos run on real data, never destructive. CRUD demos
+- [x] Non-destructive rule: demos run on real data, never destructive. CRUD demos
       create their own test data and clean up. Builder writes with this awareness.
-- [ ] Bug fixes get demos too: reproduce the fix scenario, show it's gone
-- [ ] Escape hatch: if entire delivery can't be demonstrated, note exception,
+- [x] Bug fixes get demos too: reproduce the fix scenario, show it's gone
+- [x] Escape hatch: if entire delivery can't be demonstrated, note exception,
       reviewer accepts or pushes back
-- [ ] Keep five acts narrative in snapshot.json — that's the delivery story
-- [ ] Update builder guidance: demo validation is part of definition of done
-- [ ] Heuristic guidance (not prescriptive):
+- [x] Keep five acts narrative in snapshot.json — that's the delivery story
+- [x] Update builder guidance: demo validation is part of definition of done
+- [x] Heuristic guidance (not prescriptive):
       CLI change → run command, TUI change → spin up own TUI and operate it,
       web UI → Playwright, messaging → trigger via API
 
@@ -118,19 +118,19 @@ procedure docs, spec docs, todo scaffold, and existing demos. No MCP changes.
 
 **File:** `docs/project/spec/demo-artifact.md`
 
-- [ ] Add `demo.md` as the primary demonstration artifact
-- [ ] Drop `demo` field from snapshot.json schema (mark deprecated, keep backward compat note)
-- [ ] Document code block extraction convention (fenced bash = executable)
-- [ ] Document `<!-- skip-validation: reason -->` annotation for individual blocks
-- [ ] Document non-destructive rule (create own test data, clean up after)
+- [x] Add `demo.md` as the primary demonstration artifact
+- [x] Drop `demo` field from snapshot.json schema (mark deprecated, keep backward compat note)
+- [x] Document code block extraction convention (fenced bash = executable)
+- [x] Document `<!-- skip-validation: reason -->` annotation for individual blocks
+- [x] Document non-destructive rule (create own test data, clean up after)
 
 ### Task 4.4: Update lifecycle overview
 
 **File:** `docs/global/software-development/procedure/lifecycle-overview.md`
 
-- [ ] Fix demo phase description: drop "demo.sh" and "widget" references
-- [ ] Output is `demos/{slug}/` with `snapshot.json` and `demo.md`
-- [ ] Clarify: demo validation happens during build (gate), demo presentation
+- [x] Fix demo phase description: drop "demo.sh" and "widget" references
+- [x] Output is `demos/{slug}/` with `snapshot.json` and `demo.md`
+- [x] Clarify: demo validation happens during build (gate), demo presentation
       happens after delivery (celebration)
 
 ## Phase 5: Todo scaffold and prepare integration
