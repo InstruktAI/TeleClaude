@@ -1,4 +1,10 @@
 # Delivered work items. Newest first.
+- slug: bugs-round-1
+  date: '2026-02-22'
+  title: 'TUI visual bugs: slug color not inverting on row selection, TUI pane background not updating after SIGUSR1 dark/light toggle'
+  outcome: DELIVERED
+  commit: 3b7fc0cc
+
 - slug: bug-delivery-service
   date: '2026-02-22'
   title: 'Fire-and-forget bug pipeline: telec bugs report + autonomous fix/review/merge'
