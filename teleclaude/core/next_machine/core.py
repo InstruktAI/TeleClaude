@@ -2174,6 +2174,11 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     except RuntimeError as exc:
         release_finalize_lock(cwd, session_id)
         return format_error("NO_AGENTS", str(exc))
+
+    # Bugs skip delivered.md entry and are removed from todos entirely
+    is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
+    note = "BUG FIX: Skip delivered.md entry. Delete todo directory after merge." if is_bug else ""
+
     return format_tool_call(
         command="next-finalize",
         args=resolved_slug,
@@ -2181,4 +2186,5 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         guidance=guidance,
         subfolder=f"trees/{resolved_slug}",
         next_call="teleclaude__next_work()",
+        note=note,
     )
