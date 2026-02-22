@@ -252,6 +252,7 @@ class PersonConfig(BaseModel):
     creds: CredsConfig = CredsConfig()
     subscriptions: List[SubscriptionEntry] = []
     interests: List[str] = []
+    invite_token: Optional[str] = None
 
     @field_validator("interests", mode="before")
     @classmethod
