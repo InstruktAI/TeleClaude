@@ -34,15 +34,18 @@ class TodoFileRow(TelecMixin, Widget):
 
     def __init__(
         self,
-        slug: str,
+        *,
+        filepath: str,
         filename: str,
+        slug: str = "",
         is_last: bool = False,
         tree_lines: list[bool] | None = None,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
-        self.slug = slug
+        self.filepath = filepath
         self.filename = filename
+        self.slug = slug  # Empty for standalone files (roadmap.yaml)
         self.is_last = is_last
         self._tree_lines = tree_lines or []
 
