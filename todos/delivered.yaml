@@ -1,4 +1,10 @@
 # Delivered work items. Newest first.
+- slug: new-bug-key-in-todos-pane
+  date: '2026-02-22'
+  title: 'TUI ''b'' key for bug creation + telec bugs create CLI command'
+  outcome: DELIVERED
+  commit: 5f1b5b8
+
 - slug: bugs-round-1
   date: '2026-02-22'
   title: 'TUI visual bugs: slug color not inverting on row selection, TUI pane background not updating after SIGUSR1 dark/light toggle'
