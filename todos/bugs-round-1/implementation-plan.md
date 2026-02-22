@@ -48,21 +48,21 @@ Two independent visual bugs, both in the TUI rendering layer. Bug 1 is a Rich Te
 
 ### Task 3.1: Manual verification
 
-- [ ] Toggle dark/light mode with TUI pane focused — verify immediate background update.
-- [ ] Toggle dark/light mode with preview pane focused — verify TUI pane background updates when switching back.
-- [ ] Select a session row with a slug — verify slug text is fully inverted with the selection bar.
-- [ ] Navigate away from the selected row — verify slug returns to normal agent color.
+- [x] Toggle dark/light mode with TUI pane focused — verify immediate background update.
+- [x] Toggle dark/light mode with preview pane focused — verify TUI pane background updates when switching back.
+- [x] Select a session row with a slug — verify slug text is fully inverted with the selection bar.
+- [x] Navigate away from the selected row — verify slug returns to normal agent color.
 
 ### Task 3.2: Quality checks
 
-- [ ] Run `make lint`
-- [ ] Run `make test`
-- [ ] Verify no unchecked implementation tasks remain
+- [x] Run `make lint`
+- [x] Run `make test`
+- [x] Verify no unchecked implementation tasks remain
 
 ---
 
 ## Phase 4: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)
