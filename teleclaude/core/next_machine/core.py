@@ -107,21 +107,12 @@ POST_COMPLETION: dict[str, str] = {
     "next-finalize": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data. Confirm merge succeeded.
 2. teleclaude__end_session(computer="local", session_id="<session_id>")
-3. DEMO (run before cleanup, while artifacts exist — non-blocking):
-   teleclaude__run_agent_command(command="/next-demo", args="{args}", project="<project>", agent="claude", thinking_mode="fast", subfolder="trees/{args}")
-   Wait for demo to complete (use the same timer/notification pattern).
-   If demo fails or errors, log a warning and continue to CLEANUP.
-4. CLEANUP (orchestrator-owned, from main repo root — NEVER cd into worktree):
+3. CLEANUP (orchestrator-owned, from main repo root — NEVER cd into worktree):
    a. git worktree remove trees/{args} --force
    b. git branch -d {args}
    c. rm -rf todos/{args}
    d. git add -A && git commit -m "chore: cleanup {args}"
-5. Call {next_call}
-""",
-    "next-demo": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data.
-2. teleclaude__end_session(computer="local", session_id="<session_id>")
-3. Demo is complete. No further orchestration needed — the calling step (finalize) handles next_call.
+4. Call {next_call}
 """,
 }
 

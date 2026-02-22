@@ -3,30 +3,35 @@ id: 'software-development/procedure/lifecycle/demo'
 type: 'procedure'
 domain: 'software-development'
 scope: 'project'
-description: 'Celebrate delivered work with a visual demo presented by the AI. Mandatory after every finalize.'
+description: 'Create runnable demo artifacts during build and present them to celebrate delivery.'
 ---
 
 # Demo — Procedure
 
 ## Goal
 
-Celebrate every delivery with a visual, engaging presentation of what was built. The demo is the team's reward for completing the build-review-finalize gauntlet. Every demo is a feast.
+Celebrate every delivery with a runnable demonstration of what was built. Demos are created during the build phase and presented after merge to celebrate the work. Every demo is a feast.
 
-## Preconditions
+## Creation (Builder)
 
-- Finalize phase completed successfully (merged to main, delivery logged).
-- Worktree and todo artifacts still exist (cleanup happens AFTER the demo).
+Demos are created during the build phase as a deliverable, verified by the reviewer, and committed alongside the implementation.
 
-## Steps
+### When to create
 
-1. **Gather the story.** Read from the todo folder:
-   - `requirements.md` — what was asked for
-   - `implementation-plan.md` — how it was approached
-   - `review-findings.md` — what the review caught and what was fixed
-   - `quality-checklist.md` — final gate status
-   - `git log` on the branch — the commit narrative
+During the build phase, after implementing the feature and before completing the build gates.
 
-2. **Compose the demo.** Build a presentation covering:
+### How to create
+
+1. **Create demo folder.** `demos/{slug}/` (slug-based naming, no sequence numbers).
+
+2. **Compose snapshot.json.** Capture the delivery story with:
+   - Slug, title, version (from `pyproject.toml`)
+   - Delivered date, commit hash (will be merge commit after finalize)
+   - Metrics (commits, files changed, tests, review rounds, findings, lines)
+   - Five Acts narrative (see structure below)
+   - `demo` field: shell command that demonstrates the feature
+
+3. **The Five Acts structure** (captured in `acts` object):
 
    **Act 1 — The Challenge**
    What problem did this solve? Frame it from the user's perspective.
@@ -40,40 +45,45 @@ Celebrate every delivery with a visual, engaging presentation of what was built.
    Review rounds survived. Critical findings caught and fixed.
    Frame it as quality earned, not rework endured.
 
-   **Act 4 — The Numbers**
-   Metrics that tell the story:
-   - Commits made
-   - Files changed (created / modified)
-   - Tests added or passing
-   - Review rounds / findings resolved
-   - Lines of code (net delta)
-
-   **Act 5 — What's Next**
+   **Act 5 — What's Next** (stored as `whats_next` field)
    Non-blocking suggestions carried forward. Ideas sparked.
    What this unlocks for the roadmap.
 
-3. **Present.** Use the richest renderer available in the current environment.
-   Structured widgets, rich cards, interactive documents — whatever the platform
-   supports. Each act becomes a distinct section. The metrics table should be
-   scannable at a glance. Include a code highlight if one decision deserves it.
-   Close with the merge commit hash and delivery date.
+   Act 4 (The Numbers) is rendered from the metrics object, not written as narrative.
 
-   When no rich renderer exists, fall back to well-formatted markdown.
-   The content matters more than the medium — a plain-text feast still counts.
+4. **The demo field.** A shell command string that demonstrates the feature. Examples:
+   - `echo "Feature demo: run 'telec todo create my-slug' to see the scaffolding"`
+   - `python demos/my-feature/show_demo.py`
+   - `cat README.md | grep "New feature"`
 
-4. **Archive.** Create a durable demo artifact:
-   - Determine the sequence number from existing `demos/*/` folders + 1. Zero-pad to 3 digits.
-   - Create `demos/{NNN}-{slug}/` directory.
-   - Write `snapshot.json` with captured metrics, narrative data, and the current project version from `pyproject.toml`.
-   - Generate `demo.sh` render script with semver gate: the script checks major version compatibility before executing, prints a message and exits 0 on mismatch.
-   - Commit the demo folder before cleanup removes the source data.
-   - See `project/spec/demo-artifact` for the full schema.
+   The command is executed with `shell=True` from the demo folder as current working directory.
 
-## Outputs
+5. **Write and commit.** Save `demos/{slug}/snapshot.json` and include it in a commit during the build phase.
 
-- A demo presentation delivered to the user through the best available channel.
-- Smiles.
+### Builder guidance
+
+The demo is part of the definition of done. Do not skip it. The demo field does not need to be elaborate — a simple command that shows the feature working is sufficient. The snapshot narrative tells the story; the demo command proves it works.
+
+## Presentation
+
+Demos are presented to celebrate delivery, either via conversational AI or CLI.
+
+### Conversational presentation (/next-demo)
+
+- **No slug**: AI lists available demos and asks which one to present.
+- **With slug**: AI runs `telec todo demo <slug>`, then renders a celebration widget with the snapshot data (title, acts, metrics table).
+
+### CLI presentation (telec todo demo)
+
+- **No slug**: lists all available demos (table format: slug, title, version, delivered date).
+- **With slug**: executes the `demo` field command for that demo.
+
+## Schema
+
+See `project/spec/demo-artifact` for the full `snapshot.json` schema.
 
 ## Recovery
 
-- If artifacts are already cleaned up, reconstruct from `git log` and `delivered.md`.
+- Demos survive cleanup (they live in `demos/{slug}/`, not `todos/{slug}/`).
+- If a demo is missing the `demo` field, the runner warns and skips execution (backward compatibility).
+- Breaking major version bumps disable stale demos automatically via semver gate.

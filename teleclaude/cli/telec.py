@@ -158,6 +158,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[_PROJECT_ROOT_LONG],
                 notes=["If slug is omitted, all active todos are checked."],
             ),
+            "demo": CommandDef(
+                desc="Run or list demo artifacts",
+                args="[slug]",
+                flags=[_PROJECT_ROOT_LONG],
+                notes=["No slug: list all demos. With slug: run demo for that slug."],
+            ),
         },
     ),
     "roadmap": CommandDef(
@@ -1058,6 +1064,8 @@ def _handle_todo(args: list[str]) -> None:
         _handle_todo_create(args[1:])
     elif subcommand == "validate":
         _handle_todo_validate(args[1:])
+    elif subcommand == "demo":
+        _handle_todo_demo(args[1:])
     else:
         print(f"Unknown todo subcommand: {subcommand}")
         print(_usage("todo"))
@@ -1106,6 +1114,115 @@ def _handle_todo_validate(args: list[str]) -> None:
         print(f"✓ Todo {slug} is valid")
     else:
         print("✓ All active todos are valid")
+
+
+def _handle_todo_demo(args: list[str]) -> None:
+    """Handle telec todo demo - run or list demo artifacts."""
+    import json
+    import re
+
+    slug: str | None = None
+    project_root = Path.cwd()
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "demo"))
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                print(_usage("todo", "demo"))
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    # Read project version from pyproject.toml
+    pyproject_path = project_root / "pyproject.toml"
+    current_version = "0.0.0"
+    if pyproject_path.exists():
+        pyproject_content = pyproject_path.read_text()
+        match = re.search(r'version\s*=\s*"([^"]+)"', pyproject_content)
+        if match:
+            current_version = match.group(1)
+
+    current_major = int(current_version.split(".")[0])
+
+    # Scan for available demos
+    demos_dir = project_root / "demos"
+    if not demos_dir.exists():
+        print("No demos available")
+        raise SystemExit(0)
+
+    demo_entries = []
+    for demo_path in sorted(demos_dir.iterdir()):
+        if not demo_path.is_dir() or demo_path.name.startswith("."):
+            continue
+        snapshot_path = demo_path / "snapshot.json"
+        if snapshot_path.exists():
+            try:
+                snapshot = json.loads(snapshot_path.read_text())
+                demo_entries.append((demo_path.name, snapshot))
+            except (json.JSONDecodeError, OSError):
+                continue
+
+    if not demo_entries:
+        print("No demos available")
+        raise SystemExit(0)
+
+    # No slug: list all demos
+    if slug is None:
+        print(f"Available demos ({len(demo_entries)}):\n")
+        print(f"{'Slug':<30} {'Title':<50} {'Version':<10} {'Delivered'}")
+        print("-" * 110)
+        for demo_slug, snapshot in demo_entries:
+            title = snapshot.get("title", "")
+            version = snapshot.get("version", "")
+            # Use delivered_date with fallback to delivered for forward compatibility
+            delivered = snapshot.get("delivered_date", snapshot.get("delivered", ""))
+            print(f"{demo_slug:<30} {title:<50} {version:<10} {delivered}")
+        raise SystemExit(0)
+
+    # With slug: find and run the demo
+    demo_path = demos_dir / slug
+    snapshot_path = demo_path / "snapshot.json"
+
+    if not demo_path.exists() or not snapshot_path.exists():
+        print(f"Error: Demo '{slug}' not found")
+        raise SystemExit(1)
+
+    try:
+        snapshot = json.loads(snapshot_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"Error reading snapshot for '{slug}': {exc}")
+        raise SystemExit(1) from exc
+
+    # Semver gate: compare major versions
+    demo_version = snapshot.get("version", "0.0.0")
+    demo_major = int(demo_version.split(".")[0])
+
+    if demo_major != current_major:
+        print(
+            f"Demo from v{demo_version} is incompatible with current v{current_version} "
+            f"(major version mismatch). Skipping."
+        )
+        raise SystemExit(0)
+
+    # Check for demo field
+    demo_command = snapshot.get("demo")
+    if not demo_command:
+        print(f"Warning: Demo '{slug}' has no 'demo' field. Skipping execution.")
+        raise SystemExit(0)
+
+    # Execute the demo command
+    print(f"Running demo: {slug} (v{demo_version})\n")
+    result = subprocess.run(demo_command, shell=True, cwd=demo_path)
+    raise SystemExit(result.returncode)
 
 
 def _handle_todo_create(args: list[str]) -> None:

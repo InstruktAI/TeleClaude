@@ -4,19 +4,20 @@
   description: Demo runner CLI, build-phase demo artifact, conversational interface
 - slug: state-yaml-migration
   description: Migrate todo state.json to state.yaml for human-readable state files
-- slug: mcp-migration-tc-cli
+- slug: mcp-migration-telec-commands
   group: mcp-to-tool-specs
-  description: 'Phase 1: Extend telec with tool subcommands and daemon JSON-RPC endpoint'
+  description: 'Phase 1: Add telec subcommands for all 24 tools, calling the existing
+    REST API (extend API where needed)'
 - slug: mcp-migration-tool-spec-docs
   group: mcp-to-tool-specs
   description: 'Phase 2: Write 24 tool spec doc snippets in 6 taxonomy groups'
 - slug: mcp-migration-context-integration
   group: mcp-to-tool-specs
   after:
-  - mcp-migration-tc-cli
+  - mcp-migration-telec-commands
   - mcp-migration-tool-spec-docs
-  description: 'Phase 3: Wire tool specs into context-selection pipeline, update CLAUDE.md
-    baseline'
+  description: 'Phase 3: Update AGENTS.master.md baseline to reference tool specs,
+    regenerate AGENTS.md'
 - slug: mcp-migration-agent-config
   group: mcp-to-tool-specs
   after:
