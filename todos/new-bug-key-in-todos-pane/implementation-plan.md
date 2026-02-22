@@ -10,7 +10,7 @@
 
 ---
 
-### Task 0: Test specification for dependency tree building
+### Task 0: Test specification for dependency tree building ✓
 
 **File(s):** `tests/unit/test_prep_tree_builder.py`
 
