@@ -166,6 +166,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[_PROJECT_ROOT_LONG],
                 notes=["No slug: list all demos. With slug: run demo for that slug."],
             ),
+            "remove": CommandDef(
+                desc="Remove a todo and its files",
+                args="<slug>",
+                flags=[_PROJECT_ROOT_LONG],
+            ),
         },
     ),
     "roadmap": CommandDef(
@@ -1114,6 +1119,8 @@ def _handle_todo(args: list[str]) -> None:
         _handle_todo_validate(args[1:])
     elif subcommand == "demo":
         _handle_todo_demo(args[1:])
+    elif subcommand == "remove":
+        _handle_todo_remove(args[1:])
     else:
         print(f"Unknown todo subcommand: {subcommand}")
         print(_usage("todo"))
@@ -1427,6 +1434,49 @@ def _handle_todo_create(args: list[str]) -> None:
     print(f"Created todo skeleton: {todo_dir}")
     if after:
         print(f"Updated dependencies for {slug}: {', '.join(after)}")
+
+
+def _handle_todo_remove(args: list[str]) -> None:
+    """Handle telec todo remove."""
+    from teleclaude.todo_scaffold import remove_todo
+
+    if not args:
+        print(_usage("todo", "remove"))
+        return
+
+    slug: str | None = None
+    project_root = Path.cwd()
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "remove"))
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                print(_usage("todo", "remove"))
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if not slug:
+        print("Missing required slug.")
+        print(_usage("todo", "remove"))
+        raise SystemExit(1)
+
+    try:
+        remove_todo(project_root, slug)
+    except (ValueError, RuntimeError, FileNotFoundError) as exc:
+        print(f"Error: {exc}")
+        raise SystemExit(1) from exc
+
+    print(f"Removed todo: {slug}")
 
 
 def _handle_roadmap(args: list[str]) -> None:

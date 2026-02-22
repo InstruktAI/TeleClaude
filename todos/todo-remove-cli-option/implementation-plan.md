@@ -34,22 +34,22 @@ Add todo removal capability via CLI and TUI. The approach follows established pa
 
 **File(s):** `teleclaude/cli/telec.py`
 
-- [ ] Add `"remove"` subcommand to `CLI_SURFACE["todo"].subcommands` with args `"<slug>"`, flags `[_PROJECT_ROOT_LONG]`, and desc `"Remove a todo and its files"`
+- [x] Add `"remove"` subcommand to `CLI_SURFACE["todo"].subcommands` with args `"<slug>"`, flags `[_PROJECT_ROOT_LONG]`, and desc `"Remove a todo and its files"`
 
 ### Task 2.2: Add `_handle_todo_remove` function
 
 **File(s):** `teleclaude/cli/telec.py`
 
-- [ ] Implement `_handle_todo_remove(args: list[str]) -> None` following `_handle_todo_create` pattern
-- [ ] Parse `<slug>` and optional `--project-root`
-- [ ] Call `remove_todo()` from `todo_scaffold`
-- [ ] Print success message or error (FileNotFoundError, RuntimeError for worktree)
+- [x] Implement `_handle_todo_remove(args: list[str]) -> None` following `_handle_todo_create` pattern
+- [x] Parse `<slug>` and optional `--project-root`
+- [x] Call `remove_todo()` from `todo_scaffold`
+- [x] Print success message or error (FileNotFoundError, RuntimeError for worktree)
 
 ### Task 2.3: Wire into `_handle_todo` router
 
 **File(s):** `teleclaude/cli/telec.py`
 
-- [ ] Add `elif subcommand == "remove":` branch calling `_handle_todo_remove(args[1:])`
+- [x] Add `elif subcommand == "remove":` branch calling `_handle_todo_remove(args[1:])`
 
 ---
 
