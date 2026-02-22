@@ -65,9 +65,9 @@ Replace the post-finalize demo creation flow with build-phase demo artifacts and
 
 **File(s):** `teleclaude/core/next_machine/core.py` (lines ~106-124, `POST_COMPLETION`)
 
-- [ ] Remove step 3 (DEMO) from `POST_COMPLETION["next-finalize"]` (lines ~114-117)
-- [ ] Renumber remaining steps (CLEANUP becomes step 3, next_call becomes step 4)
-- [ ] Remove `POST_COMPLETION["next-demo"]` entry entirely (lines ~120-124) — no longer needed as a post-completion step
+- [x] Remove step 3 (DEMO) from `POST_COMPLETION["next-finalize"]` (lines ~114-117)
+- [x] Renumber remaining steps (CLEANUP becomes step 3, next_call becomes step 4)
+- [x] Remove `POST_COMPLETION["next-demo"]` entry entirely (lines ~120-124) — no longer needed as a post-completion step
 
 ### Task 3.2: Rewrite `/next-demo` command
 
