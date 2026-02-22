@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -61,8 +62,6 @@ async def send_email(
         msg.attach(MIMEText(text_body, "plain"))
     else:
         # Basic HTML stripping for text fallback
-        import re
-
         text_fallback = re.sub(r"<[^>]+>", "", html_body)
         msg.attach(MIMEText(text_fallback, "plain"))
 
