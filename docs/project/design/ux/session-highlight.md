@@ -104,5 +104,5 @@ flowchart TD
 | --------------------------------- | -------------------------------------- | ---------------------------------------------------------------------- |
 | Event lost                        | Session may show stale highlight state | Next event corrects state; user can click to clear                     |
 | Rapid events                      | Multiple events in quick succession    | Each event processed in order; final state wins                        |
-| TUI restart                       | Highlight state lost                   | State persisted to `~/.teleclaude/tui_state.json`; restored on restart |
+| TUI restart                       | Highlight state lost                   | State persisted to `~/.teleclaude/tui_state.yaml`; restored on restart |
 | Session deleted while highlighted | Orphaned highlight in state            | Highlight set garbage-collected when session no longer exists          |

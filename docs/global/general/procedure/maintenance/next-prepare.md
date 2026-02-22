@@ -48,9 +48,9 @@ Per processed slug, both phases may update:
 - `requirements.md`
 - `implementation-plan.md`
 - `dor-report.md`
-- `state.json` (`dor` section)
+- `state.yaml` (`dor` section)
 
-`state.json.dor` schema:
+`state.yaml.dor` schema:
 
 ```json
 {

@@ -13,7 +13,7 @@ type: 'procedure'
 
 ## Goal
 
-If `todos/{slug}/input.md` exists and `todos/{slug}/state.json` lacks `breakdown.assessed`, perform readiness assessment.
+If `todos/{slug}/input.md` exists and `todos/{slug}/state.yaml` lacks `breakdown.assessed`, perform readiness assessment.
 
 1. **Single-session completability**
 2. **Verifiability** (tests or concrete checks)
@@ -26,7 +26,7 @@ If any criterion fails, apply story-splitting patterns.
 ## Preconditions
 
 - `todos/{slug}/input.md` exists.
-- `todos/{slug}/state.json` exists.
+- `todos/{slug}/state.yaml` exists.
 
 ## Steps
 
@@ -37,18 +37,18 @@ If any criterion fails, apply story-splitting patterns.
    - Update `todos/roadmap.yaml` with the new slugs and dependencies.
    - Insert new slugs before `{slug}` in `todos/roadmap.yaml`.
    - Create `todos/{slug}/breakdown.md` with split reasoning.
-   - Update `todos/{slug}/state.json`:
+   - Update `todos/{slug}/state.yaml`:
      ```json
      { "breakdown": { "assessed": true, "todos": ["{slug}-1", "{slug}-2"] } }
      ```
-3. If no breakdown is needed, update `todos/{slug}/state.json`:
+3. If no breakdown is needed, update `todos/{slug}/state.yaml`:
    ```json
    { "breakdown": { "assessed": true, "todos": [] } }
    ```
 
 ## Outputs
 
-- `state.json` updated with breakdown assessment.
+- `state.yaml` updated with breakdown assessment.
 - New todos created if needed.
 
 ## Recovery

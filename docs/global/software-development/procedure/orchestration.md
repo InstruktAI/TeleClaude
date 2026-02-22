@@ -61,7 +61,7 @@ When `teleclaude__next_work(...)` returns `REVIEW_ROUND_LIMIT`, the orchestrator
 
 1. Inspect current evidence before deciding:
    - `todos/{slug}/review-findings.md`
-   - `todos/{slug}/state.json`
+   - `todos/{slug}/state.yaml`
    - Fix commits since `review_baseline_commit`
 2. Decide and act:
    - If unresolved **Critical** findings remain, keep `review=changes_requested`, record an explicit blocker summary, and escalate with a concrete decision request.

@@ -14,7 +14,7 @@ The Next Machine orchestrates complex development cycles (Phase A: Prepare, Phas
 1. **Statelessness**: It derives all work status from project artifacts:
    - `roadmap.yaml` (item discovery)
    - `requirements.md` and `implementation-plan.md` (preparation check)
-   - `state.json` (build/review phase tracking)
+   - `state.yaml` (build/review phase tracking)
 2. **Phases**:
    - **Phase A (Prepare)**: HITL-heavy preparation of work items.
    - **Phase B (Work)**: Deterministic, autonomous implementation and verification.
@@ -44,7 +44,7 @@ stateDiagram-v2
 - `todos/roadmap.yaml` - Work item registry with priorities
 - `todos/{slug}/requirements.md` - Feature requirements
 - `todos/{slug}/implementation-plan.md` - Technical design
-- `todos/{slug}/state.json` - Phase tracking (build, review)
+- `todos/{slug}/state.yaml` - Phase tracking (build, review)
 - `todos/{slug}/deferrals.md` - Identified technical debt
 - `config.yml` (via `app_config.agents`) - Agent availability and strengths
 
@@ -90,7 +90,7 @@ flowchart TD
 flowchart TD
     Start[next_work called]
     ReleaseLock{Caller holds<br/>finalize lock<br/>for done item?}
-    CheckState{Read state.json}
+    CheckState{Read state.yaml}
     Build{Build<br/>complete?}
     Review{Review<br/>status?}
     Fix{Fix<br/>needed?}
@@ -131,7 +131,7 @@ sequenceDiagram
     participant State
 
     Orchestrator->>Machine: next_work()
-    Machine->>State: Read state.json
+    Machine->>State: Read state.yaml
     Machine->>State: Check dependencies
     alt All deps complete
         Machine->>Orchestrator: Dispatch build

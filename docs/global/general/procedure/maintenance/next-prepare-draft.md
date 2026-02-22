@@ -47,14 +47,14 @@ This phase is creative and constructive. It improves quality but does not make f
 5. Write draft outputs per slug:
    - update `requirements.md` and/or `implementation-plan.md`,
    - write `dor-report.md` with explicit assumptions and open questions,
-   - update `state.json.dor` with draft assessment fields.
+   - update `state.yaml.dor` with draft assessment fields.
 6. Do not change roadmap status in draft phase.
 
 ## Outputs
 
 1. Updated preparation artifacts for each processed slug.
 2. `todos/{slug}/dor-report.md` with a draft assessment narrative.
-3. `todos/{slug}/state.json` with draft DOR metadata.
+3. `todos/{slug}/state.yaml` with draft DOR metadata.
 
 ## Recovery
 

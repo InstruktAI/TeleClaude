@@ -51,7 +51,7 @@ tools:
   teleclaude__next_maintain:
     description: 'Phase D state machine: Maintenance stub.'
   teleclaude__mark_phase:
-    description: 'Mark a work phase as complete/approved in state.json.'
+    description: 'Mark a work phase as complete/approved in state.yaml.'
   teleclaude__set_dependencies:
     description: 'Set dependencies for a work item.'
   teleclaude__mark_agent_status:

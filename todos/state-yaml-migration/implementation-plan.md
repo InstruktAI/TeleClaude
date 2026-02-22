@@ -98,23 +98,23 @@ All changes are confined to serialization plumbing. No Pydantic model changes, n
 
 **File(s):** `agents/commands/next-*.md`
 
-- [ ] Grep for `state.json` across all agent command files
-- [ ] Replace with `state.yaml` where referring to todo state
+- [x] Grep for `state.json` across all agent command files
+- [x] Replace with `state.yaml` where referring to todo state
 
 ### Task 3.2: Documentation snippets
 
 **File(s):** `docs/**/*.md`
 
-- [ ] Grep for `state.json` references in doc snippets
-- [ ] Update references that clearly point to todo state files
-- [ ] Skip references to `.state.json` (MCP), `cron_state.json`, or `tui_state.json`
-- [ ] Skip plan files (`docs/plans/`) — historical documents, not active references
+- [x] Grep for `state.json` references in doc snippets
+- [x] Update references that clearly point to todo state files
+- [x] Skip references to `.state.json` (MCP), `cron_state.json`, or `tui_state.json`
+- [x] Skip plan files (`docs/plans/`) — historical documents, not active references
 
 ### Task 3.3: Template files
 
 **File(s):** `templates/todos/*` (if any reference state.json)
 
-- [ ] Check and update any template references
+- [x] Check and update any template references
 
 ---
 
