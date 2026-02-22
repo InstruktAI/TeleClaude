@@ -243,7 +243,7 @@ feat(telegram): add private chat /start handler with invite token binding and pe
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] In the `on_message` handler path, detect DM context:
+- [x] In the `on_message` handler path, detect DM context:
   - Check if `message.guild is None` (DMs have no guild)
   - If DM and message content matches `inv_` prefix → invite token binding flow (same logic as Telegram: find person, check binding, bind credentials, create workspace session)
   - If DM and user is already bound → route to personal workspace session
