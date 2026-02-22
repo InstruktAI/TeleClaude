@@ -29,13 +29,13 @@ Six requirements covering: dependency tree rendering fix (build from `after` gra
 
 ### Source Verification (gate spot-checks)
 
-| Reference                     | File                     | Gate Verified                                                |
-| ----------------------------- | ------------------------ | ------------------------------------------------------------ |
-| `_editor_command(slug, file)` | `preparation.py:335`     | Confirmed hardcoded `todos/{slug}/{filename}`                |
-| `TodoFileRow.__init__`        | `todo_file_row.py:35-47` | Confirmed: slug + filename, no filepath                      |
-| `action_activate` file path   | `preparation.py:435-436` | Confirmed: uses `file_row.slug` + `file_row.filename`        |
-| `_find_parent_todo` slug=""   | `preparation.py:359`     | Safe: no TodoRow has empty slug, returns None for standalone |
-| `action_collapse` None parent | `preparation.py:412`     | Safe: checks `if parent:` before collapsing                  |
+| Reference                     | File                     | Gate Verified                                                                           |
+| ----------------------------- | ------------------------ | --------------------------------------------------------------------------------------- |
+| `_editor_command(slug, file)` | `preparation.py:335`     | Confirmed hardcoded `todos/{slug}/{filename}`                                           |
+| `TodoFileRow.__init__`        | `todo_file_row.py:35-47` | Confirmed: slug + filename, no filepath. Rename slug→owner_slug                         |
+| `action_activate` file path   | `preparation.py:435-436` | Confirmed: uses `file_row.slug` + `file_row.filename`. Refactors to `file_row.filepath` |
+| `_find_parent_todo` slug=""   | `preparation.py:359`     | Rename to use `owner_slug`. Safe: empty owner_slug = no parent                          |
+| `action_collapse` None parent | `preparation.py:412`     | Safe: checks `if parent:` before collapsing                                             |
 
 ### Blockers
 

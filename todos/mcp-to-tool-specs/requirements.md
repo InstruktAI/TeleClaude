@@ -101,15 +101,15 @@ expand to the full help output inline. This gives agents:
 
 ### Baseline tools (always inlined in detail)
 
-| CLI Command              | Purpose                                        |
-| ------------------------ | ---------------------------------------------- |
-| `telec docs`             | Doc snippet retrieval (already exists)         |
-| `telec sessions list`    | Session discovery (replaces `telec list`)      |
-| `telec sessions start`   | Session creation with workflow guidance        |
-| `telec sessions send`    | Message sending with timer pattern             |
-| `telec sessions command` | Slash command dispatch with timer pattern      |
-| `telec sessions tail`    | Transcript retrieval with supervision guidance |
-| `telec infra deploy`     | Remote deployment with workflow                |
+| CLI Command            | Purpose                                        |
+| ---------------------- | ---------------------------------------------- |
+| `telec docs`           | Doc snippet retrieval (already exists)         |
+| `telec sessions list`  | Session discovery (replaces `telec list`)      |
+| `telec sessions start` | Session creation with workflow guidance        |
+| `telec sessions send`  | Message sending with timer pattern             |
+| `telec sessions run`   | Slash command dispatch with timer pattern      |
+| `telec sessions tail`  | Transcript retrieval with supervision guidance |
+| `telec infra deploy`   | Remote deployment with workflow                |
 
 ### Non-baseline tools (discoverable via index)
 

@@ -50,9 +50,9 @@ MCP server continues running in parallel — no ordering constraint.
 
 ### Gate 7: Integration safety — PASS
 
-New endpoints under `/tools/` prefix — no collision with existing routes.
+New endpoints extend existing resource paths (e.g. `/sessions/run`, `/workflow/prepare`) — no collision with existing routes.
 New `TelecCommand` enum values — no collision with existing commands (verified).
-Agent aliases (`telec claude/gemini/codex`) confirmed unused by agent artifacts.
+Legacy aliases (`telec claude/gemini/codex/list`) confirmed unused by agent artifacts.
 Incremental merge: new code is additive, removal is isolated.
 
 ### Gate 8: Tooling impact — PASS (with note)

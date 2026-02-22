@@ -167,9 +167,9 @@ with `@exec` directives for all baseline tools:
 
 <!-- @exec: telec send -h -->
 
-### `telec command`
+### `telec sessions run`
 
-<!-- @exec: telec command -h -->
+<!-- @exec: telec sessions run -h -->
 
 ### `telec tail`
 

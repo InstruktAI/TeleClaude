@@ -176,12 +176,12 @@ def test_editor_command_theme_flag():
 
 
 def test_file_row_standalone_no_parent_match():
-    """TodoFileRow with empty slug never matches a TodoRow in parent lookup."""
+    """TodoFileRow with empty owner_slug never matches a TodoRow in parent lookup."""
     from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
     from teleclaude.cli.tui.widgets.todo_row import TodoRow
 
-    # Standalone file row (roadmap.yaml) has slug=""
-    standalone = TodoFileRow(filepath="/project/todos/roadmap.yaml", filename="roadmap.yaml", slug="")
+    # Standalone file row (roadmap.yaml) has owner_slug="" — no tree parent
+    standalone = TodoFileRow(filepath="/project/todos/roadmap.yaml", filename="roadmap.yaml", owner_slug="")
 
     # A todo row always has a non-empty slug
     todo = _make_todo_row("my-todo")
@@ -192,15 +192,15 @@ def test_file_row_standalone_no_parent_match():
     assert parent is None
 
 
-def test_file_row_slug_scoped_finds_parent():
-    """TodoFileRow with a slug correctly finds its parent TodoRow."""
+def test_file_row_finds_owning_todo():
+    """TodoFileRow with an owner_slug correctly finds its parent TodoRow in the tree."""
     from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
     from teleclaude.cli.tui.widgets.todo_row import TodoRow
 
     file_row = TodoFileRow(
         filepath="/project/todos/my-todo/requirements.md",
         filename="requirements.md",
-        slug="my-todo",
+        owner_slug="my-todo",
     )
     todo = _make_todo_row("my-todo")
 
@@ -210,6 +210,11 @@ def test_file_row_slug_scoped_finds_parent():
 ```
 
 **Implementation note:** `_build_editor_command` is the pure-function extraction of `_editor_command` (or test it via the method with a minimal mock). `_find_parent` mirrors the `_find_parent_todo` logic for testability. Helper `_make_todo_row` creates a minimal TodoRow.
+
+**Design note on `owner_slug` vs `slug`:** `TodoFileRow.slug` is renamed to `owner_slug` to separate two concerns:
+
+- **File opening** uses `filepath` — no slug in the path computation, fully unscoped.
+- **Tree ownership** uses `owner_slug` — answers "which TodoRow is my parent for expand/collapse?" This is structural tree metadata, not file-path scoping. Standalone files (e.g., `roadmap.yaml`) have `owner_slug=""` and no parent.
 
 ---
 
@@ -275,18 +280,19 @@ def test_file_row_slug_scoped_finds_parent():
 
    Remove the slug-based path computation. Callers provide the full path.
 
-2. Add a `filepath` attribute to `TodoFileRow`:
+2. Add `filepath` attribute and rename `slug` → `owner_slug` on `TodoFileRow`:
 
    ```python
-   def __init__(self, *, filepath: str, filename: str, slug: str = "", ...):
+   def __init__(self, *, filepath: str, filename: str, owner_slug: str = "", ...):
        self.filepath = filepath
        self.filename = filename
-       self.slug = slug  # kept for parent-lookup and expand/collapse, empty for standalone files
+       self.owner_slug = owner_slug  # tree ownership: which TodoRow is the parent for expand/collapse. Empty for standalone files.
    ```
 
-3. Update all `TodoFileRow` creation sites to compute and pass `filepath`:
-   - In `_rebuild()` (lines 236-237): `filepath = f"{project_path}/todos/{slug}/{filename}"`
+3. Update all `TodoFileRow` creation sites to pass `filepath` and `owner_slug`:
+   - In `_rebuild()` (lines 236-237): `TodoFileRow(filepath=f"{project_path}/todos/{slug}/{filename}", filename=filename, owner_slug=slug)`
    - In `_mount_file_rows()` (line 271): same pattern.
+   - Update `_find_parent_todo` to use `file_row.owner_slug` instead of `file_row.slug`.
 
 4. Update `action_activate` (line 432-439) and `action_preview_file` (line 451-461) to use `file_row.filepath`:
 
