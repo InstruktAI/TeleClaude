@@ -37,8 +37,8 @@ surface. No separate doc layer.
 
 ### In scope
 
-- Extend `telec` CLI with subcommands for the remaining 22 tools (2 already covered by `telec docs`)
-- Extend the REST API with new endpoints where needed (12 of 22 tools lack endpoints)
+- Extend `telec` CLI with subcommands for remaining tools (`telec docs` already covers get_context)
+- Extend the REST API with 10 new endpoints where needed
 - Write rich `--help` text for each subcommand preserving the behavioral guidance
   from MCP tool descriptions (timer patterns, reason gates, workflows)
 - Include usage examples in `--help` covering every parameter and input shape
@@ -59,7 +59,7 @@ surface. No separate doc layer.
 
 ## Success Criteria
 
-- [ ] All 22 new tool subcommands accessible via `telec` returning JSON
+- [ ] All new tool subcommands accessible via `telec` returning JSON
 - [ ] `telec docs` two-phase flow documented in `--help` (index vs get by IDs)
 - [ ] Every subcommand has rich `--help` with behavioral guidance and examples
 - [ ] Example coverage heuristic met: every parameter/input shape touched at least once
@@ -101,23 +101,22 @@ expand to the full help output inline. This gives agents:
 
 ### Baseline tools (always inlined in detail)
 
-| CLI Command            | Purpose                                        |
-| ---------------------- | ---------------------------------------------- |
-| `telec docs`           | Doc snippet retrieval (already exists)         |
-| `telec sessions list`  | Session discovery (replaces `telec list`)      |
-| `telec sessions start` | Session creation with workflow guidance        |
-| `telec sessions send`  | Message sending with timer pattern             |
-| `telec sessions run`   | Slash command dispatch with timer pattern      |
-| `telec sessions tail`  | Transcript retrieval with supervision guidance |
-| `telec infra deploy`   | Remote deployment with workflow                |
+| CLI Command               | Purpose                                        |
+| ------------------------- | ---------------------------------------------- |
+| `telec docs`              | Doc snippet retrieval (already exists)         |
+| `telec sessions list`     | Session discovery (replaces `telec list`)      |
+| `telec sessions start`    | Session creation with workflow guidance        |
+| `telec sessions send`     | Message sending with timer pattern             |
+| `telec sessions run`      | Slash command dispatch with timer pattern      |
+| `telec sessions tail`     | Transcript retrieval with supervision guidance |
+| `telec sessions escalate` | Customer-to-admin escalation with relay mode   |
 
 ### Non-baseline tools (discoverable via index)
 
-- Session lifecycle: `end`, `unsubscribe`
-- Workflow: `prepare`, `work`, `maintain`, `mark`, `set-deps`
-- Infrastructure: `computers`, `projects`, `agent-status`
-- Delivery: `result`, `send-file`, `widget`, `escalate`
-- Channels: `publish`, `channels`
+- Sessions: `end`, `unsubscribe`, `result`, `file`
+- Todo: `prepare`, `work`, `mark-phase`, `set-deps`
+- Top-level: `computers`, `projects`, `deploy`, `agent-status`
+- Channels: `publish`, `list`
 
 ## Breakdown
 
