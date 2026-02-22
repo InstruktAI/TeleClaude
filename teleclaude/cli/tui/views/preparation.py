@@ -186,10 +186,21 @@ class PreparationView(Widget, can_focus=True):
                     file_tree_lines = node.tree_lines + [not is_last_sibling]
                     sorted_files = sorted(node.todo.files)
                     file_widgets: list[Widget] = []
+                    # Get project path for filepath construction
+                    proj_path = self._slug_to_project_path.get(node.slug, "")
                     for fi, filename in enumerate(sorted_files):
                         f_last = fi == len(sorted_files) - 1
+                        filepath = (
+                            f"{proj_path}/todos/{node.slug}/{filename}"
+                            if proj_path
+                            else f"todos/{node.slug}/{filename}"
+                        )
                         file_row = TodoFileRow(
-                            slug=node.slug, filename=filename, is_last=f_last, tree_lines=file_tree_lines
+                            filepath=filepath,
+                            filename=filename,
+                            slug=node.slug,
+                            is_last=f_last,
+                            tree_lines=file_tree_lines,
                         )
                         file_widgets.append(file_row)
                         widgets_to_mount.append(file_row)
@@ -221,9 +232,20 @@ class PreparationView(Widget, can_focus=True):
         row_idx = self._nav_items.index(todo_row)
         # File tree_lines = parent's lines + parent's own branch continuation
         file_tree_lines = list(todo_row._tree_lines) + [not todo_row.is_last]
+        # Get project path for filepath construction
+        proj_path = self._slug_to_project_path.get(todo_row.slug, "")
         for i, filename in enumerate(sorted_files):
             is_last = i == len(sorted_files) - 1
-            file_row = TodoFileRow(slug=todo_row.slug, filename=filename, is_last=is_last, tree_lines=file_tree_lines)
+            filepath = (
+                f"{proj_path}/todos/{todo_row.slug}/{filename}" if proj_path else f"todos/{todo_row.slug}/{filename}"
+            )
+            file_row = TodoFileRow(
+                filepath=filepath,
+                filename=filename,
+                slug=todo_row.slug,
+                is_last=is_last,
+                tree_lines=file_tree_lines,
+            )
             container.mount(file_row, after=todo_row if i == 0 else self._nav_items[row_idx + i])
             self._nav_items.insert(row_idx + 1 + i, file_row)
 
@@ -287,14 +309,8 @@ class PreparationView(Widget, can_focus=True):
         item = self._current_item()
         return item if isinstance(item, TodoFileRow) else None
 
-    def _editor_command(self, slug: str, filename: str, *, view: bool = False) -> str:
+    def _editor_command(self, filepath: str, *, view: bool = False) -> str:
         """Build an editor command with absolute path for tmux pane."""
-        project_path = self._slug_to_project_path.get(slug, "")
-        if project_path:
-            filepath = f"{project_path}/todos/{slug}/{filename}"
-        else:
-            filepath = f"todos/{slug}/{filename}"
-
         flags = []
         if view:
             flags.append("--view")
@@ -387,9 +403,9 @@ class PreparationView(Widget, can_focus=True):
         if file_row:
             self.post_message(
                 DocEditRequest(
-                    doc_id=f"todo:{file_row.slug}:{file_row.filename}",
-                    command=self._editor_command(file_row.slug, file_row.filename),
-                    title=f"Editing: {file_row.slug}/{file_row.filename}",
+                    doc_id=file_row.filepath,
+                    command=self._editor_command(file_row.filepath),
+                    title=f"Editing: {file_row.filename}",
                 )
             )
 
@@ -409,9 +425,9 @@ class PreparationView(Widget, can_focus=True):
         if file_row:
             self.post_message(
                 DocPreviewRequest(
-                    doc_id=f"todo:{file_row.slug}:{file_row.filename}",
-                    command=self._editor_command(file_row.slug, file_row.filename, view=True),
-                    title=f"{file_row.slug}/{file_row.filename}",
+                    doc_id=file_row.filepath,
+                    command=self._editor_command(file_row.filepath, view=True),
+                    title=file_row.filename,
                 )
             )
 
@@ -443,10 +459,11 @@ class PreparationView(Widget, can_focus=True):
                 return
 
             # Open input.md in editor
+            filepath = f"{project_root}/todos/{slug}/input.md"
             self.post_message(
                 DocEditRequest(
-                    doc_id=f"todo:{slug}:input.md",
-                    command=self._editor_command(slug, "input.md"),
+                    doc_id=filepath,
+                    command=self._editor_command(filepath),
                     title=f"Editing: {slug}/input.md",
                 )
             )

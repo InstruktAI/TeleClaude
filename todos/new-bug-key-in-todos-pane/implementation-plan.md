@@ -259,7 +259,7 @@ def test_file_row_slug_scoped_finds_parent():
 
 ---
 
-### Task 2: Generalize file viewer to absolute paths
+### Task 2: Generalize file viewer to absolute paths ✓
 
 **File(s):** `teleclaude/cli/tui/views/preparation.py`, `teleclaude/cli/tui/widgets/todo_file_row.py`
 
