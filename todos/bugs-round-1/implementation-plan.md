@@ -19,8 +19,8 @@ Two independent visual bugs, both in the TUI rendering layer. Bug 1 is a Rich Te
 
 **File(s):** `teleclaude/cli/tui/widgets/session_row.py`
 
-- [ ] Confirm that headless sessions still get tier-shifted slug colors in unselected state.
-- [ ] Confirm that the `_tier()` shift does not apply to selected state (selected always uses inverted fg/bg, not tier-dependent colors).
+- [x] Confirm that headless sessions still get tier-shifted slug colors in unselected state.
+- [x] Confirm that the `_tier()` shift does not apply to selected state (selected always uses inverted fg/bg, not tier-dependent colors).
 
 ---
 
