@@ -90,12 +90,12 @@ Replace the post-finalize demo creation flow with build-phase demo artifacts and
 
 **File(s):** `docs/global/software-development/procedure/lifecycle/demo.md`
 
-- [ ] Update: demo is created during build, not after finalize
-- [ ] Add builder guidance: how to create the `demo` field in `snapshot.json` (shell command that shows the feature)
-- [ ] Presentation uses `telec todo demo <slug>` or `/next-demo` conversational interface
-- [ ] Remove `demo.sh` references and sequence numbering
-- [ ] Fix delivery file reference: `delivered.md` → `delivered.yaml`
-- [ ] Keep the Five Acts narrative structure — still captured in `snapshot.json`, now by the builder
+- [x] Update: demo is created during build, not after finalize
+- [x] Add builder guidance: how to create the `demo` field in `snapshot.json` (shell command that shows the feature)
+- [x] Presentation uses `telec todo demo <slug>` or `/next-demo` conversational interface
+- [x] Remove `demo.sh` references and sequence numbering
+- [x] Fix delivery file reference: `delivered.md` → `delivered.yaml`
+- [x] Keep the Five Acts narrative structure — still captured in `snapshot.json`, now by the builder
 
 ---
 
