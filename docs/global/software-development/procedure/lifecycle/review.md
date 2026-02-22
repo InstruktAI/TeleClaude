@@ -26,7 +26,7 @@ Verify the implementation against requirements and standards, and deliver a bina
 
 ## Steps
 
-1. If no slug provided, select the first item with phase `active` in `state.json` that lacks `review-findings.md`.
+1. If no slug provided, select the first item with phase `active` in `state.yaml` that lacks `review-findings.md`.
 2. Read:
    - `todos/{slug}/requirements.md`
    - `todos/{slug}/implementation-plan.md`
@@ -81,7 +81,7 @@ Verify the implementation against requirements and standards, and deliver a bina
 - Prefer behavior/structure assertions (parsed outputs, references, idempotence, emitted actions).
 
 11. Write findings to `todos/{slug}/review-findings.md`.
-12. Set `todos/{slug}/state.json` field `review` to `approved` or `changes_requested`.
+12. Set `todos/{slug}/state.yaml` field `review` to `approved` or `changes_requested`.
 13. Commit the review findings.
 14. Report summary and verdict to the caller.
 
@@ -105,7 +105,7 @@ Verdict: APPROVE | REQUEST CHANGES
 ## Outputs
 
 - `todos/{slug}/review-findings.md` with structured severity sections.
-- Updated `todos/{slug}/state.json` with review status.
+- Updated `todos/{slug}/state.yaml` with review status.
 - A commit containing the review findings.
 
 ## Recovery

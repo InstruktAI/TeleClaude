@@ -34,7 +34,7 @@ This phase is critical and evidence-driven. It is not a drafting phase.
    - dependency correctness,
    - uncertainty and assumptions made explicit.
 3. Tighten artifacts with minimal edits when factual gaps exist.
-4. Assign final gate result in `state.json.dor`:
+4. Assign final gate result in `state.yaml.dor`:
    - `score` (`1..10`)
    - `status` (`pass`, `needs_work`, `needs_decision`)
    - `schema_version`
@@ -43,13 +43,13 @@ This phase is critical and evidence-driven. It is not a drafting phase.
    - `last_assessed_at`
 5. Update `dor-report.md` with gate verdict and exact unresolved blockers.
 6. Phase promotion policy:
-   - gate sets `dor.score` in `state.json`; readiness is derived from `dor.score >= 8`.
+   - gate sets `dor.score` in `state.yaml`; readiness is derived from `dor.score >= 8`.
 
 ## Outputs
 
-1. Finalized `state.json.dor` gate verdict.
+1. Finalized `state.yaml.dor` gate verdict.
 2. Updated `dor-report.md` reflecting gate decision.
-3. Ready transition eligibility for phase updates in `state.json`.
+3. Ready transition eligibility for phase updates in `state.yaml`.
 
 ## Recovery
 

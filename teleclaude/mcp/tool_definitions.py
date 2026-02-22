@@ -718,7 +718,7 @@ def get_tool_definitions() -> list[Tool]:
             description=(
                 "Phase B state machine: Check build state and return instructions. "
                 "Handles bugs -> build -> review -> fix -> finalize cycle. "
-                "Returns exact command to dispatch based on state.json. "
+                "Returns exact command to dispatch based on state.yaml. "
                 "Call this to progress a prepared work item through the build cycle."
             ),
             inputSchema={
@@ -744,8 +744,8 @@ def get_tool_definitions() -> list[Tool]:
             name="teleclaude__mark_phase",
             title="TeleClaude: Mark Phase",
             description=(
-                "Mark a work phase as complete/approved in state.json. "
-                "Updates trees/{slug}/todos/{slug}/state.json and syncs it back to main todos/{slug}/state.json. "
+                "Mark a work phase as complete/approved in state.yaml. "
+                "Updates trees/{slug}/todos/{slug}/state.yaml and syncs it back to main todos/{slug}/state.yaml. "
                 "Call this after a worker completes build or review phases. "
                 "Use after a phase completes to keep state in sync."
             ),

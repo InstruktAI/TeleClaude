@@ -100,7 +100,7 @@ POST_COMPLETION: dict[str, str] = {
 4. Call {next_call}
 """,
     "next-defer": """WHEN WORKER COMPLETES:
-1. Read worker output. Confirm deferrals_processed in state.json
+1. Read worker output. Confirm deferrals_processed in state.yaml
 2. teleclaude__end_session(computer="local", session_id="<session_id>")
 3. Call {next_call}
 """,
@@ -260,7 +260,7 @@ def format_hitl_guidance(context: str) -> str:
 def _find_next_prepare_slug(cwd: str) -> str | None:
     """Find the next active slug that still needs preparation work.
 
-    Scans roadmap.yaml for slugs, then checks state.json phase for each.
+    Scans roadmap.yaml for slugs, then checks state.yaml phase for each.
     Active slugs have phase pending, ready, or in_progress.
     Returns the first slug that still needs action:
     - breakdown assessment pending for input.md
@@ -297,7 +297,7 @@ def _find_next_prepare_slug(cwd: str) -> str | None:
 # =============================================================================
 
 
-# Valid phases and statuses for state.json
+# Valid phases and statuses for state.yaml
 DEFAULT_STATE: dict[str, StateValue] = {
     "phase": ItemPhase.PENDING.value,
     PhaseName.BUILD.value: PhaseStatus.PENDING.value,
@@ -313,22 +313,28 @@ DEFAULT_STATE: dict[str, StateValue] = {
 
 
 def get_state_path(cwd: str, slug: str) -> Path:
-    """Get path to state.json in worktree."""
-    return Path(cwd) / "todos" / slug / "state.json"
+    """Get path to state.yaml in worktree."""
+    return Path(cwd) / "todos" / slug / "state.yaml"
 
 
 def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
-    """Read state.json from worktree.
+    """Read state.yaml from worktree (falls back to state.json for backward compat).
 
     Returns default state if file doesn't exist.
     Migrates missing 'phase' field from existing build/dor state.
     """
     state_path = get_state_path(cwd, slug)
+    # Backward compat: try state.json if state.yaml doesn't exist
+    if not state_path.exists():
+        legacy_path = state_path.with_name("state.json")
+        if legacy_path.exists():
+            state_path = legacy_path
+
     if not state_path.exists():
         return DEFAULT_STATE.copy()
 
     content = read_text_sync(state_path)
-    state: dict[str, StateValue] = json.loads(content)
+    state: dict[str, StateValue] = yaml.safe_load(content)
     # Merge with defaults for any missing keys
     merged = {**DEFAULT_STATE, **state}
 
@@ -347,10 +353,11 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
 
 
 def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
-    """Write state.json."""
+    """Write state.yaml."""
     state_path = get_state_path(cwd, slug)
     state_path.parent.mkdir(parents=True, exist_ok=True)
-    write_text_sync(state_path, json.dumps(state, indent=2) + "\n")
+    content = yaml.dump(state, default_flow_style=False, sort_keys=False)
+    write_text_sync(state_path, content)
 
 
 def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, StateValue]:
@@ -422,7 +429,7 @@ def _get_head_commit(cwd: str) -> str:
 
 
 def _review_scope_note(cwd: str, slug: str) -> str:
-    """Build an iterative review scope note from state.json metadata."""
+    """Build an iterative review scope note from state.yaml metadata."""
     state = read_phase_state(cwd, slug)
     review_round_raw = state.get("review_round")
     max_rounds_raw = state.get("max_review_rounds")
@@ -454,7 +461,7 @@ def _is_review_round_limit_reached(cwd: str, slug: str) -> tuple[bool, int, int]
 
 
 def read_breakdown_state(cwd: str, slug: str) -> dict[str, bool | list[str]] | None:
-    """Read breakdown state from todos/{slug}/state.json.
+    """Read breakdown state from todos/{slug}/state.yaml.
 
     Returns:
         Breakdown state dict with 'assessed' and 'todos' keys, or None if not present.
@@ -505,7 +512,7 @@ def is_review_changes_requested(cwd: str, slug: str) -> bool:
 def has_pending_deferrals(cwd: str, slug: str) -> bool:
     """Check if there are pending deferrals.
 
-    Returns true if deferrals.md exists AND state.json.deferrals_processed is NOT true.
+    Returns true if deferrals.md exists AND state.yaml.deferrals_processed is NOT true.
     """
     deferrals_path = Path(cwd) / "todos" / slug / "deferrals.md"
     if not deferrals_path.exists():
@@ -523,7 +530,7 @@ def resolve_slug(
 ) -> tuple[str | None, bool, str]:
     """Resolve slug from argument or roadmap.
 
-    Phase is derived from state.json for each slug.
+    Phase is derived from state.yaml for each slug.
 
     Args:
         cwd: Current working directory (project root)
@@ -591,12 +598,12 @@ def slug_in_roadmap(cwd: str, slug: str) -> bool:
 
 
 # =============================================================================
-# Item Phase Management (state.json is the single source of truth)
+# Item Phase Management (state.yaml is the single source of truth)
 # =============================================================================
 
 
 def get_item_phase(cwd: str, slug: str) -> str:
-    """Get current phase for a work item from state.json.
+    """Get current phase for a work item from state.yaml.
 
     Args:
         cwd: Project root directory
@@ -624,7 +631,7 @@ def is_ready_for_work(cwd: str, slug: str) -> bool:
 
 
 def set_item_phase(cwd: str, slug: str, phase: str) -> None:
-    """Set phase for a work item in state.json.
+    """Set phase for a work item in state.yaml.
 
     Args:
         cwd: Project root directory
@@ -703,7 +710,7 @@ def save_roadmap(cwd: str, entries: list[RoadmapEntry]) -> None:
             item["description"] = entry.description
         data.append(item)
 
-    header = "# Priority order (first = highest). Per-item state in {slug}/state.json.\n\n"
+    header = "# Priority order (first = highest). Per-item state in {slug}/state.yaml.\n\n"
     body = yaml.dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False)
     write_text_sync(path, header + body)
 
@@ -797,7 +804,7 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
     """Check if all dependencies for a slug are satisfied.
 
     A dependency is satisfied if:
-    - Its phase is "done" in state.json, OR
+    - Its phase is "done" in state.yaml, OR
     - It is not present in roadmap.yaml (assumed completed/removed)
 
     Args:
@@ -1044,13 +1051,18 @@ def sweep_completed_groups(cwd: str) -> list[str]:
     for entry in sorted(todos_dir.iterdir()):
         if not entry.is_dir():
             continue
-        state_path = entry / "state.json"
+        state_path = entry / "state.yaml"
+        # Backward compat: fall back to state.json
+        if not state_path.exists():
+            legacy_path = entry / "state.json"
+            if legacy_path.exists():
+                state_path = legacy_path
         if not state_path.exists():
             continue
 
         try:
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+            state = yaml.safe_load(state_path.read_text(encoding="utf-8"))
+        except (yaml.YAMLError, OSError):
             continue
 
         breakdown = state.get("breakdown")
@@ -1326,7 +1338,7 @@ def sync_slug_todo_from_worktree_to_main(cwd: str, slug: str) -> None:
         [
             f"{todo_base}/requirements.md",
             f"{todo_base}/implementation-plan.md",
-            f"{todo_base}/state.json",
+            f"{todo_base}/state.yaml",
             f"{todo_base}/review-findings.md",
             f"{todo_base}/deferrals.md",
             f"{todo_base}/breakdown.md",
@@ -1347,7 +1359,7 @@ def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> None:
         f"{todo_base}/requirements.md",
         f"{todo_base}/implementation-plan.md",
         f"{todo_base}/quality-checklist.md",
-        f"{todo_base}/state.json",
+        f"{todo_base}/state.yaml",
         f"{todo_base}/review-findings.md",
         f"{todo_base}/deferrals.md",
         f"{todo_base}/breakdown.md",
@@ -1813,7 +1825,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             if hitl:
                 return format_hitl_guidance(
                     f"Preparing: {resolved_slug}. Read todos/{resolved_slug}/input.md and assess "
-                    "Definition of Ready. If complex, split into smaller todos. Then update state.json "
+                    "Definition of Ready. If complex, split into smaller todos. Then update state.yaml "
                     "and create breakdown.md."
                 )
             # Non-HITL: dispatch architect to assess
@@ -1833,7 +1845,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             dep_todos = breakdown_state["todos"]
             if isinstance(dep_todos, list):
                 return f"CONTAINER: {resolved_slug} was split into: {', '.join(dep_todos)}. Work on those first."
-            return f"CONTAINER: {resolved_slug} was split. Check state.json for dependent todos."
+            return f"CONTAINER: {resolved_slug} was split. Check state.yaml for dependent todos."
 
         # 2. Check requirements
         if not check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md"):
@@ -1885,7 +1897,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                     return format_hitl_guidance(
                         f"Preparing: {resolved_slug}. Requirements and implementation plan exist, "
                         f"but DOR score is below threshold ({DOR_READY_THRESHOLD}). Complete DOR assessment, update "
-                        f"todos/{resolved_slug}/dor-report.md and todos/{resolved_slug}/state.json.dor "
+                        f"todos/{resolved_slug}/dor-report.md and todos/{resolved_slug}/state.yaml.dor "
                         f"with score >= {DOR_READY_THRESHOLD}. Then run /next-prepare-gate {resolved_slug} (separate worker) "
                         f'and call teleclaude__next_prepare(slug="{resolved_slug}") again.'
                     )
@@ -1899,7 +1911,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                     subfolder="",
                     note=(
                         f"Requirements/plan exist for {resolved_slug}, but DOR score is below threshold. "
-                        f"Complete DOR assessment and set state.json.dor.score >= {DOR_READY_THRESHOLD}."
+                        f"Complete DOR assessment and set state.yaml.dor.score >= {DOR_READY_THRESHOLD}."
                     ),
                     next_call="teleclaude__next_prepare",
                 )
@@ -2050,7 +2062,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     if current_phase == ItemPhase.PENDING.value:
         await asyncio.to_thread(set_item_phase, worktree_cwd, resolved_slug, ItemPhase.IN_PROGRESS.value)
 
-    # 7. Check build status (from state.json in worktree)
+    # 7. Check build status (from state.yaml in worktree)
     if not await asyncio.to_thread(is_build_complete, worktree_cwd, resolved_slug):
         await asyncio.to_thread(
             mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value

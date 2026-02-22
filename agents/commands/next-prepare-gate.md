@@ -29,6 +29,6 @@ Run formal DOR validation for preparation artifacts produced by a separate draft
 ## Steps
 
 1. Validate and tighten existing draft artifacts with minimal changes.
-2. Set canonical DOR gate outcome in `state.json`.
+2. Set canonical DOR gate outcome in `state.yaml`.
 3. Do not author large new scope in this mode.
 4. Gate mode is the only mode allowed to trigger readiness transition criteria.

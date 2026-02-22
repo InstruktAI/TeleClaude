@@ -75,7 +75,7 @@ Maintenance covers dependency updates, security patches, and operational upkeep.
 - **No micromanagement**: Orchestrator dispatches and monitors; workers implement autonomously
 - **Quality gates**: Pre-commit hooks enforce standards; review validates completeness
 
-Work state lives in `todos/{slug}/state.json` and records:
+Work state lives in `todos/{slug}/state.yaml` and records:
 
 - `build`: `pending` | `complete`
 - `review`: `pending` | `approved` | `changes_requested`
@@ -95,7 +95,7 @@ Work state lives in `todos/{slug}/state.json` and records:
 
 ## Outputs
 
-- Updated `state.json` reflecting phase progression.
+- Updated `state.yaml` reflecting phase progression.
 - Work item marked delivered when complete.
 
 ## Recovery

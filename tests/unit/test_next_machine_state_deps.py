@@ -40,7 +40,7 @@ def test_is_ready_for_work_with_score():
     with tempfile.TemporaryDirectory() as tmpdir:
         state_dir = Path(tmpdir) / "todos" / "test-item"
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (state_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         assert is_ready_for_work(tmpdir, "test-item") is True
 
@@ -50,7 +50,7 @@ def test_is_ready_for_work_below_threshold():
     with tempfile.TemporaryDirectory() as tmpdir:
         state_dir = Path(tmpdir) / "todos" / "test-item"
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 7}}')
+        (state_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 7}}')
 
         assert is_ready_for_work(tmpdir, "test-item") is False
 
@@ -60,7 +60,7 @@ def test_is_ready_for_work_no_dor():
     with tempfile.TemporaryDirectory() as tmpdir:
         state_dir = Path(tmpdir) / "todos" / "test-item"
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.json").write_text('{"phase": "pending"}')
+        (state_dir / "state.yaml").write_text('{"phase": "pending"}')
 
         assert is_ready_for_work(tmpdir, "test-item") is False
 
@@ -70,17 +70,17 @@ def test_is_ready_for_work_in_progress():
     with tempfile.TemporaryDirectory() as tmpdir:
         state_dir = Path(tmpdir) / "todos" / "test-item"
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.json").write_text('{"phase": "in_progress", "dor": {"score": 10}}')
+        (state_dir / "state.yaml").write_text('{"phase": "in_progress", "dor": {"score": 10}}')
 
         assert is_ready_for_work(tmpdir, "test-item") is False
 
 
 def test_set_item_phase_pending_to_in_progress():
-    """Verify phase transition from pending to in_progress via state.json"""
+    """Verify phase transition from pending to in_progress via state.yaml"""
     with tempfile.TemporaryDirectory() as tmpdir:
         state_dir = Path(tmpdir) / "todos" / "test-item"
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (state_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         set_item_phase(tmpdir, "test-item", "in_progress")
 
@@ -93,14 +93,14 @@ def test_migration_ready_phase_normalized_to_pending():
     with tempfile.TemporaryDirectory() as tmpdir:
         state_dir = Path(tmpdir) / "todos" / "test-item"
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.json").write_text('{"phase": "ready", "dor": {"score": 9}}')
+        (state_dir / "state.yaml").write_text('{"phase": "ready", "dor": {"score": 9}}')
 
         phase = get_item_phase(tmpdir, "test-item")
         assert phase == "pending"
 
 
 def test_get_item_phase_missing_state():
-    """Verify get_item_phase returns pending when state.json doesn't exist"""
+    """Verify get_item_phase returns pending when state.yaml doesn't exist"""
     with tempfile.TemporaryDirectory() as tmpdir:
         phase = get_item_phase(tmpdir, "nonexistent")
         assert phase == "pending"
@@ -157,11 +157,11 @@ def test_check_dependencies_satisfied_all_complete():
     with tempfile.TemporaryDirectory() as tmpdir:
         _write_roadmap_yaml(tmpdir, ["dep-a", "dep-b", "test-item"])
 
-        # Create state.json with phase=done for deps
+        # Create state.yaml with phase=done for deps
         for dep in ("dep-a", "dep-b"):
             dep_dir = Path(tmpdir) / "todos" / dep
             dep_dir.mkdir(parents=True, exist_ok=True)
-            (dep_dir / "state.json").write_text('{"phase": "done"}')
+            (dep_dir / "state.yaml").write_text('{"phase": "done"}')
 
         deps = {"test-item": ["dep-a", "dep-b"]}
         result = check_dependencies_satisfied(tmpdir, "test-item", deps)
@@ -176,11 +176,11 @@ def test_check_dependencies_satisfied_incomplete():
         # dep-a is done, dep-b is pending
         dep_a_dir = Path(tmpdir) / "todos" / "dep-a"
         dep_a_dir.mkdir(parents=True, exist_ok=True)
-        (dep_a_dir / "state.json").write_text('{"phase": "done"}')
+        (dep_a_dir / "state.yaml").write_text('{"phase": "done"}')
 
         dep_b_dir = Path(tmpdir) / "todos" / "dep-b"
         dep_b_dir.mkdir(parents=True, exist_ok=True)
-        (dep_b_dir / "state.json").write_text('{"phase": "pending"}')
+        (dep_b_dir / "state.yaml").write_text('{"phase": "pending"}')
 
         deps = {"test-item": ["dep-a", "dep-b"]}
         result = check_dependencies_satisfied(tmpdir, "test-item", deps)
@@ -261,7 +261,7 @@ async def test_next_work_no_bug_check():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.json").write_text(
+        (item_dir / "state.yaml").write_text(
             '{"phase": "pending", "dor": {"score": 8}, "build": "pending", "review": "pending"}'
         )
 
@@ -292,21 +292,21 @@ async def test_next_work_respects_dependencies():
         deps = {"blocked-item": ["dep-item"]}
         _write_roadmap_yaml(tmpdir, ["dep-item", "blocked-item", "ready-item"], deps)
 
-        # Create state.json for each item
+        # Create state.yaml for each item
         dep_dir = Path(tmpdir) / "todos" / "dep-item"
         dep_dir.mkdir(parents=True, exist_ok=True)
-        (dep_dir / "state.json").write_text('{"phase": "pending"}')
+        (dep_dir / "state.yaml").write_text('{"phase": "pending"}')
 
         blocked_dir = Path(tmpdir) / "todos" / "blocked-item"
         blocked_dir.mkdir(parents=True, exist_ok=True)
-        (blocked_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (blocked_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         # Create required files for ready-item
         item_dir = Path(tmpdir) / "todos" / "ready-item"
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.json").write_text(
+        (item_dir / "state.yaml").write_text(
             '{"phase": "pending", "dor": {"score": 8}, "build": "pending", "review": "pending"}'
         )
 
@@ -336,14 +336,14 @@ async def test_next_work_explicit_slug_checks_dependencies():
         deps = {"blocked-item": ["dep-item"]}
         _write_roadmap_yaml(tmpdir, ["dep-item", "blocked-item"], deps)
 
-        # Create state.json for items
+        # Create state.yaml for items
         dep_dir = Path(tmpdir) / "todos" / "dep-item"
         dep_dir.mkdir(parents=True, exist_ok=True)
-        (dep_dir / "state.json").write_text('{"phase": "pending"}')
+        (dep_dir / "state.yaml").write_text('{"phase": "pending"}')
 
         blocked_dir = Path(tmpdir) / "todos" / "blocked-item"
         blocked_dir.mkdir(parents=True, exist_ok=True)
-        (blocked_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (blocked_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         result = await next_work(db, slug="blocked-item", cwd=tmpdir)
 
@@ -361,10 +361,10 @@ async def test_next_work_explicit_slug_rejects_pending_items():
         # Create roadmap
         _write_roadmap_yaml(tmpdir, ["pending-item", "ready-item"])
 
-        # Create state.json with phase=pending
+        # Create state.yaml with phase=pending
         pend_dir = Path(tmpdir) / "todos" / "pending-item"
         pend_dir.mkdir(parents=True, exist_ok=True)
-        (pend_dir / "state.json").write_text('{"phase": "pending"}')
+        (pend_dir / "state.yaml").write_text('{"phase": "pending"}')
 
         result = await next_work(db, slug="pending-item", cwd=tmpdir)
 
@@ -389,12 +389,12 @@ async def test_next_work_review_includes_merge_base_note():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         # Create worktree state with build complete and review pending
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.json").write_text('{"build": "complete", "review": "pending"}')
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "pending"}')
 
         with (
             patch("teleclaude.core.next_machine.core.Repo"),
@@ -425,7 +425,7 @@ async def test_next_work_blocks_when_stash_debt_exists():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         with (
             patch("teleclaude.core.next_machine.core.Repo"),
@@ -449,11 +449,11 @@ async def test_next_work_does_not_block_review_when_main_ahead():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.json").write_text('{"build": "complete", "review": "pending"}')
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "pending"}')
 
         with (
             patch("teleclaude.core.next_machine.core.Repo"),
@@ -483,11 +483,11 @@ async def test_next_work_blocks_when_review_round_limit_reached():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.json").write_text(
+        (state_dir / "state.yaml").write_text(
             '{"build":"complete","review":"pending","review_round":2,"max_review_rounds":2}'
         )
 
@@ -516,11 +516,11 @@ async def test_next_work_finalize_next_call_without_slug():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.json").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.json").write_text('{"build": "complete", "review": "approved"}')
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "approved"}')
 
         with (
             patch("teleclaude.core.next_machine.core.Repo"),
@@ -548,7 +548,7 @@ def test_resolve_slug_ready_only_matches_ready_items():
     with tempfile.TemporaryDirectory() as tmpdir:
         _write_roadmap_yaml(tmpdir, ["pending-item", "ready-item", "in-progress-item", "done-item"])
 
-        # Create state.json for each item
+        # Create state.yaml for each item
         states = {
             "pending-item": '{"phase": "pending"}',
             "ready-item": '{"phase": "pending", "dor": {"score": 8}}',
@@ -558,7 +558,7 @@ def test_resolve_slug_ready_only_matches_ready_items():
         for slug_name, state in states.items():
             d = Path(tmpdir) / "todos" / slug_name
             d.mkdir(parents=True, exist_ok=True)
-            (d / "state.json").write_text(state)
+            (d / "state.yaml").write_text(state)
 
         slug, is_ready, _ = resolve_slug(tmpdir, slug=None, ready_only=True)
 
@@ -575,7 +575,7 @@ def test_resolve_slug_ready_only_no_ready_items():
         for slug_name, phase in [("pending-item", "pending"), ("in-progress-item", "in_progress")]:
             d = Path(tmpdir) / "todos" / slug_name
             d.mkdir(parents=True, exist_ok=True)
-            (d / "state.json").write_text(f'{{"phase": "{phase}"}}')
+            (d / "state.yaml").write_text(f'{{"phase": "{phase}"}}')
 
         slug, is_ready, desc = resolve_slug(tmpdir, slug=None, ready_only=True)
 
@@ -595,7 +595,7 @@ def test_resolve_slug_ready_only_skips_pending():
         for slug_name, state in states.items():
             d = Path(tmpdir) / "todos" / slug_name
             d.mkdir(parents=True, exist_ok=True)
-            (d / "state.json").write_text(state)
+            (d / "state.yaml").write_text(state)
 
         slug, _, _ = resolve_slug(tmpdir, slug=None, ready_only=True)
 
@@ -615,7 +615,7 @@ def test_resolve_slug_ready_only_skips_in_progress():
         for slug_name, state in states.items():
             d = Path(tmpdir) / "todos" / slug_name
             d.mkdir(parents=True, exist_ok=True)
-            (d / "state.json").write_text(state)
+            (d / "state.yaml").write_text(state)
 
         slug, _, _ = resolve_slug(tmpdir, slug=None, ready_only=True)
 

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
+
+import yaml
 
 from teleclaude.types.todos import BreakdownState, DorState, TodoState
 
@@ -52,7 +53,7 @@ def create_todo_skeleton(
     - todos/{slug}/requirements.md
     - todos/{slug}/implementation-plan.md
     - todos/{slug}/quality-checklist.md
-    - todos/{slug}/state.json
+    - todos/{slug}/state.yaml
 
     Optionally registers the slug in todos/roadmap.yaml when ``after`` is provided.
     """
@@ -72,13 +73,13 @@ def create_todo_skeleton(
     plan = _read_template("implementation-plan.md").format(slug=slug)
     checklist = _read_template("quality-checklist.md").format(slug=slug)
     input_md = _read_template("input.md").format(slug=slug)
-    state_content = json.dumps(_DEFAULT_STATE, indent=2) + "\n"
+    state_content = yaml.dump(_DEFAULT_STATE, default_flow_style=False, sort_keys=False)
 
     _write_file(todo_dir / "requirements.md", req)
     _write_file(todo_dir / "implementation-plan.md", plan)
     _write_file(todo_dir / "quality-checklist.md", checklist)
     _write_file(todo_dir / "input.md", input_md)
-    _write_file(todo_dir / "state.json", state_content)
+    _write_file(todo_dir / "state.yaml", state_content)
 
     if after is not None:
         from teleclaude.core.next_machine.core import add_to_roadmap

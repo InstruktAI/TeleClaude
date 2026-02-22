@@ -64,7 +64,7 @@ teleclaude.yml                  Schedule configuration (frequency, timing, execu
   └── job: foo                  → Agent subprocess via run_job() (full tools + MCP)
   │
   ▼
-~/.teleclaude/cron_state.json   Persistent state (last_run, status, errors)
+~/.teleclaude/cron_state.yaml   Persistent state (last_run, status, errors)
 ```
 
 ### Execution Modes
@@ -128,14 +128,14 @@ other runners (log-bug-hunter) monitor daemon health.
 
 - `teleclaude.yml` — schedule configuration for each registered job
 - `jobs/*.py` — job modules discovered at runtime
-- `~/.teleclaude/cron_state.json` — last run timestamps
+- `~/.teleclaude/cron_state.yaml` — last run timestamps
 
 **Outputs:**
 
 - Job execution (side effects defined by each job)
 - `JobResult` with structured success/failure data (script jobs)
 - Run reports at `~/.teleclaude/jobs/{job_name}/runs/{YYMMDD-HHMMSS}.md` (agent jobs)
-- Updated state in `cron_state.json`
+- Updated state in `cron_state.yaml`
 - Structured logs to `/var/log/instrukt-ai/teleclaude/cron.log`
 
 ## Invariants
@@ -258,7 +258,7 @@ class JobResult:
 ```
 
 The runner logs `message`, `items_processed`, and `errors` from the result and
-persists `success`/`message` to `cron_state.json`.
+persists `success`/`message` to `cron_state.yaml`.
 
 ### Agent jobs
 
@@ -310,7 +310,7 @@ timing reached. Jobs that have never run execute immediately.
 
 ## State Persistence
 
-File: `~/.teleclaude/cron_state.json`
+File: `~/.teleclaude/cron_state.yaml`
 
 ```json
 {
@@ -373,7 +373,7 @@ cron_runner.py --list       List available jobs and their status
 | Invocation | Manual, one-off                                | Periodic via runner            |
 | Scope      | Global (symlinked to `~/.teleclaude/scripts/`) | Repository-bound               |
 | Use case   | Onboarding, ad-hoc operations                  | Recurring automation           |
-| State      | None                                           | Tracked in `cron_state.json`   |
+| State      | None                                           | Tracked in `cron_state.yaml`   |
 | Scheduling | None                                           | Configured in `teleclaude.yml` |
 
 ## Job Specs
