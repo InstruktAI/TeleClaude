@@ -904,6 +904,45 @@ def load_icebox_slugs(cwd: str) -> list[str]:
     return [e.slug for e in load_icebox(cwd)]
 
 
+def remove_from_icebox(cwd: str, slug: str) -> bool:
+    """Remove entry from icebox.yaml. Returns True if found and removed."""
+    entries = load_icebox(cwd)
+    original_len = len(entries)
+    entries = [e for e in entries if e.slug != slug]
+    if len(entries) < original_len:
+        save_icebox(cwd, entries)
+        return True
+    return False
+
+
+def clean_dependency_references(cwd: str, slug: str) -> None:
+    """Remove a slug from all `after` dependency lists in roadmap and icebox.
+
+    Args:
+        cwd: Project root directory
+        slug: Slug to remove from dependency lists
+    """
+    # Clean roadmap
+    roadmap_entries = load_roadmap(cwd)
+    roadmap_changed = False
+    for entry in roadmap_entries:
+        if slug in entry.after:
+            entry.after.remove(slug)
+            roadmap_changed = True
+    if roadmap_changed:
+        save_roadmap(cwd, roadmap_entries)
+
+    # Clean icebox
+    icebox_entries = load_icebox(cwd)
+    icebox_changed = False
+    for entry in icebox_entries:
+        if slug in entry.after:
+            entry.after.remove(slug)
+            icebox_changed = True
+    if icebox_changed:
+        save_icebox(cwd, icebox_entries)
+
+
 def freeze_to_icebox(cwd: str, slug: str) -> bool:
     """Move a slug from roadmap to icebox (prepended). Returns False if not in roadmap."""
     entries = load_roadmap(cwd)
