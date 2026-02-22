@@ -1908,14 +1908,14 @@ def _handle_bugs_list(args: list[str]) -> None:
                 review = state.get("review", "unknown")
 
                 if phase == "in_progress":
-                    if build == "pending":
-                        status = "pending"
-                    elif build == "complete" and review == "pending":
-                        status = "building"
-                    elif review == "complete":
+                    if review == "approved":
+                        status = "approved"
+                    elif build == "complete":
                         status = "reviewing"
-                elif phase == "approved":
-                    status = "approved"
+                    elif build in ("started", "complete"):
+                        status = "building"
+                    else:
+                        status = "pending"
             except (yaml.YAMLError, OSError):
                 pass
 
