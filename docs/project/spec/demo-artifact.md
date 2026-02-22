@@ -2,7 +2,7 @@
 id: 'project/spec/demo-artifact'
 type: 'spec'
 scope: 'project'
-description: 'Demo artifact format: slug-based folders with snapshot.json containing a runnable demo command.'
+description: 'Demo artifact format: slug-based folders with snapshot.json and demo.md.'
 ---
 
 # Demo Artifact — Spec
@@ -17,6 +17,24 @@ Each delivery produces a demo artifact in `demos/`. Artifacts are committed to g
 
 `demos/{slug}/` — slug-based naming with no sequence numbers.
 
+### demo.md
+
+The primary demonstration artifact. A freeform markdown file with:
+
+- **Executable code blocks** (fenced ` ```bash `) — extracted and run sequentially by `telec todo demo {slug}`. All must exit 0 for the build gate to pass.
+- **Guided steps** — instructions for the AI presenter to operate the system and narrate.
+- **Verification steps** — assertions the AI checks during presentation.
+
+#### Code block conventions
+
+- Fenced bash blocks are executable by default.
+- Blocks preceded by `<!-- skip-validation: reason -->` are skipped by the validator but reported for visibility.
+- The validator prepends the project's `.venv/bin` to PATH so `python` resolves to the project environment.
+
+#### Non-destructive rule
+
+Demos run on real data. They must never be destructive. CRUD demos create their own test data, demonstrate the behavior, and clean up after themselves.
+
 ### snapshot.json schema
 
 ```json
@@ -26,7 +44,6 @@ Each delivery produces a demo artifact in `demos/`. Artifacts are committed to g
   "version": "string (semver from pyproject.toml)",
   "delivered": "string (YYYY-MM-DD)",
   "commit": "string (merge commit hash)",
-  "demo": "string (optional shell command executed from demo folder)",
   "metrics": {
     "commits": "integer",
     "files_changed": "integer",
@@ -47,9 +64,7 @@ Each delivery produces a demo artifact in `demos/`. Artifacts are committed to g
 }
 ```
 
-### Demo field
-
-The `demo` field is an optional shell command string that demonstrates the feature. The command is executed with `shell=True` from the demo folder directory as the current working directory. If absent, the runner warns and skips execution (backward compatibility).
+The `demo` field (shell command string) is deprecated. New demos use `demo.md` instead. The CLI runner falls back to the `demo` field when `demo.md` is absent (backward compatibility).
 
 ## Known caveats
 
