@@ -35,27 +35,27 @@ Replace the post-finalize demo creation flow with build-phase demo artifacts and
 
 **File(s):** `teleclaude/cli/telec.py` (lines ~143-162, `CLI_SURFACE["todo"].subcommands`)
 
-- [ ] Add `"demo"` to `CLI_SURFACE["todo"].subcommands` with description "Run or list demo artifacts", args `[slug]`, and `--project-root` flag
+- [x] Add `"demo"` to `CLI_SURFACE["todo"].subcommands` with description "Run or list demo artifacts", args `[slug]`, and `--project-root` flag
 
 ### Task 2.2: Wire dispatcher
 
 **File(s):** `teleclaude/cli/telec.py` (lines ~1050-1064, `_handle_todo()`)
 
-- [ ] Add `elif subcommand == "demo":` branch calling `_handle_todo_demo(args[1:])`
+- [x] Add `elif subcommand == "demo":` branch calling `_handle_todo_demo(args[1:])`
 
 ### Task 2.3: Implement `_handle_todo_demo()`
 
 **File(s):** `teleclaude/cli/telec.py`
 
-- [ ] Read project version from `pyproject.toml` (currently `0.1.0`)
-- [ ] Scan `demos/*/snapshot.json` for available demos
-- [ ] No slug: list demos as a table (title, slug, version, delivered date). Read `delivered_date` field with fallback to `delivered` for forward compatibility.
-- [ ] With slug: find `demos/{slug}/snapshot.json`
-- [ ] Semver gate: compare major versions, skip with message if incompatible
-- [ ] Missing `demo` field: warn and exit 0
-- [ ] Execute `demo` field command via `subprocess.run(shell=True, cwd=demo_folder)`
-- [ ] Nonexistent slug: print error, exit 1
-- [ ] Empty demos directory: print "No demos available", exit 0
+- [x] Read project version from `pyproject.toml` (currently `0.1.0`)
+- [x] Scan `demos/*/snapshot.json` for available demos
+- [x] No slug: list demos as a table (title, slug, version, delivered date). Read `delivered_date` field with fallback to `delivered` for forward compatibility.
+- [x] With slug: find `demos/{slug}/snapshot.json`
+- [x] Semver gate: compare major versions, skip with message if incompatible
+- [x] Missing `demo` field: warn and exit 0
+- [x] Execute `demo` field command via `subprocess.run(shell=True, cwd=demo_folder)`
+- [x] Nonexistent slug: print error, exit 1
+- [x] Empty demos directory: print "No demos available", exit 0
 
 ---
 
