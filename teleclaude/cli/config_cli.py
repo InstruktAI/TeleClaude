@@ -15,6 +15,9 @@ import json
 import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import TypedDict
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.config_handlers import (
     add_person,
@@ -26,6 +29,18 @@ from teleclaude.cli.config_handlers import (
     validate_all,
 )
 from teleclaude.config.schema import PersonEntry, TelegramCreds
+
+logger = get_logger(__name__)
+
+
+class InviteResult(TypedDict):
+    """Result of invite generation."""
+
+    ok: bool
+    name: str
+    email: str
+    links: dict[str, str | None]
+    email_sent: bool
 
 
 def _check_customer_guard() -> None:
@@ -174,6 +189,7 @@ def _parse_kv_args(args: list[str]) -> dict[str, str]:
 def _people_add(args: list[str], use_json: bool) -> None:
     _check_customer_guard()
     opts = _parse_kv_args(args)
+    no_invite = "no-invite" in opts
     name = opts.get("name")
     if not name:
         print("Error: --name required")
@@ -204,10 +220,63 @@ def _people_add(args: list[str], use_json: bool) -> None:
     if opts.get("telegram_user") or opts.get("telegram_id"):
         _set_telegram_creds(name, opts.get("telegram_user"), opts.get("telegram_id"))
 
+    # Auto-invite unless --no-invite is passed
+    invite_sent = False
+    if not no_invite:
+        import asyncio
+
+        from teleclaude.cli.config_handlers import set_invite_token
+        from teleclaude.invite import (
+            generate_invite_links,
+            resolve_discord_bot_user_id,
+            resolve_telegram_bot_username,
+            send_invite_email,
+        )
+
+        async def _run_auto_invite() -> bool:
+            try:
+                # Generate token
+                token = set_invite_token(name)
+
+                # Resolve bot usernames/IDs
+                telegram_username = None
+                discord_bot_id = None
+
+                try:
+                    telegram_username = await resolve_telegram_bot_username()
+                except ValueError as e:
+                    logger.warning("Failed to resolve Telegram bot username: %s", e)
+
+                try:
+                    discord_bot_id = await resolve_discord_bot_user_id()
+                except ValueError as e:
+                    logger.warning("Failed to resolve Discord bot user ID: %s", e)
+
+                # WhatsApp number from env
+                whatsapp_number = os.environ.get("WHATSAPP_BUSINESS_NUMBER")
+
+                # Generate links
+                links = generate_invite_links(token, telegram_username, discord_bot_id, whatsapp_number)
+
+                # Send email
+                await send_invite_email(name, email, links)
+                return True
+            except Exception as e:
+                logger.warning("Auto-invite failed for %s: %s", name, e)
+                return False
+
+        invite_sent = asyncio.run(_run_auto_invite())
+
     if use_json:
-        print(json.dumps({"ok": True, "name": name, "role": entry.role}))
+        result = {"ok": True, "name": name, "role": entry.role}
+        if invite_sent:
+            result["invite_sent"] = True
+        print(json.dumps(result))
     else:
-        print(f"Added {name} as {entry.role}.")
+        if invite_sent:
+            print(f"Added {name} as {entry.role} — invite sent to {email}")
+        else:
+            print(f"Added {name} as {entry.role}.")
 
 
 def _people_edit(args: list[str], use_json: bool) -> None:
@@ -453,12 +522,10 @@ def _handle_invite(args: list[str]) -> None:
     args_clean = [a for a in args if a != "--json"]
 
     if not args_clean:
-        print("Usage: telec config invite NAME [--adapters telegram,discord]")
+        print("Usage: telec config invite NAME [--json]")
         raise SystemExit(1)
 
     name = args_clean[0]
-    opts = _parse_kv_args(args_clean[1:])
-    adapters = [a.strip() for a in opts.get("adapters", "telegram").split(",")]
 
     # Verify person exists
     people = list_people()
@@ -471,25 +538,75 @@ def _handle_invite(args: list[str]) -> None:
             print(f"Error: {msg}")
         raise SystemExit(1)
 
-    # Generate invite links
-    links: dict[str, str | None] = {}
-    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
-
-    for adapter in adapters:
-        if adapter == "telegram" and bot_token:
-            # Telegram deep link: t.me/BOT_USERNAME?start=PAYLOAD
-            # Bot username can be fetched from token, but for now use a placeholder
-            # that the admin can fill in or that gets resolved at send time
-            links["telegram"] = f"https://t.me/?start=invite_{name.replace(' ', '_').lower()}"
+    # Check for email
+    if not person.email:
+        msg = f"Person '{name}' has no email address configured"
+        if use_json:
+            print(json.dumps({"error": msg}))
         else:
-            links[adapter] = None
+            print(f"Error: {msg}")
+        raise SystemExit(1)
+
+    # Run async invite flow
+    import asyncio
+
+    from teleclaude.cli.config_handlers import set_invite_token
+    from teleclaude.invite import (
+        generate_invite_links,
+        resolve_discord_bot_user_id,
+        resolve_telegram_bot_username,
+        send_invite_email,
+    )
+
+    async def _run_invite() -> InviteResult:
+        # Generate/rotate token
+        token = set_invite_token(name)
+
+        # Resolve bot usernames/IDs
+        telegram_username = None
+        discord_bot_id = None
+
+        try:
+            telegram_username = await resolve_telegram_bot_username()
+        except ValueError as e:
+            logger.warning("Failed to resolve Telegram bot username: %s", e)
+
+        try:
+            discord_bot_id = await resolve_discord_bot_user_id()
+        except ValueError as e:
+            logger.warning("Failed to resolve Discord bot user ID: %s", e)
+
+        # WhatsApp number from env
+        whatsapp_number = os.environ.get("WHATSAPP_BUSINESS_NUMBER")
+
+        # Generate links
+        links = generate_invite_links(token, telegram_username, discord_bot_id, whatsapp_number)
+
+        # Send email
+        try:
+            await send_invite_email(name, person.email, links)
+            email_sent = True
+        except Exception as e:
+            logger.warning("Failed to send invite email: %s", e)
+            email_sent = False
+
+        return {
+            "ok": True,
+            "name": name,
+            "email": person.email,
+            "links": links,
+            "email_sent": email_sent,
+        }
+
+    result = asyncio.run(_run_invite())
 
     if use_json:
-        print(json.dumps({"ok": True, "name": name, "links": links}))
+        print(json.dumps(result))  # type: ignore[arg-type]
     else:
-        print(f"  Invite links for {name}:")
-        for adapter, link in links.items():
-            if link:
-                print(f"    {adapter}: {link}")
-            else:
-                print(f"    {adapter}: not available (missing credentials or token)")
+        if result["email_sent"]:
+            print(f"Invite sent to {person.email} for {name}")
+        else:
+            print(f"Invite links for {name} (email delivery failed):")
+            for platform, link in result["links"].items():  # type: ignore[union-attr]
+                if link:
+                    print(f"  {platform}: {link}")

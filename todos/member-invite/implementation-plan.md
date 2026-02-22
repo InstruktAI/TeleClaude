@@ -129,7 +129,7 @@ feat(notifications): add Brevo SMTP email sender and invite email template
 
 **File(s):** `teleclaude/cli/config_cli.py:450-496`
 
-- [ ] Rewrite `_handle_invite()`:
+- [x] Rewrite `_handle_invite()`:
   1. Validate person exists (keep existing check)
   2. Call `set_invite_token(name)` to generate/rotate token
   3. Call `resolve_telegram_bot_username()` (sync wrapper or asyncio.run for CLI context)
@@ -140,19 +140,19 @@ feat(notifications): add Brevo SMTP email sender and invite email template
   8. Call `send_invite_email(name, email, links)` (async, wrapped for CLI)
   9. Print confirmation: "Invite sent to {email} for {name}"
   10. `--json` output: `{"ok": true, "name": ..., "email": ..., "links": {...}}`
-- [ ] Handle errors: missing bot token → warn but continue with available links; missing email → fail with clear message
+- [x] Handle errors: missing bot token → warn but continue with available links; missing email → fail with clear message
 
 ### Task 3.2: Add auto-invite on `people add`
 
 **File(s):** `teleclaude/cli/config_cli.py:174-210`
 
-- [ ] After `add_person(entry)` succeeds, if email is present and `--no-invite` not in args:
+- [x] After `add_person(entry)` succeeds, if email is present and `--no-invite` not in args:
   1. Call `set_invite_token(name)`
   2. Resolve bot usernames
   3. Generate links
   4. Send invite email
   5. Print: "Added {name} as {role} — invite sent to {email}"
-- [ ] If `--no-invite` is passed, skip invite flow
+- [x] If `--no-invite` is passed, skip invite flow
 
 **Step: Run tests**
 
