@@ -109,7 +109,7 @@ Date: {date}
 
 ---
 
-### Task 3: CLI Commands — `telec bugs report` and `telec bugs list`
+### Task 3: CLI Commands — `telec bugs report` and `telec bugs list` ✓
 
 **Files:**
 
