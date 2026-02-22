@@ -1910,6 +1910,8 @@ def _handle_bugs_list(args: list[str]) -> None:
                 if phase == "in_progress":
                     if review == "approved":
                         status = "approved"
+                    elif review == "changes_requested":
+                        status = "fixing"
                     elif build == "complete":
                         status = "reviewing"
                     elif build in ("started", "complete"):
