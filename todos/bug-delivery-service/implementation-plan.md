@@ -235,7 +235,7 @@ Two changes are needed. First, the `note` parameter on `format_tool_call()` inst
 
 ---
 
-### Task 8: Bug Dispatcher — Worktree + Orchestrator Launch
+### Task 8: Bug Dispatcher — Worktree + Orchestrator Launch ✓
 
 **Files:**
 

@@ -1735,6 +1735,7 @@ def _handle_bugs(args: list[str]) -> None:
 def _handle_bugs_report(args: list[str]) -> None:
     """Handle telec bugs report <description> [--slug <slug>] [--project-root PATH]."""
     import re
+    import shutil
 
     if not args:
         print(_usage("bugs", "report"))
@@ -1788,8 +1789,76 @@ def _handle_bugs_report(args: list[str]) -> None:
         print(f"Error: {exc}")
         raise SystemExit(1) from exc
 
-    print(f"Created bug todo: {todo_dir}")
-    print(f"Bug slug: {slug}")
+    # Create git branch from main
+    try:
+        subprocess.run(
+            ["git", "branch", slug, "main"],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=str(project_root),
+        )
+    except subprocess.CalledProcessError as exc:
+        print(f"Error creating branch: {exc.stderr}")
+        print(f"Bug scaffold created at {todo_dir}, but branch creation failed.")
+        print(f"Create branch manually: git branch {slug} main")
+        raise SystemExit(1) from exc
+
+    # Create worktree
+    worktree_path = project_root / "trees" / slug
+    try:
+        subprocess.run(
+            ["git", "worktree", "add", str(worktree_path), slug],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=str(project_root),
+        )
+    except subprocess.CalledProcessError as exc:
+        print(f"Error creating worktree: {exc.stderr}")
+        print(f"Bug scaffold created at {todo_dir}, branch created, but worktree failed.")
+        print(f"Create worktree manually: git worktree add trees/{slug} {slug}")
+        # Clean up branch
+        subprocess.run(["git", "branch", "-D", slug], check=False, cwd=str(project_root))
+        raise SystemExit(1) from exc
+
+    # Copy bug.md and state.yaml to worktree
+    worktree_todo_dir = worktree_path / "todos" / slug
+    worktree_todo_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        shutil.copy2(todo_dir / "bug.md", worktree_todo_dir / "bug.md")
+        shutil.copy2(todo_dir / "state.yaml", worktree_todo_dir / "state.yaml")
+    except Exception as exc:
+        print(f"Error copying files to worktree: {exc}")
+        print("Bug scaffold created, branch and worktree created, but file copy failed.")
+        print(f"Copy files manually to {worktree_todo_dir}")
+        raise SystemExit(1) from exc
+
+    # Dispatch orchestrator
+    api = TelecAPIClient()
+    try:
+        result = asyncio.run(
+            api.create_session(
+                computer="local",
+                project_path=str(worktree_path),
+                agent="claude",
+                thinking_mode="slow",
+                title=f"Bug fix: {slug}",
+                message=f'Run teleclaude__next_work(slug="{slug}") and follow output verbatim until done.',
+            )
+        )
+        print(f"Created bug todo: {todo_dir}")
+        print(f"Bug slug: {slug}")
+        print(f"Branch: {slug}")
+        print(f"Worktree: {worktree_path}")
+        print(f"Orchestrator session: {result.session_id}")
+    except Exception as exc:
+        print(f"Error dispatching orchestrator: {exc}")
+        print("Bug scaffold, branch, and worktree created successfully.")
+        print("Start orchestrator manually from worktree directory:")
+        print(f"  cd {worktree_path}")
+        print(f"  telec claude 'Run teleclaude__next_work(slug=\"{slug}\") and follow output verbatim until done.'")
 
 
 def _handle_bugs_list(args: list[str]) -> None:
