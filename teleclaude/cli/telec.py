@@ -236,6 +236,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _PROJECT_ROOT_LONG,
                 ],
             ),
+            "create": CommandDef(
+                desc="Scaffold bug files for a slug",
+                args="<slug>",
+                flags=[_PROJECT_ROOT_LONG],
+            ),
             "list": CommandDef(
                 desc="List in-flight bug fixes with status",
                 flags=[_PROJECT_ROOT_LONG],
@@ -1724,11 +1729,60 @@ def _handle_bugs(args: list[str]) -> None:
     subcommand = args[0]
     if subcommand == "report":
         _handle_bugs_report(args[1:])
+    elif subcommand == "create":
+        _handle_bugs_create(args[1:])
     elif subcommand == "list":
         _handle_bugs_list(args[1:])
     else:
         print(f"Unknown bugs subcommand: {subcommand}")
         print(_usage("bugs"))
+        raise SystemExit(1)
+
+
+def _handle_bugs_create(args: list[str]) -> None:
+    """Handle telec bugs create <slug> [--project-root PATH]."""
+    if not args:
+        print("Usage: telec bugs create <slug> [--project-root PATH]")
+        raise SystemExit(1)
+
+    slug: str | None = None
+    project_root = Path.cwd()
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print("Usage: telec bugs create <slug> [--project-root PATH]")
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                print("Usage: telec bugs create <slug> [--project-root PATH]")
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if slug is None:
+        print("Error: slug is required")
+        print("Usage: telec bugs create <slug> [--project-root PATH]")
+        raise SystemExit(1)
+
+    try:
+        bug_dir = create_bug_skeleton(
+            project_root=project_root,
+            slug=slug,
+            description="",
+        )
+        print(f"Created bug skeleton: {bug_dir}")
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        raise SystemExit(1)
+    except FileExistsError as exc:
+        print(f"Error: {exc}")
         raise SystemExit(1)
 
 

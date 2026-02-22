@@ -339,7 +339,7 @@ def test_file_row_slug_scoped_finds_parent():
 
 ---
 
-### Task 4: Add `telec bugs create` CLI Subcommand
+### Task 4: Add `telec bugs create` CLI Subcommand ✓
 
 **File(s):** `teleclaude/cli/telec.py`
 
