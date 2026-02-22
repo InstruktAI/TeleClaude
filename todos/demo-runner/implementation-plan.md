@@ -84,7 +84,7 @@ Replace the post-finalize demo creation flow with build-phase demo artifacts and
 
 **File(s):** `templates/todos/quality-checklist.md`
 
-- [ ] Add `- [ ] Demo is runnable and verified` to Build Gates section (after "Code committed")
+- [x] Add `- [ ] Demo is runnable and verified` to Build Gates section (after "Code committed")
 
 ### Task 3.4: Update demo procedure doc
 

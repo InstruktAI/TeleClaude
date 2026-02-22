@@ -16,6 +16,7 @@ Ownership:
 - [ ] Lint passes (`make lint`)
 - [ ] No silent deferrals in implementation plan
 - [ ] Code committed
+- [ ] Demo is runnable and verified
 - [ ] Working tree clean
 - [ ] Comments/docstrings updated where behavior changed
 
