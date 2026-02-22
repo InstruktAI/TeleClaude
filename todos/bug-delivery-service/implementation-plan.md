@@ -195,7 +195,7 @@ This is the critical integration. The `next_work()` function must detect `bug.md
 
 ---
 
-### Task 6: Review Adaptation — Teach Reviewer to Use `bug.md`
+### Task 6: Review Adaptation — Teach Reviewer to Use `bug.md` ✓
 
 **Files:**
 
