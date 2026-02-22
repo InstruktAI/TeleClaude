@@ -10,10 +10,10 @@ Two independent visual bugs, both in the TUI rendering layer. Bug 1 is a Rich Te
 
 **File(s):** `teleclaude/cli/tui/widgets/session_row.py`
 
-- [ ] In `_build_title_line()` (line ~171), replace the hardcoded `resolve_style(self.agent, self._tier("normal"))` for the slug span with logic that:
+- [x] In `_build_title_line()` (line ~171), replace the hardcoded `resolve_style(self.agent, self._tier("normal"))` for the slug span with logic that:
   - When `selected` or `previewed`: uses the row `style` (which includes `bgcolor` and inverted `color`), preserving the selection bar continuity.
   - When neither: uses `resolve_style(self.agent, self._tier("normal"))` as today (agent color, no bold, no italic, no bgcolor).
-- [ ] Verify the badge style (line ~153) is correct — it already uses its own style and does NOT inherit selection bg (by design, per the comment on line 149).
+- [x] Verify the badge style (line ~153) is correct — it already uses its own style and does NOT inherit selection bg (by design, per the comment on line 149).
 
 ### Task 1.2: Verify tier shifting is preserved
 
