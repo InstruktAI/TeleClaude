@@ -41,7 +41,7 @@ class ComputerHeader(TelecMixin, Widget):
         count = self.data.session_count
         is_selected = self.has_class("selected")
 
-        line = Text()
+        line = Text(no_wrap=True)
         if is_selected:
             base_style = Style(reverse=True)
         else:

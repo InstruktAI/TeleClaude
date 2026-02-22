@@ -20,7 +20,7 @@ from teleclaude.cli.tui.theme import (
 )
 from teleclaude.cli.tui.utils.formatters import format_time, truncate_text
 
-_DETAIL_TEXT_LIMIT = 70
+_DETAIL_PREFIX_OVERHEAD = 18  # │ + space + [HH:MM:SS] + label (" in: " / "out: ")
 
 
 class SessionRow(TelecMixin, Widget):
@@ -88,6 +88,16 @@ class SessionRow(TelecMixin, Widget):
         return self.status.startswith("headless") or not self.session.tmux_session_name
 
     @property
+    def _content_width(self) -> int:
+        """Available content width (widget width minus horizontal padding)."""
+        return max(self.size.width - 2, 40)
+
+    @property
+    def _detail_text_limit(self) -> int:
+        """Dynamic text limit for detail lines based on available width."""
+        return max(20, self._content_width - self._connector_col - _DETAIL_PREFIX_OVERHEAD)
+
+    @property
     def _child_indent(self) -> str:
         """Leading indent before the badge — constant for all depths."""
         return " "
@@ -128,7 +138,7 @@ class SessionRow(TelecMixin, Widget):
 
     def _build_title_line(self, *, selected: bool = False, previewed: bool = False) -> Text:
         """Build the header: `[N] ▶ agent/mode "Title"` matching old TUI format."""
-        line = Text()
+        line = Text(no_wrap=True)
         indent = self._child_indent
         if indent:
             line.append(indent)
@@ -147,7 +157,7 @@ class SessionRow(TelecMixin, Widget):
         line.append(" ", style=style)
 
         # Collapse indicator
-        collapse_char = "▶" if self.collapsed else "▼"
+        collapse_char = "\u25b6" if self.collapsed else "\u25bc"
         line.append(f"{collapse_char} ", style=style)
 
         # Agent/mode — show "shell" for sessions without an active agent
@@ -160,18 +170,23 @@ class SessionRow(TelecMixin, Widget):
             slug = subdir.removeprefix("trees/")
             line.append(f" {slug}", style=resolve_style(self.agent, self._tier("normal")))
 
-        # Title in quotes
+        # Title in quotes — truncate to fit available width
         title = self.session.title or "(untitled)"
+        content_w = self._content_width
+        avail = content_w - line.cell_len - 4  # 4 = '  "' prefix + '"' suffix
+        if avail > 0 and len(title) > avail:
+            title = title[: max(1, avail - 1)] + "\u2026"
         line.append(f'  "{title}"', style=style)
 
         return line
 
     def _build_detail_lines(self) -> list[Text]:
-        """Build expanded detail lines with │ tree connectors."""
+        """Build expanded detail lines with \u2502 tree connectors."""
         lines: list[Text] = []
         connector_pad = " " * self._connector_col
         detail_pad = " "
         connector_style = Style(color=CONNECTOR_COLOR)
+        text_limit = self._detail_text_limit
 
         base_style = resolve_style(self.agent, self._tier("normal"))
         highlight_style = resolve_style(self.agent, self._tier("highlight"))
@@ -183,53 +198,53 @@ class SessionRow(TelecMixin, Widget):
         input_style = highlight_style if has_input_highlight else base_style
         output_style = highlight_style if (has_output_highlight or has_tool_activity) else base_style
 
-        # Line 2: │   [HH:MM:SS] session_id / native_session_id
+        # Line 2: \u2502   [HH:MM:SS] session_id / native_session_id
         activity_time = format_time(self.session.last_activity)
         sid = self.session.session_id
         native_id = getattr(self.session, "native_session_id", None) or "-"
-        line2 = Text()
+        line2 = Text(no_wrap=True)
         line2.append(connector_pad)
-        line2.append("│", style=connector_style)
+        line2.append("\u2502", style=connector_style)
         line2.append(f"{detail_pad}[{activity_time}] {sid} / {native_id}", style=id_style)
         lines.append(line2)
 
-        # Line 3: │   [HH:MM:SS]  in: <last input>
+        # Line 3: \u2502   [HH:MM:SS]  in: <last input>
         last_input = (self.session.last_input or "").strip()
         last_input_at = getattr(self.session, "last_input_at", None)
         if last_input:
-            input_text = last_input.replace("\n", " ")[:_DETAIL_TEXT_LIMIT]
+            input_text = last_input.replace("\n", " ")[:text_limit]
             input_time = format_time(last_input_at)
-            line3 = Text()
+            line3 = Text(no_wrap=True)
             line3.append(connector_pad)
-            line3.append("│", style=connector_style)
+            line3.append("\u2502", style=connector_style)
             line3.append(f"{detail_pad}[{input_time}]  in: {input_text}", style=input_style)
             lines.append(line3)
 
-        # Line 4: │   [HH:MM:SS] out: <content>
+        # Line 4: \u2502   [HH:MM:SS] out: <content>
         # Whole row uses output_style color. Tool activity text is italic.
         if self.active_tool:
             activity_time_str = format_time(self.session.last_activity)
             italic_style = Style(color=output_style.color, bold=output_style.bold, italic=True)
-            line4 = Text()
+            line4 = Text(no_wrap=True)
             line4.append(connector_pad)
-            line4.append("│", style=connector_style)
+            line4.append("\u2502", style=connector_style)
             line4.append(f"{detail_pad}[{activity_time_str}] out: ", style=output_style)
-            line4.append(truncate_text(self.active_tool, _DETAIL_TEXT_LIMIT), style=italic_style)
+            line4.append(truncate_text(self.active_tool, text_limit), style=italic_style)
             lines.append(line4)
         elif self.last_output_summary:
             summary_at = getattr(self.session, "last_output_summary_at", None) or self.session.last_activity
             output_time = format_time(summary_at)
-            output_text = self.last_output_summary.replace("\n", " ")[:_DETAIL_TEXT_LIMIT]
-            line4 = Text()
+            output_text = self.last_output_summary.replace("\n", " ")[:text_limit]
+            line4 = Text(no_wrap=True)
             line4.append(connector_pad)
-            line4.append("│", style=connector_style)
+            line4.append("\u2502", style=connector_style)
             line4.append(f"{detail_pad}[{output_time}] out: {output_text}", style=output_style)
             lines.append(line4)
         elif has_input_highlight or has_output_highlight:
             activity_time_str = format_time(self.session.last_activity)
-            line4 = Text()
+            line4 = Text(no_wrap=True)
             line4.append(connector_pad)
-            line4.append("│", style=connector_style)
+            line4.append("\u2502", style=connector_style)
             line4.append(f"{detail_pad}[{activity_time_str}] out: ...", style=output_style)
             lines.append(line4)
 
@@ -238,13 +253,13 @@ class SessionRow(TelecMixin, Widget):
     def _build_connector_bottom(self) -> Text:
         """Build the bottom connector line.
 
-        Uses └ (corner) for last child in a subtree, ├ (tee) otherwise.
+        Uses \u2514 (corner) for last child in a subtree, \u251c (tee) otherwise.
         """
         connector_pad = " " * self._connector_col
         connector_style = Style(color=CONNECTOR_COLOR)
         run_len = max(self.size.width - self._connector_col - 1, 20)
         char = "\u2514" if self.is_last_child else "\u251c"
-        line = Text()
+        line = Text(no_wrap=True)
         line.append(connector_pad)
         line.append(char, style=connector_style)
         line.append("-" * run_len, style=connector_style)

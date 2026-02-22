@@ -170,7 +170,7 @@ class TodoRow(TelecMixin, Widget):
         return result
 
     def render(self) -> Text:
-        line = Text()
+        line = Text(no_wrap=True)
         is_selected = self.has_class("selected")
 
         # Tree prefix: leading margin + ancestor continuation lines + own connector
