@@ -29,7 +29,7 @@ pattern to cover all agent-facing operations.
 - Extend `telec` CLI with tool subcommands as the unified invocation surface
 - Write 25 tool spec doc snippets organized in 6 taxonomy groups
 - Set up progressive disclosure (baseline vs on-demand tools)
-- Create daemon JSON-RPC endpoint(s) for `telec` to call
+- Extend `telec` CLI with tool subcommands calling the existing REST API
 - Remove MCP server, wrapper, handlers, tool definitions, and all connection management
 - Update CLAUDE.md baseline to reference new tool specs instead of MCP
 - Update all architecture/policy docs that reference MCP tools

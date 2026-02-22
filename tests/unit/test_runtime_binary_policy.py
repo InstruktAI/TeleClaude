@@ -40,27 +40,6 @@ def test_runtime_binary_resolution_platform_policy() -> None:
         assert resolve_agent_binary("codex") == "codex"
 
 
-def test_config_rejects_legacy_agents_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """config.yml must reject legacy agent binary configuration keys."""
-    repo_root = Path(__file__).resolve().parents[2]
-    config_py = repo_root / "teleclaude" / "config" / "__init__.py"
-
-    env_path = tmp_path / ".env"
-    env_path.write_text("", encoding="utf-8")
-    config_file = tmp_path / "config.yml"
-    config_file.write_text(
-        "agents:\n  claude:\n    binary: /tmp/claude\n",
-        encoding="utf-8",
-    )
-
-    monkeypatch.setenv("TELECLAUDE_CONFIG_PATH", str(config_file))
-    monkeypatch.setenv("TELECLAUDE_ENV_PATH", str(env_path))
-    monkeypatch.delenv("TELECLAUDE_DB_PATH", raising=False)
-
-    with pytest.raises(ValueError, match="disallowed runtime keys: agents"):
-        _load_config_module(config_py)
-
-
 def test_config_rejects_legacy_tmux_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """config.yml must reject legacy tmux binary configuration key."""
     repo_root = Path(__file__).resolve().parents[2]

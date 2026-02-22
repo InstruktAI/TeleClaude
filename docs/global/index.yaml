@@ -565,8 +565,8 @@ snippets:
   role: member
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/demo
-  description: Celebrate delivered work with a visual demo presented by the AI. Mandatory
-    after every finalize.
+  description: Create runnable demo artifacts during build and present them to celebrate
+    delivery.
   type: procedure
   scope: project
   path: docs/software-development/procedure/lifecycle/demo.md

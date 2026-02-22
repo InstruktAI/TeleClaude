@@ -11,7 +11,7 @@ def test_discover_youtube_subscribers_supports_flat_interest_list(tmp_path: Path
     person_dir = root / "people" / "alice"
     person_dir.mkdir(parents=True)
     (person_dir / "teleclaude.yml").write_text(
-        "subscriptions:\n  youtube: youtube.csv\ninterests:\n  - ai\n  - devtools\n",
+        "subscriptions:\n  - type: youtube\n    source: youtube.csv\ninterests:\n  - ai\n  - devtools\n",
         encoding="utf-8",
     )
 
@@ -28,7 +28,7 @@ def test_discover_youtube_subscribers_supports_nested_tags(tmp_path: Path) -> No
     person_dir = root / "people" / "bob"
     person_dir.mkdir(parents=True)
     (person_dir / "teleclaude.yml").write_text(
-        "subscriptions:\n  youtube: youtube.csv\ninterests:\n  tags:\n    - ml\n    - infra\n",
+        "subscriptions:\n  - type: youtube\n    source: youtube.csv\ninterests:\n  tags:\n    - ml\n    - infra\n",
         encoding="utf-8",
     )
 

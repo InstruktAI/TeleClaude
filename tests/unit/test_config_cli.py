@@ -91,7 +91,9 @@ class TestPeopleAdd:
             from teleclaude.cli.config_cli import handle_config_cli
             from teleclaude.cli.config_handlers import get_global_config
 
-            handle_config_cli(["people", "add", "--name", "Bob", "--role", "member", "--json"])
+            handle_config_cli(
+                ["people", "add", "--name", "Bob", "--email", "bob@example.com", "--role", "member", "--json"]
+            )
 
             # Verify person was actually added
             config = get_global_config()
@@ -241,27 +243,14 @@ class TestEnvSet:
 
 
 class TestNotify:
-    def test_notify_telegram_on(self, tmp_path, capsys):
+    def test_notify_toggling_replaced_by_subscriptions(self, tmp_path):
+        """Notification toggling has been replaced by per-subscription settings."""
         p1, p2 = _setup_config(tmp_path)
         with p1, p2:
             from teleclaude.cli.config_cli import handle_config_cli
 
-            handle_config_cli(["notify", "Alice", "--telegram", "on", "--json"])
-
-        out = json.loads(capsys.readouterr().out)
-        assert out["ok"] is True
-        assert out["notifications"]["telegram"] is True
-
-    def test_notify_telegram_off(self, tmp_path, capsys):
-        p1, p2 = _setup_config(tmp_path)
-        with p1, p2:
-            from teleclaude.cli.config_cli import handle_config_cli
-
-            handle_config_cli(["notify", "Alice", "--telegram", "off", "--json"])
-
-        out = json.loads(capsys.readouterr().out)
-        assert out["ok"] is True
-        assert out["notifications"]["telegram"] is False
+            with pytest.raises(SystemExit):
+                handle_config_cli(["notify", "Alice", "--telegram", "on", "--json"])
 
     def test_notify_no_channel_fails(self, tmp_path):
         p1, p2 = _setup_config(tmp_path)

@@ -42,13 +42,12 @@ def test_terminal_background_ignores_mode_conflicting_hint(monkeypatch) -> None:
     assert theme.get_terminal_background() == "#fdf6e3"
 
 
-def test_init_colors_resets_terminal_cache(monkeypatch) -> None:
+def test_refresh_mode_resets_terminal_cache(monkeypatch) -> None:
+    """refresh_mode clears the terminal background cache and rebuilds colors."""
     monkeypatch.setattr(theme, "_terminal_bg_cache", "#abc123")
-    monkeypatch.setattr(theme, "is_dark_mode", lambda: True)
-    monkeypatch.setattr(theme.curses, "start_color", lambda: None)
-    monkeypatch.setattr(theme.curses, "use_default_colors", lambda: None)
-    monkeypatch.setattr(theme.curses, "init_pair", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(theme, "_detect_dark_mode", lambda: True)
+    monkeypatch.setattr(theme, "_read_terminal_bg_from_appearance", lambda: None)
 
-    theme.init_colors()
+    theme.refresh_mode()
 
     assert theme._terminal_bg_cache is None

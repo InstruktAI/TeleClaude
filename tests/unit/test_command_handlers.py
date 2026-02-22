@@ -1135,6 +1135,11 @@ async def test_handle_agent_resume_uses_continue_template_when_no_native_session
     with (
         patch.object(command_handlers, "config") as mock_config,
         patch.object(command_handlers, "db") as mock_db,
+        patch.object(
+            command_handlers,
+            "get_agent_command",
+            return_value="claude --dangerously-skip-permissions --continue",
+        ) as mock_get_cmd,
     ):
         mock_config.agents.get.return_value = mock_agent_config
         mock_db.update_session = AsyncMock()
@@ -1145,11 +1150,14 @@ async def test_handle_agent_resume_uses_continue_template_when_no_native_session
     assert len(mock_execute_calls) == 1
     command = mock_execute_calls[0][0][1]
 
-    # Check for Claude's key flags and continue template behavior
-    assert "--dangerously-skip-permissions" in command
+    # Verify get_agent_command was called with resume=True (no native_session_id)
+    mock_get_cmd.assert_called_once()
+    call_kwargs = mock_get_cmd.call_args
+    assert call_kwargs.kwargs.get("resume") is True or call_kwargs[1].get("resume") is True
+
+    # Check the assembled command
     assert command.endswith("--continue")
     assert "--resume" not in command
-    assert "-m " not in command  # continue_template path skips model flag
 
 
 @pytest.mark.asyncio

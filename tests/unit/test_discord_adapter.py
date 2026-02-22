@@ -135,6 +135,10 @@ async def test_discord_on_message_creates_session_and_dispatches_process_message
         adapter = DiscordAdapter(client)
         client.register_adapter("discord", adapter)
 
+    # Isolate from host config — dev machines have real Discord IDs
+    adapter._guild_id = None
+    adapter._help_desk_channel_id = None
+
     session = _build_session()
     fake_db = MagicMock()
     fake_db.get_sessions_by_adapter_metadata = AsyncMock(side_effect=[[], []])
@@ -277,6 +281,7 @@ async def test_discord_processes_help_desk_forum_thread() -> None:
         adapter = DiscordAdapter(client)
         client.register_adapter("discord", adapter)
 
+    adapter._guild_id = None
     adapter._help_desk_channel_id = 333000
 
     session = _build_session()
@@ -351,6 +356,7 @@ async def test_discord_accepts_all_channels_when_unconfigured() -> None:
         adapter = DiscordAdapter(client)
         client.register_adapter("discord", adapter)
 
+    adapter._guild_id = None
     adapter._help_desk_channel_id = None  # Unconfigured
 
     session = _build_session()

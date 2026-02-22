@@ -522,8 +522,8 @@ snippets:
   role: member
   source_project: TeleClaude
 - id: project/spec/demo-artifact
-  description: 'Demo artifact format: numbered folders with snapshot.json and demo.sh
-    for celebrating deliveries.'
+  description: 'Demo artifact format: slug-based folders with snapshot.json containing
+    a runnable demo command.'
   type: spec
   scope: project
   path: docs/project/spec/demo-artifact.md

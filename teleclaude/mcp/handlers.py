@@ -1124,19 +1124,21 @@ class MCPHandlersMixin:
         if not Path(worktree_cwd).exists():
             return f"ERROR: Worktree not found at {worktree_cwd}"
 
-        if has_uncommitted_changes(cwd, slug):
-            return (
-                f"ERROR: UNCOMMITTED_CHANGES\nWorktree trees/{slug} has uncommitted changes. "
-                "Please commit them before marking phase as complete."
-            )
-        stash_entries = get_stash_entries(cwd)
-        if stash_entries:
-            noun = "entry" if len(stash_entries) == 1 else "entries"
-            return (
-                "ERROR: STASH_DEBT\n"
-                f"Repository has {len(stash_entries)} git stash {noun}. "
-                "Clear stash entries before marking phases complete."
-            )
+        terminal_statuses = ("complete", "approved")
+        if status in terminal_statuses:
+            if has_uncommitted_changes(cwd, slug):
+                return (
+                    f"ERROR: UNCOMMITTED_CHANGES\nWorktree trees/{slug} has uncommitted changes. "
+                    "Please commit them before marking phase as complete."
+                )
+            stash_entries = get_stash_entries(cwd)
+            if stash_entries:
+                noun = "entry" if len(stash_entries) == 1 else "entries"
+                return (
+                    "ERROR: STASH_DEBT\n"
+                    f"Repository has {len(stash_entries)} git stash {noun}. "
+                    "Clear stash entries before marking phases complete."
+                )
 
         updated_state = mark_phase(worktree_cwd, slug, phase, status)
         return f"OK: {slug} state updated - {phase}: {status}\nCurrent state: {updated_state}"

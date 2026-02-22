@@ -706,6 +706,33 @@ async def test_mark_phase_schema_allows_pending(mock_mcp_server):
 
 
 @pytest.mark.asyncio
+async def test_mark_phase_started_bypasses_uncommitted_gate(mock_mcp_server):
+    """mark_phase with status 'started' should succeed even with uncommitted changes."""
+    server = mock_mcp_server
+
+    calls: list[dict] = []
+
+    def fake_mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict:
+        calls.append({"cwd": cwd, "slug": slug, "phase": phase, "status": status})
+        return {phase: status}
+
+    with (
+        patch("teleclaude.mcp.handlers.has_uncommitted_changes", return_value=True),
+        patch("teleclaude.mcp.handlers.mark_phase", side_effect=fake_mark_phase),
+        patch("teleclaude.mcp.handlers.Path.exists", return_value=True),
+    ):
+        result = await server.teleclaude__mark_phase(
+            slug="test-slug",
+            phase="build",
+            status="started",
+            cwd="/home/user/project",
+        )
+
+        assert "state updated" in result
+        assert len(calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_mark_phase_blocks_on_uncommitted_changes(mock_mcp_server):
     """Test that mark_phase returns error if there are uncommitted changes."""
     server = mock_mcp_server

@@ -587,3 +587,23 @@ class PrepComputerDisplayInfo:
 
 class PrepComputerNode:
     pass
+
+
+class PrepFileDisplayInfo:
+    def __init__(self, **kwargs: object) -> None:
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class PrepFileNode:
+    pass
+
+
+class PrepProjectDisplayInfo:
+    def __init__(self, **kwargs: object) -> None:
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class PrepProjectNode:
+    pass

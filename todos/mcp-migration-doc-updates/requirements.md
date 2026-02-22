@@ -10,7 +10,7 @@ to reflect the new tool system architecture.
 ### In scope
 
 - Rewrite `project/design/architecture/mcp-layer.md` → `tool-system.md`
-  (new architecture: tc CLI → JSON-RPC → daemon handlers)
+  (new architecture: telec CLI → REST API → daemon handlers)
 - Update `project/design/architecture/system-overview.md` — replace MCP
   in diagrams with tc/tool-specs
 - Update `project/design/architecture/daemon.md` — remove MCP service

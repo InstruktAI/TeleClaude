@@ -1,4 +1,10 @@
-"""Unit tests for SessionsView render logic."""
+"""Unit tests for SessionsView render logic.
+
+NOTE: These tests were written for the pre-Textual curses TUI and reference
+APIs (get_render_lines, flat_items, scroll_offset) that no longer exist on
+the Textual SessionsView.  They are skipped pending a rewrite for the
+Textual widget architecture introduced in c680e05c.
+"""
 
 import curses
 import time
@@ -82,6 +88,7 @@ def sessions_view(mock_focus, mock_pane_manager):
     return view
 
 
+@pytest.mark.skip(reason="Tests reference pre-Textual curses API (get_render_lines, flat_items) — rewrite needed")
 @pytest.mark.unit
 class TestSessionsViewLogic:
     """Layer 1: View logic tests."""

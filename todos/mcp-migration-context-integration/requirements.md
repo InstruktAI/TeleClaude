@@ -2,36 +2,48 @@
 
 ## Goal
 
-Wire the 24 tool spec docs into the context-selection pipeline so that baseline
-tools appear automatically in agent system prompts and advanced tools are
-discoverable on demand via `telec context query` (formerly `get_context`).
+Update AGENTS.master.md to reference the new tool spec docs and telec
+subcommands instead of MCP. Regenerate AGENTS.md/CLAUDE.md. Verify
+progressive disclosure works end-to-end for all tool spec groups.
+
+The progressive disclosure mechanism already exists — tool specs are doc
+snippets with frontmatter, `telec sync` indexes them, `get_context` serves
+them on demand, and `baseline: true` controls auto-loading. This todo wires
+the new tool specs into that existing system.
 
 ## Scope
 
 ### In scope
 
-- Configure baseline tool specs to auto-load in system prompt
-- Configure on-demand tool specs for progressive disclosure
-- Update AGENTS.master.md to reference new tool system instead of MCP
-- Map role-based MCP filtering to context-selection disclosure rules
-- Regenerate AGENTS.md / CLAUDE.md
-- Validate progressive disclosure works end-to-end
+- Update AGENTS.master.md baseline index to reference tool spec docs
+- Add baseline tool specs (6 tools) to the auto-loaded section
+- Add on-demand tool group index with descriptions
+- Add role metadata to tool spec frontmatter for filtering
+- Map MCP role filtering to context-selection disclosure:
+  - Worker → exclude workflow/ and infrastructure/
+  - Customer → minimal tool set
+  - Admin → all tools
+- Remove MCP-specific baseline references from AGENTS.master.md
+- Regenerate AGENTS.md / CLAUDE.md via `telec sync`
+- Verify `telec docs --areas spec` shows tool spec index entries
+- Verify role-based filtering works
 
 ### Out of scope
 
-- Writing the tool spec docs (done in prior phase)
-- Building the tc CLI (done in prior phase)
-- Removing MCP (later phase)
+- Writing tool spec docs (done in Phase 2)
+- Building telec subcommands (done in Phase 1)
+- Removing MCP server (later phase)
+- Changes to the context-selection engine itself (already works)
 
 ## Success Criteria
 
 - [ ] 6 baseline tool specs auto-loaded in agent system prompts
-- [ ] `telec context query --areas spec` shows tool spec index entries
+- [ ] `telec docs --areas spec` shows tool spec index entries
 - [ ] Worker role does not see workflow/ or infrastructure/ tool specs
 - [ ] Customer role sees minimal tool set
-- [ ] Admin role sees all tool specs
 - [ ] AGENTS.md contains tool system guidance (telec usage, discovery)
 - [ ] No MCP-specific baseline references remain in AGENTS.md
+- [ ] `telec sync --validate-only` passes
 
 ## Constraints
 

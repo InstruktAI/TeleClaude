@@ -64,7 +64,7 @@ def test_render_agent_output_thinking(tmp_path):
     )
 
     result, _ts = render_agent_output(str(transcript_path), AgentName.CLAUDE)
-    assert "*Let me think...*" in result
+    assert "Let me think..." in result
     assert "Hi there" in result
 
 
@@ -122,7 +122,7 @@ def test_render_agent_output_include_tools(tmp_path):
     )
 
     result, _ts = render_agent_output(str(transcript_path), AgentName.CLAUDE, include_tools=True)
-    assert '🔧 **`test_tool {"arg": 1}`**' in result
+    assert "🔧 **`test_tool`**" in result
     assert "Tool used" in result
 
 

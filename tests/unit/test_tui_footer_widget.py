@@ -52,7 +52,12 @@ def test_footer_renders_enabled_tts_icon_and_click_region(monkeypatch) -> None:
     _assert_indicator(
         screen,
         footer,
-        fill_attrs={0: 3, 1: 6, 2: 9, 3: AGENT_COLORS["codex"]["highlight"]},
+        fill_attrs={
+            0: AGENT_COLORS["claude"]["normal"],
+            1: AGENT_COLORS["gemini"]["normal"],
+            2: AGENT_COLORS["codex"]["normal"],
+            3: AGENT_COLORS["codex"]["highlight"],
+        },
     )
 
     assert any(text == "🔊" for _, _, text, _ in screen.calls)

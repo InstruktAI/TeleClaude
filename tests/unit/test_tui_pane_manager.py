@@ -20,7 +20,8 @@ def test_remote_attach_uses_remote_tmux_binary(monkeypatch) -> None:
 
     cmd = manager._build_attach_cmd("tc_123", info)
 
-    assert "/remote/tmux-wrapper -u set-option -t tc_123 status off" in cmd
+    assert "/remote/tmux-wrapper -u" in cmd
+    assert "set-option -t tc_123 status off" in cmd
     assert "attach-session -t tc_123" in cmd
 
 

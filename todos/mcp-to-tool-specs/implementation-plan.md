@@ -9,62 +9,7 @@ The approach is: **build the new system alongside the old, validate, then cut ov
 
 ---
 
-## Phase 1: Foundation — `telec` Subcommands and Daemon RPC Endpoint
-
-Build the execution backbone that all tool specs will call.
-
-### Task 1.1: Create daemon JSON-RPC endpoint
-
-**File(s):** `teleclaude/api/tool_rpc.py` (new), `teleclaude/api_server.py`
-
-The daemon already has a Unix socket for the API. Add a single `/rpc` endpoint
-that accepts JSON-RPC requests and routes them to the existing command handlers
-and MCP handler logic. This is a thin adapter — no new business logic.
-
-```python
-# POST /rpc
-# {"method": "sessions.list", "params": {"computer": "local"}, "id": 1}
-# → {"result": [...], "id": 1}
-```
-
-- [ ] Create `tool_rpc.py` with method router
-- [ ] Map all 24 tool methods to existing handler functions
-- [ ] Inject `caller_session_id` from request header or param
-- [ ] Mount on API server
-- [ ] Test with curl against running daemon
-
-### Task 1.2: Add tool subcommands to `telec`
-
-**File(s):** `teleclaude/cli/` (extend existing CLI)
-
-Extend the existing `telec` CLI with new subcommand groups matching the tool
-taxonomy. Each subcommand calls the daemon RPC endpoint and prints JSON.
-
-```bash
-telec sessions list
-telec sessions create --computer workstation --project /path --title "Debug"
-telec context query --areas policy,spec
-telec workflow prepare --slug my-item
-```
-
-- [ ] Add subcommand groups matching taxonomy to existing CLI
-- [ ] JSON-RPC call to daemon Unix socket
-- [ ] `caller_session_id` injection from `$TMPDIR/teleclaude_session_id`
-- [ ] Graceful error when daemon unavailable
-- [ ] JSON output to stdout, errors to stderr
-- [ ] `--help` for each subcommand
-- [ ] Existing subcommands (`sync`, `todo`, `init`) unaffected
-
-### Task 1.3: Test `telec` tool subcommands against daemon
-
-- [ ] Verify every tool operation works via `telec`
-- [ ] Compare output with MCP tool output for parity
-- [ ] Test with daemon down (graceful error)
-- [ ] Test session_id injection
-
----
-
-## Phase 2: Tool Spec Docs — Taxonomy and Content
+## Phase 1: Tool Spec Docs — Taxonomy and Content
 
 Write all 24 tool spec doc snippets.
 
@@ -178,7 +123,7 @@ curl -s --unix-socket /tmp/teleclaude.sock ...
 
 ---
 
-## Phase 3: Progressive Disclosure — Context Integration
+## Phase 2: Progressive Disclosure — Context Integration
 
 Wire tool specs into the context-selection pipeline.
 
@@ -221,7 +166,7 @@ Map the current MCP role filtering to context-selection:
 
 ---
 
-## Phase 4: Agent Session Configuration
+## Phase 3: Agent Session Configuration
 
 Update agent spawning to use `telec` subcommands instead of MCP.
 
@@ -259,7 +204,7 @@ The one-shot and elevated invocation modes must no longer reference MCP.
 
 ---
 
-## Phase 5: MCP Removal — The Delete Phase
+## Phase 4: MCP Removal — The Delete Phase
 
 Remove all MCP server code and infrastructure.
 
@@ -303,7 +248,7 @@ Remove all MCP server code and infrastructure.
 
 ---
 
-## Phase 6: Documentation Update
+## Phase 5: Documentation Update
 
 Update all docs that reference MCP.
 
@@ -338,7 +283,7 @@ Update all docs that reference MCP.
 
 ---
 
-## Phase 7: Validation
+## Phase 6: Validation
 
 ### Task 7.1: Integration tests
 
@@ -366,32 +311,20 @@ Update all docs that reference MCP.
 
 ```
 
-Phase 1 (Foundation) ──→ Phase 2 (Docs) ──→ Phase 3 (Disclosure) ──→ Phase 4 (Config)
+Phase 1 (Tool Spec Docs) ──→ Phase 2 (Disclosure) ──→ Phase 3 (Agent Config)
 │
 ▼
-Phase 5 (Delete)
+Phase 4 (Delete MCP)
 │
 ▼
-Phase 6 (Docs Update)
+Phase 5 (Doc Updates)
 │
 ▼
-Phase 7 (Validation)
+Phase 6 (Validation)
 
 ```
 
-Phases 1 and 2 can run in parallel. Phase 3 depends on both. Phase 4 depends on 3.
-Phase 5 is the point of no return — only after Phase 4 validates everything works.
-
-## Estimated Effort
-
-| Phase | Effort | Can Parallelize |
-|-------|--------|-----------------|
-| 1. Foundation | 2-3 days | Yes (with Phase 2) |
-| 2. Tool Spec Docs | 2-3 days | Yes (with Phase 1) |
-| 3. Context Integration | 1-2 days | No |
-| 4. Agent Config | 1-2 days | No |
-| 5. MCP Removal | 1 day | No |
-| 6. Doc Updates | 1 day | Yes (with Phase 5) |
-| 7. Validation | 1-2 days | No |
-| **Total** | **~10-14 days** | |
+Linear chain. Phase 1 is the only independent step. Each subsequent phase depends
+on the prior. Phase 4 is the point of no return — only after Phase 3 validates
+everything works.
 ```
