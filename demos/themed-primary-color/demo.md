@@ -22,20 +22,8 @@ python -c "from teleclaude.cli.tui.theme import _get_env_appearance_mode; mode =
 
 ## Guided Presentation
 
-### What to show
+Launch `telec` and navigate to the TUI. The theme system introduces warm orange tones at agent-level theming.
 
-Launch `telec` and navigate to the TUI. The theme system introduces warm orange
-tones at agent-level theming:
+Start at **Level 0 (default)** — the peaceful, neutral gray palette. This is the calm base. Then navigate the carousel widget to the **agent level** — Claude's warm orange (`#d7af87` dark, `#875f00` light) becomes the primary color. Headers, accents, and focus indicators shift to orange. Toggle back and forth to see the transition.
 
-- **Level 0 (default):** Peaceful, neutral gray palette. This is the calm base.
-- **Agent level:** Claude's warm orange (`#d7af87` dark, `#875f00` light) becomes
-  the primary color. Headers, accents, and focus indicators shift to orange.
-- **Switching:** The carousel widget controls theme level. Navigate through carousel
-  levels to see the transition from peaceful gray to warm orange.
-
-### What to narrate
-
-The theme system detects dark/light mode from macOS system settings and applies
-the correct variant automatically. The agent-variant themes inherit all base
-variables and override only the primary color, keeping the visual language
-consistent while adding personality at higher engagement levels.
+The theme system detects dark/light mode from macOS system settings and applies the correct variant automatically. The agent-variant themes inherit all base variables and override only the primary color, keeping the visual language consistent while adding personality at higher engagement levels.

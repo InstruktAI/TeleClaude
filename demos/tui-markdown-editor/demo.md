@@ -22,21 +22,8 @@ python -c "from teleclaude.cli.tui.pane_manager import TmuxPaneManager; print('T
 
 ## Guided Presentation
 
-### What to show
+Launch `telec` and navigate to the Preparation view. Press `e` on a preparation item to open the editor in the right tmux pane. Full markdown syntax highlighting via Textual TextArea — save with `Ctrl+S`, save-and-quit with `Escape`. The editor auto-saves on focus loss to prevent data loss when switching panes.
 
-Launch `telec` and navigate to the Preparation view. The markdown editor integrates
-into the TUI workflow:
+The editor is a standalone Textual micro-app (`teleclaude.cli.editor`) that runs as a subprocess in the right tmux pane via PaneManagerBridge. This architecture keeps the main TUI responsive — the editor is not embedded.
 
-- **Launch:** Press `e` on a preparation item to open the editor in the right tmux pane.
-- **Editing:** Full markdown syntax highlighting via Textual TextArea. The editor
-  supports save (`Ctrl+S`), save-and-quit (`Escape`), and auto-saves on focus loss.
-- **View mode:** The `--view` flag opens a read-only markdown preview.
-- **Todo creation:** Press `n` in preparation view to create a new todo via the
-  inline editor workflow.
-
-### What to narrate
-
-The editor is a standalone Textual micro-app (`teleclaude.cli.editor`) that runs in
-the right tmux pane via PaneManagerBridge. This architecture keeps the main TUI
-responsive — the editor is a subprocess, not embedded. The auto-save behavior on
-focus loss prevents data loss when switching between panes.
+Try `--view` flag for read-only markdown preview. Then press `n` in preparation view to create a new todo via the inline editor workflow.

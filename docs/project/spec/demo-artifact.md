@@ -19,17 +19,24 @@ Each delivery produces a demo artifact in `demos/`. Artifacts are committed to g
 
 ### demo.md
 
-The primary demonstration artifact. A freeform markdown file with:
+The primary demonstration artifact. Required sections:
 
-- **Executable code blocks** (fenced ` ```bash `) — extracted and run sequentially by `telec todo demo {slug}`. All must exit 0 for the build gate to pass.
-- **Guided steps** — instructions for the AI presenter to operate the system and narrate.
-- **Verification steps** — assertions the AI checks during presentation.
+| Section                  | Content                                                   |
+| ------------------------ | --------------------------------------------------------- |
+| `# Demo: {title}`        | H1 with the delivery title.                               |
+| `## Validation`          | Executable bash code blocks that prove the feature works. |
+| `## Guided Presentation` | Sequential walkthrough steps for the AI presenter.        |
 
-#### Code block conventions
+#### Validation
 
-- Fenced bash blocks are executable by default.
+Fenced ` ```bash ` blocks are extracted and run sequentially by `telec todo demo {slug}`. All must exit 0 for the build gate to pass.
+
 - Blocks preceded by `<!-- skip-validation: reason -->` are skipped by the validator but reported for visibility.
 - The validator prepends the project's `.venv/bin` to PATH so `python` resolves to the project environment.
+
+#### Guided Presentation
+
+A continuous sequence of steps the AI presenter walks through: what to do, what to observe, why it matters. Each step is a natural unit — operate, show, explain — not split into separate concerns. The presenter reads this top-to-bottom and executes.
 
 #### Non-destructive rule
 

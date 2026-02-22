@@ -2,15 +2,10 @@
 
 ## Validation
 
-<!-- Add executable bash code blocks that prove the feature works. -->
-<!-- All blocks are run by `telec todo demo {slug}` as a build gate. -->
+<!-- Bash code blocks that prove the feature works. -->
+<!-- Each block is run by `telec todo demo {slug}` as a build gate — all must exit 0. -->
 
 ## Guided Presentation
 
-### What to show
-
-<!-- Describe what the presenter should demonstrate to the user. -->
-
-### What to narrate
-
-<!-- Describe the key points the presenter should explain. -->
+<!-- Walk through the delivery step by step. For each step: what to do, what to observe, why it matters. -->
+<!-- The AI presenter reads this top-to-bottom and executes. Write it as a continuous sequence. -->
