@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
 
 import httpx
 from instrukt_ai_logging import get_logger
@@ -144,33 +143,6 @@ def scaffold_personal_workspace(person_name: str) -> Path:
         logger.info("Created teleclaude.yml for %s workspace", person_name)
 
     return workspace_path
-
-
-# --- Identity-Aware Routing ---
-
-
-def resolve_project_path(
-    identity: Any | None,
-) -> str:  # guard: loose-any - IdentityContext not imported to avoid circular dep
-    """Resolve project path based on identity.
-
-    - Known person (admin/member/contributor) → personal workspace
-    - Unknown/newcomer/customer → help_desk_dir
-    """
-    from teleclaude.config import config
-
-    if identity is None:
-        return config.computer.help_desk_dir
-
-    person_role = getattr(identity, "person_role", None)
-    person_name = getattr(identity, "person_name", None)
-
-    if person_role in ("customer", "newcomer", None) or person_name is None:
-        return config.computer.help_desk_dir
-
-    # Known person → personal workspace
-    workspace_path = scaffold_personal_workspace(person_name)
-    return str(workspace_path)
 
 
 # --- Credential Binding ---
