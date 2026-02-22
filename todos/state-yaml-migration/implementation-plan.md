@@ -29,9 +29,9 @@ All changes are confined to serialization plumbing. No Pydantic model changes, n
 
 **File(s):** `teleclaude/todo_scaffold.py`
 
-- [ ] Change `state.json` filename to `state.yaml` in `create_todo_skeleton()`
-- [ ] Replace `json.dumps(_DEFAULT_STATE)` with `yaml.dump(_DEFAULT_STATE)` for initial state content
-- [ ] Add `import yaml` (already available as project dependency)
+- [x] Change `state.json` filename to `state.yaml` in `create_todo_skeleton()`
+- [x] Replace `json.dumps(_DEFAULT_STATE)` with `yaml.dump(_DEFAULT_STATE)` for initial state content
+- [x] Add `import yaml` (already available as project dependency)
 
 ### Task 1.3: Update validation
 
