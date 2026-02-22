@@ -3,37 +3,41 @@
 - slug: demo-runner
   description: Demo runner CLI, build-phase demo artifact, conversational interface
 - slug: fix-demo-runner
-  description: Fix demo runner - missing demo field in existing snapshots + /next-demo
+  description:
+    Fix demo runner - missing demo field in existing snapshots + /next-demo
     session_id bug in render_widget
-  after:
-  - demo-runner
 - slug: mcp-migration-telec-commands
   group: mcp-to-tool-specs
-  description: 'Phase 1: Add telec subcommands for all 24 tools with rich --help,
+  description:
+    'Phase 1: Add telec subcommands for all 24 tools with rich --help,
     extend REST API, update telec-cli spec doc with @exec directives'
 - slug: mcp-migration-agent-config
   group: mcp-to-tool-specs
   after:
-  - mcp-migration-telec-commands
-  description: 'Phase 2: Remove MCP from agent session configs, validate all agent
+    - mcp-migration-telec-commands
+  description:
+    'Phase 2: Remove MCP from agent session configs, validate all agent
     types and workflows'
 - slug: mcp-migration-delete-mcp
   group: mcp-to-tool-specs
   after:
-  - mcp-migration-agent-config
-  description: 'Phase 3: Delete all MCP server code (~3,400 lines), update architecture
+    - mcp-migration-agent-config
+  description:
+    'Phase 3: Delete all MCP server code (~3,400 lines), update architecture
     and policy docs'
 - slug: project-aware-bug-routing
 - slug: rolling-session-titles
-  description: Re-summarize session titles based on the last 3 user inputs instead
+  description:
+    Re-summarize session titles based on the last 3 user inputs instead
     of only the first. Use a dedicated rolling prompt that captures session direction.
     Reset the output message on any title change so the telegram title feedback floats
     to the top in Telegram.
 - slug: unified-roadmap-assembly
   after:
-  - mcp-to-tool-specs
+    - mcp-to-tool-specs
 - slug: bug-delivery-service
   description: 'Fire-and-forget bug pipeline: telec bugs report + autonomous fix/review/merge'
 - slug: discord-session-routing
-  description: Per-project Discord forums, role-based routing, adapter-specific titles,
+  description:
+    Per-project Discord forums, role-based routing, adapter-specific titles,
     enriched footer

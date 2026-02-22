@@ -18,17 +18,18 @@ Investigate a topic, gather information from multiple sources, and produce a dur
 - General-purpose research for any topic or question.
 - Uses web search, documentation, and any available information sources.
 - Maintains a persistent record so the same research doesn't need to be repeated.
-- Topic records live under `~/.teleclaude/explore/<topic>/`.
+- Free form research topic records live under `~/.teleclaude/explore/<topic>/`.
 
 **Related skills (for specialized tasks):**
 
-If the user's request is specifically about one of these, suggest the specialized skill instead:
+If the user's request implies using one of these, use these specialized skills:
 
-- `/git-repo-scraper` — Deep analysis of a specific Git repository
+- `/git-repo-scraper` — Deep analysis of a specific Git repository that will be pulled in to a standard location for future reference
 - `/youtube` — YouTube video search, history, transcripts
 - `/tech-stack-docs` — Capturing official library/framework documentation
 
 These skills produce their own artifacts. If you use them during research, link to their outputs rather than duplicating.
+(Example: third party docs research resides under `~/.teleclaude/docs/third-party/<lib>/<topic>.md`.)
 
 ## Inputs
 
@@ -36,6 +37,8 @@ These skills produce their own artifacts. If you use them during research, link 
 - Optional: specific sources to consult or avoid.
 
 ## Outputs
+
+When free form research is done we produce two main artifacts:
 
 - Topic index: `~/.teleclaude/explore/<topic>/index.md` — synthesized findings
 - Topic history: `~/.teleclaude/explore/<topic>/history.md` — log of questions asked and answered

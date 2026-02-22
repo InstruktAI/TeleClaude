@@ -12,8 +12,8 @@ Capture authoritative documentation for project dependencies and store concise i
 ## Scope
 
 - Targeted documentation for libraries, frameworks, and tools used in the project.
-- **Default output**: `~/.teleclaude/docs/third-party/{library}/` (shared across projects).
-- **Project-only output (if requested)**: `docs/third-party/{library}/` within the current repo.
+- **Default output**: `~/.teleclaude/docs/third-party/<library>/` (shared across projects).
+- **Project-only output (if requested)**: `docs/third-party/<library>/` within the current repo.
 - Check the relevant `index.md` before researching:
   - Global: `~/.teleclaude/docs/third-party/index.md`
   - Project: `docs/third-party/index.md`
@@ -29,8 +29,8 @@ Capture authoritative documentation for project dependencies and store concise i
 ## Outputs
 
 - Documentation snippet(s) under the selected scope:
-  - Global: `~/.teleclaude/docs/third-party/{library}/`
-  - Project: `docs/third-party/{library}/`
+  - Global: `~/.teleclaude/docs/third-party/<library>/`
+  - Project: `docs/third-party/<library>/`
 - Each snippet includes a **Sources** section and an explicit **Gaps/Unknowns** note when needed.
 
 ## Procedure

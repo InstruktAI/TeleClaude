@@ -22,13 +22,16 @@ This command is only a router. Choose exactly one mode and execute only that mod
 
 ## Outputs
 
-- A single explicit dispatch choice:
-  - `/next-prepare-draft [slug]`
-  - `/next-prepare-gate [slug]`
+One of or both sequential dispatch choice(s):
+
+1. `/next-prepare-draft`: run inline yourself and gain awareness for the next step, which needs delegation.
+2. `/next-prepare-gate`: run inline yourself or dispatch to an agent using `run_agent_command(cmd="next-prepare-gate", args="<slug>>")`
+
+Never dispatch draft and gate in the same worker turn.
 
 ## Steps
 
 1. Inspect todo state.
-2. If artifacts are missing or weak, run `/next-prepare-draft`.
-3. If artifacts exist and need formal DOR validation, run `/next-prepare-gate`.
-4. Never run draft and gate in the same worker turn.
+2. If artifacts are missing or weak, run `/next-prepare-draft`, and continue to step 4.
+3. If upon startup artifacts exist and need formal DOR validation, run `/next-prepare-gate` yourself.
+4. If YOU just ran /next-prepare-draft, then dispatch `/next-prepare-gate` to an agent.
