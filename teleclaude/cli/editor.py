@@ -1,8 +1,11 @@
-"""Standalone Textual markdown editor for tmux pane integration.
+"""Standalone Textual file editor for tmux pane integration.
 
 Launched by the TUI via PaneManagerBridge as a subprocess in the right
 tmux pane. Supports view mode (--view, read-only) and edit mode (default,
 auto-saves on exit and on focus loss).
+
+File type is detected from extension: markdown files get rich preview in view
+mode; all other files use syntax-highlighted TextArea in both modes.
 
 Usage: python -m teleclaude.cli.editor [-v|--view] [--theme NAME] <filepath>
 """
@@ -77,27 +80,44 @@ class EditorApp(App[None]):
         self.view_mode = view_mode
         self._last_saved_content: str | None = None
 
+    _LANGUAGE_MAP: dict[str, str] = {
+        ".py": "python",
+        ".yaml": "yaml",
+        ".yml": "yaml",
+        ".json": "json",
+        ".toml": "toml",
+        ".md": "markdown",
+        ".txt": "markdown",
+    }
+
+    _MARKDOWN_EXTS: set[str] = {".md", ".txt"}
+
     def compose(self) -> ComposeResult:
         mode_label = "VIEW" if self.view_mode else "EDIT"
         yield Label(f" [{mode_label}] {self.file_path.name}", id="editor-title")
         content = self.file_path.read_text(encoding="utf-8")
         self._last_saved_content = content
-        if self.view_mode:
+        ext = self.file_path.suffix.lower()
+        language = self._LANGUAGE_MAP.get(ext, "markdown")
+        is_markdown = ext in self._MARKDOWN_EXTS
+        if self.view_mode and is_markdown:
             with VerticalScroll(id="view-area"):
                 yield Markdown(content)
         else:
             yield TextArea(
                 content,
-                language="markdown",
+                language=language,
                 soft_wrap=True,
                 show_line_numbers=True,
                 tab_behavior="indent",
+                read_only=self.view_mode,
                 id="editor-area",
             )
 
     def on_mount(self) -> None:
-        if not self.view_mode:
-            self.query_one("#editor-area", TextArea).focus()
+        editors = self.query("#editor-area")
+        if editors:
+            editors.first(TextArea).focus()
 
     def on_app_blur(self, _event: AppBlur) -> None:
         """Auto-save when the pane loses focus (requires tmux focus-events on)."""
@@ -129,8 +149,8 @@ class EditorApp(App[None]):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Standalone Textual markdown editor")
-    parser.add_argument("filepath", type=Path, help="Path to markdown file")
+    parser = argparse.ArgumentParser(description="Standalone Textual file editor")
+    parser.add_argument("filepath", type=Path, help="Path to file")
     parser.add_argument("-v", "--view", action="store_true", help="View mode (read-only)")
     parser.add_argument("--theme", default="teleclaude-dark", help="Textual theme name")
 

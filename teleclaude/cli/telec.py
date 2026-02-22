@@ -69,6 +69,7 @@ class CommandDef:
     subcommands: dict[str, "CommandDef"] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)  # extra lines for subcommand help
     hidden: bool = False  # hide from help output and completion
+    standalone: bool = False  # bare invocation has behavior (not just help text)
 
     @property
     def visible_flags(self) -> list[Flag]:
@@ -169,6 +170,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
     ),
     "roadmap": CommandDef(
         desc="View and manage the work item roadmap",
+        standalone=True,
         flags=[
             Flag("--include-icebox", "-i", "Include icebox items"),
             Flag("--icebox-only", "-o", "Show only icebox items"),
@@ -249,6 +251,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
     ),
     "config": CommandDef(
         desc="Interactive configuration (or subcommands)",
+        standalone=True,
         flags=[_H, _PROJECT_ROOT, Flag("--format", "-f", "Output format (yaml or json)")],
         subcommands={
             "get": CommandDef(desc="Get config values", args="[paths...]"),
@@ -341,8 +344,9 @@ def _usage_main() -> str:
         args_str = f" {cmd.args}" if cmd.args else ""
 
         if cmd.subcommands:
-            entry = f"telec {name}"
-            lines.append(f"  {entry:<{col}}# {cmd.desc}")
+            if cmd.standalone:
+                entry = f"telec {name}"
+                lines.append(f"  {entry:<{col}}# {cmd.desc}")
             for sub_name, sub_cmd in cmd.subcommands.items():
                 sub_args = f" {sub_cmd.args}" if sub_cmd.args else ""
                 sub_flag_str = " [options]" if sub_cmd.visible_flags else ""
@@ -361,8 +365,9 @@ def _usage_subcmd(cmd_name: str) -> str:
     lines = ["Usage:"]
 
     if cmd.subcommands:
-        entry = f"telec {cmd_name}"
-        lines.append(f"  {entry:<{col}}# {cmd.desc}")
+        if cmd.standalone:
+            entry = f"telec {cmd_name}"
+            lines.append(f"  {entry:<{col}}# {cmd.desc}")
 
         for sub_name, sub_cmd in cmd.subcommands.items():
             args_str = f" {sub_cmd.args}" if sub_cmd.args else ""
@@ -472,12 +477,11 @@ def _handle_completion() -> None:
     if cmd == "docs":
         _complete_docs(rest, current, is_partial)
     elif cmd in ("sync", "watch", "revive", "list"):
-        _complete_flags(CLI_SURFACE[cmd].flag_tuples, rest, current, is_partial)
+        _complete_flags(CLI_SURFACE[cmd].flag_tuples, rest, current, is_partial, CLI_SURFACE[cmd].args)
     elif cmd in ("claude", "gemini", "codex"):
         _complete_agent(rest, current, is_partial)
-    elif cmd in ("todo", "roadmap", "config"):
+    elif cmd in CLI_SURFACE and CLI_SURFACE[cmd].subcommands:
         _complete_subcmd(cmd, rest, current, is_partial)
-    # init has no further completions
 
 
 def _flag_used(flag_tuple: tuple[str | None, str, str], used: set[str]) -> bool:
@@ -531,17 +535,27 @@ def _complete_docs(rest: list[str], current: str, is_partial: bool) -> None:
             _print_flag(flag)
 
 
-def _complete_flags(flags: list[tuple[str | None, str, str]], rest: list[str], current: str, is_partial: bool) -> None:
-    """Complete simple flag-only commands."""
+def _complete_flags(
+    flags: list[tuple[str | None, str, str]], rest: list[str], current: str, is_partial: bool, args: str = ""
+) -> None:
+    """Complete commands with flags and optional positional arg hints."""
     used_flags = set(rest)
     if is_partial and current.startswith("-"):
         for flag in flags:
             if _flag_matches(flag, current) and not _flag_used(flag, used_flags):
                 _print_flag(flag)
-    else:
-        for flag in flags:
-            if not _flag_used(flag, used_flags):
-                _print_flag(flag)
+        return
+
+    # Show positional arg hints for args not yet provided
+    if args:
+        positional_rest = [a for a in rest if not a.startswith("-")]
+        for i, arg_hint in enumerate(args.split()):
+            if i >= len(positional_rest):
+                _print_completion(arg_hint, "required" if arg_hint.startswith("<") else "optional")
+
+    for flag in flags:
+        if not _flag_used(flag, used_flags):
+            _print_flag(flag)
 
 
 def _complete_agent(rest: list[str], current: str, is_partial: bool) -> None:
@@ -568,10 +582,14 @@ def _complete_subcmd(cmd_name: str, rest: list[str], current: str, is_partial: b
                 _print_completion(subcommand, desc)
         return
 
-    # Flag completion: use subcommand-specific flags if available, else parent flags
+    # Subcommand-level completion: positional args + flags
     subcmd = rest[0]
     sub_def = cmd_def.subcommands.get(subcmd)
     flags = sub_def.flag_tuples if sub_def and sub_def.flags else cmd_def.flag_tuples
+
+    # Count non-flag args provided after the subcommand
+    positional_rest = [a for a in rest[1:] if not a.startswith("-")]
+    expected_positionals = sub_def.args.split() if sub_def and sub_def.args else []
 
     used = set(rest[1:])
     if is_partial and current.startswith("-"):
@@ -579,6 +597,11 @@ def _complete_subcmd(cmd_name: str, rest: list[str], current: str, is_partial: b
             if _flag_matches(flag, current) and not _flag_used(flag, used):
                 _print_flag(flag)
         return
+
+    # Show positional arg hints for args not yet provided
+    for i, arg_hint in enumerate(expected_positionals):
+        if i >= len(positional_rest):
+            _print_completion(arg_hint, "required" if arg_hint.startswith("<") else "optional")
 
     for flag in flags:
         if not _flag_used(flag, used):

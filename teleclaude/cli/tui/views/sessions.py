@@ -73,7 +73,7 @@ class SessionsView(Widget, can_focus=True):
         ("enter", "focus_pane", "Focus pane"),
         ("left", "collapse", "Collapse"),
         ("right", "expand", "Expand"),
-        ("plus", "expand_all", "Expand all"),
+        ("equals_sign", "expand_all", "Expand all"),
         ("minus", "collapse_all", "Collapse all"),
         ("n", "new_session", "New session"),
         ("k", "kill_session", "Kill session"),

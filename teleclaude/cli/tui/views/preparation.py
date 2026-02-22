@@ -31,7 +31,7 @@ class PreparationView(Widget, can_focus=True):
     """Preparation tab view showing todo items grouped by project.
 
     Navigation: arrows, left/right expand/collapse, Enter = toggle expand,
-    +/- expand/collapse all, p = prepare, s = start work.
+    =/- expand/collapse all, p = prepare, s = start work.
     """
 
     DEFAULT_CSS = """
@@ -52,7 +52,7 @@ class PreparationView(Widget, can_focus=True):
         ("right", "expand", "Expand"),
         ("enter", "activate", "Activate"),
         ("space", "preview_file", "Preview"),
-        ("plus", "expand_all", "Expand all"),
+        ("equals_sign", "expand_all", "Expand all"),
         ("minus", "collapse_all", "Collapse all"),
         ("n", "new_todo", "New todo"),
         ("b", "new_bug", "New bug"),
