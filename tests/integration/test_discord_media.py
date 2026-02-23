@@ -82,6 +82,7 @@ def mock_client() -> AdapterClient:
     client.delete_message = AsyncMock()
     client.broadcast_user_input = AsyncMock()
     client.break_threaded_turn = AsyncMock()
+    client.adapters = {}
     return client
 
 
@@ -124,7 +125,7 @@ def create_fake_message(
     attachments: list[object] | None = None,
     author_id: str = "123456",
     message_id: int = 1001,
-    guild_id: int | None = None,
+    guild_id: int = 202020,
     channel_id: int = 789,
 ) -> object:
     """Create a fake Discord message."""
@@ -132,8 +133,8 @@ def create_fake_message(
         id=message_id,
         content=content,
         attachments=attachments or [],
-        author=SimpleNamespace(id=author_id),
-        guild=SimpleNamespace(id=guild_id) if guild_id else None,
+        author=SimpleNamespace(id=author_id, bot=False),
+        guild=SimpleNamespace(id=guild_id),
         channel=SimpleNamespace(
             id=channel_id,
             parent_id=None,
@@ -157,22 +158,31 @@ async def test_image_only_message(
     mock_handle_file = AsyncMock()
     mock_process_message = AsyncMock()
 
-    with (
-        patch("teleclaude.adapters.discord_adapter.db", session_manager),
-        patch("teleclaude.adapters.discord_adapter.get_command_service") as mock_cmd_service,
-        patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule),
-        patch("teleclaude.adapters.discord_adapter.config") as mock_config,
-    ):
-        mock_config.discord.token = "test-token"
-        mock_config.discord.guild_id = None
-        mock_config.discord.help_desk_channel_id = 789
-        mock_cmd_service.return_value.handle_file = mock_handle_file
-        mock_cmd_service.return_value.process_message = mock_process_message
-
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
         adapter = DiscordAdapter(
             client=mock_client,
             task_registry=MagicMock(),
         )
+
+    # Isolate from host config
+    adapter._guild_id = None
+    adapter._help_desk_channel_id = 789
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": discord_session.session_id})
+    fake_command_service.handle_file = mock_handle_file
+    fake_command_service.process_message = mock_process_message
+
+    fake_db = MagicMock()
+    fake_db.get_sessions_by_adapter_metadata = AsyncMock(return_value=[])
+    fake_db.get_session = AsyncMock(return_value=discord_session)
+    fake_db.update_session = AsyncMock(return_value=discord_session)
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+    ):
         await adapter._handle_on_message(message)
 
     # Verify file was downloaded
@@ -207,22 +217,31 @@ async def test_file_only_message(
     mock_handle_file = AsyncMock()
     mock_process_message = AsyncMock()
 
-    with (
-        patch("teleclaude.adapters.discord_adapter.db", session_manager),
-        patch("teleclaude.adapters.discord_adapter.get_command_service") as mock_cmd_service,
-        patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule),
-        patch("teleclaude.adapters.discord_adapter.config") as mock_config,
-    ):
-        mock_config.discord.token = "test-token"
-        mock_config.discord.guild_id = None
-        mock_config.discord.help_desk_channel_id = 789
-        mock_cmd_service.return_value.handle_file = mock_handle_file
-        mock_cmd_service.return_value.process_message = mock_process_message
-
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
         adapter = DiscordAdapter(
             client=mock_client,
             task_registry=MagicMock(),
         )
+
+    # Isolate from host config
+    adapter._guild_id = None
+    adapter._help_desk_channel_id = 789
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": discord_session.session_id})
+    fake_command_service.handle_file = mock_handle_file
+    fake_command_service.process_message = mock_process_message
+
+    fake_db = MagicMock()
+    fake_db.get_sessions_by_adapter_metadata = AsyncMock(return_value=[])
+    fake_db.get_session = AsyncMock(return_value=discord_session)
+    fake_db.update_session = AsyncMock(return_value=discord_session)
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+    ):
         await adapter._handle_on_message(message)
 
     # Verify file was downloaded
@@ -257,22 +276,31 @@ async def test_text_plus_image(
     mock_handle_file = AsyncMock()
     mock_dispatch_command = AsyncMock()
 
-    with (
-        patch("teleclaude.adapters.discord_adapter.db", session_manager),
-        patch("teleclaude.adapters.discord_adapter.get_command_service") as mock_cmd_service,
-        patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule),
-        patch("teleclaude.adapters.discord_adapter.config") as mock_config,
-    ):
-        mock_config.discord.token = "test-token"
-        mock_config.discord.guild_id = None
-        mock_config.discord.help_desk_channel_id = 789
-        mock_cmd_service.return_value.handle_file = mock_handle_file
-
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
         adapter = DiscordAdapter(
             client=mock_client,
             task_registry=MagicMock(),
         )
-        adapter._dispatch_command = mock_dispatch_command
+
+    # Isolate from host config
+    adapter._guild_id = None
+    adapter._help_desk_channel_id = 789
+    adapter._dispatch_command = mock_dispatch_command
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": discord_session.session_id})
+    fake_command_service.handle_file = mock_handle_file
+
+    fake_db = MagicMock()
+    fake_db.get_sessions_by_adapter_metadata = AsyncMock(return_value=[])
+    fake_db.get_session = AsyncMock(return_value=discord_session)
+    fake_db.update_session = AsyncMock(return_value=discord_session)
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+    ):
         await adapter._handle_on_message(message)
 
     # Verify handle_file was called with caption
@@ -307,21 +335,31 @@ async def test_multiple_attachments(
 
     mock_handle_file = AsyncMock()
 
-    with (
-        patch("teleclaude.adapters.discord_adapter.db", session_manager),
-        patch("teleclaude.adapters.discord_adapter.get_command_service") as mock_cmd_service,
-        patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule),
-        patch("teleclaude.adapters.discord_adapter.config") as mock_config,
-    ):
-        mock_config.discord.token = "test-token"
-        mock_config.discord.guild_id = None
-        mock_config.discord.help_desk_channel_id = 789
-        mock_cmd_service.return_value.handle_file = mock_handle_file
-
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
         adapter = DiscordAdapter(
             client=mock_client,
             task_registry=MagicMock(),
         )
+
+    # Isolate from host config
+    adapter._guild_id = None
+    adapter._help_desk_channel_id = 789
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": discord_session.session_id})
+    fake_command_service.handle_file = mock_handle_file
+    fake_command_service.process_message = AsyncMock()
+
+    fake_db = MagicMock()
+    fake_db.get_sessions_by_adapter_metadata = AsyncMock(return_value=[])
+    fake_db.get_session = AsyncMock(return_value=discord_session)
+    fake_db.update_session = AsyncMock(return_value=discord_session)
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+    ):
         await adapter._handle_on_message(message)
 
     # Verify all three files were downloaded
@@ -338,6 +376,9 @@ async def test_multiple_attachments(
 
     second_call = mock_handle_file.await_args_list[1][0][0]
     assert second_call.caption is None
+
+    # Verify process_message was also called (for the text)
+    fake_command_service.process_message.assert_awaited_once()
 
 
 @pytest.mark.integration
@@ -359,21 +400,30 @@ async def test_download_failure_continues(
 
     mock_handle_file = AsyncMock()
 
-    with (
-        patch("teleclaude.adapters.discord_adapter.db", session_manager),
-        patch("teleclaude.adapters.discord_adapter.get_command_service") as mock_cmd_service,
-        patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule),
-        patch("teleclaude.adapters.discord_adapter.config") as mock_config,
-    ):
-        mock_config.discord.token = "test-token"
-        mock_config.discord.guild_id = None
-        mock_config.discord.help_desk_channel_id = 789
-        mock_cmd_service.return_value.handle_file = mock_handle_file
-
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
         adapter = DiscordAdapter(
             client=mock_client,
             task_registry=MagicMock(),
         )
+
+    # Isolate from host config
+    adapter._guild_id = None
+    adapter._help_desk_channel_id = 789
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": discord_session.session_id})
+    fake_command_service.handle_file = mock_handle_file
+
+    fake_db = MagicMock()
+    fake_db.get_sessions_by_adapter_metadata = AsyncMock(return_value=[])
+    fake_db.get_session = AsyncMock(return_value=discord_session)
+    fake_db.update_session = AsyncMock(return_value=discord_session)
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+    ):
         await adapter._handle_on_message(message)
 
     # Verify first download was attempted
@@ -403,22 +453,31 @@ async def test_audio_attachment_still_uses_voice_path(
     mock_handle_voice = AsyncMock()
     mock_handle_file = AsyncMock()
 
-    with (
-        patch("teleclaude.adapters.discord_adapter.db", session_manager),
-        patch("teleclaude.adapters.discord_adapter.get_command_service") as mock_cmd_service,
-        patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule),
-        patch("teleclaude.adapters.discord_adapter.config") as mock_config,
-    ):
-        mock_config.discord.token = "test-token"
-        mock_config.discord.guild_id = None
-        mock_config.discord.help_desk_channel_id = 789
-        mock_cmd_service.return_value.handle_voice = mock_handle_voice
-        mock_cmd_service.return_value.handle_file = mock_handle_file
-
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
         adapter = DiscordAdapter(
             client=mock_client,
             task_registry=MagicMock(),
         )
+
+    # Isolate from host config
+    adapter._guild_id = None
+    adapter._help_desk_channel_id = 789
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": discord_session.session_id})
+    fake_command_service.handle_voice = mock_handle_voice
+    fake_command_service.handle_file = mock_handle_file
+
+    fake_db = MagicMock()
+    fake_db.get_sessions_by_adapter_metadata = AsyncMock(return_value=[])
+    fake_db.get_session = AsyncMock(return_value=discord_session)
+    fake_db.update_session = AsyncMock(return_value=discord_session)
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+    ):
         await adapter._handle_on_message(message)
 
     # Verify voice handler was called
