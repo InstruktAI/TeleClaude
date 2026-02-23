@@ -60,29 +60,29 @@ Add clickable agent pills to the TUI StatusBar by: (1) adding `degraded_until` t
 
 **File(s):** `teleclaude/cli/tui/widgets/status_bar.py`
 
-- [ ] Add instance field `_agent_regions: list[tuple[int, int, str]]` to track `(start_x, end_x, agent_name)` for each rendered pill
-- [ ] In `render()`, record each agent pill's start and end x-positions based on `line.cell_len` before and after appending
-- [ ] Reset regions at the start of each render call
+- [x] Add instance field `_agent_regions: list[tuple[int, int, str]]` to track `(start_x, end_x, agent_name)` for each rendered pill
+- [x] In `render()`, record each agent pill's start and end x-positions based on `line.cell_len` before and after appending
+- [x] Reset regions at the start of each render call
 
 ### Task 3.2: Handle agent pill clicks
 
 **File(s):** `teleclaude/cli/tui/widgets/status_bar.py`
 
-- [ ] In `on_click()`, check if click x falls within any agent region before checking toggle regions
-- [ ] If agent region hit, post `SettingsChanged("agent_status", {"agent": agent_name})`
-- [ ] The cycle logic (determining the _next_ status) lives in the app handler, not the widget
+- [x] In `on_click()`, check if click x falls within any agent region before checking toggle regions
+- [x] If agent region hit, post `SettingsChanged("agent_status", {"agent": agent_name})`
+- [x] The cycle logic (determining the _next_ status) lives in the app handler, not the widget
 
 ### Task 3.3: Handle agent status change in app
 
 **File(s):** `teleclaude/cli/tui/app.py`
 
-- [ ] In `on_settings_changed`, add handler for key `"agent_status"`
-- [ ] Extract agent name from `message.value`
-- [ ] Look up current status from the `StatusBar` widget's `_agent_availability` dict
-- [ ] Determine next status: available → degraded, degraded → unavailable, unavailable → available
-- [ ] Call `self.api.set_agent_status(agent, next_status, reason="manual", duration_minutes=60)`
-- [ ] On success, update the StatusBar's `_agent_availability` for that agent from the API response and call `status_bar.refresh()`
-- [ ] On failure, show error notification
+- [x] In `on_settings_changed`, add handler for key `"agent_status"`
+- [x] Extract agent name from `message.value`
+- [x] Look up current status from the `StatusBar` widget's `_agent_availability` dict
+- [x] Determine next status: available → degraded, degraded → unavailable, unavailable → available
+- [x] Call `self.api.set_agent_status(agent, next_status, reason="manual", duration_minutes=60)`
+- [x] On success, update the StatusBar's `_agent_availability` for that agent from the API response and call `status_bar.refresh()`
+- [x] On failure, show error notification
 
 ---
 
