@@ -1,9 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: lifecycle-enforcement-gates
-  description: Machine-enforced build gates — demo subcommand refactor, state machine
-    gate validation in next_work(), POST_COMPLETION flow changes, snapshot.json reduction,
-    and lazy state marking.
 - slug: discord-adapter-integrity
 - slug: adapter-output-delivery
 - slug: consolidate-methodology-skills

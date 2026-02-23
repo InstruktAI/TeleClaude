@@ -1,4 +1,9 @@
 # Delivered work items. Newest first.
+- slug: lifecycle-enforcement-gates
+  date: '2026-02-23'
+  title: Machine-enforced build gates — demo subcommand refactor, state machine gate validation in next_work(), POST_COMPLETION flow changes, snapshot.json reduction, and lazy state marking
+  outcome: DELIVERED
+  commit: a7361db7
 - slug: remove-phase-field
   date: '2026-02-23'
   title: Remove redundant phase field in favor of build/review status
