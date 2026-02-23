@@ -22,7 +22,8 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext
 from teleclaude.core.models import SessionAdapterMetadata
 from teleclaude.core.origins import InputOrigin
-from teleclaude.types.commands import CreateSessionCommand, HandleVoiceCommand, ProcessMessageCommand
+from teleclaude.core.session_utils import get_session_output_dir
+from teleclaude.types.commands import CreateSessionCommand, HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -983,9 +984,14 @@ class DiscordAdapter(UiAdapter):
             await self._handle_voice_attachment(message, audio_attachment)
             return
 
+        # Handle image/file attachments (non-audio)
+        file_attachments = self._extract_file_attachments(message)
+        if file_attachments:
+            await self._handle_file_attachments(message, file_attachments)
+
         text = getattr(message, "content", None)
         if not isinstance(text, str) or not text.strip():
-            return
+            return  # No text — if attachments existed, they were already handled above
 
         try:
             session = await self._resolve_or_create_session(message)
@@ -1148,6 +1154,19 @@ class DiscordAdapter(UiAdapter):
                 return attachment
         return None
 
+    @staticmethod
+    def _extract_file_attachments(message: object) -> list[object]:
+        """Return all non-audio attachments from a Discord message."""
+        attachments = getattr(message, "attachments", None)
+        if not attachments:
+            return []
+        result = []
+        for attachment in attachments:
+            content_type = getattr(attachment, "content_type", None) or ""
+            if not content_type.startswith("audio/"):
+                result.append(attachment)
+        return result
+
     async def _handle_voice_attachment(self, message: object, attachment: object) -> None:
         """Download a voice/audio attachment and dispatch it for transcription."""
         try:
@@ -1189,6 +1208,64 @@ class DiscordAdapter(UiAdapter):
         except Exception as exc:
             error_msg = str(exc) if str(exc).strip() else "Unknown error"
             logger.error("Failed to process Discord voice message: %s", error_msg, exc_info=True)
+
+    async def _handle_file_attachments(self, message: object, attachments: list[object]) -> None:
+        """Download file/image attachments and dispatch them for processing."""
+        try:
+            session = await self._resolve_or_create_session(message)
+        except Exception as exc:
+            logger.error("Discord session resolution failed for file attachments: %s", exc, exc_info=True)
+            return
+        if not session:
+            return
+
+        # Get text caption for the first attachment only (to avoid duplication)
+        caption = getattr(message, "content", None)
+        if not isinstance(caption, str) or not caption.strip():
+            caption = None
+
+        for i, attachment in enumerate(attachments):
+            filename = f"file_{i}.dat"  # Default fallback
+            try:
+                # Determine file type and subdirectory
+                content_type = getattr(attachment, "content_type", None) or ""
+                is_image = content_type.startswith("image/")
+                subdir = "photos" if is_image else "files"
+
+                # Derive filename
+                filename = getattr(attachment, "filename", None)
+                if not filename:
+                    ext = ".jpg" if is_image else ".dat"
+                    filename = f"file_{i}{ext}"
+
+                # Download to session workspace
+                output_dir = get_session_output_dir(session.session_id) / subdir
+                output_dir.mkdir(parents=True, exist_ok=True)
+                file_path = output_dir / filename
+
+                save_fn = self._require_async_callable(
+                    getattr(attachment, "save", None), label="Discord attachment save"
+                )
+                await save_fn(file_path)
+                logger.info("Downloaded Discord %s to: %s", "image" if is_image else "file", file_path)
+
+                # Dispatch via command service
+                # Only include caption for the first attachment
+                attachment_caption = caption if i == 0 else None
+                await get_command_service().handle_file(
+                    HandleFileCommand(
+                        session_id=session.session_id,
+                        file_path=str(file_path),
+                        filename=filename,
+                        caption=attachment_caption,
+                    )
+                )
+            except Exception as exc:
+                error_msg = str(exc) if str(exc).strip() else "Unknown error"
+                logger.error(
+                    "Failed to process Discord attachment %s: %s", filename if filename else i, error_msg, exc_info=True
+                )
+                # Continue to next attachment
 
     async def _resolve_or_create_session(self, message: object) -> "Session | None":
         user_id = str(getattr(getattr(message, "author", None), "id", ""))

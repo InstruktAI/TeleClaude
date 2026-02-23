@@ -7,10 +7,15 @@ computers. No versioning, no channels, no migration support. Just yolo-pull main
 
 ### What we want
 
+**Automated deployment triggered by commits — no deploy command.**
+
+The fundamental shift: deployment is not a command you run. It is a consequence of
+committing code. Push to main, and everything downstream happens automatically.
+
 **Channel-based deployment subscription model:**
 
 - **Alpha** — follows `main`. Every push auto-deploys. Only dev machines subscribe
-  to this. This is what the primary dev machine already does.
+  to this. The daemon watches for new commits on main and auto-pulls.
 
 - **Beta** — follows GitHub releases (minor + patch). CI passes, release is created,
   beta subscribers auto-pull. Breaking changes (minors) are allowed because every
@@ -49,12 +54,17 @@ alongside every incompatible change.
 
 ### CI/release pipeline integration
 
-- GitHub Actions CI is thorough and creates releases automatically
+- GitHub Actions CI runs on every push to main
+- CI creates GitHub releases (tag-based)
 - Patch releases trigger beta + stable deployments
 - Minor releases trigger beta deployments (stable stays pinned)
 - Each release is a GitHub release with the migration manifest attached
-- `telec deploy` becomes idempotent: checks channel subscription, checks
-  available version, pulls if newer, runs migrations, restarts
+
+### What this replaces
+
+The current `teleclaude__deploy` MCP tool / `telec deploy` command which
+just does `git pull + restart` via Redis transport to all connected computers.
+Both the command and MCP tool are removed when this ships.
 
 ### Open questions
 
@@ -62,12 +72,5 @@ alongside every incompatible change.
 - How do migration manifests get authored? Part of the PR process?
   (e.g. `migrations/v1.3.0/` directory with ordered scripts)
 - How does rollback work? If a migration fails mid-way?
-- Should alpha channel use releases too, or literally follow main HEAD?
-- How does the dev machine (alpha) handle the fact that main may have
-  commits that haven't been released yet? That's fine — alpha is by
-  definition "whatever is on main."
-
-### What this replaces
-
-The current `teleclaude__deploy` MCP tool / `telec deploy` command which
-just does `git pull + restart` via Redis transport to all connected computers.
+- How does the daemon detect new versions? Poll git remote? Redis notification?
+  Webhook? A background job seems most natural given existing cron infra.

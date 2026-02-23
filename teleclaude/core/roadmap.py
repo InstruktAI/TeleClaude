@@ -11,7 +11,7 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.models import TodoInfo
-from teleclaude.core.next_machine.core import load_icebox_slugs, load_roadmap
+from teleclaude.core.next_machine.core import load_icebox, load_roadmap
 
 logger = get_logger(__name__)
 
@@ -47,20 +47,19 @@ def assemble_roadmap(
         """Normalize a todo title heading into a filesystem-style slug."""
         return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
-    def parse_icebox_slugs() -> set[str]:
-        """Collect todo slugs currently parked in icebox.yaml (or legacy icebox.md)."""
-        icebox_yaml = todos_root / "icebox.yaml"
-        if icebox_yaml.exists():
-            return set(load_icebox_slugs(str(todos_root.parent)))
+    # Load icebox data — full entries when yaml exists, slugs-only for legacy
+    icebox_entries = []
+    icebox_slugs: set[str] = set()
+    icebox_groups: set[str] = set()
 
-        # Legacy fallback: parse icebox.md
-        icebox_slugs: set[str] = set()
-        if not icebox_path.exists():
-            return icebox_slugs
-
+    icebox_yaml_path = todos_root / "icebox.yaml"
+    if icebox_yaml_path.exists():
+        icebox_entries = load_icebox(str(todos_root.parent))
+        icebox_slugs = {e.slug for e in icebox_entries}
+        icebox_groups = {e.group for e in icebox_entries if e.group}
+    elif icebox_path.exists():
         heading_pattern = re.compile(r"^\s*#+\s+(.*)\s*$")
         table_pattern = re.compile(r"\|\s*([a-z0-9-]+)\s*\|")
-
         try:
             for line in icebox_path.read_text(encoding="utf-8").splitlines():
                 heading_match = heading_pattern.match(line)
@@ -69,18 +68,13 @@ def assemble_roadmap(
                     if heading and heading.lower() != "icebox":
                         icebox_slugs.add(slugify_heading(heading))
                     continue
-
                 table_match = table_pattern.search(line)
                 if table_match:
                     slug = table_match.group(1)
                     if slug != "slug":
                         icebox_slugs.add(slug)
         except OSError:
-            return set()
-
-        return icebox_slugs
-
-    icebox_slugs = parse_icebox_slugs()
+            pass
 
     def read_todo_metadata(
         todo_dir: Path,
@@ -225,7 +219,15 @@ def assemble_roadmap(
             seen_slugs.add(slug)
             append_todo(slug, description=entry.description, after=entry.after, group=entry.group)
 
-    # 2. Scan for remaining directories (orphans or icebox items)
+    # 2. Load icebox entries with their real metadata (group, after, description)
+    if include_icebox:
+        for entry in icebox_entries:
+            if entry.slug in seen_slugs:
+                continue
+            seen_slugs.add(entry.slug)
+            append_todo(entry.slug, description=entry.description, after=entry.after, group=entry.group)
+
+    # 3. Scan for remaining directories (orphans or untracked icebox containers)
     for todo_dir in sorted(todos_root.iterdir(), key=lambda p: p.name):
         if not todo_dir.is_dir():
             continue
@@ -234,25 +236,27 @@ def assemble_roadmap(
         if todo_dir.name in seen_slugs:
             continue
 
-        is_icebox = todo_dir.name in icebox_slugs
+        is_icebox = todo_dir.name in icebox_slugs or todo_dir.name in icebox_groups
 
-        # Skip if it's an icebox item and we're not including icebox
         if is_icebox and not include_icebox:
             continue
-
-        # Skip if we're ONLY showing icebox and this IS NOT an icebox item
-        # (This catches orphans when icebox_only=True)
         if icebox_only and not is_icebox:
             continue
 
         seen_slugs.add(todo_dir.name)
+        # Icebox group containers get their group name; stray icebox slugs get "Icebox"
+        orphan_group: str | None = None
+        if todo_dir.name in icebox_groups:
+            orphan_group = todo_dir.name
+        elif todo_dir.name in icebox_slugs:
+            orphan_group = "Icebox"
         append_todo(
             todo_dir.name,
             description=infer_input_description(todo_dir),
-            group="Icebox" if is_icebox else None,
+            group=orphan_group,
         )
 
-    # 3. Inject container→child relationships from breakdown.todos in state.yaml.
+    # 4. Inject container→child relationships from breakdown.todos in state.yaml.
     # This makes container todos appear as tree parents of their sub-items.
     # The reordering loop below is safe because it rebuilds slug_to_idx after each mutation,
     # ensuring that hierarchical containers (no circular deps) are correctly repositioned

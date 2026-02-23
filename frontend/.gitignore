@@ -44,3 +44,6 @@ next-env.d.ts
 
 # drizzle
 /drizzle/
+
+# local theme overrides
+/public/theme.local.css
