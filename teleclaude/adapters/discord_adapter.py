@@ -335,11 +335,18 @@ class DiscordAdapter(UiAdapter):
         return cat
 
     def _build_project_forum_map(self) -> None:
-        """Build project_path -> forum_id mapping from trusted dirs."""
-        self._project_forum_map = {}
-        for td in config.computer.get_all_trusted_dirs():
-            if td.discord_forum is not None and td.path:
-                self._project_forum_map[td.path] = td.discord_forum
+        """Build project_path -> forum_id mapping from trusted dirs.
+
+        Sorted by path length descending so most-specific paths match first
+        during prefix lookup (e.g. ~/Workspace/InstruktAI before ~).
+        """
+        entries = [
+            (td.path, td.discord_forum)
+            for td in config.computer.get_all_trusted_dirs()
+            if td.discord_forum is not None and td.path
+        ]
+        entries.sort(key=lambda e: len(e[0]), reverse=True)
+        self._project_forum_map = dict(entries)
 
     async def _ensure_project_forums(self, guild: object, category: object | None) -> None:
         """Create a forum for each trusted dir that lacks a discord_forum ID."""
@@ -596,8 +603,11 @@ class DiscordAdapter(UiAdapter):
         if raw_edit_fn is None:
             return False
         edit_fn = self._require_async_callable(raw_edit_fn, label="Discord thread edit")
+        # Recompute Discord-specific title (same logic as thread creation)
+        target_forum_id = self._resolve_target_forum(session)
+        discord_title = self._build_thread_title(session, target_forum_id)
         try:
-            await edit_fn(name=title)
+            await edit_fn(name=discord_title)
             return True
         except Exception as exc:
             logger.warning("Failed to rename Discord thread %s: %s", discord_meta.thread_id, exc)
