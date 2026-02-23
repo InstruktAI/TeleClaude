@@ -1157,11 +1157,13 @@ class Db:
                     agent=agent,
                     available=0,
                     unavailable_until=unavailable_until,
+                    degraded_until=None,
                     reason=reason,
                 )
             else:
                 row.available = 0
                 row.unavailable_until = unavailable_until
+                row.degraded_until = None
                 row.reason = reason
             db_session.add(row)
             await db_session.commit()
