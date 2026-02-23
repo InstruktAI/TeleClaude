@@ -284,6 +284,37 @@ class TestAgentAvailability:
         assert info["status"] == "degraded"
         assert str(info["reason"]).startswith("degraded:")
 
+    @pytest.mark.asyncio
+    async def test_mark_agent_degraded_with_expiry(self, test_db):
+        """Degraded agents can have an expiry timestamp."""
+        from datetime import datetime, timedelta, timezone
+
+        future_time = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        await test_db.mark_agent_degraded("claude", "manual", degraded_until=future_time)
+
+        info = await test_db.get_agent_availability("claude")
+        assert info is not None
+        assert info["available"] is True
+        assert info["status"] == "degraded"
+        assert info["degraded_until"] == future_time
+
+    @pytest.mark.asyncio
+    async def test_clear_expired_degraded_agents(self, test_db):
+        """Expired degraded agents are automatically reset to available."""
+        from datetime import datetime, timedelta, timezone
+
+        past_time = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        await test_db.mark_agent_degraded("claude", "manual", degraded_until=past_time)
+
+        cleared = await test_db.clear_expired_agent_availability()
+        assert cleared == 1
+
+        info = await test_db.get_agent_availability("claude")
+        assert info is not None
+        assert info["available"] is True
+        assert info["status"] == "available"
+        assert info["degraded_until"] is None
+
 
 class TestUpdateSession:
     """Tests for update_session method."""

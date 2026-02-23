@@ -90,20 +90,20 @@ Add clickable agent pills to the TUI StatusBar by: (1) adding `degraded_until` t
 
 ### Task 4.1: Tests
 
-- [ ] Add or update tests for the API endpoint
-- [ ] Add or update tests for the status cycle logic
-- [ ] Add or update tests for `clear_expired_agent_availability` covering `degraded_until`
-- [ ] Run `make test`
+- [x] Add or update tests for the API endpoint
+- [x] Add or update tests for the status cycle logic
+- [x] Add or update tests for `clear_expired_agent_availability` covering `degraded_until`
+- [x] Run `make test`
 
 ### Task 4.2: Quality Checks
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
+- [x] Run `make lint`
+- [x] Verify no unchecked implementation tasks remain
 
 ---
 
 ## Phase 5: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)

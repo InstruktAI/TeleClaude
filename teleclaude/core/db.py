@@ -1097,7 +1097,7 @@ class Db:
             agent: Agent name (e.g., "claude", "gemini", "codex")
 
         Returns:
-            Dict with 'available', 'unavailable_until', 'reason' or None if not found
+            Dict with 'available', 'unavailable_until', 'degraded_until', 'reason', 'status' or None if not found
         """
         async with self._session() as db_session:
             row = await db_session.get(db_models.AgentAvailability, agent)
@@ -1109,12 +1109,14 @@ class Db:
                 if parsed_until and parsed_until < datetime.now(timezone.utc):
                     row.available = 1
                     row.unavailable_until = None
+                    row.degraded_until = None
                     row.reason = None
                     db_session.add(row)
                     await db_session.commit()
                     return {
                         "available": True,
                         "unavailable_until": None,
+                        "degraded_until": None,
                         "reason": None,
                         "status": "available",
                     }
@@ -1127,6 +1129,7 @@ class Db:
             return {
                 "available": bool(row.available) if row.available is not None else False,
                 "unavailable_until": unavailable_until,
+                "degraded_until": row.degraded_until,
                 "reason": reason,
                 "status": status,
             }
@@ -1211,18 +1214,18 @@ class Db:
         Returns:
             Number of agents reset to available
         """
-        from sqlalchemy import or_, update
+        from sqlalchemy import and_, or_, update
 
         now = datetime.now(timezone.utc).isoformat()
         stmt = (
             update(db_models.AgentAvailability)
             .where(
                 or_(
-                    (
+                    and_(
                         db_models.AgentAvailability.unavailable_until.is_not(None),
                         db_models.AgentAvailability.unavailable_until < now,
                     ),
-                    (
+                    and_(
                         db_models.AgentAvailability.degraded_until.is_not(None),
                         db_models.AgentAvailability.degraded_until < now,
                     ),
