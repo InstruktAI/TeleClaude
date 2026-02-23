@@ -62,20 +62,20 @@ Four coordinated changes to Discord session routing, executed in dependency orde
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Rename or replace `_is_help_desk_message()` with `_is_managed_message()` (or similar).
-- [ ] New logic: build the set of managed forum IDs from: help desk channel, all-sessions channel, and all project forum IDs. Accept messages from any managed forum or thread within one.
-- [ ] This ensures project forum threads are accepted, not just help desk and all-sessions threads.
-- [ ] Keep the dev/test mode fallback (`_help_desk_channel_id is None` -> accept all).
+- [x] Rename or replace `_is_help_desk_message()` with `_is_managed_message()` (or similar).
+- [x] New logic: build the set of managed forum IDs from: help desk channel, all-sessions channel, and all project forum IDs. Accept messages from any managed forum or thread within one.
+- [x] This ensures project forum threads are accepted, not just help desk and all-sessions threads.
+- [x] Keep the dev/test mode fallback (`_help_desk_channel_id is None` -> accept all).
 
 ### Task 3.2: Role-based authorization for message handling
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] After message acceptance (channel check), add role-based authorization:
+- [x] After message acceptance (channel check), add role-based authorization:
   - Admins/members: accepted from any managed channel.
   - Customers: only accepted from help desk threads.
-- [ ] Use `session.human_role` (already exists) to determine the sender's role. Reference existing `_is_customer_session()` pattern at line 168.
-- [ ] This is a refinement on top of the channel check, not a replacement.
+- [x] Use `session.human_role` (already exists) to determine the sender's role. Reference existing `_is_customer_session()` pattern at line 168.
+- [x] This is a refinement on top of the channel check, not a replacement.
 
 ---
 

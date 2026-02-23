@@ -956,9 +956,9 @@ class DiscordAdapter(UiAdapter):
                 await self._handle_relay_thread_message(message, text)
             return
 
-        # Channel gating: only process messages from the help desk forum when configured
-        if not self._is_help_desk_message(message):
-            logger.debug("Ignoring message from non-help-desk channel")
+        # Channel gating: only process messages from managed forums
+        if not self._is_managed_message(message):
+            logger.debug("Ignoring message from non-managed channel")
             return
 
         # Voice/audio attachment — handle before the text guard
@@ -977,6 +977,11 @@ class DiscordAdapter(UiAdapter):
             logger.error("Discord session resolution failed: %s", exc, exc_info=True)
             return
         if not session:
+            return
+
+        # Role-based authorization: customers only accepted from help desk threads
+        if self._is_customer_session(session) and not self._is_help_desk_thread(message):
+            logger.debug("Ignoring customer message from non-help-desk channel")
             return
 
         # Relay mode: divert customer messages to the relay thread instead of the AI session
@@ -1057,20 +1062,18 @@ class DiscordAdapter(UiAdapter):
                 return True
         return False
 
-    def _is_help_desk_message(self, message: object) -> bool:
-        """Check if a message originates from a managed forum (help desk or sessions).
+    def _is_managed_message(self, message: object) -> bool:
+        """Check if a message originates from a managed forum.
 
+        Managed forums include: help desk, all-sessions, and all project forums.
         When ``_help_desk_channel_id`` is not configured, all messages are
         accepted (dev/test mode).  Otherwise the message must come from
-        the help desk forum, the admin sessions forum, or a thread whose
-        parent is one of those forums.
+        a managed forum or a thread whose parent is a managed forum.
         """
         if self._help_desk_channel_id is None:
             return True
 
-        managed_ids = {self._help_desk_channel_id}
-        if self._all_sessions_channel_id is not None:
-            managed_ids.add(self._all_sessions_channel_id)
+        managed_ids = self._get_managed_forum_ids()
 
         channel = getattr(message, "channel", None)
         channel_id = self._parse_optional_int(getattr(channel, "id", None))
@@ -1087,6 +1090,31 @@ class DiscordAdapter(UiAdapter):
             return True
 
         return False
+
+    def _get_managed_forum_ids(self) -> set[int]:
+        """Build the set of all managed Discord forum IDs."""
+        ids: set[int] = set()
+        if self._help_desk_channel_id is not None:
+            ids.add(self._help_desk_channel_id)
+        if self._all_sessions_channel_id is not None:
+            ids.add(self._all_sessions_channel_id)
+        ids.update(self._project_forum_map.values())
+        return ids
+
+    def _is_help_desk_thread(self, message: object) -> bool:
+        """Check if a message originates from the help desk forum or a thread within it."""
+        if self._help_desk_channel_id is None:
+            return True
+        channel = getattr(message, "channel", None)
+        channel_id = self._parse_optional_int(getattr(channel, "id", None))
+        if channel_id == self._help_desk_channel_id:
+            return True
+        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
+        if parent_id == self._help_desk_channel_id:
+            return True
+        parent_obj = getattr(channel, "parent", None)
+        parent_obj_id = self._parse_optional_int(getattr(parent_obj, "id", None))
+        return parent_obj_id == self._help_desk_channel_id
 
     # =========================================================================
     # Voice / Audio Handling
