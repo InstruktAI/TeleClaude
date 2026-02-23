@@ -196,10 +196,10 @@ No new npm packages required. `next-themes` is already installed.
 
 ### Task 6.3: Sidebar session item styling
 
-**File(s):** `frontend/components/sidebar/` (determine exact file during build — likely `SessionItem.tsx` or similar)
+**File(s):** `frontend/components/sidebar/SessionList.tsx`
 
-- [ ] When `isThemed`: session item text uses `var(--agent-{agent}-normal)` based on each session's agent type.
-- [ ] When peaceful: session item text uses default foreground color.
+- [x] When `isThemed`: session item text uses `var(--agent-{agent}-normal)` based on each session's agent type.
+- [x] When peaceful: session item text uses default foreground color.
 
 ---
 
