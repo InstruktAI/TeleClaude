@@ -203,6 +203,21 @@ class DiscordAdapter(UiAdapter):
         """Check if session is customer-facing. Based solely on human_role."""
         return session.human_role == "customer"
 
+    def _build_thread_topper(self, session: "Session") -> str:
+        """Build metadata header for the first message in a Discord thread."""
+        from teleclaude.core.session_utils import get_short_project_name
+
+        project = get_short_project_name(session.project_path, session.subdir)
+        parts = [f"project: {project}"]
+        agent = session.active_agent or "pending"
+        speed = session.thinking_mode or "default"
+        parts.append(f"agent: {agent}/{speed}")
+        header = " | ".join(parts)
+        lines = [header, f"tc: {session.session_id}"]
+        if session.native_session_id:
+            lines.append(f"ai: {session.native_session_id}")
+        return "\n".join(lines)
+
     # =========================================================================
     # Discord Infrastructure Auto-Provisioning
     # =========================================================================
@@ -544,7 +559,8 @@ class DiscordAdapter(UiAdapter):
             if not self._is_forum_channel(forum):
                 raise AdapterError(f"Discord channel {target_forum_id} is not a Forum Channel")
 
-            thread_id = await self._create_forum_thread(forum, title=title)
+            topper = self._build_thread_topper(session)
+            thread_id = await self._create_forum_thread(forum, title=title, content=topper)
             discord_meta.channel_id = target_forum_id
             discord_meta.thread_id = thread_id
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)

@@ -85,21 +85,21 @@ Four coordinated changes to Discord session routing, executed in dependency orde
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Create a method `_build_thread_topper(session)` that produces formatted metadata:
+- [x] Create a method `_build_thread_topper(session)` that produces formatted metadata:
   ```
   project: {project_name} | agent: {agent}/{speed}
   tc: {session_id}
   ai: {native_session_id}
   ```
-- [ ] Handle missing fields gracefully (e.g., no native session ID yet at creation time).
+- [x] Handle missing fields gracefully (e.g., no native session ID yet at creation time).
 
 ### Task 4.2: Replace placeholder first message
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] In `_create_forum_thread()` (line ~1286): change the default `content` parameter from `"Initializing Help Desk session..."` to use `_build_thread_topper()`.
-- [ ] The topper is passed as `content` to `create_thread_fn(name=title, content=topper)`.
-- [ ] Update all call sites of `_create_forum_thread()` to pass the session so the topper can be built.
+- [x] In `_create_forum_thread()` (line ~1286): change the default `content` parameter from `"Initializing Help Desk session..."` to use `_build_thread_topper()`.
+- [x] The topper is passed as `content` to `create_thread_fn(name=title, content=topper)`.
+- [x] Update all call sites of `_create_forum_thread()` to pass the session so the topper can be built.
 
 ---
 
