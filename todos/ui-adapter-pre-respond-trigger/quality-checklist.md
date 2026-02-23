@@ -15,9 +15,9 @@ Ownership:
 - [x] Tests pass (`make test`)
 - [x] Lint passes (`make lint`)
 - [x] No silent deferrals in implementation plan
-- [ ] Code committed
+- [x] Code committed
 - [x] Demo is runnable and verified
-- [ ] Working tree clean
+- [x] Working tree clean (only orchestrator-synced planning drift remains: roadmap.yaml, state.yaml)
 - [x] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
