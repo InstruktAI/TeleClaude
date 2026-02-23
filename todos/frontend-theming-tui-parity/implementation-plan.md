@@ -150,10 +150,10 @@ No new npm packages required. `next-themes` is already installed.
 
 **File(s):** `frontend/hooks/useAgentColors.ts`
 
-- [ ] Create a hook `useAgentColors(agent: string)` that returns resolved CSS variable references.
-- [ ] When `isThemed` is true: return agent-specific var references (`var(--agent-{agent}-subtle)` etc.).
-- [ ] When `isThemed` is false: return peaceful neutral var references (`var(--peaceful-subtle)` etc.).
-- [ ] Also expose user bubble vars: when themed, `var(--user-bubble-bg)` / `var(--user-bubble-text)`; when peaceful, neutral surface/text vars.
+- [x] Create a hook `useAgentColors(agent: string)` that returns resolved CSS variable references.
+- [x] When `isThemed` is true: return agent-specific var references (`var(--agent-{agent}-subtle)` etc.).
+- [x] When `isThemed` is false: return peaceful neutral var references (`var(--peaceful-subtle)` etc.).
+- [x] Also expose user bubble vars: when themed, `var(--user-bubble-bg)` / `var(--user-bubble-text)`; when peaceful, neutral surface/text vars.
 
 ### Task 4.3: Add AgentTheming provider to layout
 
