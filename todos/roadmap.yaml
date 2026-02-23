@@ -45,23 +45,20 @@
   group: mature-deployment
   description: 'Phase 1: Runtime __version__, telec version command, pyproject.toml
     1.0.0'
+- slug: deployment-migrations
+  group: mature-deployment
+  description: 'Phase 2: Migration manifest format, runner, version utilities (no
+    CLI — internal library)'
 - slug: deployment-channels
   group: mature-deployment
   after:
   - deployment-versioning
-  description: 'Phase 2: Channel config schema, version watcher job, signal file'
-- slug: deployment-migrations
-  group: mature-deployment
-  after:
-  - deployment-channels
-  description: 'Phase 3: Migration manifest format, runner, CLI entry point'
-- slug: deployment-auto-update
-  group: mature-deployment
-  after:
   - deployment-migrations
-  description: 'Phase 4: Update executor, daemon integration, Redis status'
+  - inbound-hook-service
+  description: 'Phase 3: Channel config, webhook handler, update executor, Redis fan-out'
 - slug: deployment-cleanup
   group: mature-deployment
   after:
-  - deployment-auto-update
-  description: 'Phase 5: Remove telec deploy, update docs, write pipeline doc'
+  - deployment-channels
+  description: 'Phase 4: Remove deploy_service, MCP tool (if still present), update
+    docs, write pipeline doc'

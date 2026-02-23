@@ -2,45 +2,34 @@
 
 ## Context
 
-Parent todo: `mature-deployment` (decomposed). Phase 2 of 5.
-Depends on: `deployment-versioning`.
+Parent todo: `mature-deployment` (decomposed). Phase 2 of 4.
+Depends on: `deployment-versioning`, `deployment-migrations`, `inbound-hook-service`.
 
-## Brain dump
+## Architecture revision (2026-02-23)
 
-Each computer subscribes to a deployment channel that determines what versions
-it receives and how quickly.
+The original design used a cron-based version watcher that polled `git ls-remote`
+and GitHub API every 5 minutes, writing signal files for a daemon background loop.
+This was wrong. The inbound webhook infrastructure already exists. GitHub sends
+webhooks. Use them.
 
-### Channel model
+**What this todo now covers:**
 
-- **Alpha** — follows `main` HEAD. Every push auto-deploys. Dev machines only.
-- **Beta** — follows GitHub releases (minor + patch). CI passes, release created,
-  beta subscribers auto-pull.
-- **Stable** — pinned to a minor version, receives patches only. Moving to next
-  minor requires explicit human decision.
+- Channel config schema (alpha/beta/stable) — unchanged concept
+- Deployment webhook handler (receives GitHub HookEvents via hooks dispatcher)
+- Update execution logic (pull/checkout + migrate + install + restart)
+- Redis fan-out (broadcast to all daemons via EventBusBridge)
+- `telec version` shows configured channel
 
-### Config
+**What was killed:**
 
-Goes in `config.yaml` under a `deployment` key:
+- Version watcher cron job
+- Signal file mechanism
+- `deployment-auto-update` sub-todo (merged here)
 
-```yaml
-deployment:
-  channel: beta # alpha | beta | stable
-  pinned_minor: '1.3' # only for stable channel
-```
+## Key integration points
 
-Default to `alpha` for backward compat during rollout.
-
-### Version watcher
-
-A script job (not agent — deterministic logic) in the cron runner:
-
-- Runs every 5 minutes (matches cron interval)
-- Alpha: `git ls-remote origin HEAD` vs current HEAD
-- Beta: GitHub API latest release vs current version
-- Stable: GitHub API latest patch in pinned minor vs current
-- Writes signal file: `~/.teleclaude/update_available.json`
-
-### Open questions
-
-- Should Redis broadcast version-available for faster propagation? Or is polling
-  sufficient? (Polling is simpler, Redis-independent)
+- `HandlerRegistry.register("deployment_update", handler)` — register internal handler
+- `Contract(source_criterion, type_criterion, target=Target(handler=...))` — match events
+- `EventBusBridge` — handles Redis fan-out automatically
+- `os._exit(42)` — existing restart mechanism (launchd KeepAlive restarts daemon)
+- `migration_runner.run_migrations()` — called during update sequence

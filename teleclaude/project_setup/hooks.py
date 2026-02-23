@@ -4,24 +4,27 @@ from pathlib import Path
 
 # Marker strings used for idempotent hook block insertion.
 DOCS_CHECK_MARKER = "teleclaude-docs-check"
-OVERLAP_GUARD_MARKER = "teleclaude-overlap-guard"
+STASH_PREVENTION_MARKER = "teleclaude-stash-prevention"
+_OLD_OVERLAP_MARKER = "teleclaude-overlap-guard"
 
-# Guard that blocks commits only when staged files also have unstaged edits.
-# This avoids pre-commit stash/restore hazards while still allowing dirty trees.
-OVERLAP_GUARD_BLOCK = f"""
-# {OVERLAP_GUARD_MARKER}: block staged/unstaged overlap to keep commits safe
-_teleclaude_staged="$(git diff --cached --name-only --diff-filter=ACM)"
-if [ -n "$_teleclaude_staged" ]; then
-  _teleclaude_overlap="$(comm -12 \
-    <(printf '%s\\n' "$_teleclaude_staged" | sed '/^$/d' | sort -u) \
-    <(git diff --name-only --diff-filter=ACM | sed '/^$/d' | sort -u))"
-  if [ -n "$_teleclaude_overlap" ]; then
-    echo "ERROR: controlled commit required."
-    echo "The following files are both staged and unstaged:"
-    printf '%s\\n' "$_teleclaude_overlap"
-    echo "Stage cleanly (or commit in two steps) and retry."
-    exit 1
-  fi
+# Guard that blocks commits when ANY unstaged changes to tracked files exist.
+# WHY: pre-commit's staged_files_only.py saves unstaged changes as a patch, runs
+# `git checkout -- .` (nukes working tree), runs hooks, then `git apply` to restore.
+# When apply fails (deleted files, conflicts with hook formatting), unstaged changes
+# are permanently lost. By requiring a clean working tree, _unstaged_changes_cleared()
+# always takes the safe retcode==0 path (no patch, no checkout, no data loss).
+STASH_PREVENTION_BLOCK = f"""
+# {STASH_PREVENTION_MARKER}: block commits with unstaged changes to tracked files
+_teleclaude_unstaged="$(git diff --name-only)"
+if [ -n "$_teleclaude_unstaged" ]; then
+  echo "ERROR: unstaged changes to tracked files detected."
+  echo "Pre-commit would stash these and risk losing them."
+  echo ""
+  echo "Unstaged files:"
+  printf '  %s\\n' $_teleclaude_unstaged
+  echo ""
+  echo "Stage all changes (git add) or commit in separate steps."
+  exit 1
 fi
 """
 
@@ -108,7 +111,7 @@ def _add_husky_hook(husky_dir: Path) -> None:
         hook_file.write_text("#!/bin/bash\n", encoding="utf-8")
 
     changed = False
-    changed |= _append_block_if_missing(hook_file, OVERLAP_GUARD_MARKER, OVERLAP_GUARD_BLOCK)
+    changed |= _append_block_if_missing(hook_file, STASH_PREVENTION_MARKER, STASH_PREVENTION_BLOCK)
     changed |= _append_block_if_missing(
         hook_file,
         DOCS_CHECK_MARKER,
@@ -135,7 +138,7 @@ def _add_raw_git_hook(hooks_dir: Path) -> None:
         hook_file.write_text(content, encoding="utf-8")
 
     changed = False
-    changed |= _append_block_if_missing(hook_file, OVERLAP_GUARD_MARKER, OVERLAP_GUARD_BLOCK)
+    changed |= _append_block_if_missing(hook_file, STASH_PREVENTION_MARKER, STASH_PREVENTION_BLOCK)
     changed |= _append_block_if_missing(
         hook_file,
         DOCS_CHECK_MARKER,
@@ -166,10 +169,11 @@ def _append_block_if_missing(hook_file: Path, marker: str, block: str) -> bool:
 
 
 def _ensure_precommit_entrypoint_guard(precommit_hook_file: Path) -> None:
-    """Inject overlap guard into pre-commit's generated git hook wrapper.
+    """Inject stash prevention guard into pre-commit's generated git hook wrapper.
 
     This guard must run before pre-commit stashes unstaged files, so it cannot
-    live only in `.pre-commit-config.yaml`.
+    live only in `.pre-commit-config.yaml`. Migrates from the old overlap guard
+    if present.
     """
     if not precommit_hook_file.exists():
         print("telec init: pre-commit entrypoint not found; run `pre-commit install`.")
@@ -177,21 +181,28 @@ def _ensure_precommit_entrypoint_guard(precommit_hook_file: Path) -> None:
 
     content = precommit_hook_file.read_text(encoding="utf-8")
     anchor = '\nif [ -x "$INSTALL_PYTHON" ]; then'
-    if OVERLAP_GUARD_MARKER in content:
-        start = content.find(f"# {OVERLAP_GUARD_MARKER}")
+
+    # Detect existing guard (current or old marker)
+    existing_marker = None
+    for marker in (STASH_PREVENTION_MARKER, _OLD_OVERLAP_MARKER):
+        if marker in content:
+            existing_marker = marker
+            break
+
+    if existing_marker:
+        start = content.find(f"# {existing_marker}")
         if start == -1:
             return
         end = content.find(anchor, start)
         if end == -1:
             return
-        patched = content[:start].rstrip("\n") + "\n\n" + OVERLAP_GUARD_BLOCK + content[end:]
+        patched = content[:start].rstrip("\n") + "\n\n" + STASH_PREVENTION_BLOCK + content[end:]
     else:
         idx = content.find(anchor)
         if idx == -1:
-            # Fallback: append guard when hook format is unexpected.
-            patched = content.rstrip("\n") + "\n" + OVERLAP_GUARD_BLOCK + "\n"
+            patched = content.rstrip("\n") + "\n" + STASH_PREVENTION_BLOCK + "\n"
         else:
-            patched = content[:idx] + "\n" + OVERLAP_GUARD_BLOCK + content[idx:]
+            patched = content[:idx] + "\n" + STASH_PREVENTION_BLOCK + content[idx:]
 
     precommit_hook_file.write_text(patched, encoding="utf-8")
     precommit_hook_file.chmod(precommit_hook_file.stat().st_mode | 0o111)

@@ -2,54 +2,92 @@
 
 ## Overview
 
-Add deployment channel config and a version watcher cron job. Follows existing
-job patterns (`jobs/base.py`, `teleclaude.yml` scheduling). The watcher produces
-a signal file consumed by the future auto-update executor.
+Channel-based deployment using the hooks framework. A webhook handler receives
+GitHub events via the inbound infrastructure, checks channel config, and executes
+updates. Redis fan-out via EventBusBridge ensures all daemons respond.
 
 ---
 
 ## Phase 1: Core Changes
 
-### Task 1.1: Config schema for deployment channels
+### Task 1.1: Channel config schema
 
-**File(s):** `teleclaude/config/schema.py`, `teleclaude.yml`
+**File(s):** `teleclaude/config/schema.py`
 
-- [ ] Add `deployment` section to config schema:
-  ```yaml
-  deployment:
-    channel: alpha # alpha | beta | stable
-    pinned_minor: '' # required when channel=stable (e.g. "1.3")
+- [ ] Add `DeploymentConfig` Pydantic model:
+  ```python
+  class DeploymentConfig(BaseModel):
+      channel: Literal["alpha", "beta", "stable"] = "alpha"
+      pinned_minor: str = ""
   ```
-- [ ] Validate: `pinned_minor` required when `channel=stable`, ignored otherwise
-- [ ] Default: `channel: alpha`, `pinned_minor: ""`
-- [ ] Add validation in config loading (daemon startup)
+- [ ] Add validator: `pinned_minor` required and non-empty when `channel=stable`
+- [ ] Add `deployment: DeploymentConfig = DeploymentConfig()` to `ProjectConfig`
 
-### Task 1.2: Version watcher job
+### Task 1.2: Deployment webhook handler
 
-**File(s):** `jobs/version_watcher.py`
+**File(s):** `teleclaude/deployment/__init__.py`, `teleclaude/deployment/handler.py`
 
-- [ ] Create `VersionWatcherJob(Job)` with `name = "version_watcher"`
-- [ ] `run()` reads channel from config, dispatches to channel-specific check:
-  - Alpha: `git ls-remote origin HEAD` → compare with `git rev-parse HEAD`
-  - Beta: GitHub API `GET /repos/{owner}/{repo}/releases/latest` → compare with `__version__`
-  - Stable: GitHub API `GET /repos/{owner}/{repo}/releases` → filter patches within pinned minor
-- [ ] On newer version found: write `~/.teleclaude/update_available.json`
-- [ ] On current: remove signal file if it exists
-- [ ] Handle network errors: log warning, skip cycle, do not write stale data
+- [ ] Create `teleclaude/deployment/` package with `__init__.py`
+- [ ] Create async handler: `async def handle_deployment_event(event: HookEvent) -> None`
+- [ ] Read channel config via `load_project_config()`
+- [ ] Decision logic based on event properties:
+  - Alpha: `event.type == "push"` and `ref == "refs/heads/main"` → update
+  - Beta: `event.type == "release"` and `action == "published"` → update
+  - Stable: same as beta but version within pinned minor → update
+  - Otherwise → skip (log at debug level)
+- [ ] Fan-out: if `event.source == "github"` (direct webhook), publish
+      `HookEvent.now(source="deployment", type="version_available", ...)`
+      to internal event bus for Redis broadcast to other daemons
+- [ ] If `event.source == "deployment"` (Redis fan-out), only execute locally
 
-### Task 1.3: Register job in teleclaude.yml
+### Task 1.3: Contract and handler registration at daemon startup
 
-**File(s):** `teleclaude.yml`
+**File(s):** `teleclaude/daemon.py` (in `_init_webhook_service()`)
 
-- [ ] Add version_watcher job with `schedule: "*/5 * * * *"` (every 5 minutes)
-- [ ] Register in `jobs/__init__.py`
+- [ ] Register handler: `handler_registry.register("deployment_update", handle_deployment_event)`
+- [ ] Register GitHub contract:
+  ```python
+  Contract(
+      id="deployment-github",
+      source_criterion=PropertyCriterion(match="github"),
+      type_criterion=PropertyCriterion(match=["push", "release"]),
+      target=Target(handler="deployment_update"),
+      source="programmatic",
+  )
+  ```
+- [ ] Register fan-out contract:
+  ```python
+  Contract(
+      id="deployment-fanout",
+      source_criterion=PropertyCriterion(match="deployment"),
+      type_criterion=PropertyCriterion(match="version_available"),
+      target=Target(handler="deployment_update"),
+      source="programmatic",
+  )
+  ```
 
-### Task 1.4: Update `telec version` to show configured channel
+### Task 1.4: Update executor
 
-**File(s):** `teleclaude/cli/` (version subcommand from deployment-versioning)
+**File(s):** `teleclaude/deployment/executor.py`
 
-- [ ] Read `deployment.channel` from config instead of hardcoded "alpha"
-- [ ] Display pinned minor for stable channel
+- [ ] `async def execute_update(channel: str, version_info: dict) -> None`
+- [ ] Sequence:
+  1. Log update start, set Redis status `"updating"`
+  2. Alpha: `git pull --ff-only origin main`
+  3. Beta/Stable: `git fetch --tags && git checkout v{version}`
+  4. Set Redis status `"migrating"`, run `migration_runner.run_migrations()`
+  5. Set Redis status `"installing"`, run `make install` (60s timeout)
+  6. Set Redis status `"restarting"`, trigger `os._exit(42)`
+- [ ] On failure: log error, set Redis status `"update_failed"`, do NOT restart
+- [ ] Redis key: `system_status:{computer_name}:deploy` (matches deploy_service.py)
+
+### Task 1.5: Update `telec version`
+
+**File(s):** `teleclaude/cli/telec.py` (version handler)
+
+- [ ] Load `ProjectConfig` via `load_project_config()` for `deployment.channel`
+- [ ] Replace hardcoded "alpha" with actual channel
+- [ ] Stable channel: also display pinned minor
 
 ---
 
@@ -57,22 +95,23 @@ a signal file consumed by the future auto-update executor.
 
 ### Task 2.1: Tests
 
-- [ ] Unit test: config validation accepts valid channel values, rejects invalid
-- [ ] Unit test: stable channel requires pinned_minor
-- [ ] Unit test: version watcher alpha check (mock git ls-remote)
-- [ ] Unit test: version watcher beta check (mock GitHub API)
-- [ ] Unit test: signal file written/removed correctly
+- [ ] Unit test: config validation (valid channels, stable requires pinned_minor)
+- [ ] Unit test: handler decision logic per channel × event type
+- [ ] Unit test: handler skips irrelevant events
+- [ ] Unit test: executor alpha path (mock git + make install)
+- [ ] Unit test: executor beta/stable path (mock git fetch + checkout)
+- [ ] Unit test: migration failure halts update
+- [ ] Unit test: fan-out published for github source, not for deployment source
+- [ ] Integration test: HookEvent → handler → executor flow
 - [ ] Run `make test`
 
 ### Task 2.2: Quality Checks
 
 - [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
 
 ---
 
 ## Phase 3: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [ ] Confirm requirements reflected in code
+- [ ] All tasks marked `[x]`

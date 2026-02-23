@@ -22,13 +22,12 @@ export TELECLAUDE_ENV_PATH="${TELECLAUDE_ENV_PATH:-tests/integration/.env}"
 # Expensive tests (real LLM API calls) are excluded by default — use `make test-agents`.
 if [ "${1:-}" = "--cov" ]; then
     echo "Running tests with coverage..."
-    pytest tests/unit tests/integration -n auto --timeout=15 -m "not expensive" --cov=teleclaude --cov-report=html --cov-report=term-missing
+    timeout 10 pytest tests/unit tests/integration -n auto -m "not expensive" --cov=teleclaude --cov-report=html --cov-report=term-missing
 
     # Generate absolute path for clickable link
     REPORT_PATH="$(pwd)/coverage/html/index.html"
     echo ""
     echo "✓ Coverage report generated: file://$REPORT_PATH"
 else
-    pytest tests/unit -n auto --timeout=5 -q
-    pytest tests/integration -n auto --timeout=15 -m "not expensive" -q
+    timeout 10 pytest tests/unit tests/integration -n auto -m "not expensive" -q
 fi

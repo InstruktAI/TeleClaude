@@ -5,15 +5,18 @@
 ```bash
 # Config accepts deployment channel
 python -c "
-from teleclaude.config.schema import validate_config
-# If schema validation passes for deployment.channel, this exits 0
-print('OK: schema accepts deployment config')
+from teleclaude.config.loader import load_project_config
+cfg = load_project_config()
+print(f'OK: channel={cfg.deployment.channel}')
 "
 ```
 
 ```bash
-# Version watcher job exists and is registered
-python -c "from jobs.version_watcher import VersionWatcherJob; print(f'OK: {VersionWatcherJob.name}')"
+# Deployment handler is registered
+python -c "
+from teleclaude.deployment.handler import handle_deployment_event
+print(f'OK: handler is async callable')
+"
 ```
 
 ```bash
@@ -25,23 +28,28 @@ telec version | grep -q "channel:"
 
 ### Step 1: Channel config
 
-Show `config.yaml` with `deployment.channel: alpha`. Explain the three channels:
-alpha (follows main HEAD), beta (follows GitHub releases), stable (pinned minor,
-patches only). Default is alpha for backward compatibility.
+Show `teleclaude.yml` with `deployment.channel: alpha`. Explain channels:
+alpha (push to main), beta (GitHub releases), stable (pinned minor, patches).
+Default is alpha for backward compatibility.
 
-### Step 2: Version watcher
+### Step 2: Webhook flow
 
-Show the job registered in `teleclaude.yml` with 5-minute schedule. Explain:
-alpha uses `git ls-remote` (lightweight), beta/stable use GitHub API. When a
-newer version is detected, writes `~/.teleclaude/update_available.json`.
+Trace the path: GitHub push webhook → `/hooks/inbound/github` → GitHub
+normalizer → HookEvent(source="github", type="push") → dispatcher matches
+deployment contract → handler checks channel → executes update.
 
-### Step 3: Signal file
+### Step 3: Fan-out
 
-Create a mock signal file and show its structure:
-`{"current": "1.0.0", "available": "1.1.0", "channel": "beta"}`.
-This file is consumed by the future auto-update executor.
+Explain: when daemon A receives the webhook, it publishes a
+`deployment.version_available` HookEvent to the internal event bus.
+EventBusBridge broadcasts via Redis. All daemons evaluate against their
+own channel config.
 
-### Step 4: Updated telec version
+### Step 4: Update execution
 
-Run `telec version` — now shows the actual configured channel instead of
-hardcoded "alpha".
+Show the executor sequence: pull → migrate → install → restart (exit 42).
+Show Redis status transitions: updating → migrating → installing → restarting.
+
+### Step 5: Updated telec version
+
+Run `telec version` — shows actual channel from config.

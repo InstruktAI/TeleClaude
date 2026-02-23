@@ -118,8 +118,8 @@ class Footer:
             tts_width = len(tts_text)
 
         # Animation indicator
-        anim_icons = {"off": "🚫", "periodic": "✨ ", "party": "🎉"}
-        anim_text = anim_icons.get(self.animation_mode, "✨")
+        anim_icons = {"off": "🚫 ", "periodic": "✨ ", "party": "🎉 "}
+        anim_text = anim_icons.get(self.animation_mode, "✨ ")
         anim_width = self._display_width(anim_text)
 
         pane_mode_cells = self._format_pane_mode_cells(
