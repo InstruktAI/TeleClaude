@@ -1,135 +1,103 @@
 # Review Findings: frontend-theming-tui-parity
 
 **Reviewer:** Claude (Opus 4.6)
-**Review round:** 1
+**Review round:** 2
 **Date:** 2026-02-23
-**Verdict:** REQUEST CHANGES
+**Verdict:** APPROVE
+
+---
+
+## Round 1 Findings — All Resolved
+
+### C1 (RESOLVED): CSS variables moved to static CSS — d4027ff3
+
+**Original issue:** `injectCSSVariables()` wrote inline styles that trumped `theme.local.css` overrides.
+
+**Fix verified:** All TeleClaude CSS variables now live in `globals.css` — light mode in `@theme {}`, dark mode in `.dark {}`. The `CSSVariableInjector` component was removed from `ThemeProvider.tsx`. Variables are now overridable via normal CSS cascade. SC-3 satisfied.
+
+### I1 (RESOLVED): Gitignore pattern fixed — 91ecd293
+
+**Original issue:** `theme.local.css` was tracked, so `.gitignore` had no effect.
+
+**Fix verified:** File renamed to `theme.local.css.example` (committed). `.gitignore` entry `/public/theme.local.css` now correctly ignores the user's working copy. `layout.tsx:21` still loads `/theme.local.css` via `<link>`, which returns 404 on fresh checkout — harmless, the browser simply skips it.
+
+### I2 (RESOLVED): Distinct peaceful mode backgrounds — c7033e49
+
+**Original issue:** Both assistant and user bubbles used `var(--peaceful-muted)` in peaceful mode.
+
+**Fix verified:** `useAgentColors.ts:51` now returns `var(--color-card)` for assistant bubbles (`#262626` dark / `#f0ead8` light) and `var(--peaceful-muted)` for user bubbles (`#585858` dark / `#808080` light). SC-5 satisfied.
 
 ---
 
 ## Critical
 
-### C1: `theme.local.css` overrides are ineffective for JS-injected CSS variables
-
-**Files:** `frontend/lib/theme/css-variables.ts:115-123`, `frontend/app/layout.tsx:21`
-
-`injectCSSVariables()` writes all TeleClaude CSS variables to `document.documentElement.style` (inline styles). Inline styles have higher specificity than any external stylesheet, including `theme.local.css` which is loaded via `<link>`. This means every variable that `injectCSSVariables()` sets — `--agent-*`, `--user-bubble-*`, `--bg-*`, `--text-*`, `--peaceful-*`, `--border-*`, `--selection-*`, `--status-*`, `--banner`, `--tab-line`, `--status-bar-fg`, and all animation palettes — cannot be overridden by `theme.local.css`.
-
-The only variables `theme.local.css` CAN currently override are the Tailwind `--color-*` tokens from the `@theme` block in `globals.css`, since those are not re-injected by JS.
-
-**Violates:** SC-3 ("CSS variable overrides in it take effect without rebuild")
-
-**Fix options:**
-
-1. **Do not inject variables that are already in static CSS.** Move all CSS variable definitions into `globals.css` (light in `@theme` / dark in `.dark`) and remove them from `injectCSSVariables()`. The `CSSVariableInjector` component can be simplified or removed. `theme.local.css` then overrides via normal CSS cascade.
-2. **Read computed styles before injecting.** After the stylesheet loads, read `getComputedStyle()` values and skip injection for any variable where the computed value differs from the default — indicating an override is present.
-3. **Use `!important` in theme.local.css.** Hacky but functional. Documents the pattern clearly in the override file.
-
-Option 1 is the cleanest. The dual-source approach (static CSS + JS injection) for the same variables creates an unnecessary conflict.
-
----
+None.
 
 ## Important
 
-### I1: `theme.local.css` gitignore is ineffective for a tracked file
-
-**Files:** `frontend/.gitignore:49`, `frontend/public/theme.local.css`
-
-`.gitignore` only affects untracked files. Since `theme.local.css` was committed (tracked), local modifications will appear in `git status` and `git diff` regardless of the gitignore entry. Users who edit this file will see it in their working tree changes.
-
-**Violates:** Intent of SC-3 (override-friendly without polluting version control)
-
-**Fix options:**
-
-1. Ship as `theme.local.css.example` (committed), gitignore `theme.local.css` (the actual file). Document the copy step.
-2. After the initial commit, run `git rm --cached frontend/public/theme.local.css` to untrack it while keeping the file on disk.
-
-### I2: Peaceful mode uses identical backgrounds for user and assistant bubbles
-
-**Files:** `frontend/hooks/useAgentColors.ts:48-56`
-
-Both user and assistant bubbles return `var(--peaceful-muted)` as background and `var(--text-primary)` as text in peaceful mode. In dark mode this is `#585858` for both — messages are distinguishable only by left/right alignment, not by color.
-
-SC-5 specifies distinct backgrounds: "assistant bubbles use **neutral surface** bg" vs "user bubbles use **neutral gray** bg". The token system provides suitable distinct values:
-
-- Assistant → `var(--bg-surface)` or `var(--color-card)` (`#262626` dark / `#f0ead8` light)
-- User → `var(--peaceful-muted)` (`#585858` dark / `#808080` light)
-
-**Violates:** SC-5 (different background descriptions for assistant vs user in peaceful mode)
-
----
-
-## Fixes Applied
-
-### C1 Fix - CSS variables moved to static CSS (d4027ff3)
-
-**Issue:** `injectCSSVariables()` wrote inline styles with higher specificity than `theme.local.css`.
-
-**Fix:** Moved all TeleClaude CSS variables into `globals.css`:
-
-- Light mode values in `@theme` block
-- Dark mode values in `.dark` class
-- Removed `CSSVariableInjector` component and JS injection logic
-- `ThemeProvider` now only wraps next-themes
-
-**Result:** `theme.local.css` can now override any CSS variable via normal cascade.
-
-### I2 Fix - Distinct backgrounds in peaceful mode (c7033e49)
-
-**Issue:** Both user and assistant bubbles used `var(--peaceful-muted)` in peaceful mode.
-
-**Fix:** Updated `useAgentColors` hook:
-
-- Assistant bubbles: `var(--color-card)` (#262626 dark / #f0ead8 light)
-- User bubbles: `var(--peaceful-muted)` (#585858 dark / #808080 light)
-
-**Result:** Peaceful mode now has visually distinct assistant vs user messages.
-
-### I1 Fix - Gitignore effectiveness (91ecd293)
-
-**Issue:** `theme.local.css` was tracked despite being in `.gitignore`.
-
-**Fix:**
-
-- Renamed to `theme.local.css.example` (committed, tracked)
-- Created working copy as `theme.local.css` (gitignored, untracked)
-
-**Result:** Local edits to `theme.local.css` no longer appear in git status.
-
----
+None.
 
 ## Suggestions
 
-### S1: `AgentThemingProvider` blocks render until API responds
+### S1 (carried): `AgentThemingProvider` blocks render until API responds
 
 **File:** `frontend/hooks/useAgentTheming.ts:90-92`
 
-The provider returns `null` while waiting for the settings API response. This blocks the entire app render tree — on slow networks or a down daemon, users see a blank screen. Consider rendering children immediately with the default (`false` / peaceful) and updating when the API responds.
+Still returns `null` while loading. On slow networks or daemon outage, users see a blank screen. Rendering with default state and updating on response would be more resilient.
 
-### S2: Default agent fallback is `codex`, requirements suggest `claude`
+### S2 (carried): Default agent fallback is `codex`, requirements suggest `claude`
 
 **Files:** `frontend/lib/theme/tokens.ts:144`, `frontend/hooks/useSessionAgent.ts:29`
 
-The implementation consistently defaults to `codex` across `DEFAULT_AGENT`, `safeAgent()`, and `useSessionAgent()`. The requirements text says "fall back to `claude` or peaceful neutral". The behavior is graceful and internally consistent, but doesn't match the primary suggestion in the requirements.
+Internally consistent across `DEFAULT_AGENT`, `safeAgent()`, and `useSessionAgent()`. Requirements mention "fall back to `claude` or peaceful neutral". Non-blocking.
+
+### S3 (new): Dual source of truth for CSS variable values
+
+**Files:** `frontend/app/globals.css`, `frontend/lib/theme/tokens.ts`, `frontend/lib/theme/css-variables.ts`
+
+CSS variable values are now defined in both `globals.css` (runtime) and `tokens.ts` (TypeScript). The `generateCSSVariables()` function and `injectCSSVariables()` / `clearCSSVariables()` in `css-variables.ts` are no longer called by any web component — they became dead code after the C1 fix. If `tokens.ts` values are updated without updating `globals.css`, the two sources diverge silently. Consider either:
+
+- Removing the injection functions and keeping `tokens.ts` + `generateCSSVariables()` as a build-time generator that produces `globals.css` entries
+- Or documenting the manual sync requirement
+
+### S4 (new): `THEMING-PLAN.md` references stale injection pattern
+
+**File:** `frontend/THEMING-PLAN.md:30-31, 153, 218`
+
+The design doc still describes the `injectCSSVariables()` approach that was replaced by static CSS. Non-blocking — design docs become historical context after implementation.
 
 ---
 
 ## Paradigm-Fit Assessment
 
-1. **Data flow:** Colors flow through CSS custom properties as required. Token data → `css-variables.ts` → injected at runtime. Components reference `var()` references, never raw hex. The data flow is clean except for the dual-source conflict (C1).
-2. **Component reuse:** The `SessionItem` was properly extracted from inline JSX in `SessionList`. The `useAgentColors` hook centralizes color resolution. No copy-paste duplication detected.
-3. **Pattern consistency:** The provider/context/hook pattern (`AgentThemingProvider` → `useAgentTheming`, `SessionAgentProvider` → `useSessionAgent`) follows established React patterns in the codebase. The `CSSVariableInjector` as a render-null child component follows the existing `next-themes` integration pattern.
+1. **Data flow:** Colors flow through CSS custom properties defined in `globals.css`. Components reference `var()` expressions, never raw hex values. Token data in `tokens.ts` serves as the canonical source. The static CSS approach is cleaner than the previous JS injection.
+2. **Component reuse:** `SessionItem` properly extracted. `useAgentColors` hook centralizes color resolution for all consumers (ThreadView, SessionList). No copy-paste duplication.
+3. **Pattern consistency:** Provider/context/hook pattern (`AgentThemingProvider` → `useAgentTheming`, `SessionAgentProvider` → `useSessionAgent`) follows established React patterns. The `ThemeProvider` is now a thin wrapper around `next-themes`, which is the minimal correct approach.
+
+## Why No Important+ Issues
+
+1. **Paradigm-fit verified:** Checked data flow (CSS vars only, no inline hex), component reuse (SessionItem extracted, useAgentColors shared), pattern consistency (provider/hook matches codebase conventions).
+2. **Requirements validated:** Verified all 10 success criteria against code:
+   - SC-1: `globals.css` hex tokens, no oklch ✓
+   - SC-2: All agent tiers + user colors as CSS vars ✓
+   - SC-3: `theme.local.css.example` pattern + static CSS = overridable ✓
+   - SC-4: Toggle with daemon API persistence ✓
+   - SC-5: Distinct peaceful backgrounds (card vs muted) ✓
+   - SC-6: Themed mode agent + orange user bubbles ✓
+   - SC-7: Chat background never agent-tinted ✓
+   - SC-8: Dark/light toggle via next-themes ✓
+   - SC-9: No hex in components — verified via grep ✓
+   - SC-10: 4-combination matrix supported by var references ✓
+3. **Copy-paste duplication checked:** No duplicated component logic found. Color resolution centralized in `useAgentColors`.
 
 ## What Was Verified
 
-- All 15 changed files read and analyzed
-- No hardcoded hex values in React components (SC-9: pass)
-- `globals.css` uses TeleClaude hex tokens, not oklch (SC-1: pass)
-- CSS variable generation includes all agent tiers and user colors (SC-2: pass)
-- Dark/light toggle preserved via `next-themes` (SC-8: pass)
-- Chat background never agent-tinted (SC-7: pass — no background color applied to chat container)
-- Theming toggle wired to context with daemon API persistence (SC-4: pass)
+- All 15 changed files read and analyzed (round 2 re-read of all key files)
+- Fix commits individually verified against original findings
+- CSS variable values in `globals.css` cross-checked against `tokens.ts` (values match)
+- Grep confirmed no imports of `css-variables.ts` remain in React components
+- Grep confirmed no hardcoded hex values in `frontend/components/`
 - All implementation-plan tasks marked `[x]` (verified)
 - Build section in quality-checklist fully checked (verified)
 - No deferrals.md present (clean)
-- 14 well-structured commits with clear scope per commit
+- 4 fix commits since round 1 with clear scope per commit
