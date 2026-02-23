@@ -14,8 +14,12 @@ import {
   AssistantChatTransport,
 } from "@assistant-ui/react-ai-sdk";
 import { useChat } from "@ai-sdk/react";
+import { useQuery } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
 import type { MessageInfo } from "@/lib/api/types";
+import { fetchSessions } from "@/lib/api/sessions";
+import { SessionAgentProvider } from "@/hooks/useSessionAgent";
+import { safeAgent, type AgentType } from "@/lib/theme/tokens";
 
 interface Props {
   sessionId: string;
@@ -78,6 +82,14 @@ function toUIMessages(messages: MessageInfo[]): UIMessage[] {
 export function MyRuntimeProvider({ sessionId, children }: Props) {
   const [error, setError] = useState<string | null>(null);
 
+  // Fetch session info to get active agent type
+  const { data: sessions } = useQuery({
+    queryKey: ["sessions"],
+    queryFn: fetchSessions,
+  });
+  const session = sessions?.find((s) => s.session_id === sessionId);
+  const agent: AgentType = safeAgent(session?.active_agent ?? 'codex');
+
   const handleError = useCallback((err: Error) => {
     console.error("Chat stream error:", err);
     setError(err.message || "An error occurred with the chat stream");
@@ -135,25 +147,27 @@ export function MyRuntimeProvider({ sessionId, children }: Props) {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      {error && (
-        <div
-          className="bg-destructive/10 text-destructive px-4 py-2 mb-4 rounded-md border border-destructive/20 flex justify-between items-start gap-2"
-          role="alert"
-        >
-          <div className="flex-1">
-            <p className="text-sm font-medium">Stream Error</p>
-            <p className="text-xs mt-1">{error}</p>
-          </div>
-          <button
-            onClick={() => setError(null)}
-            className="text-destructive hover:text-destructive/80 shrink-0 text-sm font-medium"
-            aria-label="Dismiss error"
+      <SessionAgentProvider value={{ agent }}>
+        {error && (
+          <div
+            className="bg-destructive/10 text-destructive px-4 py-2 mb-4 rounded-md border border-destructive/20 flex justify-between items-start gap-2"
+            role="alert"
           >
-            ✕
-          </button>
-        </div>
-      )}
-      {children}
+            <div className="flex-1">
+              <p className="text-sm font-medium">Stream Error</p>
+              <p className="text-xs mt-1">{error}</p>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="text-destructive hover:text-destructive/80 shrink-0 text-sm font-medium"
+              aria-label="Dismiss error"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        {children}
+      </SessionAgentProvider>
     </AssistantRuntimeProvider>
   );
 }

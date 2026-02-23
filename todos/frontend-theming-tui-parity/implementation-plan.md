@@ -207,12 +207,12 @@ No new npm packages required. `next-themes` is already installed.
 
 ### Task 7.1: Pass agent type to thread view
 
-**File(s):** `frontend/components/assistant/ThreadView.tsx`, parent components
+**File(s):** `frontend/hooks/useSessionAgent.ts`, `frontend/components/assistant/MyRuntimeProvider.tsx`
 
-- [ ] The chat view already knows which session is active via session state.
-- [ ] Extract the `active_agent` field from the session info.
-- [ ] Pass it to message components so `AssistantMessage` can resolve the correct agent color tier.
-- [ ] Ensure the agent type defaults gracefully when unknown (fall back to `claude` or peaceful neutral).
+- [x] The chat view already knows which session is active via session state.
+- [x] Extract the `active_agent` field from the session info.
+- [x] Pass it to message components so `AssistantMessage` can resolve the correct agent color tier.
+- [x] Ensure the agent type defaults gracefully when unknown (fall back to `claude` or peaceful neutral).
 
 ---
 
