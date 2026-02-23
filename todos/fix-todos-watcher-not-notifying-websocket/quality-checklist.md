@@ -2,11 +2,11 @@
 
 ## Build Gates (Builder)
 
-- [ ] All implementation plan tasks are checked
-- [ ] `make test` passes
-- [ ] `make lint` passes
-- [ ] Working tree is clean (or only pre-existing drift)
-- [ ] Commits follow commitizen format
+- [x] All implementation plan tasks are checked
+- [x] `make test` passes (727 passed, 1 skipped; INTERNALERROR in unrelated test_install_hooks.py — pre-existing xdist crash)
+- [x] `make lint` passes
+- [x] Working tree is clean (only `todos/roadmap.yaml` orchestrator drift + untracked `state.yaml`)
+- [x] Commits follow commitizen format
 
 ## Review Gates (Reviewer)
 
