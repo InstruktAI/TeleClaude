@@ -39,6 +39,7 @@ class SessionInfo(TypedDict):
     status: str
     created_at: str
     last_activity: str
+    closed_at: str | None
     active_agent: str | None
     thinking_mode: str | None
     initiator_session_id: str | None

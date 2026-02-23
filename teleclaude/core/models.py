@@ -843,6 +843,7 @@ class SessionSnapshot:
     subdir: Optional[str] = None
     created_at: Optional[str] = None
     last_activity: Optional[str] = None
+    closed_at: Optional[str] = None
     last_input: Optional[str] = None
     last_input_at: Optional[str] = None
     last_output_summary: Optional[str] = None
@@ -869,6 +870,7 @@ class SessionSnapshot:
             "status": self.status,
             "created_at": self.created_at,
             "last_activity": self.last_activity,
+            "closed_at": self.closed_at,
             "last_input": self.last_input,
             "last_input_at": self.last_input_at,
             "last_output_summary": self.last_output_summary,

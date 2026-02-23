@@ -897,7 +897,11 @@ async def _list_sessions(api: TelecAPIClient, *, show_all: bool = False, show_cl
             mode = session.thinking_mode or "?"
             title = session.title
             age = _relative_time(session.last_activity)
-            print(f"{sid} {computer}: {agent}/{mode} ({age}) - {title}")
+            if show_closed and session.closed_at:
+                closed = _relative_time(session.closed_at)
+                print(f"{sid} {computer}: {agent}/{mode} ({age}, closed {closed}) - {title}")
+            else:
+                print(f"{sid} {computer}: {agent}/{mode} ({age}) - {title}")
         if not sessions and caller_id:
             print("No child sessions. Use --all to list all sessions.")
     finally:

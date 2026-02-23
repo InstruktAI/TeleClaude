@@ -94,6 +94,7 @@ class SessionDTO(BaseModel):  # type: ignore[explicit-any]
     status: str
     created_at: str | None = None
     last_activity: str | None = None
+    closed_at: str | None = None
     last_input: str | None = None
     last_input_at: str | None = None
     last_output_summary: str | None = None
@@ -122,6 +123,7 @@ class SessionDTO(BaseModel):  # type: ignore[explicit-any]
             status=session.status,
             created_at=session.created_at,
             last_activity=session.last_activity,
+            closed_at=session.closed_at,
             last_input=session.last_input,
             last_input_at=session.last_input_at,
             last_output_summary=session.last_output_summary,

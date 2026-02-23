@@ -433,6 +433,7 @@ async def list_sessions(*, include_closed: bool = False) -> list[SessionSnapshot
                 status=s.lifecycle_status or "active",
                 created_at=s.created_at.isoformat() if s.created_at else None,
                 last_activity=s.last_activity.isoformat() if s.last_activity else None,
+                closed_at=s.closed_at.isoformat() if s.closed_at else None,
                 last_input=s.last_message_sent,
                 last_input_at=s.last_message_sent_at.isoformat() if s.last_message_sent_at else None,
                 last_output_summary=get_last_output_summary(s),
