@@ -28,9 +28,6 @@ Widget:focus {
     background: transparent;
 }
 
-Widget:active {
-    background: transparent;
-}
 
 /* Suppress focus-within propagation on structural containers.
    Focus flows inward (views get focused) — parent containers should not
