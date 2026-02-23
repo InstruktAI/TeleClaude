@@ -11,7 +11,7 @@ Add image and file attachment handling to `discord_adapter.py` `_handle_on_messa
 
 ## Tasks
 
-### Task 1: Add attachment extraction helper
+### Task 1: Add attachment extraction helper [x]
 
 **File:** `teleclaude/adapters/discord_adapter.py`
 
@@ -21,7 +21,7 @@ Add `_extract_file_attachments(message) -> list[object]` static method alongside
 - Exclude attachments where `content_type` starts with `audio/` (already handled by voice path)
 - Return remaining attachments (images and other files)
 
-### Task 2: Add file/image attachment handler
+### Task 2: Add file/image attachment handler [x]
 
 **File:** `teleclaude/adapters/discord_adapter.py`
 
@@ -36,7 +36,7 @@ Add `_handle_file_attachments(self, message, attachments: list[object]) -> None`
   - Call `get_command_service().handle_file(HandleFileCommand(...))` with caption from `message.content` (first attachment only gets caption to avoid duplication)
 - Wrap each attachment in try/except — log errors, continue to next
 
-### Task 3: Integrate into `_handle_on_message` flow
+### Task 3: Integrate into `_handle_on_message` flow [x]
 
 **File:** `teleclaude/adapters/discord_adapter.py`
 
@@ -80,7 +80,7 @@ if not isinstance(text, str) or not text.strip():
 # ... rest of text processing unchanged
 ```
 
-### Task 4: Add imports
+### Task 4: Add imports [x]
 
 **File:** `teleclaude/adapters/discord_adapter.py`
 
@@ -91,7 +91,7 @@ Add imports for:
 
 Check if these are already imported (HandleVoiceCommand is already imported for the voice handler).
 
-### Task 5: Integration tests
+### Task 5: Integration tests [x]
 
 **File:** `tests/integration/test_discord_media.py` (new)
 
