@@ -1,7 +1,19 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: demo-runner
-  description: Demo runner CLI, build-phase demo artifact, conversational interface
+- slug: discord-media-handling
+  description: Handle image uploads and file attachments in the Discord adapter, matching
+    Telegram parity. Voice already handled.
+- slug: discord-session-routing
+  description: Per-project Discord forums, role-based routing, adapter-specific titles,
+    enriched footer
+- slug: consolidate-methodology-skills
+  description: Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
+    for cross-agent distribution
+- slug: frontend-theming-tui-parity
+  description: Port TUI agent color theming to Next.js frontend with peaceful/themed
+    toggle, CSS variable system, and white-label override file
+- slug: textual-footer-migration
+- slug: tui-state-persistence
 - slug: mcp-migration-telec-commands
   group: mcp-to-tool-specs
   description: 'Phase 1: Add telec subcommands for all 24 tools with rich --help,
@@ -23,14 +35,28 @@
     of only the first. Use a dedicated rolling prompt that captures session direction.
     Reset the output message on any title change so the telegram title feedback floats
     to the top in Telegram.
-- slug: discord-session-routing
-  description: Per-project Discord forums, role-based routing, adapter-specific titles,
-    enriched footer
-- slug: consolidate-methodology-skills
-  description: Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
-    for cross-agent distribution
-- slug: frontend-theming-tui-parity
-  description: Port TUI agent color theming to Next.js frontend with peaceful/themed
-    toggle, CSS variable system, and white-label override file
-- slug: textual-footer-migration
-- slug: tui-state-persistence
+- slug: deployment-versioning
+  group: mature-deployment
+  description: 'Phase 1: Semantic versioning, runtime version access, CI pipeline,
+    release workflow'
+- slug: deployment-channels
+  group: mature-deployment
+  after:
+  - deployment-versioning
+  description: 'Phase 2: Channel config schema (alpha/beta/stable), version watcher
+    job'
+- slug: deployment-migrations
+  group: mature-deployment
+  after:
+  - deployment-channels
+  description: 'Phase 3: Migration manifest format, runner, authoring guide'
+- slug: deployment-auto-update
+  group: mature-deployment
+  after:
+  - deployment-migrations
+  description: 'Phase 4: Update executor, daemon integration for auto-deploy'
+- slug: deployment-cleanup
+  group: mature-deployment
+  after:
+  - deployment-auto-update
+  description: 'Phase 5: Remove telec deploy command, MCP tool, update docs'
