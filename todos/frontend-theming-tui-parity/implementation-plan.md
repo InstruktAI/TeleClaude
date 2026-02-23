@@ -12,7 +12,7 @@ No new npm packages required. `next-themes` is already installed.
 
 **File(s):** `frontend/app/globals.css`
 
-- [ ] Replace all oklch values in the `@theme { }` block with TeleClaude structural token hex values for light mode:
+- [x] Replace all oklch values in the `@theme { }` block with TeleClaude structural token hex values for light mode:
   - `--color-background` → `#fdf6e3` (warm paper base)
   - `--color-foreground` → `#303030` (text primary)
   - `--color-card` / `--color-popover` → `#f0ead8` (surface)
@@ -38,7 +38,7 @@ No new npm packages required. `next-themes` is already installed.
   - `--color-sidebar-accent-foreground` → `#303030`
   - `--color-sidebar-border` → `#a8a8a8`
   - `--color-sidebar-ring` → `#808080`
-- [ ] Replace all oklch values in the `.dark { }` block with TeleClaude dark tokens:
+- [x] Replace all oklch values in the `.dark { }` block with TeleClaude dark tokens:
   - `--color-background` → `#000000` (true black)
   - `--color-foreground` → `#d0d0d0` (text primary)
   - `--color-card` / `--color-popover` → `#262626` (surface)
@@ -64,10 +64,10 @@ No new npm packages required. `next-themes` is already installed.
   - `--color-sidebar-accent-foreground` → `#d0d0d0`
   - `--color-sidebar-border` → `#585858`
   - `--color-sidebar-ring` → `#808080`
-- [ ] Add user color CSS variables to the `@theme { }` block (same values for both modes):
+- [x] Add user color CSS variables to the `@theme { }` block (same values for both modes):
   - `--user-bubble-bg: #e07030`
   - `--user-bubble-text: #ffffff`
-- [ ] Verify the base app renders with correct colors after replacement.
+- [x] Verify the base app renders with correct colors after replacement.
 
 ---
 
