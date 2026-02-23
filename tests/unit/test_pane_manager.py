@@ -335,6 +335,8 @@ def test_cold_start_kills_orphaned_panes():
         def side_effect(*args):
             nonlocal call_count
             if args[0] == "display-message":
+                if "-t" in args and "#{session_name}" in args:
+                    return "tc_tui"
                 return "%1"
             if args[0] == "list-panes":
                 return "%1\n%50\n%60\n"
@@ -357,6 +359,8 @@ def test_reload_init_preserves_existing_panes():
 
         def side_effect(*args):
             if args[0] == "display-message":
+                if "-t" in args and "#{session_name}" in args:
+                    return "tc_tui"
                 return "%1"
             if args[0] == "list-panes":
                 return "%1\t\n%50\ttmux -u attach-session -t tc_sess1\n%60\ttmux -u attach-session -t tc_sess2\n"

@@ -29,3 +29,8 @@
 - slug: consolidate-methodology-skills
   description: Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
     for cross-agent distribution
+- slug: frontend-theming-tui-parity
+  description: Port TUI agent color theming to Next.js frontend with peaceful/themed
+    toggle, CSS variable system, and white-label override file
+- slug: textual-footer-migration
+- slug: tui-state-persistence
