@@ -29,12 +29,7 @@
     of only the first. Use a dedicated rolling prompt that captures session direction.
     Reset the output message on any title change so the telegram title feedback floats
     to the top in Telegram.
-- slug: inbound-hook-service
-  description: Wire existing inbound webhook infrastructure into daemon, deliver GitHub
-    normalizer as proof of end-to-end path
 - slug: help-desk-whatsapp
-  after:
-  - inbound-hook-service
   description: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
 - slug: deployment-versioning
   group: mature-deployment
@@ -49,7 +44,6 @@
   after:
   - deployment-versioning
   - deployment-migrations
-  - inbound-hook-service
   description: 'Phase 3: Channel config, webhook handler, update executor, Redis fan-out'
 - slug: deployment-cleanup
   group: mature-deployment
