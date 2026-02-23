@@ -1541,6 +1541,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _init_webhook_service(self) -> None:
         """Initialize the webhook service subsystem (contracts, handlers, dispatcher, bridge, delivery)."""
         from teleclaude.channels.worker import run_subscription_worker
+        from teleclaude.config.loader import load_project_config
         from teleclaude.hooks.api_routes import set_contract_registry
         from teleclaude.hooks.bridge import EventBusBridge
         from teleclaude.hooks.config import load_hooks_config
@@ -1550,6 +1551,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         from teleclaude.hooks.inbound import InboundEndpointRegistry, NormalizerRegistry
         from teleclaude.hooks.normalizers import register_builtin_normalizers
         from teleclaude.hooks.registry import ContractRegistry
+        from teleclaude.transport.redis_transport import RedisTransport
 
         contract_registry = ContractRegistry()
         handler_registry = HandlerRegistry()
@@ -1557,10 +1559,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         bridge = EventBusBridge(dispatcher)
         delivery_worker = WebhookDeliveryWorker()
         project_cfg_path = config_path.parent / "teleclaude.yml"
-        from teleclaude.config.loader import load_project_config
-
         project_config = load_project_config(project_cfg_path)
-        from teleclaude.transport.redis_transport import RedisTransport
 
         # Load contracts from DB
         await contract_registry.load_from_db()
@@ -1569,19 +1568,20 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         normalizer_registry = NormalizerRegistry()
         register_builtin_normalizers(normalizer_registry)
 
-        # Load config-driven contracts and inbound endpoints
+        # Load config-driven contracts and inbound endpoints.
+        # Contracts load regardless of API server availability; inbound routes require it.
         lifecycle_api_server = getattr(self.lifecycle, "api_server", None)
         app = getattr(lifecycle_api_server, "app", None)
-        if app is None:
-            logger.warning("API server app unavailable; inbound webhooks will not be registered")
-            app = None
-        else:
+        inbound_registry = None
+        if app is not None:
             inbound_registry = InboundEndpointRegistry(app, normalizer_registry, dispatcher.dispatch)
-            await load_hooks_config(
-                project_config.hooks.model_dump(),
-                contract_registry,
-                inbound_registry=inbound_registry,
-            )
+        else:
+            logger.warning("API server app unavailable; inbound webhooks will not be registered")
+        await load_hooks_config(
+            project_config.hooks.model_dump(),
+            contract_registry,
+            inbound_registry=inbound_registry,
+        )
 
         if project_config.channel_subscriptions:
             redis_adapter = self.client.adapters.get("redis")

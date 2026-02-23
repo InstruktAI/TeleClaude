@@ -85,6 +85,21 @@ async def test_inbound_webhook_dispatches_to_contract(monkeypatch, tmp_path, dae
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_inbound_webhook_missing_signature_rejected(monkeypatch, tmp_path, daemon_with_mocked_telegram):
+    daemon = daemon_with_mocked_telegram
+    _write_project_config(tmp_path, webhook_event_type="push")
+    app = _init_inbound_app(daemon, tmp_path, monkeypatch=monkeypatch)
+    await daemon._init_webhook_service()
+
+    body = b'{"repo":"acme/widget"}'
+    client = TestClient(app)
+
+    response = client.post("/hooks/inbound/github", content=body)
+    assert response.status_code == 401
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_inbound_webhook_invalid_signature_rejected(monkeypatch, tmp_path, daemon_with_mocked_telegram):
     daemon = daemon_with_mocked_telegram
     _write_project_config(tmp_path, webhook_event_type="push")

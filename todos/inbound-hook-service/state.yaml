@@ -1,14 +1,15 @@
 phase: in_progress
 build: complete
-review: pending
+review: changes_requested
 deferrals_processed: false
 breakdown:
   assessed: true
   todos: []
-review_round: 0
+review_round: 1
 max_review_rounds: 3
 review_baseline_commit: '4c73236c8163c99dcdd5eed73f27beebab3b3065'
-unresolved_findings: []
+unresolved_findings:
+  - 'contracts-skipped-without-app: load_hooks_config not called when API server unavailable'
 resolved_findings: []
 dor:
   last_assessed_at: '2026-02-23T14:45:00Z'
