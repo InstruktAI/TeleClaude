@@ -59,6 +59,45 @@ SC-5 specifies distinct backgrounds: "assistant bubbles use **neutral surface** 
 
 ---
 
+## Fixes Applied
+
+### C1 Fix - CSS variables moved to static CSS (d4027ff3)
+
+**Issue:** `injectCSSVariables()` wrote inline styles with higher specificity than `theme.local.css`.
+
+**Fix:** Moved all TeleClaude CSS variables into `globals.css`:
+
+- Light mode values in `@theme` block
+- Dark mode values in `.dark` class
+- Removed `CSSVariableInjector` component and JS injection logic
+- `ThemeProvider` now only wraps next-themes
+
+**Result:** `theme.local.css` can now override any CSS variable via normal cascade.
+
+### I2 Fix - Distinct backgrounds in peaceful mode (c7033e49)
+
+**Issue:** Both user and assistant bubbles used `var(--peaceful-muted)` in peaceful mode.
+
+**Fix:** Updated `useAgentColors` hook:
+
+- Assistant bubbles: `var(--color-card)` (#262626 dark / #f0ead8 light)
+- User bubbles: `var(--peaceful-muted)` (#585858 dark / #808080 light)
+
+**Result:** Peaceful mode now has visually distinct assistant vs user messages.
+
+### I1 Fix - Gitignore effectiveness (91ecd293)
+
+**Issue:** `theme.local.css` was tracked despite being in `.gitignore`.
+
+**Fix:**
+
+- Renamed to `theme.local.css.example` (committed, tracked)
+- Created working copy as `theme.local.css` (gitignored, untracked)
+
+**Result:** Local edits to `theme.local.css` no longer appear in git status.
+
+---
+
 ## Suggestions
 
 ### S1: `AgentThemingProvider` blocks render until API responds
