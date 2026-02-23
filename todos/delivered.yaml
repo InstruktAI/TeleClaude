@@ -1,4 +1,9 @@
 # Delivered work items. Newest first.
+- slug: frontend-theming-tui-parity
+  date: '2026-02-23'
+  title: Implement agent-aware chat theming with static CSS variables and local theme override pattern
+  outcome: DELIVERED
+  commit: fd4b5ce3
 - slug: discord-media-handling
   date: '2026-02-23'
   title: Handle image uploads and file attachments in the Discord adapter, matching
