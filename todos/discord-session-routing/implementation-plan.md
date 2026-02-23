@@ -43,16 +43,16 @@ Four coordinated changes to Discord session routing, executed in dependency orde
 
 **File(s):** `teleclaude/core/feature_flags.py`, `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Remove the `discord_project_forum_mirroring` feature flag check (or default it to `True`). The `_ensure_project_forums()` call in `_ensure_discord_infrastructure()` should always execute when Discord is configured.
-- [ ] Clean up the feature flag constant if fully removed.
+- [x] Remove the `discord_project_forum_mirroring` feature flag check (or default it to `True`). The `_ensure_project_forums()` call in `_ensure_discord_infrastructure()` should always execute when Discord is configured.
+- [x] Clean up the feature flag constant if fully removed.
 
 ### Task 2.2: Project-aware session routing in `_resolve_target_forum`
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Extend `_resolve_target_forum(session)` to check the session's `project_path` against trusted dirs' `discord_forum` IDs.
-- [ ] Logic: (1) customer sessions -> help desk forum, (2) match `session.project_path` to a trusted dir with a `discord_forum` -> that forum, (3) fallback -> `_all_sessions_channel_id`.
-- [ ] Cache the project-path-to-forum mapping at startup (after `_ensure_project_forums()`) to avoid repeated config lookups.
+- [x] Extend `_resolve_target_forum(session)` to check the session's `project_path` against trusted dirs' `discord_forum` IDs.
+- [x] Logic: (1) customer sessions -> help desk forum, (2) match `session.project_path` to a trusted dir with a `discord_forum` -> that forum, (3) fallback -> `_all_sessions_channel_id`.
+- [x] Cache the project-path-to-forum mapping at startup (after `_ensure_project_forums()`) to avoid repeated config lookups.
 
 ---
 
