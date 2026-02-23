@@ -91,7 +91,7 @@ Add imports for:
 
 Check if these are already imported (HandleVoiceCommand is already imported for the voice handler).
 
-### Task 5: Integration tests
+### Task 5: Integration tests [x]
 
 **File:** `tests/integration/test_discord_media.py` (new)
 
