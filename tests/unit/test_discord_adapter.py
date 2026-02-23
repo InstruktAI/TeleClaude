@@ -888,6 +888,52 @@ async def test_ensure_project_forums_skips_valid_forum() -> None:
     assert td.discord_forum == 444
 
 
+@pytest.mark.asyncio
+async def test_ensure_discord_infrastructure_clears_stale_channel_and_reprovisions() -> None:
+    """_ensure_discord_infrastructure clears a stale channel ID and re-provisions it."""
+    from types import SimpleNamespace as SN
+
+    adapter = _make_adapter()
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    # Channel 999 is stale — not present in client
+    adapter._client = fake_client
+    adapter._guild_id = 1
+    adapter._help_desk_channel_id = 999  # stale
+
+    provisioned: list[str] = []
+
+    async def fake_find_or_create_forum(guild, category, name, topic):
+        provisioned.append(name)
+        return 888
+
+    async def fake_find_or_create_text_channel(guild, category, name):
+        return None
+
+    async def fake_ensure_category(guild, name, existing, changes, key=None):
+        return SN()
+
+    adapter._find_or_create_forum = fake_find_or_create_forum
+    adapter._find_or_create_text_channel = fake_find_or_create_text_channel
+    adapter._ensure_category = fake_ensure_category
+
+    fake_guild = SN(id=1)
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.config") as mock_config,
+        patch.object(adapter, "_resolve_guild", return_value=fake_guild),
+        patch.object(adapter, "_persist_discord_channel_ids"),
+        patch.object(adapter, "_persist_project_forum_ids"),
+    ):
+        mock_config.discord.categories = {}
+        mock_config.computer.name = "testbox"
+        mock_config.computer.get_all_trusted_dirs.return_value = []
+        await adapter._ensure_discord_infrastructure()
+
+    # Stale help_desk_channel_id cleared and Customer Sessions forum re-provisioned
+    assert "Customer Sessions" in provisioned
+    assert adapter._help_desk_channel_id == 888
+
+
 # =========================================================================
 # Forum Input Routing Tests
 # =========================================================================
