@@ -785,3 +785,329 @@ def test_build_thread_topper_includes_native_id_when_present() -> None:
     session.native_session_id = "native-abc-123"
     result = adapter._build_thread_topper(session)
     assert "ai: native-abc-123" in result
+
+
+# =========================================================================
+# Infrastructure Validation Tests
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_validate_channel_id_returns_id_when_live() -> None:
+    """_validate_channel_id returns the ID if the channel is reachable."""
+    adapter = _make_adapter()
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    fake_channel = SimpleNamespace(id=12345)
+    fake_client.channels[12345] = fake_channel
+    adapter._client = fake_client
+
+    result = await adapter._validate_channel_id(12345)
+    assert result == 12345
+
+
+@pytest.mark.asyncio
+async def test_validate_channel_id_returns_none_when_stale() -> None:
+    """_validate_channel_id returns None if the channel is not found (stale ID)."""
+    adapter = _make_adapter()
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    # Channel 99999 not in client's channel map → stale
+    adapter._client = fake_client
+
+    result = await adapter._validate_channel_id(99999)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_validate_channel_id_returns_none_for_none_input() -> None:
+    """_validate_channel_id passes through None without touching the client."""
+    adapter = _make_adapter()
+    result = await adapter._validate_channel_id(None)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_ensure_project_forums_clears_stale_id_and_reprovisions() -> None:
+    """_ensure_project_forums clears a stale discord_forum ID and re-creates it."""
+    adapter = _make_adapter()
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    # Forum 999 is stale (not in client), guild will create a new forum
+    adapter._client = fake_client
+
+    from types import SimpleNamespace as SN
+
+    created_forums: list[str] = []
+
+    async def fake_find_or_create_forum(guild, category, name, topic):
+        created_forums.append(name)
+        return 777  # new forum ID
+
+    adapter._find_or_create_forum = fake_find_or_create_forum
+
+    # A trusted dir with a stale discord_forum ID
+    td = SN(path="/proj/a", name="ProjectA", desc="Project A", discord_forum=999)
+
+    with patch("teleclaude.adapters.discord_adapter.config") as mock_config:
+        mock_config.computer.get_all_trusted_dirs.return_value = [td]
+
+        await adapter._ensure_project_forums(guild=SN(), category=None)
+
+    # Stale ID cleared, forum re-created, new ID assigned
+    assert "ProjectA" in created_forums
+    assert td.discord_forum == 777
+
+
+@pytest.mark.asyncio
+async def test_ensure_project_forums_skips_valid_forum() -> None:
+    """_ensure_project_forums skips a trusted dir whose discord_forum ID is live."""
+    adapter = _make_adapter()
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    live_forum = SimpleNamespace(id=444)
+    fake_client.channels[444] = live_forum
+    adapter._client = fake_client
+
+    from types import SimpleNamespace as SN
+
+    created_forums: list[str] = []
+
+    async def fake_find_or_create_forum(guild, category, name, topic):
+        created_forums.append(name)
+        return 999
+
+    adapter._find_or_create_forum = fake_find_or_create_forum
+
+    td = SN(path="/proj/b", name="ProjectB", desc="Project B", discord_forum=444)
+
+    with patch("teleclaude.adapters.discord_adapter.config") as mock_config:
+        mock_config.computer.get_all_trusted_dirs.return_value = [td]
+
+        await adapter._ensure_project_forums(guild=SN(), category=None)
+
+    # Valid forum → no re-creation
+    assert "ProjectB" not in created_forums
+    assert td.discord_forum == 444
+
+
+# =========================================================================
+# Forum Input Routing Tests
+# =========================================================================
+
+
+def test_resolve_forum_context_help_desk_via_parent_obj() -> None:
+    """Message in a help desk thread (via parent.id) resolves to help_desk."""
+    adapter = _make_adapter()
+    adapter._help_desk_channel_id = 333
+    adapter._all_sessions_channel_id = 444
+
+    thread = FakeThread(thread_id=555, parent_id=333)  # parent.id = 333
+    message = SimpleNamespace(channel=thread)
+
+    with patch("teleclaude.adapters.discord_adapter.config") as mock_config:
+        mock_config.computer.help_desk_dir = "/help"
+        forum_type, path = adapter._resolve_forum_context(message)
+
+    assert forum_type == "help_desk"
+    assert path == "/help"
+
+
+def test_resolve_forum_context_project_forum() -> None:
+    """Message in a project forum thread resolves to project with correct path."""
+    adapter = _make_adapter()
+    adapter._help_desk_channel_id = 333
+    adapter._all_sessions_channel_id = 444
+    adapter._project_forum_map = {"/home/user/proj-a": 600}
+
+    thread = FakeThread(thread_id=555, parent_id=600)
+    message = SimpleNamespace(channel=thread)
+
+    forum_type, path = adapter._resolve_forum_context(message)
+
+    assert forum_type == "project"
+    assert path == "/home/user/proj-a"
+
+
+def test_resolve_forum_context_all_sessions() -> None:
+    """Message in all-sessions forum resolves to all_sessions with first trusted dir."""
+    from types import SimpleNamespace as SN
+
+    adapter = _make_adapter()
+    adapter._help_desk_channel_id = 333
+    adapter._all_sessions_channel_id = 444
+
+    thread = FakeThread(thread_id=555, parent_id=444)
+    message = SimpleNamespace(channel=thread)
+
+    td = SN(path="/home/user/workspace")
+    with patch("teleclaude.adapters.discord_adapter.config") as mock_config:
+        mock_config.computer.help_desk_dir = "/help"
+        mock_config.computer.get_all_trusted_dirs.return_value = [td]
+        forum_type, path = adapter._resolve_forum_context(message)
+
+    assert forum_type == "all_sessions"
+    assert path == "/home/user/workspace"
+
+
+def test_resolve_forum_context_unknown_defaults_to_help_desk() -> None:
+    """Message from an unknown channel defaults to help_desk forum type."""
+    adapter = _make_adapter()
+    adapter._help_desk_channel_id = 333
+    adapter._all_sessions_channel_id = 444
+    adapter._project_forum_map = {"/proj": 600}
+
+    thread = FakeThread(thread_id=555, parent_id=999)  # 999 not managed
+    message = SimpleNamespace(channel=thread)
+
+    with patch("teleclaude.adapters.discord_adapter.config") as mock_config:
+        mock_config.computer.help_desk_dir = "/help"
+        forum_type, path = adapter._resolve_forum_context(message)
+
+    assert forum_type == "help_desk"
+
+
+@pytest.mark.asyncio
+async def test_create_session_for_project_forum_uses_resolved_role() -> None:
+    """Project forum messages create sessions with resolved identity role, not 'customer'."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+        client.register_adapter("discord", adapter)
+
+    adapter._guild_id = None
+    adapter._help_desk_channel_id = 333
+    adapter._all_sessions_channel_id = 444
+    adapter._project_forum_map = {"/home/user/proj": 600}
+
+    session = _build_session()
+    fake_db = MagicMock()
+    fake_db.get_sessions_by_adapter_metadata = AsyncMock(side_effect=[[], []])
+    fake_db.get_session = AsyncMock(return_value=session)
+    fake_db.update_session = AsyncMock()
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": session.session_id})
+    fake_command_service.process_message = AsyncMock()
+
+    # Identity resolves to "admin" role
+    fake_identity = SimpleNamespace(person_name="Alice", person_role="admin")
+    fake_resolver = MagicMock()
+    fake_resolver.resolve = MagicMock(return_value=fake_identity)
+
+    # Message from a project forum thread (parent_id=600 matches _project_forum_map)
+    thread = FakeThread(thread_id=700, parent_id=600)
+    message = SimpleNamespace(
+        id=12345,
+        content="Start session",
+        author=SimpleNamespace(id=999001, bot=False, display_name="Alice", name="alice"),
+        channel=thread,
+        guild=SimpleNamespace(id=202020),
+    )
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+        patch("teleclaude.core.identity.get_identity_resolver", return_value=fake_resolver),
+    ):
+        await adapter._handle_on_message(message)
+
+    fake_command_service.create_session.assert_awaited_once()
+    create_cmd = fake_command_service.create_session.await_args.args[0]
+    assert create_cmd.channel_metadata["human_role"] == "admin"
+    assert create_cmd.project_path == "/home/user/proj"
+
+
+@pytest.mark.asyncio
+async def test_create_session_for_help_desk_still_uses_customer_role() -> None:
+    """Help desk forum messages still create sessions with human_role='customer'."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+        client.register_adapter("discord", adapter)
+
+    adapter._guild_id = None
+    adapter._help_desk_channel_id = 333
+    adapter._all_sessions_channel_id = 444
+
+    session = _build_session()
+    fake_db = MagicMock()
+    fake_db.get_sessions_by_adapter_metadata = AsyncMock(side_effect=[[], []])
+    fake_db.get_session = AsyncMock(return_value=session)
+    fake_db.update_session = AsyncMock()
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": session.session_id})
+    fake_command_service.process_message = AsyncMock()
+
+    # Thread whose parent.id matches help_desk_channel_id
+    thread = FakeThread(thread_id=555, parent_id=333)
+    message = SimpleNamespace(
+        id=12345,
+        content="Need help",
+        author=SimpleNamespace(id=999001, bot=False, display_name="Alice", name="alice"),
+        channel=thread,
+        guild=SimpleNamespace(id=202020),
+    )
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+    ):
+        await adapter._handle_on_message(message)
+
+    fake_command_service.create_session.assert_awaited_once()
+    create_cmd = fake_command_service.create_session.await_args.args[0]
+    assert create_cmd.channel_metadata["human_role"] == "customer"
+
+
+@pytest.mark.asyncio
+async def test_create_session_project_forum_defaults_member_when_unresolved() -> None:
+    """Project forum messages default to 'member' when identity cannot be resolved."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+        client.register_adapter("discord", adapter)
+
+    adapter._guild_id = None
+    adapter._help_desk_channel_id = 333
+    adapter._all_sessions_channel_id = 444
+    adapter._project_forum_map = {"/home/user/proj": 600}
+
+    session = _build_session()
+    fake_db = MagicMock()
+    fake_db.get_sessions_by_adapter_metadata = AsyncMock(side_effect=[[], []])
+    fake_db.get_session = AsyncMock(return_value=session)
+    fake_db.update_session = AsyncMock()
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": session.session_id})
+    fake_command_service.process_message = AsyncMock()
+
+    # Identity resolver returns None (unknown user)
+    fake_resolver = MagicMock()
+    fake_resolver.resolve = MagicMock(return_value=None)
+
+    thread = FakeThread(thread_id=700, parent_id=600)
+    message = SimpleNamespace(
+        id=12345,
+        content="Start session",
+        author=SimpleNamespace(id=999001, bot=False, display_name="Alice", name="alice"),
+        channel=thread,
+        guild=SimpleNamespace(id=202020),
+    )
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+        patch("teleclaude.core.identity.get_identity_resolver", return_value=fake_resolver),
+    ):
+        await adapter._handle_on_message(message)
+
+    create_cmd = fake_command_service.create_session.await_args.args[0]
+    assert create_cmd.channel_metadata["human_role"] == "member"

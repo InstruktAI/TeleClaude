@@ -84,20 +84,20 @@ The `_ensure_category` method already validates cached IDs (lines 331-334): fetc
 
 ### Task 4.1: Tests
 
-- [ ] Test stale channel ID validation clears and re-provisions.
-- [ ] Test project forum messages create sessions with correct role and project path.
-- [ ] Test help desk forum messages still create customer sessions.
-- [ ] Run `make test`.
+- [x] Test stale channel ID validation clears and re-provisions.
+- [x] Test project forum messages create sessions with correct role and project path.
+- [x] Test help desk forum messages still create customer sessions.
+- [x] Run `make test`.
 
 ### Task 4.2: Quality Checks
 
-- [ ] Run `make lint`.
-- [ ] Verify no unchecked implementation tasks remain.
+- [x] Run `make lint`.
+- [x] Verify no unchecked implementation tasks remain.
 
 ---
 
 ## Phase 5: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes.
-- [ ] Confirm implementation tasks are all marked `[x]`.
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable).
+- [x] Confirm requirements are reflected in code changes.
+- [x] Confirm implementation tasks are all marked `[x]`.
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable).
