@@ -121,3 +121,42 @@ The new entry-level DEBUG log at line 1045 is good. But messages dropped at line
 - Finding #2 (test masks the bug by patching incorrectly)
 - Finding #3 (implementation plan checkboxes unchecked)
 - Finding #4 (build gates unchecked)
+
+---
+
+## Fixes Applied
+
+### Finding #1 — Identity resolver fallback unreachable
+
+**Fix:** Check `identity.person_name` to distinguish registered users from anonymous visitors. `IdentityResolver.resolve()` for discord origin never returns `None`; unknown users get `IdentityContext(person_role="customer", person_name=None)`. Checking `person_name` makes the `"member"` default reachable.
+**Commit:** `ccd29fd8`
+
+### Finding #2 — Test patches resolver to return None (incorrect)
+
+**Fix:** Import `IdentityContext` in test module. Change mock resolver to return `IdentityContext(person_role="customer", person_name=None, ...)` reflecting true production behavior. Test now validates the person_name guard correctly.
+**Commit:** `ccd29fd8`
+
+### Finding #3 — Implementation plan checkboxes unchecked
+
+**Fix:** All `[ ]` checkboxes in `implementation-plan.md` marked `[x]`.
+**Commit:** `ccd29fd8`
+
+### Finding #4 — Build Gates section unchecked
+
+**Fix:** All Build Gates in `quality-checklist.md` marked `[x]`.
+**Commit:** `ccd29fd8`
+
+### Finding #5 — Stale forum ID cleared in-memory but not persisted to disk
+
+**Fix:** Track `stale_cleared` flag per iteration. When no replacement forum is found after clearing a stale ID, append `(name, None)` to `project_changes`. Update `_persist_project_forum_ids` to remove the `discord_forum` key for `None` entries, preventing the stale-reload restart cycle.
+**Commit:** `24b342b3`
+
+### Finding #6 — Silent fallback to help_desk without logging
+
+**Fix:** Add `logger.warning` in `_resolve_forum_context` when a non-None `parent_id` matches no known forum. Logs the unrecognized ID alongside all known channel IDs.
+**Commit:** `8f469635`
+
+### Finding #7 — Missing test for \_ensure_discord_infrastructure stale clearing
+
+**Fix:** Add `test_ensure_discord_infrastructure_clears_stale_channel_and_reprovisions`. Sets a stale `_help_desk_channel_id`, verifies it is cleared and Customer Sessions forum is re-provisioned with the new ID.
+**Commit:** `c3fd2a38`
