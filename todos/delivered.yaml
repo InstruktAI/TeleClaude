@@ -1,4 +1,9 @@
 # Delivered work items. Newest first.
+- slug: tui-footer-clickable-agents
+  date: '2026-02-23'
+  title: Clickable agent pills in TUI footer to cycle availability
+  outcome: DELIVERED
+  commit: f4a65cde
 - slug: ui-adapter-pre-respond-trigger
   date: '2026-02-23'
   title: Add typing indicator support to UI adapters
