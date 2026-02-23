@@ -80,21 +80,41 @@ class PreparationView(Widget, can_focus=True):
 
     _logger = get_logger(__name__)
 
+    @staticmethod
+    def _todo_fingerprint(projects: list[ProjectWithTodosInfo]) -> tuple[tuple[str, ...], ...]:
+        """Build a lightweight fingerprint of all todo data for change detection."""
+        return tuple(
+            (
+                t.slug,
+                t.status,
+                str(t.dor_score),
+                t.build_status or "",
+                t.review_status or "",
+                t.deferrals_status or "",
+                str(t.findings_count),
+                ",".join(t.files),
+                ",".join(t.after),
+                t.group or "",
+            )
+            for p in projects
+            for t in (p.todos or [])
+        )
+
     def update_data(
         self,
         projects_with_todos: list[ProjectWithTodosInfo],
         availability: dict[str, AgentAvailabilityInfo] | None = None,
     ) -> None:
-        """Update view with fresh API data. Only rebuild if structure changed."""
+        """Update view with fresh API data. Only rebuild if data changed."""
         self._logger.trace(
             "[PERF] PrepView.update_data called items=%d t=%.3f", len(projects_with_todos), _t.monotonic()
         )
         if availability is not None:
             self._availability = availability
-        old_slugs = {t.slug for p in self._projects_with_todos for t in (p.todos or [])}
-        new_slugs = {t.slug for p in projects_with_todos for t in (p.todos or [])}
+        old_fp = self._todo_fingerprint(self._projects_with_todos)
+        new_fp = self._todo_fingerprint(projects_with_todos)
         self._projects_with_todos = projects_with_todos
-        if old_slugs != new_slugs or not self._nav_items:
+        if old_fp != new_fp or not self._nav_items:
             self._rebuild()
 
     def load_persisted_state(self, expanded_todos: set[str]) -> None:

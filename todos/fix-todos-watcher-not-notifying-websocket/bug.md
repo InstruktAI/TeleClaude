@@ -12,12 +12,22 @@ Date: 2026-02-23
 
 ## Investigation
 
-The TodoWatcher correctly dispatches WebSocket events when todo files change. The TUI's app component receives these events (`todos_updated`, `todo_created`, `todo_updated`, `todo_removed`) and dispatches `SYNC_TODOS` action to the Zustand store. However, `projectsWithTodos` (held in React local state in `frontend/cli/app.tsx`) is only fetched once on component mount during `useEffect(..., [])`. The `SYNC_TODOS` action only prunes `expandedTodos` in the store—it doesn't trigger a re-fetch of `projectsWithTodos`.
+Traced the full chain from filesystem to TUI display:
+
+1. **TodoWatcher** (todo_watcher.py) detects file changes via watchdog, debounces, calls `cache.refresh_local_todos()`.
+2. **Cache** re-reads todos via `assemble_roadmap()`, stores `list[TodoInfo]` with full shape (after, group, files, status, dor_score, etc.), emits cache notification.
+3. **ApiServer** `_on_cache_change` receives notification, builds `RefreshEventDTO`, broadcasts via WebSocket after 0.25s debounce.
+4. **TUI** `_handle_ws_event` receives `RefreshEvent`, falls to else clause, calls `_refresh_data()`.
+5. **`_refresh_data()`** fetches fresh data from HTTP API, calls `PreparationView.update_data()`.
+
+Steps 1-5 all work correctly. The WebSocket chain delivers fresh data to the view.
+
+The bug is in step 6: `PreparationView.update_data()` only calls `_rebuild()` when the **slug set** changes (todo added or removed). For state.yaml edits (DOR score, build status, review status, phase transitions), the slug set stays identical so `_rebuild()` is never called and the display stays stale.
 
 ## Root Cause
 
-In `frontend/cli/app.tsx`, `projectsWithTodos` state is populated once on mount and never updated when WebSocket todo events arrive. The `SYNC_TODOS` action in the reducer only manages `expandedTodos` pruning, not data refresh.
+`PreparationView.update_data()` in `teleclaude/cli/tui/views/preparation.py` compared only `{t.slug for ...}` old vs new. Any change that doesn't add/remove a slug (e.g., editing state.yaml to update DOR score, build status, phase, findings) was invisible to the change detection.
 
 ## Fix Applied
 
-Added `todosRefreshTrigger: number` field to `TuiState.preparation` in the Zustand store. Updated the `SYNC_TODOS` reducer action to increment this counter. In `frontend/cli/app.tsx`, added a new `useEffect` that watches `todosRefreshTrigger` and calls `api.getProjectsWithTodos()` to refresh the data whenever the counter changes. Tests updated to verify counter increments. Commit: ac81602c
+Replaced the slug-set comparison with a full data fingerprint that includes all display-relevant fields: slug, status, dor_score, build_status, review_status, deferrals_status, findings_count, files, after, and group. The view now rebuilds whenever any todo property changes, not just when todos are added or removed.
