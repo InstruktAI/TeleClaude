@@ -6,21 +6,19 @@
 <!-- Each block is run by `telec todo demo discord-slash-commands-like-telegram` as a build gate — all must exit 0. -->
 
 ```bash
-# Verify the discord command handlers module exists and imports cleanly
-python -c "from teleclaude.adapters.discord.command_handlers import CommandHandlersMixin; print('CommandHandlersMixin imported OK')"
+# Verify the session launcher module exists and imports cleanly
+python -c "from teleclaude.adapters.discord.session_launcher import SessionLauncherView; print('SessionLauncherView imported OK')"
 ```
 
 ```bash
-# Verify CommandTree is created and slash commands are registered
+# Verify CommandTree can be created and /cancel registered
 python -c "
-from unittest.mock import MagicMock, AsyncMock
-import asyncio, importlib
+from unittest.mock import MagicMock
+import importlib
 discord = importlib.import_module('discord')
-from teleclaude.core.events import UiCommands
 
-# Verify app_commands module is available
 tree = discord.app_commands.CommandTree(MagicMock())
-print(f'CommandTree created OK, {len(UiCommands)} UiCommands to register')
+print('CommandTree created OK')
 "
 ```
 
@@ -36,65 +34,57 @@ make lint
 
 ## Guided Presentation
 
-### Step 1: Package structure
+### Step 1: Launcher display (multi-agent)
 
-Show the new `teleclaude/adapters/discord/` package with the `command_handlers.py` mixin:
+Navigate to a Discord project forum where multiple agents are enabled.
 
-```bash
-ls -la teleclaude/adapters/discord/
-```
+What to observe:
 
-Observe: `__init__.py` and `command_handlers.py` exist, following the Telegram mixin pattern.
+- A persistent message with one button per enabled agent (e.g., "Claude", "Gemini", "Codex").
+- Message text: "Start a session".
+- Buttons use primary style.
 
-### Step 2: Slash command registration
+### Step 2: Button click creates session
 
-Start the Discord adapter (or show the registration code path) and verify slash commands sync to the guild.
+Click an agent button (e.g., "Claude") in the launcher message.
 
-What to observe: All 22 `UiCommands` are registered as Discord Application Commands with correct descriptions and parameter definitions.
+What to observe:
 
-### Step 3: Key command in a session thread
+- Ephemeral acknowledgment: "Starting Claude...".
+- A new thread is created in the forum with a session running the selected agent in slow mode.
+
+### Step 3: Single-agent mode (no launcher)
+
+Navigate to a project forum where only one agent is enabled.
+
+What to observe:
+
+- No launcher message is posted.
+- Posting a new thread message auto-starts the single enabled agent in slow mode.
+
+### Step 4: `/cancel` in a session thread
 
 In a Discord forum thread with an active session, type `/cancel`.
 
 What to observe:
 
-- Discord shows autocomplete with "Send CTRL+C to interrupt current command" description.
-- After selecting, an ephemeral message confirms "Sent cancel".
-- The session receives CTRL+C.
+- Discord shows the command with "Send CTRL+C to interrupt the current agent" description.
+- Ephemeral message confirms "Sent CTRL+C".
+- The agent in the session receives the interrupt.
 
-### Step 4: Agent command
+### Step 5: `/cancel` outside a session thread
 
-In the same thread, type `/claude`.
-
-What to observe:
-
-- Ephemeral deferred response appears.
-- Claude agent starts in the session.
-- Follow-up message confirms agent start.
-
-### Step 5: Parameterized command
-
-Type `/ctrl` and provide `d` as the key parameter.
+Type `/cancel` in a channel or thread with no active session.
 
 What to observe:
 
-- Discord shows the required `key` parameter prompt.
-- CTRL+D is sent to the session.
-- Ephemeral confirmation appears.
+- Ephemeral error message: "No active session in this thread."
 
-### Step 6: Help command
+### Step 6: Restart persistence
 
-Type `/help` in any channel.
+Restart the daemon and revisit the project forum.
 
 What to observe:
 
-- Ephemeral message with all available commands and descriptions.
-- Works outside session threads (no session required).
-
-### Step 7: Error handling
-
-Type `/cancel` outside a session thread (e.g., in a text channel).
-
-What to observe:
-
-- Ephemeral error message: "This command requires an active session thread."
+- The same launcher message is still present (not duplicated).
+- Buttons remain functional after restart.

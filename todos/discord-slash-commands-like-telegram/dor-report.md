@@ -6,31 +6,30 @@
 
 **Status:** Pass
 
-Problem statement is explicit: Discord adapter lacks slash commands that Telegram has. Goal, scope, and 14 testable success criteria in requirements.md cover all command categories (key commands, agent commands, session commands, help). Each criterion describes observable behavior.
+Problem statement is explicit: Discord adapter lacks session launcher and agent interrupt capabilities that Telegram has. Goal, scope, and 12 testable success criteria in requirements.md cover button launcher and `/cancel` command. Each criterion describes observable behavior.
 
 ### Gate 2: Scope & Size
 
 **Status:** Pass
 
-Atomic change: 3 new files (package init, command handlers mixin, tests), 1 modified (discord_adapter.py). Follows established Telegram mixin pattern. No cross-cutting changes. Fits a single AI session.
+Atomic change: 3 new files (package init, session launcher view, tests), 1 modified (discord_adapter.py). No cross-cutting changes. Fits a single AI session.
 
 ### Gate 3: Verification
 
 **Status:** Pass
 
-- Unit tests for handler methods and slash command registration.
-- Integration test for interaction → dispatch flow.
+- Unit tests for `_get_enabled_agents()`, `SessionLauncherView`, `_resolve_project_from_forum()`, `/cancel` handler, and `_create_session_for_message`.
 - Automated demo scripts (import check, CommandTree creation, make test, make lint).
-- Guided presentation with 7 observable steps.
+- Guided presentation with 6 observable steps.
 
 ### Gate 4: Approach Known
 
 **Status:** Pass
 
-- `discord.py >= 2.4.0` `app_commands.CommandTree` is proven and stable.
+- `discord.py >= 2.4.0` `discord.ui.View` and `discord.ui.Button` for persistent buttons.
+- `discord.py >= 2.4.0` `app_commands.CommandTree` for `/cancel` registration.
 - `CommandTree` attaches to `discord.Client` without switching to `commands.Bot`.
 - Guild-scoped sync provides instant availability.
-- Telegram `CommandHandlersMixin` pattern is established in codebase.
 - Existing `_find_session()`, `_dispatch_command()`, and `CommandService` provide the execution path.
 
 ### Gate 5: Research Complete
@@ -38,7 +37,7 @@ Atomic change: 3 new files (package init, command handlers mixin, tests), 1 modi
 **Status:** Pass
 
 - `discord.py` is existing project dependency.
-- `app_commands` module is part of discord.py, not a new library.
+- `app_commands` and `discord.ui` modules are part of discord.py, not new libraries.
 - No new third-party dependencies.
 - Guild-scoped registration avoids the 1-hour global sync delay.
 
@@ -54,10 +53,10 @@ Atomic change: 3 new files (package init, command handlers mixin, tests), 1 modi
 
 **Status:** Pass
 
-- Additive mixin — existing `_handle_on_message` flow untouched.
-- Slash commands create a parallel input path alongside text messages.
-- `_dispatch_command` handles cross-adapter broadcasting automatically.
-- Rollback: remove mixin from inheritance chain and tree setup.
+- Additive — existing `_handle_on_message` flow untouched.
+- Button launcher creates a parallel input path alongside text messages.
+- `/cancel` is a single guild-scoped command with ephemeral responses.
+- Rollback: remove launcher posting and tree setup.
 
 ### Gate 8: Tooling Impact
 
@@ -78,7 +77,6 @@ Atomic change: 3 new files (package init, command handlers mixin, tests), 1 modi
 
 - `CommandTree` can be attached to `discord.Client` — standard discord.py pattern.
 - Guild ID is always configured when Discord adapter is enabled.
-- Discord slash command names support underscores (`^[-\w]{1,32}$`).
 - Ephemeral responses are sufficient for command feedback.
 
 ## Final Score: 8/10

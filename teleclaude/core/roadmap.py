@@ -88,7 +88,12 @@ def assemble_roadmap(
         findings_count = 0
         phase_status = "pending"
 
-        state_path = todo_dir / "state.yaml"
+        slug = todo_dir.name
+        project_root = Path(project_path)
+
+        # Worktree state takes precedence over main (active work reflects live progress)
+        worktree_state = project_root / "trees" / slug / "todos" / slug / "state.yaml"
+        state_path = worktree_state if worktree_state.exists() else todo_dir / "state.yaml"
         # Backward compat: fall back to state.json
         if not state_path.exists():
             legacy_path = todo_dir / "state.json"

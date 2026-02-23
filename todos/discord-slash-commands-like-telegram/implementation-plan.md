@@ -2,139 +2,141 @@
 
 ## Overview
 
-Add Discord Application Commands by attaching an `app_commands.CommandTree` to the existing `discord.Client`, creating a `CommandHandlersMixin` in a new `teleclaude/adapters/discord/` package, and dynamically registering all `UiCommands` as guild-scoped slash commands. The approach mirrors Telegram's mixin-based architecture while adapting to Discord's interaction model (acknowledge → dispatch → ephemeral response).
+Add a button-based session launcher to Discord project forums and a single `/cancel` slash command for agent interruption. The launcher posts a persistent message with agent buttons in each forum. Clicking a button creates a session with the selected agent in slow mode. The approach uses `discord.ui.View`/`Button` for the launcher and `app_commands.CommandTree` for `/cancel`.
 
-## Phase 1: Package Structure & CommandTree
+## Phase 1: Infrastructure
 
 ### Task 1.1: Create `teleclaude/adapters/discord/` package
 
 **File(s):** `teleclaude/adapters/discord/__init__.py`
 
-- [ ] Create `teleclaude/adapters/discord/__init__.py` with an empty init (or minimal docstring).
-- [ ] This package holds the Discord command handlers mixin. The main `discord_adapter.py` stays at its current path.
+- [ ] Create package with empty `__init__.py`.
 
-### Task 1.2: Attach `CommandTree` to Discord client
+### Task 1.2: Determine available agents at startup
+
+**File(s):** `teleclaude/adapters/discord_adapter.py`
+
+- [ ] Add helper `_get_enabled_agents() -> list[str]` that returns agent names where `config.agents[name].enabled` is True.
+- [ ] Add property `_multi_agent` that returns `len(self._get_enabled_agents()) > 1`.
+- [ ] Add property `_default_agent` that returns the first enabled agent name (fallback for single-agent mode).
+
+### Task 1.3: Build reverse forum-to-project map
+
+**File(s):** `teleclaude/adapters/discord_adapter.py`
+
+- [ ] After `_build_project_forum_map()`, build `_forum_project_map: dict[int, str]` (forum_id → project_path) by inverting `_project_forum_map`.
+- [ ] Add `_resolve_project_from_forum(forum_id: int) -> str | None` that looks up the project path.
+
+## Phase 2: Button Launcher
+
+### Task 2.1: Create persistent View and Button classes
+
+**File(s):** `teleclaude/adapters/discord/session_launcher.py`
+
+- [ ] Create `SessionLauncherView(discord.ui.View)` with `timeout=None`.
+- [ ] Constructor takes list of enabled agent names and a callback coroutine.
+- [ ] For each agent, create `discord.ui.Button(label=agent_name.capitalize(), custom_id=f"launch:{agent_name}", style=ButtonStyle.primary)`.
+- [ ] Button callback: call the provided coroutine with `(interaction, agent_name)`.
+
+### Task 2.2: Implement launcher message lifecycle
+
+**File(s):** `teleclaude/adapters/discord_adapter.py`
+
+- [ ] Add `_post_or_update_launcher(forum_id: int)` method:
+  1. Check `system_settings` for existing launcher message ID (`discord_launcher:{forum_id}`).
+  2. If exists, try to edit it (update buttons in case agent list changed). If edit fails (deleted), create new.
+  3. If not exists, post new message with `SessionLauncherView` to the forum channel.
+  4. Store message ID in `system_settings`.
+- [ ] Message text: "Start a session" (plain, no emoji).
+- [ ] Only post launcher when `_multi_agent` is True.
+
+### Task 2.3: Post launchers on startup
+
+**File(s):** `teleclaude/adapters/discord_adapter.py`
+
+- [ ] In `_handle_on_ready()`, after `_ensure_discord_infrastructure()`, iterate `_project_forum_map` and call `_post_or_update_launcher(forum_id)` for each forum.
+- [ ] Skip forums where `_multi_agent` is False.
+- [ ] Add error handling per forum (log warning, continue to next).
+- [ ] Re-register the persistent view with the client so button callbacks work after restart: `self._client.add_view(view)` with matching `custom_id`s.
+
+### Task 2.4: Handle button click → create session
+
+**File(s):** `teleclaude/adapters/discord_adapter.py`
+
+- [ ] Implement button callback `_handle_launcher_click(interaction, agent_name)`:
+  1. Defer the interaction (ephemeral): `await interaction.response.defer(ephemeral=True)`.
+  2. Resolve project: `_resolve_project_from_forum(interaction.channel_id)` (the forum ID from the channel where the launcher message lives).
+  3. Create session: `CreateSessionCommand(project_path=project_path, auto_command=f"agent {agent_name}", origin=InputOrigin.DISCORD.value)`.
+  4. Dispatch via `get_command_service().create_session(cmd)`.
+  5. Follow up: `await interaction.followup.send(f"Starting {agent_name}...", ephemeral=True)`.
+
+## Phase 3: Fix Single-Agent Auto-Start
+
+### Task 3.1: Fix `_create_session_for_message` for operator sessions
+
+**File(s):** `teleclaude/adapters/discord_adapter.py`
+
+- [ ] When message is NOT from help desk forum: derive `project_path` from `_resolve_project_from_forum(channel_id)` instead of hardcoding `help_desk_dir`.
+- [ ] When message is NOT from help desk forum: set `auto_command=f"agent {self._default_agent}"` and omit `human_role=customer`.
+- [ ] When message IS from help desk forum: preserve existing behavior (help_desk_dir, customer role, agent claude).
+- [ ] Always use thinking_mode `slow` for auto-started agents.
+
+## Phase 4: `/cancel` Slash Command
+
+### Task 4.1: Attach CommandTree and register `/cancel`
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
 - [ ] In `start()`, after creating `self._client`, create `self._tree = self._discord.app_commands.CommandTree(self._client)`.
-- [ ] Store `self._tree` as an instance attribute (initialized to `None` in `__init__`).
-- [ ] Call `self._register_slash_commands()` after creating the tree (before starting the gateway).
-- [ ] In `_handle_on_ready()`, sync the command tree to the guild: `await self._tree.sync(guild=discord.Object(id=self._guild_id))`.
-- [ ] Add error handling for tree sync failures (log warning, don't block startup).
-- [ ] In `stop()`, clear the tree reference.
+- [ ] Store `self._tree` as instance attribute (initialized to `None` in `__init__`).
+- [ ] Register single command: `app_commands.Command(name="cancel", description="Send CTRL+C to interrupt the current agent", callback=self._handle_cancel_slash)`.
+- [ ] Add command to tree guild-scoped: `self._tree.add_command(cmd, guild=discord.Object(id=self._guild_id))`.
 
-### Task 1.3: Register slash commands dynamically
+### Task 4.2: Sync tree on ready
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Add `_register_slash_commands()` method that iterates `UiCommands` and creates `app_commands.Command` objects.
-- [ ] For each command, use the UiCommands description as the slash command description.
-- [ ] Parameter definitions per command category:
-  - **Key commands with no args** (`cancel`, `cancel2x`, `kill`, `enter`, `escape`, `escape2x`, `tab`): no parameters.
-  - **Key commands with optional count** (`shift_tab`, `backspace`, `key_up`, `key_down`, `key_left`, `key_right`): optional `count` integer parameter.
-  - **`ctrl`**: required `key` string parameter (e.g., "d" for CTRL+D).
-  - **Agent commands** (`claude`, `gemini`, `codex`): optional `args` string parameter.
-  - **`new_session`**: optional `title` string parameter.
-  - **`agent_resume`, `agent_restart`, `claude_plan`, `help`**: no parameters.
-- [ ] Add each command to `self._tree` via `self._tree.add_command(cmd, guild=discord.Object(id=self._guild_id))`.
-- [ ] Each command callback delegates to the appropriate `_handle_*` method from the mixin.
+- [ ] In `_handle_on_ready()`, sync command tree: `await self._tree.sync(guild=discord.Object(id=self._guild_id))`.
+- [ ] Wrap in try/except (log warning on failure, don't block startup).
 
-## Phase 2: Command Handler Mixin
-
-### Task 2.1: Create `CommandHandlersMixin` with session resolution
-
-**File(s):** `teleclaude/adapters/discord/command_handlers.py`
-
-- [ ] Create `CommandHandlersMixin` class following the Telegram pattern.
-- [ ] Document required host class interface: `client`, `_discord`, `_guild_id`, `_dispatch_command`, `_metadata`, `ADAPTER_KEY`.
-- [ ] Implement `_get_session_from_thread(interaction)`: extract `(channel_id, thread_id)` from `interaction.channel` (same extraction logic as `_extract_channel_ids`), then call existing `_find_session(channel_id=channel_id, thread_id=thread_id, user_id=user_id)` which looks up via `db.get_sessions_by_adapter_metadata("discord", "thread_id", thread_id)`.
-- [ ] Implement `_require_session_from_thread(interaction)`: like above but sends ephemeral error if not found.
-- [ ] Authorization: reuse existing managed-forum gating pattern (`_is_managed_message` / `_get_managed_forum_ids`). Discord does not use a user whitelist — if the user can type in the managed forum thread, they can use commands.
-
-### Task 2.2: Implement simple command handlers (key commands)
-
-**File(s):** `teleclaude/adapters/discord/command_handlers.py`
-
-- [ ] Implement `_handle_discord_simple_command(interaction, event, args)` template method:
-  1. Resolve session from thread via `_require_session_from_thread()`.
-  2. Create `KeysCommand(session_id=session.session_id, key=event, args=args)`.
-  3. Send ephemeral acknowledgment: `await interaction.response.send_message(f"Sent {event}", ephemeral=True)`.
-  4. Dispatch via `_dispatch_command()` with `get_command_service().keys(cmd)`.
-- [ ] Register dynamic handlers for all key commands that delegate to this template.
-
-### Task 2.3: Implement agent command handlers
-
-**File(s):** `teleclaude/adapters/discord/command_handlers.py`
-
-- [ ] Implement `_handle_discord_agent_command(interaction, agent_name, args)`:
-  1. Resolve session from thread.
-  2. Create `StartAgentCommand(session_id, agent_name, args)`.
-  3. Defer the interaction (agent start may take time): `await interaction.response.defer(ephemeral=True)`.
-  4. Dispatch via `_dispatch_command()`.
-  5. Follow up: `await interaction.followup.send(f"Starting {agent_name}...", ephemeral=True)`.
-- [ ] Implement `_handle_discord_agent_resume(interaction)`:
-  1. Resolve session.
-  2. Create `ResumeAgentCommand(session_id)`.
-  3. Dispatch and respond.
-- [ ] Implement `_handle_discord_agent_restart(interaction)`:
-  1. Resolve session.
-  2. Create `RestartAgentCommand(session_id)`.
-  3. Dispatch and respond.
-- [ ] Implement `_handle_discord_claude_plan(interaction)`:
-  1. Delegate to simple command handler with event="shift_tab", args=["3"].
-
-### Task 2.4: Implement special handlers (new_session, help)
-
-**File(s):** `teleclaude/adapters/discord/command_handlers.py`
-
-- [ ] Implement `_handle_discord_new_session(interaction, title)`:
-  1. Verify interaction is in a forum channel (not a thread).
-  2. Defer the interaction.
-  3. Create `CreateSessionCommand(project_path, title, origin=InputOrigin.DISCORD.value)`.
-  4. Dispatch via `get_command_service().create_session(cmd)`.
-  5. Follow up with session creation confirmation.
-- [ ] Implement `_handle_discord_help(interaction)`:
-  1. Build help text from `UiCommands` dictionary (like Telegram's `_handle_help`).
-  2. Send ephemeral response with formatted command list.
-
-## Phase 3: Integration
-
-### Task 3.1: Wire mixin into DiscordAdapter
+### Task 4.3: Implement `/cancel` handler
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Add `CommandHandlersMixin` to `DiscordAdapter` inheritance chain.
-- [ ] Import mixin from `teleclaude.adapters.discord.command_handlers`.
-- [ ] Verify `_get_command_handlers()` from `UiAdapter` discovers the new `_handle_*` methods.
+- [ ] Implement `_handle_cancel_slash(interaction)`:
+  1. Resolve session from thread via existing `_find_session(channel_id, thread_id, user_id)` (extract IDs from `interaction.channel`).
+  2. If no session: `await interaction.response.send_message("No active session in this thread.", ephemeral=True)` and return.
+  3. Create `KeysCommand(session_id=session.session_id, key="cancel", args=[])`.
+  4. Send ephemeral acknowledgment: `await interaction.response.send_message("Sent CTRL+C", ephemeral=True)`.
+  5. Dispatch: `await get_command_service().keys(cmd)`.
 
-### Task 3.2: Verify interaction routing
+### Task 4.4: Clean up tree on stop
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Verify that `CommandTree(client)` auto-dispatches interactions without explicit `on_interaction` registration. In discord.py 2.x, `CommandTree.__init__` hooks into the client's internal `_command_tree` attribute for automatic dispatch.
-- [ ] If auto-dispatch does NOT work: add `on_interaction` event in `_register_gateway_handlers()` that calls `await self._tree.interaction_check(interaction)` followed by `await self._tree._call(interaction)` (or the documented dispatch method).
-- [ ] Test by invoking a registered slash command and confirming the handler fires.
+- [ ] In `stop()`, clear tree reference.
 
 ---
 
-## Phase 4: Validation
+## Phase 5: Validation
 
-### Task 4.1: Tests
+### Task 5.1: Tests
 
-- [ ] Add unit tests for `CommandHandlersMixin` methods (session resolution, command creation).
-- [ ] Add unit tests for slash command registration (verify all UiCommands are registered).
-- [ ] Add integration test: mock Discord interaction → verify command dispatch.
+- [ ] Unit test: `_get_enabled_agents()` with different config states.
+- [ ] Unit test: `SessionLauncherView` creates correct buttons for given agent list.
+- [ ] Unit test: `_resolve_project_from_forum()` returns correct project path.
+- [ ] Unit test: `/cancel` handler with mock interaction (session found / not found).
+- [ ] Unit test: `_create_session_for_message` uses forum-derived project for non-help-desk threads.
 - [ ] Run `make test`.
 
-### Task 4.2: Quality Checks
+### Task 5.2: Quality Checks
 
 - [ ] Run `make lint`.
 - [ ] Verify no unchecked implementation tasks remain.
 
 ---
 
-## Phase 5: Review Readiness
+## Phase 6: Review Readiness
 
 - [ ] Confirm requirements are reflected in code changes.
 - [ ] Confirm implementation tasks are all marked `[x]`.

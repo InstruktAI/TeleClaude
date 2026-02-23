@@ -2,57 +2,54 @@
 
 ## Goal
 
-Add Discord Application Commands (slash commands) to the Discord adapter, mirroring the full set of Telegram slash commands. Users in Discord forum threads should have the same command capabilities as Telegram users: session management, agent control, terminal key emulation, and help.
+Give Discord users the same session-launching experience as Telegram users: pick an agent, start a session — plus a single `/cancel` escape hatch to interrupt running agents. The approach uses persistent button messages in project forums for agent selection and one Discord slash command for interruption.
 
 ## Scope
 
 ### In scope:
 
-- Register all `UiCommands` as Discord slash commands with autocomplete and descriptions.
-- Guild-scoped command registration (instant availability, single-guild deployment).
-- Session-context resolution from Discord forum threads (matching Telegram's topic-based resolution).
-- Ephemeral responses for terminal control commands (no chat pollution).
-- Command parameter support: `/ctrl` requires a key argument, `/shift_tab`/`/backspace`/arrow keys accept optional count.
-- `/new_session` works from forum channels (creates a new thread).
-- `/help` works anywhere (no session required).
-- Agent commands (`/claude`, `/gemini`, `/codex`, `/agent_resume`, `/agent_restart`, `/claude_plan`) require session context.
-- Integration with existing `UiAdapter._dispatch_command()` and `CommandService` infrastructure.
-- Discord `CommandHandlersMixin` in a new `teleclaude/adapters/discord/` package, following the Telegram mixin pattern.
+- **Session launcher buttons**: persistent pinned message in each project forum with one button per enabled agent (e.g., "Claude", "Gemini", "Codex"). Clicking a button creates a session in that forum's project with the selected agent in slow (most capable) mode.
+- **Conditional display**: only show the launcher when more than one agent is enabled in `config.agents`. When only one agent is enabled, auto-start it on first message — no button menu.
+- **`/cancel` slash command**: single Discord Application Command registered guild-scoped. Sends CTRL+C to the session. Ephemeral acknowledgment. Works in session threads only.
+- **Forum-to-project resolution**: reverse `_project_forum_map` (forum_id → project_path) to derive project from the forum where the button was clicked.
+- **Fix `_create_session_for_message`**: currently hardcodes `help_desk_dir` and `human_role=customer` for all Discord sessions. Must derive project from forum context for operator sessions.
+- **Launcher lifecycle**: post or update launcher message on `on_ready`. Store message ID per forum in `system_settings`. Survive daemon restarts.
 
 ### Out of scope:
 
-- Custom Discord UI components (buttons, selects, modals) for commands — text-based interaction only.
-- Prefix commands (e.g., `!cancel`) — Discord Application Commands are the standard.
-- DM slash commands — commands only work in guild channels/threads.
-- Refactoring `CommandMapper.map_telegram_input()` to a generic method — Discord handlers create command objects directly, consistent with existing Discord adapter patterns.
-- Moving `discord_adapter.py` into the package — it stays at its current path; the new package holds only the mixin.
+- Terminal key emulation commands (tab, escape, arrow keys, backspace, etc.) — not needed for Discord.
+- Agent commands as slash commands (`/claude`, `/gemini`, `/codex`) — covered by button launcher.
+- `/help` slash command — buttons are self-explanatory.
+- Project picker dropdown in general channel.
+- Custom Discord UI components beyond buttons (modals, select menus).
+- Telegram changes.
 
 ## Success Criteria
 
-- [ ] All 22 `UiCommands` registered as Discord slash commands with correct descriptions.
-- [ ] Slash commands appear with autocomplete when typing `/` in Discord.
-- [ ] Key commands (`/cancel`, `/enter`, `/escape`, etc.) work in session threads and send ephemeral confirmation.
-- [ ] Agent commands (`/claude`, `/gemini`, `/codex`) start agents in session threads.
-- [ ] `/agent_resume` and `/agent_restart` work in session threads.
-- [ ] `/new_session` creates a new session from a forum channel.
-- [ ] `/help` displays command list anywhere.
-- [ ] `/ctrl d` sends CTRL+D to the session.
-- [ ] `/shift_tab 3` sends 3x SHIFT+TAB.
-- [ ] Commands outside a session thread return a clear error (except `/new_session` and `/help`).
+- [ ] Project forums with multiple enabled agents show a pinned launcher message with one button per enabled agent.
+- [ ] Project forums with a single enabled agent show no launcher; first message auto-starts that agent in slow mode.
+- [ ] Clicking an agent button creates a session thread in that forum with the correct project and agent.
+- [ ] Agent always starts in slow (most capable) thinking mode.
+- [ ] Button labels show only the agent name (e.g., "Claude", not "Claude slow").
+- [ ] Launcher message persists across daemon restarts (message ID stored in system_settings).
+- [ ] `/cancel` sends CTRL+C to the session and shows ephemeral confirmation.
+- [ ] `/cancel` outside a session thread returns a clear ephemeral error.
+- [ ] Operator sessions created from project forums use the correct project_path (not help_desk_dir).
+- [ ] Help desk sessions (from help_desk forum) continue to work as before.
 - [ ] Existing Discord text message handling is unaffected.
 - [ ] `make test` passes.
 - [ ] `make lint` passes.
 
 ## Constraints
 
-- Must use `discord.py >= 2.4.0` `app_commands.CommandTree` (already a dependency).
+- Must use `discord.py >= 2.4.0` `discord.ui.View` and `discord.ui.Button` for persistent buttons.
+- Must use `discord.py >= 2.4.0` `app_commands.CommandTree` for `/cancel` registration.
+- Button views must use `timeout=None` to survive bot restarts.
+- Guild-scoped slash command registration only.
+- Interaction acknowledgment within Discord's 3-second window.
 - Must not change existing `discord_adapter.py` import paths.
-- Must use `UiAdapter._dispatch_command()` for commands that need pre/post hooks and broadcast.
-- Guild-scoped registration only (no global command sync which takes up to an hour).
-- Interaction acknowledgment must happen within Discord's 3-second window.
 
 ## Risks
 
-- Discord API rate limits on command tree sync during development (mitigated by guild-scoped registration).
-- Thread context may not always resolve to a session (mitigated by clear error messages).
-- `discord.Client` does not have a built-in `CommandTree` — must be manually attached (known pattern in discord.py).
+- Discord rate limits on message posting during startup with many forums (mitigated: post sequentially, log warnings).
+- Persistent views require `custom_id` stability across restarts (mitigated: deterministic IDs from agent name + forum ID).
