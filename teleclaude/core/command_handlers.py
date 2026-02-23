@@ -410,13 +410,13 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     return {"session_id": session_id, "tmux_session_name": tmux_name}
 
 
-async def list_sessions() -> list[SessionSnapshot]:
-    """List all active sessions from local database.
+async def list_sessions(*, include_closed: bool = False) -> list[SessionSnapshot]:
+    """List sessions from local database.
 
     Ephemeral request/response for MCP/Redis only - no DB session required.
     UI adapters (Telegram) should not have access to this command.
     """
-    sessions = await db.list_sessions(include_headless=True)
+    sessions = await db.list_sessions(include_headless=True, include_closed=include_closed)
 
     results: list[SessionSnapshot] = []
     local_name = config.computer.name

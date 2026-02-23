@@ -351,6 +351,7 @@ class APIServer:
         async def list_sessions(  # pyright: ignore
             request: "Request",
             computer: str | None = None,
+            include_closed: bool = False,
         ) -> list[SessionDTO]:
             """List sessions from local storage and remote cache.
 
@@ -360,12 +361,13 @@ class APIServer:
             Args:
                 request: FastAPI request (for identity headers)
                 computer: Optional filter by computer name
+                include_closed: Include closed sessions
 
             Returns:
                 List of session summaries (merged local + cached remote)
             """
             try:
-                local_sessions = await command_handlers.list_sessions()
+                local_sessions = await command_handlers.list_sessions(include_closed=include_closed)
 
                 # No cache: serve local sessions only (respect computer filter)
                 if not self.cache:

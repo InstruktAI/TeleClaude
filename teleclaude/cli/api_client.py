@@ -347,11 +347,12 @@ class TelecAPIClient:
                 pass
             await asyncio.sleep(0.05)
 
-    async def list_sessions(self, computer: str | None = None) -> list[SessionInfo]:
+    async def list_sessions(self, computer: str | None = None, *, include_closed: bool = False) -> list[SessionInfo]:
         """List sessions from all computers or specific computer.
 
         Args:
             computer: Filter by computer name (None = all)
+            include_closed: Include closed sessions
 
         Returns:
             List of session dicts
@@ -359,7 +360,11 @@ class TelecAPIClient:
         Raises:
             APIError: If request fails
         """
-        params: dict[str, str] = {"computer": computer} if computer else {}
+        params: dict[str, str] = {}
+        if computer:
+            params["computer"] = computer
+        if include_closed:
+            params["include_closed"] = "true"
         resp = await self._request("GET", "/sessions", params=params)
         return TypeAdapter(list[SessionInfo]).validate_json(resp.text)
 

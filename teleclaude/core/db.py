@@ -545,7 +545,8 @@ class Db:
         # Lifecycle filter: by default only "active" sessions are returned.
         # include_initializing adds non-active statuses; include_headless adds "headless"
         # (standalone sessions with no tmux, used for TTS/summarization).
-        if not include_initializing:
+        # When include_closed is set, skip lifecycle filtering to allow closed sessions through.
+        if not include_initializing and not include_closed:
             allowed = [db_models.Session.lifecycle_status == "active"]
             if include_headless:
                 allowed.append(db_models.Session.lifecycle_status == "headless")

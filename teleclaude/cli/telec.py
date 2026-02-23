@@ -94,7 +94,7 @@ _PROJECT_ROOT_LONG = Flag("--project-root", desc="Project root (default: cwd)", 
 CLI_SURFACE: dict[str, CommandDef] = {
     "list": CommandDef(
         desc="List sessions (default: spawned by current, --all for all)",
-        flags=[_H, Flag("--all", desc="Show all sessions")],
+        flags=[_H, Flag("--all", desc="Show all sessions"), Flag("--closed", desc="Show closed sessions only")],
     ),
     "claude": CommandDef(
         desc="Start interactive Claude Code session",
@@ -736,8 +736,9 @@ def _handle_cli_command(argv: list[str]) -> None:
 
     if cmd_enum is TelecCommand.LIST:
         show_all = "--all" in args
+        show_closed = "--closed" in args
         api = TelecAPIClient()
-        asyncio.run(_list_sessions(api, show_all=show_all))
+        asyncio.run(_list_sessions(api, show_all=show_all or show_closed, show_closed=show_closed))
     elif cmd_enum in (TelecCommand.CLAUDE, TelecCommand.GEMINI, TelecCommand.CODEX):
         mode = args[0] if args else "slow"
         prompt = " ".join(args[1:]) if len(args) > 1 else None
@@ -841,21 +842,25 @@ def _get_caller_session_id() -> str | None:
         return None
 
 
-async def _list_sessions(api: TelecAPIClient, *, show_all: bool = False) -> None:
+async def _list_sessions(api: TelecAPIClient, *, show_all: bool = False, show_closed: bool = False) -> None:
     """List sessions to stdout.
 
     Default: show only sessions spawned by the calling session (via initiator_session_id).
     With --all: show all sessions.
+    With --closed: show closed sessions only.
 
     Args:
         api: API client
         show_all: If True, list all sessions regardless of initiator
+        show_closed: If True, show only closed sessions
     """
     caller_id = None if show_all else _get_caller_session_id()
 
     await api.connect()
     try:
-        sessions = await api.list_sessions()
+        sessions = await api.list_sessions(include_closed=show_closed)
+        if show_closed:
+            sessions = [s for s in sessions if s.status == "closed"]
         if caller_id:
             sessions = [s for s in sessions if s.initiator_session_id == caller_id]
         for session in sessions:
