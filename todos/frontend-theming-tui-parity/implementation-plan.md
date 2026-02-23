@@ -128,8 +128,8 @@ No new npm packages required. `next-themes` is already installed.
 
 **File(s):** `frontend/app/layout.tsx`
 
-- [ ] Replace the existing `next-themes` ThemeProvider with the new unified `ThemeProvider` from Task 3.1.
-- [ ] Ensure dark/light toggle continues to function.
+- [x] Replace the existing `next-themes` ThemeProvider with the new unified `ThemeProvider` from Task 3.1.
+- [x] Ensure dark/light toggle continues to function.
 
 ---
 
