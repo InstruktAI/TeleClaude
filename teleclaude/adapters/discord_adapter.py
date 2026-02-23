@@ -76,6 +76,8 @@ class DiscordAdapter(UiAdapter):
         self._gateway_task: asyncio.Task[object] | None = None
         self._ready_event = asyncio.Event()
         self._client: DiscordClientLike | None = None
+        # project_path -> discord_forum_id mapping, built at startup
+        self._project_forum_map: dict[str, int] = {}
 
     async def start(self) -> None:
         """Initialize Discord client and start gateway task."""
@@ -136,7 +138,7 @@ class DiscordAdapter(UiAdapter):
             raise AdapterError(f"{label} is not callable")
         return cast(Callable[..., Awaitable[object]], fn)
 
-    async def ensure_channel(self, session: "Session", title: str) -> "Session":
+    async def ensure_channel(self, session: "Session") -> "Session":
         # Re-read from DB to prevent stale in-memory metadata from concurrent lanes
         fresh = await db.get_session(session.session_id)
         if fresh:
@@ -153,6 +155,8 @@ class DiscordAdapter(UiAdapter):
         if target_forum_id is None:
             return session
 
+        title = self._build_thread_title(session, target_forum_id)
+
         from teleclaude.core.models import ChannelMetadata
 
         await self.create_channel(session, title, ChannelMetadata())
@@ -163,12 +167,57 @@ class DiscordAdapter(UiAdapter):
         """Determine which Discord forum this session's thread belongs in."""
         if self._is_customer_session(session):
             return self._help_desk_channel_id
+        # Check project-specific forums
+        forum_id = self._match_project_forum(session)
+        if forum_id is not None:
+            return forum_id
         return self._all_sessions_channel_id
+
+    def _match_project_forum(self, session: "Session") -> int | None:
+        """Match session project_path to a trusted dir with a discord_forum ID."""
+        project_path = session.project_path
+        if not project_path:
+            return None
+        for path, forum_id in self._project_forum_map.items():
+            if project_path == path or project_path.startswith(path + "/"):
+                return forum_id
+        return None
+
+    def _build_thread_title(self, session: "Session", target_forum_id: int) -> str:
+        """Build Discord thread title based on routing target.
+
+        Per-project forum: just the session description (project context is implicit).
+        Catch-all fallback: prefixed with short project name for discoverability.
+        """
+        from teleclaude.core.session_utils import get_short_project_name
+
+        description = session.title or "Untitled"
+        # If routing to a project-specific forum, use description only
+        if target_forum_id != self._all_sessions_channel_id:
+            return description
+        # Catch-all: prefix with project name
+        short_name = get_short_project_name(session.project_path, session.subdir)
+        return f"{short_name}: {description}"
 
     @staticmethod
     def _is_customer_session(session: "Session") -> bool:
         """Check if session is customer-facing. Based solely on human_role."""
         return session.human_role == "customer"
+
+    def _build_thread_topper(self, session: "Session") -> str:
+        """Build metadata header for the first message in a Discord thread."""
+        from teleclaude.core.session_utils import get_short_project_name
+
+        project = get_short_project_name(session.project_path, session.subdir)
+        parts = [f"project: {project}"]
+        agent = session.active_agent or "pending"
+        speed = session.thinking_mode or "default"
+        parts.append(f"agent: {agent}/{speed}")
+        header = " | ".join(parts)
+        lines = [header, f"tc: {session.session_id}"]
+        if session.native_session_id:
+            lines.append(f"ai: {session.native_session_id}")
+        return "\n".join(lines)
 
     # =========================================================================
     # Discord Infrastructure Auto-Provisioning
@@ -181,7 +230,7 @@ class DiscordAdapter(UiAdapter):
         - Operations: #announcements (text), #general (text)
         - Sessions: #all-sessions (forum)
         - Help Desk: #customer-sessions (forum), #escalations (forum), #operator-chat (text)
-        - Projects: per-project forums (behind discord_project_forum_mirroring flag)
+        - Projects: per-project forums for session routing
 
         Idempotent: skips any channel that already exists.
         Persists all created IDs to config.yml.
@@ -247,12 +296,12 @@ class DiscordAdapter(UiAdapter):
                 self._operator_chat_channel_id = ch_id
                 changes["operator_chat_channel_id"] = ch_id
 
-        # --- Category: Projects (behind feature flag) ---
-        from teleclaude.core.feature_flags import is_discord_project_forum_mirroring_enabled
+        # --- Category: Projects (always enabled when Discord is configured) ---
+        proj_cat = await self._ensure_category(guild, "Projects", existing_cats, cat_changes)
+        await self._ensure_project_forums(guild, proj_cat)
 
-        if is_discord_project_forum_mirroring_enabled():
-            proj_cat = await self._ensure_category(guild, "Projects", existing_cats, cat_changes)
-            await self._ensure_project_forums(guild, proj_cat)
+        # Build project-path-to-forum mapping for session routing
+        self._build_project_forum_map()
 
         # Persist all changes
         if cat_changes:
@@ -284,6 +333,13 @@ class DiscordAdapter(UiAdapter):
         if cat_id is not None:
             cat_changes[key] = cat_id
         return cat
+
+    def _build_project_forum_map(self) -> None:
+        """Build project_path -> forum_id mapping from trusted dirs."""
+        self._project_forum_map = {}
+        for td in config.computer.get_all_trusted_dirs():
+            if td.discord_forum is not None and td.path:
+                self._project_forum_map[td.path] = td.discord_forum
 
     async def _ensure_project_forums(self, guild: object, category: object | None) -> None:
         """Create a forum for each trusted dir that lacks a discord_forum ID."""
@@ -504,7 +560,8 @@ class DiscordAdapter(UiAdapter):
             if not self._is_forum_channel(forum):
                 raise AdapterError(f"Discord channel {target_forum_id} is not a Forum Channel")
 
-            thread_id = await self._create_forum_thread(forum, title=title)
+            topper = self._build_thread_topper(session)
+            thread_id = await self._create_forum_thread(forum, title=title, content=topper)
             discord_meta.channel_id = target_forum_id
             discord_meta.thread_id = thread_id
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
@@ -916,9 +973,9 @@ class DiscordAdapter(UiAdapter):
                 await self._handle_relay_thread_message(message, text)
             return
 
-        # Channel gating: only process messages from the help desk forum when configured
-        if not self._is_help_desk_message(message):
-            logger.debug("Ignoring message from non-help-desk channel")
+        # Channel gating: only process messages from managed forums
+        if not self._is_managed_message(message):
+            logger.debug("Ignoring message from non-managed channel")
             return
 
         # Voice/audio attachment — handle before the text guard
@@ -942,6 +999,11 @@ class DiscordAdapter(UiAdapter):
             logger.error("Discord session resolution failed: %s", exc, exc_info=True)
             return
         if not session:
+            return
+
+        # Role-based authorization: customers only accepted from help desk threads
+        if self._is_customer_session(session) and not self._is_help_desk_thread(message):
+            logger.debug("Ignoring customer message from non-help-desk channel")
             return
 
         # Relay mode: divert customer messages to the relay thread instead of the AI session
@@ -1022,20 +1084,18 @@ class DiscordAdapter(UiAdapter):
                 return True
         return False
 
-    def _is_help_desk_message(self, message: object) -> bool:
-        """Check if a message originates from a managed forum (help desk or sessions).
+    def _is_managed_message(self, message: object) -> bool:
+        """Check if a message originates from a managed forum.
 
+        Managed forums include: help desk, all-sessions, and all project forums.
         When ``_help_desk_channel_id`` is not configured, all messages are
         accepted (dev/test mode).  Otherwise the message must come from
-        the help desk forum, the admin sessions forum, or a thread whose
-        parent is one of those forums.
+        a managed forum or a thread whose parent is a managed forum.
         """
         if self._help_desk_channel_id is None:
             return True
 
-        managed_ids = {self._help_desk_channel_id}
-        if self._all_sessions_channel_id is not None:
-            managed_ids.add(self._all_sessions_channel_id)
+        managed_ids = self._get_managed_forum_ids()
 
         channel = getattr(message, "channel", None)
         channel_id = self._parse_optional_int(getattr(channel, "id", None))
@@ -1052,6 +1112,31 @@ class DiscordAdapter(UiAdapter):
             return True
 
         return False
+
+    def _get_managed_forum_ids(self) -> set[int]:
+        """Build the set of all managed Discord forum IDs."""
+        ids: set[int] = set()
+        if self._help_desk_channel_id is not None:
+            ids.add(self._help_desk_channel_id)
+        if self._all_sessions_channel_id is not None:
+            ids.add(self._all_sessions_channel_id)
+        ids.update(self._project_forum_map.values())
+        return ids
+
+    def _is_help_desk_thread(self, message: object) -> bool:
+        """Check if a message originates from the help desk forum or a thread within it."""
+        if self._help_desk_channel_id is None:
+            return True
+        channel = getattr(message, "channel", None)
+        channel_id = self._parse_optional_int(getattr(channel, "id", None))
+        if channel_id == self._help_desk_channel_id:
+            return True
+        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
+        if parent_id == self._help_desk_channel_id:
+            return True
+        parent_obj = getattr(channel, "parent", None)
+        parent_obj_id = self._parse_optional_int(getattr(parent_obj, "id", None))
+        return parent_obj_id == self._help_desk_channel_id
 
     # =========================================================================
     # Voice / Audio Handling
