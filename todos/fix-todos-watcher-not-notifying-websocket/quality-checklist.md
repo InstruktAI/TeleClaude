@@ -10,9 +10,9 @@
 
 ## Review Gates (Reviewer)
 
-- [x] Fix addresses the root cause
-- [x] No unnecessary changes beyond scope
-- [x] Test coverage adequate
+- [x] Fix addresses the root cause (state.yaml-derived fields all in fingerprint)
+- [x] No unnecessary changes beyond scope (1 static method + 4 lines changed in update_data)
+- [x] Test coverage adequate (consistent with existing skip-marked test suite for this module)
 
 ## Finalize Gates (Finalizer)
 

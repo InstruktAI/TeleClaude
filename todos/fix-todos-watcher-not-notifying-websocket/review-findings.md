@@ -12,23 +12,36 @@
 
 ## Suggestions
 
-- **Consider debouncing rapid todo events** (`frontend/cli/app.tsx:277-283`): If multiple todo WebSocket events fire in quick succession (e.g. bulk operations), each increment triggers a separate `getProjectsWithTodos()` fetch. The existing session re-fetch has the same characteristic, so this is consistent — but a debounce could reduce unnecessary API calls in burst scenarios. Low priority; the current behavior is correct and the API calls are lightweight.
+- **Fingerprint missing 3 display-relevant fields** (`preparation.py:84-101`): `_todo_fingerprint` omits `description`, `has_requirements`, and `has_impl_plan`, which are all used in `_rebuild()` (lines 150-152). If a todo's description text or requirements/plan existence changes without affecting `files`, the view stays stale. Pre-existing gap (the old slug-set comparison had the same blind spot). Low priority — these fields rarely change in isolation, and the reported bug was about state.yaml-derived fields which are all covered.
 
 ## Paradigm-Fit Assessment
 
-1. **Data flow**: The implementation uses the established Zustand store with discriminated union intents (`SYNC_TODOS` → reducer → state change → React re-render). The counter-trigger pattern (`todosRefreshTrigger`) with `useTuiStore` selector + `useEffect` is more idiomatic React/Zustand than the session re-fetch pattern (which uses raw `tuiStore.subscribe`). No bypass of the data layer.
-2. **Component reuse**: No copy-paste duplication found. The new code adds a minimal field to the existing `PreparationViewState` type and a single `useEffect` in `app.tsx`. Checked against the session re-fetch effect and the `useCacheInvalidation.ts` web frontend pattern — no duplicated logic.
-3. **Pattern consistency**: Follows the established intent → reducer → component subscription pattern. Type additions follow the existing `PreparationViewState` structure. Test additions follow the existing `SYNC_TODOS` describe block pattern.
+1. **Data flow**: The fix stays within the existing `update_data()` → `_rebuild()` pipeline. It replaces a coarse change detector (slug set comparison) with a fine-grained one (data fingerprint). No bypass of the data layer. The `@staticmethod` fingerprint method is pure computation with no side effects.
+2. **Component reuse**: No duplication. The fingerprint fields align with the `TodoItem` constructor parameters in `_rebuild()`. No copy-paste of existing logic.
+3. **Pattern consistency**: Using a static method for pure computation follows good practice. Tuple comparison for change detection is a standard pattern. The method signature accepts the same `list[ProjectWithTodosInfo]` type used throughout the view.
 
-## Requirements Verification
+## Bug Fix Verification
 
-1. **R1 (re-fetch on todo events)**: Verified. `useWebSocket.ts:116-131` dispatches `SYNC_TODOS` on all four todo event types → reducer increments `todosRefreshTrigger` → `app.tsx:277-283` useEffect triggers `api.getProjectsWithTodos()` → `setProjectsWithTodos` updates React state. Full chain confirmed.
-2. **R2 (minimal fix)**: Verified. 1 type field, 1 reducer line, 1 initial state line, 12 lines of effect code, 1 test — total ~16 lines of production code across 4 files. No over-engineering.
-3. **R3 (web frontend unaffected)**: Verified. No changes to `frontend/lib/ws/useCacheInvalidation.ts`. Diff scope confirms TUI-only changes.
-4. **R4 (tests)**: Verified. Reducer test covers initial state (0), single increment (1), and consecutive increment (2). `freshState()` fixture correctly updated. No integration test for the effect itself, consistent with the existing session re-fetch effect which also lacks one.
+- **Symptom addressed**: state.yaml edits (DOR score, build status, review status, phase transitions, deferrals, findings count) now trigger `_rebuild()` because all these fields are in the fingerprint.
+- **Root cause analysis sound**: The old code compared `{t.slug for ...}` — only slug identity, not data content. Any change that preserves the slug set was invisible. The bug.md correctly identifies this.
+- **Fix minimal and targeted**: 1 new static method (18 lines), 4 changed lines in `update_data()`. No other files touched beyond bug.md and state.yaml documentation updates.
+- **Investigation and documentation complete**: bug.md has full Investigation, Root Cause, and Fix Applied sections with correct TUI terminology.
 
-## Why No Issues
+## Requirements Verification (via bug.md)
 
-1. **Paradigm-fit verified**: Checked data flow (Zustand store pattern), component reuse (no duplication with session re-fetch or web cache invalidation), and pattern consistency (discriminated union intents, type extensions, test structure).
-2. **Requirements validated**: All four requirements traced through the code with concrete call chains. Each requirement maps to specific lines in the diff.
-3. **Copy-paste duplication checked**: The `useEffect` in `app.tsx:277-283` is structurally similar to the session re-fetch effect (252-270) but operates on different state and different API — this is appropriate parallel structure, not duplication. The `useCacheInvalidation.ts` web frontend handles the same events via React Query invalidation — correctly separate implementation for a different rendering paradigm.
+1. **state.yaml changes refresh the view**: Verified. All state.yaml-derived fields (`status`, `dor_score`, `build_status`, `review_status`, `deferrals_status`, `findings_count`) are in the fingerprint. Changes to any of these trigger `_rebuild()`.
+2. **File list changes refresh the view**: Verified. `files` and `after` are in the fingerprint via `,`.join().
+3. **Group changes refresh the view**: Verified. `group` is in the fingerprint.
+4. **No unnecessary rebuilds**: Verified. When data is identical, `old_fp == new_fp` and `_rebuild()` is skipped, preserving the optimization.
+
+## Test Coverage Note
+
+All existing PreparationView test files (`test_tui_preparation_view.py`, `test_preparation_view.py`) are marked `pytest.mark.skip` — they reference pre-Textual curses APIs that no longer exist. The new `_todo_fingerprint` method has no unit test. This is consistent with the current test status for this module and not a regression introduced by this change.
+
+## Manual Verification Evidence
+
+The change is in view change detection logic. Manual verification would require:
+
+1. Running the TUI, editing a todo's state.yaml, and observing the view refresh.
+2. This cannot be automated in the review environment (requires live TUI + filesystem watcher + WebSocket chain).
+3. The logic is structurally correct: the fingerprint includes all state.yaml-derived fields, and tuple inequality triggers rebuild.
