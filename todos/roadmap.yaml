@@ -11,9 +11,6 @@
     for cross-agent distribution
 - slug: textual-footer-migration
 - slug: tui-state-persistence
-- slug: ui-adapter-pre-respond-trigger
-  description: Send typing indicators when user messages arrive via Telegram/Discord
-    adapters
 - slug: cross-project-context
 - slug: mcp-migration-telec-commands
   group: mcp-to-tool-specs

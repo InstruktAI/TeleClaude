@@ -1,4 +1,9 @@
 # Delivered work items. Newest first.
+- slug: ui-adapter-pre-respond-trigger
+  date: '2026-02-23'
+  title: Add typing indicator support to UI adapters
+  outcome: DELIVERED
+  commit: 45addf05
 - slug: frontend-theming-tui-parity
   date: '2026-02-23'
   title: Implement agent-aware chat theming with static CSS variables and local theme override pattern
