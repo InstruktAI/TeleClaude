@@ -104,14 +104,14 @@ No new npm packages required. `next-themes` is already installed.
 
 **File(s):** `frontend/app/layout.tsx`
 
-- [ ] Add a `<link rel="stylesheet" href="/theme.local.css" />` after the main stylesheet in the `<head>`.
-- [ ] This loads the override file from `frontend/public/theme.local.css`.
+- [x] Add a `<link rel="stylesheet" href="/theme.local.css" />` after the main stylesheet in the `<head>`.
+- [x] This loads the override file from `frontend/public/theme.local.css`.
 
 ### Task 3.3: Create theme.local.css default file
 
 **File(s):** `frontend/public/theme.local.css`
 
-- [ ] Create the file with all CSS custom property defaults as comments, showing operators what can be overridden:
+- [x] Create the file with all CSS custom property defaults as comments, showing operators what can be overridden:
   ```css
   /* TeleClaude theme overrides — edit values, refresh browser. No rebuild needed. */
   /* Uncomment and modify any variable to customize. */
@@ -122,7 +122,7 @@ No new npm packages required. `next-themes` is already installed.
     /* ... etc */
   }
   ```
-- [ ] Add `theme.local.css` to `.gitignore` (the default ships but local edits should not be committed).
+- [x] Add `theme.local.css` to `.gitignore` (the default ships but local edits should not be committed).
 
 ### Task 3.4: Wire ThemeProvider into layout
 
