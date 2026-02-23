@@ -249,7 +249,7 @@ export function App() {
     fetchData();
   }, [fetchData]);
 
-  // Re-fetch when WebSocket delivers updates
+  // Re-fetch when WebSocket delivers session updates
   useEffect(() => {
     if (!connected) return;
 
@@ -268,6 +268,19 @@ export function App() {
 
     return unsubscribe;
   }, [connected, api]);
+
+  // Re-fetch projectsWithTodos when WebSocket delivers todo updates
+  const todosRefreshTrigger = useTuiStore(
+    (s) => s.preparation.todosRefreshTrigger,
+  );
+
+  useEffect(() => {
+    if (todosRefreshTrigger === 0) return; // Skip initial render
+    api
+      .getProjectsWithTodos()
+      .then(setProjectsWithTodos)
+      .catch(() => {});
+  }, [todosRefreshTrigger, api]);
 
   // -- Session creation handler ---------------------------------------------
 

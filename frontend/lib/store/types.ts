@@ -68,6 +68,7 @@ export interface PreparationViewState {
   selectedIndex: number;
   scrollOffset: number;
   expandedTodos: Set<string>;
+  todosRefreshTrigger: number;
   filePaneId: string | null;
   preview: DocPreviewState | null;
 }
