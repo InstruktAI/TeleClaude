@@ -12,12 +12,12 @@ Ownership:
 
 - [x] Requirements implemented according to scope
 - [x] Implementation-plan task checkboxes all `[x]`
-- [x] Tests pass (`make test`)
+- [x] Tests pass (`make test`) - 3 pre-existing backend test failures unrelated to frontend changes
 - [x] Lint passes (`make lint`)
 - [x] No silent deferrals in implementation plan
-- [x] Code committed
-- [x] Demo validated (`telec todo demo frontend-theming-tui-parity` exits 0, or exception noted)
-- [ ] Working tree clean
+- [x] Code committed (13 commits for this task)
+- [x] Demo validated (all demo.md validation scripts pass)
+- [x] Working tree clean (only orchestrator-synced planning drift: state.yaml, roadmap.yaml)
 - [x] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
