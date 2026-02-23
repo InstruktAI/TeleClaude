@@ -107,18 +107,18 @@ Four coordinated changes to Discord session routing, executed in dependency orde
 
 ### Task 5.1: Tests
 
-- [ ] Add or update tests for `_resolve_target_forum()` covering: customer routing, project-match routing, fallback routing.
-- [ ] Add or update tests for the renamed/replaced message acceptance method covering: managed forum acceptance, project forum acceptance, non-managed forum rejection.
-- [ ] Add or update tests for Discord title strategy (description-only for project forums, prefixed for catch-all).
-- [ ] Verify Telegram title construction is unchanged.
-- [ ] Run `make test`.
+- [x] Add or update tests for `_resolve_target_forum()` covering: customer routing, project-match routing, fallback routing.
+- [x] Add or update tests for the renamed/replaced message acceptance method covering: managed forum acceptance, project forum acceptance, non-managed forum rejection.
+- [x] Add or update tests for Discord title strategy (description-only for project forums, prefixed for catch-all).
+- [x] Verify Telegram title construction is unchanged.
+- [x] Run `make test`.
 
 ### Task 5.2: Quality Checks
 
-- [ ] Run `make lint`.
-- [ ] Verify no unchecked implementation tasks remain.
-- [ ] Verify `ensure_channel` signature is consistent across all adapter implementations.
-- [ ] Verify no remaining references to the old `ensure_ui_channels(session, title)` signature.
+- [x] Run `make lint`.
+- [x] Verify no unchecked implementation tasks remain.
+- [x] Verify `ensure_channel` signature is consistent across all adapter implementations.
+- [x] Verify no remaining references to the old `ensure_ui_channels(session, title)` signature.
 
 ---
 

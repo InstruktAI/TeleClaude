@@ -582,3 +582,206 @@ def test_discord_build_metadata_for_thread_no_markdownv2() -> None:
 
     metadata = adapter._build_metadata_for_thread()
     assert metadata.parse_mode is None
+
+
+# =========================================================================
+# Forum Routing Tests
+# =========================================================================
+
+
+def _make_adapter() -> "DiscordAdapter":
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        return DiscordAdapter(client)
+
+
+def _build_session_with(*, human_role: str | None = None, project_path: str | None = None, **kwargs) -> Session:
+    return Session(
+        session_id="sess-routing",
+        computer_name="local",
+        tmux_session_name="tc_sess_routing",
+        last_input_origin=InputOrigin.DISCORD.value,
+        title="Test session",
+        adapter_metadata=SessionAdapterMetadata(),
+        human_role=human_role,
+        project_path=project_path,
+        **kwargs,
+    )
+
+
+def test_resolve_target_forum_customer_routes_to_help_desk() -> None:
+    """Customer sessions route to the help desk forum."""
+    adapter = _make_adapter()
+    adapter._help_desk_channel_id = 100
+    adapter._all_sessions_channel_id = 200
+
+    session = _build_session_with(human_role="customer")
+    assert adapter._resolve_target_forum(session) == 100
+
+
+def test_resolve_target_forum_project_match() -> None:
+    """Sessions with matching project_path route to the project forum."""
+    adapter = _make_adapter()
+    adapter._help_desk_channel_id = 100
+    adapter._all_sessions_channel_id = 200
+    adapter._project_forum_map = {"/home/user/project-a": 300}
+
+    session = _build_session_with(project_path="/home/user/project-a")
+    assert adapter._resolve_target_forum(session) == 300
+
+
+def test_resolve_target_forum_project_subdir_match() -> None:
+    """Sessions in a subdirectory of a mapped project match the parent."""
+    adapter = _make_adapter()
+    adapter._help_desk_channel_id = 100
+    adapter._all_sessions_channel_id = 200
+    adapter._project_forum_map = {"/home/user/project-a": 300}
+
+    session = _build_session_with(project_path="/home/user/project-a/src")
+    assert adapter._resolve_target_forum(session) == 300
+
+
+def test_resolve_target_forum_fallback_to_all_sessions() -> None:
+    """Non-customer sessions without a project match fall back to all-sessions."""
+    adapter = _make_adapter()
+    adapter._help_desk_channel_id = 100
+    adapter._all_sessions_channel_id = 200
+    adapter._project_forum_map = {"/home/user/project-a": 300}
+
+    session = _build_session_with(project_path="/home/user/other-project")
+    assert adapter._resolve_target_forum(session) == 200
+
+
+def test_resolve_target_forum_no_project_path_falls_back() -> None:
+    """Sessions without project_path fall back to all-sessions."""
+    adapter = _make_adapter()
+    adapter._help_desk_channel_id = 100
+    adapter._all_sessions_channel_id = 200
+
+    session = _build_session_with(project_path=None)
+    assert adapter._resolve_target_forum(session) == 200
+
+
+# =========================================================================
+# Managed Message Acceptance Tests
+# =========================================================================
+
+
+def test_is_managed_message_accepts_help_desk_thread() -> None:
+    """Messages from help desk threads are accepted."""
+    adapter = _make_adapter()
+    adapter._help_desk_channel_id = 100
+    adapter._all_sessions_channel_id = 200
+
+    msg = SimpleNamespace(channel=SimpleNamespace(id=555, parent_id=100, parent=SimpleNamespace(id=100)))
+    assert adapter._is_managed_message(msg) is True
+
+
+def test_is_managed_message_accepts_project_forum_thread() -> None:
+    """Messages from project forum threads are accepted."""
+    adapter = _make_adapter()
+    adapter._help_desk_channel_id = 100
+    adapter._all_sessions_channel_id = 200
+    adapter._project_forum_map = {"/home/user/proj": 300}
+
+    msg = SimpleNamespace(channel=SimpleNamespace(id=555, parent_id=300, parent=SimpleNamespace(id=300)))
+    assert adapter._is_managed_message(msg) is True
+
+
+def test_is_managed_message_rejects_unmanaged_channel() -> None:
+    """Messages from non-managed channels are rejected."""
+    adapter = _make_adapter()
+    adapter._help_desk_channel_id = 100
+    adapter._all_sessions_channel_id = 200
+
+    msg = SimpleNamespace(channel=SimpleNamespace(id=999, parent_id=888, parent=SimpleNamespace(id=888)))
+    assert adapter._is_managed_message(msg) is False
+
+
+def test_is_managed_message_accepts_all_when_unconfigured() -> None:
+    """When help_desk is unconfigured, all messages are accepted."""
+    adapter = _make_adapter()
+    adapter._help_desk_channel_id = None
+
+    msg = SimpleNamespace(channel=SimpleNamespace(id=999, parent_id=None, parent=None))
+    assert adapter._is_managed_message(msg) is True
+
+
+# =========================================================================
+# Discord Title Strategy Tests
+# =========================================================================
+
+
+def test_build_thread_title_project_forum_description_only() -> None:
+    """In a project-specific forum, title is just the session description."""
+    adapter = _make_adapter()
+    adapter._all_sessions_channel_id = 200
+
+    session = _build_session_with(project_path="/home/user/proj")
+    session.title = "Fix auth flow"
+    # target_forum_id != all_sessions -> project forum
+    assert adapter._build_thread_title(session, 300) == "Fix auth flow"
+
+
+def test_build_thread_title_catchall_prefixed() -> None:
+    """In the catch-all forum, title is prefixed with short project name."""
+    adapter = _make_adapter()
+    adapter._all_sessions_channel_id = 200
+
+    session = _build_session_with(project_path="/home/user/my-project")
+    session.title = "Fix auth flow"
+    title = adapter._build_thread_title(session, 200)
+    assert "Fix auth flow" in title
+    # Should include a project prefix
+    assert title != "Fix auth flow"
+
+
+def test_build_thread_title_untitled_fallback() -> None:
+    """When session has no title, 'Untitled' is used."""
+    adapter = _make_adapter()
+    adapter._all_sessions_channel_id = 200
+
+    session = _build_session_with(project_path="/home/user/proj")
+    session.title = None
+    assert adapter._build_thread_title(session, 300) == "Untitled"
+
+
+# =========================================================================
+# Thread Topper Tests
+# =========================================================================
+
+
+def test_build_thread_topper_includes_session_id() -> None:
+    """Thread topper includes the TeleClaude session ID."""
+    adapter = _make_adapter()
+    session = _build_session_with(project_path="/home/user/proj", active_agent="claude", thinking_mode="high")
+    result = adapter._build_thread_topper(session)
+    assert "tc: sess-routing" in result
+
+
+def test_build_thread_topper_includes_agent_and_speed() -> None:
+    """Thread topper shows agent and thinking mode."""
+    adapter = _make_adapter()
+    session = _build_session_with(project_path="/home/user/proj", active_agent="claude", thinking_mode="high")
+    result = adapter._build_thread_topper(session)
+    assert "agent: claude/high" in result
+
+
+def test_build_thread_topper_handles_missing_native_id() -> None:
+    """Thread topper omits ai: line when native_session_id is not set."""
+    adapter = _make_adapter()
+    session = _build_session_with(project_path="/home/user/proj")
+    session.native_session_id = None
+    result = adapter._build_thread_topper(session)
+    assert "ai:" not in result
+
+
+def test_build_thread_topper_includes_native_id_when_present() -> None:
+    """Thread topper includes ai: line when native_session_id is set."""
+    adapter = _make_adapter()
+    session = _build_session_with(project_path="/home/user/proj")
+    session.native_session_id = "native-abc-123"
+    result = adapter._build_thread_topper(session)
+    assert "ai: native-abc-123" in result
