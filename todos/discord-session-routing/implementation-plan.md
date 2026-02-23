@@ -124,6 +124,6 @@ Four coordinated changes to Discord session routing, executed in dependency orde
 
 ## Phase 6: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes.
-- [ ] Confirm implementation tasks are all marked `[x]`.
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable).
+- [x] Confirm requirements are reflected in code changes.
+- [x] Confirm implementation tasks are all marked `[x]`.
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable).
