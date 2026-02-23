@@ -135,9 +135,22 @@ def build_tree(
 
         comp_name = computer.computer.name
         comp_projects = [p for p in projects if p.computer == comp_name]
+        # Sort projects by path length descending so most-specific matches first
+        comp_projects_sorted = sorted(comp_projects, key=lambda p: len(p.path), reverse=True)
 
         # Track matched sessions to find orphans later
         matched_session_ids: set[str] = set()
+
+        # Match sessions to most-specific project via prefix
+        project_sessions: dict[str, list[SessionInfo]] = {p.path: [] for p in comp_projects}
+        for s in root_sessions:
+            if s.computer != comp_name or not s.project_path:
+                continue
+            for p in comp_projects_sorted:
+                if s.project_path == p.path or s.project_path.startswith(p.path + "/"):
+                    project_sessions[p.path].append(s)
+                    matched_session_ids.add(s.session_id)
+                    break
 
         for project in comp_projects:
             proj_node = ProjectNode(
@@ -148,14 +161,9 @@ def build_tree(
                 parent=comp_node,
             )
 
-            # Get root sessions for this project
-            proj_path = project.path
-            proj_sessions = [s for s in root_sessions if s.computer == comp_name and s.project_path == proj_path]
-
-            for idx, session in enumerate(proj_sessions, 1):
+            for idx, session in enumerate(project_sessions[project.path], 1):
                 sess_node = _build_session_node(session, idx, 2, proj_node, sessions_by_initiator)
                 proj_node.children.append(sess_node)
-                matched_session_ids.add(session.session_id)
 
             comp_node.children.append(proj_node)
 
