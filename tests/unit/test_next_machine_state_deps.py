@@ -1,7 +1,6 @@
 """Unit tests for state machine refinement features.
 
 Tests for:
-- set_item_phase() / get_item_phase() functions
 - resolve_slug() with ready-only mode
 - Dependency tracking and satisfaction logic
 - teleclaude__set_dependencies() validation
@@ -18,29 +17,31 @@ import yaml
 
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import (
+    PhaseName,
+    PhaseStatus,
     check_dependencies_satisfied,
     detect_circular_dependency,
-    get_item_phase,
     is_ready_for_work,
     load_roadmap_deps,
+    mark_phase,
     next_work,
+    read_phase_state,
     resolve_slug,
     save_roadmap,
-    set_item_phase,
 )
 from teleclaude.core.next_machine.core import RoadmapEntry
 
 # =============================================================================
-# set_item_phase / get_item_phase Tests
+# Item Readiness Tests
 # =============================================================================
 
 
 def test_is_ready_for_work_with_score():
-    """Verify is_ready_for_work returns True when pending + dor.score >= 8"""
+    """Verify is_ready_for_work returns True when build pending + dor.score >= 8"""
     with tempfile.TemporaryDirectory() as tmpdir:
         state_dir = Path(tmpdir) / "todos" / "test-item"
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (state_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}}')
 
         assert is_ready_for_work(tmpdir, "test-item") is True
 
@@ -50,7 +51,7 @@ def test_is_ready_for_work_below_threshold():
     with tempfile.TemporaryDirectory() as tmpdir:
         state_dir = Path(tmpdir) / "todos" / "test-item"
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 7}}')
+        (state_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 7}}')
 
         assert is_ready_for_work(tmpdir, "test-item") is False
 
@@ -60,50 +61,40 @@ def test_is_ready_for_work_no_dor():
     with tempfile.TemporaryDirectory() as tmpdir:
         state_dir = Path(tmpdir) / "todos" / "test-item"
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.yaml").write_text('{"phase": "pending"}')
+        (state_dir / "state.yaml").write_text('{"build": "pending"}')
 
         assert is_ready_for_work(tmpdir, "test-item") is False
 
 
-def test_is_ready_for_work_in_progress():
-    """Verify is_ready_for_work returns False when phase is in_progress"""
+def test_is_ready_for_work_started():
+    """Verify is_ready_for_work returns False when build is started"""
     with tempfile.TemporaryDirectory() as tmpdir:
         state_dir = Path(tmpdir) / "todos" / "test-item"
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.yaml").write_text('{"phase": "in_progress", "dor": {"score": 10}}')
+        (state_dir / "state.yaml").write_text('{"build": "started", "dor": {"score": 10}}')
 
         assert is_ready_for_work(tmpdir, "test-item") is False
 
 
-def test_set_item_phase_pending_to_in_progress():
-    """Verify phase transition from pending to in_progress via state.yaml"""
+def test_mark_phase_build_started():
+    """Verify build status transition from pending to started via mark_phase"""
     with tempfile.TemporaryDirectory() as tmpdir:
         state_dir = Path(tmpdir) / "todos" / "test-item"
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (state_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}}')
 
-        set_item_phase(tmpdir, "test-item", "in_progress")
+        mark_phase(tmpdir, "test-item", PhaseName.BUILD.value, PhaseStatus.STARTED.value)
 
-        phase = get_item_phase(tmpdir, "test-item")
-        assert phase == "in_progress"
+        state = read_phase_state(tmpdir, "test-item")
+        assert state.get(PhaseName.BUILD.value) == PhaseStatus.STARTED.value
 
 
-def test_migration_ready_phase_normalized_to_pending():
-    """Verify persisted phase='ready' is normalized to 'pending' on read"""
+def test_read_phase_state_defaults():
+    """Verify read_phase_state returns defaults when state.yaml doesn't exist"""
     with tempfile.TemporaryDirectory() as tmpdir:
-        state_dir = Path(tmpdir) / "todos" / "test-item"
-        state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.yaml").write_text('{"phase": "ready", "dor": {"score": 9}}')
-
-        phase = get_item_phase(tmpdir, "test-item")
-        assert phase == "pending"
-
-
-def test_get_item_phase_missing_state():
-    """Verify get_item_phase returns pending when state.yaml doesn't exist"""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        phase = get_item_phase(tmpdir, "nonexistent")
-        assert phase == "pending"
+        state = read_phase_state(tmpdir, "nonexistent")
+        assert state.get(PhaseName.BUILD.value) == PhaseStatus.PENDING.value
+        assert state.get(PhaseName.REVIEW.value) == PhaseStatus.PENDING.value
 
 
 # =============================================================================
@@ -153,15 +144,15 @@ def test_check_dependencies_satisfied_no_deps():
 
 
 def test_check_dependencies_satisfied_all_complete():
-    """Verify dependencies are satisfied when all have phase=done"""
+    """Verify dependencies are satisfied when all have review=approved"""
     with tempfile.TemporaryDirectory() as tmpdir:
         _write_roadmap_yaml(tmpdir, ["dep-a", "dep-b", "test-item"])
 
-        # Create state.yaml with phase=done for deps
+        # Create state.yaml with review=approved for deps
         for dep in ("dep-a", "dep-b"):
             dep_dir = Path(tmpdir) / "todos" / dep
             dep_dir.mkdir(parents=True, exist_ok=True)
-            (dep_dir / "state.yaml").write_text('{"phase": "done"}')
+            (dep_dir / "state.yaml").write_text('{"review": "approved"}')
 
         deps = {"test-item": ["dep-a", "dep-b"]}
         result = check_dependencies_satisfied(tmpdir, "test-item", deps)
@@ -169,18 +160,18 @@ def test_check_dependencies_satisfied_all_complete():
 
 
 def test_check_dependencies_satisfied_incomplete():
-    """Verify dependencies are not satisfied when some are not done"""
+    """Verify dependencies are not satisfied when some are not approved"""
     with tempfile.TemporaryDirectory() as tmpdir:
         _write_roadmap_yaml(tmpdir, ["dep-a", "dep-b", "test-item"])
 
-        # dep-a is done, dep-b is pending
+        # dep-a is approved, dep-b is pending review
         dep_a_dir = Path(tmpdir) / "todos" / "dep-a"
         dep_a_dir.mkdir(parents=True, exist_ok=True)
-        (dep_a_dir / "state.yaml").write_text('{"phase": "done"}')
+        (dep_a_dir / "state.yaml").write_text('{"review": "approved"}')
 
         dep_b_dir = Path(tmpdir) / "todos" / "dep-b"
         dep_b_dir.mkdir(parents=True, exist_ok=True)
-        (dep_b_dir / "state.yaml").write_text('{"phase": "pending"}')
+        (dep_b_dir / "state.yaml").write_text('{"review": "pending"}')
 
         deps = {"test-item": ["dep-a", "dep-b"]}
         result = check_dependencies_satisfied(tmpdir, "test-item", deps)
@@ -261,9 +252,7 @@ async def test_next_work_no_bug_check():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.yaml").write_text(
-            '{"phase": "pending", "dor": {"score": 8}, "build": "pending", "review": "pending"}'
-        )
+        (item_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 8}}')
 
         # Mock git operations
         with (
@@ -295,20 +284,18 @@ async def test_next_work_respects_dependencies():
         # Create state.yaml for each item
         dep_dir = Path(tmpdir) / "todos" / "dep-item"
         dep_dir.mkdir(parents=True, exist_ok=True)
-        (dep_dir / "state.yaml").write_text('{"phase": "pending"}')
+        (dep_dir / "state.yaml").write_text('{"build": "pending", "review": "pending"}')
 
         blocked_dir = Path(tmpdir) / "todos" / "blocked-item"
         blocked_dir.mkdir(parents=True, exist_ok=True)
-        (blocked_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (blocked_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 8}}')
 
         # Create required files for ready-item
         item_dir = Path(tmpdir) / "todos" / "ready-item"
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.yaml").write_text(
-            '{"phase": "pending", "dor": {"score": 8}, "build": "pending", "review": "pending"}'
-        )
+        (item_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 8}}')
 
         with (
             patch("teleclaude.core.next_machine.core.Repo"),
@@ -339,11 +326,11 @@ async def test_next_work_explicit_slug_checks_dependencies():
         # Create state.yaml for items
         dep_dir = Path(tmpdir) / "todos" / "dep-item"
         dep_dir.mkdir(parents=True, exist_ok=True)
-        (dep_dir / "state.yaml").write_text('{"phase": "pending"}')
+        (dep_dir / "state.yaml").write_text('{"build": "pending", "review": "pending"}')
 
         blocked_dir = Path(tmpdir) / "todos" / "blocked-item"
         blocked_dir.mkdir(parents=True, exist_ok=True)
-        (blocked_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (blocked_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 8}}')
 
         result = await next_work(db, slug="blocked-item", cwd=tmpdir)
 
@@ -361,10 +348,10 @@ async def test_next_work_explicit_slug_rejects_pending_items():
         # Create roadmap
         _write_roadmap_yaml(tmpdir, ["pending-item", "ready-item"])
 
-        # Create state.yaml with phase=pending
+        # Create state.yaml with build=pending
         pend_dir = Path(tmpdir) / "todos" / "pending-item"
         pend_dir.mkdir(parents=True, exist_ok=True)
-        (pend_dir / "state.yaml").write_text('{"phase": "pending"}')
+        (pend_dir / "state.yaml").write_text('{"build": "pending", "review": "pending"}')
 
         result = await next_work(db, slug="pending-item", cwd=tmpdir)
 
@@ -389,7 +376,7 @@ async def test_next_work_review_includes_merge_base_note():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         # Create worktree state with build complete and review pending
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
@@ -425,7 +412,7 @@ async def test_next_work_blocks_when_stash_debt_exists():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         with (
             patch("teleclaude.core.next_machine.core.Repo"),
@@ -449,7 +436,7 @@ async def test_next_work_does_not_block_review_when_main_ahead():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
         state_dir.mkdir(parents=True, exist_ok=True)
@@ -483,7 +470,7 @@ async def test_next_work_blocks_when_review_round_limit_reached():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
         state_dir.mkdir(parents=True, exist_ok=True)
@@ -516,7 +503,7 @@ async def test_next_work_finalize_next_call_without_slug():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
         state_dir.mkdir(parents=True, exist_ok=True)
@@ -544,16 +531,16 @@ async def test_next_work_finalize_next_call_without_slug():
 
 
 def test_resolve_slug_ready_only_matches_ready_items():
-    """Verify ready_only=True only matches items with pending phase + dor.score >= 8"""
+    """Verify ready_only=True only matches items with build pending + dor.score >= 8"""
     with tempfile.TemporaryDirectory() as tmpdir:
         _write_roadmap_yaml(tmpdir, ["pending-item", "ready-item", "in-progress-item", "done-item"])
 
         # Create state.yaml for each item
         states = {
-            "pending-item": '{"phase": "pending"}',
-            "ready-item": '{"phase": "pending", "dor": {"score": 8}}',
-            "in-progress-item": '{"phase": "in_progress"}',
-            "done-item": '{"phase": "done"}',
+            "pending-item": '{"build": "pending", "review": "pending"}',
+            "ready-item": '{"build": "pending", "review": "pending", "dor": {"score": 8}}',
+            "in-progress-item": '{"build": "started", "review": "pending"}',
+            "done-item": '{"build": "complete", "review": "approved"}',
         }
         for slug_name, state in states.items():
             d = Path(tmpdir) / "todos" / slug_name
@@ -562,7 +549,7 @@ def test_resolve_slug_ready_only_matches_ready_items():
 
         slug, is_ready, _ = resolve_slug(tmpdir, slug=None, ready_only=True)
 
-        # Should only match the first ready item (pending + dor.score >= 8)
+        # Should only match the first ready item (build pending + dor.score >= 8)
         assert slug == "ready-item"
         assert is_ready is True
 
@@ -572,10 +559,10 @@ def test_resolve_slug_ready_only_no_ready_items():
     with tempfile.TemporaryDirectory() as tmpdir:
         _write_roadmap_yaml(tmpdir, ["pending-item", "in-progress-item"])
 
-        for slug_name, phase in [("pending-item", "pending"), ("in-progress-item", "in_progress")]:
+        for slug_name, build_status in [("pending-item", "pending"), ("in-progress-item", "started")]:
             d = Path(tmpdir) / "todos" / slug_name
             d.mkdir(parents=True, exist_ok=True)
-            (d / "state.yaml").write_text(f'{{"phase": "{phase}"}}')
+            (d / "state.yaml").write_text(f'{{"build": "{build_status}", "review": "pending"}}')
 
         slug, is_ready, desc = resolve_slug(tmpdir, slug=None, ready_only=True)
 
@@ -589,8 +576,8 @@ def test_resolve_slug_ready_only_skips_pending():
         _write_roadmap_yaml(tmpdir, ["pending-item", "ready-item"])
 
         states = {
-            "pending-item": '{"phase": "pending"}',
-            "ready-item": '{"phase": "pending", "dor": {"score": 8}}',
+            "pending-item": '{"build": "pending", "review": "pending"}',
+            "ready-item": '{"build": "pending", "review": "pending", "dor": {"score": 8}}',
         }
         for slug_name, state in states.items():
             d = Path(tmpdir) / "todos" / slug_name
@@ -609,8 +596,8 @@ def test_resolve_slug_ready_only_skips_in_progress():
         _write_roadmap_yaml(tmpdir, ["in-progress-item", "ready-item"])
 
         states = {
-            "in-progress-item": '{"phase": "in_progress"}',
-            "ready-item": '{"phase": "pending", "dor": {"score": 8}}',
+            "in-progress-item": '{"build": "started", "review": "pending"}',
+            "ready-item": '{"build": "pending", "review": "pending", "dor": {"score": 8}}',
         }
         for slug_name, state in states.items():
             d = Path(tmpdir) / "todos" / slug_name
@@ -619,5 +606,5 @@ def test_resolve_slug_ready_only_skips_in_progress():
 
         slug, _, _ = resolve_slug(tmpdir, slug=None, ready_only=True)
 
-        # Should skip in-progress and match ready (pending + dor.score >= 8)
+        # Should skip in-progress and match ready (build pending + dor.score >= 8)
         assert slug == "ready-item"

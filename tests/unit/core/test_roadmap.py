@@ -20,12 +20,12 @@ def mock_project(tmp_path):
     # Roadmap items
     (todos_dir / "task-1").mkdir()
     (todos_dir / "task-1" / "state.yaml").write_text(
-        json.dumps({"phase": "in_progress", "dor": {"score": 10}, "build": "passing"})
+        json.dumps({"build": "started", "dor": {"score": 10}, "review": "pending"})
     )
 
     (todos_dir / "task-2").mkdir()
     (todos_dir / "task-2" / "state.yaml").write_text(
-        json.dumps({"phase": "pending", "breakdown": {"todos": ["task-3"]}})
+        json.dumps({"build": "pending", "review": "pending", "breakdown": {"todos": ["task-3"]}})
     )
 
     (todos_dir / "task-3").mkdir()

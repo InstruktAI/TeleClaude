@@ -14,7 +14,6 @@ SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 _DEFAULT_STATE = TodoState(
-    phase="pending",
     build="pending",
     review="pending",
     deferrals_processed=False,
@@ -29,8 +28,7 @@ _DEFAULT_STATE = TodoState(
 
 
 _BUG_STATE = TodoState(
-    phase="in_progress",
-    build="pending",
+    build="started",
     review="pending",
     deferrals_processed=False,
     breakdown=BreakdownState(assessed=False, todos=[]),

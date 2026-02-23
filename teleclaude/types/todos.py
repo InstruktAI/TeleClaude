@@ -36,7 +36,6 @@ class BreakdownState(BaseModel):
 class TodoState(BaseModel):
     """Canonical state for a TeleClaude work item."""
 
-    phase: str = "pending"  # pending, in_progress, done
     build: str = "pending"
     review: str = "pending"
     deferrals_processed: bool = False

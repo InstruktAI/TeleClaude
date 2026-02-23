@@ -2182,21 +2182,19 @@ def _handle_bugs_list(args: list[str]) -> None:
         if state_yaml.exists():
             try:
                 state = yaml.safe_load(state_yaml.read_text())
-                phase = state.get("phase", "unknown")
-                build = state.get("build", "unknown")
-                review = state.get("review", "unknown")
+                build = state.get("build", "pending")
+                review = state.get("review", "pending")
 
-                if phase == "in_progress":
-                    if review == "approved":
-                        status = "approved"
-                    elif review == "changes_requested":
-                        status = "fixing"
-                    elif build == "complete":
-                        status = "reviewing"
-                    elif build in ("started", "complete"):
-                        status = "building"
-                    else:
-                        status = "pending"
+                if review == "approved":
+                    status = "approved"
+                elif review == "changes_requested":
+                    status = "fixing"
+                elif build == "complete":
+                    status = "reviewing"
+                elif build in ("started", "complete"):
+                    status = "building"
+                else:
+                    status = "pending"
             except (yaml.YAMLError, OSError):
                 pass
 
