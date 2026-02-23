@@ -15,6 +15,8 @@ import {
   AskUserQuestionUI,
 } from "@/app/components/widgets";
 import { StatusIndicator } from "@/components/parts/StatusIndicator";
+import { useSessionAgent } from "@/hooks/useSessionAgent";
+import { useAgentColors } from "@/hooks/useAgentColors";
 // TODO: Wire ArtifactCard for data-send-result parts
 // Requires research into assistant-ui custom data part registration API
 // import { ArtifactCard } from "@/components/parts/ArtifactCard";
@@ -72,9 +74,18 @@ export function ThreadView() {
 }
 
 function UserMessage() {
+  const agent = useSessionAgent();
+  const colors = useAgentColors(agent);
+
   return (
     <MessagePrimitive.Root className="mb-4 flex justify-end">
-      <div className="max-w-[80%] rounded-lg bg-primary px-4 py-2 text-primary-foreground">
+      <div
+        className="max-w-[80%] rounded-lg px-4 py-2"
+        style={{
+          backgroundColor: colors.userBubbleBg,
+          color: colors.userBubbleText,
+        }}
+      >
         <MessagePrimitive.Content />
       </div>
     </MessagePrimitive.Root>
@@ -82,9 +93,18 @@ function UserMessage() {
 }
 
 function AssistantMessage() {
+  const agent = useSessionAgent();
+  const colors = useAgentColors(agent);
+
   return (
     <MessagePrimitive.Root className="mb-4 flex justify-start">
-      <div className="max-w-[80%] rounded-lg bg-muted px-4 py-2">
+      <div
+        className="max-w-[80%] rounded-lg px-4 py-2"
+        style={{
+          backgroundColor: colors.assistantBubbleBg,
+          color: colors.assistantBubbleText,
+        }}
+      >
         <MessagePrimitive.Content
           components={{
             Text: MarkdownContent,

@@ -182,17 +182,17 @@ No new npm packages required. `next-themes` is already installed.
 
 **File(s):** `frontend/components/assistant/ThreadView.tsx` (or wherever `UserMessage` is defined)
 
-- [ ] When `isThemed`: apply `var(--user-bubble-bg)` as background, `var(--user-bubble-text)` as text color.
-- [ ] When peaceful: apply neutral gray background (`bg-muted` or `var(--color-secondary)`), structural text color.
-- [ ] Remove any hardcoded `bg-primary` usage for user bubbles — replace with conditional CSS var references.
+- [x] When `isThemed`: apply `var(--user-bubble-bg)` as background, `var(--user-bubble-text)` as text color.
+- [x] When peaceful: apply neutral gray background (`bg-muted` or `var(--color-secondary)`), structural text color.
+- [x] Remove any hardcoded `bg-primary` usage for user bubbles — replace with conditional CSS var references.
 
 ### Task 6.2: Assistant bubble styling
 
 **File(s):** `frontend/components/assistant/ThreadView.tsx` (or wherever `AssistantMessage` is defined)
 
-- [ ] When `isThemed`: apply agent-tinted background using the active session's agent type. Use `var(--agent-{agent}-subtle)` or `blendColors()` for the tint.
-- [ ] When peaceful: apply neutral surface background (`bg-muted` / `var(--color-card)`).
-- [ ] The active agent type comes from the session context (see Task 7.1).
+- [x] When `isThemed`: apply agent-tinted background using the active session's agent type. Use `var(--agent-{agent}-subtle)` or `blendColors()` for the tint.
+- [x] When peaceful: apply neutral surface background (`bg-muted` / `var(--color-card)`).
+- [x] The active agent type comes from the session context (see Task 7.1).
 
 ### Task 6.3: Sidebar session item styling
 
