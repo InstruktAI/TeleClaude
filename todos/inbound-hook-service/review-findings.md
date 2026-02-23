@@ -8,76 +8,71 @@ Review baseline: `4c73236c`
 
 ---
 
-## Critical
+## Round 1
 
-(none)
+### Important
 
-## Important
-
-### 1. Config-driven contracts skipped when API server app is unavailable
+#### 1. Config-driven contracts skipped when API server app is unavailable
 
 **File:** `teleclaude/daemon.py:1575-1584`
 
-When `app is None`, `load_hooks_config` is never called. This means config-driven subscription contracts are silently dropped — not just inbound endpoints. The `load_hooks_config` function accepts `inbound_registry=None` and would correctly load contracts without registering inbound routes.
+When `app is None`, `load_hooks_config` was never called, silently dropping config-driven subscription contracts. The function accepts `inbound_registry=None` and would correctly load contracts without registering inbound routes.
 
-**Current:**
+**Resolution:** Fixed in `ea75bb55`. `load_hooks_config` is now called unconditionally. `InboundEndpointRegistry` is only created when `app is not None`. Redundant `app = None` assignment removed. Scattered mid-function imports grouped at function entry.
+
+### Suggestions (addressed)
+
+- **Redundant `app = None` assignment** — Removed in fix.
+- **Scattered mid-function imports** — Moved to grouped import block.
+- **Missing integration test: absent HMAC signature header** — Added `test_inbound_webhook_missing_signature_rejected`.
+
+---
+
+## Round 2 (Re-review)
+
+All Round 1 findings verified as resolved. 11 tests pass. Import grouping correct. `load_hooks_config` called unconditionally.
+
+### Critical
+
+(none)
+
+### Important
+
+(none)
+
+### Suggestions
+
+#### 2. `_invoke_normalizer` per-request `inspect.signature()` overhead
+
+**File:** `teleclaude/hooks/inbound.py:136-164`
+
+The backward-compatibility shim calls `inspect.signature(normalizer)` on every webhook request. A normalizer's arity is fixed at registration time. Moving the introspection to `NormalizerRegistry.register()` and storing a pre-wrapped callable would eliminate per-request overhead. Not a correctness issue — the requirement explicitly mandates backward compatibility.
+
+#### 3. Dead code in GitHub normalizer header lookup
+
+**File:** `teleclaude/hooks/normalizers/github.py:39`
 
 ```python
-if app is None:
-    logger.warning("API server app unavailable; inbound webhooks will not be registered")
-    app = None
-else:
-    inbound_registry = InboundEndpointRegistry(app, normalizer_registry, dispatcher.dispatch)
-    await load_hooks_config(
-        project_config.hooks.model_dump(),
-        contract_registry,
-        inbound_registry=inbound_registry,
-    )
+event_type = (headers.get("x-github-event") or headers.get("X-GitHub-Event") or "").lower() or "unknown"
 ```
 
-**Expected:** Always call `load_hooks_config` for contracts; only skip inbound registration:
+The `headers` dict is always lowercased (`inbound.py:89`), so `headers.get("X-GitHub-Event")` can never match. The mixed-case fallback is dead code.
 
-```python
-inbound_registry = None
-if app is not None:
-    inbound_registry = InboundEndpointRegistry(app, normalizer_registry, dispatcher.dispatch)
-else:
-    logger.warning("API server app unavailable; inbound webhooks will not be registered")
+#### 4. Dispatch test enqueue arguments not verified
 
-await load_hooks_config(
-    project_config.hooks.model_dump(),
-    contract_registry,
-    inbound_registry=inbound_registry,
-)
-```
+**File:** `tests/integration/test_inbound_webhook.py:83`
 
-**Why it matters:** Contracts and inbound endpoints are separate concerns. The contract-matching pipeline should work independently of the API server. If startup order ever changes or the API server fails to initialize, all config-driven subscriptions would silently vanish.
-
-## Suggestions
-
-### 2. Redundant `app = None` assignment
-
-**File:** `teleclaude/daemon.py:1577`
-
-Inside the `if app is None:` branch, `app = None` is assigned again — dead code.
-
-### 3. Scattered mid-function imports
-
-**File:** `teleclaude/daemon.py:1559-1563`
-
-`load_project_config` and `RedisTransport` are imported between executable statements, while all other deferred imports are grouped at the function entry (lines 1543-1552). Moving these into the import block improves readability.
-
-### 4. Missing integration test: missing HMAC signature header
-
-The test suite covers invalid signatures (`test_inbound_webhook_invalid_signature_rejected` sends `sha256=bad`), but doesn't exercise the distinct code path where a secret is configured but no signature header is present at all (`inbound.py:95-96`). Adding a test with no `X-Hub-Signature-256` header would cover this branch.
+`enqueue_webhook.assert_awaited_once()` confirms the mock was called but does not verify the arguments. Asserting at least `source == "github"` and `type == "push"` in the enqueued event would strengthen the end-to-end assertion.
 
 ---
 
 ## Paradigm-Fit Assessment
 
-1. **Data flow**: Correct. Uses `load_project_config` for config, `ContractRegistry` for contracts, `HookDispatcher` for dispatch, `db.enqueue_webhook` for persistence. No inline hacks or bypasses.
-2. **Component reuse**: Correct. Reuses existing `InboundEndpointRegistry`, `NormalizerRegistry`, `load_hooks_config`, background task lifecycle patterns, and done callbacks. No copy-paste duplication found.
-3. **Pattern consistency**: Correct. Follows established codebase patterns — deferred imports, background task cancel/await lifecycle, structured logging, registry pattern, `_get_redis()` access pattern (consistent with `channels/api_routes.py`, `deploy_service.py`, `mcp/handlers.py`).
+1. **Data flow:** Correct. Uses `load_project_config` for config, `ContractRegistry` for contracts, `HookDispatcher` for dispatch, `db.enqueue_webhook` for persistence. No inline hacks or bypasses.
+2. **Component reuse:** Correct. Reuses existing `InboundEndpointRegistry`, `NormalizerRegistry`, `load_hooks_config`, background task lifecycle patterns, and done callbacks. No copy-paste duplication.
+3. **Pattern consistency:** Correct. Follows established codebase patterns — deferred imports, background task cancel/await lifecycle, structured logging, registry pattern, `_get_redis()` access pattern (consistent with `channels/api_routes.py`, `deploy_service.py`, `mcp/handlers.py`).
+
+No paradigm violations detected.
 
 ---
 
@@ -85,9 +80,10 @@ The test suite covers invalid signatures (`test_inbound_webhook_invalid_signatur
 
 | Requirement                                             | Status | Evidence                                          |
 | ------------------------------------------------------- | ------ | ------------------------------------------------- |
-| Registries wired into daemon startup                    | Met    | `daemon.py:1569-1583`                             |
+| Registries wired into daemon startup                    | Met    | `daemon.py:1568-1584`                             |
 | POST `/hooks/inbound/github` with valid HMAC dispatches | Met    | `test_inbound_webhook_dispatches_to_contract`     |
 | Invalid HMAC returns 401                                | Met    | `test_inbound_webhook_invalid_signature_rejected` |
+| Missing signature returns 401                           | Met    | `test_inbound_webhook_missing_signature_rejected` |
 | Unparseable payload returns 400                         | Met    | `test_inbound_webhook_invalid_json_rejected`      |
 | Ping event normalized                                   | Met    | `test_normalize_github_ping_event`                |
 | Push event produces correct HookEvent                   | Met    | `test_normalize_github_push_event`                |
@@ -95,7 +91,7 @@ The test suite covers invalid signatures (`test_inbound_webhook_invalid_signatur
 | Channel subscription worker starts                      | Met    | `daemon.py:1586-1609`                             |
 | Path derivation `/hooks/inbound/{source_name}`          | Met    | `config.py:98-100`                                |
 | Unit tests for normalizer                               | Met    | 5 unit tests                                      |
-| Integration test E2E                                    | Met    | 5 integration tests                               |
+| Integration test E2E                                    | Met    | 6 integration tests                               |
 | HookEvent dataclass unchanged                           | Met    | No changes to `webhook_models.py`                 |
 | Backward-compatible normalizer signature                | Met    | `_invoke_normalizer` with `inspect.signature`     |
 | Graceful degradation (no inbound config)                | Met    | Defensive guards throughout                       |
@@ -105,32 +101,10 @@ The test suite covers invalid signatures (`test_inbound_webhook_invalid_signatur
 ## Test Coverage Assessment
 
 - **Unit tests (5):** push, ping, pull_request, missing header fallback, minimal payload safety. Good coverage of normalizer logic.
-- **Integration tests (5):** E2E dispatch, invalid signature, invalid JSON, normalizer exception, dispatch failure. Good coverage of the HTTP layer.
-- **Gap:** Missing signature header path (distinct from invalid signature). Minor.
+- **Integration tests (6):** E2E dispatch, missing signature, invalid signature, invalid JSON, normalizer exception, dispatch failure. Good coverage of the HTTP layer including both 401 branches.
 
 ---
 
-## Verdict: REQUEST CHANGES
+## Verdict: APPROVE
 
-Finding #1 is an architectural correctness issue — contracts should load independently of API server availability. The fix is a small restructure of the conditional (see suggested code above). Suggestions #2-4 are non-blocking but recommended.
-
----
-
-## Fixes Applied
-
-### Finding #1 — Config-driven contracts skipped when API server unavailable
-
-**Fix:** Restructured `_init_webhook_service` so `load_hooks_config` is always called. `InboundEndpointRegistry` is only instantiated when `app is not None`. Removed the redundant `app = None` assignment.
-**Commit:** `ea75bb55`
-
-### Suggestion #3 — Scattered mid-function imports
-
-**Fix:** Moved `load_project_config` and `RedisTransport` imports into the grouped import block at function entry.
-**Commit:** `ea75bb55`
-
-### Suggestion #4 — Missing test: absent HMAC signature header
-
-**Fix:** Added `test_inbound_webhook_missing_signature_rejected` covering the code path at `inbound.py:95-96` where no signature header is present.
-**Commit:** `ea75bb55`
-
-All 11 tests pass. Lint passes. Ready for re-review.
+All Round 1 findings resolved. No Critical or Important issues remain. 11 tests pass. The implementation is solid, well-structured, and follows established codebase patterns. Remaining suggestions are non-blocking optimization and hygiene items.
