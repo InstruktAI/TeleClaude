@@ -222,6 +222,15 @@ class DiscordAdapter(UiAdapter):
             if parent_id == forum_id:
                 return "project", path
 
+        if parent_id is not None:
+            logger.warning(
+                "Unrecognized forum parent_id=%s; routing to help_desk. "
+                "Known forums: help_desk=%s all_sessions=%s projects=%s",
+                parent_id,
+                self._help_desk_channel_id,
+                self._all_sessions_channel_id,
+                list(self._project_forum_map.values()),
+            )
         return "help_desk", config.computer.help_desk_dir
 
     def _build_thread_title(self, session: "Session", target_forum_id: int) -> str:
