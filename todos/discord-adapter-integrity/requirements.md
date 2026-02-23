@@ -11,6 +11,7 @@ Guarantee complete, reliable output delivery from agent sessions to Discord (and
 1. **Text delivery between tool calls** — threaded adapters (Claude/Discord, Gemini/Telegram, Gemini/Discord) receive all assistant text, not just tool-call boundaries.
 2. **Infrastructure validation** — `_ensure_discord_infrastructure` validates that stored channel/forum IDs resolve to live Discord channels before trusting them. Stale IDs are cleared and re-provisioned.
 3. **Per-computer project categories** — each computer provisions its own "Projects - {computer_name}" category in Discord. Each computer's trusted_dirs forums live under its own category. Sessions from different computers are visually separated.
+4. **User input reflection across adapters** — when a user sends input from any adapter (terminal, Telegram, Discord), that input is broadcast to all OTHER UI adapters as a formatted message (`"{SOURCE} @ {computer_name}:\n\n{text}"`). Currently broken for terminal input: non-headless sessions skip the broadcast entirely, and headless sessions are blocked by the `_NON_INTERACTIVE` filter.
 
 ### Out of scope
 
@@ -25,6 +26,8 @@ Guarantee complete, reliable output delivery from agent sessions to Discord (and
 - [ ] Deleting a Discord forum and restarting the daemon causes automatic re-provisioning (no silent 404s).
 - [ ] Two computers (e.g. MozBook and mozmini) each have their own "Projects - MozBook" and "Projects - mozmini" categories with their respective project forums.
 - [ ] Sessions route to the correct computer-specific project forum.
+- [ ] User input from the terminal appears in Discord/Telegram threads as "TUI @ {computer_name}:\n\n{text}" within seconds.
+- [ ] User input from Telegram appears in Discord threads (and vice versa) with correct source attribution.
 
 ## Constraints
 

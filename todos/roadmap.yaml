@@ -62,7 +62,6 @@
   - deployment-channels
   description: 'Phase 4: Remove deploy_service, MCP tool (if still present), update
     docs, write pipeline doc'
-- slug: remove-phase-field
 - slug: discord-slash-commands-like-telegram
   after:
   - discord-session-routing

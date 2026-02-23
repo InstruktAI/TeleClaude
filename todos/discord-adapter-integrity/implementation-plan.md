@@ -2,7 +2,7 @@
 
 ## Overview
 
-Three changes that together bring Discord (and threaded Telegram) to full output integrity and clean multi-computer infrastructure. Ordered so each phase builds on the previous: infrastructure hardening first, per-computer categories second, delivery fix last.
+Four changes that together bring Discord (and threaded Telegram) to full output integrity, clean multi-computer infrastructure, and reliable user input reflection. Ordered so each phase builds on the previous: infrastructure hardening first, per-computer categories second, delivery fix third, input reflection last.
 
 ---
 
@@ -82,23 +82,48 @@ The `_ensure_category` method already validates cached IDs (lines 331-334): fetc
 
 ---
 
-## Phase 4: Validation
+## Phase 4: User Input Reflection Fix
 
-### Task 4.1: Tests
+### Task 4.1: Remove HOOK from `_NON_INTERACTIVE` filter
+
+**File(s):** `teleclaude/core/adapter_client.py`
+
+- [ ] At line 562, change `_NON_INTERACTIVE = {InputOrigin.MCP.value, InputOrigin.HOOK.value}` to `_NON_INTERACTIVE = {InputOrigin.MCP.value}`.
+- [ ] The filter was added in commit `5598ff0a` with the assumption that hook origins are "not user-facing sessions." That assumption is wrong — terminal sessions are user-facing and their input arrives via the `user_prompt_submit` hook.
+- [ ] MCP remains filtered because MCP-originated input is genuinely non-interactive (programmatic tool calls, not user keystrokes).
+
+### Task 4.2: Add `broadcast_user_input` call for non-headless sessions
+
+**File(s):** `teleclaude/core/agent_coordinator.py`
+
+- [ ] In `handle_user_prompt_submit`, before the early return at line 426-427 (`if session.lifecycle_status != "headless": return`), add:
+  ```python
+  await self.client.broadcast_user_input(session, prompt_text, InputOrigin.HOOK.value)
+  ```
+- [ ] This ensures terminal user input is reflected to Discord/Telegram regardless of headless status.
+- [ ] The headless path already calls `broadcast_user_input` via `process_message` — with the filter fix in Task 4.1, that path now works too.
+
+---
+
+## Phase 5: Validation
+
+### Task 5.1: Tests
 
 - [ ] Test `trigger_incremental_output` sends output for threaded sessions.
 - [ ] Test `trigger_incremental_output` is a no-op for non-threaded sessions.
 - [ ] Test stale channel ID validation clears and re-provisions.
+- [ ] Test `broadcast_user_input` is called for hook-origin input (both headless and non-headless paths).
+- [ ] Test `broadcast_user_input` still blocks MCP-origin input.
 - [ ] Run `make test`.
 
-### Task 4.2: Quality Checks
+### Task 5.2: Quality Checks
 
 - [ ] Run `make lint`.
 - [ ] Verify no unchecked implementation tasks remain.
 
 ---
 
-## Phase 5: Review Readiness
+## Phase 6: Review Readiness
 
 - [ ] Confirm requirements are reflected in code changes.
 - [ ] Confirm implementation tasks are all marked `[x]`.

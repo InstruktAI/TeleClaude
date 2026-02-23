@@ -1,4 +1,9 @@
 # Delivered work items. Newest first.
+- slug: remove-phase-field
+  date: '2026-02-23'
+  title: Remove redundant phase field in favor of build/review status
+  outcome: DELIVERED
+  commit: 5330af88f33bfffe1a5355dc3f8225c3bb2ac931
 - slug: tui-footer-clickable-agents
   date: '2026-02-23'
   title: Clickable agent pills in TUI footer to cycle availability

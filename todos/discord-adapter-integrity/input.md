@@ -48,9 +48,20 @@ Options:
 
 Add a validation step in `_ensure_discord_infrastructure` that checks if configured channel IDs actually resolve to live Discord channels. If not, clear the stale ID and re-provision.
 
+### 6. User input not reflected to other UI adapters from terminal
+
+When a user types in the terminal, that input is not broadcast to Discord/Telegram as a formatted reflection message (e.g. "TUI @ MozBook:\n\n{text}"). The `broadcast_user_input` mechanism exists and works for adapter-originated input (Telegram → Discord, Discord → Telegram) but is broken for terminal input.
+
+**Root cause (non-headless):** `handle_user_prompt_submit` in `agent_coordinator.py` returns at line 427 for non-headless sessions without ever calling `broadcast_user_input`.
+
+**Root cause (headless):** Falls through to `process_message` which calls `broadcast_user_input` with origin `hook` — but `_NON_INTERACTIVE` filter at `adapter_client.py:562` blocks `InputOrigin.HOOK.value` based on the incorrect assumption that hook origins are "not user-facing sessions" (commit `5598ff0a`).
+
+**Evidence:** Terminal input is visible in TUI but never appears in Discord/Telegram threads as the "TUI @ {computer}" formatted message.
+
 ## Files Involved
 
-- `teleclaude/core/agent_coordinator.py` — incremental output trigger logic
+- `teleclaude/core/agent_coordinator.py` — incremental output trigger logic, user prompt handling
+- `teleclaude/core/adapter_client.py` — `broadcast_user_input`, `_NON_INTERACTIVE` filter
 - `teleclaude/adapters/ui_adapter.py` — poller suppression logic (`send_output_update`)
 - `teleclaude/adapters/discord_adapter.py` — thread creation, routing, infrastructure provisioning
 - `teleclaude/utils/transcript.py` — output rendering
