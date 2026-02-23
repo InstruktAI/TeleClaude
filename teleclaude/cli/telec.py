@@ -2072,18 +2072,24 @@ def _handle_bugs_report(args: list[str]) -> None:
         raise SystemExit(1) from exc
 
     # Dispatch orchestrator
-    api = TelecAPIClient()
-    try:
-        result = asyncio.run(
-            api.create_session(
+    async def _dispatch_bug_fix() -> "CreateSessionResult":
+        api = TelecAPIClient()
+        await api.connect()
+        try:
+            return await api.create_session(
                 computer="local",
-                project_path=str(worktree_path),
+                project_path=str(project_root),
+                subdir=f"trees/{slug}",
                 agent="claude",
                 thinking_mode="slow",
                 title=f"Bug fix: {slug}",
                 message=f'Run teleclaude__next_work(slug="{slug}") and follow output verbatim until done.',
             )
-        )
+        finally:
+            await api.close()
+
+    try:
+        result = asyncio.run(_dispatch_bug_fix())
         print(f"Created bug todo: {todo_dir}")
         print(f"Bug slug: {slug}")
         print(f"Branch: {slug}")

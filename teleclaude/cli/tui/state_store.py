@@ -30,6 +30,7 @@ class PersistedState:
     collapsed_sessions: set[str] = field(default_factory=set)
     preview_session_id: str | None = None
     animation_mode: str = "periodic"
+    pane_theming_mode: str = "full"
 
 
 def load_state() -> PersistedState:
@@ -84,6 +85,10 @@ def load_state() -> PersistedState:
         if anim_mode in ("off", "periodic", "party"):
             state.animation_mode = anim_mode
 
+        pane_mode = data.get("pane_theming_mode", "full")
+        if isinstance(pane_mode, str) and pane_mode:
+            state.pane_theming_mode = pane_mode
+
         logger.info(
             "Loaded TUI state: %d sticky, %d in_hl, %d out_hl, preview=%s, anim=%s",
             len(state.sticky_session_ids),
@@ -103,6 +108,7 @@ def save_state(
     sessions_state: dict[str, object] | None = None,  # guard: loose-dict
     preparation_state: dict[str, object] | None = None,  # guard: loose-dict
     animation_mode: str = "periodic",
+    pane_theming_mode: str = "full",
 ) -> None:
     """Save TUI state to ~/.teleclaude/tui_state.json.
 
@@ -120,6 +126,7 @@ def save_state(
         "collapsed_sessions": sessions.get("collapsed_sessions", []),
         "preview": sessions.get("preview"),
         "animation_mode": animation_mode,
+        "pane_theming_mode": pane_theming_mode,
     }
 
     try:

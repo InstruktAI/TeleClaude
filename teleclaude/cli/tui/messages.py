@@ -28,7 +28,6 @@ class DataRefreshed(Message):
         availability: dict[str, AgentAvailabilityInfo],
         jobs: list[JobInfo],
         tts_enabled: bool,
-        pane_theming_mode: str,
     ) -> None:
         super().__init__()
         self.computers = computers
@@ -38,7 +37,6 @@ class DataRefreshed(Message):
         self.availability = availability
         self.jobs = jobs
         self.tts_enabled = tts_enabled
-        self.pane_theming_mode = pane_theming_mode
 
 
 # --- Session interaction messages ---

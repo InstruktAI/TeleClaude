@@ -1017,7 +1017,6 @@ class APIServer:
             state = self.runtime_settings.get_state()
             return SettingsDTO(
                 tts=TTSSettingsDTO(enabled=state.tts.enabled),
-                pane_theming_mode=state.pane_theming_mode,
             )
 
         @self.app.patch("/settings")
@@ -1032,7 +1031,6 @@ class APIServer:
                 state = self.runtime_settings.patch(typed_patch)
                 return SettingsDTO(
                     tts=TTSSettingsDTO(enabled=state.tts.enabled),
-                    pane_theming_mode=state.pane_theming_mode,
                 )
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc

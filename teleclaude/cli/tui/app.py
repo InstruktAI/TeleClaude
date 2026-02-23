@@ -207,6 +207,11 @@ class TelecApp(App[str | None]):
             expanded_todos=self._persisted.expanded_todos,
         )
         status_bar.animation_mode = self._persisted.animation_mode
+        status_bar.pane_theming_mode = self._persisted.pane_theming_mode
+        # Apply persisted pane theming to the in-memory theme override
+        from teleclaude.cli.tui import theme
+
+        theme.set_pane_theming_mode(self._persisted.pane_theming_mode)
 
         # Wire animation engine to banner
         banner = self.query_one(Banner)
@@ -292,11 +297,9 @@ class TelecApp(App[str | None]):
             ]
 
             try:
-                tts_enabled = bool(getattr(settings, "tts_enabled", False))
-                pane_theming_mode = getattr(settings, "pane_theming_mode", "off") or "off"
+                tts_enabled = settings.tts.enabled if settings else False
             except Exception:
                 tts_enabled = False
-                pane_theming_mode = "off"
 
             self.post_message(
                 DataRefreshed(
@@ -307,7 +310,6 @@ class TelecApp(App[str | None]):
                     availability=availability,
                     jobs=jobs,
                     tts_enabled=tts_enabled,
-                    pane_theming_mode=pane_theming_mode,
                 )
             )
         except Exception:
@@ -332,7 +334,6 @@ class TelecApp(App[str | None]):
         jobs_view.update_data(message.jobs)
         status_bar.update_availability(message.availability)
         status_bar.tts_enabled = message.tts_enabled
-        status_bar.pane_theming_mode = message.pane_theming_mode
 
         logger.trace("[PERF] on_data_refreshed views updated dt=%.3f", _t.monotonic() - _d0)
 
@@ -660,6 +661,7 @@ class TelecApp(App[str | None]):
             widget.refresh()
         for widget in self.query(TodoRow):
             widget.refresh()
+        self._save_state()
 
     # --- TTS toggle ---
 
@@ -770,6 +772,7 @@ class TelecApp(App[str | None]):
             sessions_state=sessions_view.get_persisted_state(),
             preparation_state=prep_view.get_persisted_state(),
             animation_mode=status_bar.animation_mode,
+            pane_theming_mode=status_bar.pane_theming_mode,
         )
 
     # --- Signal handlers ---
