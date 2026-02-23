@@ -1,8 +1,9 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: discord-media-handling
-  description: Handle image uploads and file attachments in the Discord adapter, matching
-    Telegram parity. Voice already handled.
+- slug: lifecycle-enforcement-gates
+  description: Machine-enforced build gates (demo validation, make test), CI gate
+    (GitHub Actions), demo promotion in finalize, and Definition of Done updates across
+    all lifecycle procedures.
 - slug: discord-session-routing
   description: Per-project Discord forums, role-based routing, adapter-specific titles,
     enriched footer
