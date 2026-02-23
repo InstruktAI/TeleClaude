@@ -957,6 +957,30 @@ class APIServer:
                 logger.error("list_projects failed: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list projects: {e}") from e
 
+        def _build_agent_dto(agent: str, info: dict[str, bool | str | None] | None) -> AgentAvailabilityDTO:
+            """Convert db agent availability info dict to DTO."""
+            if info:
+                unavail_until = info.get("unavailable_until")
+                degraded_until = info.get("degraded_until")
+                reason_val = info.get("reason")
+                status_val = info.get("status")
+                status_text = str(status_val) if status_val in {"available", "unavailable", "degraded"} else None
+                return AgentAvailabilityDTO(
+                    agent=agent,
+                    available=bool(info.get("available", True)),
+                    status=status_text,
+                    unavailable_until=str(unavail_until) if unavail_until and unavail_until is not True else None,
+                    degraded_until=str(degraded_until) if degraded_until and degraded_until is not True else None,
+                    reason=str(reason_val) if reason_val and reason_val is not True else None,
+                )
+            else:
+                # No record means agent is available (never marked unavailable)
+                return AgentAvailabilityDTO(
+                    agent=agent,
+                    available=True,
+                    status="available",
+                )
+
         @self.app.get("/agents/availability")
         async def get_agent_availability() -> dict[str, AgentAvailabilityDTO]:  # pyright: ignore
             """Get agent availability."""
@@ -987,27 +1011,7 @@ class APIServer:
                     )
                     continue
 
-                if info:
-                    unavail_until = info.get("unavailable_until")
-                    degraded_until = info.get("degraded_until")
-                    reason_val = info.get("reason")
-                    status_val = info.get("status")
-                    status_text = str(status_val) if status_val in {"available", "unavailable", "degraded"} else None
-                    result[agent] = AgentAvailabilityDTO(
-                        agent=agent,
-                        available=bool(info.get("available", True)),
-                        status=status_text,
-                        unavailable_until=str(unavail_until) if unavail_until and unavail_until is not True else None,
-                        degraded_until=str(degraded_until) if degraded_until and degraded_until is not True else None,
-                        reason=str(reason_val) if reason_val and reason_val is not True else None,
-                    )
-                else:
-                    # No record means agent is available (never marked unavailable)
-                    result[agent] = AgentAvailabilityDTO(
-                        agent=agent,
-                        available=True,
-                        status="available",
-                    )
+                result[agent] = _build_agent_dto(agent, info)
 
             return result
 
@@ -1034,26 +1038,7 @@ class APIServer:
 
                 # Re-fetch and return updated availability
                 info = await db.get_agent_availability(agent)
-                if info:
-                    unavail_until = info.get("unavailable_until")
-                    degraded_until = info.get("degraded_until")
-                    reason_val = info.get("reason")
-                    status_val = info.get("status")
-                    status_text = str(status_val) if status_val in {"available", "unavailable", "degraded"} else None
-                    return AgentAvailabilityDTO(
-                        agent=agent,
-                        available=bool(info.get("available", True)),
-                        status=status_text,
-                        unavailable_until=str(unavail_until) if unavail_until and unavail_until is not True else None,
-                        degraded_until=str(degraded_until) if degraded_until and degraded_until is not True else None,
-                        reason=str(reason_val) if reason_val and reason_val is not True else None,
-                    )
-                else:
-                    return AgentAvailabilityDTO(
-                        agent=agent,
-                        available=True,
-                        status="available",
-                    )
+                return _build_agent_dto(agent, info)
             except Exception as e:
                 logger.error("Failed to set status for agent %s: %s", agent, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to set agent status: {e}") from e
