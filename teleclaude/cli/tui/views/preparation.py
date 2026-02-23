@@ -15,6 +15,7 @@ from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
     DocEditRequest,
     DocPreviewRequest,
+    StateDirty,
 )
 from teleclaude.cli.tui.prep_tree import build_dep_tree
 from teleclaude.cli.tui.todos import TodoItem
@@ -284,6 +285,7 @@ class PreparationView(Widget, can_focus=True):
         if slug in self._expanded_todos:
             return
         self._expanded_todos.add(slug)
+        self.post_message(StateDirty())
         if not todo_row.todo.files:
             return
         container = self.query_one("#preparation-scroll", VerticalScroll)
@@ -295,6 +297,7 @@ class PreparationView(Widget, can_focus=True):
         if slug not in self._expanded_todos:
             return
         self._expanded_todos.discard(slug)
+        self.post_message(StateDirty())
         self._remove_file_rows(todo_row)
         # Clamp cursor if it was on a removed file row
         if self.cursor_index >= len(self._nav_items):

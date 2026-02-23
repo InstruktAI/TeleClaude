@@ -222,6 +222,10 @@ class CursorContextChanged(Message):
 # --- Settings messages ---
 
 
+class StateDirty(Message):
+    """View state changed and should be persisted to disk."""
+
+
 class SettingsChanged(Message):
     """Settings were changed (TTS, animation, pane theming)."""
 

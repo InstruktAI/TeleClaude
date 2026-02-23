@@ -43,6 +43,7 @@ from teleclaude.cli.tui.messages import (
     SessionStarted,
     SessionUpdated,
     SettingsChanged,
+    StateDirty,
     StickyChanged,
 )
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
@@ -375,6 +376,9 @@ class TelecApp(App[str | None]):
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_sticky_changed(message)
         self._update_banner_compactness(len(message.session_ids))
+        self._save_state()
+
+    def on_state_dirty(self, _message: StateDirty) -> None:
         self._save_state()
 
     def on_focus_pane_request(self, message: FocusPaneRequest) -> None:

@@ -18,6 +18,7 @@ from teleclaude.cli.tui.messages import (
     KillSessionRequest,
     PreviewChanged,
     ReviveSessionRequest,
+    StateDirty,
     StickyChanged,
 )
 from teleclaude.cli.tui.tree import (
@@ -629,6 +630,7 @@ class SessionsView(Widget, can_focus=True):
         if row and not row.collapsed:
             row.collapsed = True
             self._collapsed_sessions.discard(row.session_id)
+            self.post_message(StateDirty())
 
     def action_expand(self) -> None:
         """Right: expand selected session row."""
@@ -636,6 +638,7 @@ class SessionsView(Widget, can_focus=True):
         if row and row.collapsed:
             row.collapsed = False
             self._collapsed_sessions.add(row.session_id)
+            self.post_message(StateDirty())
 
     def action_expand_all(self) -> None:
         """+ : expand all session rows."""
@@ -643,6 +646,7 @@ class SessionsView(Widget, can_focus=True):
             if isinstance(widget, SessionRow):
                 widget.collapsed = False
                 self._collapsed_sessions.add(widget.session_id)
+        self.post_message(StateDirty())
 
     def action_collapse_all(self) -> None:
         """- : collapse all session rows."""
@@ -650,6 +654,7 @@ class SessionsView(Widget, can_focus=True):
             if isinstance(widget, SessionRow):
                 widget.collapsed = True
         self._collapsed_sessions.clear()
+        self.post_message(StateDirty())
 
     def _resolve_context_for_cursor(self) -> tuple[str, str] | None:
         """Resolve computer + project_path from the current cursor position.
