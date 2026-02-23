@@ -853,6 +853,100 @@ def test_get_agent_availability_db_exception(test_client):  # type: ignore[expli
         assert "Database connection failed" in data["claude"]["error"]
 
 
+def test_set_agent_status_available(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test setting agent to available status."""
+    with (
+        patch("teleclaude.core.db.db.mark_agent_available", new_callable=AsyncMock) as mock_mark,
+        patch("teleclaude.core.db.db.get_agent_availability", new_callable=AsyncMock) as mock_get,
+    ):
+        mock_get.return_value = {
+            "available": True,
+            "unavailable_until": None,
+            "degraded_until": None,
+            "reason": None,
+            "status": "available",
+        }
+
+        response = test_client.post("/agents/claude/status", json={"status": "available"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["agent"] == "claude"
+        assert data["status"] == "available"
+        assert data["available"] is True
+        mock_mark.assert_called_once_with("claude")
+
+
+def test_set_agent_status_degraded(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test setting agent to degraded status with custom duration."""
+    with (
+        patch("teleclaude.core.db.db.mark_agent_degraded", new_callable=AsyncMock) as mock_mark,
+        patch("teleclaude.core.db.db.get_agent_availability", new_callable=AsyncMock) as mock_get,
+    ):
+        mock_get.return_value = {
+            "available": True,
+            "unavailable_until": None,
+            "degraded_until": "2026-02-11T12:00:00+00:00",
+            "reason": "degraded_manual",
+            "status": "degraded",
+        }
+
+        response = test_client.post(
+            "/agents/gemini/status",
+            json={"status": "degraded", "duration_minutes": 120, "reason": "manual"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["agent"] == "gemini"
+        assert data["status"] == "degraded"
+        assert data["degraded_until"] is not None
+        # Verify duration computation happened (exact timestamp varies)
+        assert mock_mark.call_count == 1
+        call_args = mock_mark.call_args
+        assert call_args[0][0] == "gemini"  # agent
+        assert call_args[0][1] == "manual"  # reason
+        assert "degraded_until" in call_args[1]
+
+
+def test_set_agent_status_unavailable(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test setting agent to unavailable status."""
+    with (
+        patch("teleclaude.core.db.db.mark_agent_unavailable", new_callable=AsyncMock) as mock_mark,
+        patch("teleclaude.core.db.db.get_agent_availability", new_callable=AsyncMock) as mock_get,
+    ):
+        mock_get.return_value = {
+            "available": False,
+            "unavailable_until": "2026-02-11T13:00:00+00:00",
+            "degraded_until": None,
+            "reason": "manual",
+            "status": "unavailable",
+        }
+
+        response = test_client.post(
+            "/agents/codex/status",
+            json={"status": "unavailable", "duration_minutes": 60, "reason": "manual"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["agent"] == "codex"
+        assert data["status"] == "unavailable"
+        assert data["available"] is False
+        # Verify duration computation happened
+        assert mock_mark.call_count == 1
+        call_args = mock_mark.call_args
+        assert call_args[0][0] == "codex"  # agent
+        assert call_args[0][2] == "manual"  # reason
+
+
+def test_set_agent_status_exception(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test set_agent_status returns 500 on DB exception."""
+    with patch("teleclaude.core.db.db.mark_agent_available", new_callable=AsyncMock) as mock_mark:
+        mock_mark.side_effect = Exception("Database write failed")
+
+        response = test_client.post("/agents/claude/status", json={"status": "available"})
+        assert response.status_code == 500
+        assert "Failed to set agent status" in response.json()["detail"]
+
+
 # ==================== Validation Tests ====================
 
 
