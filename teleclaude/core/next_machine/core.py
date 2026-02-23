@@ -47,6 +47,12 @@ class PhaseStatus(str, Enum):
     CHANGES_REQUESTED = "changes_requested"
 
 
+class ItemPhase(str, Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+
+
 DOR_READY_THRESHOLD = 8
 
 
@@ -75,15 +81,23 @@ FINDING_ID_PATTERN = re.compile(r"\bR\d+-F\d+\b")
 POST_COMPLETION: dict[str, str] = {
     "next-build": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. teleclaude__end_session(computer="local", session_id="<session_id>")
-3. teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
-4. Call {next_call}
+2. teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
+3. Call {next_call} — this runs build gates (tests + demo validation)
+4. If next_work says gates PASSED: teleclaude__end_session(computer="local", session_id="<session_id>") and continue
+5. If next_work says BUILD GATES FAILED:
+   a. Send the builder the failure message (do NOT end the session)
+   b. Wait for the builder to report completion again
+   c. Repeat from step 2
 """,
     "next-bugs-fix": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. teleclaude__end_session(computer="local", session_id="<session_id>")
-3. teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
-4. Call {next_call}
+2. teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
+3. Call {next_call} — this runs build gates (tests + demo validation)
+4. If next_work says gates PASSED: teleclaude__end_session(computer="local", session_id="<session_id>") and continue
+5. If next_work says BUILD GATES FAILED:
+   a. Send the builder the failure message (do NOT end the session)
+   b. Wait for the builder to report completion again
+   c. Repeat from step 2
 """,
     "next-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data to extract verdict
@@ -112,7 +126,8 @@ POST_COMPLETION: dict[str, str] = {
    b. git branch -d {args}
    c. rm -rf todos/{args}
    d. git add -A && git commit -m "chore: cleanup {args}"
-4. Call {next_call}
+4. make restart (daemon picks up merged code before next dispatch)
+5. Call {next_call}
 """,
 }
 
@@ -136,6 +151,7 @@ def format_tool_call(
     note: str = "",
     next_call: str = "",
     completion_args: str | None = None,
+    pre_dispatch: str = "",
 ) -> str:
     """Format a literal tool call for the orchestrator to execute."""
     raw_command = command.lstrip("/")
@@ -151,11 +167,18 @@ def format_tool_call(
         # Substitute {args} and {next_call} placeholders
         post_completion = post_completion.format(args=completion_value, next_call=next_call_display)
 
+    pre_dispatch_block = ""
+    if pre_dispatch:
+        pre_dispatch_block = f"""STEP 0 - BEFORE DISPATCHING:
+{pre_dispatch}
+
+"""
+
     result = f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
 Execute these steps in order (FOLLOW TO THE LETTER!):
 
-STEP 1 - DISPATCH:
+{pre_dispatch_block}STEP 1 - DISPATCH:
 {guidance}
 
 Based on the above guidance and the work item details, select the best agent and thinking mode.
@@ -249,6 +272,82 @@ def format_stash_debt(slug: str, count: int) -> str:
     )
 
 
+def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
+    """Run build gates (tests + demo validation) in the worktree.
+
+    Returns (all_passed, output_details).
+    """
+    results: list[str] = []
+    all_passed = True
+
+    # Gate 1: Test suite
+    try:
+        test_result = subprocess.run(
+            ["make", "test"],
+            cwd=worktree_cwd,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if test_result.returncode != 0:
+            all_passed = False
+            output = test_result.stdout[-2000:] if test_result.stdout else ""
+            stderr = test_result.stderr[-500:] if test_result.stderr else ""
+            results.append(f"GATE FAILED: make test (exit {test_result.returncode})\n{output}\n{stderr}")
+        else:
+            results.append("GATE PASSED: make test")
+    except subprocess.TimeoutExpired:
+        all_passed = False
+        results.append("GATE FAILED: make test (timed out after 300s)")
+    except OSError as exc:
+        all_passed = False
+        results.append(f"GATE FAILED: make test (error: {exc})")
+
+    # Gate 2: Demo structure validation
+    try:
+        demo_result = subprocess.run(
+            ["telec", "todo", "demo", "validate", slug, "--project-root", worktree_cwd],
+            cwd=worktree_cwd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if demo_result.returncode != 0:
+            all_passed = False
+            results.append(f"GATE FAILED: demo validate (exit {demo_result.returncode})\n{demo_result.stdout}")
+        else:
+            results.append(f"GATE PASSED: demo validate\n{demo_result.stdout.strip()}")
+    except subprocess.TimeoutExpired:
+        all_passed = False
+        results.append("GATE FAILED: demo validate (timed out)")
+    except OSError as exc:
+        all_passed = False
+        results.append(f"GATE FAILED: demo validate (error: {exc})")
+
+    return all_passed, "\n".join(results)
+
+
+def format_build_gate_failure(slug: str, gate_output: str, next_call: str) -> str:
+    """Format a gate-failure response for the orchestrator.
+
+    Instructs the orchestrator to send the failure details to the builder session
+    (without ending it) and wait for the builder to fix and report done again.
+    """
+    return f"""BUILD GATES FAILED: {slug}
+
+{gate_output}
+
+INSTRUCTIONS FOR ORCHESTRATOR:
+1. Send the above gate failure details to the builder session via teleclaude__send_message.
+   Tell the builder which gate(s) failed and include the output.
+   Do NOT end the builder session.
+2. Wait for the builder to report completion again.
+3. When the builder reports done:
+   a. teleclaude__mark_phase(slug="{slug}", phase="build", status="complete")
+   b. Call {next_call}
+   If gates fail again, repeat from step 1."""
+
+
 def format_hitl_guidance(context: str) -> str:
     """Format guidance for the calling AI to work interactively with the user.
 
@@ -260,19 +359,19 @@ def format_hitl_guidance(context: str) -> str:
 def _find_next_prepare_slug(cwd: str) -> str | None:
     """Find the next active slug that still needs preparation work.
 
-    Scans roadmap.yaml for slugs, then checks state.yaml status for each.
-    Active slugs have build=pending or review != approved.
+    Scans roadmap.yaml for slugs, then checks state.yaml phase for each.
+    Active slugs have phase pending, ready, or in_progress.
     Returns the first slug that still needs action:
     - breakdown assessment pending for input.md
     - requirements.md missing
     - implementation-plan.md missing
-    - build still pending (needs promotion to ready/started)
+    - phase still pending (needs promotion to ready)
     """
     for slug in load_roadmap_slugs(cwd):
-        state = read_phase_state(cwd, slug)
+        phase = get_item_phase(cwd, slug)
 
-        # Skip approved items
-        if state.get(PhaseName.REVIEW.value) == PhaseStatus.APPROVED.value:
+        # Skip done items
+        if phase == ItemPhase.DONE.value:
             continue
 
         has_input = check_file_exists(cwd, f"todos/{slug}/input.md")
@@ -286,7 +385,7 @@ def _find_next_prepare_slug(cwd: str) -> str | None:
         if not has_requirements or not has_impl_plan:
             return slug
 
-        if state.get(PhaseName.BUILD.value) == PhaseStatus.PENDING.value:
+        if phase == ItemPhase.PENDING.value:
             return slug
 
     return None
@@ -299,6 +398,7 @@ def _find_next_prepare_slug(cwd: str) -> str | None:
 
 # Valid phases and statuses for state.yaml
 DEFAULT_STATE: dict[str, StateValue] = {
+    "phase": ItemPhase.PENDING.value,
     PhaseName.BUILD.value: PhaseStatus.PENDING.value,
     PhaseName.REVIEW.value: PhaseStatus.PENDING.value,
     "deferrals_processed": False,
@@ -320,6 +420,7 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     """Read state.yaml from worktree (falls back to state.json for backward compat).
 
     Returns default state if file doesn't exist.
+    Migrates missing 'phase' field from existing build/dor state.
     """
     state_path = get_state_path(cwd, slug)
     # Backward compat: try state.json if state.yaml doesn't exist
@@ -335,6 +436,17 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     state: dict[str, StateValue] = yaml.safe_load(content)
     # Merge with defaults for any missing keys
     merged = {**DEFAULT_STATE, **state}
+
+    # Migration: derive phase from existing fields when missing from persisted state
+    if "phase" not in state:
+        build = state.get(PhaseName.BUILD.value)
+        if isinstance(build, str) and build != PhaseStatus.PENDING.value:
+            merged["phase"] = ItemPhase.IN_PROGRESS.value
+        else:
+            merged["phase"] = ItemPhase.PENDING.value
+    elif state.get("phase") == "ready":
+        # Migration: normalize persisted "ready" phase to "pending" (readiness is now derived from dor.score)
+        merged["phase"] = ItemPhase.PENDING.value
 
     return merged
 
@@ -541,17 +653,17 @@ def resolve_slug(
 
     for entry in entries:
         found_slug = entry.slug
-        state = read_phase_state(cwd, found_slug)
+        phase = get_item_phase(cwd, found_slug)
 
         if ready_only:
             if not is_ready_for_work(cwd, found_slug):
                 continue
         else:
-            # Skip approved items for next_prepare
-            if state.get(PhaseName.REVIEW.value) == PhaseStatus.APPROVED.value:
+            # Skip done items for next_prepare
+            if phase == ItemPhase.DONE.value:
                 continue
 
-        is_ready = state.get(PhaseName.BUILD.value) != PhaseStatus.PENDING.value or is_ready_for_work(cwd, found_slug)
+        is_ready = phase == ItemPhase.IN_PROGRESS.value or is_ready_for_work(cwd, found_slug)
 
         # R6: Enforce dependency gating when ready_only=True and dependencies provided
         if ready_only and dependencies is not None:
@@ -590,21 +702,49 @@ def is_bug_todo(cwd: str, slug: str) -> bool:
 
 
 # =============================================================================
-# Item Readiness (state.yaml is the single source of truth)
+# Item Phase Management (state.yaml is the single source of truth)
 # =============================================================================
 
 
-def is_ready_for_work(cwd: str, slug: str) -> bool:
-    """Check if item is ready for work: build is pending + DOR score >= threshold."""
+def get_item_phase(cwd: str, slug: str) -> str:
+    """Get current phase for a work item from state.yaml.
+
+    Args:
+        cwd: Project root directory
+        slug: Work item slug to query
+
+    Returns:
+        One of "pending", "in_progress", "done"
+    """
     state = read_phase_state(cwd, slug)
-    build = state.get(PhaseName.BUILD.value)
-    if build != PhaseStatus.PENDING.value:
+    phase = state.get("phase")
+    return phase if isinstance(phase, str) else ItemPhase.PENDING.value
+
+
+def is_ready_for_work(cwd: str, slug: str) -> bool:
+    """Check if item is ready for work: pending phase + DOR score >= threshold."""
+    state = read_phase_state(cwd, slug)
+    phase = state.get("phase")
+    if phase != ItemPhase.PENDING.value:
         return False
     dor = state.get("dor")
     if not isinstance(dor, dict):
         return False
     score = dor.get("score")
     return isinstance(score, int) and score >= DOR_READY_THRESHOLD
+
+
+def set_item_phase(cwd: str, slug: str, phase: str) -> None:
+    """Set phase for a work item in state.yaml.
+
+    Args:
+        cwd: Project root directory
+        slug: Work item slug to update
+        phase: One of "pending", "in_progress", "done"
+    """
+    state = read_phase_state(cwd, slug)
+    state["phase"] = phase
+    write_phase_state(cwd, slug, state)
 
 
 # =============================================================================
@@ -768,7 +908,7 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
     """Check if all dependencies for a slug are satisfied.
 
     A dependency is satisfied if:
-    - Its review is "approved" in state.yaml, OR
+    - Its phase is "done" in state.yaml, OR
     - It is not present in roadmap.yaml (assumed completed/removed)
 
     Args:
@@ -788,8 +928,8 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
             # Not in roadmap - treat as satisfied (completed and cleaned up)
             continue
 
-        state = read_phase_state(cwd, dep)
-        if state.get(PhaseName.REVIEW.value) != PhaseStatus.APPROVED.value:
+        dep_phase = get_item_phase(cwd, dep)
+        if dep_phase != ItemPhase.DONE.value:
             return False
 
     return True
@@ -1889,9 +2029,10 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             )
 
         # 4. Both exist - check DOR readiness (no phase mutation; readiness is derived)
-        state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
-        if state.get(PhaseName.BUILD.value) == PhaseStatus.PENDING.value:
-            dor = state.get("dor")
+        current_phase = await asyncio.to_thread(get_item_phase, cwd, resolved_slug)
+        if current_phase == ItemPhase.PENDING.value:
+            phase_state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
+            dor = phase_state.get("dor")
             dor_score = dor.get("score") if isinstance(dor, dict) else None
             if isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD:
                 await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
@@ -1949,8 +2090,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         if lock_holder and lock_holder.get("session_id") == caller_session_id:
             locked_slug = lock_holder.get("slug", "")
             if locked_slug:
-                state = read_phase_state(cwd, locked_slug)
-                finalize_done = state.get(PhaseName.REVIEW.value) == PhaseStatus.APPROVED.value or not slug_in_roadmap(
+                finalize_done = get_item_phase(cwd, locked_slug) == ItemPhase.DONE.value or not slug_in_roadmap(
                     cwd, locked_slug
                 )
                 if finalize_done:
@@ -1977,16 +2117,14 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 next_call="Check todos/roadmap.yaml or call teleclaude__next_prepare().",
             )
 
-        state = await asyncio.to_thread(read_phase_state, cwd, slug)
-        build = state.get(PhaseName.BUILD.value)
-        review = state.get(PhaseName.REVIEW.value)
-        if build == PhaseStatus.PENDING.value and not await asyncio.to_thread(is_ready_for_work, cwd, slug):
+        phase = await asyncio.to_thread(get_item_phase, cwd, slug)
+        if phase == ItemPhase.PENDING.value and not await asyncio.to_thread(is_ready_for_work, cwd, slug):
             return format_error(
                 "ITEM_NOT_READY",
                 f"Item '{slug}' is pending and DOR score is below threshold. Must be ready to start work.",
                 next_call=f"Call teleclaude__next_prepare(slug='{slug}') to prepare it first.",
             )
-        if review == PhaseStatus.APPROVED.value:
+        if phase == ItemPhase.DONE.value:
             return f"COMPLETE: Item '{slug}' is already done."
 
         # Item is ready or in_progress - check dependencies
@@ -2067,15 +2205,24 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     if has_uncommitted_changes(cwd, resolved_slug):
         return format_uncommitted_changes(resolved_slug)
 
+    # 6. Claim the item (pending → in_progress) — safe to do here since it's
+    # just a "someone is looking at this" marker. Even if the orchestrator doesn't
+    # dispatch, the next next_work() call picks it up again.
+    current_phase = await asyncio.to_thread(get_item_phase, worktree_cwd, resolved_slug)
+    if current_phase == ItemPhase.PENDING.value:
+        await asyncio.to_thread(set_item_phase, worktree_cwd, resolved_slug, ItemPhase.IN_PROGRESS.value)
+
     # 7. Check build status (from state.yaml in worktree)
+    # mark_phase(build, started) is deferred to the orchestrator via pre_dispatch
+    # to avoid orphaned "build: started" when the orchestrator decides not to dispatch.
     if not await asyncio.to_thread(is_build_complete, worktree_cwd, resolved_slug):
-        await asyncio.to_thread(
-            mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
-        )
         try:
             guidance = await compose_agent_guidance(db)
         except RuntimeError as exc:
             return format_error("NO_AGENTS", str(exc))
+
+        # Build pre-dispatch marking instructions
+        pre_dispatch = f'teleclaude__mark_phase(slug="{resolved_slug}", phase="build", status="started")'
 
         # Bugs use next-bugs-fix instead of next-build
         is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
@@ -2088,6 +2235,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 guidance=guidance,
                 subfolder=f"trees/{resolved_slug}",
                 next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+                pre_dispatch=pre_dispatch,
             )
         else:
             return format_tool_call(
@@ -2097,7 +2245,20 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 guidance=guidance,
                 subfolder=f"trees/{resolved_slug}",
                 next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+                pre_dispatch=pre_dispatch,
             )
+
+    # 7.5 Build gates: verify tests and demo structure before allowing review
+    gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, resolved_slug)
+    if not gates_passed:
+        # Reset build to started so the builder can fix and try again
+        await asyncio.to_thread(
+            mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
+        )
+        # Sync reset state back to main
+        await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
+        next_call = f'teleclaude__next_work(slug="{resolved_slug}")'
+        return format_build_gate_failure(resolved_slug, gate_output, next_call)
 
     # 8. Check review status
     if not await asyncio.to_thread(is_review_approved, worktree_cwd, resolved_slug):

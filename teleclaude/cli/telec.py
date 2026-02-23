@@ -162,10 +162,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=["If slug is omitted, all active todos are checked."],
             ),
             "demo": CommandDef(
-                desc="Run or list demo artifacts",
-                args="[slug]",
+                desc="Manage demo artifacts",
+                args="[validate|run|create] [slug]",
                 flags=[_PROJECT_ROOT_LONG],
-                notes=["No slug: list all demos. With slug: run demo for that slug."],
+                notes=[
+                    "No args: list all demos.",
+                    "validate <slug>: structural check (blocks exist?).",
+                    "run <slug>: execute bash blocks.",
+                    "create <slug>: promote demo.md to demos/.",
+                    "<slug> (no subcommand): backward-compat alias for 'run'.",
+                ],
             ),
             "remove": CommandDef(
                 desc="Remove a todo and its files",
@@ -1262,44 +1268,36 @@ def _extract_demo_blocks(content: str) -> list[tuple[int, str, bool, str]]:
     return blocks
 
 
-def _handle_todo_demo(args: list[str]) -> None:
-    """Handle telec todo demo - run or list demo artifacts."""
-    import json
+def _find_demo_md(slug: str, project_root: Path) -> Path | None:
+    """Find demo.md for a slug. Searches todos/ first, then demos/."""
+    for candidate in [
+        project_root / "todos" / slug / "demo.md",
+        project_root / "demos" / slug / "demo.md",
+    ]:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _check_no_demo_marker(content: str) -> str | None:
+    """Check for <!-- no-demo: reason --> marker in first 10 lines.
+
+    Returns reason string if found, None otherwise.
+    """
     import re
 
-    slug: str | None = None
-    project_root = Path.cwd()
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "demo"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                print(_usage("todo", "demo"))
-                raise SystemExit(1)
-            slug = arg
-            i += 1
-
-    # Read project version from pyproject.toml
-    pyproject_path = project_root / "pyproject.toml"
-    current_version = "0.0.0"
-    if pyproject_path.exists():
-        pyproject_content = pyproject_path.read_text()
-        match = re.search(r'version\s*=\s*"([^"]+)"', pyproject_content)
+    pattern = re.compile(r"<!--\s*no-demo:\s*(.+?)\s*-->")
+    for line in content.split("\n")[:10]:
+        match = pattern.search(line)
         if match:
-            current_version = match.group(1)
+            return match.group(1)
+    return None
 
-    current_major = int(current_version.split(".")[0])
 
-    # Scan for available demos
+def _demo_list(project_root: Path) -> None:
+    """List available demos from demos/ directory."""
+    import json
+
     demos_dir = project_root / "demos"
     if not demos_dir.exists():
         print("No demos available")
@@ -1321,40 +1319,69 @@ def _handle_todo_demo(args: list[str]) -> None:
         print("No demos available")
         raise SystemExit(0)
 
-    # No slug: list all demos (unchanged — reads snapshot.json for metadata)
-    if slug is None:
-        print(f"Available demos ({len(demo_entries)}):\n")
-        print(f"{'Slug':<30} {'Title':<50} {'Version':<10} {'Delivered'}")
-        print("-" * 110)
-        for demo_slug, snapshot in demo_entries:
-            title = snapshot.get("title", "")
-            version = snapshot.get("version", "")
-            delivered = snapshot.get("delivered_date", snapshot.get("delivered", ""))
-            print(f"{demo_slug:<30} {title:<50} {version:<10} {delivered}")
+    print(f"Available demos ({len(demo_entries)}):\n")
+    print(f"{'Slug':<30} {'Title':<50} {'Version':<10} {'Delivered'}")
+    print("-" * 110)
+    for demo_slug, snapshot in demo_entries:
+        title = snapshot.get("title", "")
+        version = snapshot.get("version", "")
+        delivered = snapshot.get("delivered_date", snapshot.get("delivered", ""))
+        print(f"{demo_slug:<30} {title:<50} {version:<10} {delivered}")
+    raise SystemExit(0)
+
+
+def _demo_validate(slug: str, project_root: Path) -> None:
+    """Structural validation of demo.md — checks blocks exist, no execution."""
+    demo_md_path = _find_demo_md(slug, project_root)
+    if demo_md_path is None:
+        print(f"Error: No demo.md found for '{slug}'")
+        raise SystemExit(1)
+
+    print(f"Validating demo: {slug}")
+    print(f"Source: {demo_md_path.relative_to(project_root)}\n")
+
+    content = demo_md_path.read_text(encoding="utf-8")
+
+    # Check for no-demo escape hatch
+    no_demo_reason = _check_no_demo_marker(content)
+    if no_demo_reason is not None:
+        print(f"No-demo marker found: {no_demo_reason}")
         raise SystemExit(0)
 
-    # With slug: find demo.md or fall back to snapshot.json demo field
-    # Search order: todos/{slug}/demo.md (during build), demos/{slug}/demo.md (after delivery)
-    demo_md_path: Path | None = None
-    for candidate in [
-        project_root / "todos" / slug / "demo.md",
-        demos_dir / slug / "demo.md",
-    ]:
-        if candidate.exists():
-            demo_md_path = candidate
-            break
+    blocks = _extract_demo_blocks(content)
+    executable = [b for b in blocks if not b[2]]
 
-    # If demo.md found, run code block extraction
+    if not executable:
+        print("Validation failed: no executable bash blocks found")
+        raise SystemExit(1)
+
+    print(f"Validation passed: {len(executable)} executable block(s) found")
+    if len(blocks) > len(executable):
+        print(f"Skipped: {len(blocks) - len(executable)} block(s)")
+    raise SystemExit(0)
+
+
+def _demo_run(slug: str, project_root: Path) -> None:
+    """Execute bash blocks from demo.md."""
+    demo_md_path = _find_demo_md(slug, project_root)
+
     if demo_md_path is not None:
-        print(f"Running demo validation: {slug}\n")
+        print(f"Running demo: {slug}\n")
         print(f"Source: {demo_md_path.relative_to(project_root)}\n")
 
         content = demo_md_path.read_text(encoding="utf-8")
+
+        # Check for no-demo escape hatch
+        no_demo_reason = _check_no_demo_marker(content)
+        if no_demo_reason is not None:
+            print(f"No-demo marker found: {no_demo_reason}")
+            raise SystemExit(0)
+
         blocks = _extract_demo_blocks(content)
 
         if not blocks:
-            print("Demo has guided steps only (no executable blocks)")
-            raise SystemExit(0)
+            print("Error: no executable blocks found in demo.md")
+            raise SystemExit(1)
 
         executable = [(ln, blk, reason) for ln, blk, skipped, reason in blocks if not skipped]
         skipped = [(ln, blk, reason) for ln, blk, skipped, reason in blocks if skipped]
@@ -1365,8 +1392,8 @@ def _handle_todo_demo(args: list[str]) -> None:
             print()
 
         if not executable:
-            print("All code blocks skipped. Demo has guided steps only.")
-            raise SystemExit(0)
+            print("Error: all code blocks skipped, no executable blocks")
+            raise SystemExit(1)
 
         # Prepend project venv to PATH so demo blocks use the correct Python
         env = os.environ.copy()
@@ -1386,12 +1413,25 @@ def _handle_todo_demo(args: list[str]) -> None:
             print(f"  PASS  block at line {ln}")
             passed += 1
 
-        print(f"\nDemo validation passed: {passed}/{len(executable)} blocks")
+        print(f"\nDemo passed: {passed}/{len(executable)} blocks")
         if skipped:
             print(f"Skipped: {len(skipped)} blocks")
         raise SystemExit(0)
 
     # Fallback: snapshot.json demo field (backward compatibility)
+    import json
+    import re
+
+    pyproject_path = project_root / "pyproject.toml"
+    current_version = "0.0.0"
+    if pyproject_path.exists():
+        pyproject_content = pyproject_path.read_text()
+        match = re.search(r'version\s*=\s*"([^"]+)"', pyproject_content)
+        if match:
+            current_version = match.group(1)
+    current_major = int(current_version.split(".")[0])
+
+    demos_dir = project_root / "demos"
     demo_path = demos_dir / slug
     snapshot_path = demo_path / "snapshot.json"
 
@@ -1405,7 +1445,6 @@ def _handle_todo_demo(args: list[str]) -> None:
         print(f"Error reading snapshot for '{slug}': {exc}")
         raise SystemExit(1) from exc
 
-    # Semver gate: compare major versions
     demo_version = snapshot.get("version", "0.0.0")
     demo_major = int(demo_version.split(".")[0])
 
@@ -1424,6 +1463,108 @@ def _handle_todo_demo(args: list[str]) -> None:
     print(f"Running demo: {slug} (v{demo_version})\n")
     result = subprocess.run(demo_command, shell=True, cwd=demo_path)
     raise SystemExit(result.returncode)
+
+
+def _demo_create(slug: str, project_root: Path) -> None:
+    """Promote demo.md to demos/{slug}/ with minimal snapshot.json."""
+    import json
+    import re
+
+    source = _find_demo_md(slug, project_root)
+    if source is None:
+        print(f"Error: No demo.md found for '{slug}'")
+        raise SystemExit(1)
+
+    # Read title from demo.md H1
+    content = source.read_text(encoding="utf-8")
+    title = slug
+    for line in content.split("\n"):
+        line = line.strip()
+        if line.startswith("# "):
+            title = line[2:].strip()
+            # Strip "Demo: " prefix if present
+            if title.lower().startswith("demo:"):
+                title = title[5:].strip()
+            break
+
+    # Read version from pyproject.toml
+    pyproject_path = project_root / "pyproject.toml"
+    version = "0.0.0"
+    if pyproject_path.exists():
+        pyproject_content = pyproject_path.read_text()
+        match = re.search(r'version\s*=\s*"([^"]+)"', pyproject_content)
+        if match:
+            version = match.group(1)
+
+    # Create demos/{slug}/ and copy demo.md
+    demos_dir = project_root / "demos" / slug
+    demos_dir.mkdir(parents=True, exist_ok=True)
+    import shutil
+
+    shutil.copy2(source, demos_dir / "demo.md")
+
+    # Generate minimal snapshot.json
+    snapshot = {"slug": slug, "title": title, "version": version}
+    (demos_dir / "snapshot.json").write_text(json.dumps(snapshot, indent=2) + "\n")
+
+    print(f"Demo promoted: {source.relative_to(project_root)} -> demos/{slug}/")
+    print(f"Snapshot: {json.dumps(snapshot)}")
+    raise SystemExit(0)
+
+
+def _handle_todo_demo(args: list[str]) -> None:
+    """Handle telec todo demo subcommands: validate, run, create, or list."""
+    _DEMO_SUBCOMMANDS = {"validate", "run", "create"}
+    subcommand: str | None = None
+    remaining_args = args
+
+    if args and args[0] in _DEMO_SUBCOMMANDS:
+        subcommand = args[0]
+        remaining_args = args[1:]
+
+    slug: str | None = None
+    project_root = Path.cwd()
+
+    i = 0
+    while i < len(remaining_args):
+        arg = remaining_args[i]
+        if arg == "--project-root" and i + 1 < len(remaining_args):
+            project_root = Path(remaining_args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "demo"))
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                print(_usage("todo", "demo"))
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    # No subcommand and no slug: list demos
+    if subcommand is None and slug is None:
+        _demo_list(project_root)
+        return
+
+    # No subcommand but has slug: backward compat → run with deprecation
+    if subcommand is None and slug is not None:
+        print(f"Note: 'telec todo demo {slug}' is deprecated. Use 'telec todo demo run {slug}' instead.\n")
+        subcommand = "run"
+
+    # Subcommand requires slug
+    if slug is None:
+        print(f"Missing required slug for 'demo {subcommand}'.")
+        print(_usage("todo", "demo"))
+        raise SystemExit(1)
+
+    if subcommand == "validate":
+        _demo_validate(slug, project_root)
+    elif subcommand == "run":
+        _demo_run(slug, project_root)
+    elif subcommand == "create":
+        _demo_create(slug, project_root)
 
 
 def _handle_todo_create(args: list[str]) -> None:

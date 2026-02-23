@@ -96,6 +96,7 @@ async def test_next_work_dispatches_defer():
             patch("teleclaude.core.next_machine.core.Repo"),
             patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
             patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
             patch(
                 "teleclaude.core.next_machine.core.compose_agent_guidance",
                 new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
@@ -138,6 +139,7 @@ async def test_next_work_skips_defer_if_processed():
             patch("teleclaude.core.next_machine.core.Repo"),
             patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
             patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
             patch(
                 "teleclaude.core.next_machine.core.compose_agent_guidance",
                 new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),

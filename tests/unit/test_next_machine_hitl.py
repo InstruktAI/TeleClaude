@@ -558,3 +558,191 @@ def test_format_tool_call_next_call_with_args():
     )
     assert 'Call teleclaude__next_work(slug="test-slug")' in result
     assert 'Call teleclaude__next_work(slug="test-slug")()' not in result
+
+
+# =============================================================================
+# Build Gate Tests
+# =============================================================================
+
+from unittest.mock import AsyncMock
+
+from teleclaude.core.next_machine import next_work
+from teleclaude.core.next_machine.core import (
+    POST_COMPLETION,
+    format_build_gate_failure,
+    run_build_gates,
+)
+
+
+def _write_roadmap_yaml(tmpdir: str, slugs: list[str]) -> None:
+    """Helper to write a roadmap.yaml with given slugs."""
+    import yaml as _yaml
+
+    roadmap_path = Path(tmpdir) / "todos" / "roadmap.yaml"
+    roadmap_path.parent.mkdir(parents=True, exist_ok=True)
+    entries = [{"slug": s} for s in slugs]
+    roadmap_path.write_text(_yaml.dump(entries, default_flow_style=False))
+
+
+@pytest.mark.asyncio
+async def test_next_work_runs_gates_when_build_complete():
+    """next_work runs build gates when build is complete, passing gates lead to review."""
+    db = MagicMock(spec=Db)
+    slug = "gate-test"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Req")
+        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "pending"}')
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "GATE PASSED: all")),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="guidance"),
+            ),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+        assert "next-review" in result
+
+
+@pytest.mark.asyncio
+async def test_next_work_gate_failure_resets_build():
+    """Failing gates reset build to started and return gate-failure instruction."""
+    db = MagicMock(spec=Db)
+    slug = "gate-fail"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Req")
+        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "pending"}')
+
+        gate_output = "GATE FAILED: make test (exit 1)\nTest output..."
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(False, gate_output)),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+        # Verify gate failure response
+        assert "BUILD GATES FAILED" in result
+        assert "GATE FAILED" in result
+        assert "Test output" in result
+
+        # Verify build was reset to started
+        state = yaml.safe_load((state_dir / "state.yaml").read_text())
+        assert state["build"] == "started"
+
+
+@pytest.mark.asyncio
+async def test_next_work_gate_failure_includes_output():
+    """Gate failure response includes failure output for the builder."""
+    db = MagicMock(spec=Db)
+    slug = "gate-output"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Req")
+        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "pending"}')
+
+        gate_output = "GATE FAILED: demo validate (exit 1)\nno executable bash blocks"
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(False, gate_output)),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+        assert "demo validate" in result
+        assert "no executable bash blocks" in result
+        assert "Send" in result  # instructs orchestrator to send to builder
+
+
+@pytest.mark.asyncio
+async def test_next_work_lazy_marking_no_state_mutation():
+    """next_work does NOT mutate build state when returning a new build dispatch."""
+    db = MagicMock(spec=Db)
+    slug = "lazy-mark"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Req")
+        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "phase": "pending"}')
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="guidance"),
+            ),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+        # Should dispatch build
+        assert "next-build" in result
+
+        # Build state should NOT have been mutated to "started"
+        state = yaml.safe_load((state_dir / "state.yaml").read_text())
+        assert state["build"] == "pending"
+
+        # Output should contain marking instructions
+        assert "mark_phase" in result
+        assert "BEFORE DISPATCHING" in result
+
+
+def test_post_completion_finalize_includes_make_restart():
+    """POST_COMPLETION for next-finalize includes make restart step."""
+    assert "make restart" in POST_COMPLETION["next-finalize"]
+
+
+def test_format_build_gate_failure_structure():
+    """format_build_gate_failure produces correct instruction structure."""
+    result = format_build_gate_failure("test-slug", "GATE FAILED: make test", "teleclaude__next_work()")
+    assert "BUILD GATES FAILED: test-slug" in result
+    assert "GATE FAILED: make test" in result
+    assert "Send" in result
+    assert "Do NOT end" in result
+    assert "mark_phase" in result
