@@ -249,6 +249,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # polling_coordinator and redis_transport call this directly instead of
         # fire-and-forget through event_bus.emit().
         self.client.agent_event_handler = self.agent_coordinator.handle_event
+        self.client.agent_coordinator = self.agent_coordinator
 
         # Auto-discover and register event handlers (SESSION_*, ERROR only —
         # AGENT_EVENT is routed directly via adapter_client.agent_event_handler)

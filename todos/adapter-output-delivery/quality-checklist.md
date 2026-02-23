@@ -10,13 +10,13 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [ ] Tests pass (`make test`) — currently fails in 10 pre-existing/unrelated areas, no regressions traced to this todo
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
 - [ ] Code committed
-- [ ] Demo validated (`telec todo demo adapter-output-delivery` exits 0, or exception noted)
+- [ ] Demo validated (`telec todo demo adapter-output-delivery` exits 0, or exception noted) — command reaches 100% test execution but fails at global `make test` step for unrelated baseline issues
 - [ ] Working tree clean
 - [ ] Comments/docstrings updated where behavior changed
 

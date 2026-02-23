@@ -12,24 +12,24 @@ Two cross-cutting fixes to the core adapter layer: text delivery between tool ca
 
 **File(s):** `teleclaude/core/agent_coordinator.py`
 
-- [ ] Add public method `trigger_incremental_output(session_id: str) -> bool` after `_maybe_send_incremental_output`.
-- [ ] Fast-path: fetch session, check `is_threaded_output_enabled(session.active_agent)`, return False if not enabled.
-- [ ] Construct minimal `AgentOutputPayload()` with defaults (the existing method falls back to `session.active_agent` and `session.native_log_file`).
-- [ ] Delegate to `self._maybe_send_incremental_output(session_id, payload)`.
+- [x] Add public method `trigger_incremental_output(session_id: str) -> bool` after `_maybe_send_incremental_output`.
+- [x] Fast-path: fetch session, check `is_threaded_output_enabled(session.active_agent)`, return False if not enabled.
+- [x] Construct minimal `AgentOutputPayload()` with defaults (the existing method falls back to `session.active_agent` and `session.native_log_file`).
+- [x] Delegate to `self._maybe_send_incremental_output(session_id, payload)`.
 
 ### Task 1.2: Expose AgentCoordinator to the poller
 
 **File(s):** `teleclaude/core/adapter_client.py`, `teleclaude/daemon.py`
 
-- [ ] Add `self.agent_coordinator: "AgentCoordinator | None" = None` to `AdapterClient.__init__`.
-- [ ] Add `TYPE_CHECKING` import for `AgentCoordinator`.
-- [ ] In `daemon.py`, after `self.client.agent_event_handler = self.agent_coordinator.handle_event` (line 251), add `self.client.agent_coordinator = self.agent_coordinator`.
+- [x] Add `self.agent_coordinator: "AgentCoordinator | None" = None` to `AdapterClient.__init__`.
+- [x] Add `TYPE_CHECKING` import for `AgentCoordinator`.
+- [x] In `daemon.py`, after `self.client.agent_event_handler = self.agent_coordinator.handle_event` (line 251), add `self.client.agent_coordinator = self.agent_coordinator`.
 
 ### Task 1.3: Trigger incremental output from the poller
 
 **File(s):** `teleclaude/core/polling_coordinator.py`
 
-- [ ] In the `OutputChanged` handler, after the `send_output_update` call (after line 764), add:
+- [x] In the `OutputChanged` handler, after the `send_output_update` call (after line 764), add:
   ```python
   coordinator = adapter_client.agent_coordinator
   if coordinator:
@@ -38,7 +38,7 @@ Two cross-cutting fixes to the core adapter layer: text delivery between tool ca
       except Exception:
           logger.warning("Poller-triggered incremental output failed for %s", session_id[:8], exc_info=True)
   ```
-- [ ] This fires for ALL sessions but `trigger_incremental_output` fast-rejects non-threaded sessions before any I/O.
+- [x] This fires for ALL sessions but `trigger_incremental_output` fast-rejects non-threaded sessions before any I/O.
 
 ---
 
@@ -48,7 +48,7 @@ Two cross-cutting fixes to the core adapter layer: text delivery between tool ca
 
 **File(s):** `teleclaude/core/adapter_client.py`
 
-- [ ] At line 562, change `_NON_INTERACTIVE = {InputOrigin.MCP.value, InputOrigin.HOOK.value}` to `_NON_INTERACTIVE = {InputOrigin.MCP.value}`.
+- [x] At line 562, change `_NON_INTERACTIVE = {InputOrigin.MCP.value, InputOrigin.HOOK.value}` to `_NON_INTERACTIVE = {InputOrigin.MCP.value}`.
 - [ ] The filter was added in commit `5598ff0a` with the assumption that hook origins are "not user-facing sessions." That assumption is wrong — terminal sessions are user-facing and their input arrives via the `user_prompt_submit` hook.
 - [ ] MCP remains filtered because MCP-originated input is genuinely non-interactive.
 
@@ -56,12 +56,12 @@ Two cross-cutting fixes to the core adapter layer: text delivery between tool ca
 
 **File(s):** `teleclaude/core/agent_coordinator.py`
 
-- [ ] In `handle_user_prompt_submit`, before the early return at line 426-427 (`if session.lifecycle_status != "headless": return`), add:
+- [x] In `handle_user_prompt_submit`, before the early return at line 426-427 (`if session.lifecycle_status != "headless": return`), add:
   ```python
   await self.client.broadcast_user_input(session, prompt_text, InputOrigin.HOOK.value)
   ```
-- [ ] This ensures terminal user input is reflected to Discord/Telegram regardless of headless status.
-- [ ] The headless path already calls `broadcast_user_input` via `process_message` — with the filter fix in Task 2.1, that path now works too.
+- [x] This ensures terminal user input is reflected to Discord/Telegram regardless of headless status.
+- [x] The headless path already calls `broadcast_user_input` via `process_message` — with the filter fix in Task 2.1, that path now works too.
 
 ---
 
@@ -69,21 +69,21 @@ Two cross-cutting fixes to the core adapter layer: text delivery between tool ca
 
 ### Task 3.1: Tests
 
-- [ ] Test `trigger_incremental_output` sends output for threaded sessions.
-- [ ] Test `trigger_incremental_output` is a no-op for non-threaded sessions.
-- [ ] Test `broadcast_user_input` is called for hook-origin input (both headless and non-headless paths).
-- [ ] Test `broadcast_user_input` still blocks MCP-origin input.
-- [ ] Run `make test`.
+- [x] Test `trigger_incremental_output` sends output for threaded sessions.
+- [x] Test `trigger_incremental_output` is a no-op for non-threaded sessions.
+- [x] Test `broadcast_user_input` is called for hook-origin input (both headless and non-headless paths).
+- [x] Test `broadcast_user_input` still blocks MCP-origin input.
+- [x] Run `make test`.
 
 ### Task 3.2: Quality Checks
 
-- [ ] Run `make lint`.
-- [ ] Verify no unchecked implementation tasks remain.
+- [x] Run `make lint`.
+- [x] Verify no unchecked implementation tasks remain.
 
 ---
 
 ## Phase 4: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes.
-- [ ] Confirm implementation tasks are all marked `[x]`.
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable).
+- [x] Confirm requirements are reflected in code changes.
+- [x] Confirm implementation tasks are all marked `[x]`.
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable).

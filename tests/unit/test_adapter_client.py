@@ -972,3 +972,27 @@ async def test_broadcast_user_input_includes_origin_attribution():
     # "api" origin should display as "TUI"
     assert "TUI" in msg
     assert "test input" in msg
+
+
+@pytest.mark.asyncio
+async def test_broadcast_user_input_skips_mcp_input_source():
+    """MCP-origin prompts must not be echoed across UI adapters."""
+    client = AdapterClient()
+
+    telegram = DummyTelegramAdapter(client, send_message_return="tg-msg")
+    client.register_adapter("telegram", telegram)
+
+    session = Session(
+        session_id="session-mcp",
+        computer_name="test",
+        tmux_session_name="tc_mcp",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+    )
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    with patch("teleclaude.core.adapter_client.db", mock_db):
+        await client.broadcast_user_input(session, "mcp input", InputOrigin.MCP.value)
+
+    assert telegram.sent_messages == []

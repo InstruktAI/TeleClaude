@@ -79,6 +79,49 @@ class TestPollAndSendOutput:
         args, _ = adapter_client.send_output_update.call_args
         assert args[1] == "test output"
 
+    async def test_output_changed_event_triggers_incremental_output_refresh(self):
+        """Output changes should request incremental threaded output refresh from agent coordinator."""
+        mock_session = Session(
+            session_id="test-123",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+            active_agent="gemini",
+        )
+
+        async def mock_poll(session_id, tmux_session_name, output_file):
+            yield OutputChanged(
+                session_id="test-123",
+                output="test output",
+                started_at=1000.0,
+                last_changed_at=1001.0,
+            )
+
+        output_poller = Mock()
+        output_poller.poll = mock_poll
+
+        adapter_client = Mock()
+        adapter_client.send_output_update = AsyncMock()
+        adapter_client.agent_coordinator = Mock()
+        adapter_client.agent_coordinator.trigger_incremental_output = AsyncMock()
+
+        get_output_file = Mock(return_value=Path("/tmp/output.txt"))
+
+        with patch("teleclaude.core.polling_coordinator.db.get_session", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_session
+            await polling_coordinator.poll_and_send_output(
+                session_id="test-123",
+                tmux_session_name="test-tmux",
+                output_poller=output_poller,
+                adapter_client=adapter_client,
+                get_output_file=get_output_file,
+                _skip_register=True,
+            )
+
+        adapter_client.send_output_update.assert_called_once()
+        adapter_client.agent_coordinator.trigger_incremental_output.assert_awaited_once_with("test-123")
+
     async def test_output_changed_codex_detection_does_not_spawn_wrapper_task(self):
         """Codex detection should run inline without per-update wrapper tasks."""
         mock_session = Session(

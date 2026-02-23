@@ -762,6 +762,16 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                     event.started_at,
                     event.last_changed_at,
                 )
+                coordinator = getattr(adapter_client, "agent_coordinator", None)
+                if coordinator:
+                    try:
+                        await coordinator.trigger_incremental_output(event.session_id)
+                    except Exception:
+                        logger.warning(
+                            "Poller-triggered incremental output failed for %s",
+                            event.session_id[:8],
+                            exc_info=True,
+                        )
                 elapsed = time.time() - start_time
                 logger.debug(
                     "[COORDINATOR %s] send_output_update completed in %.2fs",

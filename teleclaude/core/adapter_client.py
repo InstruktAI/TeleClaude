@@ -27,6 +27,7 @@ from teleclaude.core.session_utils import get_display_title_for_session
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
+    from teleclaude.core.agent_coordinator import AgentCoordinator
     from teleclaude.core.events import AgentEventContext
     from teleclaude.core.models import Session
     from teleclaude.core.task_registry import TaskRegistry
@@ -62,6 +63,7 @@ class AdapterClient:
         self.is_shutting_down = False
         # Direct handler for agent events (set by daemon, replaces event bus for AGENT_EVENT)
         self.agent_event_handler: Callable[["AgentEventContext"], Awaitable[None]] | None = None
+        self.agent_coordinator: "AgentCoordinator | None" = None
         # Per-session lock for channel provisioning (prevents concurrent ensure_channel races)
         self._channel_ensure_locks: dict[str, asyncio.Lock] = {}
 
@@ -559,7 +561,7 @@ class AdapterClient:
         sends to all UI adapters except the one that received the input
         (to avoid echoing back to the sender).
         """
-        _NON_INTERACTIVE = {InputOrigin.MCP.value, InputOrigin.HOOK.value}
+        _NON_INTERACTIVE = {InputOrigin.MCP.value}
         if source in _NON_INTERACTIVE:
             return
 
