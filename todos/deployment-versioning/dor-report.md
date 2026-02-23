@@ -1,44 +1,44 @@
 # DOR Report: deployment-versioning
 
-## Assessment Phase: Draft
+## Assessment Phase: Gate (Final)
 
-## Summary
+## Verdict: PASS (9/10)
 
-Draft artifacts created from parent `mature-deployment` Phase 1 decomposition.
-Scope significantly reduced from original plan: CI and release pipelines already
-exist (`.github/workflows/lint-test.yaml`, `release.yaml`). Remaining work is
-small and focused: expose `__version__` at runtime and add `telec version` command.
+All 8 DOR gates satisfied. Work is ready for build.
 
-## Draft Assessment
+## Gate Results
 
-**Estimated score: 9/10** — small, atomic, clear approach, no unknowns.
+| #   | Gate               | Result         | Evidence                                                                                                      |
+| --- | ------------------ | -------------- | ------------------------------------------------------------------------------------------------------------- |
+| 1   | Intent & success   | PASS           | Problem, outcome, and 4 testable success criteria explicit in requirements.md                                 |
+| 2   | Scope & size       | PASS           | 3 small tasks, touches pyproject.toml + `__init__.py` + `telec.py`. Single session.                           |
+| 3   | Verification       | PASS           | Unit tests for `__version__` and CLI output defined. Demo has 3 validation commands.                          |
+| 4   | Approach known     | PASS           | `importlib.metadata.version()` (stdlib). CLI pattern: `TelecCommand` enum + `CLI_SURFACE` dict in `telec.py`. |
+| 5   | Research           | AUTO-SATISFIED | No third-party dependencies introduced.                                                                       |
+| 6   | Dependencies       | PASS           | First in chain — no `after` deps in roadmap. No external systems needed.                                      |
+| 7   | Integration safety | PASS           | Purely additive: new `__version__` export + new CLI command. Trivial rollback.                                |
+| 8   | Tooling impact     | AUTO-SATISFIED | No tooling or scaffolding changes.                                                                            |
 
-### Artifact Quality
+## Plan-to-Requirement Fidelity
 
-- **requirements.md**: complete — scope, success criteria, constraints, risks defined
-- **implementation-plan.md**: complete — 3 tasks, all files identified, testable
-- **demo.md**: complete — validation commands and guided walkthrough
+- Requirement 1 (runtime `__version__`) → Task 1.2: exact match
+- Requirement 2 (`telec version` command) → Task 1.3: exact match
+- Requirement 3 (pyproject.toml bump) → Task 1.1: exact match
 
-### Observations
+No contradictions. No orphan tasks.
 
-1. CI pipeline already exists with lint+test on push to main and PRs.
-2. Release pipeline already exists with AI consensus-based analysis and auto tagging.
-3. Only missing: runtime `__version__` and `telec version` CLI command.
-4. Scope is truly atomic — fits a single session easily.
+## Actions Taken (Gate Phase)
 
-### Assumptions
+- Verified CI/release workflows exist in `.github/workflows/` — confirmed scope reduction is correct
+- Verified `teleclaude/__init__.py` is empty — confirms `__version__` must be added
+- Verified `pyproject.toml` version is `0.1.0` — confirms bump needed
+- Verified CLI structure (`TelecCommand` enum, `CLI_SURFACE` dict, dispatch) in `telec.py`
+- Tightened Task 1.3: specified exact file (`telec.py`) and exact steps (enum + CLI_SURFACE + handler)
 
-- `importlib.metadata.version()` works when package is installed via `make install`
-- Fallback to pyproject.toml parsing for dev/source mode
-- Channel display defaults to "alpha" (hardcoded) until deployment-channels ships
+## Blockers
 
-### Open Questions
+None.
 
-None — approach is well-established (standard Python packaging pattern).
+## Open Questions
 
-### Actions Taken (Draft Phase)
-
-- Wrote requirements.md from parent Phase 1 + codebase reality
-- Wrote implementation-plan.md with 3 concrete tasks
-- Wrote demo.md with validation commands and walkthrough
-- Key discovery: CI/release pipelines already exist, reducing scope by ~60%
+None.

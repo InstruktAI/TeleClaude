@@ -107,6 +107,14 @@ snippets:
   path: docs/project/design/architecture/help-desk-platform.md
   role: member
   source_project: TeleClaude
+- id: project/design/architecture/hook-service
+  description: Contract-based pub/sub webhook service for event routing, inbound webhook
+    reception, and durable external delivery.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/hook-service.md
+  role: member
+  source_project: TeleClaude
 - id: project/design/architecture/jobs-runner
   description: 'Scheduled job runner: architecture, job contract, and configuration
     surface.'

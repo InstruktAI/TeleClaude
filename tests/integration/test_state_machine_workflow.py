@@ -11,12 +11,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import (
     check_dependencies_satisfied,
     get_item_phase,
-    load_roadmap_deps,
     next_work,
     resolve_slug,
     save_roadmap,
@@ -52,12 +52,10 @@ async def test_workflow_pending_to_done_with_dependencies():
         # Step 2: Mark dep-item as ready
         set_item_phase(tmpdir, "dep-item", "pending")
         # Write dor score to make it ready
-        import json
-
         dep_state_path = Path(tmpdir) / "todos" / "dep-item" / "state.yaml"
-        dep_state = json.loads(dep_state_path.read_text())
+        dep_state = yaml.safe_load(dep_state_path.read_text()) or {}
         dep_state["dor"] = {"score": 8}
-        dep_state_path.write_text(json.dumps(dep_state))
+        dep_state_path.write_text(yaml.dump(dep_state, default_flow_style=False))
         assert get_item_phase(tmpdir, "dep-item") == "pending"
 
         # Step 3: Mark dep-item as in_progress
@@ -75,9 +73,9 @@ async def test_workflow_pending_to_done_with_dependencies():
         # Step 6: Mark main-item as ready
         set_item_phase(tmpdir, "main-item", "pending")
         main_state_path = Path(tmpdir) / "todos" / "main-item" / "state.yaml"
-        main_state = json.loads(main_state_path.read_text())
+        main_state = yaml.safe_load(main_state_path.read_text()) or {}
         main_state["dor"] = {"score": 8}
-        main_state_path.write_text(json.dumps(main_state))
+        main_state_path.write_text(yaml.dump(main_state, default_flow_style=False))
         assert get_item_phase(tmpdir, "main-item") == "pending"
 
         # Step 7: Verify main-item is now selectable with ready_only

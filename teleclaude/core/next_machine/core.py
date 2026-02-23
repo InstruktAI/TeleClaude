@@ -1335,17 +1335,6 @@ def _sync_file(src_root: Path, dst_root: Path, relative_path: str) -> bool:
     return True
 
 
-def _sync_file_if_missing(src_root: Path, dst_root: Path, relative_path: str) -> bool:
-    """Copy one file only when destination does not already exist."""
-    src = src_root / relative_path
-    dst = dst_root / relative_path
-    if not src.exists() or dst.exists():
-        return False
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dst)
-    return True
-
-
 def sync_main_to_worktree(cwd: str, slug: str, extra_files: list[str] | None = None) -> None:
     """Copy orchestrator-owned planning files from main repo into a slug worktree."""
     main_root = Path(cwd)
@@ -1398,24 +1387,36 @@ def sync_slug_todo_from_worktree_to_main(cwd: str, slug: str) -> None:
 
 
 def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> None:
-    """Copy canonical todo artifacts for a slug from main into worktree."""
+    """Copy canonical todo artifacts for a slug from main into worktree.
+
+    Planning artifacts are copied unconditionally (main is source of truth).
+    state.yaml is only seeded when missing — the worktree owns build/review
+    progress once work begins.
+    """
     todo_base = f"todos/{slug}"
     main_root = Path(cwd)
     worktree_root = Path(cwd) / "trees" / slug
     if not worktree_root.exists():
         return
+    # Planning artifacts: main always wins.
     for rel in [
         f"{todo_base}/input.md",
         f"{todo_base}/requirements.md",
         f"{todo_base}/implementation-plan.md",
         f"{todo_base}/quality-checklist.md",
-        f"{todo_base}/state.yaml",
         f"{todo_base}/review-findings.md",
         f"{todo_base}/deferrals.md",
         f"{todo_base}/breakdown.md",
         f"{todo_base}/dor-report.md",
     ]:
-        _sync_file_if_missing(main_root, worktree_root, rel)
+        _sync_file(main_root, worktree_root, rel)
+    # state.yaml: seed only — worktree owns build/review progress.
+    state_rel = f"{todo_base}/state.yaml"
+    src = main_root / state_rel
+    dst = worktree_root / state_rel
+    if src.exists() and not dst.exists():
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
 
 
 def _dirty_paths(repo: Repo) -> list[str]:
@@ -2103,10 +2104,9 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
 
     worktree_cwd = str(Path(cwd) / "trees" / resolved_slug)
 
-    # Bootstrap worktree from main only when it is first created.
-    if worktree_created:
-        await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
-        await asyncio.to_thread(sync_slug_todo_from_main_to_worktree, cwd, resolved_slug)
+    # Always sync main → worktree so the worktree starts with current files.
+    await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
+    await asyncio.to_thread(sync_slug_todo_from_main_to_worktree, cwd, resolved_slug)
 
     # 5. Check uncommitted changes
     if has_uncommitted_changes(cwd, resolved_slug):
@@ -2123,7 +2123,6 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         await asyncio.to_thread(
             mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
         )
-        await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
         try:
             guidance = await compose_agent_guidance(db)
         except RuntimeError as exc:

@@ -376,8 +376,8 @@ def test_sync_slug_todo_from_worktree_to_main_includes_review_findings():
         assert "APPROVE" in main_review.read_text(encoding="utf-8")
 
 
-def test_sync_slug_todo_from_main_to_worktree_does_not_overwrite_existing_state():
-    """Main bootstrap sync must not clobber worktree state transitions."""
+def test_sync_slug_todo_from_main_to_worktree_preserves_worktree_state():
+    """Worktree owns build/review progress — main sync must not clobber existing state.yaml."""
     with tempfile.TemporaryDirectory() as tmpdir:
         slug = "test-slug"
         main_todo = Path(tmpdir) / "todos" / slug
@@ -392,6 +392,42 @@ def test_sync_slug_todo_from_main_to_worktree_does_not_overwrite_existing_state(
 
         final_state = (worktree_todo / "state.yaml").read_text(encoding="utf-8")
         assert '"build":"complete"' in final_state
+
+
+def test_sync_slug_todo_from_main_to_worktree_seeds_state_when_missing():
+    """state.yaml should be copied from main when worktree has no state yet."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        slug = "test-slug"
+        main_todo = Path(tmpdir) / "todos" / slug
+        worktree_root = Path(tmpdir) / "trees" / slug
+        main_todo.mkdir(parents=True, exist_ok=True)
+        worktree_root.mkdir(parents=True, exist_ok=True)
+
+        (main_todo / "state.yaml").write_text('{"build":"pending"}', encoding="utf-8")
+
+        sync_slug_todo_from_main_to_worktree(tmpdir, slug)
+
+        worktree_state = worktree_root / "todos" / slug / "state.yaml"
+        assert worktree_state.exists()
+        assert '"build":"pending"' in worktree_state.read_text(encoding="utf-8")
+
+
+def test_sync_slug_todo_from_main_to_worktree_overwrites_planning_files():
+    """Planning artifacts should always sync from main, even when worktree has them."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        slug = "test-slug"
+        main_todo = Path(tmpdir) / "todos" / slug
+        worktree_todo = Path(tmpdir) / "trees" / slug / "todos" / slug
+        main_todo.mkdir(parents=True, exist_ok=True)
+        worktree_todo.mkdir(parents=True, exist_ok=True)
+
+        (main_todo / "requirements.md").write_text("# Updated requirements\n", encoding="utf-8")
+        (worktree_todo / "requirements.md").write_text("# Stale requirements\n", encoding="utf-8")
+
+        sync_slug_todo_from_main_to_worktree(tmpdir, slug)
+
+        final = (worktree_todo / "requirements.md").read_text(encoding="utf-8")
+        assert "Updated" in final
 
 
 def test_mark_phase_review_approved_clears_unresolved_findings():

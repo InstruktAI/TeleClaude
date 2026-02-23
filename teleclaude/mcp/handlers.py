@@ -890,6 +890,7 @@ class MCPHandlersMixin:
 
     async def teleclaude__end_session(self, computer: str, session_id: str) -> EndSessionResult:
         """End a session gracefully (kill tmux, delete session, clean up resources)."""
+        logger.info("teleclaude__end_session via MCP for session %s", session_id[:8])
         if self._is_local_computer(computer):
             cmd = CloseSessionCommand(session_id=session_id)
             return await command_handlers.end_session(cmd, self.client)

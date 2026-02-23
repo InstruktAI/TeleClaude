@@ -1125,6 +1125,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # TTS session_start is triggered via event_bus (SESSION_STARTED event)
         await self._start_polling_for_session(session_id, session.tmux_session_name)
 
+        # Transition non-headless sessions to active so they appear in listings.
+        # Headless sessions stay "headless" until explicitly adopted by a UI adapter.
+        if session.lifecycle_status != "headless":
+            await db.update_session(session_id, lifecycle_status="active")
+
         if auto_command:
             await self._execute_auto_command(session_id, auto_command)
 

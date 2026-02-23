@@ -32,7 +32,7 @@ ordered idempotent scripts.
 - [ ] State tracking: read/write `~/.teleclaude/migration_state.json`
 - [ ] Atomic state writes: write to temp file, then rename
 - [ ] On failure: halt, return which migration failed plus traceback
-- [ ] Version comparison using `packaging.version.Version` (already a dependency)
+- [ ] Version comparison using `tuple(int(x) for x in ver.split('.'))` (stdlib only, no external dep)
 
 ### Task 1.3: CLI entry point
 

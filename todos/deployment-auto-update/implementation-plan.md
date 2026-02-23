@@ -26,7 +26,7 @@ existing restart mechanism (exit code 42) and Redis status reporting.
   5. Run `make install` (subprocess)
   6. Remove signal file
   7. Update Redis status to "restarting"
-  8. Trigger restart via `sys.exit(42)`
+  8. Trigger restart via `os._exit(42)` (matches existing deploy_service.py pattern)
 - [ ] On any step failure: log error, update Redis status to "update_failed",
       do NOT restart, preserve state for retry
 - [ ] Handle ff-only failure gracefully (log, skip, don't force)
@@ -35,7 +35,7 @@ existing restart mechanism (exit code 42) and Redis status reporting.
 
 **File(s):** `teleclaude/daemon.py` or background task registration
 
-- [ ] Register periodic check (reuse cron interval or daemon background loop)
+- [ ] Register as daemon background task via `asyncio.create_task()` in `daemon.start()`
 - [ ] On signal file detected: call execute_update()
 - [ ] Log update lifecycle events at INFO level
 

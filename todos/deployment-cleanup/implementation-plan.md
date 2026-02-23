@@ -19,31 +19,36 @@ update docs.
 - [ ] Catalog every reference with file path and type (import, handler, test, doc)
 - [ ] Plan removal order: consumers -> service -> Redis commands -> docs
 
-### Task 1.2: Remove MCP tool
+### Task 1.2: Remove MCP tool and server dispatch
 
 **File(s):** `teleclaude/mcp/tool_definitions.py`, `teleclaude/mcp/handlers.py`,
-`teleclaude/mcp/role_tools.py`
+`teleclaude/mcp/role_tools.py`, `teleclaude/mcp_server.py`
 
-- [ ] Remove `teleclaude__deploy` from tool definitions
-- [ ] Remove deploy handler from handlers.py
-- [ ] Remove deploy from role_tools.py
+- [ ] Remove `teleclaude__deploy` from `tool_definitions.py`
+- [ ] Remove deploy handler from `handlers.py`
+- [ ] Remove deploy from `role_tools.py`
+- [ ] Remove `ToolName.DEPLOY` enum member from `mcp_server.py`
+- [ ] Remove `_handle_deploy()` inner function from `mcp_server.py`
+- [ ] Remove deploy entry from dispatch map in `mcp_server.py`
 - [ ] Update `docs/project/spec/mcp-tool-surface.md`
 
-### Task 1.3: Remove CLI command
+### Task 1.3: Remove daemon and transport deploy paths
 
-**File(s):** `teleclaude/cli/` (deploy subcommand location)
+**File(s):** `teleclaude/daemon.py`, `teleclaude/transport/redis_transport.py`,
+`teleclaude/core/events.py`, `teleclaude/core/lifecycle.py`
 
-- [ ] Replace `telec deploy` with a helpful error message:
-      "Deployment is now automatic via channels. See: telec version"
-- [ ] Or remove the subcommand entirely if the CLI framework shows unknown commands
+- [ ] Remove `DeployService` import and `_handle_deploy()` method from `daemon.py`
+- [ ] Remove `"deploy"` case from system command dispatch in `daemon.py`
+- [ ] Remove `DeployArgs` import and deploy arg construction from `redis_transport.py`
+- [ ] Remove `DeployArgs` dataclass from `core/events.py`
+- [ ] Remove deploy status check block (~lines 106-130) from `core/lifecycle.py`
 
 ### Task 1.4: Remove deploy service
 
 **File(s):** `teleclaude/services/deploy_service.py`
 
 - [ ] Delete the file
-- [ ] Remove any imports of deploy_service from other modules
-- [ ] Remove deploy-related Redis system command handling
+- [ ] Verify no remaining imports of `deploy_service` across codebase
 
 ### Task 1.5: Update documentation
 

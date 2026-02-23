@@ -12,7 +12,8 @@ reflect the new automated flow.
 
 1. **Remove MCP tool** — `teleclaude__deploy` from tool definitions, handlers,
    and role_tools.
-2. **Remove CLI command** — `telec deploy` subcommand.
+2. **Remove deploy dispatch paths** — daemon system command handler, MCP server
+   dispatch, transport layer deploy arg construction.
 3. **Remove deploy service** — `teleclaude/services/deploy_service.py`.
 4. **Remove Redis system command handling** for deploy.
 5. **Update documentation** — procedure doc, spec docs, architecture overview,
@@ -27,10 +28,11 @@ reflect the new automated flow.
 
 ## Success Criteria
 
-- [ ] `teleclaude__deploy` MCP tool no longer exists in tool definitions
-- [ ] `telec deploy` shows helpful error: "Deployment is now automatic via
-      channels. See: telec version"
+- [ ] `teleclaude__deploy` MCP tool no longer exists in tool definitions or handlers
+- [ ] No deploy dispatch path remains in daemon, MCP server, or transport layers
 - [ ] `deploy_service.py` is deleted
+- [ ] `DeployArgs` dataclass is removed from `core/events.py`
+- [ ] Deploy status check in `core/lifecycle.py` is removed
 - [ ] All docs reference the new automated deployment flow
 - [ ] New `docs/project/design/architecture/deployment-pipeline.md` exists
 - [ ] `make lint` and `make test` pass with removals
@@ -38,7 +40,7 @@ reflect the new automated flow.
 ## Constraints
 
 - Must not break any existing tests that reference deploy indirectly
-- Error message for old `telec deploy` must be helpful, not just "unknown command"
+- Removal order matters: consumers before providers (handlers → service → events)
 
 ## Risks
 

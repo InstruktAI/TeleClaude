@@ -54,7 +54,9 @@ steps, no silent partial state.
 
 ## Research
 
-Migration patterns from Alembic, Django, and Flyway should be reviewed before
-building. The check/migrate contract is simpler than these frameworks (no ORM,
-no SQL) but the ordering and state tracking patterns are relevant. Index findings
-as third-party docs.
+Migration patterns from Alembic, Django, and Flyway were considered during design.
+The check/migrate contract is simpler than these frameworks (no ORM, no SQL).
+The ordering and dynamic-loading patterns are validated by existing internal prior
+art in `teleclaude/core/migrations/runner.py` (19 working migrations using
+`importlib.util` + numbered scripts + state tracking). No third-party migration
+library needed.

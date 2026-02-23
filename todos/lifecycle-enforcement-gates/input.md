@@ -4,80 +4,63 @@
 
 The lifecycle has gates documented in procedures but nothing enforces them. The builder checks boxes, the reviewer validates boxes are checked, nobody runs the actual gates. The state machine trusts the builder's word.
 
-This was exposed when `discord-media-handling` was delivered without a working demo — the builder lied on the quality checklist ("No demo.md" when one existed), the reviewer didn't catch it, the orchestrator accepted it, and the demo artifacts were deleted during cleanup.
+Exposed when `discord-media-handling` shipped without a working demo — builder lied on the checklist, reviewer didn't catch it, orchestrator accepted it, demo artifacts deleted during cleanup.
 
-## What Needs to Change
+## Core Insight
 
-### 1. Demo Lifecycle (End-to-End Fix)
+Moving from a trust-based model to an evidence-based model. The quality checklist flips from being the gate to being the receipt — the machine runs the gate, the checklist documents what was verified.
 
-**Prepare phase:** The architect drafts `demo.md` with section headings and HTML comments describing what needs to be demonstrated functionally. No executable code blocks — the architect doesn't know the code yet. Just intent: what medium (CLI, TUI, web, API), what the user should observe, what proves it works.
+## What Changes
 
-**Build phase:** The builder owns making `demo.md` executable. They replace HTML comment placeholders with real bash code blocks. This is a build deliverable, not optional.
+### 1. `telec todo demo` Subcommands
 
-**State machine gate:** After the builder reports BUILD COMPLETE but before the orchestrator marks `build=complete`, the state machine runs `telec todo demo {slug}` in the worktree. If it fails (non-zero exit), build is NOT complete — the builder stays active and gets sent back to fix it. If it passes, build proceeds to review.
+Split the current monolith into explicit subcommands:
 
-**`telec todo demo` fix:** Currently exits 0 when no executable blocks are found (lines 1318-1320, 1330-1332 in telec.py). Must exit non-zero instead. A demo.md with no executable blocks is a failure, not a pass.
+- **`telec todo demo validate {slug}`** — Structural check: does demo.md have executable bash blocks? Fails on empty template (no blocks = exit 1). Respects `<!-- no-demo: reason -->` marker (exit 0, logs reason). Fast, no execution. This is what the state machine runs as the build gate.
+- **`telec todo demo run {slug}`** — Extract and execute bash blocks. Full proof, could be heavy. For manual verification or demo presentation.
+- **`telec todo demo create {slug}`** — Promote `todos/{slug}/demo.md` to `demos/{slug}/demo.md`. Generate minimal metadata. Finalize automation.
+- **`telec todo demo`** (no subcommand) — List available demos. Current behavior.
 
-**Review phase:** The reviewer inspects `demo.md` content quality — are the blocks testing the right things? Do they cover the delivery? The reviewer doesn't run them (proven by the build gate), but evaluates whether they're meaningful.
+### 2. Demo Responsibility Chain
 
-**Finalize phase:** The finalizer promotes `todos/{slug}/demo.md` to `demos/{slug}/demo.md` and generates `snapshot.json` with metrics from git diff-stats, state.yaml review rounds, and narrative acts. This happens after merge/push but before delivery logging.
+- **Prepare:** Architect drafts `demo.md` with headings and HTML comments — functional intent only, no code blocks. "What needs to be proven."
+- **Build:** Builder fills in executable bash blocks. Owns the demo content. Runs `telec todo demo validate` and `make test` themselves before claiming done.
+- **State machine:** Runs `telec todo demo validate {slug}` and `make test` as build gates. If either fails, builder stays active, gets message about failure, fixes in-place.
+- **Review:** Reviewer inspects demo.md quality — meaningful blocks, right coverage, justified `<!-- no-demo -->` if present. Doesn't run them (proven by build gate).
+- **Finalize automation:** `telec todo demo create {slug}` promotes artifacts. No AI needed.
 
-### 2. `make test` as Machine-Enforced Build Gate
+### 3. State Machine Gates in `next_work`
 
-The builder claims "tests pass" in the quality checklist, but nobody verifies. The worktree is isolated — `make test` there catches everything, including regressions unrelated to the current work.
+`mark_phase` stays a dumb state writer. `next_work` is the enforcer.
 
-The state machine should run `make test` in the worktree as a build gate, same pattern as demo validation. If tests fail, build is not complete — builder stays and fixes.
+After builder reports BUILD COMPLETE, orchestrator does NOT end the session. Calls `mark_phase(build=complete)`, then calls `next_work()`. The state machine runs gates:
 
-This is about catching problems before they hit review, not trusting self-reported checkboxes.
+1. `make test` in worktree
+2. `telec todo demo validate {slug}` in worktree
 
-### 3. GitHub Actions as Review/Finalize Gate
+If both pass → machine output says "end session, dispatch review."
+If either fails → machine resets build to `started`, output says "send builder this message: [failure reason], don't end session, wait."
 
-Review can currently approve even if CI is red. Nothing checks GitHub Actions status before finalize.
+Builder stays alive, fixes in-place, reports done again, loop repeats.
 
-After the branch is pushed and CI runs, the state machine should verify the GitHub Actions run passed before allowing review to approve. If CI fails after review, it should bounce back to fix-review cycle, not proceed to finalize.
+### 4. GitHub Actions as Final Gate
 
-Most of our software has a GitHub endpoint. The run must be green.
+CI runs E2E tests. Must be green before release. This is the release pipeline gate, not a state machine concern. The existing deployment workflow handles this.
 
-### 4. Definition of Done — Teeth at Every Layer
+### 5. snapshot.json: Strip or Kill
 
-The quality checklist template and DoD documentation need to reflect that these gates are machine-enforced, not self-reported:
+snapshot.json overlaps with delivered.yaml (slug, title, date, commit) and git (metrics). The acts narrative duplicates source artifacts. The only unique field is `version` for semver gating.
 
-- **Build gates enforced by the machine:** demo validation, `make test`
-- **Review/finalize gates enforced by CI:** GitHub Actions green
-- **Finalize gates enforced by the machine:** demo promotion to `demos/{slug}/`
+Decision: either add `version` to delivered.yaml and kill snapshot.json, or reduce snapshot.json to `{slug, title, version}` — just enough for demo listing and semver gate. No metrics, no acts. The presenter constructs narrative from source artifacts on the fly.
 
-The awareness needs to exist in:
+### 6. Demo Escape Hatch
 
-- The lifecycle overview procedure
-- The build procedure
-- The review procedure
-- The finalize procedure
-- The demo procedure and spec
-- The quality checklist template
-- The state machine code
+`<!-- no-demo: reason -->` marker at top of demo.md. `validate` respects it (exit 0), logs the reason. Reviewer inspects whether the exception is justified. Documented, auditable, not silent.
 
-## Files Affected
+### 7. Definition of Done Updates
 
-### Code changes:
-
-- `teleclaude/cli/telec.py` — `telec todo demo` fail on no executable blocks
-- `teleclaude/core/next_machine/core.py` — demo gate, make-test gate, CI gate between build/review/finalize
-
-### Procedure changes:
-
-- `docs/.../lifecycle/demo.md` — fix responsibility chain
-- `docs/.../lifecycle/build.md` — tighten demo and test ownership
-- `docs/.../lifecycle/review.md` — add demo quality inspection, CI gate awareness
-- `docs/.../lifecycle/finalize.md` — add demo promotion step
-- `docs/.../lifecycle-overview.md` — reflect enforcement
-- `docs/.../maintenance/next-prepare-draft.md` — clarify demo.md is intent only, no code blocks
-
-### Spec/template changes:
-
-- `docs/project/spec/demo-artifact.md` — fix lifecycle description
-- `templates/todos/quality-checklist.md` — reflect machine-enforced gates
-- `templates/todos/demo.md` — ensure template matches the intent-only pattern
+All procedures updated to reflect machine enforcement. The checklist becomes a receipt of what the machine verified, not a self-reported promise.
 
 ## Origin
 
-Discovered during `/next-work discord-media-handling` delivery on 2026-02-23. The demo was drafted by the architect, ignored by the builder, missed by the reviewer, and deleted during cleanup. The delivery shipped without a working demo.
+Discovered during `/next-work discord-media-handling` on 2026-02-23.

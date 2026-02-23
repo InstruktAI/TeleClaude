@@ -557,6 +557,15 @@ class APIServer:
             """End session - local sessions only (remote session management via MCP tools)."""
             from teleclaude.api.session_access import check_session_access
 
+            user_agent = request.headers.get("user-agent", "no-ua")
+            identity_email = request.headers.get("x-web-email", "none")
+            logger.info(
+                "DELETE /sessions/%s (ua=%s, identity=%s)",
+                session_id[:8],
+                user_agent,
+                identity_email,
+            )
+
             await check_session_access(request, session_id, require_owner=True)
             try:
                 metadata = self._metadata()

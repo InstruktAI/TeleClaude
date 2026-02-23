@@ -25,10 +25,11 @@ release pipelines already exist and require no changes.
 
 ### Task 1.3: Add `telec version` command
 
-**File(s):** `teleclaude/cli/` (add subcommand to existing CLI structure)
+**File(s):** `teleclaude/cli/telec.py`
 
-- [ ] Add `version` subcommand to the telec CLI
-- [ ] Print: `TeleClaude v{version} (channel: alpha, commit: {short_hash})`
+- [ ] Add `VERSION = "version"` to `TelecCommand` enum
+- [ ] Add `"version": CommandDef(desc="Print version, channel, and commit")` to `CLI_SURFACE`
+- [ ] Add handler function that prints: `TeleClaude v{version} (channel: alpha, commit: {short_hash})`
 - [ ] Get commit hash via `git rev-parse --short HEAD` (subprocess, graceful fail)
 - [ ] Channel defaults to "alpha" (hardcoded until deployment-channels ships)
 

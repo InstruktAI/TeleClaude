@@ -1,9 +1,9 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
 - slug: lifecycle-enforcement-gates
-  description: Machine-enforced build gates (demo validation, make test), CI gate
-    (GitHub Actions), demo promotion in finalize, and Definition of Done updates across
-    all lifecycle procedures.
+  description: Machine-enforced build gates — demo subcommand refactor, state machine
+    gate validation in next_work(), POST_COMPLETION flow changes, snapshot.json reduction,
+    and lazy state marking.
 - slug: discord-session-routing
   description: Per-project Discord forums, role-based routing, adapter-specific titles,
     enriched footer
@@ -34,6 +34,13 @@
     of only the first. Use a dedicated rolling prompt that captures session direction.
     Reset the output message on any title change so the telegram title feedback floats
     to the top in Telegram.
+- slug: inbound-hook-service
+  description: Wire existing inbound webhook infrastructure into daemon, deliver GitHub
+    normalizer as proof of end-to-end path
+- slug: help-desk-whatsapp
+  after:
+  - inbound-hook-service
+  description: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
 - slug: deployment-versioning
   group: mature-deployment
   description: 'Phase 1: Runtime __version__, telec version command, pyproject.toml
