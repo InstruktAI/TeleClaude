@@ -1,8 +1,8 @@
-# Bug:
+# Bug: TUI PreparationView Not Refreshing on todo WebSocket Events
 
 ## Symptom
 
-Right now when I'm changing state.yaml files, there is no feedback coming via the web socket. I don't see the front end in the TUI change its data. What is going on? Also, there's another thing which is that for a bug to be started it shows a pop-up that the DOR score is too low. But that should not happen for bugs. Bugs should just be able to be started. No gating. It is just a bug report and it will just enter the pipeline.
+When todo files change (state.yaml modifications), the TUI's PreparationView does not refresh with updated todo data despite receiving WebSocket notifications. The todo list shows stale data until manual reload.
 
 ## Discovery Context
 
@@ -12,12 +12,12 @@ Date: 2026-02-23
 
 ## Investigation
 
-TodoWatcher correctly dispatches WebSocket events on file changes. The TUI frontend receives these events (`todos_updated`, `todo_created`, `todo_updated`, `todo_removed`) and dispatches `SYNC_TODOS` to the Zustand store. However, `projectsWithTodos` (React local state in `app.tsx`) is only fetched once on component mount and never refreshed when todo events arrive.
+The TodoWatcher correctly dispatches WebSocket events when todo files change. The TUI's app component receives these events (`todos_updated`, `todo_created`, `todo_updated`, `todo_removed`) and dispatches `SYNC_TODOS` action to the Zustand store. However, `projectsWithTodos` (held in React local state in `frontend/cli/app.tsx`) is only fetched once on component mount during `useEffect(..., [])`. The `SYNC_TODOS` action only prunes `expandedTodos` in the store—it doesn't trigger a re-fetch of `projectsWithTodos`.
 
 ## Root Cause
 
-The `SYNC_TODOS` action only prunes `expandedTodos` in the store but does not trigger a re-fetch of `projectsWithTodos`. The data in `app.tsx` local state becomes stale and the UI does not reflect changes.
+In `frontend/cli/app.tsx`, `projectsWithTodos` state is populated once on mount and never updated when WebSocket todo events arrive. The `SYNC_TODOS` action in the reducer only manages `expandedTodos` pruning, not data refresh.
 
 ## Fix Applied
 
-Added `todosRefreshTrigger` counter field to TuiState. When `SYNC_TODOS` dispatches, the counter increments. In `app.tsx`, a new `useEffect` watches this counter and re-fetches `projectsWithTodos` whenever it changes. Integrated into existing Zustand store pattern. Commit: 2afae57a
+Added `todosRefreshTrigger: number` field to `TuiState.preparation` in the Zustand store. Updated the `SYNC_TODOS` reducer action to increment this counter. In `frontend/cli/app.tsx`, added a new `useEffect` that watches `todosRefreshTrigger` and calls `api.getProjectsWithTodos()` to refresh the data whenever the counter changes. Tests updated to verify counter increments. Commit: ac81602c

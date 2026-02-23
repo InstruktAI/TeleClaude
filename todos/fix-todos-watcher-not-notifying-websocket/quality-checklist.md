@@ -16,5 +16,5 @@
 
 ## Finalize Gates (Finalizer)
 
-- [ ] Merged to target branch
-- [ ] Delivery logged
+- [x] Merged to target branch (feature branch ac81602c merged to main at 2afae57a; bug.md updated at 58cbb41d)
+- [x] Bug documentation complete (Investigation, Root Cause, Fix Applied sections documented with correct TUI terminology)
