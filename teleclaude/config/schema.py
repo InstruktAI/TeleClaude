@@ -159,10 +159,10 @@ SubscriptionEntry = Annotated[
 
 class InboundSourceConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
-    path: str
+    path: Optional[str] = None
     verify_token: Optional[str] = None
     secret: Optional[str] = None
-    normalizer: str
+    normalizer: Optional[str] = None
 
 
 class SubscriptionContractConfig(BaseModel):

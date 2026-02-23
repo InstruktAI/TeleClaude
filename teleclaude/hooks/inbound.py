@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import inspect
 import json
-from typing import Any, Awaitable, Callable
+from typing import Awaitable, Callable, cast
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from instrukt_ai_logging import get_logger
@@ -14,7 +15,8 @@ from teleclaude.hooks.webhook_models import HookEvent
 
 logger = get_logger(__name__)
 
-Normalizer = Callable[[dict[str, Any]], HookEvent]  # guard: loose-dict - Inbound payload is dynamic JSON
+# guard: loose-dict - Inbound payload is dynamic JSON.
+Normalizer = Callable[[dict[str, object], dict[str, str]], HookEvent]
 
 
 class NormalizerRegistry:
@@ -49,7 +51,7 @@ class InboundEndpointRegistry:
         self,
         path: str,
         normalizer_key: str,
-        verify_config: dict[str, Any] | None = None,  # guard: loose-dict - Verify config is dynamic JSON
+        verify_config: dict[str, object] | None = None,  # guard: loose-dict - Verify config is dynamic JSON
     ) -> None:
         """Register an inbound webhook endpoint.
 
@@ -84,16 +86,20 @@ class InboundEndpointRegistry:
         async def handle_post(request: Request) -> dict[str, str]:
             """Handle incoming webhook payload."""
             body = await request.body()
+            headers = {name.lower(): value for name, value in request.headers.items()}
 
             # Verify signature if configured
             secret = config.get("secret")
-            if secret:
+            if isinstance(secret, str):
                 signature = request.headers.get("X-Hub-Signature-256") or request.headers.get("X-Hook-Signature")
                 if not signature:
                     raise HTTPException(status_code=401, detail="Missing signature")
                 expected = f"sha256={hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()}"
                 if not hmac.compare_digest(signature, expected):
                     raise HTTPException(status_code=401, detail="Invalid signature")
+            elif secret is not None:
+                logger.warning("Ignoring non-string secret config for inbound webhook: %s", normalizer_key)
+                raise HTTPException(status_code=500, detail="Invalid webhook secret config")
 
             try:
                 payload = json.loads(body)
@@ -107,7 +113,7 @@ class InboundEndpointRegistry:
                 raise HTTPException(status_code=500, detail="Normalizer not configured")
 
             try:
-                event = normalizer(payload)
+                event = self._invoke_normalizer(normalizer, payload, headers)
             except Exception as exc:
                 logger.error("Normalization failed: %s error=%s", normalizer_key, exc, exc_info=True)
                 raise HTTPException(status_code=400, detail="Failed to normalize payload") from exc
@@ -126,3 +132,33 @@ class InboundEndpointRegistry:
         self._app.add_api_route(path, handle_post, methods=["POST"], tags=["hooks-inbound"])
         self._registered_paths.add(path)
         logger.info("Registered inbound endpoint: %s (normalizer=%s)", path, normalizer_key)
+
+    @staticmethod
+    # guard: loose-dict-func - Inbound payload structure is dynamic.
+    def _invoke_normalizer(
+        normalizer: Normalizer,
+        payload: dict[str, object],  # guard: loose-dict - Inbound payload is dynamic JSON.
+        headers: dict[str, str],
+    ) -> HookEvent:
+        """Invoke normalizer, supporting both old and new signatures."""
+        try:
+            signature = inspect.signature(normalizer)
+        except (TypeError, ValueError):
+            normalizer_dynamic = cast(Callable[..., HookEvent], normalizer)
+            return normalizer_dynamic(payload, headers)
+
+        positional_parameters = [
+            param
+            for param in signature.parameters.values()
+            if param.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+        ]
+        supports_headers = (
+            any(param.kind == inspect.Parameter.VAR_POSITIONAL for param in signature.parameters.values())
+            or len(positional_parameters) >= 2
+        )
+
+        normalizer_dynamic = cast(Callable[..., HookEvent], normalizer)
+
+        if supports_headers:
+            return normalizer_dynamic(payload, headers)
+        return normalizer_dynamic(payload)
