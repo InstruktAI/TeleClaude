@@ -17,7 +17,7 @@ Ownership:
 - [x] No silent deferrals in implementation plan
 - [x] Code committed
 - [x] Demo validated (UI feature requiring manual validation; no executable demo blocks)
-- [ ] Working tree clean
+- [x] Working tree clean
 - [x] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)

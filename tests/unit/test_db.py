@@ -233,7 +233,13 @@ class TestAgentAvailability:
 
         info = await test_db.get_agent_availability("gemini")
 
-        assert info == {"available": True, "unavailable_until": None, "reason": None, "status": "available"}
+        assert info == {
+            "available": True,
+            "unavailable_until": None,
+            "degraded_until": None,
+            "reason": None,
+            "status": "available",
+        }
         async with test_db._session() as session:
             result = await session.exec(  # raw-sql
                 text("SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = :a"),
