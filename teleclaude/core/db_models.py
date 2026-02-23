@@ -111,6 +111,7 @@ class AgentAvailability(SQLModel, table=True):
     agent: str = Field(primary_key=True)
     available: Optional[int] = 1
     unavailable_until: Optional[str] = None
+    degraded_until: Optional[str] = None
     reason: Optional[str] = None
 
 

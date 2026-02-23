@@ -583,6 +583,33 @@ class TelecApp(App[str | None]):
             self._toggle_tts()
         elif key == "animation_mode":
             self._cycle_animation(str(message.value))
+        elif key == "agent_status":
+            # Handle agent pill clicks: cycle available → degraded → unavailable → available
+            if isinstance(message.value, dict):
+                agent = str(message.value.get("agent", ""))
+                status_bar = self.query_one("#status-bar", StatusBar)
+                current_info = status_bar._agent_availability.get(agent)
+
+                # Determine next status
+                if current_info:
+                    current_status = current_info.status or "available"
+                    if current_status == "available":
+                        next_status = "degraded"
+                    elif current_status == "degraded":
+                        next_status = "unavailable"
+                    else:
+                        next_status = "available"
+                else:
+                    next_status = "degraded"
+
+                try:
+                    updated_info = await self.api.set_agent_status(
+                        agent, next_status, reason="manual", duration_minutes=60
+                    )
+                    status_bar._agent_availability[agent] = updated_info
+                    status_bar.refresh()
+                except Exception as e:
+                    self.notify(f"Failed to set agent status: {e}", severity="error")
         elif key.startswith("run_job:"):
             job_name = key.split(":", 1)[1]
             try:

@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS agent_availability (
     agent TEXT PRIMARY KEY,           -- "codex", "claude", "gemini"
     available INTEGER DEFAULT 1,      -- 0 = unavailable, 1 = available
     unavailable_until TEXT,           -- ISO timestamp, NULL if available
+    degraded_until TEXT,              -- ISO timestamp for degraded state expiry
     reason TEXT                       -- "quota_exhausted", "rate_limited", "service_outage"
 );
 
