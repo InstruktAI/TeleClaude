@@ -82,7 +82,7 @@ async def test_next_work_dispatches_defer():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Req")
         (item_dir / "implementation-plan.md").write_text("# Plan")
-        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         # Setup worktree state (Build complete, Review approved, Deferrals pending)
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
@@ -124,7 +124,7 @@ async def test_next_work_skips_defer_if_processed():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Req")
         (item_dir / "implementation-plan.md").write_text("# Plan")
-        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         # Setup worktree state (Build complete, Review approved, Deferrals PROCESSED)
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug

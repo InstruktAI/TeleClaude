@@ -47,12 +47,6 @@ class PhaseStatus(str, Enum):
     CHANGES_REQUESTED = "changes_requested"
 
 
-class ItemPhase(str, Enum):
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    DONE = "done"
-
-
 DOR_READY_THRESHOLD = 8
 
 
@@ -266,19 +260,19 @@ def format_hitl_guidance(context: str) -> str:
 def _find_next_prepare_slug(cwd: str) -> str | None:
     """Find the next active slug that still needs preparation work.
 
-    Scans roadmap.yaml for slugs, then checks state.yaml phase for each.
-    Active slugs have phase pending, ready, or in_progress.
+    Scans roadmap.yaml for slugs, then checks state.yaml status for each.
+    Active slugs have build=pending or review != approved.
     Returns the first slug that still needs action:
     - breakdown assessment pending for input.md
     - requirements.md missing
     - implementation-plan.md missing
-    - phase still pending (needs promotion to ready)
+    - build still pending (needs promotion to ready/started)
     """
     for slug in load_roadmap_slugs(cwd):
-        phase = get_item_phase(cwd, slug)
+        state = read_phase_state(cwd, slug)
 
-        # Skip done items
-        if phase == ItemPhase.DONE.value:
+        # Skip approved items
+        if state.get(PhaseName.REVIEW.value) == PhaseStatus.APPROVED.value:
             continue
 
         has_input = check_file_exists(cwd, f"todos/{slug}/input.md")
@@ -292,7 +286,7 @@ def _find_next_prepare_slug(cwd: str) -> str | None:
         if not has_requirements or not has_impl_plan:
             return slug
 
-        if phase == ItemPhase.PENDING.value:
+        if state.get(PhaseName.BUILD.value) == PhaseStatus.PENDING.value:
             return slug
 
     return None
@@ -305,7 +299,6 @@ def _find_next_prepare_slug(cwd: str) -> str | None:
 
 # Valid phases and statuses for state.yaml
 DEFAULT_STATE: dict[str, StateValue] = {
-    "phase": ItemPhase.PENDING.value,
     PhaseName.BUILD.value: PhaseStatus.PENDING.value,
     PhaseName.REVIEW.value: PhaseStatus.PENDING.value,
     "deferrals_processed": False,
@@ -327,7 +320,6 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     """Read state.yaml from worktree (falls back to state.json for backward compat).
 
     Returns default state if file doesn't exist.
-    Migrates missing 'phase' field from existing build/dor state.
     """
     state_path = get_state_path(cwd, slug)
     # Backward compat: try state.json if state.yaml doesn't exist
@@ -343,17 +335,6 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     state: dict[str, StateValue] = yaml.safe_load(content)
     # Merge with defaults for any missing keys
     merged = {**DEFAULT_STATE, **state}
-
-    # Migration: derive phase from existing fields when missing from persisted state
-    if "phase" not in state:
-        build = state.get(PhaseName.BUILD.value)
-        if isinstance(build, str) and build != PhaseStatus.PENDING.value:
-            merged["phase"] = ItemPhase.IN_PROGRESS.value
-        else:
-            merged["phase"] = ItemPhase.PENDING.value
-    elif state.get("phase") == "ready":
-        # Migration: normalize persisted "ready" phase to "pending" (readiness is now derived from dor.score)
-        merged["phase"] = ItemPhase.PENDING.value
 
     return merged
 
@@ -560,17 +541,17 @@ def resolve_slug(
 
     for entry in entries:
         found_slug = entry.slug
-        phase = get_item_phase(cwd, found_slug)
+        state = read_phase_state(cwd, found_slug)
 
         if ready_only:
             if not is_ready_for_work(cwd, found_slug):
                 continue
         else:
-            # Skip done items for next_prepare
-            if phase == ItemPhase.DONE.value:
+            # Skip approved items for next_prepare
+            if state.get(PhaseName.REVIEW.value) == PhaseStatus.APPROVED.value:
                 continue
 
-        is_ready = phase == ItemPhase.IN_PROGRESS.value or is_ready_for_work(cwd, found_slug)
+        is_ready = state.get(PhaseName.BUILD.value) != PhaseStatus.PENDING.value or is_ready_for_work(cwd, found_slug)
 
         # R6: Enforce dependency gating when ready_only=True and dependencies provided
         if ready_only and dependencies is not None:
@@ -609,49 +590,21 @@ def is_bug_todo(cwd: str, slug: str) -> bool:
 
 
 # =============================================================================
-# Item Phase Management (state.yaml is the single source of truth)
+# Item Readiness (state.yaml is the single source of truth)
 # =============================================================================
 
 
-def get_item_phase(cwd: str, slug: str) -> str:
-    """Get current phase for a work item from state.yaml.
-
-    Args:
-        cwd: Project root directory
-        slug: Work item slug to query
-
-    Returns:
-        One of "pending", "in_progress", "done"
-    """
-    state = read_phase_state(cwd, slug)
-    phase = state.get("phase")
-    return phase if isinstance(phase, str) else ItemPhase.PENDING.value
-
-
 def is_ready_for_work(cwd: str, slug: str) -> bool:
-    """Check if item is ready for work: pending phase + DOR score >= threshold."""
+    """Check if item is ready for work: build is pending + DOR score >= threshold."""
     state = read_phase_state(cwd, slug)
-    phase = state.get("phase")
-    if phase != ItemPhase.PENDING.value:
+    build = state.get(PhaseName.BUILD.value)
+    if build != PhaseStatus.PENDING.value:
         return False
     dor = state.get("dor")
     if not isinstance(dor, dict):
         return False
     score = dor.get("score")
     return isinstance(score, int) and score >= DOR_READY_THRESHOLD
-
-
-def set_item_phase(cwd: str, slug: str, phase: str) -> None:
-    """Set phase for a work item in state.yaml.
-
-    Args:
-        cwd: Project root directory
-        slug: Work item slug to update
-        phase: One of "pending", "in_progress", "done"
-    """
-    state = read_phase_state(cwd, slug)
-    state["phase"] = phase
-    write_phase_state(cwd, slug, state)
 
 
 # =============================================================================
@@ -815,7 +768,7 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
     """Check if all dependencies for a slug are satisfied.
 
     A dependency is satisfied if:
-    - Its phase is "done" in state.yaml, OR
+    - Its review is "approved" in state.yaml, OR
     - It is not present in roadmap.yaml (assumed completed/removed)
 
     Args:
@@ -835,8 +788,8 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
             # Not in roadmap - treat as satisfied (completed and cleaned up)
             continue
 
-        dep_phase = get_item_phase(cwd, dep)
-        if dep_phase != ItemPhase.DONE.value:
+        state = read_phase_state(cwd, dep)
+        if state.get(PhaseName.REVIEW.value) != PhaseStatus.APPROVED.value:
             return False
 
     return True
@@ -1936,10 +1889,9 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             )
 
         # 4. Both exist - check DOR readiness (no phase mutation; readiness is derived)
-        current_phase = await asyncio.to_thread(get_item_phase, cwd, resolved_slug)
-        if current_phase == ItemPhase.PENDING.value:
-            phase_state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
-            dor = phase_state.get("dor")
+        state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
+        if state.get(PhaseName.BUILD.value) == PhaseStatus.PENDING.value:
+            dor = state.get("dor")
             dor_score = dor.get("score") if isinstance(dor, dict) else None
             if isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD:
                 await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
@@ -1997,7 +1949,8 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         if lock_holder and lock_holder.get("session_id") == caller_session_id:
             locked_slug = lock_holder.get("slug", "")
             if locked_slug:
-                finalize_done = get_item_phase(cwd, locked_slug) == ItemPhase.DONE.value or not slug_in_roadmap(
+                state = read_phase_state(cwd, locked_slug)
+                finalize_done = state.get(PhaseName.REVIEW.value) == PhaseStatus.APPROVED.value or not slug_in_roadmap(
                     cwd, locked_slug
                 )
                 if finalize_done:
@@ -2024,14 +1977,16 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 next_call="Check todos/roadmap.yaml or call teleclaude__next_prepare().",
             )
 
-        phase = await asyncio.to_thread(get_item_phase, cwd, slug)
-        if phase == ItemPhase.PENDING.value and not await asyncio.to_thread(is_ready_for_work, cwd, slug):
+        state = await asyncio.to_thread(read_phase_state, cwd, slug)
+        build = state.get(PhaseName.BUILD.value)
+        review = state.get(PhaseName.REVIEW.value)
+        if build == PhaseStatus.PENDING.value and not await asyncio.to_thread(is_ready_for_work, cwd, slug):
             return format_error(
                 "ITEM_NOT_READY",
                 f"Item '{slug}' is pending and DOR score is below threshold. Must be ready to start work.",
                 next_call=f"Call teleclaude__next_prepare(slug='{slug}') to prepare it first.",
             )
-        if phase == ItemPhase.DONE.value:
+        if review == PhaseStatus.APPROVED.value:
             return f"COMPLETE: Item '{slug}' is already done."
 
         # Item is ready or in_progress - check dependencies
@@ -2111,12 +2066,6 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     # 5. Check uncommitted changes
     if has_uncommitted_changes(cwd, resolved_slug):
         return format_uncommitted_changes(resolved_slug)
-
-    # 6. Mark as in-progress BEFORE dispatching (claim the item)
-    # Only transition pending (ready) -> in_progress (don't re-mark if already in_progress).
-    current_phase = await asyncio.to_thread(get_item_phase, worktree_cwd, resolved_slug)
-    if current_phase == ItemPhase.PENDING.value:
-        await asyncio.to_thread(set_item_phase, worktree_cwd, resolved_slug, ItemPhase.IN_PROGRESS.value)
 
     # 7. Check build status (from state.yaml in worktree)
     if not await asyncio.to_thread(is_build_complete, worktree_cwd, resolved_slug):
