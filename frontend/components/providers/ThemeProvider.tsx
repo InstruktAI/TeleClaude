@@ -1,20 +1,17 @@
 'use client'
 
 /**
- * Unified theme provider that wraps next-themes and injects TeleClaude CSS variables.
+ * Theme provider that wraps next-themes.
  *
- * Responsibilities:
- * - Preserve next-themes dark/light mode toggle via `attribute="class"`
- * - Inject CSS variables on mount
- * - Re-inject CSS variables when theme changes (dark <-> light)
+ * All TeleClaude CSS variables are defined in globals.css under @theme (light)
+ * and .dark (dark mode). This provider just handles the dark/light mode toggle.
  *
  * Usage:
- *   Wrap the app in layout.tsx with this provider instead of next-themes directly.
+ *   Wrap the app in layout.tsx with this provider.
  */
 
-import { ThemeProvider as NextThemesProvider, useTheme } from 'next-themes'
-import { useEffect, type ReactNode } from 'react'
-import { injectCSSVariables, type ThemeMode } from '@/lib/theme/css-variables'
+import { ThemeProvider as NextThemesProvider } from 'next-themes'
+import type { ReactNode } from 'react'
 
 interface ThemeProviderProps {
   children: ReactNode
@@ -24,26 +21,10 @@ interface ThemeProviderProps {
 }
 
 /**
- * Inner component that reads the resolved theme and injects CSS variables.
+ * Theme provider.
  *
- * Must be inside NextThemesProvider to access useTheme().
- */
-function CSSVariableInjector() {
-  const { resolvedTheme } = useTheme()
-
-  useEffect(() => {
-    // Map next-themes resolved theme to our ThemeMode type
-    const mode: ThemeMode = resolvedTheme === 'light' ? 'light' : 'dark'
-    injectCSSVariables(mode)
-  }, [resolvedTheme])
-
-  return null
-}
-
-/**
- * Unified theme provider.
- *
- * Wraps next-themes and injects TeleClaude CSS variables on mount and theme change.
+ * Wraps next-themes to handle dark/light mode switching via the 'class' attribute.
+ * CSS variables are statically defined in globals.css and respond to .dark class.
  */
 export function ThemeProvider({
   children,
@@ -57,7 +38,6 @@ export function ThemeProvider({
       defaultTheme={defaultTheme}
       enableSystem={enableSystem}
     >
-      <CSSVariableInjector />
       {children}
     </NextThemesProvider>
   )

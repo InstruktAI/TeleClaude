@@ -34,8 +34,141 @@
   --color-sidebar-border: #a8a8a8;
   --color-sidebar-ring: #808080;
 
+  /* User colors (mode-independent) */
   --user-bubble-bg: #e07030;
   --user-bubble-text: #ffffff;
+
+  /* TeleClaude theme tokens - Light mode */
+  /* Agent palettes */
+  --agent-claude-subtle: #d7af87;
+  --agent-claude-muted: #af875f;
+  --agent-claude-normal: #875f00;
+  --agent-claude-highlight: #000000;
+  --agent-claude-haze: #af875f;
+  --agent-gemini-subtle: #d787ff;
+  --agent-gemini-muted: #af5fff;
+  --agent-gemini-normal: #870087;
+  --agent-gemini-highlight: #000000;
+  --agent-gemini-haze: #af5fff;
+  --agent-codex-subtle: #87afd7;
+  --agent-codex-muted: #5f87af;
+  --agent-codex-normal: #005f87;
+  --agent-codex-highlight: #000000;
+  --agent-codex-haze: #5f8787;
+
+  /* Backgrounds */
+  --bg-base: #fdf6e3;
+  --bg-surface: #fdf6e3;
+  --bg-elevated: #fdf6e3;
+  --bg-overlay: rgba(255, 255, 255, 0.6);
+
+  /* Text */
+  --text-primary: #1c1c1c;
+  --text-secondary: #444444;
+  --text-muted: #808080;
+
+  /* Borders */
+  --border-default: #a8a8a8;
+  --border-subtle: #c6c6c6;
+  --border-modal: #303030;
+  --border-input: #585858;
+
+  /* Selection */
+  --selection-base: #d0d0d0;
+  --selection-surface: #c6c6c6;
+  --selection-elevated: #bcbcbc;
+
+  /* Status */
+  --status-active: #008700;
+  --status-idle: #a8a8a8;
+  --status-error: #d70000;
+  --status-ready: #008700;
+  --status-warning: #af8700;
+
+  /* Misc */
+  --banner: #808080;
+  --tab-line: #808080;
+  --peaceful-normal: #444444;
+  --peaceful-muted: #808080;
+  --status-bar-fg: #727578;
+
+  /* Animation palettes */
+  --anim-spectrum-0: #ff0000;
+  --anim-spectrum-1: #ffff00;
+  --anim-spectrum-2: #00ff00;
+  --anim-spectrum-3: #00ffff;
+  --anim-spectrum-4: #0000ff;
+  --anim-spectrum-5: #ff00ff;
+  --anim-spectrum-6: #ffffff;
+  --anim-spectrum-length: 7;
+  --anim-fire-0: #330000;
+  --anim-fire-1: #661100;
+  --anim-fire-2: #993300;
+  --anim-fire-3: #cc5500;
+  --anim-fire-4: #ff6600;
+  --anim-fire-5: #ff8800;
+  --anim-fire-6: #ffaa00;
+  --anim-fire-7: #ffcc33;
+  --anim-fire-8: #ffee66;
+  --anim-fire-9: #ffffaa;
+  --anim-fire-length: 10;
+  --anim-ocean-0: #001133;
+  --anim-ocean-1: #002255;
+  --anim-ocean-2: #003366;
+  --anim-ocean-3: #005588;
+  --anim-ocean-4: #0077aa;
+  --anim-ocean-5: #0099bb;
+  --anim-ocean-6: #00bbcc;
+  --anim-ocean-7: #00dddd;
+  --anim-ocean-8: #66eeee;
+  --anim-ocean-9: #aaffff;
+  --anim-ocean-length: 10;
+  --anim-forest-0: #1a0f00;
+  --anim-forest-1: #332200;
+  --anim-forest-2: #3d5c1e;
+  --anim-forest-3: #4a7a23;
+  --anim-forest-4: #55922a;
+  --anim-forest-5: #66aa33;
+  --anim-forest-6: #77bb44;
+  --anim-forest-7: #99cc66;
+  --anim-forest-8: #bbdd88;
+  --anim-forest-9: #ddeebb;
+  --anim-forest-length: 10;
+  --anim-sunset-0: #ff6633;
+  --anim-sunset-1: #ff5544;
+  --anim-sunset-2: #ff4466;
+  --anim-sunset-3: #ee3388;
+  --anim-sunset-4: #cc33aa;
+  --anim-sunset-5: #aa33cc;
+  --anim-sunset-6: #8833dd;
+  --anim-sunset-7: #6644ee;
+  --anim-sunset-8: #5555ff;
+  --anim-sunset-9: #4477ff;
+  --anim-sunset-length: 10;
+  --anim-telegram-0: #0000ff;
+  --anim-telegram-1: #ffffff;
+  --anim-telegram-length: 2;
+  --anim-whatsapp-0: #00ff00;
+  --anim-whatsapp-1: #ffffff;
+  --anim-whatsapp-length: 2;
+  --anim-discord-0: #0000ff;
+  --anim-discord-1: #ff00ff;
+  --anim-discord-2: #ffffff;
+  --anim-discord-length: 3;
+  --anim-aiKeys-0: #00ff00;
+  --anim-aiKeys-1: #ffff00;
+  --anim-aiKeys-length: 2;
+  --anim-people-0: #ffffff;
+  --anim-people-length: 1;
+  --anim-notifications-0: #ffff00;
+  --anim-notifications-1: #ffffff;
+  --anim-notifications-length: 2;
+  --anim-environment-0: #00ff00;
+  --anim-environment-1: #00ffff;
+  --anim-environment-length: 2;
+  --anim-validate-0: #00ff00;
+  --anim-validate-1: #ff0000;
+  --anim-validate-length: 2;
 }
 
 /* Dark theme */
@@ -68,6 +201,60 @@
   --color-sidebar-accent-foreground: #d0d0d0;
   --color-sidebar-border: #585858;
   --color-sidebar-ring: #808080;
+
+  /* TeleClaude theme tokens - Dark mode */
+  /* Agent palettes */
+  --agent-claude-subtle: #875f00;
+  --agent-claude-muted: #af875f;
+  --agent-claude-normal: #d7af87;
+  --agent-claude-highlight: #ffffff;
+  --agent-claude-haze: #af875f;
+  --agent-gemini-subtle: #8787af;
+  --agent-gemini-muted: #af87ff;
+  --agent-gemini-normal: #d7afff;
+  --agent-gemini-highlight: #ffffff;
+  --agent-gemini-haze: #af87ff;
+  --agent-codex-subtle: #5f87af;
+  --agent-codex-muted: #87afd7;
+  --agent-codex-normal: #afd7ff;
+  --agent-codex-highlight: #ffffff;
+  --agent-codex-haze: #87afaf;
+
+  /* Backgrounds */
+  --bg-base: #000000;
+  --bg-surface: #000000;
+  --bg-elevated: #000000;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+
+  /* Text */
+  --text-primary: #e4e4e4;
+  --text-secondary: #bcbcbc;
+  --text-muted: #808080;
+
+  /* Borders */
+  --border-default: #585858;
+  --border-subtle: #3a3a3a;
+  --border-modal: #bcbcbc;
+  --border-input: #8a8a8a;
+
+  /* Selection */
+  --selection-base: #444444;
+  --selection-surface: #4e4e4e;
+  --selection-elevated: #585858;
+
+  /* Status */
+  --status-active: #5faf5f;
+  --status-idle: #585858;
+  --status-error: #ff5f5f;
+  --status-ready: #5faf5f;
+  --status-warning: #d7af00;
+
+  /* Misc */
+  --banner: #585858;
+  --tab-line: #585858;
+  --peaceful-normal: #bcbcbc;
+  --peaceful-muted: #585858;
+  --status-bar-fg: #727578;
 }
 
 @layer base {
