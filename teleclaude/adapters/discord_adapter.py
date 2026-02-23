@@ -416,18 +416,24 @@ class DiscordAdapter(UiAdapter):
     async def _ensure_project_forums(self, guild: object, category: object | None) -> None:
         """Create a forum for each trusted dir that lacks a valid discord_forum ID."""
         trusted_dirs = config.computer.get_all_trusted_dirs()
-        project_changes: list[tuple[str, int]] = []
+        project_changes: list[tuple[str, int | None]] = []
 
         for td in trusted_dirs:
+            stale_cleared = False
             if td.discord_forum is not None:
                 if await self._validate_channel_id(td.discord_forum) is None:
                     td.discord_forum = None
+                    stale_cleared = True
                 else:
                     continue
             forum_id = await self._find_or_create_forum(guild, category, td.name, td.desc or f"Sessions for {td.name}")
             if forum_id is not None:
                 td.discord_forum = forum_id
                 project_changes.append((td.name, forum_id))
+            elif stale_cleared:
+                # Re-provisioning failed; persist None so the stale ID is removed from config.yml
+                # and the restart cycle (reload stale → clear → fail → repeat) is broken.
+                project_changes.append((td.name, None))
 
         if project_changes:
             self._persist_project_forum_ids(project_changes)
@@ -543,8 +549,12 @@ class DiscordAdapter(UiAdapter):
             return None
 
     @staticmethod
-    def _persist_project_forum_ids(project_changes: list[tuple[str, int]]) -> None:
-        """Write auto-provisioned project forum IDs to config.yml trusted_dirs."""
+    def _persist_project_forum_ids(project_changes: list[tuple[str, int | None]]) -> None:
+        """Write auto-provisioned project forum IDs to config.yml trusted_dirs.
+
+        A None value removes the discord_forum key for that entry so stale IDs
+        do not persist across restarts when re-provisioning fails.
+        """
         import yaml
 
         from teleclaude.config import config_path
@@ -559,7 +569,11 @@ class DiscordAdapter(UiAdapter):
 
             for td in trusted_dirs:
                 if isinstance(td, dict) and td.get("name") in name_to_id:
-                    td["discord_forum"] = name_to_id[td["name"]]
+                    new_id = name_to_id[td["name"]]
+                    if new_id is None:
+                        td.pop("discord_forum", None)
+                    else:
+                        td["discord_forum"] = new_id
 
             with open(config_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(raw, f, default_flow_style=False, sort_keys=False)
