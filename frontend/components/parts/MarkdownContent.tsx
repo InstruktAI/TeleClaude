@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import "@/styles/highlight-theme.css";
 import type { TextMessagePartProps } from "@assistant-ui/react";
+import { cleanMessageText } from "@/lib/utils/text";
 
 const NOTIFICATION_RE =
   /<task-notification>\s*[\s\S]*?<summary>([\s\S]*?)<\/summary>[\s\S]*?<\/task-notification>/g;
@@ -130,17 +131,21 @@ function splitSystemBlocks(text: string): Segment[] {
 }
 
 export function MarkdownContent(props: TextMessagePartProps) {
-  const segments = splitSystemBlocks(props.text);
+  const cleanedText = cleanMessageText(props.text);
+  const segments = splitSystemBlocks(cleanedText);
 
-  // Fast path: no system blocks, use the primitive (reads from message context)
+  // Fast path: no system blocks, use react-markdown directly with cleaned text
   if (segments.length === 1 && segments[0].kind === "text") {
     return (
-      <MarkdownTextPrimitive
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
-        className="prose prose-sm dark:prose-invert max-w-none break-words"
-        components={MARKDOWN_COMPONENTS}
-      />
+      <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeHighlight]}
+          components={MARKDOWN_COMPONENTS}
+        >
+          {segments[0].text}
+        </ReactMarkdown>
+      </div>
     );
   }
 

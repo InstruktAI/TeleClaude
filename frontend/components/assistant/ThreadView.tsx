@@ -17,18 +17,9 @@ import {
 import { StatusIndicator } from "@/components/parts/StatusIndicator";
 import { useSessionAgent } from "@/hooks/useSessionAgent";
 import { useAgentColors } from "@/hooks/useAgentColors";
-// TODO: Wire ArtifactCard for data-send-result parts
-// Requires research into assistant-ui custom data part registration API
-// import { ArtifactCard } from "@/components/parts/ArtifactCard";
 
 function ThreadStatus() {
   const thread = useThread();
-  // TODO: Wire data-session-status events from SSE stream
-  // Currently only derives status from thread.isRunning (streaming | idle)
-  // The closed and error states require listening to custom SSE events
-  // Needs research into:
-  // - Intercepting custom SSE event types from AssistantChatTransport
-  // - State management for session-level events outside message flow
   const status = thread.isRunning ? "streaming" : "idle";
   return <StatusIndicator status={status} />;
 }
@@ -117,12 +108,6 @@ function AssistantMessage() {
               },
               Fallback: ToolCallBlock,
             },
-            // TODO: Register ArtifactCard for data-send-result parts
-            // The assistant-ui StandardComponents type doesn't expose a direct
-            // registration path for custom data parts. Needs investigation into:
-            // - useMessagePartData<T>() hook pattern
-            // - Custom content part handlers
-            // - Extension points for non-standard part types
           }}
         />
       </div>

@@ -20,25 +20,11 @@ import type { MessageInfo } from "@/lib/api/types";
 import { fetchSessions } from "@/lib/api/sessions";
 import { SessionAgentProvider } from "@/hooks/useSessionAgent";
 import { safeAgent, type AgentType } from "@/lib/theme/tokens";
+import { cleanMessageText, isSystemInjected, getCommandHeader } from "@/lib/utils/text";
 
 interface Props {
   sessionId: string;
   children: ReactNode;
-}
-
-/**
- * Detect system-injected "user" messages that shouldn't appear as human input.
- * These are task notifications, hook feedback, context continuations, etc.
- */
-function isSystemInjected(text: string): boolean {
-  const t = text.trimStart();
-  return (
-    t.startsWith("<task-notification>") ||
-    t.startsWith("Stop hook feedback:") ||
-    t.startsWith("This session is being continued from a previous conversation") ||
-    t === "[Request interrupted by user]" ||
-    t.startsWith("<system-reminder>")
-  );
 }
 
 /**
@@ -49,28 +35,56 @@ function isSystemInjected(text: string): boolean {
 function toUIMessages(messages: MessageInfo[]): UIMessage[] {
   const result: UIMessage[] = [];
   let current: UIMessage | null = null;
+  
+  // Track if the current "burst" of same-role messages should be suppressed
+  let burstSuppressionRole: string | null = null;
 
   for (const msg of messages) {
     if (msg.type !== "text") continue;
 
-    // System-injected "user" messages get reclassified as assistant
-    let role: "user" | "assistant";
-    if (msg.role === "user" && isSystemInjected(msg.text)) {
-      role = "assistant";
-    } else {
-      role = msg.role === "user" ? "user" : "assistant";
+    const role = msg.role === "user" ? "user" : "assistant";
+
+    // Reset burst suppression if the role switches
+    if (current && current.role !== role) {
+      burstSuppressionRole = null;
+    }
+
+    // Skip if we are currently suppressing this role's burst
+    if (burstSuppressionRole === role) continue;
+
+    const cleanedText = cleanMessageText(msg.text);
+    const commandHeader = getCommandHeader(msg.text);
+
+    // Filter out system messages
+    if (isSystemInjected(cleanedText)) continue;
+
+    // If it's a command message, extraction is handled by cleanMessageText.
+    // We then trigger burst suppression to hide the "body" messages that follow.
+    if (commandHeader) {
+      burstSuppressionRole = role;
     }
 
     if (current && current.role === role) {
-      const lastPart = current.parts[current.parts.length - 1];
-      if (lastPart && lastPart.type === "text") {
-        lastPart.text += "\n\n" + msg.text;
+      // If it's a command, we FORCE a new message instead of merging
+      // to keep it isolated from any previous text.
+      if (commandHeader) {
+        current = {
+          id: `cmd-${msg.file_index}-${msg.entry_index}`,
+          role,
+          parts: [{ type: "text" as const, text: cleanedText }],
+        };
+        result.push(current);
+      } else {
+        const lastPart = current.parts[current.parts.length - 1];
+        if (lastPart && lastPart.type === "text") {
+          lastPart.text += "\n\n" + cleanedText;
+        }
       }
     } else {
       current = {
         id: `hist-${msg.file_index}-${msg.entry_index}`,
         role,
-        parts: [{ type: "text" as const, text: msg.text }],
+        parts: [{ type: "text" as const, text: cleanedText }],
       };
       result.push(current);
     }
@@ -88,7 +102,7 @@ export function MyRuntimeProvider({ sessionId, children }: Props) {
     queryFn: fetchSessions,
   });
   const session = sessions?.find((s) => s.session_id === sessionId);
-  const agent: AgentType = safeAgent(session?.active_agent ?? 'codex');
+  const agent: AgentType = safeAgent(session?.active_agent ?? "codex");
 
   const handleError = useCallback((err: Error) => {
     console.error("Chat stream error:", err);

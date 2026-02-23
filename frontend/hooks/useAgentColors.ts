@@ -39,20 +39,20 @@ export function useAgentColors(agent: AgentType): AgentColors {
   if (isThemed) {
     // Themed mode: agent-colored assistant bubbles, orange user bubbles, agent sidebar
     return {
-      assistantBubbleBg: `var(--agent-${agent}-subtle)`,
-      assistantBubbleText: `var(--text-primary)`,
-      userBubbleBg: 'var(--user-bubble-bg)',
-      userBubbleText: 'var(--user-bubble-text)',
-      sidebarText: `var(--agent-${agent}-normal)`,
+      assistantBubbleBg: `var(--tc-agent-${agent}-subtle)`,
+      assistantBubbleText: `var(--tc-text-primary)`,
+      userBubbleBg: 'var(--tc-user-bubble-bg)',
+      userBubbleText: 'var(--tc-user-bubble-text)',
+      sidebarText: `var(--tc-agent-${agent}-normal)`,
     }
   } else {
     // Peaceful mode: distinct neutral backgrounds for assistant vs user
     return {
-      assistantBubbleBg: 'var(--color-card)',
-      assistantBubbleText: 'var(--text-primary)',
-      userBubbleBg: 'var(--peaceful-muted)',
-      userBubbleText: 'var(--text-primary)',
-      sidebarText: 'var(--text-secondary)',
+      assistantBubbleBg: 'var(--tc-bg-surface)',
+      assistantBubbleText: 'var(--tc-text-primary)',
+      userBubbleBg: 'var(--tc-peaceful-muted)',
+      userBubbleText: 'var(--tc-text-primary)',
+      sidebarText: 'var(--tc-text-secondary)',
     }
   }
 }

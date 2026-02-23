@@ -1,4 +1,9 @@
 # Delivered work items. Newest first.
+- slug: inbound-hook-service
+  date: '2026-02-24'
+  title: Wire inbound webhook infrastructure into daemon, deliver GitHub normalizer as proof of end-to-end path
+  outcome: DELIVERED
+  commit: 0ce2a0f8
 - slug: lifecycle-enforcement-gates
   date: '2026-02-23'
   title: Machine-enforced build gates — demo subcommand refactor, state machine gate validation in next_work(), POST_COMPLETION flow changes, snapshot.json reduction, and lazy state marking

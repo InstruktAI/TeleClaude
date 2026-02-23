@@ -261,6 +261,13 @@ snippets:
   path: docs/project/design/architecture/web-api-facade.md
   role: member
   source_project: TeleClaude
+- id: project/design/architecture/web-interface
+  description: High-level architecture of the TeleClaude Next.js web interface.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/web-interface.md
+  role: member
+  source_project: TeleClaude
 - id: project/design/ux/session-highlight
   description: Session highlight system for user attention in TUI.
   type: design
@@ -565,6 +572,14 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/hook-normalized-events.md
+  role: member
+  source_project: TeleClaude
+- id: project/spec/identity-and-auth
+  description: Authoritative surface for system-wide identity, authentication, and
+    person management.
+  type: spec
+  scope: project
+  path: docs/project/spec/identity-and-auth.md
   role: member
   source_project: TeleClaude
 - id: project/spec/jobs/log-bug-hunter
