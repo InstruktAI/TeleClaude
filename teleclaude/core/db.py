@@ -1097,7 +1097,7 @@ class Db:
             agent: Agent name (e.g., "claude", "gemini", "codex")
 
         Returns:
-            Dict with 'available', 'unavailable_until', 'reason' or None if not found
+            Dict with 'available', 'unavailable_until', 'degraded_until', 'reason', 'status' or None if not found
         """
         async with self._session() as db_session:
             row = await db_session.get(db_models.AgentAvailability, agent)
@@ -1109,15 +1109,27 @@ class Db:
                 if parsed_until and parsed_until < datetime.now(timezone.utc):
                     row.available = 1
                     row.unavailable_until = None
+                    row.degraded_until = None
                     row.reason = None
                     db_session.add(row)
                     await db_session.commit()
                     return {
                         "available": True,
                         "unavailable_until": None,
+                        "degraded_until": None,
                         "reason": None,
                         "status": "available",
                     }
+            # Check degraded_until expiry inline
+            degraded_until = row.degraded_until
+            if degraded_until is not None:
+                parsed_degraded = self._parse_iso_datetime(degraded_until)
+                if parsed_degraded and parsed_degraded < datetime.now(timezone.utc):
+                    row.degraded_until = None
+                    if row.reason and row.reason.startswith("degraded"):
+                        row.reason = None
+                    db_session.add(row)
+                    await db_session.commit()
             reason = row.reason or None
             status = "available"
             if reason and reason.startswith("degraded"):
@@ -1127,6 +1139,7 @@ class Db:
             return {
                 "available": bool(row.available) if row.available is not None else False,
                 "unavailable_until": unavailable_until,
+                "degraded_until": row.degraded_until,
                 "reason": reason,
                 "status": status,
             }
@@ -1154,11 +1167,13 @@ class Db:
                     agent=agent,
                     available=0,
                     unavailable_until=unavailable_until,
+                    degraded_until=None,
                     reason=reason,
                 )
             else:
                 row.available = 0
                 row.unavailable_until = unavailable_until
+                row.degraded_until = None
                 row.reason = reason
             db_session.add(row)
             await db_session.commit()
@@ -1177,12 +1192,13 @@ class Db:
             else:
                 row.available = 1
                 row.unavailable_until = None
+                row.degraded_until = None
                 row.reason = None
             db_session.add(row)
             await db_session.commit()
         logger.info("Marked agent %s available", agent)
 
-    async def mark_agent_degraded(self, agent: str, reason: str) -> None:
+    async def mark_agent_degraded(self, agent: str, reason: str, degraded_until: str | None = None) -> None:
         """Mark an agent as degraded (manual-only, excluded from auto-selection)."""
         async with self._session() as db_session:
             row = await db_session.get(db_models.AgentAvailability, agent)
@@ -1192,32 +1208,42 @@ class Db:
                     agent=agent,
                     available=1,
                     unavailable_until=None,
+                    degraded_until=degraded_until,
                     reason=degraded_reason,
                 )
             else:
                 row.available = 1
                 row.unavailable_until = None
+                row.degraded_until = degraded_until
                 row.reason = degraded_reason
             db_session.add(row)
             await db_session.commit()
         logger.info("Marked agent %s degraded (%s)", agent, degraded_reason)
 
     async def clear_expired_agent_availability(self) -> int:
-        """Reset agents whose unavailable_until time has passed.
+        """Reset agents whose unavailable_until or degraded_until time has passed.
 
         Returns:
             Number of agents reset to available
         """
-        from sqlalchemy import update
+        from sqlalchemy import and_, or_, update
 
         now = datetime.now(timezone.utc).isoformat()
         stmt = (
             update(db_models.AgentAvailability)
             .where(
-                db_models.AgentAvailability.unavailable_until.is_not(None),
-                db_models.AgentAvailability.unavailable_until < now,
+                or_(
+                    and_(
+                        db_models.AgentAvailability.unavailable_until.is_not(None),
+                        db_models.AgentAvailability.unavailable_until < now,
+                    ),
+                    and_(
+                        db_models.AgentAvailability.degraded_until.is_not(None),
+                        db_models.AgentAvailability.degraded_until < now,
+                    ),
+                )
             )
-            .values(available=1, unavailable_until=None, reason=None)
+            .values(available=1, unavailable_until=None, degraded_until=None, reason=None)
         )
         async with self._session() as db_session:
             result = await db_session.exec(stmt)

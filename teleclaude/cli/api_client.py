@@ -516,6 +516,34 @@ class TelecAPIClient:
         resp = await self._request("GET", "/agents/availability")
         return TypeAdapter(dict[str, AgentAvailabilityInfo]).validate_json(resp.text)
 
+    async def set_agent_status(
+        self,
+        agent: str,
+        status: str,
+        reason: str | None = None,
+        duration_minutes: int = 60,
+    ) -> AgentAvailabilityInfo:
+        """Set agent availability status.
+
+        Args:
+            agent: Agent name (claude, gemini, codex)
+            status: Desired status (available, degraded, unavailable)
+            reason: Optional reason for status change
+            duration_minutes: Duration in minutes for degraded/unavailable (default 60)
+
+        Returns:
+            Updated agent availability info
+
+        Raises:
+            APIError: If request fails
+        """
+        resp = await self._request(
+            "POST",
+            f"/agents/{agent}/status",
+            json_body={"status": status, "reason": reason, "duration_minutes": duration_minutes},
+        )
+        return TypeAdapter(AgentAvailabilityInfo).validate_json(resp.text)
+
     async def list_projects_with_todos(self) -> list[ProjectWithTodosInfo]:
         """List all projects with their todos included.
 

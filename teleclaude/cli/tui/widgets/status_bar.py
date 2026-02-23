@@ -47,6 +47,8 @@ class StatusBar(TelecMixin, Widget):
         self._tts_start_x: int = 0
         self._tts_end_x: int = 0
         self._anim_start_x: int = 0
+        # Track agent pill positions: (start_x, end_x, agent_name)
+        self._agent_regions: list[tuple[int, int, str]] = []
 
     def update_availability(self, availability: dict[str, AgentAvailabilityInfo]) -> None:
         self._agent_availability = availability
@@ -121,12 +123,16 @@ class StatusBar(TelecMixin, Widget):
 
     def render(self) -> Text:
         line = Text()
+        self._agent_regions = []
 
         # Left: agent availability pills
         for i, agent in enumerate(("claude", "gemini", "codex")):
             if i > 0:
                 line.append("  ")
+            start_x = line.cell_len
             line.append_text(self._build_agent_pill(agent))
+            end_x = line.cell_len
+            self._agent_regions.append((start_x, end_x, agent))
 
         # Right: toggles (pane theming, TTS, animation)
         toggles = Text()
@@ -166,8 +172,16 @@ class StatusBar(TelecMixin, Widget):
         return line
 
     def on_click(self, event: Click) -> None:
-        """Handle clicks on toggle regions."""
+        """Handle clicks on agent pills and toggle regions."""
         x = event.x
+
+        # Check agent pill clicks first
+        for start_x, end_x, agent in self._agent_regions:
+            if start_x <= x < end_x:
+                self.post_message(SettingsChanged("agent_status", {"agent": agent}))
+                return
+
+        # Check toggle clicks
         if x >= self._anim_start_x:
             cycle = ["off", "periodic", "party"]
             idx = cycle.index(self.animation_mode) if self.animation_mode in cycle else 0
