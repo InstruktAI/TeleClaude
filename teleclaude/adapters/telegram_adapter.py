@@ -49,6 +49,7 @@ from teleclaude.core.models import (
     PeerInfo,
     Session,
 )
+from teleclaude.core.session_utils import get_display_title_for_session
 from teleclaude.types.commands import CloseSessionCommand, KeysCommand
 
 from .base_adapter import AdapterError
@@ -189,7 +190,7 @@ class TelegramAdapter(
         meta.output_message_id = None
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
 
-    async def ensure_channel(self, session: Session, title: str) -> Session:
+    async def ensure_channel(self, session: Session) -> Session:
         # Telegram is admin/member only — skip customer sessions entirely.
         if session.human_role == "customer":
             return session
@@ -209,6 +210,7 @@ class TelegramAdapter(
             logger.debug("[TG_ENSURE] Topic exists, returning session %s", session.session_id[:8])
             return session
 
+        title = await get_display_title_for_session(session)
         logger.info(
             "[TG_ENSURE] No topic_id for session %s, creating channel (title=%s)",
             session.session_id[:8],
@@ -272,7 +274,7 @@ class TelegramAdapter(
         )
 
         try:
-            retry_session = await self.ensure_channel(recovery_session, display_title)
+            retry_session = await self.ensure_channel(recovery_session)
             result = await task_factory(self, retry_session)
             logger.info(
                 "[TG_RECOVER] Recovered lane after missing thread for session %s",

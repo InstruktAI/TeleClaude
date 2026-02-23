@@ -10,30 +10,30 @@ Four coordinated changes to Discord session routing, executed in dependency orde
 
 **File(s):** `teleclaude/adapters/ui_adapter.py`, `teleclaude/adapters/telegram_adapter.py`, `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Update `UiAdapter.ensure_channel(self, session, title)` base class signature to `ensure_channel(self, session)`.
-- [ ] Update `TelegramAdapter.ensure_channel()` to accept only `session` and call `get_display_title_for_session(session)` internally to build its metadata-rich title.
-- [ ] Update `DiscordAdapter.ensure_channel()` to accept only `session` and build its own title (see Task 1.3).
+- [x] Update `UiAdapter.ensure_channel(self, session, title)` base class signature to `ensure_channel(self, session)`.
+- [x] Update `TelegramAdapter.ensure_channel()` to accept only `session` and call `get_display_title_for_session(session)` internally to build its metadata-rich title.
+- [x] Update `DiscordAdapter.ensure_channel()` to accept only `session` and build its own title (see Task 1.3).
 
 ### Task 1.2: Remove central title construction from `adapter_client`
 
 **File(s):** `teleclaude/core/adapter_client.py`
 
-- [ ] In `_route_to_ui()` (line ~257): remove the `get_display_title_for_session()` call. Pass only `session` to `ensure_ui_channels()`.
-- [ ] Change `ensure_ui_channels(self, session, title)` signature to `ensure_ui_channels(self, session)`. Update the loop at line ~987 to call `adapter.ensure_channel(session)` without `title`.
-- [ ] Remove or relocate the second `get_display_title_for_session()` call at line ~592 if it exists for the same purpose.
-- [ ] Remove the `get_display_title_for_session` import if no longer used in this file.
-- [ ] Search for all other call sites of `ensure_ui_channels` and update them to drop the `title` argument.
+- [x] In `_route_to_ui()` (line ~257): remove the `get_display_title_for_session()` call. Pass only `session` to `ensure_ui_channels()`.
+- [x] Change `ensure_ui_channels(self, session, title)` signature to `ensure_ui_channels(self, session)`. Update the loop at line ~987 to call `adapter.ensure_channel(session)` without `title`.
+- [x] Remove or relocate the second `get_display_title_for_session()` call at line ~592 if it exists for the same purpose.
+- [x] Remove the `get_display_title_for_session` import if no longer used in this file.
+- [x] Search for all other call sites of `ensure_ui_channels` and update them to drop the `title` argument.
 
 ### Task 1.3: Discord adapter title strategy
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] In `ensure_channel()`, determine the title strategy based on routing target:
+- [x] In `ensure_channel()`, determine the title strategy based on routing target:
   - **Per-project forum:** Title is just the session description (e.g., "Fix auth flow"). Project context is implicit from the forum.
   - **Catch-all fallback:** Title is `{project}: {description}` to preserve discoverability.
-- [ ] Use `session.title` (the description) directly for per-project forums.
-- [ ] For catch-all, use `get_short_project_name()` + description.
-- [ ] Pass the constructed title to `create_channel()` internally.
+- [x] Use `session.title` (the description) directly for per-project forums.
+- [x] For catch-all, use `get_short_project_name()` + description.
+- [x] Pass the constructed title to `create_channel()` internally.
 
 ---
 

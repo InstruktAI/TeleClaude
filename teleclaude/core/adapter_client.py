@@ -254,8 +254,7 @@ class AdapterClient:
         Channel provisioning (ensure_channel) determines which adapters
         participate — not the routing layer.
         """
-        display_title = await get_display_title_for_session(session)
-        session = await self.ensure_ui_channels(session, display_title)
+        session = await self.ensure_ui_channels(session)
 
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
             return cast(Awaitable[object], getattr(adapter, method)(lane_session, *args, **kwargs))
@@ -961,7 +960,6 @@ class AdapterClient:
     async def ensure_ui_channels(
         self,
         session: "Session",
-        title: str,
     ) -> "Session":
         """Single funnel for UI channel provisioning.
 
@@ -984,7 +982,7 @@ class AdapterClient:
                 raise ValueError("No UI adapters registered")
 
             for _, adapter in ui_adapters:
-                session = await adapter.ensure_channel(session, title)
+                session = await adapter.ensure_channel(session)
 
         refreshed = await db.get_session(session_id)
         if not refreshed:

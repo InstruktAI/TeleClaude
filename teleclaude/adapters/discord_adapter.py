@@ -75,6 +75,8 @@ class DiscordAdapter(UiAdapter):
         self._gateway_task: asyncio.Task[object] | None = None
         self._ready_event = asyncio.Event()
         self._client: DiscordClientLike | None = None
+        # project_path -> discord_forum_id mapping, built at startup
+        self._project_forum_map: dict[str, int] = {}
 
     async def start(self) -> None:
         """Initialize Discord client and start gateway task."""
@@ -135,7 +137,7 @@ class DiscordAdapter(UiAdapter):
             raise AdapterError(f"{label} is not callable")
         return cast(Callable[..., Awaitable[object]], fn)
 
-    async def ensure_channel(self, session: "Session", title: str) -> "Session":
+    async def ensure_channel(self, session: "Session") -> "Session":
         # Re-read from DB to prevent stale in-memory metadata from concurrent lanes
         fresh = await db.get_session(session.session_id)
         if fresh:
@@ -152,6 +154,8 @@ class DiscordAdapter(UiAdapter):
         if target_forum_id is None:
             return session
 
+        title = self._build_thread_title(session, target_forum_id)
+
         from teleclaude.core.models import ChannelMetadata
 
         await self.create_channel(session, title, ChannelMetadata())
@@ -162,7 +166,37 @@ class DiscordAdapter(UiAdapter):
         """Determine which Discord forum this session's thread belongs in."""
         if self._is_customer_session(session):
             return self._help_desk_channel_id
+        # Check project-specific forums
+        forum_id = self._match_project_forum(session)
+        if forum_id is not None:
+            return forum_id
         return self._all_sessions_channel_id
+
+    def _match_project_forum(self, session: "Session") -> int | None:
+        """Match session project_path to a trusted dir with a discord_forum ID."""
+        project_path = session.project_path
+        if not project_path:
+            return None
+        for path, forum_id in self._project_forum_map.items():
+            if project_path == path or project_path.startswith(path + "/"):
+                return forum_id
+        return None
+
+    def _build_thread_title(self, session: "Session", target_forum_id: int) -> str:
+        """Build Discord thread title based on routing target.
+
+        Per-project forum: just the session description (project context is implicit).
+        Catch-all fallback: prefixed with short project name for discoverability.
+        """
+        from teleclaude.core.session_utils import get_short_project_name
+
+        description = session.title or "Untitled"
+        # If routing to a project-specific forum, use description only
+        if target_forum_id != self._all_sessions_channel_id:
+            return description
+        # Catch-all: prefix with project name
+        short_name = get_short_project_name(session.project_path, session.subdir)
+        return f"{short_name}: {description}"
 
     @staticmethod
     def _is_customer_session(session: "Session") -> bool:
@@ -246,12 +280,12 @@ class DiscordAdapter(UiAdapter):
                 self._operator_chat_channel_id = ch_id
                 changes["operator_chat_channel_id"] = ch_id
 
-        # --- Category: Projects (behind feature flag) ---
-        from teleclaude.core.feature_flags import is_discord_project_forum_mirroring_enabled
+        # --- Category: Projects (always enabled when Discord is configured) ---
+        proj_cat = await self._ensure_category(guild, "Projects", existing_cats, cat_changes)
+        await self._ensure_project_forums(guild, proj_cat)
 
-        if is_discord_project_forum_mirroring_enabled():
-            proj_cat = await self._ensure_category(guild, "Projects", existing_cats, cat_changes)
-            await self._ensure_project_forums(guild, proj_cat)
+        # Build project-path-to-forum mapping for session routing
+        self._build_project_forum_map()
 
         # Persist all changes
         if cat_changes:
@@ -283,6 +317,13 @@ class DiscordAdapter(UiAdapter):
         if cat_id is not None:
             cat_changes[key] = cat_id
         return cat
+
+    def _build_project_forum_map(self) -> None:
+        """Build project_path -> forum_id mapping from trusted dirs."""
+        self._project_forum_map = {}
+        for td in config.computer.get_all_trusted_dirs():
+            if td.discord_forum is not None and td.path:
+                self._project_forum_map[td.path] = td.discord_forum
 
     async def _ensure_project_forums(self, guild: object, category: object | None) -> None:
         """Create a forum for each trusted dir that lacks a discord_forum ID."""
