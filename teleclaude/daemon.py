@@ -305,6 +305,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.notification_outbox_task: asyncio.Task[object] | None = None
         self.todo_watcher_task: asyncio.Task[object] | None = None
         self.webhook_delivery_task: asyncio.Task[object] | None = None
+        self.channel_subscription_worker_task: asyncio.Task[object] | None = None
 
         self.lifecycle = DaemonLifecycle(
             client=self.client,
@@ -1539,28 +1540,73 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     async def _init_webhook_service(self) -> None:
         """Initialize the webhook service subsystem (contracts, handlers, dispatcher, bridge, delivery)."""
+        from teleclaude.channels.worker import run_subscription_worker
+        from teleclaude.config.loader import load_project_config
         from teleclaude.hooks.api_routes import set_contract_registry
         from teleclaude.hooks.bridge import EventBusBridge
+        from teleclaude.hooks.config import load_hooks_config
         from teleclaude.hooks.delivery import WebhookDeliveryWorker
         from teleclaude.hooks.dispatcher import HookDispatcher
         from teleclaude.hooks.handlers import HandlerRegistry
+        from teleclaude.hooks.inbound import InboundEndpointRegistry, NormalizerRegistry
+        from teleclaude.hooks.normalizers import register_builtin_normalizers
         from teleclaude.hooks.registry import ContractRegistry
+        from teleclaude.transport.redis_transport import RedisTransport
 
         contract_registry = ContractRegistry()
         handler_registry = HandlerRegistry()
         dispatcher = HookDispatcher(contract_registry, handler_registry, db.enqueue_webhook)
         bridge = EventBusBridge(dispatcher)
         delivery_worker = WebhookDeliveryWorker()
+        project_cfg_path = config_path.parent / "teleclaude.yml"
+        project_config = load_project_config(project_cfg_path)
 
         # Load contracts from DB
         await contract_registry.load_from_db()
 
-        # Load config-driven contracts and inbound endpoints
-        hooks_cfg = getattr(config, "hooks", None)
-        if hooks_cfg and hasattr(hooks_cfg, "model_dump"):
-            from teleclaude.hooks.config import load_hooks_config
+        # Register built-in normalizers.
+        normalizer_registry = NormalizerRegistry()
+        register_builtin_normalizers(normalizer_registry)
 
-            await load_hooks_config(hooks_cfg.model_dump(), contract_registry)
+        # Load config-driven contracts and inbound endpoints.
+        # Contracts load regardless of API server availability; inbound routes require it.
+        lifecycle_api_server = getattr(self.lifecycle, "api_server", None)
+        app = getattr(lifecycle_api_server, "app", None)
+        inbound_registry = None
+        if app is not None:
+            inbound_registry = InboundEndpointRegistry(app, normalizer_registry, dispatcher.dispatch)
+        else:
+            logger.warning("API server app unavailable; inbound webhooks will not be registered")
+        await load_hooks_config(
+            project_config.hooks.model_dump(),
+            contract_registry,
+            inbound_registry=inbound_registry,
+        )
+
+        if project_config.channel_subscriptions:
+            redis_adapter = self.client.adapters.get("redis")
+            if isinstance(redis_adapter, RedisTransport):
+                try:
+                    redis_client = await redis_adapter._get_redis()
+                except Exception as exc:  # noqa: BLE001 - keep service startup resilient
+                    logger.error(
+                        "Failed to start channel subscription worker due to redis error",
+                        error=str(exc),
+                        exc_info=True,
+                    )
+                else:
+                    self.channel_subscription_worker_task = asyncio.create_task(
+                        run_subscription_worker(
+                            redis=redis_client,
+                            subscriptions=project_config.channel_subscriptions,
+                            shutdown_event=self.shutdown_event,
+                        )
+                    )
+                    self.channel_subscription_worker_task.add_done_callback(
+                        self._log_background_task_exception("subscription_worker")
+                    )
+            else:
+                logger.warning("Redis adapter unavailable; skipping channel subscription worker")
 
         # Wire contract registry into API routes
         set_contract_registry(contract_registry)
@@ -1728,6 +1774,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("Webhook delivery worker stopped")
+
+        if self.channel_subscription_worker_task:
+            self.channel_subscription_worker_task.cancel()
+            try:
+                await self.channel_subscription_worker_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Channel subscription worker stopped")
 
         if hasattr(self, "_webhook_delivery_worker"):
             await self._webhook_delivery_worker.close()
