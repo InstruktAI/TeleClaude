@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time as _t
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
@@ -842,6 +843,32 @@ def _get_caller_session_id() -> str | None:
         return None
 
 
+def _relative_time(iso_str: str | None) -> str:
+    """Format an ISO timestamp as a human-readable relative time (e.g., '5m ago')."""
+    if not iso_str:
+        return "?"
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        delta = datetime.now(timezone.utc) - dt
+        secs = int(delta.total_seconds())
+        if secs < 0:
+            return "now"
+        if secs < 60:
+            return f"{secs}s ago"
+        mins = secs // 60
+        if mins < 60:
+            return f"{mins}m ago"
+        hours = mins // 60
+        if hours < 24:
+            return f"{hours}h ago"
+        days = hours // 24
+        return f"{days}d ago"
+    except (ValueError, TypeError):
+        return "?"
+
+
 async def _list_sessions(api: TelecAPIClient, *, show_all: bool = False, show_closed: bool = False) -> None:
     """List sessions to stdout.
 
@@ -869,7 +896,8 @@ async def _list_sessions(api: TelecAPIClient, *, show_all: bool = False, show_cl
             agent = session.active_agent or "?"
             mode = session.thinking_mode or "?"
             title = session.title
-            print(f"{sid} {computer}: {agent}/{mode} - {title}")
+            age = _relative_time(session.last_activity)
+            print(f"{sid} {computer}: {agent}/{mode} ({age}) - {title}")
         if not sessions and caller_id:
             print("No child sessions. Use --all to list all sessions.")
     finally:
