@@ -6,14 +6,16 @@ breakdown:
   assessed: false
   todos: []
 dor:
-  last_assessed_at: null
+  last_assessed_at: '2026-02-23T16:00:00Z'
   score: 0
   status: needs_work
   schema_version: 1
-  blockers: []
+  blockers:
+  - 'Gate 5 (Research): Migration patterns not yet researched and indexed'
   actions_taken:
-    requirements_updated: false
-    implementation_plan_updated: false
+    requirements_updated: true
+    implementation_plan_updated: true
+    draft_completed: true
 review_round: 0
 max_review_rounds: 3
 review_baseline_commit: ''
