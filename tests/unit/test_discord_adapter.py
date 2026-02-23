@@ -11,6 +11,7 @@ import pytest
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.adapter_client import AdapterClient
+from teleclaude.core.identity import IdentityContext
 from teleclaude.core.models import ChannelMetadata, Session, SessionAdapterMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import ProcessMessageCommand
@@ -1088,9 +1089,13 @@ async def test_create_session_project_forum_defaults_member_when_unresolved() ->
     fake_command_service.create_session = AsyncMock(return_value={"session_id": session.session_id})
     fake_command_service.process_message = AsyncMock()
 
-    # Identity resolver returns None (unknown user)
+    # Identity resolver returns customer context with no person_name (unknown/unregistered user)
     fake_resolver = MagicMock()
-    fake_resolver.resolve = MagicMock(return_value=None)
+    fake_resolver.resolve = MagicMock(
+        return_value=IdentityContext(
+            person_role="customer", person_name=None, platform="discord", platform_user_id="999001"
+        )
+    )
 
     thread = FakeThread(thread_id=700, parent_id=600)
     message = SimpleNamespace(

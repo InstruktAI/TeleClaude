@@ -1448,7 +1448,7 @@ class DiscordAdapter(UiAdapter):
             from teleclaude.core.identity import get_identity_resolver
 
             identity = get_identity_resolver().resolve("discord", {"user_id": user_id, "discord_user_id": user_id})
-            human_role = (identity.person_role if identity else None) or "member"
+            human_role = (identity.person_role if identity and identity.person_name else None) or "member"
             effective_path = project_path or config.computer.help_desk_dir
 
         create_cmd = CreateSessionCommand(
