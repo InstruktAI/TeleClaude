@@ -113,3 +113,24 @@ The test suite covers invalid signatures (`test_inbound_webhook_invalid_signatur
 ## Verdict: REQUEST CHANGES
 
 Finding #1 is an architectural correctness issue — contracts should load independently of API server availability. The fix is a small restructure of the conditional (see suggested code above). Suggestions #2-4 are non-blocking but recommended.
+
+---
+
+## Fixes Applied
+
+### Finding #1 — Config-driven contracts skipped when API server unavailable
+
+**Fix:** Restructured `_init_webhook_service` so `load_hooks_config` is always called. `InboundEndpointRegistry` is only instantiated when `app is not None`. Removed the redundant `app = None` assignment.
+**Commit:** `ea75bb55`
+
+### Suggestion #3 — Scattered mid-function imports
+
+**Fix:** Moved `load_project_config` and `RedisTransport` imports into the grouped import block at function entry.
+**Commit:** `ea75bb55`
+
+### Suggestion #4 — Missing test: absent HMAC signature header
+
+**Fix:** Added `test_inbound_webhook_missing_signature_rejected` covering the code path at `inbound.py:95-96` where no signature header is present.
+**Commit:** `ea75bb55`
+
+All 11 tests pass. Lint passes. Ready for re-review.
