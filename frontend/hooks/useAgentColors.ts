@@ -46,9 +46,9 @@ export function useAgentColors(agent: AgentType): AgentColors {
       sidebarText: `var(--agent-${agent}-normal)`,
     }
   } else {
-    // Peaceful mode: neutral grays for everything
+    // Peaceful mode: distinct neutral backgrounds for assistant vs user
     return {
-      assistantBubbleBg: 'var(--peaceful-muted)',
+      assistantBubbleBg: 'var(--color-card)',
       assistantBubbleText: 'var(--text-primary)',
       userBubbleBg: 'var(--peaceful-muted)',
       userBubbleText: 'var(--text-primary)',
