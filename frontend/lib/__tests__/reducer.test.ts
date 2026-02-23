@@ -31,6 +31,7 @@ function freshState(): TuiState {
       selectedIndex: 0,
       scrollOffset: 0,
       expandedTodos: new Set<string>(),
+      todosRefreshTrigger: 0,
       filePaneId: null,
       preview: null,
     },
@@ -889,6 +890,21 @@ describe('reducer', () => {
         todoIds: [],
       })
       expect(next.preparation.expandedTodos.size).toBe(0)
+    })
+
+    it('should increment todosRefreshTrigger', () => {
+      const state = freshState()
+      expect(state.preparation.todosRefreshTrigger).toBe(0)
+      const next = reduce(state, {
+        type: 'SYNC_TODOS',
+        todoIds: ['t1'],
+      })
+      expect(next.preparation.todosRefreshTrigger).toBe(1)
+      const next2 = reduce(next, {
+        type: 'SYNC_TODOS',
+        todoIds: ['t1', 't2'],
+      })
+      expect(next2.preparation.todosRefreshTrigger).toBe(2)
     })
   })
 

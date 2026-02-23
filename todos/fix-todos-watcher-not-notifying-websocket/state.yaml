@@ -5,9 +5,9 @@ deferrals_processed: false
 breakdown:
   assessed: false
   todos: []
-review_round: 1
+review_round: 0
 max_review_rounds: 3
-review_baseline_commit: 1349a9e0714c4c5cdc49a0ee110fb2a2e82ecfed
+review_baseline_commit: ''
 unresolved_findings: []
 resolved_findings: []
 dor:
