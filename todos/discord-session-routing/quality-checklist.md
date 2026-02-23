@@ -22,12 +22,12 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior
+- [x] Deferrals justified and not hiding required scope — no deferrals.md exists
+- [x] Findings written in `review-findings.md`
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — APPROVE
+- [x] Critical issues resolved or explicitly blocked — no critical issues
+- [x] Test coverage and regression risk assessed — 206 lines of new tests covering routing, acceptance, title strategy, and topper
 
 ## Finalize Gates (Finalizer)
 
