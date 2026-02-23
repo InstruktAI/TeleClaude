@@ -27,22 +27,22 @@ The `_ensure_category` method already validates cached IDs (lines 331-334): fetc
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Change `_ensure_category(guild, "Projects", ...)` to `_ensure_category(guild, f"Projects - {config.computer.name}", ...)`.
-- [ ] Ensure the category key slug is clean: `projects_mozbook` not `projects_-_mozbook`. Either update `_ensure_category`'s key derivation or pass an explicit key.
-- [ ] The "Unknown" catch-all forum moves under the computer-specific category (it already follows the category reference).
+- [x] Change `_ensure_category(guild, "Projects", ...)` to `_ensure_category(guild, f"Projects - {config.computer.name}", ...)`.
+- [x] Ensure the category key slug is clean: `projects_mozbook` not `projects_-_mozbook`. Either update `_ensure_category`'s key derivation or pass an explicit key.
+- [x] The "Unknown" catch-all forum moves under the computer-specific category (it already follows the category reference).
 
 ### Task 2.2: Config persistence for per-computer categories
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Verify `_persist_discord_channel_ids` correctly stores the new category key (e.g. `categories.projects_mozbook`).
-- [ ] Old `categories.projects` key in existing config files won't conflict — new key is different, old category remains in Discord but is no longer managed.
+- [x] Verify `_persist_discord_channel_ids` correctly stores the new category key (e.g. `categories.projects_mozbook`).
+- [x] Old `categories.projects` key in existing config files won't conflict — new key is different, old category remains in Discord but is no longer managed.
 
 ### Task 2.3: Forum routing unchanged
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Verify `_build_project_forum_map` and `_resolve_target_forum` don't depend on category structure — they map `project_path -> forum_id` from trusted_dirs, which is per-computer by nature. No changes expected here, just verification.
+- [x] Verify `_build_project_forum_map` and `_resolve_target_forum` don't depend on category structure — they map `project_path -> forum_id` from trusted_dirs, which is per-computer by nature. No changes expected here, just verification.
 
 ---
 
@@ -52,31 +52,31 @@ The `_ensure_category` method already validates cached IDs (lines 331-334): fetc
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] In `_handle_on_message`, before calling `_resolve_or_create_session`, determine which managed forum the message belongs to (project forum vs help desk vs all-sessions).
-- [ ] The forum context is already available: `parent_id` is extracted at line 1003. Compare against `_project_forum_map.values()`, `_help_desk_channel_id`, `_all_sessions_channel_id`.
-- [ ] Pass the forum context to `_resolve_or_create_session` → `_create_session_for_message` so it can set the correct project path and role.
+- [x] In `_handle_on_message`, before calling `_resolve_or_create_session`, determine which managed forum the message belongs to (project forum vs help desk vs all-sessions).
+- [x] The forum context is already available: `parent_id` is extracted at line 1003. Compare against `_project_forum_map.values()`, `_help_desk_channel_id`, `_all_sessions_channel_id`.
+- [x] Pass the forum context to `_resolve_or_create_session` → `_create_session_for_message` so it can set the correct project path and role.
 
 ### Task 3.2: Resolve identity for forum messages
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] In `_create_session_for_message` (or a new project-forum-specific variant), resolve the Discord user's identity using the same mechanism as the DM handler (line 896): `identity.person_role or "member"`.
-- [ ] For help desk forum: retain `human_role: "customer"` (existing behavior).
-- [ ] For project forums / all-sessions: set `human_role` from identity resolution, defaulting to `"member"`.
+- [x] In `_create_session_for_message` (or a new project-forum-specific variant), resolve the Discord user's identity using the same mechanism as the DM handler (line 896): `identity.person_role or "member"`.
+- [x] For help desk forum: retain `human_role: "customer"` (existing behavior).
+- [x] For project forums / all-sessions: set `human_role` from identity resolution, defaulting to `"member"`.
 
 ### Task 3.3: Resolve project path from forum mapping
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] For project forum messages, resolve the project path from the forum's mapping (reverse lookup in `_project_forum_map`: forum_id → project_path).
-- [ ] For help desk messages, keep `config.computer.help_desk_dir`.
-- [ ] For all-sessions messages, use a sensible default (e.g. the first trusted_dir or a general workspace).
+- [x] For project forum messages, resolve the project path from the forum's mapping (reverse lookup in `_project_forum_map`: forum_id → project_path).
+- [x] For help desk messages, keep `config.computer.help_desk_dir`.
+- [x] For all-sessions messages, use a sensible default (e.g. the first trusted_dir or a general workspace).
 
 ### Task 3.4: Add entry-level logging to `_handle_on_message`
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Add a DEBUG log at the entry of `_handle_on_message` with channel type, channel ID, and author info. Currently, silently dropped messages leave zero trace in the logs.
+- [x] Add a DEBUG log at the entry of `_handle_on_message` with channel type, channel ID, and author info. Currently, silently dropped messages leave zero trace in the logs.
 
 ---
 

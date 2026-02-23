@@ -195,6 +195,35 @@ class DiscordAdapter(UiAdapter):
                 return forum_id
         return None
 
+    def _resolve_forum_context(self, message: object) -> tuple[str, str | None]:
+        """Determine forum type and project path for an incoming message.
+
+        Returns (forum_type, project_path) where forum_type is one of:
+        'help_desk', 'project', 'all_sessions'.
+        """
+        channel = getattr(message, "channel", None)
+        # Prefer explicit parent_id attribute, then parent.id, then channel.id
+        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
+        if parent_id is None:
+            parent_obj = getattr(channel, "parent", None)
+            parent_id = self._parse_optional_int(getattr(parent_obj, "id", None))
+        if parent_id is None:
+            parent_id = self._parse_optional_int(getattr(channel, "id", None))
+
+        if parent_id is not None and parent_id == self._help_desk_channel_id:
+            return "help_desk", config.computer.help_desk_dir
+
+        if parent_id is not None and parent_id == self._all_sessions_channel_id:
+            trusted = config.computer.get_all_trusted_dirs()
+            project_path = trusted[0].path if trusted else config.computer.help_desk_dir
+            return "all_sessions", project_path
+
+        for path, forum_id in self._project_forum_map.items():
+            if parent_id == forum_id:
+                return "project", path
+
+        return "help_desk", config.computer.help_desk_dir
+
     def _build_thread_title(self, session: "Session", target_forum_id: int) -> str:
         """Build Discord thread title based on routing target.
 
@@ -1011,6 +1040,15 @@ class DiscordAdapter(UiAdapter):
             await channel.send(f"Hi {person_name}, I'm your personal assistant. What would you like to work on?")
 
     async def _handle_on_message(self, message: object) -> None:
+        author = getattr(message, "author", None)
+        channel = getattr(message, "channel", None)
+        logger.debug(
+            "[DISCORD MSG] channel_id=%s author_id=%s is_bot=%s",
+            self._parse_optional_int(getattr(channel, "id", None)),
+            getattr(author, "id", "?"),
+            bool(getattr(author, "bot", False)),
+        )
+
         if self._is_bot_message(message):
             return
 
@@ -1339,7 +1377,10 @@ class DiscordAdapter(UiAdapter):
 
         session = await self._find_session(channel_id=channel_id, thread_id=thread_id, user_id=user_id)
         if session is None:
-            session = await self._create_session_for_message(message, user_id)
+            forum_type, project_path = self._resolve_forum_context(message)
+            session = await self._create_session_for_message(
+                message, user_id, forum_type=forum_type, project_path=project_path
+            )
             if session is None:
                 return None
 
@@ -1387,19 +1428,37 @@ class DiscordAdapter(UiAdapter):
                 return session
         return None
 
-    async def _create_session_for_message(self, message: object, user_id: str) -> "Session | None":
+    async def _create_session_for_message(
+        self,
+        message: object,
+        user_id: str,
+        *,
+        forum_type: str = "help_desk",
+        project_path: str | None = None,
+    ) -> "Session | None":
         author = getattr(message, "author", None)
         display_name = str(
             getattr(author, "display_name", None) or getattr(author, "name", None) or f"discord-{user_id}"
         )
+
+        if forum_type == "help_desk":
+            human_role = "customer"
+            effective_path = project_path or config.computer.help_desk_dir
+        else:
+            from teleclaude.core.identity import get_identity_resolver
+
+            identity = get_identity_resolver().resolve("discord", {"user_id": user_id, "discord_user_id": user_id})
+            human_role = (identity.person_role if identity else None) or "member"
+            effective_path = project_path or config.computer.help_desk_dir
+
         create_cmd = CreateSessionCommand(
-            project_path=config.computer.help_desk_dir,
+            project_path=effective_path,
             title=f"Discord: {display_name}",
             origin=InputOrigin.DISCORD.value,
             channel_metadata={
                 "user_id": user_id,
                 "discord_user_id": user_id,
-                "human_role": "customer",
+                "human_role": human_role,
                 "platform": "discord",
             },
             auto_command="agent claude",
