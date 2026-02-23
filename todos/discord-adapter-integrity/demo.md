@@ -3,19 +3,13 @@
 ## Validation
 
 ```bash
-# Phase 1: Infrastructure validation — stale IDs are re-provisioned
-# (Manual: delete a Discord forum, restart daemon, verify it re-creates)
-make status
-```
-
-```bash
-# Phase 3: Text delivery — verify poller triggers incremental output for threaded sessions
-make test -- -k "threaded_output" --no-header -q
-```
-
-```bash
 # Lint clean
 make lint
+```
+
+```bash
+# Tests pass
+make test
 ```
 
 ## Guided Presentation
@@ -23,7 +17,7 @@ make lint
 ### Step 1: Infrastructure hardening
 
 1. Show `_ensure_discord_infrastructure` with the new `_validate_channel_id` helper.
-2. Explain: every stored channel ID is now verified via Discord API on startup. Stale IDs are cleared and re-provisioned automatically. No more silent 404s.
+2. Delete a Discord forum, restart the daemon, verify it re-creates automatically.
 
 ### Step 2: Per-computer project categories
 
@@ -31,14 +25,15 @@ make lint
 2. Show config.yml — each computer has its own category key (`categories.projects_mozbook`).
 3. Start a session on each computer — observe the session thread appears in the correct computer-specific project forum.
 
-### Step 3: Text delivery between tool calls
+### Step 3: Forum input routing
 
-1. Start a Claude session that will produce text between tool calls (e.g., a research task with reasoning).
-2. Observe the Discord thread: text output appears within ~2s of being written to the transcript, not delayed until the next tool_use or agent_stop.
-3. Compare with TUI output — both should show the same content with minimal delay.
-4. Repeat with a Gemini session on Telegram — same continuous delivery.
+1. Send a message as admin in a project forum — verify the session creates with correct role ("member" or "admin", not "customer") and correct project path.
+2. Verify the input text is delivered to the tmux session.
+3. Send a message in the help desk forum — verify it still creates a customer session.
+4. Check logs — verify `_handle_on_message` produces entry-level DEBUG logs.
 
 ### Step 4: Verify no regressions
 
-1. Claude on Telegram (non-threaded): verify poller still delivers raw tmux output as before.
-2. Hook-triggered events (tool_use, tool_done, agent_stop): verify these still fire and the digest dedup prevents double delivery when both hook and poller trigger within the same second.
+1. Help desk customer flow unchanged — customer messages accepted in help desk, blocked elsewhere.
+2. DM flow unchanged — identity resolution still works.
+3. Existing session threads still route correctly.

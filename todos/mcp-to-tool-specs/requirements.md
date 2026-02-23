@@ -65,7 +65,10 @@ surface. No separate doc layer.
 - [ ] Example coverage heuristic met: every parameter/input shape touched at least once
 - [ ] Baseline tools inlined in telec-cli spec doc via `@exec` directives
 - [ ] Non-baseline tools discoverable via `telec --help` index
-- [ ] Role-based access control preserved via context-selection filtering
+- [ ] Role-based access control enforced daemon-side (system role + human role per command)
+- [ ] Permission denied returns 403 with clear error message
+- [ ] Context-selection hides tools for progressive disclosure (soft gate)
+- [ ] Daemon enforcement blocks calls even if agent guesses command (hard gate)
 - [ ] No MCP server process running in daemon
 - [ ] No `mcp-wrapper.py` in agent session config
 - [ ] Agent sessions (Claude, Gemini, Codex) can perform all existing operations
@@ -113,9 +116,10 @@ expand to the full help output inline. This gives agents:
 
 ### Non-baseline tools (discoverable via index)
 
-- Sessions: `end`, `unsubscribe`, `result`, `file`
-- Todo: `prepare`, `work`, `mark-phase`, `set-deps`
-- Top-level: `computers`, `projects`, `deploy`, `agent-status`
+- Sessions: `end`, `unsubscribe`, `result`, `file`, `widget`
+- Todo: `prepare`, `work`, `maintain`, `mark-phase`, `set-deps`
+- Top-level: `computers`, `projects`, `deploy`
+- Agents: `status`, `availability`
 - Channels: `publish`, `list`
 
 ## Breakdown
@@ -127,6 +131,148 @@ This work is split into 3 sub-todos (down from the original 6):
 2. **mcp-migration-agent-config** — Remove MCP from agent bootstrap, validate
    all workflows work via telec
 3. **mcp-migration-delete-mcp** — Delete all MCP code, update remaining docs
+
+## Role Enforcement Design
+
+### Two orthogonal axes
+
+**System role** (what the agent process is structurally allowed to do):
+
+| Role           | Purpose                                                     |
+| -------------- | ----------------------------------------------------------- |
+| `orchestrator` | Full tool access. Manages workflow, dispatches, monitors.   |
+| `worker`       | Execute assigned tasks only. No spawning, no orchestration. |
+
+**Human role** (trust level of the human behind the session, from DB):
+
+| Role                     | Trust                                          |
+| ------------------------ | ---------------------------------------------- |
+| `admin`                  | Full access                                    |
+| `member`                 | No deploy, no end-session, no agent-status     |
+| `contributor`/`newcomer` | Same as member + more restrictions             |
+| `customer`               | Help desk only — escalate, docs, render-widget |
+| `unauthorized` (none)    | Read-only                                      |
+
+Effective permission = `system_allowed AND human_allowed`.
+
+### Enforcement flow
+
+1. Agent runs `telec sessions start ...`
+2. `telec` reads session_id from `$TMPDIR/teleclaude_session_id`
+3. `telec` queries the tmux server for the current session name:
+   `tmux display-message -p '#S'` → returns the real tmux session name
+   (this is unforgeable — the tmux server process controls the answer,
+   the agent process cannot influence it)
+4. `telec` calls daemon API with two headers:
+   - `X-Caller-Session-Id: {session_id}` (from file)
+   - `X-Tmux-Session: {tmux_session_name}` (from tmux server)
+5. Daemon looks up the claimed session_id in DB, retrieves:
+   - `system_role`, `human_role` (for permission check)
+   - `tmux_session_name` (for identity verification)
+6. Daemon cross-checks: does the tmux session name from the header
+   match the tmux session name stored in DB for this session_id?
+   - Mismatch → 403 "session identity mismatch" (hijack attempt blocked)
+   - Match → proceed to permission check
+7. Daemon checks permission matrix for the endpoint against both roles.
+   - Allowed → execute
+   - Denied → 403 with clear error message
+8. No session_id → 401 "session identity required"
+
+### Credential model: dual-factor identity
+
+The agent's identity is verified by two independent factors:
+
+- **session_id** (from `$TMPDIR/teleclaude_session_id`): identifies which
+  session the agent claims to be. The file is writable by the agent —
+  it can be forged.
+- **tmux session name** (from `tmux display-message -p '#S'`): identifies
+  which tmux session the process is physically running in. This is
+  controlled by the tmux server process, not the agent. It cannot be forged.
+
+The daemon created both the teleclaude session and the tmux session, and
+stores the mapping in its DB. Both factors must agree for any request to
+proceed.
+
+**Attack scenario (blocked):**
+
+An agent in tmux session `tc_aaa1` (worker/customer) discovers admin
+session_id `zzz-999` and writes it to its TMPDIR file:
+
+```
+telec reads file     → session_id = "zzz-999" (forged)
+telec queries tmux   → tmux_session = "tc_aaa1" (real, unforgeable)
+daemon looks up zzz-999 → expects tmux_session = "tc_zzz9"
+daemon compares: "tc_aaa1" ≠ "tc_zzz9" → 403 DENIED
+```
+
+The only way to bypass this is to execute code inside tmux session
+`tc_zzz9` — which IS the admin session itself.
+
+**Defense layers (summary):**
+
+| Layer                  | What it prevents                                               | Bypassable?                               |
+| ---------------------- | -------------------------------------------------------------- | ----------------------------------------- |
+| Filesystem sandbox     | Discovering other session_ids in `~/.teleclaude/tmp/sessions/` | Only if agent escapes sandbox             |
+| UUID entropy           | Guessing session_ids (128-bit)                                 | Computationally infeasible                |
+| Tmux cross-check       | Using a discovered/forged session_id                           | No — tmux server is outside agent control |
+| Daemon-side role check | Executing commands beyond role clearance                       | No — roles in DB, set at session creation |
+
+### TMPDIR remains unchanged
+
+The agent keeps full read/write access to its `$TMPDIR` at
+`~/.teleclaude/tmp/sessions/{session_id}/`. The daemon still writes
+`teleclaude_session_id` there for `telec` to read. The agent CLI
+(Claude/Gemini/Codex) uses TMPDIR heavily for its own temp files.
+
+The `teleclaude_role` file is **no longer written or read** — roles live
+exclusively in the daemon DB. The file-based role marker was the MCP
+wrapper's mechanism and is retired with the MCP server.
+
+Roles live in the daemon DB, set at session creation. The agent cannot
+modify its own roles — they are not stored in any file the agent can
+access.
+
+### Permission matrix
+
+| Command                      | sys:orchestrator | sys:worker | human:admin | human:member | human:customer | human:none |
+| ---------------------------- | ---------------- | ---------- | ----------- | ------------ | -------------- | ---------- |
+| `telec docs`                 | yes              | yes        | yes         | yes          | yes            | yes        |
+| `telec sessions list`        | yes              | no         | yes         | yes          | no             | no         |
+| `telec sessions start`       | yes              | no         | yes         | yes          | no             | no         |
+| `telec sessions send`        | yes              | no         | yes         | yes          | no             | no         |
+| `telec sessions run`         | yes              | no         | yes         | yes          | no             | no         |
+| `telec sessions tail`        | yes              | read-own   | yes         | yes          | no             | no         |
+| `telec sessions end`         | yes              | no         | yes         | no           | no             | no         |
+| `telec sessions unsubscribe` | yes              | no         | yes         | yes          | no             | no         |
+| `telec sessions result`      | yes              | yes        | yes         | yes          | yes            | no         |
+| `telec sessions file`        | yes              | yes        | yes         | yes          | yes            | no         |
+| `telec sessions widget`      | yes              | yes        | yes         | yes          | yes            | no         |
+| `telec sessions escalate`    | yes              | no         | yes         | yes          | yes            | no         |
+| `telec todo prepare`         | yes              | no         | yes         | yes          | no             | no         |
+| `telec todo work`            | yes              | no         | yes         | yes          | no             | no         |
+| `telec todo maintain`        | yes              | no         | yes         | yes          | no             | no         |
+| `telec todo mark-phase`      | yes              | no         | yes         | yes          | no             | no         |
+| `telec todo set-deps`        | yes              | no         | yes         | yes          | no             | no         |
+| `telec computers`            | yes              | no         | yes         | yes          | no             | no         |
+| `telec projects`             | yes              | no         | yes         | yes          | no             | no         |
+| `telec deploy`               | yes              | no         | yes         | no           | no             | no         |
+| `telec agents status`        | yes              | no         | yes         | no           | no             | no         |
+| `telec agents availability`  | yes              | no         | yes         | yes          | no             | no         |
+| `telec channels publish`     | yes              | no         | yes         | yes          | no             | no         |
+| `telec channels list`        | yes              | no         | yes         | yes          | no             | no         |
+
+### System role derivation
+
+| Human role     | Default system role | Can override?                 |
+| -------------- | ------------------- | ----------------------------- |
+| `admin`        | `orchestrator`      | Yes (workers when dispatched) |
+| `member`       | `orchestrator`      | Yes (workers when dispatched) |
+| `customer`     | `worker`            | No (always worker)            |
+| `unauthorized` | `worker`            | No (always worker)            |
+
+System role is set explicitly when the orchestrator dispatches a worker
+(same as today — `/next-*` commands derive `ROLE_WORKER`). Customers and
+unauthorized users are always locked to worker.
 
 ## Constraints
 
@@ -147,9 +293,15 @@ This work is split into 3 sub-todos (down from the original 6):
   and JSON output. Rich examples in `--help` prevent misuse.
 - **Multi-agent coordination**: MCP wrapper injects `caller_session_id`.
   `telec` must replicate this from `$TMPDIR/teleclaude_session_id`.
-- **Role filtering migration**: Currently MCP wrapper filters tools by role.
-  New system uses context-selection to control which tool specs are disclosed.
-  Must not regress on least-privilege for workers.
+- **Role filtering migration**: Currently MCP wrapper filters tools by role
+  using file-based markers (tamperable by agents). New system uses daemon-side
+  dual-factor enforcement: session_id from file + tmux session name from tmux
+  server. Daemon cross-checks both against its DB before checking the permission
+  matrix. Even if an agent forges the session_id file, the tmux cross-check
+  catches the mismatch. Context-selection provides the soft gate (hide commands
+  workers don't need). Daemon enforcement provides the hard gate (block calls
+  even if the agent guesses the command). See "Credential model: dual-factor
+  identity" above for the detailed attack/defense analysis.
 
 ## References
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Four changes that together bring Discord (and threaded Telegram) to full output integrity, clean multi-computer infrastructure, and reliable user input reflection. Ordered so each phase builds on the previous: infrastructure hardening first, per-computer categories second, delivery fix third, input reflection last.
+Three changes to the Discord adapter: infrastructure hardening, per-computer categories, and forum input routing. All changes in `discord_adapter.py`.
 
 ---
 
@@ -46,84 +46,57 @@ The `_ensure_category` method already validates cached IDs (lines 331-334): fetc
 
 ---
 
-## Phase 3: Text Delivery Fix
+## Phase 3: Forum Input Routing Fix
 
-### Task 3.1: Add `trigger_incremental_output` to AgentCoordinator
+### Task 3.1: Determine forum type for incoming messages
 
-**File(s):** `teleclaude/core/agent_coordinator.py`
+**File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Add public method `trigger_incremental_output(session_id: str) -> bool` after `_maybe_send_incremental_output`.
-- [ ] Fast-path: fetch session, check `is_threaded_output_enabled(session.active_agent)`, return False if not enabled.
-- [ ] Construct minimal `AgentOutputPayload()` with defaults (the existing method falls back to `session.active_agent` and `session.native_log_file`).
-- [ ] Delegate to `self._maybe_send_incremental_output(session_id, payload)`.
+- [ ] In `_handle_on_message`, before calling `_resolve_or_create_session`, determine which managed forum the message belongs to (project forum vs help desk vs all-sessions).
+- [ ] The forum context is already available: `parent_id` is extracted at line 1003. Compare against `_project_forum_map.values()`, `_help_desk_channel_id`, `_all_sessions_channel_id`.
+- [ ] Pass the forum context to `_resolve_or_create_session` → `_create_session_for_message` so it can set the correct project path and role.
 
-### Task 3.2: Expose AgentCoordinator to the poller
+### Task 3.2: Resolve identity for forum messages
 
-**File(s):** `teleclaude/core/adapter_client.py`, `teleclaude/daemon.py`
+**File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Add `self.agent_coordinator: "AgentCoordinator | None" = None` to `AdapterClient.__init__`.
-- [ ] Add `TYPE_CHECKING` import for `AgentCoordinator`.
-- [ ] In `daemon.py`, after `self.client.agent_event_handler = self.agent_coordinator.handle_event` (line 251), add `self.client.agent_coordinator = self.agent_coordinator`.
+- [ ] In `_create_session_for_message` (or a new project-forum-specific variant), resolve the Discord user's identity using the same mechanism as the DM handler (line 896): `identity.person_role or "member"`.
+- [ ] For help desk forum: retain `human_role: "customer"` (existing behavior).
+- [ ] For project forums / all-sessions: set `human_role` from identity resolution, defaulting to `"member"`.
 
-### Task 3.3: Trigger incremental output from the poller
+### Task 3.3: Resolve project path from forum mapping
 
-**File(s):** `teleclaude/core/polling_coordinator.py`
+**File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] In the `OutputChanged` handler, after the `send_output_update` call (after line 764), add:
-  ```python
-  coordinator = adapter_client.agent_coordinator
-  if coordinator:
-      try:
-          await coordinator.trigger_incremental_output(event.session_id)
-      except Exception:
-          logger.warning("Poller-triggered incremental output failed for %s", session_id[:8], exc_info=True)
-  ```
-- [ ] This fires for ALL sessions but `trigger_incremental_output` fast-rejects non-threaded sessions before any I/O.
+- [ ] For project forum messages, resolve the project path from the forum's mapping (reverse lookup in `_project_forum_map`: forum_id → project_path).
+- [ ] For help desk messages, keep `config.computer.help_desk_dir`.
+- [ ] For all-sessions messages, use a sensible default (e.g. the first trusted_dir or a general workspace).
+
+### Task 3.4: Add entry-level logging to `_handle_on_message`
+
+**File(s):** `teleclaude/adapters/discord_adapter.py`
+
+- [ ] Add a DEBUG log at the entry of `_handle_on_message` with channel type, channel ID, and author info. Currently, silently dropped messages leave zero trace in the logs.
 
 ---
 
-## Phase 4: User Input Reflection Fix
+## Phase 4: Validation
 
-### Task 4.1: Remove HOOK from `_NON_INTERACTIVE` filter
+### Task 4.1: Tests
 
-**File(s):** `teleclaude/core/adapter_client.py`
-
-- [ ] At line 562, change `_NON_INTERACTIVE = {InputOrigin.MCP.value, InputOrigin.HOOK.value}` to `_NON_INTERACTIVE = {InputOrigin.MCP.value}`.
-- [ ] The filter was added in commit `5598ff0a` with the assumption that hook origins are "not user-facing sessions." That assumption is wrong — terminal sessions are user-facing and their input arrives via the `user_prompt_submit` hook.
-- [ ] MCP remains filtered because MCP-originated input is genuinely non-interactive (programmatic tool calls, not user keystrokes).
-
-### Task 4.2: Add `broadcast_user_input` call for non-headless sessions
-
-**File(s):** `teleclaude/core/agent_coordinator.py`
-
-- [ ] In `handle_user_prompt_submit`, before the early return at line 426-427 (`if session.lifecycle_status != "headless": return`), add:
-  ```python
-  await self.client.broadcast_user_input(session, prompt_text, InputOrigin.HOOK.value)
-  ```
-- [ ] This ensures terminal user input is reflected to Discord/Telegram regardless of headless status.
-- [ ] The headless path already calls `broadcast_user_input` via `process_message` — with the filter fix in Task 4.1, that path now works too.
-
----
-
-## Phase 5: Validation
-
-### Task 5.1: Tests
-
-- [ ] Test `trigger_incremental_output` sends output for threaded sessions.
-- [ ] Test `trigger_incremental_output` is a no-op for non-threaded sessions.
 - [ ] Test stale channel ID validation clears and re-provisions.
-- [ ] Test `broadcast_user_input` is called for hook-origin input (both headless and non-headless paths).
-- [ ] Test `broadcast_user_input` still blocks MCP-origin input.
+- [ ] Test project forum messages create sessions with correct role and project path.
+- [ ] Test help desk forum messages still create customer sessions.
 - [ ] Run `make test`.
 
-### Task 5.2: Quality Checks
+### Task 4.2: Quality Checks
 
 - [ ] Run `make lint`.
 - [ ] Verify no unchecked implementation tasks remain.
 
 ---
 
-## Phase 6: Review Readiness
+## Phase 5: Review Readiness
 
 - [ ] Confirm requirements are reflected in code changes.
 - [ ] Confirm implementation tasks are all marked `[x]`.

@@ -1,67 +1,30 @@
-# Discord Adapter Message Integrity
+# Discord Adapter Integrity
 
 ## Problem Statement
 
-The Discord adapter has multiple output delivery issues causing incomplete session mirroring. Sessions visible in the TUI show full output but Discord shows gaps — missing text blocks, skipped events, and stale metadata.
+The Discord adapter has infrastructure reliability issues, lacks multi-computer separation, and silently drops admin input from project forums.
 
 ## Specific Issues
 
-### 1. Missing text output between tool calls (CRITICAL)
+### 1. Stale channel IDs cause misrouting
 
-When threaded output mode is active, the poller (`send_output_update`) is suppressed on Discord. But the incremental renderer (`_maybe_send_incremental_output`) only fires on hook events: `tool_use`, `tool_done`, `agent_stop`. Text written between tools (reasoning, explanations, user-facing prose) has NO trigger to deliver it to Discord.
+The provisioning code (`_ensure_discord_infrastructure`) only creates channels when the stored ID is None. When an existing channel is deleted from Discord, the config still holds the stale ID, causing silent 404s. The `_ensure_category` method already validates cached IDs — this pattern must extend to all channel ID guards.
 
-**Root cause**: `agent_coordinator.py` only calls `_maybe_send_incremental_output` from hook event handlers. There is no text-streaming trigger for threaded output mode.
+### 2. Single "Projects" category doesn't support multi-computer setups
 
-**Evidence**: Session `514ff3f2` — Discord shows tool call summaries (`len=77`, `len=143`) but not the multi-paragraph text blocks visible in TUI.
+The current provisioning creates one "Projects" category for all project forums. When multiple computers each have their own trusted_dirs, all forums end up under the same category with no visual separation. Each computer should provision its own "Projects - {computer_name}" category.
 
-### 2. Agent status not synced to Discord
+### 3. Forum input silently dropped — hardcoded customer role (CRITICAL)
 
-The active agent information visible in TUI (agent name, thinking mode) is not reflected in Discord threads. Discord threads don't show which agent is active or update when agents change.
+When a user sends a message in a Discord project forum, `_create_session_for_message` (line 1374) hardcodes `human_role: "customer"`. The session creates and tmux opens (via `auto_command`), but then the customer gate at line 1039 blocks the input because the message is from a project forum, not help desk.
 
-### 3. Output appears debounced/skipped
+**Root cause:** `_create_session_for_message` was built for help desk customer intake but is the fallback for ALL forum message types. It:
 
-Observations suggest that rapid successive events cause some output to be dropped or deduplicated when it shouldn't be. The `last_output_digest` check (line 741 of agent_coordinator.py) may over-aggressively skip sends.
+- Hardcodes `human_role: "customer"` (should resolve identity like DM handler at line 896)
+- Hardcodes `project_path=config.computer.help_desk_dir` (should resolve from forum → project mapping)
 
-### 4. Stale `all_sessions_channel_id` caused misrouting
-
-The provisioning code (`_ensure_discord_infrastructure`) only creates the catch-all forum when `all_sessions_channel_id is None`. When the old channel was deleted during restructuring, the config still held the stale ID, causing all non-project-matched sessions to 404 silently. This was fixed in this session but the provisioning code should validate existing IDs.
-
-**Fixed inline**: Cleared stale config, daemon auto-provisioned new Unknown forum.
-
-### 5. Single "Projects" category doesn't support multi-computer setups
-
-The current provisioning creates one "Projects" category for all project forums. When multiple computers (MozBook, mozmini, raspi) each have their own trusted_dirs, all their forums end up under the same category with no visual separation. Each computer should provision its own "Projects - {computer_name}" category so sessions from different machines are clearly separated in the Discord guild.
-
-## Proposed Solutions
-
-### For issue 1 (missing text)
-
-The poller already streams text continuously. For Discord in threaded mode, instead of suppressing the poller entirely, the poller should ALSO render through the threaded renderer — or the incremental output should be triggered by poller events, not just hook events.
-
-Options:
-
-- A) Remove poller suppression for Discord when threaded output is active; let both paths contribute
-- B) Have the poller trigger `_maybe_send_incremental_output` when threaded mode is active
-- C) Add a periodic timer that renders incremental output independent of hook events
-
-### For issue 4 (stale channel validation)
-
-Add a validation step in `_ensure_discord_infrastructure` that checks if configured channel IDs actually resolve to live Discord channels. If not, clear the stale ID and re-provision.
-
-### 6. User input not reflected to other UI adapters from terminal
-
-When a user types in the terminal, that input is not broadcast to Discord/Telegram as a formatted reflection message (e.g. "TUI @ MozBook:\n\n{text}"). The `broadcast_user_input` mechanism exists and works for adapter-originated input (Telegram → Discord, Discord → Telegram) but is broken for terminal input.
-
-**Root cause (non-headless):** `handle_user_prompt_submit` in `agent_coordinator.py` returns at line 427 for non-headless sessions without ever calling `broadcast_user_input`.
-
-**Root cause (headless):** Falls through to `process_message` which calls `broadcast_user_input` with origin `hook` — but `_NON_INTERACTIVE` filter at `adapter_client.py:562` blocks `InputOrigin.HOOK.value` based on the incorrect assumption that hook origins are "not user-facing sessions" (commit `5598ff0a`).
-
-**Evidence:** Terminal input is visible in TUI but never appears in Discord/Telegram threads as the "TUI @ {computer}" formatted message.
+**Evidence:** Sending a message in any project forum creates a tmux session visible in TUI but delivers no input. Zero logs of the `process_message` call because `_handle_on_message` has no entry-level logging.
 
 ## Files Involved
 
-- `teleclaude/core/agent_coordinator.py` — incremental output trigger logic, user prompt handling
-- `teleclaude/core/adapter_client.py` — `broadcast_user_input`, `_NON_INTERACTIVE` filter
-- `teleclaude/adapters/ui_adapter.py` — poller suppression logic (`send_output_update`)
-- `teleclaude/adapters/discord_adapter.py` — thread creation, routing, infrastructure provisioning
-- `teleclaude/utils/transcript.py` — output rendering
+- `teleclaude/adapters/discord_adapter.py` — all changes in this file
