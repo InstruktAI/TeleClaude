@@ -1120,6 +1120,16 @@ class Db:
                         "reason": None,
                         "status": "available",
                     }
+            # Check degraded_until expiry inline
+            degraded_until = row.degraded_until
+            if degraded_until is not None:
+                parsed_degraded = self._parse_iso_datetime(degraded_until)
+                if parsed_degraded and parsed_degraded < datetime.now(timezone.utc):
+                    row.degraded_until = None
+                    if row.reason and row.reason.startswith("degraded"):
+                        row.reason = None
+                    db_session.add(row)
+                    await db_session.commit()
             reason = row.reason or None
             status = "available"
             if reason and reason.startswith("degraded"):
