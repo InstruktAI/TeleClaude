@@ -1,162 +1,131 @@
 # Review Findings: discord-adapter-integrity
 
-**Review round:** 1
+**Review round:** 2
 **Reviewer:** Claude (automated)
-**Date:** 2026-02-23
+**Date:** 2026-02-24
 **Branch:** `discord-adapter-integrity`
+
+---
+
+## Round 1 Resolution Status
+
+All 7 actionable findings from round 1 have been addressed:
+
+| #   | Finding                                         | Status                                                     | Commit     |
+| --- | ----------------------------------------------- | ---------------------------------------------------------- | ---------- |
+| 1   | Identity resolver "member" fallback unreachable | **Fixed** — `person_name` guard added                      | `ccd29fd8` |
+| 2   | Test patches resolver to return None            | **Fixed** — uses `IdentityContext` with `person_name=None` | `ccd29fd8` |
+| 3   | Implementation plan checkboxes unchecked        | **Fixed** — all 29/29 checked in committed state           | `ccd29fd8` |
+| 4   | Build gates unchecked                           | **Fixed** — all 9/9 checked in committed state             | `ccd29fd8` |
+| 5   | Stale forum ID not persisted to disk            | **Fixed** — `stale_cleared` flag + persist None            | `24b342b3` |
+| 6   | Silent fallback to help_desk                    | **Fixed** — `logger.warning` on unrecognized `parent_id`   | `8f469635` |
+| 7   | Missing infrastructure stale-clearing test      | **Fixed** — test added                                     | `c3fd2a38` |
+
+Round 1 suggestions #8-#10 remain as pre-existing improvement opportunities (not blocking).
+
+---
+
+## Verification of Fixes
+
+### Fix #1 — Identity resolution (traced with concrete values)
+
+**File:** `discord_adapter.py:1474`, cross-ref `identity.py:136-153`
+
+Production path for unregistered Discord user in project forum:
+
+1. `IdentityResolver.resolve("discord", ...)` → `IdentityContext(person_role="customer", person_name=None)`
+2. `identity and identity.person_name` → `True and None` → `None` (falsy)
+3. `(None) or "member"` → `"member"` ✓
+
+Production path for registered admin:
+
+1. `IdentityResolver.resolve("discord", ...)` → `IdentityContext(person_role="admin", person_name="Alice")`
+2. `identity and identity.person_name` → `True and "Alice"` → `"Alice"` (truthy)
+3. `identity.person_role` → `"admin"` ✓
+
+Help desk path: `forum_type == "help_desk"` → `human_role = "customer"` directly, no identity resolution ✓
+
+### Fix #2 — Test fidelity
+
+**File:** `test_discord_adapter.py:1113-1143`
+
+Test uses `IdentityContext(person_role="customer", person_name=None, platform="discord", platform_user_id="999001")` — matches `identity.py:149-153` production output for unregistered users. Asserts `human_role == "member"`. ✓
+
+### Fix #5 — Stale persistence chain
+
+**File:** `discord_adapter.py:430-445` → `560-585`
+
+When `stale_cleared=True` and `_find_or_create_forum` returns None → `project_changes.append((td.name, None))` → `_persist_project_forum_ids` calls `td.pop("discord_forum", None)` removing the stale key from config.yml. Restart cycle broken. ✓
 
 ---
 
 ## Critical
 
-### 1. Identity resolver "member" fallback is unreachable — unregistered Discord users get "customer" in project forums
-
-**File:** `teleclaude/adapters/discord_adapter.py:1451`
-**Traced to:** `teleclaude/core/identity.py:136-153`
-
-The requirement states: _"resolve identity (role from people config, not hardcoded 'customer')"_. The implementation at line 1451:
-
-```python
-identity = get_identity_resolver().resolve("discord", {"user_id": user_id, "discord_user_id": user_id})
-human_role = (identity.person_role if identity else None) or "member"
-```
-
-However, `IdentityResolver.resolve()` for `origin == "discord"` **never returns None**. For unregistered users, it returns `IdentityContext(person_role=CUSTOMER_ROLE, ...)` at `identity.py:149-153`. The guard `if identity else None` always evaluates to truthy, so `identity.person_role` is always `"customer"` for unknown users. The `"member"` default is dead code.
-
-**Impact:** Unregistered users posting in project forums get `human_role="customer"` — exactly the bug the requirements say to fix.
-
-**Fix:** Check `identity.person_name` (only populated for registered users):
-
-```python
-human_role = (identity.person_role if identity and identity.person_name else None) or "member"
-```
-
-### 2. Test `test_create_session_project_forum_defaults_member_when_unresolved` patches resolver incorrectly
-
-**File:** `tests/unit/test_discord_adapter.py:1077-1108`
-
-The test patches `get_identity_resolver` to return a resolver where `.resolve()` returns `None`. In production, `.resolve("discord", ...)` never returns `None` — it returns an `IdentityContext` with `person_role="customer"`. The test passes but does not reflect production behavior. It should use a resolver that returns `IdentityContext(person_role="customer", person_name=None, ...)` and verify the code correctly distinguishes registered from unregistered users.
-
-### 3. Implementation plan checkboxes all unchecked
-
-**File:** `todos/discord-adapter-integrity/implementation-plan.md`
-
-All task checkboxes remain `[ ]` (unchecked). Per review procedure, this triggers REQUEST CHANGES: _"Ensure all implementation-plan tasks are checked; otherwise, add a finding and set verdict to REQUEST CHANGES."_
-
-### 4. Build Gates section unchecked
-
-**File:** `todos/discord-adapter-integrity/quality-checklist.md`
-
-All Build Gates remain unchecked. Per review procedure: _"Validate Build section in quality-checklist.md is fully checked. If not, add a finding and set verdict to REQUEST CHANGES."_
+_None._
 
 ---
 
 ## Important
 
-### 5. `_ensure_project_forums` stale ID cleared in-memory but not persisted to disk
-
-**File:** `teleclaude/adapters/discord_adapter.py:421-430`
-
-When `_validate_channel_id` returns None, `td.discord_forum` is set to `None` in-memory. If `_find_or_create_forum` then also fails (returns None), the stale ID remains in `config.yml` (only successful new IDs are persisted via `project_changes`). This creates:
-
-- Split-brain: in-memory `None`, on-disk stale ID
-- Restart cycle: stale ID reloaded → validated → cleared → re-provision fails → repeat
-- Project absent from `_project_forum_map` → messages misrouted to help_desk
-
-**Fix:** Only clear `td.discord_forum` after successfully obtaining a replacement, or persist None explicitly.
-
-### 6. `_resolve_forum_context` silent fallback to help_desk without logging
-
-**File:** `teleclaude/adapters/discord_adapter.py:225`
-
-When `parent_id` doesn't match any known forum, the function silently returns `("help_desk", help_desk_dir)`. No warning is logged. Combined with finding #1, this means a team member in an unrecognized project forum gets `human_role="customer"` with zero trace.
-
-**Fix:** Add `logger.warning` when falling through with a non-None `parent_id` that matched nothing.
-
-### 7. Missing test coverage for `_ensure_discord_infrastructure` stale channel clearing
+### 1. Missing test for stale-cleared + failed re-provisioning → persists None
 
 **File:** `tests/unit/test_discord_adapter.py`
 
-Tests cover `_validate_channel_id` in isolation and `_ensure_project_forums` stale clearing, but `_ensure_discord_infrastructure` itself (which validates 6 infrastructure channels) has no test for stale ID clearing + re-provisioning. A bug in any of the per-channel stanzas would go undetected.
+The critical path from commit `24b342b3` — when a stale forum ID is detected, cleared, and re-provisioning fails (returns None) — persists None to break the restart cycle. This specific code path (`elif stale_cleared:` at line 442) has no dedicated test. A regression removing this branch would silently reintroduce the restart cycle bug.
+
+### 2. `_ensure_project_forums` test doesn't assert persistence was called
+
+**File:** `tests/unit/test_discord_adapter.py:830`
+
+`test_ensure_project_forums_clears_stale_id_and_reprovisions` verifies in-memory state (`td.discord_forum == 777`) and that `_find_or_create_forum` was called, but does not assert `_persist_project_forum_ids` was invoked. Since the stated purpose of this code path is to persist changes to config.yml, the persistence call should be verified.
 
 ---
 
 ## Suggestions
 
-### 8. `_validate_channel_id` cannot distinguish transient failures from genuine staleness
+### 3. `_resolve_forum_context` — no warning when all parent_id lookups return None
 
-**File:** `teleclaude/adapters/discord_adapter.py:267-275` → `_get_channel:1563-1566`
+**File:** `discord_adapter.py:225-234`
 
-`_get_channel` catches all exceptions at DEBUG level. `_validate_channel_id` treats any failure as "stale". During a transient Discord API outage, all channel IDs are judged stale, triggering full re-provisioning. Consider differentiating `NotFound` from other failures.
+The warning log fires only when `parent_id is not None`. When all three attribute lookups fail (`parent_id`, `parent.id`, `channel.id` all None), the message routes to help_desk with zero logging. Consider logging a warning for this edge case to catch structurally unexpected message objects.
 
-### 9. Arbitrary first-trusted-dir for all_sessions forum
+### 4. Transient Discord API failures vs genuine staleness (reiteration of round 1 S#8)
 
-**File:** `teleclaude/adapters/discord_adapter.py:218`
+**File:** `discord_adapter.py:1574-1590` → `276-284`
 
-`trusted[0].path` is used as project path for all_sessions messages. The order of `get_all_trusted_dirs()` is not defined as meaningful. Consider using `help_desk_dir` consistently or logging the selection.
+`_get_channel` catches all exceptions at DEBUG level. `_validate_channel_id` treats any failure as "stale." During a transient Discord outage, this could trigger unnecessary re-provisioning and — combined with the persist-None path — permanently remove valid forum IDs from config. Consider differentiating `discord.NotFound` from transient errors in a future hardening pass.
 
-### 10. Incomplete drop-path logging in `_handle_on_message`
+### 5. Test `_resolve_forum_context` via direct `parent_id` attribute (path 1)
 
-**File:** `teleclaude/adapters/discord_adapter.py:1094, 1373`
+**File:** `tests/unit/test_discord_adapter.py`
 
-The new entry-level DEBUG log at line 1045 is good. But messages dropped at line 1094 (no text/attachments) and line 1373 (no author ID) have no logging. These silent drops reduce debuggability.
+`FakeThread` sets `self.parent = SimpleNamespace(id=parent_id)` but has no `parent_id` attribute. All forum routing tests exercise path 2 (`parent.id`) but not path 1 (`channel.parent_id`), which is the primary path for real discord.py Thread objects. Consider adding a test with a channel object that has a direct `parent_id` attribute.
 
 ---
 
 ## Paradigm-Fit Assessment
 
-1. **Data flow:** The implementation correctly uses the existing data layer (`_get_channel`, `_find_or_create_forum`, `config.computer.get_all_trusted_dirs()`). No inline hacks or bypasses. The identity resolution follows the established pattern from the DM handler.
+1. **Data flow:** Uses the existing data layer (`_get_channel`, `_find_or_create_forum`, `config.computer.get_all_trusted_dirs()`). Identity resolution follows the established DM handler pattern. No inline hacks or bypasses.
 
-2. **Component reuse:** `_validate_channel_id` properly reuses `_get_channel`. The `_ensure_category` key parameter is a clean extension. `_resolve_forum_context` follows the adapter's `getattr` pattern for Discord objects.
+2. **Component reuse:** `_validate_channel_id` properly reuses `_get_channel`. The `_ensure_category` `key` parameter is a clean extension. `_resolve_forum_context` follows the adapter's `getattr` pattern for Discord objects. No copy-paste duplication.
 
-3. **Pattern consistency:** The validation-before-trust pattern is applied consistently across all 6 infrastructure channels and project forums. The `_create_session_for_message` extension with keyword args preserves backward compatibility.
-
----
-
-## Verdict: REQUEST CHANGES
-
-**Blocking issues:**
-
-- Finding #1 (identity resolution bug — the core requirement is not met)
-- Finding #2 (test masks the bug by patching incorrectly)
-- Finding #3 (implementation plan checkboxes unchecked)
-- Finding #4 (build gates unchecked)
+3. **Pattern consistency:** Validation-before-trust applied consistently across all 6 infrastructure channels and project forums. `_create_session_for_message` extended with keyword args preserving backward compatibility. Per-computer category slug generation is clean (`projects_{computer_name_slug}`).
 
 ---
 
-## Fixes Applied
+## Requirements Traceability
 
-### Finding #1 — Identity resolver fallback unreachable
+| Requirement                                           | Implementation                                                                                           | Verified |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------- |
+| Stale IDs cleared and re-provisioned                  | `_validate_channel_id` + validation calls in `_ensure_discord_infrastructure` + `_ensure_project_forums` | ✓        |
+| Per-computer project categories                       | `f"Projects - {config.computer.name}"` with clean slug `key` param                                       | ✓        |
+| Identity from people config, not hardcoded "customer" | `person_name` guard in `_create_session_for_message`                                                     | ✓        |
+| Project path from forum mapping                       | `_resolve_forum_context` reverse lookup in `_project_forum_map`                                          | ✓        |
+| Help desk retains customer role                       | `forum_type == "help_desk"` branch → `human_role = "customer"`                                           | ✓        |
+| Entry-level DEBUG logging                             | `[DISCORD MSG]` log at top of `_handle_on_message`                                                       | ✓        |
 
-**Fix:** Check `identity.person_name` to distinguish registered users from anonymous visitors. `IdentityResolver.resolve()` for discord origin never returns `None`; unknown users get `IdentityContext(person_role="customer", person_name=None)`. Checking `person_name` makes the `"member"` default reachable.
-**Commit:** `ccd29fd8`
+---
 
-### Finding #2 — Test patches resolver to return None (incorrect)
+## Verdict: APPROVE
 
-**Fix:** Import `IdentityContext` in test module. Change mock resolver to return `IdentityContext(person_role="customer", person_name=None, ...)` reflecting true production behavior. Test now validates the person_name guard correctly.
-**Commit:** `ccd29fd8`
-
-### Finding #3 — Implementation plan checkboxes unchecked
-
-**Fix:** All `[ ]` checkboxes in `implementation-plan.md` marked `[x]`.
-**Commit:** `ccd29fd8`
-
-### Finding #4 — Build Gates section unchecked
-
-**Fix:** All Build Gates in `quality-checklist.md` marked `[x]`.
-**Commit:** `ccd29fd8`
-
-### Finding #5 — Stale forum ID cleared in-memory but not persisted to disk
-
-**Fix:** Track `stale_cleared` flag per iteration. When no replacement forum is found after clearing a stale ID, append `(name, None)` to `project_changes`. Update `_persist_project_forum_ids` to remove the `discord_forum` key for `None` entries, preventing the stale-reload restart cycle.
-**Commit:** `24b342b3`
-
-### Finding #6 — Silent fallback to help_desk without logging
-
-**Fix:** Add `logger.warning` in `_resolve_forum_context` when a non-None `parent_id` matches no known forum. Logs the unrecognized ID alongside all known channel IDs.
-**Commit:** `8f469635`
-
-### Finding #7 — Missing test for \_ensure_discord_infrastructure stale clearing
-
-**Fix:** Add `test_ensure_discord_infrastructure_clears_stale_channel_and_reprovisions`. Sets a stale `_help_desk_channel_id`, verifies it is cleared and Customer Sessions forum is re-provisioned with the new ID.
-**Commit:** `c3fd2a38`
+All round 1 critical and important findings are resolved. The implementation meets all stated requirements. The two Important findings are test coverage improvements — real gaps worth addressing, but not blocking for the behavioral correctness of the delivered code. The code is well-structured, follows existing patterns, and introduces no regressions.
