@@ -1,9 +1,15 @@
-build: pending
-review: pending
+phase: in_progress
+build: started
+review: changes_requested
 deferrals_processed: false
 breakdown:
   assessed: false
   todos: []
+review_round: 2
+max_review_rounds: 3
+review_baseline_commit: 9799be77a7d3c57f69766e2cf0c3f1a72942ad22
+unresolved_findings: []
+resolved_findings: []
 dor:
   last_assessed_at: '2026-02-23T12:00:00Z'
   score: 8
@@ -13,9 +19,4 @@ dor:
   actions_taken:
     requirements_updated: false
     implementation_plan_updated: false
-review_round: 0
-max_review_rounds: 3
-review_baseline_commit: ''
-unresolved_findings: []
-resolved_findings: []
 schema_version: 1
