@@ -40,19 +40,19 @@ Add clickable agent pills to the TUI StatusBar by: (1) adding `degraded_until` t
 
 **File(s):** `teleclaude/api_server.py`
 
-- [ ] Add `POST /agents/{agent}/status` endpoint accepting JSON body `{ "status": "available" | "degraded" | "unavailable", "reason": str | null, "duration_minutes": int | null }`
-- [ ] For available: call `db.mark_agent_available(agent)`
-- [ ] For degraded: compute `degraded_until` from `duration_minutes` (default 60), call `db.mark_agent_degraded(agent, reason, degraded_until=degraded_until)`
-- [ ] For unavailable: compute `unavailable_until` from `duration_minutes` (default 60), call `db.mark_agent_unavailable(agent, unavailable_until, reason)`
-- [ ] Re-fetch and return the updated `AgentAvailabilityDTO` for the agent
+- [x] Add `POST /agents/{agent}/status` endpoint accepting JSON body `{ "status": "available" | "degraded" | "unavailable", "reason": str | null, "duration_minutes": int | null }`
+- [x] For available: call `db.mark_agent_available(agent)`
+- [x] For degraded: compute `degraded_until` from `duration_minutes` (default 60), call `db.mark_agent_degraded(agent, reason, degraded_until=degraded_until)`
+- [x] For unavailable: compute `unavailable_until` from `duration_minutes` (default 60), call `db.mark_agent_unavailable(agent, unavailable_until, reason)`
+- [x] Re-fetch and return the updated `AgentAvailabilityDTO` for the agent
 
 ### Task 2.2: Add API client method
 
 **File(s):** `teleclaude/cli/api_client.py`
 
-- [ ] Add `async def set_agent_status(self, agent: str, status: str, reason: str | None = None, duration_minutes: int = 60) -> AgentAvailabilityInfo`
-- [ ] POST to `/agents/{agent}/status` with the appropriate JSON body
-- [ ] Parse and return the updated availability info
+- [x] Add `async def set_agent_status(self, agent: str, status: str, reason: str | None = None, duration_minutes: int = 60) -> AgentAvailabilityInfo`
+- [x] POST to `/agents/{agent}/status` with the appropriate JSON body
+- [x] Parse and return the updated availability info
 
 ## Phase 3: TUI Click Handling
 

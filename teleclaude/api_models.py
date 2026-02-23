@@ -219,6 +219,16 @@ class AgentAvailabilityDTO(BaseModel):  # type: ignore[explicit-any]
     error: str | None = None
 
 
+class SetAgentStatusRequest(BaseModel):  # type: ignore[explicit-any]
+    """Request to set agent status."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["available", "degraded", "unavailable"]
+    reason: str | None = None
+    duration_minutes: int | None = None
+
+
 # WebSocket Event DTOs
 
 
