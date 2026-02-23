@@ -235,15 +235,25 @@ class DiscordAdapter(UiAdapter):
     # Discord Infrastructure Auto-Provisioning
     # =========================================================================
 
+    async def _validate_channel_id(self, channel_id: int | None) -> int | None:
+        """Return channel_id if it resolves to a live Discord channel, None if stale."""
+        if channel_id is None:
+            return None
+        ch = await self._get_channel(channel_id)
+        if ch is None:
+            logger.warning("Stored Discord channel ID %s is stale (not found), re-provisioning", channel_id)
+            return None
+        return channel_id
+
     async def _ensure_discord_infrastructure(self) -> None:
         """Auto-provision the full Discord channel structure.
 
         Creates three categories with their channels:
         - Operations: #announcements (text), #general (text)
         - Help Desk: #customer-sessions (forum), #escalations (forum), #operator-chat (text)
-        - Projects: #unknown (catch-all forum), per-project forums for session routing
+        - Projects - {computer}: #unknown (catch-all forum), per-project forums for session routing
 
-        Idempotent: skips any channel that already exists.
+        Idempotent: validates stored IDs before trusting them; clears stale IDs and re-provisions.
         Persists all created IDs to config.yml.
         """
         if self._client is None or self._guild_id is None:
@@ -261,12 +271,14 @@ class DiscordAdapter(UiAdapter):
         # --- Category: Operations ---
         ops_cat = await self._ensure_category(guild, "Operations", existing_cats, cat_changes)
 
+        self._announcements_channel_id = await self._validate_channel_id(self._announcements_channel_id)
         if self._announcements_channel_id is None:
             ch_id = await self._find_or_create_text_channel(guild, ops_cat, "announcements")
             if ch_id is not None:
                 self._announcements_channel_id = ch_id
                 changes["announcements_channel_id"] = ch_id
 
+        self._general_channel_id = await self._validate_channel_id(self._general_channel_id)
         if self._general_channel_id is None:
             ch_id = await self._find_or_create_text_channel(guild, ops_cat, "general")
             if ch_id is not None:
@@ -276,12 +288,14 @@ class DiscordAdapter(UiAdapter):
         # --- Category: Help Desk ---
         hd_cat = await self._ensure_category(guild, "Help Desk", existing_cats, cat_changes)
 
+        self._help_desk_channel_id = await self._validate_channel_id(self._help_desk_channel_id)
         if self._help_desk_channel_id is None:
             forum_id = await self._find_or_create_forum(guild, hd_cat, "Customer Sessions", "Customer support sessions")
             if forum_id is not None:
                 self._help_desk_channel_id = forum_id
                 changes["help_desk_channel_id"] = forum_id
 
+        self._escalation_channel_id = await self._validate_channel_id(self._escalation_channel_id)
         if self._escalation_channel_id is None:
             forum_id = await self._find_or_create_forum(
                 guild, hd_cat, "Escalations", "Human-admin escalation relay threads"
@@ -290,16 +304,25 @@ class DiscordAdapter(UiAdapter):
                 self._escalation_channel_id = forum_id
                 changes["escalation_channel_id"] = forum_id
 
+        self._operator_chat_channel_id = await self._validate_channel_id(self._operator_chat_channel_id)
         if self._operator_chat_channel_id is None:
             ch_id = await self._find_or_create_text_channel(guild, hd_cat, "operator-chat")
             if ch_id is not None:
                 self._operator_chat_channel_id = ch_id
                 changes["operator_chat_channel_id"] = ch_id
 
-        # --- Category: Projects (always enabled when Discord is configured) ---
-        proj_cat = await self._ensure_category(guild, "Projects", existing_cats, cat_changes)
+        # --- Category: Projects - {computer} (per-computer, always enabled when Discord is configured) ---
+        computer_name_slug = config.computer.name.lower().replace("-", "_").replace(" ", "_")
+        proj_cat = await self._ensure_category(
+            guild,
+            f"Projects - {config.computer.name}",
+            existing_cats,
+            cat_changes,
+            key=f"projects_{computer_name_slug}",
+        )
 
         # "Unknown" is the catch-all forum for sessions that don't match any project
+        self._all_sessions_channel_id = await self._validate_channel_id(self._all_sessions_channel_id)
         if self._all_sessions_channel_id is None:
             forum_id = await self._find_or_create_forum(
                 guild, proj_cat, "Unknown", "Sessions from unrecognized project paths"
@@ -326,9 +349,11 @@ class DiscordAdapter(UiAdapter):
         name: str,
         existing: dict[str, int],
         cat_changes: dict[str, int],
+        *,
+        key: str | None = None,
     ) -> object | None:
         """Resolve a category: from config cache, by name search, or create new."""
-        key = name.lower().replace(" ", "_")
+        key = key if key is not None else name.lower().replace(" ", "_")
 
         # Check if we already have the ID cached
         cached_id = existing.get(key)
@@ -360,13 +385,16 @@ class DiscordAdapter(UiAdapter):
         logger.info("Discord project forum map: %d entries", len(self._project_forum_map))
 
     async def _ensure_project_forums(self, guild: object, category: object | None) -> None:
-        """Create a forum for each trusted dir that lacks a discord_forum ID."""
+        """Create a forum for each trusted dir that lacks a valid discord_forum ID."""
         trusted_dirs = config.computer.get_all_trusted_dirs()
         project_changes: list[tuple[str, int]] = []
 
         for td in trusted_dirs:
             if td.discord_forum is not None:
-                continue
+                if await self._validate_channel_id(td.discord_forum) is None:
+                    td.discord_forum = None
+                else:
+                    continue
             forum_id = await self._find_or_create_forum(guild, category, td.name, td.desc or f"Sessions for {td.name}")
             if forum_id is not None:
                 td.discord_forum = forum_id

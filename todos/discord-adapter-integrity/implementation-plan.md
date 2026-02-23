@@ -14,10 +14,10 @@ Three changes to the Discord adapter: infrastructure hardening, per-computer cat
 
 The `_ensure_category` method already validates cached IDs (lines 331-334): fetches the channel, proceeds to find-or-create if it returns None. Extend this pattern to all channel ID guards in `_ensure_discord_infrastructure`.
 
-- [ ] For each `if self._xxx_channel_id is None:` guard, add a validation step: if the ID is non-null, call `_get_channel(id)`. If it returns None, log a warning and clear the stale ID so provisioning proceeds.
-- [ ] Extract a helper: `_validate_channel_id(channel_id) -> int | None` that returns the ID if it resolves, None if stale.
-- [ ] Apply to: `_announcements_channel_id`, `_general_channel_id`, `_help_desk_channel_id`, `_escalation_channel_id`, `_operator_chat_channel_id`, `_all_sessions_channel_id`.
-- [ ] In `_ensure_project_forums`, change the guard `if td.discord_forum is not None: continue` to also validate the stored ID: call `_validate_channel_id(td.discord_forum)` and if it returns None, clear `td.discord_forum` so the loop body re-creates the forum.
+- [x] For each `if self._xxx_channel_id is None:` guard, add a validation step: if the ID is non-null, call `_get_channel(id)`. If it returns None, log a warning and clear the stale ID so provisioning proceeds.
+- [x] Extract a helper: `_validate_channel_id(channel_id) -> int | None` that returns the ID if it resolves, None if stale.
+- [x] Apply to: `_announcements_channel_id`, `_general_channel_id`, `_help_desk_channel_id`, `_escalation_channel_id`, `_operator_chat_channel_id`, `_all_sessions_channel_id`.
+- [x] In `_ensure_project_forums`, change the guard `if td.discord_forum is not None: continue` to also validate the stored ID: call `_validate_channel_id(td.discord_forum)` and if it returns None, clear `td.discord_forum` so the loop body re-creates the forum.
 
 ---
 
