@@ -159,7 +159,7 @@ No new npm packages required. `next-themes` is already installed.
 
 **File(s):** `frontend/app/layout.tsx` or `frontend/components/providers/ThemeProvider.tsx`
 
-- [ ] Wrap the app with the `AgentTheming` provider inside the `ThemeProvider`.
+- [x] Wrap the app with the `AgentTheming` provider inside the `ThemeProvider`.
 
 ---
 
