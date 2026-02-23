@@ -84,8 +84,8 @@ No new npm packages required. `next-themes` is already installed.
 
 **File(s):** `frontend/lib/theme/css-variables.ts`
 
-- [ ] Add `--user-bubble-bg` and `--user-bubble-text` to the output of `generateCSSVariables()`.
-- [ ] Verify the generated map includes all agent vars plus the new user vars.
+- [x] Add `--user-bubble-bg` and `--user-bubble-text` to the output of `generateCSSVariables()`.
+- [x] Verify the generated map includes all agent vars plus the new user vars.
 
 ---
 

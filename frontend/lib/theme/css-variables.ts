@@ -13,6 +13,7 @@ import {
   AGENT_NAMES,
   ANIMATION_PALETTES,
   THEME_TOKENS,
+  USER_COLORS,
 } from './tokens.js'
 
 // ---------------------------------------------------------------------------
@@ -32,6 +33,7 @@ import {
  *   - Border colors (default, subtle, modal, input)
  *   - Selection colors (base, surface, elevated)
  *   - Status colors (active, idle, error, ready, warning)
+ *   - User colors (bubble-bg, bubble-text)
  *   - Misc (banner, tab-line, peaceful, status-bar-fg)
  *   - Animation palettes (indexed)
  */
@@ -85,6 +87,10 @@ export function generateCSSVariables(mode: ThemeMode): Record<string, string> {
   vars['--peaceful-normal'] = tokens.peaceful.normal
   vars['--peaceful-muted'] = tokens.peaceful.muted
   vars['--status-bar-fg'] = tokens.statusBarFg
+
+  // -- User colors (mode-independent) ---------------------------------------
+  vars['--user-bubble-bg'] = USER_COLORS.bubbleBg
+  vars['--user-bubble-text'] = USER_COLORS.bubbleText
 
   // -- Animation palettes ---------------------------------------------------
   for (const [paletteName, colors] of Object.entries(ANIMATION_PALETTES)) {
