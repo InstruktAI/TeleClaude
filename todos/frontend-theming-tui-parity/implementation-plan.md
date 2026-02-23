@@ -139,12 +139,12 @@ No new npm packages required. `next-themes` is already installed.
 
 **File(s):** `frontend/hooks/useAgentTheming.ts`
 
-- [ ] Create a React context that exposes `{ isThemed: boolean, setThemed: (on: boolean) => void }`.
-- [ ] Default to `false` (peaceful mode).
-- [ ] On mount, read the daemon API settings (`pane_theming_mode`) and derive:
+- [x] Create a React context that exposes `{ isThemed: boolean, setThemed: (on: boolean) => void }`.
+- [x] Default to `false` (peaceful mode).
+- [x] On mount, read the daemon API settings (`pane_theming_mode`) and derive:
   - `"off"` → `false`
   - `"agent_plus"` (or any other value) → `true`
-- [ ] On change, persist to daemon API via settings PATCH (`pane_theming_mode: isThemed ? "agent_plus" : "off"`).
+- [x] On change, persist to daemon API via settings PATCH (`pane_theming_mode: isThemed ? "agent_plus" : "off"`).
 
 ### Task 4.2: Create useAgentColors hook
 
