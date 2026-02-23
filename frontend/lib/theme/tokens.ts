@@ -149,6 +149,21 @@ export function safeAgent(agent: string): AgentType {
 }
 
 // ---------------------------------------------------------------------------
+// User colors
+// ---------------------------------------------------------------------------
+
+/**
+ * User message bubble colors.
+ *
+ * Mode-independent orange accent that gives user messages a distinctive
+ * identity in the chat interface.
+ */
+export const USER_COLORS = {
+  bubbleBg: '#e07030',
+  bubbleText: '#ffffff',
+} as const
+
+// ---------------------------------------------------------------------------
 // Animation palettes
 // ---------------------------------------------------------------------------
 

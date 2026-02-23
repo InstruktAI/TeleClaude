@@ -77,8 +77,8 @@ No new npm packages required. `next-themes` is already installed.
 
 **File(s):** `frontend/lib/theme/tokens.ts`
 
-- [ ] Add a `USER_COLORS` export with `bubbleBg` (`#e07030`) and `bubbleText` (`#ffffff`).
-- [ ] These values are mode-independent (same orange in dark and light).
+- [x] Add a `USER_COLORS` export with `bubbleBg` (`#e07030`) and `bubbleText` (`#ffffff`).
+- [x] These values are mode-independent (same orange in dark and light).
 
 ### Task 2.2: Extend CSS variable generation with user colors
 
