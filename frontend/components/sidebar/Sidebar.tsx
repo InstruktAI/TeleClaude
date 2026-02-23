@@ -3,6 +3,7 @@
 import { Suspense } from "react";
 import { Plus } from "lucide-react";
 import { SessionList } from "./SessionList";
+import { UserButton } from "./UserButton";
 import { useSidebar } from "./SidebarProvider";
 import { useWS } from "@/lib/ws/WebSocketProvider";
 
@@ -79,6 +80,11 @@ export function Sidebar({ onNewSession }: SidebarProps) {
           >
             <SessionList />
           </Suspense>
+        </div>
+
+        {/* Footer */}
+        <div className="mt-auto border-t p-2">
+          <UserButton />
         </div>
       </aside>
     </>

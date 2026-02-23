@@ -6,9 +6,7 @@
  * Peaceful mode: neutral colors for all bubbles and sidebar
  * Themed mode: agent-colored assistant bubbles, orange user bubbles, colored sidebar
  *
- * State persists to daemon API via the `pane_theming_mode` setting:
- *   - off → peaceful (false)
- *   - agent_plus → themed (true)
+ * State persists strictly to browser localStorage.
  */
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
@@ -16,11 +14,13 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 interface AgentThemingContextValue {
   /** True = themed mode (agent colors visible), False = peaceful mode (neutral) */
   isThemed: boolean
-  /** Toggle theming mode and persist to daemon API */
+  /** Toggle theming mode and persist to localStorage */
   setThemed: (themed: boolean) => void
 }
 
 const AgentThemingContext = createContext<AgentThemingContextValue | undefined>(undefined)
+
+const STORAGE_KEY = 'teleclaude_agent_theming'
 
 interface AgentThemingProviderProps {
   children: ReactNode
@@ -28,65 +28,31 @@ interface AgentThemingProviderProps {
 
 /**
  * Provider for peaceful vs themed mode state.
- *
- * On mount: reads pane_theming_mode from daemon API
- * On change: persists to daemon API via PATCH /api/settings
+ * Persists strictly to localStorage.
  */
 export function AgentThemingProvider({ children }: AgentThemingProviderProps) {
   const [isThemed, setIsThemed] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
 
-  // Read initial state from daemon API on mount
+  // Read initial state from localStorage on mount
   useEffect(() => {
-    async function loadThemingMode() {
-      try {
-        const res = await fetch('/api/settings')
-        if (!res.ok) {
-          console.warn('Failed to load theming mode from daemon API, using default (peaceful)')
-          setIsInitialized(true)
-          return
-        }
-
-        const data = await res.json()
-        const mode = data.pane_theming_mode
-
-        // Map daemon API values to boolean:
-        //   "off" → false (peaceful)
-        //   "agent_plus" (or any other value) → true (themed)
-        setIsThemed(mode !== 'off')
-        setIsInitialized(true)
-      } catch (err) {
-        console.error('Error loading theming mode:', err)
-        setIsInitialized(true)
-      }
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored !== null) {
+      setIsThemed(stored === 'true')
+    } else {
+      // Default to themed mode if nothing is set
+      setIsThemed(true)
     }
-
-    loadThemingMode()
+    setIsInitialized(true)
   }, [])
 
-  // Persist theming mode changes to daemon API
-  const setThemed = async (themed: boolean) => {
+  // Update state and localStorage
+  const setThemed = (themed: boolean) => {
     setIsThemed(themed)
-
-    // Map boolean to daemon API values
-    const mode = themed ? 'agent_plus' : 'off'
-
-    try {
-      const res = await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pane_theming_mode: mode }),
-      })
-
-      if (!res.ok) {
-        console.error('Failed to persist theming mode to daemon API')
-      }
-    } catch (err) {
-      console.error('Error persisting theming mode:', err)
-    }
+    localStorage.setItem(STORAGE_KEY, String(themed))
   }
 
-  // Don't render children until initial state is loaded
+  // Avoid flash of neutral state during initialization
   if (!isInitialized) {
     return null
   }
@@ -100,8 +66,6 @@ export function AgentThemingProvider({ children }: AgentThemingProviderProps) {
 
 /**
  * Hook to access theming mode and toggle function.
- *
- * Must be used inside AgentThemingProvider.
  */
 export function useAgentTheming(): AgentThemingContextValue {
   const context = useContext(AgentThemingContext)
