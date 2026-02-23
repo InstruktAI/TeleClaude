@@ -25,6 +25,7 @@ from telegram import (
     Message,
     Update,
 )
+from telegram.constants import ChatAction
 from telegram.error import BadRequest
 from telegram.ext import (
     Application,
@@ -189,6 +190,17 @@ class TelegramAdapter(
         meta = session.get_metadata().get_ui().get_telegram()
         meta.output_message_id = None
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+
+    async def send_typing_indicator(self, session: "Session") -> None:
+        """Send typing indicator to Telegram topic."""
+        topic_id = session.get_metadata().get_ui().get_telegram().topic_id
+        if not topic_id:
+            return
+        await self.bot.send_chat_action(
+            chat_id=self.supergroup_id,
+            action=ChatAction.TYPING,
+            message_thread_id=topic_id,
+        )
 
     async def ensure_channel(self, session: Session) -> Session:
         # Telegram is admin/member only — skip customer sessions entirely.
