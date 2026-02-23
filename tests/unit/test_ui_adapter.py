@@ -728,3 +728,159 @@ class TestSendOutputUpdateSuppression:
         assert result is None
         assert len(adapter._send_calls) == 0
         assert len(adapter._edit_calls) == 0
+
+
+@pytest.mark.asyncio
+class TestTypingIndicator:
+    """Test typing indicator call site and behavior."""
+
+    async def test_dispatch_command_calls_typing_indicator_for_normal_session(self, test_db):
+        """_dispatch_command calls send_typing_indicator when lifecycle_status != 'headless'."""
+        adapter = MockUiAdapter()
+        # Mock client methods that _dispatch_command calls
+        adapter.client.pre_handle_command = AsyncMock()
+        adapter.client.post_handle_command = AsyncMock()
+        adapter.client.broadcast_command_action = AsyncMock()
+        adapter.client.adapters = {"telegram": adapter}
+
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        # Ensure lifecycle_status is NOT headless
+        await test_db.update_session(session.session_id, lifecycle_status="active")
+        session = await test_db.get_session(session.session_id)
+
+        # Mock send_typing_indicator to track calls
+        typing_called = False
+
+        async def mock_typing(s):
+            nonlocal typing_called
+            typing_called = True
+
+        adapter.send_typing_indicator = mock_typing
+
+        # Mock handler
+        handler_called = False
+
+        async def mock_handler():
+            nonlocal handler_called
+            handler_called = True
+            return "handler-result"
+
+        # Patch db module to use test_db
+        with patch("teleclaude.adapters.ui_adapter.db", test_db):
+            # Call _dispatch_command
+            result = await adapter._dispatch_command(
+                session,
+                "msg-123",
+                MessageMetadata(origin="telegram"),
+                "test_command",
+                {"test": "payload"},
+                mock_handler,
+            )
+
+        assert typing_called, "send_typing_indicator should be called for normal sessions"
+        assert handler_called, "Handler should be executed"
+        assert result == "handler-result"
+
+    async def test_dispatch_command_skips_typing_indicator_for_headless_session(self, test_db):
+        """_dispatch_command skips send_typing_indicator when lifecycle_status == 'headless'."""
+        adapter = MockUiAdapter()
+        # Mock client methods that _dispatch_command calls
+        adapter.client.pre_handle_command = AsyncMock()
+        adapter.client.post_handle_command = AsyncMock()
+        adapter.client.broadcast_command_action = AsyncMock()
+        adapter.client.adapters = {"telegram": adapter}
+
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        # Set lifecycle_status to headless
+        await test_db.update_session(session.session_id, lifecycle_status="headless")
+        session = await test_db.get_session(session.session_id)
+
+        # Mock send_typing_indicator to track calls
+        typing_called = False
+
+        async def mock_typing(s):
+            nonlocal typing_called
+            typing_called = True
+
+        adapter.send_typing_indicator = mock_typing
+
+        # Mock handler
+        handler_called = False
+
+        async def mock_handler():
+            nonlocal handler_called
+            handler_called = True
+            return "handler-result"
+
+        # Patch db module to use test_db
+        with patch("teleclaude.adapters.ui_adapter.db", test_db):
+            # Call _dispatch_command
+            result = await adapter._dispatch_command(
+                session,
+                "msg-123",
+                MessageMetadata(origin="telegram"),
+                "test_command",
+                {"test": "payload"},
+                mock_handler,
+            )
+
+        assert not typing_called, "send_typing_indicator should NOT be called for headless sessions"
+        assert handler_called, "Handler should still be executed"
+        assert result == "handler-result"
+
+    async def test_dispatch_command_continues_on_typing_indicator_failure(self, test_db):
+        """_dispatch_command continues executing handler even if send_typing_indicator raises exception."""
+        adapter = MockUiAdapter()
+        # Mock client methods that _dispatch_command calls
+        adapter.client.pre_handle_command = AsyncMock()
+        adapter.client.post_handle_command = AsyncMock()
+        adapter.client.broadcast_command_action = AsyncMock()
+        adapter.client.adapters = {"telegram": adapter}
+
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        await test_db.update_session(session.session_id, lifecycle_status="active")
+        session = await test_db.get_session(session.session_id)
+
+        # Mock send_typing_indicator to raise exception
+        async def failing_typing(s):
+            raise RuntimeError("Typing indicator failed")
+
+        adapter.send_typing_indicator = failing_typing
+
+        # Mock handler
+        handler_called = False
+
+        async def mock_handler():
+            nonlocal handler_called
+            handler_called = True
+            return "handler-result"
+
+        # Patch db module to use test_db
+        with patch("teleclaude.adapters.ui_adapter.db", test_db):
+            # Call _dispatch_command - should not raise exception
+            result = await adapter._dispatch_command(
+                session,
+                "msg-123",
+                MessageMetadata(origin="telegram"),
+                "test_command",
+                {"test": "payload"},
+                mock_handler,
+            )
+
+        assert handler_called, "Handler should execute despite typing indicator failure"
+        assert result == "handler-result"

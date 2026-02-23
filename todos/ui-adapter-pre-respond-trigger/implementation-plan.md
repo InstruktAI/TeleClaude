@@ -10,8 +10,8 @@ Add a `send_typing_indicator` hook to the UI adapter hierarchy, called from `_di
 
 **File(s):** `teleclaude/adapters/ui_adapter.py`
 
-- [ ] Add `async def send_typing_indicator(self, session: "Session") -> None` as a no-op default method (below `_pre_handle_user_input`).
-- [ ] In `_dispatch_command`, after the `pre_handle_command` call and before `result = await handler()`, insert a guarded call:
+- [x] Add `async def send_typing_indicator(self, session: "Session") -> None` as a no-op default method (below `_pre_handle_user_input`).
+- [x] In `_dispatch_command`, after the `pre_handle_command` call and before `result = await handler()`, insert a guarded call:
   ```python
   # Send typing indicator (fire-and-forget, never blocks processing)
   if session.lifecycle_status != "headless":
@@ -25,8 +25,8 @@ Add a `send_typing_indicator` hook to the UI adapter hierarchy, called from `_di
 
 **File(s):** `teleclaude/adapters/telegram_adapter.py`
 
-- [ ] Import `ChatAction` from `telegram.constants`.
-- [ ] Override `send_typing_indicator`:
+- [x] Import `ChatAction` from `telegram.constants`.
+- [x] Override `send_typing_indicator`:
   ```python
   async def send_typing_indicator(self, session: "Session") -> None:
       topic_id = session.get_metadata().get_ui().get_telegram().topic_id
@@ -43,7 +43,7 @@ Add a `send_typing_indicator` hook to the UI adapter hierarchy, called from `_di
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Override `send_typing_indicator`:
+- [x] Override `send_typing_indicator`:
   ```python
   async def send_typing_indicator(self, session: "Session") -> None:
       discord_meta = session.get_metadata().get_ui().get_discord()
@@ -60,20 +60,20 @@ Add a `send_typing_indicator` hook to the UI adapter hierarchy, called from `_di
 
 ### Task 2.1: Tests
 
-- [ ] Add unit test in `tests/unit/` verifying `_dispatch_command` calls `send_typing_indicator` when `lifecycle_status != "headless"`.
-- [ ] Add unit test verifying `send_typing_indicator` is NOT called for headless sessions.
-- [ ] Add unit test verifying that an exception in `send_typing_indicator` does not prevent the command handler from executing.
-- [ ] Run `make test`
+- [x] Add unit test in `tests/unit/` verifying `_dispatch_command` calls `send_typing_indicator` when `lifecycle_status != "headless"`.
+- [x] Add unit test verifying `send_typing_indicator` is NOT called for headless sessions.
+- [x] Add unit test verifying that an exception in `send_typing_indicator` does not prevent the command handler from executing.
+- [x] Run `make test`
 
 ### Task 2.2: Quality Checks
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
+- [x] Run `make lint`
+- [x] Verify no unchecked implementation tasks remain
 
 ---
 
 ## Phase 3: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)

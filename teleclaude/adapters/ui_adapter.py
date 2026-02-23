@@ -695,6 +695,17 @@ class UiAdapter(BaseAdapter):
         """
         # User input messages (pending_deletions) cleaned via event handler, not here
 
+    async def send_typing_indicator(self, session: "Session") -> None:
+        """Send platform-specific typing indicator.
+
+        Override in subclasses to implement platform typing API.
+        Default implementation is a no-op.
+
+        Args:
+            session: Session object
+        """
+        # No-op default implementation
+
     async def _dispatch_command(
         self,
         session: "Session",
@@ -710,6 +721,13 @@ class UiAdapter(BaseAdapter):
 
         if message_id:
             await self.client.pre_handle_command(session, metadata.origin)
+
+        # Send typing indicator (fire-and-forget, never blocks processing)
+        if session.lifecycle_status != "headless":
+            try:
+                await self.send_typing_indicator(session)
+            except Exception:
+                logger.debug("Typing indicator failed for session %s", session.session_id[:8], exc_info=True)
 
         result = await handler()
 

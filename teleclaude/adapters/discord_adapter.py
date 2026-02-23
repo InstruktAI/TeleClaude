@@ -542,6 +542,19 @@ class DiscordAdapter(UiAdapter):
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         logger.debug("Cleared discord output_message_id: session=%s", session.session_id[:8])
 
+    async def send_typing_indicator(self, session: "Session") -> None:
+        """Send typing indicator to Discord thread."""
+        discord_meta = session.get_metadata().get_ui().get_discord()
+        if discord_meta.thread_id is None:
+            return
+        thread = await self._get_channel(discord_meta.thread_id)
+        if thread is None:
+            return
+        trigger_typing_fn = getattr(thread, "trigger_typing", None)
+        if trigger_typing_fn and callable(trigger_typing_fn):
+            typing_fn = self._require_async_callable(trigger_typing_fn, label="Discord thread trigger_typing")
+            await typing_fn()
+
     async def create_channel(self, session: "Session", title: str, metadata: "ChannelMetadata") -> str:
         _ = metadata
         if self._client is None:
