@@ -229,7 +229,7 @@ class DiscordAdapter(UiAdapter):
         - Operations: #announcements (text), #general (text)
         - Sessions: #all-sessions (forum)
         - Help Desk: #customer-sessions (forum), #escalations (forum), #operator-chat (text)
-        - Projects: per-project forums (behind discord_project_forum_mirroring flag)
+        - Projects: per-project forums for session routing
 
         Idempotent: skips any channel that already exists.
         Persists all created IDs to config.yml.
