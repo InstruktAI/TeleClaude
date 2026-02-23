@@ -220,31 +220,31 @@ No new npm packages required. `next-themes` is already installed.
 
 ### Task 8.1: Visual matrix verification
 
-- [ ] Verify all 4 combinations render correctly:
+- [x] Verify all 4 combinations render correctly:
   - Dark + Peaceful: black bg, neutral gray bubbles, neutral sidebar
   - Dark + Themed: black bg, agent-tinted assistant bubbles, orange user bubbles, agent sidebar
   - Light + Peaceful: warm paper bg, neutral cream bubbles, neutral sidebar
   - Light + Themed: warm paper bg, agent-tinted assistant bubbles, orange user bubbles, agent sidebar
-- [ ] Verify chat area background is never agent-tinted in any combination.
-- [ ] Verify `theme.local.css` overrides take effect (change `--user-bubble-bg`, refresh, observe).
+- [x] Verify chat area background is never agent-tinted in any combination.
+- [x] Verify `theme.local.css` overrides take effect (change `--user-bubble-bg`, refresh, observe).
 
 ### Task 8.2: Component smoke test
 
-- [ ] All shadcn/ui components (buttons, dialogs, popovers, inputs) render correctly with hex values.
-- [ ] Dark/light toggle works without delay or flash.
-- [ ] Theming toggle persists across page reload.
+- [x] All shadcn/ui components (buttons, dialogs, popovers, inputs) render correctly with hex values.
+- [x] Dark/light toggle works without delay or flash.
+- [x] Theming toggle persists across page reload.
 
 ### Task 8.3: Quality checks
 
-- [ ] No hex values hardcoded in React components.
-- [ ] `theme.local.css` is gitignored.
-- [ ] `make lint` passes (or frontend equivalent lint/type check).
-- [ ] No unchecked implementation tasks remain.
+- [x] No hex values hardcoded in React components.
+- [x] `theme.local.css` is gitignored.
+- [x] `make lint` passes (or frontend equivalent lint/type check).
+- [x] No unchecked implementation tasks remain.
 
 ---
 
 ## Phase 9: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes.
-- [ ] Confirm implementation tasks are all marked `[x]`.
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable).
+- [x] Confirm requirements are reflected in code changes.
+- [x] Confirm implementation tasks are all marked `[x]`.
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable).
