@@ -1,4 +1,10 @@
 # Delivered work items. Newest first.
+- slug: discord-media-handling
+  date: '2026-02-23'
+  title: Handle image uploads and file attachments in the Discord adapter, matching
+    Telegram parity
+  outcome: DELIVERED
+  commit: 0b093c44dab0e65ec462ed733b57a60477158bf8
 - slug: todo-remove-cli-option
   date: '2026-02-23'
   title: Add telec todo remove <slug> CLI command and R keybinding in TUI PreparationView

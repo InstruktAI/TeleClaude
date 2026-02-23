@@ -283,12 +283,12 @@ export type AnimationPaletteName = keyof typeof ANIMATION_PALETTES
 const DARK_TOKENS: ThemeTokens = {
   bg: {
     base: '#000000',
-    surface: '#000000',
-    elevated: '#000000',
+    surface: '#262626',    // panel surface (matches TUI theme.py)
+    elevated: '#303030',   // slightly lighter panel (matches TUI theme.py)
     overlay: 'rgba(0, 0, 0, 0.6)',
   },
   text: {
-    primary: '#e4e4e4',    // xterm 254
+    primary: '#d0d0d0',    // soft light gray (matches TUI foreground)
     secondary: '#bcbcbc',  // xterm 250
     muted: '#808080',      // xterm 244
   },
@@ -324,13 +324,13 @@ const DARK_TOKENS: ThemeTokens = {
  */
 const LIGHT_TOKENS: ThemeTokens = {
   bg: {
-    base: '#fdf6e3',       // soft paper (matches _LIGHT_MODE_PAPER_BG)
-    surface: '#fdf6e3',
-    elevated: '#fdf6e3',
+    base: '#fdf6e3',       // warm paper (matches TUI _LIGHT_MODE_PAPER_BG)
+    surface: '#f0ead8',    // slightly darker paper (matches TUI theme.py)
+    elevated: '#e8e0cc',   // panel surface (matches TUI theme.py)
     overlay: 'rgba(255, 255, 255, 0.6)',
   },
   text: {
-    primary: '#1c1c1c',    // xterm 234
+    primary: '#303030',    // near-black (matches TUI foreground)
     secondary: '#444444',  // xterm 238
     muted: '#808080',      // xterm 244
   },
