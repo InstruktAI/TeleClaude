@@ -170,7 +170,19 @@ class DiscordAdapter(UiAdapter):
         # Check project-specific forums
         forum_id = self._match_project_forum(session)
         if forum_id is not None:
+            logger.debug(
+                "[DISCORD_ROUTE] session=%s project=%s -> project forum %s",
+                session.session_id[:8],
+                session.project_path,
+                forum_id,
+            )
             return forum_id
+        logger.debug(
+            "[DISCORD_ROUTE] session=%s project=%s -> catch-all (map has %d entries)",
+            session.session_id[:8],
+            session.project_path,
+            len(self._project_forum_map),
+        )
         return self._all_sessions_channel_id
 
     def _match_project_forum(self, session: "Session") -> int | None:
@@ -345,6 +357,7 @@ class DiscordAdapter(UiAdapter):
         ]
         entries.sort(key=lambda e: len(e[0]), reverse=True)
         self._project_forum_map = dict(entries)
+        logger.info("Discord project forum map: %d entries", len(self._project_forum_map))
 
     async def _ensure_project_forums(self, guild: object, category: object | None) -> None:
         """Create a forum for each trusted dir that lacks a discord_forum ID."""

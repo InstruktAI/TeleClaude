@@ -1,4 +1,4 @@
-# Quality Checklist: deployment-auto-update
+# Quality Checklist: tui-footer-clickable-agents
 
 This checklist is the execution projection of `definition-of-done.md` for this todo.
 
@@ -16,7 +16,7 @@ Ownership:
 - [ ] Lint passes (`make lint`)
 - [ ] No silent deferrals in implementation plan
 - [ ] Code committed
-- [ ] Demo validated (`telec todo demo deployment-auto-update` exits 0, or exception noted)
+- [ ] Demo validated (`telec todo demo tui-footer-clickable-agents` exits 0, or exception noted)
 - [ ] Working tree clean
 - [ ] Comments/docstrings updated where behavior changed
 
