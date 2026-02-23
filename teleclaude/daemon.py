@@ -1096,7 +1096,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         return {"status": "error", "message": f"Unknown or malformed auto_command: {auto_command}"}
 
     async def _bootstrap_session_resources(self, session_id: str, auto_command: str | None) -> None:
-        """Create tmux + start polling + run auto command, then mark session active."""
+        """Create tmux + start polling + run auto command."""
         session = await db.get_session(session_id)
         if not session:
             logger.warning("Session %s missing during bootstrap", session_id[:8])
@@ -1127,8 +1127,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         if auto_command:
             await self._execute_auto_command(session_id, auto_command)
-
-        await db.update_session(session_id, lifecycle_status="active")
 
     async def _handle_agent_then_message(self, session_id: str, args: list[str]) -> dict[str, str]:
         """Start agent, wait for TUI to stabilize, then inject message."""
