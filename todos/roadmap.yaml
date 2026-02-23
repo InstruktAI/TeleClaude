@@ -62,3 +62,5 @@
   - deployment-channels
   description: 'Phase 4: Remove deploy_service, MCP tool (if still present), update
     docs, write pipeline doc'
+- slug: tui-footer-clickable-agents
+  description: Clickable agent pills in TUI footer to cycle availability

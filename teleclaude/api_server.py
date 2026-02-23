@@ -988,6 +988,7 @@ class APIServer:
 
                 if info:
                     unavail_until = info.get("unavailable_until")
+                    degraded_until = info.get("degraded_until")
                     reason_val = info.get("reason")
                     status_val = info.get("status")
                     status_text = str(status_val) if status_val in {"available", "unavailable", "degraded"} else None
@@ -996,6 +997,7 @@ class APIServer:
                         available=bool(info.get("available", True)),
                         status=status_text,
                         unavailable_until=str(unavail_until) if unavail_until and unavail_until is not True else None,
+                        degraded_until=str(degraded_until) if degraded_until and degraded_until is not True else None,
                         reason=str(reason_val) if reason_val and reason_val is not True else None,
                     )
                 else:

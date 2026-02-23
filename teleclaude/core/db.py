@@ -1177,12 +1177,13 @@ class Db:
             else:
                 row.available = 1
                 row.unavailable_until = None
+                row.degraded_until = None
                 row.reason = None
             db_session.add(row)
             await db_session.commit()
         logger.info("Marked agent %s available", agent)
 
-    async def mark_agent_degraded(self, agent: str, reason: str) -> None:
+    async def mark_agent_degraded(self, agent: str, reason: str, degraded_until: str | None = None) -> None:
         """Mark an agent as degraded (manual-only, excluded from auto-selection)."""
         async with self._session() as db_session:
             row = await db_session.get(db_models.AgentAvailability, agent)
@@ -1192,32 +1193,42 @@ class Db:
                     agent=agent,
                     available=1,
                     unavailable_until=None,
+                    degraded_until=degraded_until,
                     reason=degraded_reason,
                 )
             else:
                 row.available = 1
                 row.unavailable_until = None
+                row.degraded_until = degraded_until
                 row.reason = degraded_reason
             db_session.add(row)
             await db_session.commit()
         logger.info("Marked agent %s degraded (%s)", agent, degraded_reason)
 
     async def clear_expired_agent_availability(self) -> int:
-        """Reset agents whose unavailable_until time has passed.
+        """Reset agents whose unavailable_until or degraded_until time has passed.
 
         Returns:
             Number of agents reset to available
         """
-        from sqlalchemy import update
+        from sqlalchemy import or_, update
 
         now = datetime.now(timezone.utc).isoformat()
         stmt = (
             update(db_models.AgentAvailability)
             .where(
-                db_models.AgentAvailability.unavailable_until.is_not(None),
-                db_models.AgentAvailability.unavailable_until < now,
+                or_(
+                    (
+                        db_models.AgentAvailability.unavailable_until.is_not(None),
+                        db_models.AgentAvailability.unavailable_until < now,
+                    ),
+                    (
+                        db_models.AgentAvailability.degraded_until.is_not(None),
+                        db_models.AgentAvailability.degraded_until < now,
+                    ),
+                )
             )
-            .values(available=1, unavailable_until=None, reason=None)
+            .values(available=1, unavailable_until=None, degraded_until=None, reason=None)
         )
         async with self._session() as db_session:
             result = await db_session.exec(stmt)

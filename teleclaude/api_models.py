@@ -214,6 +214,7 @@ class AgentAvailabilityDTO(BaseModel):  # type: ignore[explicit-any]
     available: bool | None
     status: Literal["available", "unavailable", "degraded"] | None = None
     unavailable_until: str | None = None
+    degraded_until: str | None = None
     reason: str | None = None
     error: str | None = None
 
