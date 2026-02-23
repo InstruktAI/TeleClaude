@@ -139,6 +139,15 @@ class SessionsView(Widget, can_focus=True):
         if availability is not None:
             self._availability = availability
 
+        # Prune stale session IDs from sticky/preview state
+        stale_sticky = [sid for sid in self._sticky_session_ids if sid not in new_ids]
+        if stale_sticky:
+            self._logger.info("Pruning %d stale sticky IDs: %s", len(stale_sticky), [s[:8] for s in stale_sticky])
+            self._sticky_session_ids = [sid for sid in self._sticky_session_ids if sid in new_ids]
+        if self.preview_session_id and self.preview_session_id not in new_ids:
+            self._logger.info("Pruning stale preview ID: %s", self.preview_session_id[:8])
+            self.preview_session_id = None
+
         if old_ids != new_ids or not self._nav_items:
             # Session list changed — full rebuild (includes _apply_pending_selection)
             self._rebuild_tree()
