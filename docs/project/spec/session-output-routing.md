@@ -33,10 +33,10 @@ Defines how session output is routed to UI adapters. These rules govern channel 
 
 Every session gets channels provisioned via `ensure_ui_channels()`. Each adapter decides whether to provision based on session type:
 
-| Session type            | Telegram            | Discord                      |
-| ----------------------- | ------------------- | ---------------------------- |
-| Admin/member            | Topic in supergroup | Thread in All Sessions forum |
-| Customer (`human_role`) | **Skipped**         | Thread in Help Desk forum    |
+| Session type            | Telegram            | Discord                              |
+| ----------------------- | ------------------- | ------------------------------------ |
+| Admin/member            | Topic in supergroup | Thread in project forum (or Unknown) |
+| Customer (`human_role`) | **Skipped**         | Thread in Help Desk forum            |
 
 Customer detection is based solely on `session.human_role == "customer"`. The entry point (`last_input_origin`) does not influence routing decisions.
 
@@ -70,10 +70,10 @@ It is never used to decide:
 
 Discord routes sessions to forums based on role:
 
-| `human_role`              | Discord forum     |
-| ------------------------- | ----------------- |
-| `"customer"`              | Customer Sessions |
-| anything else (or `None`) | All Sessions      |
+| `human_role`              | Discord forum                       |
+| ------------------------- | ----------------------------------- |
+| `"customer"`              | Customer Sessions                   |
+| anything else (or `None`) | Matched project forum, or "Unknown" |
 
 ### Threaded output
 

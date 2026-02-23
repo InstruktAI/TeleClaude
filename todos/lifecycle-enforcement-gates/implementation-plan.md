@@ -29,7 +29,7 @@ The current demo runner (lines ~1260-1380) is a monolith. Split into three expli
 
 ### Task 1.3: Tests for demo subcommands
 
-**File(s):** `tests/test_demo_cli.py` (new) or extend existing test file
+**File(s):** `tests/unit/test_telec_todo_cli.py`, `tests/unit/test_next_machine_demo.py`
 
 - [ ] Test `validate` exits 0 on demo.md with bash blocks
 - [ ] Test `validate` exits 1 on scaffold template (no blocks)
@@ -56,8 +56,8 @@ is_build_complete? -> YES -> run gates -> gates pass? -> YES -> check review sta
 ```
 
 - [ ] After `is_build_complete()` returns True (line 2123), add a new gate-validation block before falling through to the review check (line 2155).
-- [ ] Run `make test` in the worktree directory via subprocess with a timeout (e.g., 120 seconds). Capture exit code and stderr/stdout.
-- [ ] Run `telec todo demo validate {slug}` in the worktree directory via subprocess with a timeout (e.g., 30 seconds). Capture exit code and output.
+- [ ] Run the test suite in the worktree directory. Capture pass/fail result and output.
+- [ ] Run demo structure validation for the slug. Capture pass/fail result and output.
 - [ ] If both pass (exit 0): fall through to review dispatch as before.
 - [ ] If either fails: call `mark_phase(worktree_cwd, slug, "build", "started")` to reset build status. Return a formatted instruction telling the orchestrator to send the builder a message with the failure details. Do NOT instruct session end. Include the gate output so the builder knows what failed.
 - [ ] After gate reset, call `sync_slug_todo_from_worktree_to_main(cwd, slug)` to propagate the reset state back to main. Note: this function exists (line 1372) but is not currently called from `next_work()` — this is a new wiring.
@@ -129,7 +129,7 @@ After finalize, main has new code but the daemon is still running the old versio
 
 ### Task 2.6: Tests for state machine changes
 
-**File(s):** `tests/test_next_machine.py` or appropriate existing test file
+**File(s):** `tests/unit/test_next_machine_hitl.py`, `tests/integration/test_state_machine_workflow.py`
 
 - [ ] Test that `next_work()` runs gates when build is complete
 - [ ] Test that passing gates lead to review dispatch

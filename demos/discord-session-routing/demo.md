@@ -20,7 +20,7 @@ Each trusted dir should have a `discord_forum` ID populated.
 
 ### 2. Session lands in correct project forum
 
-**Observe:** Start a session in the TeleClaude project. The Discord thread appears in the "TeleClaude" project forum, not in "All Sessions".
+**Observe:** Start a session in the TeleClaude project. The Discord thread appears in the "TeleClaude" project forum, not in "Unknown".
 
 **Validate:**
 
@@ -45,7 +45,7 @@ ai: (pending)
 
 ### 5. Catch-all fallback works
 
-**Observe:** A session without a matching project path falls back to the "All Sessions" forum. Its title includes the project prefix: `{project}: {description}`.
+**Observe:** A session without a matching project path falls back to the "Unknown" forum under the Projects category. Its title includes the project prefix: `{project}: {description}`.
 
 ### 6. Admin messages from project forums are accepted
 

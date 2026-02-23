@@ -226,11 +226,10 @@ class DiscordAdapter(UiAdapter):
     async def _ensure_discord_infrastructure(self) -> None:
         """Auto-provision the full Discord channel structure.
 
-        Creates four categories with their channels:
+        Creates three categories with their channels:
         - Operations: #announcements (text), #general (text)
-        - Sessions: #all-sessions (forum)
         - Help Desk: #customer-sessions (forum), #escalations (forum), #operator-chat (text)
-        - Projects: per-project forums for session routing
+        - Projects: #unknown (catch-all forum), per-project forums for session routing
 
         Idempotent: skips any channel that already exists.
         Persists all created IDs to config.yml.
@@ -262,17 +261,6 @@ class DiscordAdapter(UiAdapter):
                 self._general_channel_id = ch_id
                 changes["general_channel_id"] = ch_id
 
-        # --- Category: Sessions ---
-        sessions_cat = await self._ensure_category(guild, "Sessions", existing_cats, cat_changes)
-
-        if self._all_sessions_channel_id is None:
-            forum_id = await self._find_or_create_forum(
-                guild, sessions_cat, "All Sessions", "All admin and member AI sessions"
-            )
-            if forum_id is not None:
-                self._all_sessions_channel_id = forum_id
-                changes["all_sessions_channel_id"] = forum_id
-
         # --- Category: Help Desk ---
         hd_cat = await self._ensure_category(guild, "Help Desk", existing_cats, cat_changes)
 
@@ -298,6 +286,16 @@ class DiscordAdapter(UiAdapter):
 
         # --- Category: Projects (always enabled when Discord is configured) ---
         proj_cat = await self._ensure_category(guild, "Projects", existing_cats, cat_changes)
+
+        # "Unknown" is the catch-all forum for sessions that don't match any project
+        if self._all_sessions_channel_id is None:
+            forum_id = await self._find_or_create_forum(
+                guild, proj_cat, "Unknown", "Sessions from unrecognized project paths"
+            )
+            if forum_id is not None:
+                self._all_sessions_channel_id = forum_id
+                changes["all_sessions_channel_id"] = forum_id
+
         await self._ensure_project_forums(guild, proj_cat)
 
         # Build project-path-to-forum mapping for session routing

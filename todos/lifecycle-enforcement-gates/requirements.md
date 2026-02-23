@@ -11,7 +11,7 @@ Replace the trust-based lifecycle model with an evidence-based one. The state ma
 1. **`telec todo demo` subcommand refactor** — Split the current monolithic demo runner into three explicit subcommands: `validate`, `run`, `create`.
 2. **Silent-pass bug fix** — `telec todo demo` currently exits 0 when demo.md has no executable blocks. Must exit 1 (unfilled template = validation failure).
 3. **`<!-- no-demo: reason -->` escape hatch** — Document-level marker that `validate` respects (exit 0, logs reason). For non-demonstrable deliveries.
-4. **State machine build gates in `next_work()`** — After build is marked complete, `next_work` runs `make test` and `telec todo demo validate {slug}` in the worktree. If either fails, reset build to `started` and instruct orchestrator to message the builder. Builder session stays alive.
+4. **State machine build gates in `next_work()`** — After build is marked complete, `next_work` runs the test suite and validates demo structure in the worktree. If either fails, reset build to `started` and instruct orchestrator to message the builder. Builder session stays alive.
 5. **POST_COMPLETION flow change** — The `next-build` POST_COMPLETION instructions must change: orchestrator calls `mark_phase(build=complete)` then `next_work()` (which validates). Orchestrator does NOT end the builder session until `next_work` confirms gates passed and says to dispatch review.
 6. **Demo promotion automation in finalize** — `telec todo demo create {slug}` as a finalize step. Promotes `todos/{slug}/demo.md` to `demos/{slug}/demo.md` and generates minimal metadata.
 7. **snapshot.json reduction** — Strip acts narrative and metrics (duplicated by `delivered.yaml` and git). Reduce to `{slug, title, version}` for demo listing and semver gate, or kill entirely and add `version` to `delivered.yaml`.
@@ -35,7 +35,7 @@ Replace the trust-based lifecycle model with an evidence-based one. The state ma
 - [ ] `telec todo demo run {slug}` extracts and executes bash blocks with exit-1 fix.
 - [ ] `telec todo demo create {slug}` promotes demo.md to `demos/{slug}/` with minimal metadata.
 - [ ] `telec todo demo` (no args) lists available demos (preserved).
-- [ ] `next_work()` runs `make test` + `telec todo demo validate` after build marked complete.
+- [ ] `next_work()` runs the test suite and validates demo structure after build marked complete.
 - [ ] Gate failure resets build to `started`, returns message-builder instruction.
 - [ ] Gate success returns end-session + dispatch-review instruction.
 - [ ] POST_COMPLETION for `next-build` no longer ends session before `next_work()`.
@@ -54,7 +54,7 @@ Replace the trust-based lifecycle model with an evidence-based one. The state ma
 
 ## Risks
 
-- `next_work()` gate subprocess calls could hang in broken worktrees. Mitigation: subprocess timeouts.
+- `next_work()` gate execution could fail in broken worktrees. Mitigation: error handling and bounded execution.
 - Builder-stays-alive loop is new orchestrator behavior. Mitigation: terminates when gates pass or orchestrator manually ends.
 - snapshot.json reduction affects presenter and listing. Mitigation: narrative from source artifacts; listing from reduced snapshot or delivered.yaml.
 - snapshot.json `version` is pre-release (from pyproject.toml), not actual release version (from CI semver bump). Acceptable — semver gate only needs major version.
