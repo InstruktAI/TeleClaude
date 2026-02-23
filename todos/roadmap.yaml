@@ -1,6 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: discord-adapter-integrity
 - slug: adapter-output-delivery
 - slug: consolidate-methodology-skills
   description: Consolidate 6 methodology skills from Claude Code plugins into agents/skills/

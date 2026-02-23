@@ -1,4 +1,9 @@
 # Delivered work items. Newest first.
+- slug: discord-adapter-integrity
+  date: '2026-02-24'
+  title: Fix Discord adapter infrastructure and input routing so that the Discord guild is reliable, correctly partitioned per computer, and admin input from forums is routed correctly
+  outcome: DELIVERED
+  commit: 0b3448ca
 - slug: inbound-hook-service
   date: '2026-02-24'
   title: Wire inbound webhook infrastructure into daemon, deliver GitHub normalizer as proof of end-to-end path
