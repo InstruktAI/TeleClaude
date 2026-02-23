@@ -95,10 +95,10 @@ No new npm packages required. `next-themes` is already installed.
 
 **File(s):** `frontend/components/providers/ThemeProvider.tsx`
 
-- [ ] Create a provider that wraps `next-themes` `ThemeProvider` (preserving `attribute="class"` for `.dark` toggling).
-- [ ] On mount, call `injectCSSVariables(mode)` with the current resolved theme (dark/light).
-- [ ] On theme change (dark/light switch), re-inject CSS variables for the new mode.
-- [ ] Use `useTheme()` from `next-themes` to detect the resolved theme and react to changes.
+- [x] Create a provider that wraps `next-themes` `ThemeProvider` (preserving `attribute="class"` for `.dark` toggling).
+- [x] On mount, call `injectCSSVariables(mode)` with the current resolved theme (dark/light).
+- [x] On theme change (dark/light switch), re-inject CSS variables for the new mode.
+- [x] Use `useTheme()` from `next-themes` to detect the resolved theme and react to changes.
 
 ### Task 3.2: Load theme.local.css override
 
