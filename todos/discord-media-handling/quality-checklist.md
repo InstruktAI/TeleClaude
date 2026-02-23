@@ -38,4 +38,10 @@
 
 ## Finalize Gates (Builder)
 
-_Pending finalization_
+- [x] Review verdict confirmed: APPROVE
+- [x] Main branch integrated into feature branch (no conflicts)
+- [x] Verification re-run: lint + tests pass
+- [x] Feature branch merged to main
+- [x] Main pushed to origin
+- [x] Delivery logged to todos/delivered.md
+- [x] Feature branch removed from todos/roadmap.yaml
