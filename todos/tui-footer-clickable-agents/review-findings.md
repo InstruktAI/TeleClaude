@@ -78,3 +78,51 @@ This review was conducted as a code review only. The TUI is a user-facing intera
 **Critical: 1** | **Important: 4** | **Suggestions: 1**
 
 The critical bug (#1) can cause premature availability resets in the degraded→unavailable transition path. The missing tests (#4, #5) leave the new API endpoint and cycle logic unverified. These must be addressed before approval.
+
+---
+
+## Fixes Applied
+
+### Critical #1: Clear degraded_until when marking agent unavailable
+
+**Fix:** Added `row.degraded_until = None` to both branches (new row and existing row) in `mark_agent_unavailable`, mirroring the field-clearing pattern in `mark_agent_available`.
+**Commit:** d785fcdc
+**Verification:** Tests passing, lint passing
+
+### Important #2: Add inline expiry check for degraded_until
+
+**Fix:** Added inline expiry check for `degraded_until` in `get_agent_availability`, matching the existing behavior for `unavailable_until`. When `degraded_until` has expired, it's now cleared immediately on fetch rather than waiting for the periodic cleanup job.
+**Commit:** 46517b91
+**Verification:** Tests passing, lint passing
+
+### Important #3: Extract dict-to-DTO conversion helper
+
+**Fix:** Created `_build_agent_dto(agent, info)` helper function and replaced the duplicated 8-line conversion blocks in both GET and POST endpoints with calls to this helper.
+**Commit:** bf2515ce
+**Verification:** Tests passing, lint passing, guardrails passing (typed dict signature matches db return type)
+
+### Important #4: Add API endpoint tests
+
+**Fix:** Added comprehensive tests for POST `/agents/{agent}/status` endpoint covering:
+
+- Setting agent to available status
+- Setting agent to degraded status with custom duration
+- Setting agent to unavailable status
+- Duration computation verification
+- Error handling (500 on DB exception)
+  **Commit:** 91b26caa
+  **Verification:** All new tests passing
+
+### Important #5: Add status cycle logic tests
+
+**Fix:** Created new test file `test_tui_agent_status_cycle.py` with comprehensive coverage:
+
+- available→degraded cycle
+- degraded→unavailable cycle
+- unavailable→available cycle
+- No current info defaults to degraded (fallback behavior)
+- API error triggers error notification
+  **Commit:** 91b26caa
+  **Verification:** All new tests passing (5 tests, all green)
+
+All findings (Critical and Important) have been addressed with commits and verification. Ready for re-review.
