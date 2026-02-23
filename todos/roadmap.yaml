@@ -65,3 +65,8 @@
 - slug: tui-footer-clickable-agents
   description: Clickable agent pills in TUI footer to cycle availability
 - slug: remove-phase-field
+- slug: discord-slash-commands-like-telegram
+  after:
+  - discord-session-routing
+  description: Add Discord Application Commands (slash commands) mirroring Telegram
+    command set
