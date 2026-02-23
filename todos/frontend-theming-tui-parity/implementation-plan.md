@@ -167,12 +167,12 @@ No new npm packages required. `next-themes` is already installed.
 
 ### Task 5.1: Add theming toggle
 
-**File(s):** `frontend/components/` (header or settings area — determine exact location during build)
+**File(s):** `frontend/components/parts/ThemingToggle.tsx`, `frontend/app/(chat)/page.tsx`
 
-- [ ] Add a simple toggle switch (shadcn/ui Switch component or similar).
-- [ ] Label: reflects peaceful vs themed state.
-- [ ] Wired to `useAgentTheming().setThemed()`.
-- [ ] Placed alongside or near the existing dark/light mode toggle.
+- [x] Add a simple toggle switch (shadcn/ui Switch component or similar).
+- [x] Label: reflects peaceful vs themed state.
+- [x] Wired to `useAgentTheming().setThemed()`.
+- [x] Placed alongside or near the existing dark/light mode toggle.
 
 ---
 
