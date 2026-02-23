@@ -81,7 +81,7 @@ The critical bug (#1) can cause premature availability resets in the degraded→
 
 ---
 
-## Fixes Applied
+## Fixes Applied (Round 1 → Round 2)
 
 ### Critical #1: Clear degraded_until when marking agent unavailable
 
@@ -125,4 +125,75 @@ The critical bug (#1) can cause premature availability resets in the degraded→
   **Commit:** 91b26caa
   **Verification:** All new tests passing (5 tests, all green)
 
-All findings (Critical and Important) have been addressed with commits and verification. Ready for re-review.
+---
+
+## Review Round: 2
+
+All round 1 findings verified as fixed. Code re-reviewed against requirements and architecture.
+
+### Round 1 Fix Verification
+
+| Finding                                               | Status | Evidence                                                                     |
+| ----------------------------------------------------- | ------ | ---------------------------------------------------------------------------- |
+| Critical #1: `mark_agent_unavailable` premature reset | Fixed  | `db.py:1170` and `db.py:1176` both set `degraded_until=None`                 |
+| Important #2: Inline degraded_until expiry            | Fixed  | `db.py:1123-1132` adds inline check with commit                              |
+| Important #3: Duplicated DTO conversion               | Fixed  | `_build_agent_dto()` at `api_server.py:960-982` used by both endpoints       |
+| Important #4: API endpoint tests                      | Fixed  | 4 tests in `test_api_server.py` covering all status transitions + error      |
+| Important #5: Cycle logic tests                       | Fixed  | 5 tests in `test_tui_agent_status_cycle.py` covering full cycle + edge cases |
+
+### Paradigm-Fit Assessment (Round 2)
+
+- **Data flow**: Still correct. All round 1 fixes maintain the TUI→API→DB boundary. ✓
+- **Component reuse**: `_build_agent_dto` helper eliminates the prior duplication. ✓
+- **Pattern consistency**: Inline degraded_until expiry mirrors the established unavailable_until pattern. ✓
+
+No paradigm violations remain.
+
+### Re-Review Scope
+
+Verified all 18 changed files. Traced each round 1 fix to its commit. Ran all 11 new tests (pass), full unit suite (1863 pass, 3 pre-existing failures unrelated to branch), and lint (clean).
+
+## Important
+
+### 7. Missing test for inline `degraded_until` expiry in `get_agent_availability`
+
+**File:** `teleclaude/core/db.py:1123-1132`, `tests/unit/test_db.py`
+
+The inline expiry check added per round 1 finding #2 has no dedicated test. `test_get_agent_availability_clears_expired` (line 220) tests `unavailable_until` inline clearing but there is no symmetric test for `degraded_until`. The existing `test_clear_expired_degraded_agents` tests the batch periodic clear, not the inline-on-fetch behavior.
+
+**Fix:** Add `test_get_agent_availability_clears_expired_degraded` that: (1) inserts a degraded agent with an expired `degraded_until`, (2) calls `get_agent_availability`, (3) asserts status is "available" and `degraded_until` is None in both the return dict and the persisted row.
+
+### 8. Implementation plan task checkboxes all unchecked
+
+**File:** `todos/tui-footer-clickable-agents/implementation-plan.md`
+
+All task checkboxes remain `[ ]` despite `state.yaml` showing `build: complete`. Per build gate: "Implementation-plan task checkboxes all `[x]`". All tasks were implemented (verified by code review) but the checkboxes were never updated.
+
+**Fix:** Check all task checkboxes in `implementation-plan.md`.
+
+### 9. Build gates in quality-checklist.md all unchecked
+
+**File:** `todos/tui-footer-clickable-agents/quality-checklist.md`
+
+All Build Gates remain unchecked despite build being complete.
+
+**Fix:** Check applicable build gate items in `quality-checklist.md`.
+
+## Suggestions
+
+### 10. Round 1 suggestion #6 remains (no action required)
+
+The `@work` decorator observation from round 1 still applies but remains consistent with existing handler patterns. No change needed.
+
+## Manual Verification Evidence
+
+Code-only review. TUI click interaction requires manual testing — not performed in this environment. Click region tracking (`_agent_regions`) and event dispatch logic are correct from code inspection.
+
+## Verdict: REQUEST CHANGES
+
+**Critical: 0** | **Important: 3** | **Suggestions: 1**
+
+All round 1 code defects are resolved. The remaining issues are:
+
+- One missing test (#7) for the inline degraded_until expiry path
+- Two administrative items (#8, #9) — unchecked implementation plan and build gate checkboxes

@@ -64,3 +64,4 @@
     docs, write pipeline doc'
 - slug: tui-footer-clickable-agents
   description: Clickable agent pills in TUI footer to cycle availability
+- slug: remove-phase-field
