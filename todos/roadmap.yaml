@@ -1,41 +1,37 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: discord-session-routing
-  description:
-    Per-project Discord forums, role-based routing, adapter-specific titles,
-    enriched footer
-- slug: consolidate-methodology-skills
-  description:
-    Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
-    for cross-agent distribution
-- slug: frontend-theming-tui-parity
-  description:
-    Port TUI agent color theming to Next.js frontend with peaceful/themed
-    toggle, CSS variable system, and white-label override file
-- slug: textual-footer-migration
-- slug: tui-state-persistence
 - slug: mcp-migration-telec-commands
   group: mcp-to-tool-specs
-  description:
-    'Phase 1: Add telec subcommands for all 24 tools with rich --help,
+  description: 'Phase 1: Add telec subcommands for all 24 tools with rich --help,
     extend REST API, update telec-cli spec doc with @exec directives'
 - slug: mcp-migration-agent-config
   group: mcp-to-tool-specs
   after:
-    - mcp-migration-telec-commands
-  description:
-    'Phase 2: Remove MCP from agent session configs, validate all agent
+  - mcp-migration-telec-commands
+  description: 'Phase 2: Remove MCP from agent session configs, validate all agent
     types and workflows'
 - slug: mcp-migration-delete-mcp
   group: mcp-to-tool-specs
   after:
-    - mcp-migration-agent-config
-  description:
-    'Phase 3: Delete all MCP server code (~3,400 lines), update architecture
+  - mcp-migration-agent-config
+  description: 'Phase 3: Delete all MCP server code (~3,400 lines), update architecture
     and policy docs'
 - slug: rolling-session-titles
-  description:
-    Re-summarize session titles based on the last 3 user inputs instead
+  description: Re-summarize session titles based on the last 3 user inputs instead
     of only the first. Use a dedicated rolling prompt that captures session direction.
     Reset the output message on any title change so the telegram title feedback floats
     to the top in Telegram.
+- slug: discord-media-handling
+  description: Handle image uploads and file attachments in the Discord adapter, matching
+    Telegram parity. Voice already handled.
+- slug: discord-session-routing
+  description: Per-project Discord forums, role-based routing, adapter-specific titles,
+    enriched footer
+- slug: consolidate-methodology-skills
+  description: Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
+    for cross-agent distribution
+- slug: frontend-theming-tui-parity
+  description: Port TUI agent color theming to Next.js frontend with peaceful/themed
+    toggle, CSS variable system, and white-label override file
+- slug: textual-footer-migration
+- slug: tui-state-persistence

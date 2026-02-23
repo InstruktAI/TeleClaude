@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { ThemeProvider } from "next-themes";
+import { ThemeProvider } from "@/components/providers/ThemeProvider";
+import { AgentThemingProvider } from "@/hooks/useAgentTheming";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -16,9 +17,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <link rel="stylesheet" href="/theme.local.css" />
+      </head>
       <body className="font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <div className="flex h-screen flex-col">{children}</div>
+          <AgentThemingProvider>
+            <div className="flex h-screen flex-col">{children}</div>
+          </AgentThemingProvider>
         </ThemeProvider>
       </body>
     </html>
