@@ -1866,6 +1866,25 @@ class Db:
         async with self._session() as db_session:
             return list((await db_session.exec(stmt)).all())
 
+    async def get_active_links_between_sessions(
+        self,
+        session_a: str,
+        session_b: str,
+        *,
+        mode: Literal["direct_link", "gathering_link"] | None = None,
+    ) -> list[db_models.ConversationLinkRow]:
+        """Find all active links that contain both session IDs."""
+        links = await self.get_active_links_for_session(session_a)
+        matches: list[db_models.ConversationLinkRow] = []
+        for link in links:
+            if mode and link.mode != mode:
+                continue
+            members = await self.list_conversation_link_members(link.link_id)
+            member_ids = {member.session_id for member in members}
+            if session_b in member_ids:
+                matches.append(link)
+        return sorted(matches, key=lambda item: item.created_at)
+
     async def get_active_link_between_sessions(
         self,
         session_a: str,
@@ -1874,15 +1893,8 @@ class Db:
         mode: Literal["direct_link", "gathering_link"] | None = None,
     ) -> db_models.ConversationLinkRow | None:
         """Find the first active link that contains both session IDs."""
-        links = await self.get_active_links_for_session(session_a)
-        for link in links:
-            if mode and link.mode != mode:
-                continue
-            members = await self.list_conversation_link_members(link.link_id)
-            member_ids = {member.session_id for member in members}
-            if session_b in member_ids:
-                return link
-        return None
+        links = await self.get_active_links_between_sessions(session_a, session_b, mode=mode)
+        return links[0] if links else None
 
     async def upsert_conversation_link_member(
         self,

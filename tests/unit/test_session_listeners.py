@@ -1,5 +1,6 @@
 """Unit tests for session_listeners module (SQLite-backed)."""
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -300,6 +301,32 @@ class TestConversationLinks:
         assert {member.session_id for member in members} == {"sess-a", "sess-b"}
 
     @pytest.mark.asyncio
+    async def test_create_or_reuse_direct_link_parallel_calls_converge(self):
+        """Concurrent handshakes for the same pair should converge to one active link."""
+        results = await asyncio.gather(
+            *[
+                create_or_reuse_direct_link(
+                    caller_session_id="sess-a",
+                    target_session_id="sess-b",
+                    caller_name="A",
+                    target_name="B",
+                    caller_computer="local",
+                    target_computer="RemotePC",
+                )
+                for _ in range(10)
+            ]
+        )
+
+        created_count = sum(1 for _link, created in results if created)
+        assert created_count == 1
+
+        active_for_a = await get_active_links_for_session("sess-a")
+        active_for_b = await get_active_links_for_session("sess-b")
+        assert len(active_for_a) == 1
+        assert len(active_for_b) == 1
+        assert active_for_a[0].link_id == active_for_b[0].link_id
+
+    @pytest.mark.asyncio
     async def test_gathering_link_supports_three_members(self):
         """Gathering links support 3+ members and sender-excluded peer queries."""
         link = await create_link(mode="gathering_link", created_by_session_id="sess-a")
@@ -328,6 +355,23 @@ class TestConversationLinks:
         closed_link_id = await close_link_for_member(caller_session_id="sess-a", target_session_id="sess-b")
 
         assert closed_link_id == link.link_id
+        assert await get_active_links_for_session("sess-a") == []
+        assert await get_active_links_for_session("sess-b") == []
+
+    @pytest.mark.asyncio
+    async def test_close_link_for_member_closes_all_pair_duplicates(self):
+        """Scoped close should sever all active links for the same session pair."""
+        first = await create_link(mode="direct_link", created_by_session_id="sess-a")
+        await add_link_member(link_id=first.link_id, session_id="sess-a", participant_number=1)
+        await add_link_member(link_id=first.link_id, session_id="sess-b", participant_number=2)
+
+        second = await create_link(mode="direct_link", created_by_session_id="sess-a")
+        await add_link_member(link_id=second.link_id, session_id="sess-a", participant_number=1)
+        await add_link_member(link_id=second.link_id, session_id="sess-b", participant_number=2)
+
+        closed_link_id = await close_link_for_member(caller_session_id="sess-a", target_session_id="sess-b")
+
+        assert closed_link_id in {first.link_id, second.link_id}
         assert await get_active_links_for_session("sess-a") == []
         assert await get_active_links_for_session("sess-b") == []
 

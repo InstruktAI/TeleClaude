@@ -10,6 +10,7 @@ Only one listener per caller-target pair is allowed (deduped by caller, not by t
 Storage is SQLite-backed so listeners survive daemon restarts.
 """
 
+import asyncio
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -20,6 +21,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import LOCAL_COMPUTER
 
 logger = get_logger(__name__)
+_PAIR_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
+_PAIR_LOCKS_GUARD = asyncio.Lock()
 
 
 @dataclass
@@ -57,6 +60,17 @@ class ConversationLinkMember:
     participant_role: str | None
     computer_name: str | None
     joined_at: datetime
+
+
+async def _get_pair_lock(session_a: str, session_b: str) -> asyncio.Lock:
+    """Return a shared lock for a canonical direct-link session pair."""
+    key = tuple(sorted((session_a, session_b)))
+    async with _PAIR_LOCKS_GUARD:
+        lock = _PAIR_LOCKS.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _PAIR_LOCKS[key] = lock
+        return lock
 
 
 def _to_conversation_link(row: object) -> ConversationLink:
@@ -492,10 +506,39 @@ async def create_or_reuse_direct_link(
     """Create or reuse an active two-member direct link."""
     from teleclaude.core.db import db
 
-    existing = await db.get_active_link_between_sessions(caller_session_id, target_session_id, mode="direct_link")
-    if existing:
+    pair_lock = await _get_pair_lock(caller_session_id, target_session_id)
+    async with pair_lock:
+        existing_links = await db.get_active_links_between_sessions(
+            caller_session_id,
+            target_session_id,
+            mode="direct_link",
+        )
+        if existing_links:
+            existing = existing_links[0]
+            for duplicate in existing_links[1:]:
+                await db.sever_conversation_link(duplicate.link_id)
+
+            await add_link_member(
+                link_id=existing.link_id,
+                session_id=caller_session_id,
+                participant_name=caller_name,
+                participant_number=1,
+                participant_role="peer",
+                computer_name=caller_computer,
+            )
+            await add_link_member(
+                link_id=existing.link_id,
+                session_id=target_session_id,
+                participant_name=target_name,
+                participant_number=2,
+                participant_role="peer",
+                computer_name=target_computer,
+            )
+            return (_to_conversation_link(existing), False)
+
+        link = await create_link(mode="direct_link", created_by_session_id=caller_session_id)
         await add_link_member(
-            link_id=existing.link_id,
+            link_id=link.link_id,
             session_id=caller_session_id,
             participant_name=caller_name,
             participant_number=1,
@@ -503,36 +546,17 @@ async def create_or_reuse_direct_link(
             computer_name=caller_computer,
         )
         await add_link_member(
-            link_id=existing.link_id,
+            link_id=link.link_id,
             session_id=target_session_id,
             participant_name=target_name,
             participant_number=2,
             participant_role="peer",
             computer_name=target_computer,
         )
-        return (_to_conversation_link(existing), False)
-
-    link = await create_link(mode="direct_link", created_by_session_id=caller_session_id)
-    await add_link_member(
-        link_id=link.link_id,
-        session_id=caller_session_id,
-        participant_name=caller_name,
-        participant_number=1,
-        participant_role="peer",
-        computer_name=caller_computer,
-    )
-    await add_link_member(
-        link_id=link.link_id,
-        session_id=target_session_id,
-        participant_name=target_name,
-        participant_number=2,
-        participant_role="peer",
-        computer_name=target_computer,
-    )
-    refreshed = await db.get_conversation_link(link.link_id)
-    if refreshed is None:
-        return (link, True)
-    return (_to_conversation_link(refreshed), True)
+        refreshed = await db.get_conversation_link(link.link_id)
+        if refreshed is None:
+            return (link, True)
+        return (_to_conversation_link(refreshed), True)
 
 
 async def resolve_link_for_sender_target(
@@ -575,11 +599,12 @@ async def close_link_for_member(
     from teleclaude.core.db import db
 
     if target_session_id:
-        link = await db.get_active_link_between_sessions(caller_session_id, target_session_id)
-        if not link:
+        links = await db.get_active_links_between_sessions(caller_session_id, target_session_id)
+        if not links:
             return None
-        await db.sever_conversation_link(link.link_id)
-        return link.link_id
+        for link in links:
+            await db.sever_conversation_link(link.link_id)
+        return links[0].link_id
 
     links = await db.get_active_links_for_session(caller_session_id)
     if not links:
