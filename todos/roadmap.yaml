@@ -1,9 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: bidirectional-agent-links
-  description: >
-    Shared listener link primitive for direct agent conversation and gathering-ready
-    multi-member fan-out. Supports single-party severing and preserves worker notification mode.
 - slug: consolidate-methodology-skills
   description: Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
     for cross-agent distribution
