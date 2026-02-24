@@ -36,3 +36,14 @@
 ## Verdict
 
 REQUEST CHANGES
+
+## Orchestrator Round-Limit Closure (2026-02-24)
+
+- State machine returned `REVIEW_ROUND_LIMIT` at `3/3` rounds.
+- Current findings include no unresolved `Critical` items.
+- Recent fix cycle evidence since baseline includes:
+  - `3fea6f68` `test(tui): lock sessions default-action contract`
+  - `6e9d71d9` `test(tui): verify todo-row enter toggles behavior`
+  - `ee9904d6` `test(diagrams): reduce extract-modules timeout flakiness`
+  - `47b9b44f` `docs(todo): record applied review fixes`
+- Closure decision: approve for lifecycle progression with non-critical residual work tracked in `todos/textual-footer-migration/deferrals.md`.
