@@ -75,7 +75,7 @@ class AgentHookEvents:
     # - AGENT_SESSION_START: Initialize headless session, anchor native IDs
     # - USER_PROMPT_SUBMIT: Capture last user input for session history
     # - TOOL_USE: Agent started a tool call (checkpoint timing, TUI activity)
-    # - TOOL_DONE: Tool execution completed, output available (incremental output)
+    # - TOOL_DONE: Tool execution completed (activity/control-plane signal)
     # - AGENT_STOP: Trigger turn completion, poll transcript for final model response
     # - AGENT_NOTIFICATION: Notify listeners (tmux) and initiators (remote)
     # Other events are enqueued but have no active logic in the daemon yet.

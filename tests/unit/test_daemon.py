@@ -41,6 +41,21 @@ class SessionUpdate(TypedDict, total=False):
     last_input_origin: str
 
 
+def _make_hook_queue_daemon() -> TeleClaudeDaemon:
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.shutdown_event = asyncio.Event()
+    daemon._session_outbox_queues = {}
+    daemon._session_outbox_workers = {}
+    daemon._hook_outbox_processed_count = 0
+    daemon._hook_outbox_coalesced_count = 0
+    daemon._hook_outbox_lag_samples_s = []
+    daemon._hook_outbox_last_summary_at = 0.0
+    daemon._hook_outbox_last_backlog_warn_at = {}
+    daemon._hook_outbox_last_lag_warn_at = {}
+    daemon._track_background_task = MagicMock()
+    return daemon
+
+
 @pytest.fixture
 def mock_daemon():
     """Create a mocked daemon for testing."""
@@ -163,6 +178,185 @@ def test_hook_outbox_other_decode_errors_remain_retryable() -> None:
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     exc = json.JSONDecodeError("Expecting value", "", 0)
     assert daemon._is_retryable_hook_error(exc) is True
+
+
+@pytest.mark.asyncio
+async def test_hook_outbox_bursty_events_are_coalesced_latest_wins() -> None:
+    """Queued bursty events should coalesce to latest row within the same segment."""
+    daemon = _make_hook_queue_daemon()
+    session_id = "sess-bursty"
+    worker = MagicMock()
+    worker.done.return_value = False
+    daemon._session_outbox_workers[session_id] = worker
+
+    row1 = {
+        "id": 1,
+        "session_id": session_id,
+        "event_type": AgentHookEvents.TOOL_DONE,
+        "payload": "{}",
+        "attempt_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    row2 = {
+        "id": 2,
+        "session_id": session_id,
+        "event_type": AgentHookEvents.TOOL_DONE,
+        "payload": "{}",
+        "attempt_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    with patch("teleclaude.daemon.db.mark_hook_outbox_delivered", new_callable=AsyncMock) as mock_mark_delivered:
+        await daemon._enqueue_session_outbox_item(session_id, row1)
+        await daemon._enqueue_session_outbox_item(session_id, row2)
+
+    queue_state = daemon._session_outbox_queues[session_id]
+    assert len(queue_state.pending) == 1
+    assert queue_state.pending[0].row["id"] == 2
+    assert daemon._hook_outbox_coalesced_count == 1
+    mock_mark_delivered.assert_awaited_once()
+    assert mock_mark_delivered.await_args.args[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_hook_outbox_critical_boundary_prevents_cross_segment_coalescing() -> None:
+    """Bursty rows must not coalesce across critical-event boundaries."""
+    daemon = _make_hook_queue_daemon()
+    session_id = "sess-segment"
+    worker = MagicMock()
+    worker.done.return_value = False
+    daemon._session_outbox_workers[session_id] = worker
+
+    rows = [
+        {
+            "id": 1,
+            "session_id": session_id,
+            "event_type": AgentHookEvents.TOOL_USE,
+            "payload": "{}",
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        {
+            "id": 2,
+            "session_id": session_id,
+            "event_type": AgentHookEvents.USER_PROMPT_SUBMIT,
+            "payload": '{"prompt":"x"}',
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        {
+            "id": 3,
+            "session_id": session_id,
+            "event_type": AgentHookEvents.TOOL_USE,
+            "payload": "{}",
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+    ]
+
+    with patch("teleclaude.daemon.db.mark_hook_outbox_delivered", new_callable=AsyncMock) as mock_mark_delivered:
+        for row in rows:
+            await daemon._enqueue_session_outbox_item(session_id, row)
+
+    queue_state = daemon._session_outbox_queues[session_id]
+    assert [item.row["id"] for item in queue_state.pending] == [1, 2, 3]
+    assert daemon._hook_outbox_coalesced_count == 0
+    mock_mark_delivered.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_hook_outbox_preserves_critical_events_when_capacity_full() -> None:
+    """Critical rows must not be dropped when queue capacity is saturated."""
+    daemon = _make_hook_queue_daemon()
+    session_id = "sess-critical"
+    worker = MagicMock()
+    worker.done.return_value = False
+    daemon._session_outbox_workers[session_id] = worker
+
+    rows = [
+        {
+            "id": 1,
+            "session_id": session_id,
+            "event_type": AgentHookEvents.AGENT_SESSION_START,
+            "payload": "{}",
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        {
+            "id": 2,
+            "session_id": session_id,
+            "event_type": AgentHookEvents.USER_PROMPT_SUBMIT,
+            "payload": '{"prompt":"x"}',
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        {
+            "id": 3,
+            "session_id": session_id,
+            "event_type": AgentHookEvents.TOOL_DONE,
+            "payload": "{}",
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+    ]
+
+    with (
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_MAX_PENDING", 2),
+        patch("teleclaude.daemon.db.mark_hook_outbox_delivered", new_callable=AsyncMock) as mock_mark_delivered,
+    ):
+        await daemon._enqueue_session_outbox_item(session_id, rows[0])
+        await daemon._enqueue_session_outbox_item(session_id, rows[1])
+        await daemon._enqueue_session_outbox_item(session_id, rows[2])
+
+    queue_state = daemon._session_outbox_queues[session_id]
+    assert [item.row["id"] for item in queue_state.pending] == [1, 2]
+    # Incoming bursty row is dropped/coalesced under critical-only backlog.
+    assert daemon._hook_outbox_coalesced_count == 1
+    mock_mark_delivered.assert_awaited_once()
+    assert mock_mark_delivered.await_args.args[0] == 3
+
+
+@pytest.mark.asyncio
+async def test_hook_outbox_synthetic_burst_lag_targets() -> None:
+    """Synthetic burst should keep observed processing lag within target percentiles."""
+    daemon = _make_hook_queue_daemon()
+    session_id = "sess-lag"
+    worker = MagicMock()
+    worker.done.return_value = False
+    daemon._session_outbox_workers[session_id] = worker
+
+    now = datetime.now(timezone.utc)
+    burst_rows = [
+        {
+            "id": idx + 1,
+            "session_id": session_id,
+            "event_type": AgentHookEvents.TOOL_DONE,
+            "payload": "{}",
+            "attempt_count": 0,
+            "created_at": (now - timedelta(milliseconds=200)).isoformat(),
+        }
+        for idx in range(200)
+    ]
+
+    with (
+        patch("teleclaude.daemon.db.mark_hook_outbox_delivered", new_callable=AsyncMock) as mock_mark_delivered,
+        patch("teleclaude.daemon.db.mark_hook_outbox_failed", new_callable=AsyncMock),
+        patch.object(daemon, "_dispatch_hook_event", new=AsyncMock()),
+    ):
+        for row in burst_rows:
+            await daemon._enqueue_session_outbox_item(session_id, row)
+
+        queue_state = daemon._session_outbox_queues[session_id]
+        assert len(queue_state.pending) == 1
+        await daemon._process_outbox_item(queue_state.pending[0].row)
+
+    p95 = daemon._percentile(daemon._hook_outbox_lag_samples_s, 0.95)
+    p99 = daemon._percentile(daemon._hook_outbox_lag_samples_s, 0.99)
+    assert p95 is not None and p95 < 1.0
+    assert p99 is not None and p99 < 3.0
+    assert daemon._hook_outbox_coalesced_count >= 199
+    # Coalesced drops + final processed row are marked delivered.
+    assert mock_mark_delivered.await_count >= 200
 
 
 @pytest.mark.asyncio

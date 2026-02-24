@@ -7,7 +7,7 @@ Handles polling lifecycle orchestration and event routing to message manager.
 import asyncio
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable
 
@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+OUTPUT_METRICS_SUMMARY_INTERVAL_S = 30.0
 
 # Codex input detection - marker-pair approach
 # Capture input block after "›" prompt and emit when submit boundary marker appears.
@@ -170,6 +171,76 @@ class CodexTurnState:
 # Per-session Codex input tracking state
 _codex_input_state: dict[str, CodexInputState] = {}
 _codex_turn_state: dict[str, CodexTurnState] = {}
+
+
+@dataclass
+class OutputMetricsState:
+    """Aggregated output metrics for cadence/fanout observability."""
+
+    ticks: int = 0
+    fanout_chars: int = 0
+    last_tick_at: float | None = None
+    cadence_samples_s: list[float] = field(default_factory=list)
+    last_summary_at: float = 0.0
+
+
+_output_metrics_state: dict[str, OutputMetricsState] = {}
+
+
+def _percentile(values: list[float], pct: float) -> float | None:
+    """Return a percentile from sorted or unsorted numeric samples."""
+    if not values:
+        return None
+    ordered = sorted(values)
+    index = int(round((len(ordered) - 1) * pct))
+    index = max(0, min(index, len(ordered) - 1))
+    return ordered[index]
+
+
+def _log_output_metrics_summary(session_id: str, state: OutputMetricsState, *, reason: str) -> None:
+    if state.ticks <= 0:
+        return
+
+    avg_cadence = sum(state.cadence_samples_s) / len(state.cadence_samples_s) if state.cadence_samples_s else None
+    p95_cadence = _percentile(state.cadence_samples_s, 0.95)
+    logger.info(
+        "Output cadence summary",
+        session_id=session_id[:8],
+        reason=reason,
+        tick_count=state.ticks,
+        fanout_chars=state.fanout_chars,
+        avg_cadence_s=round(avg_cadence, 3) if avg_cadence is not None else None,
+        p95_cadence_s=round(p95_cadence, 3) if p95_cadence is not None else None,
+    )
+
+
+def _record_output_tick(session_id: str, output_len: int) -> None:
+    """Record output cadence/fanout metrics with periodic summaries."""
+    now = time.time()
+    state = _output_metrics_state.get(session_id)
+    if state is None:
+        state = OutputMetricsState(last_summary_at=now)
+        _output_metrics_state[session_id] = state
+
+    if state.last_tick_at is not None:
+        state.cadence_samples_s.append(max(0.0, now - state.last_tick_at))
+    state.last_tick_at = now
+    state.ticks += 1
+    state.fanout_chars += max(0, output_len)
+
+    if now - state.last_summary_at >= OUTPUT_METRICS_SUMMARY_INTERVAL_S:
+        _log_output_metrics_summary(session_id, state, reason="periodic")
+        state.ticks = 0
+        state.fanout_chars = 0
+        state.cadence_samples_s.clear()
+        state.last_summary_at = now
+
+
+def _clear_output_metrics(session_id: str) -> None:
+    """Drop per-session output metrics state, logging trailing samples once."""
+    state = _output_metrics_state.pop(session_id, None)
+    if state:
+        _log_output_metrics_summary(session_id, state, reason="final")
 
 
 def _mark_codex_turn_started(session_id: str) -> None:
@@ -772,6 +843,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                             event.session_id[:8],
                             exc_info=True,
                         )
+                _record_output_tick(event.session_id, len(clean_output))
                 elapsed = time.time() - start_time
                 logger.debug(
                     "[COORDINATOR %s] send_output_update completed in %.2fs",
@@ -809,6 +881,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                         is_final=True,
                         exit_code=event.exit_code,
                     )
+                    _record_output_tick(event.session_id, len(clean_final_output))
                     tmux_alive = True
                     if session.tmux_session_name:
                         tmux_alive = await tmux_bridge.session_exists(
@@ -860,6 +933,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
         # Cleanup state
         await _unregister_polling(session_id)
         _cleanup_codex_input_state(session_id)
+        _clear_output_metrics(session_id)
         # NOTE: Don't clear pending_deletions here - let _pre_handle_user_input handle deletion on next input
         # NOTE: Keep output_message_id in DB - it's reused for all commands in the session
         # Only cleared when session closes (/exit command)

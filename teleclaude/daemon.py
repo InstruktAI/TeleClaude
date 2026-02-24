@@ -9,10 +9,10 @@ import os
 import signal
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Awaitable, Callable, Coroutine, Optional, TextIO, cast
+from typing import Awaitable, Callable, Coroutine, Literal, Optional, TextIO, cast
 
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
@@ -28,7 +28,7 @@ from teleclaude.core.cache import DaemonCache
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_registry import init_command_service
 from teleclaude.core.command_service import CommandService
-from teleclaude.core.db import db
+from teleclaude.core.db import HookOutboxRow, db
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -82,6 +82,24 @@ class OutputChangeSummary:
     after_snippet: str | None = None
 
 
+@dataclass
+class _HookOutboxQueueItem:
+    """In-memory queue payload for per-session hook outbox processing."""
+
+    row: HookOutboxRow
+    event_type: str
+    classification: Literal["critical", "bursty"]
+
+
+@dataclass
+class _HookOutboxSessionQueue:
+    """Per-session hook queue state."""
+
+    pending: list[_HookOutboxQueueItem] = field(default_factory=list)
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    notify: asyncio.Event = field(default_factory=asyncio.Event)
+
+
 # Logging defaults (can be overridden via environment variables)
 DEFAULT_LOG_LEVEL = "INFO"
 
@@ -117,6 +135,29 @@ HOOK_OUTBOX_LOCK_TTL_S: float = float(os.getenv("HOOK_OUTBOX_LOCK_TTL_S", "30"))
 HOOK_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_BASE_BACKOFF_S", "1"))
 HOOK_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_MAX_BACKOFF_S", "60"))
 HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S: float = float(os.getenv("HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S", "5"))
+HOOK_OUTBOX_SESSION_MAX_PENDING: int = int(os.getenv("HOOK_OUTBOX_SESSION_MAX_PENDING", "32"))
+HOOK_OUTBOX_SUMMARY_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_SUMMARY_INTERVAL_S", "15"))
+HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD: int = int(os.getenv("HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD", "20"))
+HOOK_OUTBOX_LAG_WARN_THRESHOLD_S: float = float(os.getenv("HOOK_OUTBOX_LAG_WARN_THRESHOLD_S", "3"))
+HOOK_OUTBOX_WARN_LOG_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_WARN_LOG_INTERVAL_S", "15"))
+HOOK_OUTBOX_MAX_LAG_SAMPLES: int = int(os.getenv("HOOK_OUTBOX_MAX_LAG_SAMPLES", "2048"))
+
+HOOK_EVENT_CLASS_CRITICAL: frozenset[str] = frozenset(
+    {
+        AgentHookEvents.AGENT_SESSION_START,
+        AgentHookEvents.USER_PROMPT_SUBMIT,
+        AgentHookEvents.AGENT_STOP,
+        AgentHookEvents.AGENT_SESSION_END,
+        AgentHookEvents.AGENT_NOTIFICATION,
+        AgentHookEvents.AGENT_ERROR,
+    }
+)
+HOOK_EVENT_CLASS_BURSTY: frozenset[str] = frozenset(
+    {
+        AgentHookEvents.TOOL_USE,
+        AgentHookEvents.TOOL_DONE,
+    }
+)
 
 # Notification outbox worker
 NOTIFICATION_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("NOTIFICATION_OUTBOX_POLL_INTERVAL_S", "1"))
@@ -290,8 +331,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.shutdown_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task[object]] = set()
         # Per-session outbox processing: one serial worker per session, parallel across sessions.
-        self._session_outbox_queues: dict[str, asyncio.Queue[dict[str, object]]] = {}  # guard: loose-dict
+        self._session_outbox_queues: dict[str, _HookOutboxSessionQueue] = {}
         self._session_outbox_workers: dict[str, asyncio.Task[None]] = {}
+        self._hook_outbox_processed_count = 0
+        self._hook_outbox_coalesced_count = 0
+        self._hook_outbox_lag_samples_s: list[float] = []
+        self._hook_outbox_last_summary_at = time.monotonic()
+        self._hook_outbox_last_backlog_warn_at: dict[str, float] = {}
+        self._hook_outbox_last_lag_warn_at: dict[str, float] = {}
         self.resource_monitor_task: asyncio.Task[object] | None = None
         self.launchd_watch_task: asyncio.Task[object] | None = None
         self._start_time = time.time()
@@ -658,6 +705,128 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 if not ok:
                     return
 
+    @staticmethod
+    def _classify_hook_event(event_type: str) -> Literal["critical", "bursty"]:
+        """Classify hook events for queueing policy."""
+        if event_type in HOOK_EVENT_CLASS_CRITICAL:
+            return "critical"
+        if event_type in HOOK_EVENT_CLASS_BURSTY:
+            return "bursty"
+        # Default non-critical events to bursty until promoted explicitly.
+        return "bursty"
+
+    @staticmethod
+    def _percentile(samples: list[float], pct: float) -> float | None:
+        if not samples:
+            return None
+        ordered = sorted(samples)
+        index = int(round((len(ordered) - 1) * pct))
+        index = max(0, min(index, len(ordered) - 1))
+        return ordered[index]
+
+    @staticmethod
+    def _find_bursty_coalesce_index(pending: list[_HookOutboxQueueItem], event_type: str) -> int | None:
+        """Find a same-type bursty item after the latest critical boundary."""
+        last_critical = -1
+        for idx in range(len(pending) - 1, -1, -1):
+            if pending[idx].classification == "critical":
+                last_critical = idx
+                break
+
+        for idx in range(len(pending) - 1, last_critical, -1):
+            item = pending[idx]
+            if item.classification == "bursty" and item.event_type == event_type:
+                return idx
+        return None
+
+    @staticmethod
+    def _find_oldest_bursty_index(pending: list[_HookOutboxQueueItem]) -> int | None:
+        for idx, item in enumerate(pending):
+            if item.classification == "bursty":
+                return idx
+        return None
+
+    def _maybe_warn_hook_backlog(self, session_id: str, depth: int) -> None:
+        if depth < HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD:
+            return
+        now = time.monotonic()
+        last_warn = self._hook_outbox_last_backlog_warn_at.get(session_id, 0.0)
+        if (now - last_warn) < HOOK_OUTBOX_WARN_LOG_INTERVAL_S:
+            return
+        self._hook_outbox_last_backlog_warn_at[session_id] = now
+        logger.warning(
+            "Hook outbox backlog threshold exceeded",
+            session_id=session_id[:8],
+            queue_depth=depth,
+            threshold=HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD,
+        )
+
+    def _record_hook_lag_sample(self, row: HookOutboxRow) -> None:
+        created_at_raw = row.get("created_at")
+        if not isinstance(created_at_raw, str) or not created_at_raw:
+            return
+        try:
+            created_at = datetime.fromisoformat(created_at_raw.replace("Z", "+00:00"))
+        except ValueError:
+            return
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        else:
+            created_at = created_at.astimezone(timezone.utc)
+
+        lag_s = max(0.0, (datetime.now(timezone.utc) - created_at).total_seconds())
+        self._hook_outbox_lag_samples_s.append(lag_s)
+        overflow = len(self._hook_outbox_lag_samples_s) - HOOK_OUTBOX_MAX_LAG_SAMPLES
+        if overflow > 0:
+            del self._hook_outbox_lag_samples_s[:overflow]
+
+        session_id = str(row.get("session_id") or "")
+        if not session_id or lag_s < HOOK_OUTBOX_LAG_WARN_THRESHOLD_S:
+            return
+        now = time.monotonic()
+        last_warn = self._hook_outbox_last_lag_warn_at.get(session_id, 0.0)
+        if (now - last_warn) < HOOK_OUTBOX_WARN_LOG_INTERVAL_S:
+            return
+        self._hook_outbox_last_lag_warn_at[session_id] = now
+        logger.warning(
+            "Hook outbox lag threshold exceeded",
+            session_id=session_id[:8],
+            lag_s=round(lag_s, 3),
+            threshold_s=HOOK_OUTBOX_LAG_WARN_THRESHOLD_S,
+            event_type=str(row.get("event_type") or ""),
+        )
+
+    def _maybe_log_hook_outbox_summary(self, *, force: bool = False) -> None:
+        now = time.monotonic()
+        if not force and (now - self._hook_outbox_last_summary_at) < HOOK_OUTBOX_SUMMARY_INTERVAL_S:
+            return
+
+        queue_depth = 0
+        for state in self._session_outbox_queues.values():
+            queue_depth += len(state.pending)
+
+        if (
+            not force
+            and self._hook_outbox_processed_count == 0
+            and self._hook_outbox_coalesced_count == 0
+            and queue_depth == 0
+        ):
+            self._hook_outbox_last_summary_at = now
+            return
+
+        p95_lag = self._percentile(self._hook_outbox_lag_samples_s, 0.95)
+        p99_lag = self._percentile(self._hook_outbox_lag_samples_s, 0.99)
+        logger.info(
+            "Hook outbox summary",
+            processed=self._hook_outbox_processed_count,
+            coalesced=self._hook_outbox_coalesced_count,
+            queue_depth=queue_depth,
+            lag_sample_count=len(self._hook_outbox_lag_samples_s),
+            p95_lag_s=round(p95_lag, 3) if p95_lag is not None else None,
+            p99_lag_s=round(p99_lag, 3) if p99_lag is not None else None,
+        )
+        self._hook_outbox_last_summary_at = now
+
     def _hook_outbox_backoff(self, attempt: int) -> float:
         """Compute exponential backoff for hook outbox retries."""
         safe_attempt = max(1, attempt)
@@ -862,38 +1031,94 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         - One logical serial worker per session (strict ordering inside session).
         - Different sessions are handled in parallel.
         """
-        while not self.shutdown_event.is_set():
-            now = datetime.now(timezone.utc)
-            now_iso = now.isoformat()
-            lock_cutoff = (now - timedelta(seconds=HOOK_OUTBOX_LOCK_TTL_S)).isoformat()
-            rows = await db.fetch_hook_outbox_batch(now_iso, HOOK_OUTBOX_BATCH_SIZE, lock_cutoff)
+        try:
+            while not self.shutdown_event.is_set():
+                now = datetime.now(timezone.utc)
+                now_iso = now.isoformat()
+                lock_cutoff = (now - timedelta(seconds=HOOK_OUTBOX_LOCK_TTL_S)).isoformat()
+                rows = await db.fetch_hook_outbox_batch(now_iso, HOOK_OUTBOX_BATCH_SIZE, lock_cutoff)
 
-            if not rows:
-                await asyncio.sleep(HOOK_OUTBOX_POLL_INTERVAL_S)
-                continue
-
-            for row in rows:
-                if self.shutdown_event.is_set():
-                    break
-                claimed = await db.claim_hook_outbox(row["id"], now_iso, lock_cutoff)
-                if not claimed:
+                if not rows:
+                    self._maybe_log_hook_outbox_summary()
+                    await asyncio.sleep(HOOK_OUTBOX_POLL_INTERVAL_S)
                     continue
 
-                session_id = str(row["session_id"])
-                self._enqueue_session_outbox_item(session_id, row)
+                for row in rows:
+                    if self.shutdown_event.is_set():
+                        break
+                    claimed = await db.claim_hook_outbox(row["id"], now_iso, lock_cutoff)
+                    if not claimed:
+                        continue
 
-    def _enqueue_session_outbox_item(
+                    session_id = str(row["session_id"])
+                    await self._enqueue_session_outbox_item(session_id, row)
+
+                self._maybe_log_hook_outbox_summary()
+        finally:
+            self._maybe_log_hook_outbox_summary(force=True)
+
+    async def _enqueue_session_outbox_item(
         self,
         session_id: str,
-        row: dict[str, object],  # guard: loose-dict - DB row mapping
+        row: HookOutboxRow,
     ) -> None:
-        """Enqueue an outbox row to the session-specific serial worker."""
-        queue = self._session_outbox_queues.get(session_id)
-        if queue is None:
-            queue = asyncio.Queue()
-            self._session_outbox_queues[session_id] = queue
+        """Enqueue a claimed outbox row with bounded burst coalescing."""
+        event_type = str(row.get("event_type") or "")
+        classification = self._classify_hook_event(event_type)
+        queue_state = self._session_outbox_queues.get(session_id)
+        if queue_state is None:
+            queue_state = _HookOutboxSessionQueue()
+            self._session_outbox_queues[session_id] = queue_state
 
-        queue.put_nowait(row)
+        dropped_rows: list[HookOutboxRow] = []
+        enqueued = True
+        queue_item = _HookOutboxQueueItem(
+            row=row,
+            event_type=event_type,
+            classification=classification,
+        )
+
+        async with queue_state.lock:
+            pending = queue_state.pending
+
+            if classification == "bursty":
+                replace_idx = self._find_bursty_coalesce_index(pending, event_type)
+                if replace_idx is not None:
+                    dropped_rows.append(pending[replace_idx].row)
+                    pending[replace_idx] = queue_item
+                else:
+                    if len(pending) >= HOOK_OUTBOX_SESSION_MAX_PENDING:
+                        drop_idx = self._find_oldest_bursty_index(pending)
+                        if drop_idx is not None:
+                            dropped_rows.append(pending.pop(drop_idx).row)
+                        else:
+                            # Critical-only backlog: preserve critical order, drop incoming bursty.
+                            dropped_rows.append(row)
+                            enqueued = False
+                    if enqueued:
+                        pending.append(queue_item)
+            else:
+                while len(pending) >= HOOK_OUTBOX_SESSION_MAX_PENDING:
+                    drop_idx = self._find_oldest_bursty_index(pending)
+                    if drop_idx is None:
+                        break
+                    dropped_rows.append(pending.pop(drop_idx).row)
+                pending.append(queue_item)
+
+            queue_depth = len(pending)
+            if enqueued:
+                queue_state.notify.set()
+
+        if dropped_rows:
+            self._hook_outbox_coalesced_count += len(dropped_rows)
+            for dropped in dropped_rows:
+                dropped_id = dropped["id"]
+                await db.mark_hook_outbox_delivered(
+                    dropped_id,
+                    error=f"coalesced:{event_type or 'unknown'}",
+                )
+
+        self._maybe_warn_hook_backlog(session_id, queue_depth)
 
         worker = self._session_outbox_workers.get(session_id)
         if worker and not worker.done():
@@ -905,33 +1130,46 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     async def _run_session_outbox_worker(self, session_id: str) -> None:
         """Process claimed outbox rows serially for a single session."""
-        queue = self._session_outbox_queues.get(session_id)
-        if queue is None:
+        queue_state = self._session_outbox_queues.get(session_id)
+        if queue_state is None:
             return
 
         try:
             while not self.shutdown_event.is_set():
-                try:
-                    row = await asyncio.wait_for(queue.get(), timeout=HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S)
-                except asyncio.TimeoutError:
-                    if queue.empty():
-                        break
+                row: HookOutboxRow | None = None
+                queue_depth = 0
+
+                async with queue_state.lock:
+                    if queue_state.pending:
+                        row = queue_state.pending.pop(0).row
+                    queue_depth = len(queue_state.pending)
+                    if not queue_state.pending:
+                        queue_state.notify.clear()
+
+                if row is None:
+                    try:
+                        await asyncio.wait_for(queue_state.notify.wait(), timeout=HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S)
+                    except asyncio.TimeoutError:
+                        async with queue_state.lock:
+                            if not queue_state.pending:
+                                break
                     continue
 
-                try:
-                    await self._process_outbox_item(row)
-                finally:
-                    queue.task_done()
+                self._maybe_warn_hook_backlog(session_id, queue_depth)
+                await self._process_outbox_item(row)
         finally:
             current = asyncio.current_task()
             if self._session_outbox_workers.get(session_id) is current:
                 self._session_outbox_workers.pop(session_id, None)
-            if self._session_outbox_queues.get(session_id) is queue and queue.empty():
-                self._session_outbox_queues.pop(session_id, None)
+            active_queue = self._session_outbox_queues.get(session_id)
+            if active_queue is queue_state:
+                async with queue_state.lock:
+                    if not queue_state.pending:
+                        self._session_outbox_queues.pop(session_id, None)
 
     async def _process_outbox_item(
         self,
-        row: dict[str, object],  # guard: loose-dict - DB row mapping
+        row: HookOutboxRow,
     ) -> None:
         """Process a single outbox item. Handles its own success/failure lifecycle."""
         row_id = row["id"]
@@ -943,11 +1181,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         except json.JSONDecodeError as exc:
             logger.error("Hook outbox payload invalid", row_id=row_id, error=str(exc))
             await db.mark_hook_outbox_delivered(row_id, error=str(exc))
+            self._hook_outbox_processed_count += 1
+            self._record_hook_lag_sample(row)
             return
 
         try:
             await self._dispatch_hook_event(str(row["session_id"]), str(row["event_type"]), payload)
             await db.mark_hook_outbox_delivered(row_id)
+            self._hook_outbox_processed_count += 1
+            self._record_hook_lag_sample(row)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             attempt = int(row.get("attempt_count", 0)) + 1
             error_str = str(exc)
@@ -959,6 +1201,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     error=error_str,
                 )
                 await db.mark_hook_outbox_delivered(row_id, error=error_str)
+                self._hook_outbox_processed_count += 1
+                self._record_hook_lag_sample(row)
                 return
 
             delay = self._hook_outbox_backoff(attempt)

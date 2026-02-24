@@ -35,6 +35,7 @@ class HookOutboxRow(TypedDict):
     session_id: str
     event_type: str
     payload: str
+    created_at: str | None
     attempt_count: int
 
 
@@ -1311,6 +1312,7 @@ class Db:
                     session_id=row.session_id,
                     event_type=row.event_type,
                     payload=row.payload,
+                    created_at=row.created_at,
                     attempt_count=row.attempt_count,
                 )
                 for row in rows

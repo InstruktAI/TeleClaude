@@ -49,6 +49,12 @@ type: 'design'
 - **Exactly-Once Lock**: Each row claimed exclusively by one worker using locked_at + lock_cutoff.
 - **Exponential Backoff**: Retryable failures back off exponentially and cap at the configured max delay.
 - **Idempotent Processing**: Handlers tolerate duplicate delivery if lock expires during processing.
+- **Control-plane hooks**: `tool_use` / `tool_done` do not directly fan out adapter output.
+  Transcript polling is the output data plane.
+- **Bounded burst handling**: per-session in-memory queue is bounded; bursty hook classes
+  are coalesced latest-wins within the current non-critical segment.
+- **Critical preservation**: critical classes are never dropped; queue pressure evicts bursty
+  rows first and preserves critical ordering.
 
 ## Primary flows
 
@@ -110,6 +116,13 @@ sequenceDiagram
     end
 ```
 
+### 3a. Backpressure classification
+
+| Class    | Event types                                                                                 | Queue policy                                             |
+| -------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| critical | `session_start`, `user_prompt_submit`, `agent_stop`, `session_end`, `notification`, `error` | Never dropped; strict ordering preserved.                |
+| bursty   | `tool_use`, `tool_done` (and non-critical unknowns by default)                              | Coalesced latest-wins; oldest bursty rows evicted first. |
+
 ### 4. Retry Backoff Schedule
 
 | Attempt | Delay (default) |
@@ -124,15 +137,15 @@ sequenceDiagram
 
 ### 5. Hook Event Types Processed
 
-| Event Type           | Payload Fields (selected)                 | Action                                                                    |
-| -------------------- | ----------------------------------------- | ------------------------------------------------------------------------- |
-| `session_start`      | `session_id`, `transcript_path`           | Initialize/anchor headless lifecycle and capture native identity          |
-| `user_prompt_submit` | `session_id`, `prompt`                    | Update last user input for session history                                |
-| `tool_use`           | `session_id`, `transcript_path`           | Treated as output-bearing event (currently typed as `AgentOutputPayload`) |
-| `tool_done`          | `session_id`, `transcript_path`           | Process rich incremental output events                                    |
-| `agent_stop`         | `session_id`, `transcript_path`, `prompt` | Complete turn handling and downstream summary/notification flow           |
-| `notification`       | `session_id`, `message`                   | Relay permission/notification signals                                     |
-| `error`              | `message`, `code`, `details`              | Surface hook receiver/runtime failures                                    |
+| Event Type           | Payload Fields (selected)                 | Action                                                           |
+| -------------------- | ----------------------------------------- | ---------------------------------------------------------------- |
+| `session_start`      | `session_id`, `transcript_path`           | Initialize/anchor headless lifecycle and capture native identity |
+| `user_prompt_submit` | `session_id`, `prompt`                    | Update last user input for session history                       |
+| `tool_use`           | `session_id`, `transcript_path`           | Control-plane activity/timing signal (no direct output fanout)   |
+| `tool_done`          | `session_id`, `transcript_path`           | Control-plane activity signal (no direct output fanout)          |
+| `agent_stop`         | `session_id`, `transcript_path`, `prompt` | Complete turn handling and downstream summary/notification flow  |
+| `notification`       | `session_id`, `message`                   | Relay permission/notification signals                            |
+| `error`              | `message`, `code`, `details`              | Surface hook receiver/runtime failures                           |
 
 ## Failure modes
 
