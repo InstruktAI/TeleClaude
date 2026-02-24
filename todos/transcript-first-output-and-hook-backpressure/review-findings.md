@@ -26,3 +26,12 @@ Manual Verification Evidence:
 - Ran targeted unit verification for touched runtime surfaces: `pytest tests/unit/test_daemon.py tests/unit/test_threaded_output_updates.py tests/unit/test_output_poller.py tests/unit/test_polling_coordinator.py tests/unit/test_agent_coordinator.py tests/unit/test_diagram_extractors.py -q` (`127 passed`).
 
 Verdict: REQUEST CHANGES
+
+Fixes Applied:
+
+- Issue: Queue bounding violated for critical-only backlogs (`R3`).
+  Fix: Updated `_enqueue_session_outbox_item` to requeue claimed critical rows via `mark_hook_outbox_failed` when the per-session queue is full of critical rows, preserving strict in-memory bounds and critical-event durability; added regression coverage for critical-only saturation and bursty-over-critical capacity behavior.
+  Commit: `0f68ea49`
+- Issue: Synthetic lag AC4 test was vacuous due to single-sample coalescing.
+  Fix: Reworked `test_hook_outbox_synthetic_burst_lag_targets` to enqueue and drain a 200-row burst through `_run_session_outbox_worker`, assert multi-sample lag percentile checks, and verify delivered count over the full sample set.
+  Commit: `ccc06c40`
