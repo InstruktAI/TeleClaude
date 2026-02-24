@@ -213,6 +213,7 @@ if [ "$_subcmd" = "push" ]; then
 
             if [ "$canonical_context" -ne 1 ]; then
                 _log_block "$branch" "$local_ref" "git $*" "$repo_root" "$common_root" "$session_id"
+                echo "GUARDRAIL_MARKER: ${MARKER}" >&2
                 cat >&2 <<'MSG'
 ERROR: MAIN_GUARDRAIL_BLOCKED
 Main-targeting operations are allowed only from the canonical repository root on branch main.
