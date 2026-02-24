@@ -17,6 +17,8 @@ Another issue is that I cannot start a bug because it expects a DOR score. This 
 
 Right now when I change from light to dark mode and vice versa, there are glitches on the screen. The biggest glitch being that the background of the TUI pane is not changed.
 
+### TUI session popup launches and preselects Claude by default, but when it is unavailable that should not be possible
+
 ## Discovery Context
 
 Reported by: manual

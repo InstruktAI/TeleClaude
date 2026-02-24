@@ -1,4 +1,4 @@
-# Quality Checklist: textual-footer-migration
+# Quality Checklist: ucap-ingress-provisioning-harmonization
 
 This checklist is the execution projection of `definition-of-done.md` for this todo.
 
@@ -16,7 +16,7 @@ Ownership:
 - [ ] Lint passes (`make lint`)
 - [ ] No silent deferrals in implementation plan
 - [ ] Code committed
-- [ ] Demo validated (`telec todo demo textual-footer-migration` exits 0, or exception noted)
+- [ ] Demo validated (`telec todo demo validate ucap-ingress-provisioning-harmonization` exits 0, or exception noted)
 - [ ] Working tree clean
 - [ ] Comments/docstrings updated where behavior changed
 
@@ -31,10 +31,10 @@ Ownership:
 
 ## Finalize Gates (Finalizer)
 
-- [x] Review verdict is APPROVE
-- [x] Build gates all checked
-- [x] Review gates all checked
-- [x] Merge to main complete
-- [x] Delivery logged in `todos/delivered.md`
-- [x] Roadmap updated
-- [ ] Todo/worktree cleanup complete (orchestrator-owned)
+- [ ] Review verdict is APPROVE
+- [ ] Build gates all checked
+- [ ] Review gates all checked
+- [ ] Merge to main complete
+- [ ] Delivery logged in `todos/delivered.md`
+- [ ] Roadmap updated
+- [ ] Todo/worktree cleanup complete
