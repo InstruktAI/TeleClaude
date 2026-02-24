@@ -1,13 +1,5 @@
-<<<<<<< HEAD
 phase: in_progress
 build: started
-||||||| parent of b9233770 (feat(tui): replace ActionBar with Textual Footer)
-phase: ready
-build: pending
-=======
-phase: pending
-build: started
->>>>>>> b9233770 (feat(tui): replace ActionBar with Textual Footer)
 review: pending
 deferrals_processed: false
 breakdown:
