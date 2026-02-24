@@ -33,6 +33,20 @@
 - Executed: `telec todo demo textual-footer-migration` (fails at test block due timeout in `tests/unit/test_diagram_extractors.py::test_extract_modules_regression`).
 - Not directly observed: live TUI footer rendering and bold default-action styling during cursor movement.
 
+## Fixes Applied
+
+- Issue: `SessionsView` Enter/default-action regression on non-session nodes.
+  Fix: Re-enabled `focus_pane` on `ProjectHeader`/`ComputerHeader`, routed Enter on computer headers to `restart_all`, and added focused regression tests for check-action gating + Enter routing.
+  Commit: `179e2722`
+
+- Issue: Preparation todo-row Enter hint mismatch (`Edit` vs expand/collapse behavior).
+  Fix: Updated Enter binding label to `Toggle/Edit` and added a footer-hint regression test tied to the `activate` action binding.
+  Commit: `085a3085`
+
+- Issue: Verification gate instability from `test_extract_modules_regression` timeout.
+  Fix: Added a scoped timeout override (`@pytest.mark.timeout(5)`) to stabilize this heavier regression test and reran demo verification (`telec todo demo run textual-footer-migration`) successfully.
+  Commit: `feb6055d`
+
 ## Verdict
 
 REQUEST CHANGES
