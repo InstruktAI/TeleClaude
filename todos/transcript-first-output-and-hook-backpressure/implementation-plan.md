@@ -20,10 +20,10 @@ Unify output into a single transcript-driven producer, keep hooks strictly contr
 
 ## Phase 1 - Establish Single Output Data Plane (R1, R2, R4)
 
-- [x] Enumerate all output producer call sites and mark one canonical producer path.
-- [x] Remove direct output fanout from hook-driven `tool_use` / `tool_done` handlers.
-- [x] Keep session-stop final flush behavior intact.
-- [x] Verify output progression still occurs from transcript deltas on cadence tick.
+- [ ] Enumerate all output producer call sites and mark one canonical producer path.
+- [ ] Remove direct output fanout from hook-driven `tool_use` / `tool_done` handlers.
+- [ ] Keep session-stop final flush behavior intact.
+- [ ] Verify output progression still occurs from transcript deltas on cadence tick.
 
 ### Files (expected)
 
@@ -34,10 +34,10 @@ Unify output into a single transcript-driven producer, keep hooks strictly contr
 
 ## Phase 2 - Hook Backpressure and Coalescing Policy (R3)
 
-- [x] Apply explicit event classification (`critical` vs `bursty`) from requirements.
-- [x] Implement bounded per-session processing for bursty hook classes at the actual queue point.
-- [x] Implement coalescing strategy for bursty classes (latest-wins or per-turn aggregate).
-- [x] Preserve strict ordering and non-drop behavior for critical events.
+- [ ] Apply explicit event classification (`critical` vs `bursty`) from requirements.
+- [ ] Implement bounded per-session processing for bursty hook classes at the actual queue point.
+- [ ] Implement coalescing strategy for bursty classes (latest-wins or per-turn aggregate).
+- [ ] Preserve strict ordering and non-drop behavior for critical events.
 
 ### Files (expected)
 
@@ -48,9 +48,9 @@ Unify output into a single transcript-driven producer, keep hooks strictly contr
 
 ## Phase 3 - Cadence and Contract Hardening (R1, R2, R4)
 
-- [x] Keep default output cadence at 1.0s with explicit configurability.
-- [x] Document contract: transcript cadence drives output publication; hooks are control-plane only.
-- [x] Confirm no hidden fast path bypasses remain.
+- [ ] Keep default output cadence at 1.0s with explicit configurability.
+- [ ] Document contract: transcript cadence drives output publication; hooks are control-plane only.
+- [ ] Confirm no hidden fast path bypasses remain.
 
 ### Files (expected)
 
@@ -60,9 +60,9 @@ Unify output into a single transcript-driven producer, keep hooks strictly contr
 
 ## Phase 4 - Observability and Noise Control (R3, R5)
 
-- [x] Add metrics/counters for queue depth, lag, coalesced count, and output tick/fanout.
-- [x] Replace per-event spam with sampled summary logs for suppression/coalescing paths.
-- [x] Add warning thresholds for sustained lag/backlog.
+- [ ] Add metrics/counters for queue depth, lag, coalesced count, and output tick/fanout.
+- [ ] Replace per-event spam with sampled summary logs for suppression/coalescing paths.
+- [ ] Add warning thresholds for sustained lag/backlog.
 
 ### Files (expected)
 
@@ -72,11 +72,11 @@ Unify output into a single transcript-driven producer, keep hooks strictly contr
 
 ## Phase 5 - Validation and Safety (R1-R5)
 
-- [x] Unit tests for single-producer enforcement and no duplicate output emission.
-- [x] Unit/integration tests for bounded queue/coalescing behavior.
-- [x] Regression tests for session-stop final flush.
-- [x] Synthetic burst test that asserts lag targets (`p95 < 1s`, `p99 < 3s`) under normal load profile.
-- [x] Update `demo.md` commands so `telec todo demo run transcript-first-output-and-hook-backpressure` is executable.
+- [ ] Unit tests for single-producer enforcement and no duplicate output emission.
+- [ ] Unit/integration tests for bounded queue/coalescing behavior.
+- [ ] Regression tests for session-stop final flush.
+- [ ] Synthetic burst test that asserts lag targets (`p95 < 1s`, `p99 < 3s`) under normal load profile.
+- [ ] Update `demo.md` commands so `telec todo demo run transcript-first-output-and-hook-backpressure` is executable.
 
 ### Files (expected)
 
@@ -96,7 +96,7 @@ Unify output into a single transcript-driven producer, keep hooks strictly contr
 
 ## Definition of Done
 
-- [x] One canonical output producer path remains.
-- [x] Hook bursts no longer cause output duplication/flood behavior.
-- [x] Hook backlog is bounded with measurable lag targets.
-- [x] Tests and docs updated to reflect the new contract.
+- [ ] One canonical output producer path remains.
+- [ ] Hook bursts no longer cause output duplication/flood behavior.
+- [ ] Hook backlog is bounded with measurable lag targets.
+- [ ] Tests and docs updated to reflect the new contract.
