@@ -41,7 +41,7 @@ Close all known paths where worktree-context agents can advance `origin/main` di
 
 - [x] Add `.githooks/pre-push` guard to reject non-canonical pushes targeting `refs/heads/main`.
 - [x] Ensure `telec init` configures `core.hooksPath=.githooks` idempotently.
-- [ ] Harden git wrapper behavior for push-to-main:
+- [x] Harden git wrapper behavior for push-to-main:
   - detect main-targeting push refspecs,
   - block from non-canonical context even with `--no-verify`,
   - preserve non-main push behavior.
