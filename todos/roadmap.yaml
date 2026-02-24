@@ -8,8 +8,8 @@
 - slug: transcript-first-output-and-hook-backpressure
   group: unified-client-adapter-pipeline
   description: Make native transcript deltas the single output data plane, keep hooks
-    control-plane only, and establish the foundation for unified client adapter
-    pipeline cutover.
+    control-plane only, and establish the foundation for unified client adapter pipeline
+    cutover.
 - slug: unified-client-adapter-pipeline
   after:
   - transcript-first-output-and-hook-backpressure
@@ -100,3 +100,7 @@
   description: Add Discord Application Commands (slash commands) mirroring Telegram
     command set
 - slug: agent-config-driven-selection-contract
+- slug: assemble-todo-shared-loader
+  description: Unify todo data access behind shared roadmap/todo assembly helpers;
+    add telec todo get and migrate non-next-machine call sites off direct roadmap
+    loaders.
