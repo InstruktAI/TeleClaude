@@ -2,82 +2,119 @@
 
 ## Overview
 
-This delivery establishes the routing contract across origin UX, dual output, and reflection lanes, with actor-attributed cross-adapter reflection and Discord webhook rendering support.
+Two cross-cutting fixes were implemented in the core adapter layer:
+
+1. Continuous text delivery between tool calls.
+2. Clear, actor-attributed input reflection with explicit origin/admin routing behavior.
+
+Primary touch points: `agent_coordinator.py`, `adapter_client.py`, `polling_coordinator.py`, `daemon.py`, `command_mapper.py`, `command_handlers.py`, `commands.py`, `discord_adapter.py`, `telegram_adapter.py`, `telegram/input_handlers.py`, `mcp/handlers.py`, and `redis_transport.py`.
 
 ---
 
-## Phase 1: Delivery Scope Contract
+## Phase 1: Text Delivery Fix
 
-### Task 1.1: Enforce message-intent scope behavior
+### Task 1.1: Add `trigger_incremental_output` to AgentCoordinator
 
-**File(s):** `teleclaude/core/adapter_client.py`, `teleclaude/core/ui_adapter.py`, `teleclaude/core/command_handlers.py`
+**File(s):** `teleclaude/core/agent_coordinator.py`
 
-- [x] Keep `feedback_notice_error_status` as `ORIGIN_ONLY`.
-- [x] Keep `last_output_summary` as `ORIGIN_ONLY` and non-threaded/in-edit UX only.
-- [x] Keep stream output delivery as `DUAL`.
+- [x] Add public method `trigger_incremental_output(session_id: str) -> bool` after `_maybe_send_incremental_output`.
+- [x] Fast-path: fetch session, check `is_threaded_output_enabled(session.active_agent)`, return False if not enabled.
+- [x] Construct minimal `AgentOutputPayload()` with defaults (the existing method falls back to `session.active_agent` and `session.native_log_file`).
+- [x] Delegate to `self._maybe_send_incremental_output(session_id, payload)`.
 
-### Task 1.2: Reflection lane fanout
+### Task 1.2: Expose AgentCoordinator to the poller
 
-**File(s):** `teleclaude/core/adapter_client.py`, `teleclaude/core/command_handlers.py`
+**File(s):** `teleclaude/core/adapter_client.py`, `teleclaude/daemon.py`
 
-- [x] Reflect input to all provisioned non-source adapters.
-- [x] Keep reflection lane semantics independent from cleanup trigger semantics.
-- [x] Apply reflection lane behavior for text, voice, and MCP origins.
+- [x] Add `self.agent_coordinator: "AgentCoordinator | None" = None` to `AdapterClient.__init__`.
+- [x] Add `TYPE_CHECKING` import for `AgentCoordinator`.
+- [x] In `daemon.py`, after `self.client.agent_event_handler = self.agent_coordinator.handle_event` (line 251), add `self.client.agent_coordinator = self.agent_coordinator`.
 
----
+### Task 1.3: Trigger incremental output from the poller
 
-## Phase 2: Actor Attribution Pipeline
+**File(s):** `teleclaude/core/polling_coordinator.py`
 
-### Task 2.1: Command/model actor fields
-
-**File(s):** `teleclaude/types/commands.py`, `teleclaude/core/models.py`
-
-- [x] Add actor identity/display/avatar fields to command/message metadata.
-- [x] Preserve fallback behavior when adapter-provided identity is unavailable.
-
-### Task 2.2: Metadata propagation through core paths
-
-**File(s):** `teleclaude/core/command_mapper.py`, `teleclaude/transport/redis_transport.py`, `teleclaude/mcp/handlers.py`, `teleclaude/core/agent_coordinator.py`, `teleclaude/core/command_handlers.py`
-
-- [x] Propagate actor metadata through mapper, transport, and handler layers.
-- [x] Ensure reflection rendering receives normalized actor metadata.
+- [x] In the `OutputChanged` handler, after the `send_output_update` call (after line 764), add:
+  ```python
+  coordinator = adapter_client.agent_coordinator
+  if coordinator:
+      try:
+          await coordinator.trigger_incremental_output(event.session_id)
+      except Exception:
+          logger.warning("Poller-triggered incremental output failed for %s", session_id[:8], exc_info=True)
+  ```
+- [x] This fires for ALL sessions but `trigger_incremental_output` fast-rejects non-threaded sessions before any I/O.
 
 ---
 
-## Phase 3: Adapter Rendering
+## Phase 2: User Input Reflection Fix
 
-### Task 3.1: Discord reflection presentation
+### Task 2.1: Enforce reflection fan-out contract
+
+**File(s):** `teleclaude/core/adapter_client.py`
+
+- [x] Keep input reflection routed to all provisioned UI adapters except the source adapter.
+- [x] Ensure text, voice, hook, and MCP-origin input all use the same reflection rule.
+- [x] Add reflection actor metadata fields to message metadata (`reflection_actor_id`, `reflection_actor_name`, `reflection_actor_avatar_url`).
+- [x] Format reflected text using actor attribution (best effort actor name, then fallback).
+
+### Task 2.2: Propagate actor identity through command boundaries
+
+**File(s):** `teleclaude/types/commands.py`, `teleclaude/core/command_mapper.py`, `teleclaude/core/command_handlers.py`, `teleclaude/transport/redis_transport.py`
+
+- [x] Add `actor_id`, `actor_name`, and `actor_avatar_url` to message and voice command models.
+- [x] Map actor identity from adapter metadata into command payloads.
+- [x] Carry actor identity through Redis/MCP command ingestion and command handlers.
+- [x] Keep reflection behavior consistent regardless of source adapter.
+
+### Task 2.3: Feed actor identity from adapters
+
+**File(s):** `teleclaude/adapters/telegram/input_handlers.py`, `teleclaude/adapters/telegram_adapter.py`, `teleclaude/adapters/discord_adapter.py`, `teleclaude/mcp/handlers.py`
+
+- [x] Populate actor metadata for Telegram text and voice input.
+- [x] Populate actor metadata for Discord text and voice input.
+- [x] Resolve MCP actor identity for AI-to-AI flows and include it in emitted commands.
+- [x] Apply best-effort actor naming fallback where upstream adapters do not provide a human-readable name.
+
+### Task 2.4: Discord reflection rendering via webhook
 
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
-- [x] Use webhook-based reflection rendering when available.
-- [x] Keep safe fallback to normal adapter send path.
+- [x] Add webhook-based reflection send path using reflection actor name/avatar when available.
+- [x] Cache reflection webhooks per parent forum channel.
+- [x] Fall back to standard bot send when webhook creation/send is unavailable.
+- [x] Keep routing unchanged: this is presentation behavior only.
 
-### Task 3.2: Telegram/Discord input metadata capture
+### Task 2.5: Preserve origin UX-only summary and notice behavior
 
-**File(s):** `teleclaude/adapters/telegram/input_handlers.py`, `teleclaude/adapters/telegram_adapter.py`, `teleclaude/adapters/discord_adapter.py`
+**File(s):** `docs/project/spec/session-output-routing.md`, core delivery call sites
 
-- [x] Capture best-effort actor identity at adapter boundaries.
-- [x] Feed captured metadata into reflection pipeline.
-
----
-
-## Phase 4: Validation and Build Gates
-
-### Task 4.1: Tests and lint
-
-- [x] Validate updated routing/attribution paths with targeted unit coverage.
-- [x] Run `make test` and `make lint` for build-gate validation.
-
-### Task 4.2: Demo and artifacts
-
-- [x] Validate `telec todo demo adapter-output-delivery`.
-- [x] Keep todo artifacts synchronized with the implemented routing contract.
+- [x] Keep notices/feedback/errors origin-only.
+- [x] Keep `last_output_summary` origin UX-only and non-threaded/in-edit.
+- [x] Keep threaded output flow separate from summary/notice routing.
 
 ---
 
-## Review Handoff
+## Phase 3: Validation
 
-- [x] Requirements and implementation plan aligned with the lane model used by the code.
-- [x] Routing behavior is documented in `docs/project/spec/session-output-routing.md`.
-- [x] Reviewer context should use this plan and requirements as canonical for this todo.
+### Task 3.1: Tests
+
+- [x] Test `trigger_incremental_output` sends output for threaded sessions.
+- [x] Test `trigger_incremental_output` is a no-op for non-threaded sessions.
+- [x] Test `broadcast_user_input` reflects to all non-source adapters for text/voice/MCP flows.
+- [x] Test actor metadata propagation and formatting for reflection paths.
+- [x] Test Discord reflection send path behavior (webhook first, fallback safe path).
+- [x] Run targeted adapter/core unit tests for changed modules.
+
+### Task 3.2: Quality Checks
+
+- [x] Run lint checks for changed files.
+- [x] Verify no unchecked implementation tasks remain.
+
+---
+
+## Phase 4: Review Readiness
+
+- [x] Confirm requirements are reflected in code changes.
+- [x] Confirm implementation tasks are all marked `[x]`.
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable).
