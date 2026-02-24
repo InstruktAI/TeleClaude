@@ -7,14 +7,53 @@
 - slug: tui-state-persistence
 - slug: cross-project-context
 - slug: transcript-first-output-and-hook-backpressure
+  group: unified-client-adapter-pipeline
   description: Make native transcript deltas the single output data plane, keep hooks
-    control-plane only, and add hook backpressure/coalescing so bursty tool events
-    cannot outpace processing.
+    control-plane only, and establish the foundation for unified client adapter
+    pipeline cutover.
 - slug: unified-client-adapter-pipeline
   after:
   - transcript-first-output-and-hook-backpressure
-  description: Unify Web and TUI with the same adapter/output pipeline and realtime
-    stream contract used by other adapters; remove direct client-side bypass paths.
+  description: 'Umbrella: split Web/TUI adapter pipeline unification into atomic child
+    todos and track dependency-gated delivery.'
+- slug: ucap-canonical-contract
+  group: unified-client-adapter-pipeline
+  after:
+  - transcript-first-output-and-hook-backpressure
+  description: 'Phase 1: Define canonical outbound realtime contract and shared serializer/validation
+    utilities across adapters.'
+- slug: ucap-truthful-session-status
+  group: unified-client-adapter-pipeline
+  after:
+  - ucap-canonical-contract
+  description: 'Phase 2: Make core the source of truth for session lifecycle status
+    and map that contract to each adapter''s UI capabilities.'
+- slug: ucap-web-adapter-alignment
+  group: unified-client-adapter-pipeline
+  after:
+  - ucap-truthful-session-status
+  description: 'Phase 3: Align Web realtime delivery to adapter-driven contract and
+    remove direct Web bypass paths.'
+- slug: ucap-tui-adapter-alignment
+  group: unified-client-adapter-pipeline
+  after:
+  - ucap-truthful-session-status
+  description: 'Phase 4: Align TUI realtime delivery to adapter-driven contract and
+    remove direct TUI bypass paths.'
+- slug: ucap-ingress-provisioning-harmonization
+  group: unified-client-adapter-pipeline
+  after:
+  - ucap-canonical-contract
+  description: 'Phase 5: Standardize ingress semantics and centralize channel/provisioning
+    orchestration for client adapters.'
+- slug: ucap-cutover-parity-validation
+  group: unified-client-adapter-pipeline
+  after:
+  - ucap-web-adapter-alignment
+  - ucap-tui-adapter-alignment
+  - ucap-ingress-provisioning-harmonization
+  description: 'Phase 6: Execute shadow/cutover, parity metrics validation, rollback
+    criteria, and final bypass removal checks.'
 - slug: mcp-migration-telec-commands
   group: mcp-to-tool-specs
   description: 'Phase 1: Add telec subcommands for all 24 tools with rich --help,
