@@ -226,3 +226,51 @@ async def test_checkpoint_stop_output_not_fanned_out():
         await coordinator.handle_agent_stop(context)
 
     mock_fanout.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_agent_stop_continues_after_linked_output_delivery_error():
+    """Peer delivery failures during fan-out must not abort stop lifecycle steps."""
+    mock_client = MagicMock()
+    mock_client.send_request = AsyncMock(side_effect=RuntimeError("transport unavailable"))
+    mock_client.break_threaded_turn = AsyncMock(return_value=None)
+    mock_tts = MagicMock()
+    mock_tts.speak = AsyncMock(return_value=None)
+    coordinator = AgentCoordinator(mock_client, mock_tts, MagicMock())
+
+    await db.create_session(
+        computer_name="TestComputer",
+        tmux_session_name="tc_sender",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Sender",
+        session_id="sender",
+    )
+    await db.create_session(
+        computer_name="RemotePC",
+        tmux_session_name="tc_peer",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Peer",
+        session_id="peer",
+    )
+
+    link = await create_link(mode="direct_link", created_by_session_id="sender")
+    await add_link_member(link_id=link.link_id, session_id="sender", computer_name="TestComputer")
+    await add_link_member(link_id=link.link_id, session_id="peer", computer_name="RemotePC")
+
+    payload = AgentStopPayload(session_id="sender", prompt=None, raw={"agent_name": "claude"})
+    context = AgentEventContext(event_type=AgentHookEvents.AGENT_STOP, session_id="sender", data=payload)
+
+    with (
+        patch.object(coordinator, "_extract_agent_output", new=AsyncMock(return_value="final output")),
+        patch.object(coordinator, "_summarize_output", new=AsyncMock(return_value=None)),
+        patch.object(coordinator, "_maybe_send_incremental_output", new=AsyncMock(return_value=False)),
+        patch.object(coordinator, "_extract_user_input_for_codex", new=AsyncMock(return_value=None)),
+        patch.object(coordinator, "_forward_stop_to_initiator", new=AsyncMock(return_value=None)),
+        patch.object(coordinator, "_notify_session_listener", new=AsyncMock(return_value=None)) as mock_notify,
+        patch.object(coordinator, "_maybe_inject_checkpoint", new=AsyncMock(return_value=None)) as mock_checkpoint,
+    ):
+        await coordinator.handle_agent_stop(context)
+
+    assert mock_client.send_request.await_count == 1
+    mock_notify.assert_awaited_once()
+    mock_checkpoint.assert_awaited_once()

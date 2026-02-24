@@ -1185,34 +1185,41 @@ class AgentCoordinator:
                 actor_id = f"system:{sender_computer}:{sender_session_id}"
                 actor_name = f"system@{sender_computer}"
 
-                if target_computer == config.computer.name:
-                    cmd = ProcessMessageCommand(
-                        session_id=peer.session_id,
-                        text=framed_message,
-                        origin=InputOrigin.MCP.value,
-                        actor_id=actor_id,
-                        actor_name=actor_name,
-                    )
-                    await get_command_service().process_message(cmd)
+                try:
+                    if target_computer == config.computer.name:
+                        cmd = ProcessMessageCommand(
+                            session_id=peer.session_id,
+                            text=framed_message,
+                            origin=InputOrigin.MCP.value,
+                            actor_id=actor_id,
+                            actor_name=actor_name,
+                        )
+                        await get_command_service().process_message(cmd)
+                    else:
+                        await self.client.send_request(
+                            computer_name=target_computer,
+                            command=f"message {shlex.quote(framed_message)}",
+                            session_id=peer.session_id,
+                            metadata=MessageMetadata(
+                                origin=InputOrigin.MCP.value,
+                                channel_metadata={
+                                    "actor_id": actor_id,
+                                    "actor_name": actor_name,
+                                    "actor_role": "system",
+                                    "actor_agent": "system",
+                                    "actor_computer": sender_computer,
+                                },
+                            ),
+                        )
                     delivered += 1
-                    continue
-
-                await self.client.send_request(
-                    computer_name=target_computer,
-                    command=f"message {shlex.quote(framed_message)}",
-                    session_id=peer.session_id,
-                    metadata=MessageMetadata(
-                        origin=InputOrigin.MCP.value,
-                        channel_metadata={
-                            "actor_id": actor_id,
-                            "actor_name": actor_name,
-                            "actor_role": "system",
-                            "actor_agent": "system",
-                            "actor_computer": sender_computer,
-                        },
-                    ),
-                )
-                delivered += 1
+                except Exception as exc:  # noqa: BLE001 - peer delivery failures must not abort stop lifecycle
+                    logger.warning(
+                        "Linked stop output delivery failed: sender=%s peer=%s target=%s error=%s",
+                        sender_session_id[:8],
+                        peer.session_id[:8],
+                        target_computer,
+                        exc,
+                    )
 
         if delivered:
             logger.info(
