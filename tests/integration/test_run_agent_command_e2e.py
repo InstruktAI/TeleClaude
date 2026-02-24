@@ -41,16 +41,17 @@ async def test_run_agent_command_flow(daemon_with_mocked_telegram):
         assert session_id is not None
 
         # Manually mark session as active to simulate successful bootstrap
-        # (Since we mock tmux and auto-command injection, we don't need the real bootstrap task)
+        # (Since we mock tmux and auto-command injection, we don't need to wait for the real bootstrap task)
         await daemon.db.update_session(session_id, lifecycle_status="active")
-
-        # Give event loop a chance to process any pending tasks
-        await asyncio.sleep(0.1)
 
         # Verify session status in DB
         session = await daemon.db.get_session(session_id)
         assert session is not None
         assert session.lifecycle_status == "active"
+
+        # Give event loop a chance to process the background bootstrap task
+        # which calls our mock_handle.
+        await asyncio.sleep(0.1)
 
         # Verify auto-command was executed
         assert mock_handle.called
