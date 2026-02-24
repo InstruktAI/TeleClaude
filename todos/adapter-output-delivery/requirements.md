@@ -4,21 +4,13 @@
 
 Guarantee complete, continuous output delivery from agent sessions to all UI adapters, and ensure user input from any adapter is reflected to all others.
 
-## Identity and Ownership Semantics
-
-- Input origin is provenance, not a routing gate.
-- MCP-origin messages are valid injected session messages and follow normal reflection routing.
-- Ownership for MCP-origin messages is derived from caller lineage:
-  - Human-owned caller session: preserve and propagate human ownership.
-  - No human owner in lineage: treat as system-owned automation.
-
 ## Scope
 
 ### In scope
 
 1. **Text delivery between tool calls** — threaded adapters (Claude/Discord, Gemini/Telegram, Gemini/Discord) receive all assistant text, not just tool-call boundaries.
 2. **User input reflection across adapters** — when a user sends input from any adapter (terminal, Telegram, Discord), that input is broadcast to all OTHER UI adapters as a formatted message (`"{SOURCE} @ {computer_name}:\n\n{text}"`).
-3. **Ownership-aware MCP reflections** — MCP-injected messages are reflected using lineage-resolved ownership attribution.
+3. **MCP-origin input reflection with provenance** — MCP-injected messages are reflected using lineage-resolved ownership attribution (human owner when present in lineage, otherwise system owner).
 
 ### Out of scope
 
@@ -32,7 +24,7 @@ Guarantee complete, continuous output delivery from agent sessions to all UI ada
 - [ ] A Gemini session on Telegram shows the same continuous delivery.
 - [ ] User input from the terminal appears in Discord/Telegram threads as "TUI @ {computer_name}:\n\n{text}" within seconds.
 - [ ] User input from Telegram appears in Discord threads (and vice versa) with correct source attribution.
-- [ ] MCP-origin injected messages are reflected like other inputs, with ownership resolved from lineage (human owner when present, otherwise system owner).
+- [ ] MCP-origin input is broadcast with lineage-resolved ownership attribution (provenance contract).
 
 ## Constraints
 

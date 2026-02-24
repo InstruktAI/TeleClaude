@@ -1,9 +1,9 @@
 phase: in_progress
 build: complete
-review: changes_requested
-deferrals_processed: false
+review: fix_in_progress
+deferrals_processed: true
 breakdown:
-  assessed: false
+  assessed: true
   todos: []
 review_round: 1
 max_review_rounds: 3
@@ -17,8 +17,8 @@ dor:
   schema_version: 1
   blockers: []
   actions_taken:
-    requirements_updated: false
-    implementation_plan_updated: false
+    requirements_updated: true
+    implementation_plan_updated: true
     demo_updated: true
     dor_report_created: true
     gate_validation_complete: true
