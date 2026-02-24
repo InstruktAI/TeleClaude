@@ -386,8 +386,8 @@ async def test_hook_outbox_synthetic_burst_lag_targets() -> None:
         {
             "id": idx + 1,
             "session_id": session_id,
-            "event_type": AgentHookEvents.TOOL_DONE,
-            "payload": "{}",
+            "event_type": AgentHookEvents.USER_PROMPT_SUBMIT,
+            "payload": '{"prompt":"x"}',
             "attempt_count": 0,
             "created_at": (now - timedelta(milliseconds=200)).isoformat(),
         }
@@ -395,6 +395,8 @@ async def test_hook_outbox_synthetic_burst_lag_targets() -> None:
     ]
 
     with (
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_MAX_PENDING", 256),
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S", 0.01),
         patch("teleclaude.daemon.db.mark_hook_outbox_delivered", new_callable=AsyncMock) as mock_mark_delivered,
         patch("teleclaude.daemon.db.mark_hook_outbox_failed", new_callable=AsyncMock),
         patch.object(daemon, "_dispatch_hook_event", new=AsyncMock()),
@@ -403,16 +405,18 @@ async def test_hook_outbox_synthetic_burst_lag_targets() -> None:
             await daemon._enqueue_session_outbox_item(session_id, row)
 
         queue_state = daemon._session_outbox_queues[session_id]
-        assert len(queue_state.pending) == 1
-        await daemon._process_outbox_item(queue_state.pending[0].row)
+        assert len(queue_state.pending) == len(burst_rows)
+
+        daemon._session_outbox_workers.pop(session_id, None)
+        await daemon._run_session_outbox_worker(session_id)
 
     p95 = daemon._percentile(daemon._hook_outbox_lag_samples_s, 0.95)
     p99 = daemon._percentile(daemon._hook_outbox_lag_samples_s, 0.99)
+    assert len(daemon._hook_outbox_lag_samples_s) == len(burst_rows)
     assert p95 is not None and p95 < 1.0
     assert p99 is not None and p99 < 3.0
-    assert daemon._hook_outbox_coalesced_count >= 199
-    # Coalesced drops + final processed row are marked delivered.
-    assert mock_mark_delivered.await_count >= 200
+    assert daemon._hook_outbox_coalesced_count == 0
+    assert mock_mark_delivered.await_count == len(burst_rows)
 
 
 @pytest.mark.asyncio
