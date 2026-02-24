@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
+from textual.widgets import Footer
 
 from teleclaude.cli.models import ComputerInfo, ProjectInfo, SessionInfo
+from teleclaude.cli.tui.app import TelecApp
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.tree import ComputerDisplayInfo
 from teleclaude.cli.tui.types import TodoStatus
@@ -16,6 +21,28 @@ from teleclaude.cli.tui.widgets.session_row import SessionRow
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_telec_app_uses_compact_textual_footer() -> None:
+    api = SimpleNamespace(
+        connect=AsyncMock(),
+        start_websocket=MagicMock(),
+        list_computers=AsyncMock(return_value=[]),
+        list_projects_with_todos=AsyncMock(return_value=[]),
+        list_sessions=AsyncMock(return_value=[]),
+        get_agent_availability=AsyncMock(return_value={}),
+        list_jobs=AsyncMock(return_value=[]),
+        get_settings=AsyncMock(return_value=SimpleNamespace(tts=SimpleNamespace(enabled=False))),
+    )
+    app = TelecApp(api)  # type: ignore[arg-type]
+
+    async with app.run_test():
+        footer = app.query_one(Footer)
+        assert footer.compact is True
+        assert footer.show_command_palette is False
+        assert not app.query("#action-bar")
 
 
 def _computer_header() -> ComputerHeader:
