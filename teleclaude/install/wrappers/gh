@@ -84,15 +84,18 @@ done
 
 if [ "$first_cmd" != "pr" ] || [ "$second_cmd" != "merge" ]; then
     _real_gh "$@"
+    exit 0
 fi
 
 if ! git rev-parse --git-dir >/dev/null 2>&1; then
     _real_gh "$@"
+    exit 0
 fi
 
 common_root="$(cd "$(git rev-parse --git-common-dir)/.." && pwd -P 2>/dev/null || true)"
 if [ "$common_root" != "$CANONICAL_ROOT" ]; then
     _real_gh "$@"
+    exit 0
 fi
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
