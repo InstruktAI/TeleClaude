@@ -61,7 +61,7 @@ Close all known paths where worktree-context agents can advance `origin/main` di
   - [`test_next_machine_state_deps.py`](../../tests/unit/test_next_machine_state_deps.py)
   - [`test_next_machine_hitl.py`](../../tests/unit/test_next_machine_hitl.py)
   - [`test_next_machine_deferral.py`](../../tests/unit/core/test_next_machine_deferral.py)
-- [ ] Add unit tests for guardrail enforcement logic (pre-push/git/gh wrappers).
+- [x] Add unit tests for guardrail enforcement logic (pre-push/git/gh wrappers).
 - [ ] Verify no regressions in feature-branch workflows.
 - [ ] Run:
   - `make test`

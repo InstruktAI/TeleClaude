@@ -1,0 +1,152 @@
+"""Guardrail tests for the git wrapper installed in agent sessions."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+from pathlib import Path
+
+
+def _write_fake_git(bin_dir: Path) -> Path:
+    script = bin_dir / "git"
+    script.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'cmd="${1:-}"\n'
+        'case "$cmd" in\n'
+        "  rev-parse)\n"
+        '    sub="${2:-}"\n'
+        '    case "$sub" in\n'
+        '      --git-common-dir) echo "${FAKE_GIT_COMMON_DIR:-.git}" ;;\n'
+        '      --show-toplevel) echo "${FAKE_GIT_TOPLEVEL:-$PWD}" ;;\n'
+        '      --abbrev-ref) echo "${FAKE_GIT_BRANCH:-main}" ;;\n'
+        '      --git-dir) echo "${FAKE_GIT_DIR:-.git}" ;;\n'
+        '      *) echo "${FAKE_GIT_TOPLEVEL:-$PWD}" ;;\n'
+        "    esac\n"
+        "    ;;\n"
+        "  show-ref)\n"
+        '    if [ "${FAKE_GIT_HAS_MAIN:-1}" = "1" ]; then exit 0; fi\n'
+        "    exit 1\n"
+        "    ;;\n"
+        "  *)\n"
+        '    echo "REAL_GIT_CALLED $*"\n'
+        "    ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return script
+
+
+def _render_git_wrapper(tmp_path: Path, canonical_root: Path) -> Path:
+    template = (Path(__file__).resolve().parents[2] / "teleclaude" / "install" / "wrappers" / "git").read_text(
+        encoding="utf-8"
+    )
+    wrapper = tmp_path / "wrapper-bin" / "git"
+    wrapper.parent.mkdir(parents=True, exist_ok=True)
+    wrapper.write_text(template.replace("{{CANONICAL_ROOT}}", str(canonical_root)), encoding="utf-8")
+    wrapper.chmod(0o755)
+    return wrapper
+
+
+def _base_env(tmp_path: Path, wrapper_dir: Path, fake_bin: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env["HOME"] = str(tmp_path)
+    env["PATH"] = f"{wrapper_dir}:{fake_bin}"
+    env["TELECLAUDE_SESSION_ID"] = "sess-123"
+    return env
+
+
+def test_git_wrapper_blocks_worktree_push_to_main_even_with_no_verify(tmp_path: Path) -> None:
+    canonical_root = tmp_path / "repo"
+    worktree = canonical_root / "trees" / "slug"
+    (canonical_root / ".git").mkdir(parents=True, exist_ok=True)
+    worktree.mkdir(parents=True, exist_ok=True)
+
+    wrapper = _render_git_wrapper(tmp_path, canonical_root)
+    fake_bin = tmp_path / "real-bin"
+    fake_bin.mkdir(parents=True, exist_ok=True)
+    _write_fake_git(fake_bin)
+
+    env = _base_env(tmp_path, wrapper.parent, fake_bin)
+    env["FAKE_GIT_COMMON_DIR"] = str(canonical_root / ".git")
+    env["FAKE_GIT_TOPLEVEL"] = str(worktree)
+    env["FAKE_GIT_BRANCH"] = "feature"
+    env["FAKE_GIT_DIR"] = str(canonical_root / ".git" / "worktrees" / "slug")
+
+    result = subprocess.run(
+        [str(wrapper), "push", "--no-verify", "origin", "main"],
+        cwd=worktree,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "MAIN_GUARDRAIL_BLOCKED" in result.stderr
+    assert "GUARDRAIL_MARKER" in result.stderr
+
+    log_file = tmp_path / ".teleclaude" / "logs" / "guardrails.log"
+    assert log_file.exists()
+    log_text = log_file.read_text(encoding="utf-8")
+    assert "TELECLAUDE_GIT_PUSH_MAIN_GUARD_BLOCK" in log_text
+    assert "session='sess-123'" in log_text
+
+
+def test_git_wrapper_allows_feature_branch_push_from_worktree(tmp_path: Path) -> None:
+    canonical_root = tmp_path / "repo"
+    worktree = canonical_root / "trees" / "slug"
+    (canonical_root / ".git").mkdir(parents=True, exist_ok=True)
+    worktree.mkdir(parents=True, exist_ok=True)
+
+    wrapper = _render_git_wrapper(tmp_path, canonical_root)
+    fake_bin = tmp_path / "real-bin"
+    fake_bin.mkdir(parents=True, exist_ok=True)
+    _write_fake_git(fake_bin)
+
+    env = _base_env(tmp_path, wrapper.parent, fake_bin)
+    env["FAKE_GIT_COMMON_DIR"] = str(canonical_root / ".git")
+    env["FAKE_GIT_TOPLEVEL"] = str(worktree)
+    env["FAKE_GIT_BRANCH"] = "feature"
+    env["FAKE_GIT_DIR"] = str(canonical_root / ".git" / "worktrees" / "slug")
+
+    result = subprocess.run(
+        [str(wrapper), "push", "origin", "feature"],
+        cwd=worktree,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "REAL_GIT_CALLED push origin feature" in result.stdout
+
+
+def test_git_wrapper_allows_canonical_main_push(tmp_path: Path) -> None:
+    canonical_root = tmp_path / "repo"
+    (canonical_root / ".git").mkdir(parents=True, exist_ok=True)
+
+    wrapper = _render_git_wrapper(tmp_path, canonical_root)
+    fake_bin = tmp_path / "real-bin"
+    fake_bin.mkdir(parents=True, exist_ok=True)
+    _write_fake_git(fake_bin)
+
+    env = _base_env(tmp_path, wrapper.parent, fake_bin)
+    env["FAKE_GIT_COMMON_DIR"] = str(canonical_root / ".git")
+    env["FAKE_GIT_TOPLEVEL"] = str(canonical_root)
+    env["FAKE_GIT_BRANCH"] = "main"
+    env["FAKE_GIT_DIR"] = str(canonical_root / ".git")
+
+    result = subprocess.run(
+        [str(wrapper), "push", "origin", "main"],
+        cwd=canonical_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "REAL_GIT_CALLED push origin main" in result.stdout
