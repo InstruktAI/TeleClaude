@@ -49,8 +49,8 @@ Two cross-cutting fixes to the core adapter layer: text delivery between tool ca
 **File(s):** `teleclaude/core/adapter_client.py`
 
 - [x] At line 562, change `_NON_INTERACTIVE = {InputOrigin.MCP.value, InputOrigin.HOOK.value}` to `_NON_INTERACTIVE = {InputOrigin.MCP.value}`.
-- [ ] The filter was added in commit `5598ff0a` with the assumption that hook origins are "not user-facing sessions." That assumption is wrong — terminal sessions are user-facing and their input arrives via the `user_prompt_submit` hook.
-- [ ] MCP remains filtered because MCP-originated input is genuinely non-interactive.
+- [x] The filter was added in commit `5598ff0a` with the assumption that hook origins are "not user-facing sessions." That assumption is wrong — terminal sessions are user-facing and their input arrives via the `user_prompt_submit` hook.
+- [x] MCP remains filtered because MCP-originated input is genuinely non-interactive.
 
 ### Task 2.2: Add `broadcast_user_input` call for non-headless sessions
 

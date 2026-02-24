@@ -116,6 +116,7 @@ class AdapterClient:
         session: "Session",
         operation: str,
         task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
+        include_adapters: set[str] | None = None,
     ) -> list[tuple[str, object]]:
         """Send operation to all UI adapters sequentially.
 
@@ -124,6 +125,10 @@ class AdapterClient:
         adapter's writes before persisting its own changes.
         """
         ui_adapters = self._ui_adapters()
+        if include_adapters is not None:
+            ui_adapters = [
+                (adapter_type, adapter) for adapter_type, adapter in ui_adapters if adapter_type in include_adapters
+            ]
         if not ui_adapters:
             logger.warning("No UI adapters available for %s (session %s)", operation, session.session_id[:8])
             return []
@@ -245,6 +250,7 @@ class AdapterClient:
         session: "Session",
         method: str,
         *args: object,
+        include_adapters: set[str] | None = None,
         **kwargs: object,
     ) -> object:
         """Send operation to all UI adapters, returning the entry point result.
@@ -268,7 +274,7 @@ class AdapterClient:
             method,
             entry_point,
         )
-        results = await self._broadcast_to_ui_adapters(session, method, make_task)
+        results = await self._broadcast_to_ui_adapters(session, method, make_task, include_adapters=include_adapters)
 
         # Prefer result from entry point adapter, fall back to first success
         entry_point_result: object = None
@@ -360,13 +366,30 @@ class AdapterClient:
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session
 
-        # Route to all UI adapters (entry point result preferred)
+        # Notices are an origin UX path only.
+        # If the origin is not a registered UI adapter, skip delivery.
+        include_adapters: set[str] | None = None
+        if feedback:
+            origin_adapter = (session_to_use.last_input_origin or "").strip()
+            origin_ui_adapter = self.adapters.get(origin_adapter)
+            if isinstance(origin_ui_adapter, UiAdapter):
+                include_adapters = {origin_adapter}
+            else:
+                logger.debug(
+                    "Skipping notice with non-UI origin: session=%s origin=%s",
+                    session_to_use.session_id[:8],
+                    origin_adapter or "<none>",
+                )
+                return None
+
+        # Route to chosen UI adapters (entry point result preferred)
         result = await self._route_to_ui(
             session_to_use,
             "send_message",
             text,
             metadata=metadata,
             multi_message=multi_message,
+            include_adapters=include_adapters,
         )
         message_id = str(result) if result else None
 
@@ -555,29 +578,36 @@ class AdapterClient:
         text: str,
         source: str,
     ) -> None:
-        """Broadcast user input to all UI adapters except the source.
+        """Reflect user input to the origin UI adapter only.
 
-        Formats input with source attribution (e.g. "TUI @ macbook") and
-        sends to all UI adapters except the one that received the input
-        (to avoid echoing back to the sender).
+        This path is origin UX only. It does not fan out to observer/admin lanes.
         """
         _NON_INTERACTIVE = {InputOrigin.MCP.value}
         if source in _NON_INTERACTIVE:
             return
 
-        source_display = "TUI" if source.lower() == "api" else source.upper()
+        source_display = "TUI" if source.lower() in {InputOrigin.API.value, InputOrigin.HOOK.value} else source.upper()
         computer_name = config.computer.name
         header = f"{source_display} @ {computer_name}:"
         final_text = f"{header}\n\n{text}"
+        fresh_session = await db.get_session(session.session_id)
+        session_to_use = fresh_session or session
+        origin_adapter = (session_to_use.last_input_origin or "").strip()
 
-        async def send_to_adapter(ui_adapter: UiAdapter, lane_session: "Session") -> Optional[str]:
-            return await ui_adapter.send_message(
-                lane_session,
-                final_text,
-                metadata=MessageMetadata(parse_mode=None),
-            )
+        if source == origin_adapter:
+            return
 
-        await self._fanout_excluding(session, "broadcast_user_input", send_to_adapter, exclude=source)
+        origin_ui_adapter = self.adapters.get(origin_adapter)
+        if not isinstance(origin_ui_adapter, UiAdapter):
+            return
+
+        await self._route_to_ui(
+            session_to_use,
+            "send_message",
+            final_text,
+            metadata=MessageMetadata(parse_mode=None),
+            include_adapters={origin_adapter},
+        )
 
     async def _run_ui_lane(
         self,

@@ -9,10 +9,11 @@ type: 'design'
 
 ## Purpose
 
-- Own adapter lifecycle and fan-out delivery to adapters.
-- Fans out output updates to the correct adapters based on last input origin and configuration.
-- Ensures UI channel metadata before first delivery to a non-origin adapter.
-- Applies UI cleanup hooks and observer notifications around user input and AI output.
+- Own adapter lifecycle and message delivery across adapters.
+- Resolve message intent into delivery scope (`ORIGIN_ONLY`, `DUAL`, `CTRL`).
+- Preserve direct reply continuity to the origin endpoint.
+- Apply UI cleanup hooks and observer notifications around user input and AI output.
+- Leave rendering and placement strategy to adapters.
 
 ```mermaid
 flowchart TB
@@ -42,8 +43,9 @@ flowchart TB
 
 **Outputs:**
 
-- Parallel delivery to all registered adapters
-- Fan-out delivery to adapters
+- Scope-based delivery to UI adapters
+- Origin-only delivery for notices and user-facing feedback
+- Dual-lane delivery for operational output stream traffic
 - UI channel creation requests (fire-and-forget)
 - Deletion operations for message cleanup
 - Cross-computer command routing via Redis transport
@@ -52,7 +54,9 @@ flowchart TB
 
 - **Adapter Independence**: One adapter failure never blocks others; each runs in isolated async task.
 - **Registration Before Use**: Only adapters that successfully start are registered; failed adapters invisible to core.
-- **Origin Tracking**: Last user input origin is tracked per session; subsequent output targets that origin.
+- **Scope-First Routing**: Recipient selection follows message intent and delivery scope.
+- **Origin Endpoint Continuity**: Origin identifies direct reply endpoint; it does not define fan-out policy.
+- **Lifecycle vs Recipients**: Cleanup/lifetime settings never decide recipients.
 - **UI Metadata Requirement**: Before sending to a non-origin adapter, ensure UI channel metadata exists.
 - **Pre/Post Hooks**: User input cleanup (pre-hook) and message tracking (post-hook) run atomically.
 
@@ -78,26 +82,26 @@ sequenceDiagram
     Note over AC: MCP not registered
 ```
 
-### 2. Event Fan-Out (Output Update)
+### 2. Scope-Based Delivery
 
 ```mermaid
 sequenceDiagram
     participant Core
     participant AC as AdapterClient
-    participant TG as Telegram
-    participant API
-    participant Redis
+    participant Origin as Origin Endpoint
+    participant Admin as Admin Lane Destinations
 
-    Core->>AC: send_output_update(session, chunk)
-    AC->>AC: Determine targets from origin
-    par Parallel delivery
-        AC->>TG: send_message()
-    and
-        AC->>API: send_message()
-    and
-        AC->>Redis: send_message()
+    Core->>AC: deliver(message_intent, payload)
+    AC->>AC: Resolve delivery_scope
+    alt ORIGIN_ONLY
+        AC->>Origin: send_message()
+    else DUAL
+        AC->>Origin: send_message()
+        AC->>Admin: send_message()
+    else CTRL
+        Note over AC: Internal control path only
     end
-    Note over AC: One failure doesn't block others
+    Note over AC: Adapter failures are isolated
 ```
 
 ### 3. UI Cleanup Hooks (Pre/Post User Input)
@@ -138,7 +142,7 @@ sequenceDiagram
 
 ## Failure modes
 
-- **Adapter Crash During Delivery**: Adapter raises exception. AC logs error and continues to other adapters. Failed adapter skipped on future events until daemon restart.
+- **Adapter Crash During Delivery**: Adapter raises exception. AC logs error and continues other recipients in the same scope.
 - **Channel Metadata Missing**: Attempting to send to non-origin adapter without channel fails. AC creates channel (fire-and-forget) and queues message for retry.
 - **Transport Unavailable**: Cross-computer command fails immediately. Returns error to caller. Local operations unaffected.
 - **Cleanup Hook Failure**: Pre/post hooks fail to delete messages or track IDs. Stale messages accumulate in UI. Does not block message delivery.

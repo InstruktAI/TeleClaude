@@ -314,12 +314,12 @@ class Db:
         lifecycle_status: str = "active",
         active_agent: Optional[str] = None,
         thinking_mode: Optional[str] = None,
+        emit_session_started: bool = True,
     ) -> Session:
         """Create a new session.
 
         All known fields must be provided at creation time so the row is
-        complete before any event is emitted.  The caller (command_handlers)
-        is responsible for emitting SESSION_STARTED after this returns.
+        complete before any event is emitted.
 
         Args:
             computer_name: Name of the computer
@@ -333,11 +333,12 @@ class Db:
             description: Optional description (for AI-to-AI sessions)
             session_id: Optional explicit session ID (for AI-to-AI cross-computer sessions)
             working_slug: Optional slug of work item this session is working on
-            initiator_session_id: Session ID of the AI that created this session (for AI-to-AI nesting)
-            human_email: Optional email of the human user
-            human_role: Optional role of the human user
-            active_agent: Agent name (claude, gemini, codex)
-            thinking_mode: Thinking mode (fast, med, slow)
+        initiator_session_id: Session ID of the AI that created this session (for AI-to-AI nesting)
+        human_email: Optional email of the human user
+        human_role: Optional role of the human user
+        active_agent: Agent name (claude, gemini, codex)
+        thinking_mode: Thinking mode (fast, med, slow)
+        emit_session_started: If False, caller is responsible for emitting SESSION_STARTED.
 
         Returns:
             Created Session object
@@ -391,6 +392,12 @@ class Db:
         async with self._session() as db_session:
             db_session.add(db_row)
             await db_session.commit()
+
+        if emit_session_started:
+            event_bus.emit(
+                TeleClaudeEvents.SESSION_STARTED,
+                SessionLifecycleContext(session_id=session_id),
+            )
 
         return session
 

@@ -172,6 +172,7 @@ async def send_invite_email(
     links: dict[str, str | None],
     org_name: str = "InstruktAI",
     sender_name: str = "Your Admin",
+    print_links_if_missing_smtp: bool = True,
 ) -> None:
     """Send invite email with platform links.
 
@@ -191,6 +192,8 @@ async def send_invite_email(
     # Check for SMTP credentials
     if not os.getenv("BREVO_SMTP_USER"):
         logger.warning("BREVO_SMTP_USER not set — printing invite links instead of sending email")
+        if not print_links_if_missing_smtp:
+            return
         print(f"\n=== Invite Links for {name} ({email}) ===")
         for platform, link in links.items():
             if link:

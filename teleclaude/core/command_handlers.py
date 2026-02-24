@@ -386,11 +386,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         session_metadata=metadata_from_cmd,
         active_agent=launch.agent if launch else None,
         thinking_mode=launch.thinking_mode if launch else None,
-    )
-
-    event_bus.emit(
-        TeleClaudeEvents.SESSION_STARTED,
-        SessionLifecycleContext(session_id=session_id),
+        emit_session_started=False,
     )
 
     # Persist platform user_id on adapter metadata for derive_identity_key()

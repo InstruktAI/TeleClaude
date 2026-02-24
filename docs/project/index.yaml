@@ -1,5 +1,5 @@
-project_root: ~/Workspace/InstruktAI/TeleClaude
-snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/project
+project_root: ~/Workspace/InstruktAI/TeleClaude/trees/adapter-output-delivery
+snippets_root: ~/Workspace/InstruktAI/TeleClaude/trees/adapter-output-delivery/docs/project
 snippets:
 - id: project/concept/ai-worker
   description: The role of an AI agent session in the TeleClaude network.
@@ -637,7 +637,8 @@ snippets:
   role: member
   source_project: TeleClaude
 - id: project/spec/session-output-routing
-  description: Routing rules for session output across UI adapters (Telegram, Discord).
+  description: Canonical routing contract for session messages across origin UX and
+    admin lanes.
   type: spec
   scope: project
   path: docs/project/spec/session-output-routing.md
