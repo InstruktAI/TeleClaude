@@ -5,18 +5,14 @@ breakdown:
   assessed: false
   todos: []
 dor:
-  last_assessed_at: '2026-02-24T23:15:00Z'
-  score: 7
+  last_assessed_at: null
+  score: 0
   status: needs_work
   schema_version: 1
-  blockers:
-  - 'Missing relay-to-link transition: plan introduces link system to replace session_relay.py
-    but no task addresses removing/migrating the existing relay module, _start_direct_relay
-    handler, relay cleanup hooks, or relay tests.'
+  blockers: []
   actions_taken:
     requirements_updated: false
     implementation_plan_updated: false
-    input_updated: false
 review_round: 0
 max_review_rounds: 3
 review_baseline_commit: ''
