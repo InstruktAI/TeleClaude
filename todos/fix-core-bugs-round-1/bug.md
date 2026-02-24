@@ -22,12 +22,23 @@ Date: 2026-02-24
 
 ## Investigation
 
-<!-- Fix worker fills this during debugging -->
+- Read `teleclaude__get_session_data` flow in `teleclaude/mcp/handlers.py` and traced local execution into `teleclaude/core/command_handlers.py:get_session_data`.
+- Confirmed the fallback path `_tmux_fallback_payload(...)` is used when transcript files are not yet available.
+- Verified `tmux_bridge.capture_pane(...)` captures pane output with `-e`, which includes ANSI escape sequences.
+- Found fallback returned `pane_output[-tail:]` directly, with no ANSI sanitization.
+- Because truncation happened on raw output, `tail_chars` could start in the middle of an ANSI sequence, producing leaked fragments like `2;181;...m` in the returned `messages`.
+- Added and ran a regression unit test that uses ANSI-colored pane output with a small tail window to validate this boundary condition.
 
 ## Root Cause
 
-<!-- Fix worker fills this after investigation -->
+`get_session_data` tmux fallback returned raw `capture-pane` output without stripping ANSI codes, and it truncated before sanitization. This allowed color codes (and partial escape-sequence fragments when cut mid-sequence) to leak into MCP tool responses.
 
 ## Fix Applied
 
-<!-- Fix worker fills this after committing the fix -->
+- Updated `teleclaude/core/command_handlers.py` tmux fallback to:
+  - strip ANSI escape codes with `strip_ansi_codes(...)`
+  - apply `tail_chars` after sanitization
+- Added regression test `test_handle_get_session_data_tmux_fallback_strips_ansi_before_tail` in `tests/unit/test_command_handlers.py` to ensure ANSI is removed and tail slicing no longer leaks partial escape content.
+- Validation:
+  - `make test` passed (`2000 passed, 107 skipped`)
+  - `make lint` passed
