@@ -1318,6 +1318,7 @@ async def test_handle_agent_restart_resumes_with_native_session_id(mock_initiali
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(3.0)
 async def test_handle_agent_restart_aborts_when_shell_not_ready(mock_initialized_db):
     """Restart should abort if the foreground process does not exit."""
 
