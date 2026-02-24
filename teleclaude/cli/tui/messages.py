@@ -208,17 +208,6 @@ class DocEditRequest(Message):
         self.title = title
 
 
-# --- Cursor context messages ---
-
-
-class CursorContextChanged(Message):
-    """Cursor moved to a different item type — ActionBar should update hints."""
-
-    def __init__(self, item_type: str) -> None:
-        super().__init__()
-        self.item_type = item_type  # "session" | "computer" | "project"
-
-
 # --- Settings messages ---
 
 

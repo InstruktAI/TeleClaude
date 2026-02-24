@@ -5,6 +5,7 @@ from __future__ import annotations
 from rich.style import Style
 from rich.text import Text
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
@@ -46,12 +47,12 @@ class ConfigView(Widget, can_focus=True):
     """
 
     BINDINGS = [
-        ("v", "run_validation", "Validate"),
-        ("r", "refresh_config", "Refresh"),
-        ("tab", "next_subtab", "Next tab"),
-        ("shift+tab", "prev_subtab", "Prev tab"),
-        ("left", "prev_adapter_tab", "Prev adapter"),
-        ("right", "next_adapter_tab", "Next adapter"),
+        Binding("v", "run_validation", "Validate"),
+        Binding("r", "refresh_config", "Refresh"),
+        Binding("tab", "next_subtab", "Tab", key_display="⇥", group=Binding.Group("Tabs", compact=True)),
+        Binding("shift+tab", "prev_subtab", "Back", key_display="⇤", group=Binding.Group("Tabs", compact=True)),
+        Binding("left", "prev_adapter_tab", "Prev", key_display="←", group=Binding.Group("Adapters", compact=True)),
+        Binding("right", "next_adapter_tab", "Next", key_display="→", group=Binding.Group("Adapters", compact=True)),
     ]
 
     active_subtab = reactive(0)

@@ -6,6 +6,7 @@ import time as _t
 
 from instrukt_ai_logging import get_logger
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
@@ -47,19 +48,19 @@ class PreparationView(Widget, can_focus=True):
     """
 
     BINDINGS = [
-        ("up", "cursor_up", "Previous"),
-        ("down", "cursor_down", "Next"),
-        ("left", "collapse", "Collapse"),
-        ("right", "expand", "Expand"),
-        ("enter", "activate", "Activate"),
-        ("space", "preview_file", "Preview"),
-        ("equals_sign", "expand_all", "Expand all"),
-        ("minus", "collapse_all", "Collapse all"),
-        ("n", "new_todo", "New todo"),
-        ("b", "new_bug", "New bug"),
-        ("p", "prepare", "Prepare"),
-        ("s", "start_work", "Start work"),
-        ("R", "remove_todo", "Remove"),
+        Binding("up", "cursor_up", "Up", key_display="↑", group=Binding.Group("Nav", compact=True)),
+        Binding("down", "cursor_down", "Down", key_display="↓", group=Binding.Group("Nav", compact=True)),
+        Binding("left", "collapse", "Collapse", key_display="←", group=Binding.Group("Fold", compact=True)),
+        Binding("right", "expand", "Expand", key_display="→", group=Binding.Group("Fold", compact=True)),
+        Binding("enter", "activate", "Edit"),
+        Binding("space", "preview_file", "View"),
+        Binding("equals_sign", "expand_all", "All", key_display="+", group=Binding.Group("Fold", compact=True)),
+        Binding("minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True)),
+        Binding("n", "new_todo", "Todo"),
+        Binding("b", "new_bug", "Bug"),
+        Binding("p", "prepare", "Prep"),
+        Binding("s", "start_work", "Start"),
+        Binding("R", "remove_todo", "Remove"),
     ]
 
     cursor_index = reactive(0)

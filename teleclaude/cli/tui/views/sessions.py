@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger as _get_logger
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
@@ -14,7 +15,6 @@ from textual.widget import Widget
 from teleclaude.cli.models import ComputerInfo, ProjectInfo, SessionInfo
 from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
-    CursorContextChanged,
     KillSessionRequest,
     PreviewChanged,
     ReviveSessionRequest,
@@ -68,17 +68,17 @@ class SessionsView(Widget, can_focus=True):
     """
 
     BINDINGS = [
-        ("up", "cursor_up", "Previous"),
-        ("down", "cursor_down", "Next"),
-        ("space", "toggle_preview", "Preview/Sticky"),
-        ("enter", "focus_pane", "Focus pane"),
-        ("left", "collapse", "Collapse"),
-        ("right", "expand", "Expand"),
-        ("equals_sign", "expand_all", "Expand all"),
-        ("minus", "collapse_all", "Collapse all"),
-        ("n", "new_session", "New session"),
-        ("k", "kill_session", "Kill session"),
-        ("R", "restart_session", "Restart session"),
+        Binding("up", "cursor_up", "Up", key_display="↑", group=Binding.Group("Nav", compact=True)),
+        Binding("down", "cursor_down", "Down", key_display="↓", group=Binding.Group("Nav", compact=True)),
+        Binding("space", "toggle_preview", "Preview/Sticky"),
+        Binding("enter", "focus_pane", "Focus"),
+        Binding("left", "collapse", "Collapse", key_display="←", group=Binding.Group("Fold", compact=True)),
+        Binding("right", "expand", "Expand", key_display="→", group=Binding.Group("Fold", compact=True)),
+        Binding("equals_sign", "expand_all", "All", key_display="+", group=Binding.Group("Fold", compact=True)),
+        Binding("minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True)),
+        Binding("n", "new_session", "New"),
+        Binding("k", "kill_session", "Kill"),
+        Binding("R", "restart_session", "Restart"),
     ]
 
     preview_session_id = reactive[str | None](None)
@@ -342,7 +342,6 @@ class SessionsView(Widget, can_focus=True):
 
         Selection visuals are handled in each widget's render() method (not CSS),
         so we must explicitly refresh widgets when their selected state changes.
-        Also posts CursorContextChanged so ActionBar shows relevant hints.
         """
         for i, widget in enumerate(self._nav_items):
             was_selected = widget.has_class("selected")
@@ -350,15 +349,6 @@ class SessionsView(Widget, can_focus=True):
             widget.set_class(is_selected, "selected")
             if was_selected != is_selected:
                 widget.refresh()
-        # Notify ActionBar of cursor item type
-        if self._nav_items and 0 <= self.cursor_index < len(self._nav_items):
-            item = self._nav_items[self.cursor_index]
-            if isinstance(item, SessionRow):
-                self.post_message(CursorContextChanged("session"))
-            elif isinstance(item, ComputerHeader):
-                self.post_message(CursorContextChanged("computer"))
-            elif isinstance(item, ProjectHeader):
-                self.post_message(CursorContextChanged("project"))
 
     def _current_session_row(self) -> SessionRow | None:
         """Get the SessionRow at the current cursor position, if any."""

@@ -11,8 +11,9 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from textual import work
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
-from textual.widgets import TabbedContent, TabPane
+from textual.widgets import Footer, TabbedContent, TabPane
 
 from teleclaude.cli.models import (
     AgentActivityEvent,
@@ -30,7 +31,6 @@ from teleclaude.cli.models import (
 from teleclaude.cli.tui.messages import (
     AgentActivity,
     CreateSessionRequest,
-    CursorContextChanged,
     DataRefreshed,
     DocEditRequest,
     DocPreviewRequest,
@@ -61,7 +61,6 @@ from teleclaude.cli.tui.views.config import ConfigView
 from teleclaude.cli.tui.views.jobs import JobsView
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
-from teleclaude.cli.tui.widgets.action_bar import ActionBar
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.status_bar import StatusBar
@@ -89,13 +88,13 @@ class TelecApp(App[str | None]):
     TITLE = "TeleClaude"
 
     BINDINGS = [
-        ("q", "quit", "Quit"),
-        ("1", "switch_tab('sessions')", "Sessions"),
-        ("2", "switch_tab('preparation')", "Preparation"),
-        ("3", "switch_tab('jobs')", "Jobs"),
-        ("4", "switch_tab('config')", "Config"),
-        ("r", "refresh", "Refresh"),
-        ("t", "cycle_pane_theming", "Cycle pane theme"),
+        Binding("q", "quit", "Quit"),
+        Binding("1", "switch_tab('sessions')", "Sessions", key_display="1", group=Binding.Group("Views", compact=True)),
+        Binding("2", "switch_tab('preparation')", "Prep", key_display="2", group=Binding.Group("Views", compact=True)),
+        Binding("3", "switch_tab('jobs')", "Jobs", key_display="3", group=Binding.Group("Views", compact=True)),
+        Binding("4", "switch_tab('config')", "Config", key_display="4", group=Binding.Group("Views", compact=True)),
+        Binding("r", "refresh", "Refresh"),
+        Binding("t", "cycle_pane_theming", "Cycle Theme", key_display="t"),
     ]
 
     def __init__(
@@ -181,8 +180,8 @@ class TelecApp(App[str | None]):
                 yield JobsView(id="jobs-view")
             with TabPane("Config", id="config"):
                 yield ConfigView(id="config-view")
-        with Vertical(id="footer"):
-            yield ActionBar(id="action-bar")
+        with Vertical(id="footer-area"):
+            yield Footer(compact=True, show_command_palette=False)
             yield StatusBar(id="status-bar")
         yield PaneManagerBridge(is_reload=self._is_reload, id="pane-bridge")
         logger.trace("[PERF] compose END t=%.3f", _t.monotonic())
@@ -392,10 +391,6 @@ class TelecApp(App[str | None]):
     def on_doc_edit_request(self, message: DocEditRequest) -> None:
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_doc_edit_request(message)
-
-    def on_cursor_context_changed(self, message: CursorContextChanged) -> None:
-        action_bar = self.query_one("#action-bar", ActionBar)
-        action_bar.cursor_item_type = message.item_type
 
     # --- WebSocket event handling ---
 
@@ -627,8 +622,6 @@ class TelecApp(App[str | None]):
         tabs.active = tab_id
         box_tabs = self.query_one("#box-tab-bar", BoxTabBar)
         box_tabs.active_tab = tab_id
-        action_bar = self.query_one("#action-bar", ActionBar)
-        action_bar.active_view = tab_id
         self._focus_active_view(tab_id)
         self.call_after_refresh(
             lambda: logger.trace("[PERF] action_switch_tab(%s) PAINTED dt=%.3f", tab_id, _t.monotonic() - _sw0)
@@ -639,8 +632,6 @@ class TelecApp(App[str | None]):
         logger.trace("[PERF] tab_activated(%s) t=%.3f", tab_id, _t.monotonic())
         box_tabs = self.query_one("#box-tab-bar", BoxTabBar)
         box_tabs.active_tab = tab_id
-        action_bar = self.query_one("#action-bar", ActionBar)
-        action_bar.active_view = tab_id
         self._focus_active_view(tab_id)
 
     def on_box_tab_bar_tab_clicked(self, message: BoxTabBar.TabClicked) -> None:

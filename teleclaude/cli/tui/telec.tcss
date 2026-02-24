@@ -117,13 +117,28 @@ ConfigView {
 }
 
 /* ── Footer ────────────────────────────────────────────── */
-#footer {
+#footer-area {
     dock: bottom;
-    height: 4;
+    height: 2;
 }
 
-ActionBar {
-    height: 3;
+Footer {
+    height: 1;
+    background: $panel;
+    color: $foreground;
+}
+
+Footer > .footer--highlight {
+    background: $connector;
+}
+
+Footer > .footer--key {
+    text-style: bold;
+    color: $connector;
+}
+
+Footer > .footer--description {
+    color: $foreground;
 }
 
 StatusBar {
