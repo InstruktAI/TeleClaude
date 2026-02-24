@@ -17,18 +17,20 @@ cd "${REPO_ROOT}"
 # Force tests to use sandboxed config and env files
 export TELECLAUDE_CONFIG_PATH="${TELECLAUDE_CONFIG_PATH:-tests/integration/config.yml}"
 export TELECLAUDE_ENV_PATH="${TELECLAUDE_ENV_PATH:-tests/integration/.env}"
+# Fixed worker count is faster and less variable than -n auto under strict 10s gate.
+PYTEST_WORKERS="${TELECLAUDE_PYTEST_WORKERS:-12}"
+TEST_TIMEOUT="${TELECLAUDE_TEST_TIMEOUT:-10}"
 
 # Run unit and integration suites separately with strict per-test timeouts.
 # Expensive tests (real LLM API calls) are excluded by default — use `make test-agents`.
-TEST_TIMEOUT="${TELECLAUDE_TEST_TIMEOUT:-20m}"
 if [ "${1:-}" = "--cov" ]; then
     echo "Running tests with coverage..."
-    timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -n auto -m "not expensive" --cov=teleclaude --cov-report=html --cov-report=term-missing
+    timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -n "${PYTEST_WORKERS}" -m "not expensive" --cov=teleclaude --cov-report=html --cov-report=term-missing
 
     # Generate absolute path for clickable link
     REPORT_PATH="$(pwd)/coverage/html/index.html"
     echo ""
     echo "✓ Coverage report generated: file://$REPORT_PATH"
 else
-    timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -n auto -m "not expensive" -q
+    timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -n "${PYTEST_WORKERS}" -m "not expensive" -q
 fi
