@@ -51,7 +51,7 @@ Close all known paths where worktree-context agents can advance `origin/main` di
 
 ## Phase 3 - Auditability and Operator UX (R6)
 
-- [ ] Standardize rejection message text so agents are instructed to stop and report `FINALIZE_READY`.
+- [x] Standardize rejection message text so agents are instructed to stop and report `FINALIZE_READY`.
 - [ ] Add log-grep friendly marker strings for blocked push/merge events.
 - [ ] Update docs/policy references where wording still implies single-stage finalize or `delivered.md`.
 

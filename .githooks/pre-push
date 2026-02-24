@@ -52,7 +52,7 @@ while read -r local_ref _local_sha remote_ref _remote_sha; do
     log_block "$local_ref" "$remote_ref" "$SESSION_ID"
     cat >&2 <<'MSG'
 ERROR: MAIN_GUARDRAIL_BLOCKED
-This push can advance origin/main only from the canonical repository root on branch main.
+Main-targeting operations are allowed only from the canonical repository root on branch main.
 Stop now and report FINALIZE_READY to the orchestrator so finalize-apply can run in canonical context.
 MSG
     exit 1
