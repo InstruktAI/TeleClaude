@@ -738,6 +738,15 @@ def test_post_completion_finalize_includes_make_restart():
     assert "make restart" in POST_COMPLETION["next-finalize"]
 
 
+def test_post_completion_finalize_requires_ready_and_apply():
+    """Finalize post-completion must require FINALIZE_READY and run canonical apply."""
+    instructions = POST_COMPLETION["next-finalize"]
+    assert "FINALIZE_READY: {args}" in instructions
+    assert 'git -C "$MAIN_REPO" merge {args} --no-edit' in instructions
+    assert "telec roadmap deliver {args}" in instructions
+    assert 'git -C "$MAIN_REPO" push origin main' in instructions
+
+
 def test_format_build_gate_failure_structure():
     """format_build_gate_failure produces correct instruction structure."""
     result = format_build_gate_failure("test-slug", "GATE FAILED: make test", "teleclaude__next_work()")

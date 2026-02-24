@@ -13,13 +13,13 @@ type: 'concept'
 
 ## What
 
-Post-review delivery role. Merge, clean up, and log delivery after approval.
+Post-review delivery role. Run finalize prepare in the worktree, then orchestrator apply from canonical main.
 
 1. **Verify approval** - Only finalize after explicit APPROVE verdict.
-2. **Merge and push** - Preserve local changes safely, keep main clean.
-3. **Log delivery** - Update delivered.md and roadmap.
-4. **Remove todo folder** - Delete `todos/{slug}/` after logging.
-5. **Cleanup** - Remove worktrees and stop dev processes.
+2. **Finalize prepare** - Integrate `origin/main` in the worktree and report `FINALIZE_READY`.
+3. **Finalize apply (orchestrator)** - Merge/push from canonical root only.
+4. **Log delivery** - Update `todos/delivered.yaml` and `todos/roadmap.yaml`.
+5. **Cleanup** - Remove worktrees and delivery artifacts after apply.
 
 ## Why
 

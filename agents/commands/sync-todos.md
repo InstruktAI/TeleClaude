@@ -24,7 +24,7 @@ Synchronize todos with architecture docs and the codebase, and fix drift.
 ## Outputs
 
 - Updated `todos/roadmap.yaml`
-- Updated `todos/delivered.md`
+- Updated `todos/delivered.yaml`
 - Deleted or updated `todos/{slug}/` folders (when required)
 
 ## Steps
@@ -38,12 +38,12 @@ Synchronize todos with architecture docs and the codebase, and fix drift.
   - If todo marked complete but code missing: mark pending in `roadmap.yaml`.
   - If code exists but todo marked pending: mark complete in `roadmap.yaml`.
   - If folder exists but not in roadmap: add to roadmap or delete folder.
-  - If completed todo folder is ready to finalize: append to `todos/delivered.md`, remove from roadmap, delete folder.
+  - If completed todo folder is ready to finalize: append to `todos/delivered.yaml`, remove from roadmap, delete folder.
   - If todo is obsolete (not in architecture): remove from roadmap (no delivered log).
 
 - Direct edits
   - `todos/roadmap.yaml`: adjust status and remove delivered items.
-  - `todos/delivered.md`: append `| {date} | {slug} | {title} | DELIVERED | {commit-hash} |`.
+- `todos/delivered.yaml`: prepend `{ slug, date, title, commit }`.
   - Delete delivered folders after logging and roadmap removal.
   - Delete obsolete folders after confirming they are not needed.
 

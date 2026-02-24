@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MARKER="TELECLAUDE_PRE_PUSH_MAIN_GUARD_BLOCK"
+LOG_FILE="${HOME}/.teleclaude/logs/guardrails.log"
+
+read_session_id() {
+    if [ -n "${TELECLAUDE_SESSION_ID:-}" ]; then
+        printf '%s' "$TELECLAUDE_SESSION_ID"
+        return
+    fi
+    local sid_file="${TMPDIR:-}/teleclaude_session_id"
+    if [ -f "$sid_file" ]; then
+        tr -d '\n' < "$sid_file"
+        return
+    fi
+    printf 'unknown'
+}
+
+log_block() {
+    local local_ref="$1"
+    local remote_ref="$2"
+    local session_id="$3"
+    local ts
+    ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+    mkdir -p "$(dirname "$LOG_FILE")"
+    printf '%s marker=%s cwd=%q branch=%q local_ref=%q target=%q command=%q session=%q repo_root=%q canonical_root=%q\n' \
+        "$ts" "$MARKER" "$PWD" "$BRANCH" "$local_ref" "$remote_ref" "git push ${REMOTE_NAME}" "$session_id" "$REPO_ROOT" "$CANONICAL_ROOT" \
+        >> "$LOG_FILE"
+}
+
+REMOTE_NAME="${1:-origin}"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+CANONICAL_ROOT="$(cd "$(git rev-parse --git-common-dir)/.." && pwd -P)"
+GIT_DIR="$(git rev-parse --git-dir)"
+GIT_COMMON_DIR="$(git rev-parse --git-common-dir)"
+BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+SESSION_ID="$(read_session_id)"
+
+while read -r local_ref _local_sha remote_ref _remote_sha; do
+    [ -z "${remote_ref:-}" ] && continue
+    [ "$remote_ref" != "refs/heads/main" ] && continue
+
+    if [ "$REPO_ROOT" = "$CANONICAL_ROOT" ] \
+        && [ "$BRANCH" = "main" ] \
+        && [ "$local_ref" = "refs/heads/main" ] \
+        && [ "$GIT_DIR" = "$GIT_COMMON_DIR" ]; then
+        continue
+    fi
+
+    log_block "$local_ref" "$remote_ref" "$SESSION_ID"
+    echo "GUARDRAIL_MARKER: ${MARKER}" >&2
+    cat >&2 <<'MSG'
+ERROR: MAIN_GUARDRAIL_BLOCKED
+Main-targeting operations are allowed only from the canonical repository root on branch main.
+Stop now and report FINALIZE_READY to the orchestrator so finalize-apply can run in canonical context.
+MSG
+    exit 1
+done
+
+exit 0

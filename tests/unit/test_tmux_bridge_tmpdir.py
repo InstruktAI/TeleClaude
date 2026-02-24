@@ -109,3 +109,39 @@ async def test_create_tmux_session_cleans_existing_tmpdir_with_socket(tmp_path, 
         assert not sock_path.exists()
     finally:
         shutil.rmtree(base, ignore_errors=True)
+
+
+@pytest.mark.asyncio
+async def test_create_tmux_session_scopes_wrapper_path_to_agent_session(tmp_path, monkeypatch):
+    """Ensure TeleClaude wrapper PATH injection is applied only to tmux session env."""
+    from teleclaude.core import tmux_bridge
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", "/usr/local/bin:/usr/bin")
+
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.communicate = AsyncMock(return_value=(b"", b""))
+    proc_opt = MagicMock()
+    proc_opt.returncode = 0
+    proc_opt.communicate = AsyncMock(return_value=(b"", b""))
+    proc_hook = MagicMock()
+    proc_hook.returncode = 0
+    proc_hook.communicate = AsyncMock(return_value=(b"", b""))
+
+    with patch.object(
+        tmux_bridge.asyncio,
+        "create_subprocess_exec",
+        new=AsyncMock(side_effect=[proc, proc_opt, proc_hook]),
+    ) as mock_exec:
+        ok = await tmux_bridge._create_tmux_session(
+            name="tc_test",
+            working_dir=str(tmp_path),
+            session_id="sid",
+        )
+
+    assert ok is True
+    called_args = mock_exec.call_args_list[0][0]
+    path_env = [arg for arg in called_args if isinstance(arg, str) and arg.startswith("PATH=")]
+    assert len(path_env) == 1
+    assert path_env[0].startswith(f"PATH={tmp_path}/.teleclaude/bin:")
