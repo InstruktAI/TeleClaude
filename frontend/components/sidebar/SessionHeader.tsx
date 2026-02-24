@@ -96,20 +96,23 @@ export function SessionHeader({ sessionId }: Props) {
 
   return (
     <div className="flex flex-1 items-center gap-2 overflow-hidden">
-      <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
-        {projectName}
-      </span>
-      <span className="shrink-0 text-muted-foreground/30">/</span>
-      <span className="shrink-0 font-mono text-[10px] text-muted-foreground/80">
-        {session.session_id}
-      </span>
-      <span className="shrink-0 text-muted-foreground/30">/</span>
-
-      <div className="flex shrink-0 items-center ml-1">
+      <div className="flex shrink-0 items-center">
         <AgentIcon agent={session.active_agent} color={agentColors.sidebarText} />
       </div>
 
       <span className="truncate text-sm font-semibold">{title}</span>
+
+      <span className="shrink-0 text-muted-foreground/30">/</span>
+
+      <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+        {projectName}
+      </span>
+
+      <span className="shrink-0 text-muted-foreground/30">/</span>
+
+      <span className="shrink-0 font-mono text-[10px] text-muted-foreground/80">
+        {session.session_id}
+      </span>
 
       {session.computer && (
         <span className="ml-1 shrink-0 text-[10px] text-muted-foreground">
