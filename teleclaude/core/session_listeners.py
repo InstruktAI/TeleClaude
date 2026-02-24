@@ -576,9 +576,10 @@ async def close_link_for_member(
 
     if target_session_id:
         link = await db.get_active_link_between_sessions(caller_session_id, target_session_id)
-        if link:
-            await db.sever_conversation_link(link.link_id)
-            return link.link_id
+        if not link:
+            return None
+        await db.sever_conversation_link(link.link_id)
+        return link.link_id
 
     links = await db.get_active_links_for_session(caller_session_id)
     if not links:

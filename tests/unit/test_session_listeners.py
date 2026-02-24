@@ -332,6 +332,32 @@ class TestConversationLinks:
         assert await get_active_links_for_session("sess-b") == []
 
     @pytest.mark.asyncio
+    async def test_close_link_for_member_target_miss_does_not_close_other_links(self):
+        """Scoped close should not fall back to closing an unrelated caller link."""
+        link_ab, _ = await create_or_reuse_direct_link(
+            caller_session_id="sess-a",
+            target_session_id="sess-b",
+            caller_name="A",
+            target_name="B",
+            caller_computer="local",
+            target_computer="local",
+        )
+        link_ac, _ = await create_or_reuse_direct_link(
+            caller_session_id="sess-a",
+            target_session_id="sess-c",
+            caller_name="A",
+            target_name="C",
+            caller_computer="local",
+            target_computer="local",
+        )
+
+        closed_link_id = await close_link_for_member(caller_session_id="sess-a", target_session_id="sess-d")
+
+        assert closed_link_id is None
+        active_for_a = {link.link_id for link in await get_active_links_for_session("sess-a")}
+        assert active_for_a == {link_ab.link_id, link_ac.link_id}
+
+    @pytest.mark.asyncio
     async def test_cleanup_session_links_closes_member_links(self):
         """Session-end cleanup removes links to prevent orphan fan-out attempts."""
         await create_or_reuse_direct_link(
