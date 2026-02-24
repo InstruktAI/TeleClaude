@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extract module dependency graph from import statements across teleclaude/."""
 
-import ast
+import re
 import sys
 from pathlib import Path
 
@@ -34,6 +34,9 @@ KNOWN_PACKAGES = {
     "tagging",
 }
 
+_IMPORT_RE = re.compile(r"^\s*import\s+(.+)$")
+_FROM_IMPORT_RE = re.compile(r"^\s*from\s+([A-Za-z_][A-Za-z0-9_\.]*)\s+import\b")
+
 
 def extract_package_deps() -> dict[str, set[str]]:
     """Walk teleclaude/ and extract inter-package dependencies."""
@@ -52,23 +55,30 @@ def extract_package_deps() -> dict[str, set[str]]:
 
         try:
             source = py_file.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=str(py_file))
-        except (SyntaxError, UnicodeDecodeError):
+        except UnicodeDecodeError:
             continue
 
-        for node in ast.walk(tree):
-            target_pkg = None
+        # Fast path: dependency extraction only tracks absolute teleclaude imports.
+        if "teleclaude." not in source:
+            continue
 
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    target_pkg = _resolve_teleclaude_package(alias.name)
+        for line in source.splitlines():
+            from_match = _FROM_IMPORT_RE.match(line)
+            if from_match:
+                target_pkg = _resolve_teleclaude_package(from_match.group(1))
+                if target_pkg and target_pkg != source_pkg and target_pkg in KNOWN_PACKAGES:
+                    deps[source_pkg].add(target_pkg)
+                continue
 
-            elif isinstance(node, ast.ImportFrom):
-                if node.module:
-                    target_pkg = _resolve_teleclaude_package(node.module)
+            import_match = _IMPORT_RE.match(line)
+            if not import_match:
+                continue
 
-            if target_pkg and target_pkg != source_pkg and target_pkg in KNOWN_PACKAGES:
-                deps[source_pkg].add(target_pkg)
+            for imported in import_match.group(1).split(","):
+                imported_name = imported.strip().split(" as ", 1)[0].strip()
+                target_pkg = _resolve_teleclaude_package(imported_name)
+                if target_pkg and target_pkg != source_pkg and target_pkg in KNOWN_PACKAGES:
+                    deps[source_pkg].add(target_pkg)
 
     return deps
 
