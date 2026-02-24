@@ -63,7 +63,7 @@ Close all known paths where worktree-context agents can advance `origin/main` di
   - [`test_next_machine_deferral.py`](../../tests/unit/core/test_next_machine_deferral.py)
 - [x] Add unit tests for guardrail enforcement logic (pre-push/git/gh wrappers).
 - [x] Verify no regressions in feature-branch workflows.
-- [ ] Run:
+- [x] Run:
   - `make test`
   - `make lint`
   - `telec todo validate finalize-push-guardrails`
@@ -79,7 +79,7 @@ Close all known paths where worktree-context agents can advance `origin/main` di
 
 ## Definition of Done
 
-- [ ] Finalize is two-stage and `FINALIZE_READY`-gated.
-- [ ] Worktree-originated main advancement paths are blocked for both git and gh flows.
-- [ ] Delivery bookkeeping remains correct in `delivered.yaml` + roadmap removal.
-- [ ] Regression tests and lint pass.
+- [x] Finalize is two-stage and `FINALIZE_READY`-gated.
+- [x] Worktree-originated main advancement paths are blocked for both git and gh flows.
+- [x] Delivery bookkeeping remains correct in `delivered.yaml` + roadmap removal.
+- [x] Regression tests and lint pass.

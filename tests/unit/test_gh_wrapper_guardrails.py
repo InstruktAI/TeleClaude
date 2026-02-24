@@ -6,6 +6,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 def _write_fake_git(bin_dir: Path) -> Path:
     script = bin_dir / "git"
@@ -69,6 +71,7 @@ def _base_env(tmp_path: Path, wrapper_dir: Path, fake_bin: Path) -> dict[str, st
     return env
 
 
+@pytest.mark.timeout(5)
 def test_gh_wrapper_blocks_pr_merge_to_main_from_worktree(tmp_path: Path) -> None:
     canonical_root = tmp_path / "repo"
     worktree = canonical_root / "trees" / "slug"
@@ -106,6 +109,7 @@ def test_gh_wrapper_blocks_pr_merge_to_main_from_worktree(tmp_path: Path) -> Non
     assert "TELECLAUDE_GH_MAIN_MERGE_GUARD_BLOCK" in log_text
 
 
+@pytest.mark.timeout(5)
 def test_gh_wrapper_allows_non_main_merge(tmp_path: Path) -> None:
     canonical_root = tmp_path / "repo"
     worktree = canonical_root / "trees" / "slug"
@@ -137,6 +141,7 @@ def test_gh_wrapper_allows_non_main_merge(tmp_path: Path) -> None:
     assert "REAL_GH_CALLED pr merge 123 --base release" in result.stdout
 
 
+@pytest.mark.timeout(5)
 def test_gh_wrapper_allows_main_merge_from_canonical_main(tmp_path: Path) -> None:
     canonical_root = tmp_path / "repo"
     (canonical_root / ".git").mkdir(parents=True, exist_ok=True)

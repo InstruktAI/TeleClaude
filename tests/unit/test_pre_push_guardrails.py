@@ -6,6 +6,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 def _write_fake_git(bin_dir: Path) -> Path:
     script = bin_dir / "git"
@@ -42,6 +44,7 @@ def _base_env(tmp_path: Path, fake_bin: Path) -> dict[str, str]:
     return env
 
 
+@pytest.mark.timeout(5)
 def test_pre_push_blocks_main_target_from_worktree(tmp_path: Path) -> None:
     canonical_root = tmp_path / "repo"
     worktree = canonical_root / "trees" / "slug"
@@ -74,6 +77,7 @@ def test_pre_push_blocks_main_target_from_worktree(tmp_path: Path) -> None:
     assert "GUARDRAIL_MARKER" in result.stderr
 
 
+@pytest.mark.timeout(5)
 def test_pre_push_allows_feature_target_from_worktree(tmp_path: Path) -> None:
     canonical_root = tmp_path / "repo"
     worktree = canonical_root / "trees" / "slug"
@@ -104,6 +108,7 @@ def test_pre_push_allows_feature_target_from_worktree(tmp_path: Path) -> None:
     assert result.returncode == 0
 
 
+@pytest.mark.timeout(5)
 def test_pre_push_allows_main_target_from_canonical_main(tmp_path: Path) -> None:
     canonical_root = tmp_path / "repo"
     (canonical_root / ".git").mkdir(parents=True, exist_ok=True)

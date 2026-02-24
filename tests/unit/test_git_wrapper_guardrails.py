@@ -6,6 +6,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 def _write_fake_git(bin_dir: Path) -> Path:
     script = bin_dir / "git"
@@ -57,6 +59,7 @@ def _base_env(tmp_path: Path, wrapper_dir: Path, fake_bin: Path) -> dict[str, st
     return env
 
 
+@pytest.mark.timeout(5)
 def test_git_wrapper_blocks_worktree_push_to_main_even_with_no_verify(tmp_path: Path) -> None:
     canonical_root = tmp_path / "repo"
     worktree = canonical_root / "trees" / "slug"
@@ -94,6 +97,7 @@ def test_git_wrapper_blocks_worktree_push_to_main_even_with_no_verify(tmp_path: 
     assert "sess-123" in log_text
 
 
+@pytest.mark.timeout(5)
 def test_git_wrapper_allows_feature_branch_push_from_worktree(tmp_path: Path) -> None:
     canonical_root = tmp_path / "repo"
     worktree = canonical_root / "trees" / "slug"
@@ -124,6 +128,7 @@ def test_git_wrapper_allows_feature_branch_push_from_worktree(tmp_path: Path) ->
     assert "REAL_GIT_CALLED push origin feature" in result.stdout
 
 
+@pytest.mark.timeout(5)
 def test_git_wrapper_allows_canonical_main_push(tmp_path: Path) -> None:
     canonical_root = tmp_path / "repo"
     (canonical_root / ".git").mkdir(parents=True, exist_ok=True)
