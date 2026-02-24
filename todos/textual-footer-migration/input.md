@@ -14,9 +14,38 @@ This class of bug is eliminated by using Textual's built-in `Footer` widget, whi
 - **Compact / C64-style**: Reduce screen real estate. Current footer area is 4 lines (3 ActionBar + 1 StatusBar). Target: 2 lines (1 Footer + 1 StatusBar). Use Unicode symbols for keys and binding groups to compress related keys.
 - **Beautiful styling**: Style key portion differently from description. Keys bold/accent, descriptions dimmed. Should integrate with the existing TeleClaude theming system.
 - **Keep everything visible**: Don't hide bindings. Users should be able to learn all available keys from the footer. Make it fit by being denser, not by hiding.
-- **Sessions view cursor-context**: The sessions view currently changes hints based on cursor position (session row vs computer row vs project row). This must be preserved.
+- **Sessions view cursor-context**: The sessions view currently changes hints based on cursor position (session row vs computer row vs project row). This must be preserved using dynamic `Binding.show` toggling.
+- **Preparation view cursor-context**: Similarly, the todo tree must show/hide actions based on whether a TodoRow or TodoFileRow is selected.
 
-## Research Findings (Textual Footer)
+## Research Findings (Dynamic Context)
+
+### Intra-widget Context Sensitivity
+
+Textual's `Footer` widget switches context when _focus_ moves. However, `SessionsView` and `PreparationView` are single widgets where the _internal selection_ (cursor) changes.
+
+To support this:
+
+1.  **Reactive Watcher**: Use `watch_cursor_index(self, index: int)` in the view to call `self.app.refresh_bindings()`.
+2.  **`check_action` override** (public API): Override `check_action(self, action, parameters) -> bool | None` to return `True`/`False` based on current item type. This is Textual's documented mechanism for [dynamic actions](https://textual.textualize.io/guide/actions#dynamic-actions).
+3.  **Signal Refresh**: `refresh_bindings()` triggers Footer to re-evaluate `check_action` for all bindings.
+
+**Important**: `Binding` is a **frozen dataclass** — `binding.show = val` raises `FrozenInstanceError`. Do NOT attempt to mutate bindings directly. Use `check_action` instead.
+
+Example pattern:
+
+```python
+def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+    if action in ("kill_session", "restart_session"):
+        item = self._current_item()
+        return isinstance(item, SessionRow)
+    return True
+
+def watch_cursor_index(self, index: int) -> None:
+    # ... existing cursor visual update logic ...
+    self.app.refresh_bindings()
+```
+
+This avoids the complex `ActionBar` messaging chain while providing the same (or better) context sensitivity.
 
 ### Automatic Binding Discovery
 
@@ -100,9 +129,42 @@ BINDINGS = [
 
 Must be migrated to `Binding` objects for `key_display`, `group`, and `show` support.
 
-### Sessions cursor-context challenge
+### Sessions view cursor-context challenge
 
-`SessionsView` posts `CursorContextChanged(item_type="session"|"computer"|"project")` and ActionBar switches between `_SESSION_CONTEXT` dicts. With Textual Footer, this needs to be solved differently — likely by toggling `Binding.show` dynamically based on cursor position, or by accepting a simplified approach where all session bindings are always visible.
+`SessionsView` posts `CursorContextChanged(item_type="session"|"computer"|"project")` and ActionBar switches between `_SESSION_CONTEXT` dicts. With Textual Footer, this is solved via `check_action` and `refresh_bindings()`.
+
+- **Computer Node**:
+  - `n` (New Session) must be hidden (not possible).
+  - `R` (Restart) should become "Restart All".
+- **Project Node**:
+  - `n` (New Session) is the default action.
+- **Session Node**:
+  - Standard nav/kill/restart.
+
+### Preparation view rich context
+
+- **Project Node**:
+  - `n` (New Todo) is the default action.
+  - Hide `R` (Remove Todo) and `Enter` hint.
+- **File Node**:
+  - `Enter` = Edit, `Space` = Preview.
+  - Inherit parent context: `R` should still work to remove the parent to-do. This is implemented by allowing `remove_todo` action when on a file node, resolving the parent todo slug.
+
+### Default Action Indicator
+
+Indicate the primary action (the one triggered by `Enter`) by making its binding **bold** in the footer.
+
+- Bold both the key and the label.
+- Eliminate the redundant `[Enter]` hint if the primary key is visually distinct.
+- Technical implementation: Use custom IDs for primary bindings or a description prefix that the CSS can target.
+
+### Workflow: Modal First
+
+"Prepare" (p) and "Start work" (s) should always open `StartSessionModal` pre-filled with the appropriate command (`/next-prepare` or `/next-work`).
+
+- This allows the user to review/adjust the agent and thinking mode before dispatching.
+- If on a Project node, the slug is omitted (letting the machine resolve from roadmap).
+- If on a Todo node, the slug is pre-filled.
 
 ## Design Direction
 
@@ -111,5 +173,5 @@ Must be migrated to `Binding` objects for `key_display`, `group`, and `show` sup
 - Use `Binding.Group(compact=True)` for navigation keys (up/down/left/right) and expand/collapse (+/-)
 - Use `key_display` with Unicode symbols for common keys
 - Style via CSS component classes + design token variables integrated with TeleClaude theming
-- StatusBar stays as-is (1 line, below Footer)
+- Indication: Bold default action bindings.
 - Net result: 4 lines to 2 lines footer area
