@@ -538,16 +538,34 @@ class MCPHandlersMixin:
             if not direct:
                 await self._register_listener_if_present(session_id, caller_session_id)
             origin = await self._resolve_origin(caller_session_id)
+            actor_id, actor_name, actor_role, actor_agent, actor_computer = await self._resolve_mcp_actor(
+                caller_session_id
+            )
 
             if self._is_local_computer(computer):
-                cmd = ProcessMessageCommand(session_id=session_id, text=message, origin=origin)
+                cmd = ProcessMessageCommand(
+                    session_id=session_id,
+                    text=message,
+                    origin=origin,
+                    actor_id=actor_id,
+                    actor_name=actor_name,
+                )
                 await get_command_service().process_message(cmd)
             else:
                 await self.client.send_request(
                     computer_name=computer,
                     command=f"message {message}",
                     session_id=session_id,
-                    metadata=MessageMetadata(origin=origin),
+                    metadata=MessageMetadata(
+                        origin=origin,
+                        channel_metadata={
+                            "actor_id": actor_id,
+                            "actor_name": actor_name,
+                            "actor_role": actor_role,
+                            "actor_agent": actor_agent,
+                            "actor_computer": actor_computer,
+                        },
+                    ),
                 )
 
             # Start bidirectional relay for direct peer-to-peer conversations
@@ -659,6 +677,25 @@ class MCPHandlersMixin:
         """Resolve origin for MCP requests."""
         _ = caller_session_id
         return InputOrigin.MCP.value
+
+    async def _resolve_mcp_actor(self, caller_session_id: str | None) -> tuple[str, str, str, str, str]:
+        """Resolve stable AI actor identity for MCP-origin messages."""
+        if caller_session_id:
+            caller = await db.get_session(caller_session_id)
+            if caller:
+                role = "orchestrator" if not caller.initiator_session_id else "worker"
+                agent = (caller.active_agent or "ai").strip() or "ai"
+                computer = (caller.computer_name or config.computer.name).strip() or config.computer.name
+                actor_id = f"ai:{computer}:{caller_session_id}"
+                actor_name = f"{role}:{agent}@{computer}"
+                return (actor_id, actor_name, role, agent, computer)
+
+        computer = config.computer.name
+        role = "worker"
+        agent = "ai"
+        actor_id = f"ai:{computer}:{caller_session_id or 'unknown'}"
+        actor_name = f"{role}:{agent}@{computer}"
+        return (actor_id, actor_name, role, agent, computer)
 
     async def _start_local_session_with_auto_command(
         self,

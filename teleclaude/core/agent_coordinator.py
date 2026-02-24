@@ -421,13 +421,24 @@ class AgentCoordinator:
         # Emit activity event for UI updates.
         # Synthetic Codex prompts are still real input events.
         self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
-        broadcast_result = self.client.broadcast_user_input(session, prompt_text, InputOrigin.HOOK.value)
-        if inspect.isawaitable(broadcast_result):
-            await broadcast_result
+        hook_actor_name = (
+            (getattr(session, "human_name", "") or "").strip()
+            or (getattr(session, "human_email", "") or "").strip()
+            or f"operator@{config.computer.name}"
+        )
 
         # Non-headless: DB write done above, no further routing needed
         # (the agent already received the input directly)
         if session.lifecycle_status != "headless":
+            broadcast_result = self.client.broadcast_user_input(
+                session,
+                prompt_text,
+                InputOrigin.HOOK.value,
+                actor_id=f"hook:{config.computer.name}:{session_id}",
+                actor_name=hook_actor_name,
+            )
+            if inspect.isawaitable(broadcast_result):
+                await broadcast_result
             return
 
         # Headless: route through unified process_message path
@@ -438,6 +449,8 @@ class AgentCoordinator:
             session_id=session_id,
             text=prompt_text,
             origin=InputOrigin.HOOK.value,
+            actor_id=f"hook:{config.computer.name}:{session_id}",
+            actor_name=hook_actor_name,
         )
 
         logger.debug(

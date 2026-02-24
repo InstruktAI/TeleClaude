@@ -1098,6 +1098,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 channel_metadata=parsed.channel_metadata,
                 launch_intent=parsed.launch_intent,
                 origin=parsed.origin,
+                initiator=parsed.initiator,
             )
             command.request_id = message_id
 

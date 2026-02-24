@@ -920,8 +920,8 @@ async def test_send_threaded_output_broadcasts_to_observers():
 
 
 @pytest.mark.asyncio
-async def test_broadcast_user_input_noop_when_source_is_origin():
-    """No reflection is sent when source already equals the origin adapter."""
+async def test_broadcast_user_input_reflects_other_adapters_only():
+    """User input is mirrored to all adapters except the source adapter."""
     client = AdapterClient()
 
     telegram = DummyTelegramAdapter(client, send_message_return="tg-broadcast")
@@ -940,15 +940,16 @@ async def test_broadcast_user_input_noop_when_source_is_origin():
     mock_db = AsyncMock()
     mock_db.get_session = AsyncMock(return_value=session)
     with patch("teleclaude.core.adapter_client.db", mock_db):
-        await client.broadcast_user_input(session, "Hello from user", "telegram")
+        await client.broadcast_user_input(session, "Hello from user", InputOrigin.TELEGRAM.value)
 
     assert telegram.sent_messages == []
-    assert slack.sent_messages == []
+    assert len(slack.sent_messages) == 1
+    assert "Hello from user" in slack.sent_messages[0]
 
 
 @pytest.mark.asyncio
 async def test_broadcast_user_input_includes_origin_attribution():
-    """Hook/API input reflection is origin-only and attributed as TUI."""
+    """Hook/API input reflection is mirrored to all adapters with TUI attribution."""
     client = AdapterClient()
 
     telegram = DummyTelegramAdapter(client, send_message_return="tg-msg")
@@ -977,19 +978,24 @@ async def test_broadcast_user_input_includes_origin_attribution():
         await client.broadcast_user_input(session, "test input", InputOrigin.HOOK.value)
 
     assert len(telegram.sent_messages) == 1
+    assert len(slack.sent_messages) == 1
     msg = telegram.sent_messages[0]
+    other_msg = slack.sent_messages[0]
     assert "TUI" in msg
+    assert "TUI" in other_msg
     assert "test input" in msg
-    assert slack.sent_messages == []
+    assert "test input" in other_msg
 
 
 @pytest.mark.asyncio
-async def test_broadcast_user_input_skips_mcp_input_source():
-    """MCP-origin prompts must not be echoed across UI adapters."""
+async def test_broadcast_user_input_reflects_mcp_input():
+    """MCP-origin prompts are reflected like other inputs."""
     client = AdapterClient()
 
     telegram = DummyTelegramAdapter(client, send_message_return="tg-msg")
+    slack = DummyTelegramAdapter(client, send_message_return="slack-msg")
     client.register_adapter("telegram", telegram)
+    client.register_adapter("slack", slack)
 
     session = Session(
         session_id="session-mcp",
@@ -1004,4 +1010,7 @@ async def test_broadcast_user_input_skips_mcp_input_source():
     with patch("teleclaude.core.adapter_client.db", mock_db):
         await client.broadcast_user_input(session, "mcp input", InputOrigin.MCP.value)
 
-    assert telegram.sent_messages == []
+    assert len(telegram.sent_messages) == 1
+    assert len(slack.sent_messages) == 1
+    assert "MCP" in telegram.sent_messages[0]
+    assert "mcp input" in telegram.sent_messages[0]

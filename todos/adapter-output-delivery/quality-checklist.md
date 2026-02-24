@@ -20,6 +20,11 @@ Ownership:
 - [x] Working tree clean
 - [x] Comments/docstrings updated where behavior changed
 
+Reviewer context note: routing contract wording was consolidated in
+`docs/project/spec/session-output-routing.md`, with matching updates in
+`todos/adapter-output-delivery/requirements.md` and
+`todos/adapter-output-delivery/implementation-plan.md`.
+
 ## Review Gates (Reviewer)
 
 - [ ] Requirements traced to implemented behavior

@@ -804,7 +804,14 @@ async def handle_voice(
         await client.break_threaded_turn(session)
 
     await process_message(
-        ProcessMessageCommand(session_id=cmd.session_id, text=transcribed, origin=cmd.origin),
+        ProcessMessageCommand(
+            session_id=cmd.session_id,
+            text=transcribed,
+            origin=cmd.origin or "api",
+            actor_id=cmd.actor_id,
+            actor_name=cmd.actor_name,
+            actor_avatar_url=cmd.actor_avatar_url,
+        ),
         client,
         start_polling,
     )
@@ -884,7 +891,14 @@ async def process_message(
 
     # Broadcast user input to other adapters (e.g. TUI input -> Telegram)
     if cmd.origin:
-        await client.broadcast_user_input(session, message_text, cmd.origin)
+        await client.broadcast_user_input(
+            session,
+            message_text,
+            cmd.origin,
+            actor_id=cmd.actor_id,
+            actor_name=cmd.actor_name,
+            actor_avatar_url=cmd.actor_avatar_url,
+        )
 
     active_agent = session.active_agent
     sanitized_text = tmux_io.wrap_bracketed_paste(message_text, active_agent=active_agent)

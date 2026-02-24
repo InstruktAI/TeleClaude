@@ -577,36 +577,44 @@ class AdapterClient:
         session: "Session",
         text: str,
         source: str,
+        *,
+        actor_id: str | None = None,
+        actor_name: str | None = None,
+        actor_avatar_url: str | None = None,
     ) -> None:
-        """Reflect user input to the origin UI adapter only.
+        """Reflect user input to all UI adapters except the source adapter.
 
-        This path is origin UX only. It does not fan out to observer/admin lanes.
+        This keeps direct user experience local while fanning out for admin visibility.
         """
-        _NON_INTERACTIVE = {InputOrigin.MCP.value}
-        if source in _NON_INTERACTIVE:
-            return
-
-        source_display = "TUI" if source.lower() in {InputOrigin.API.value, InputOrigin.HOOK.value} else source.upper()
-        computer_name = config.computer.name
-        header = f"{source_display} @ {computer_name}:"
-        final_text = f"{header}\n\n{text}"
+        default_actor = "TUI" if source.lower() in {InputOrigin.API.value, InputOrigin.HOOK.value} else source.upper()
+        normalized_actor_name = (actor_name or "").strip() or (actor_id or "").strip() or default_actor
+        final_text = f"{normalized_actor_name}:\n\n{text}"
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session
-        origin_adapter = (session_to_use.last_input_origin or "").strip()
 
-        if source == origin_adapter:
-            return
+        source_adapter = source.strip().lower()
+        reflection_metadata = MessageMetadata(
+            parse_mode=None,
+            reflection_actor_id=(actor_id or "").strip() or None,
+            reflection_actor_name=normalized_actor_name,
+            reflection_actor_avatar_url=(actor_avatar_url or "").strip() or None,
+        )
 
-        origin_ui_adapter = self.adapters.get(origin_adapter)
-        if not isinstance(origin_ui_adapter, UiAdapter):
-            return
+        def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
+            return cast(
+                Awaitable[object],
+                adapter.send_message(
+                    lane_session,
+                    final_text,
+                    metadata=reflection_metadata,
+                ),
+            )
 
-        await self._route_to_ui(
+        await self._fanout_excluding(
             session_to_use,
-            "send_message",
-            final_text,
-            metadata=MessageMetadata(parse_mode=None),
-            include_adapters={origin_adapter},
+            "send_user_input_reflection",
+            make_task,
+            exclude=source_adapter,
         )
 
     async def _run_ui_lane(
