@@ -1,5 +1,6 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
+- slug: finalize-push-guardrails
 - slug: consolidate-methodology-skills
   description: Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
     for cross-agent distribution
@@ -8,8 +9,8 @@
 - slug: transcript-first-output-and-hook-backpressure
   group: unified-client-adapter-pipeline
   description: Make native transcript deltas the single output data plane, keep hooks
-    control-plane only, and establish the foundation for unified client adapter
-    pipeline cutover.
+    control-plane only, and establish the foundation for unified client adapter pipeline
+    cutover.
 - slug: unified-client-adapter-pipeline
   after:
   - transcript-first-output-and-hook-backpressure
