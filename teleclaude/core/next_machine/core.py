@@ -121,13 +121,21 @@ POST_COMPLETION: dict[str, str] = {
     "next-finalize": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data. Confirm merge succeeded.
 2. teleclaude__end_session(computer="local", session_id="<session_id>")
-3. CLEANUP (orchestrator-owned, from main repo root — NEVER cd into worktree):
+3. DEMO SNAPSHOT (orchestrator-owned — stamp delivery metadata while artifacts exist):
+   If demos/{args}/demo.md exists (builder created it during build):
+   a. Get merge commit hash: git rev-parse HEAD
+   b. Read todos/{args}/requirements.md title and implementation-plan.md metrics
+   c. Generate demos/{args}/snapshot.json with: slug, title, version (from pyproject.toml),
+      delivered_date (today), merge_commit, metrics, and five acts narrative from the todo artifacts.
+   d. git add demos/{args}/snapshot.json && git commit -m "chore({args}): add demo snapshot"
+   If demos/{args}/demo.md does NOT exist, skip — no demo was created for this delivery.
+4. CLEANUP (orchestrator-owned, from main repo root — NEVER cd into worktree):
    a. git worktree remove trees/{args} --force
    b. git branch -d {args}
    c. rm -rf todos/{args}
    d. git add -A && git commit -m "chore: cleanup {args}"
-4. make restart (daemon picks up merged code before next dispatch)
-5. Call {next_call}
+5. make restart (daemon picks up merged code before next dispatch)
+6. Call {next_call}
 """,
 }
 

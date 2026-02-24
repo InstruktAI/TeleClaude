@@ -1,0 +1,23 @@
+build: pending
+review: pending
+deferrals_processed: false
+breakdown:
+  assessed: false
+  todos: []
+dor:
+  last_assessed_at: 2026-02-24T15:55:57Z
+  score: 7
+  status: needs_work
+  schema_version: 1
+  blockers:
+  - Todo scope is not atomic for a single AI session; split into smaller dependent
+    todos before build dispatch.
+  actions_taken:
+    requirements_updated: false
+    implementation_plan_updated: false
+review_round: 0
+max_review_rounds: 3
+review_baseline_commit: ''
+unresolved_findings: []
+resolved_findings: []
+schema_version: 1

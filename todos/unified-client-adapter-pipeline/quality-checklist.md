@@ -1,4 +1,4 @@
-# Quality Checklist: {slug}
+# Quality Checklist: unified-client-adapter-pipeline
 
 This checklist is the execution projection of `definition-of-done.md` for this todo.
 
@@ -16,7 +16,7 @@ Ownership:
 - [ ] Lint passes (`make lint`)
 - [ ] No silent deferrals in implementation plan
 - [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate {slug}` exits 0, or exception noted)
+- [ ] Demo validated (`telec todo demo unified-client-adapter-pipeline` exits 0, or exception noted)
 - [ ] Working tree clean
 - [ ] Comments/docstrings updated where behavior changed
 

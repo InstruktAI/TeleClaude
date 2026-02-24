@@ -6,6 +6,15 @@
 - slug: textual-footer-migration
 - slug: tui-state-persistence
 - slug: cross-project-context
+- slug: transcript-first-output-and-hook-backpressure
+  description: Make native transcript deltas the single output data plane, keep hooks
+    control-plane only, and add hook backpressure/coalescing so bursty tool events
+    cannot outpace processing.
+- slug: unified-client-adapter-pipeline
+  after:
+  - transcript-first-output-and-hook-backpressure
+  description: Unify Web and TUI with the same adapter/output pipeline and realtime
+    stream contract used by other adapters; remove direct client-side bypass paths.
 - slug: mcp-migration-telec-commands
   group: mcp-to-tool-specs
   description: 'Phase 1: Add telec subcommands for all 24 tools with rich --help,

@@ -29,7 +29,7 @@ The primary demonstration artifact. Required sections:
 
 #### Validation
 
-Fenced ` ```bash ` blocks are extracted and run sequentially by `telec todo demo {slug}`. All must exit 0 for the build gate to pass.
+Fenced ` ```bash ` blocks are validated structurally by `telec todo demo validate {slug}` during build (confirms blocks exist — worktree cannot execute against main). Execution happens via `telec todo demo run {slug}` on main after merge.
 
 - Blocks preceded by `<!-- skip-validation: reason -->` are skipped by the validator but reported for visibility.
 - The validator prepends the project's `.venv/bin` to PATH so `python` resolves to the project environment.

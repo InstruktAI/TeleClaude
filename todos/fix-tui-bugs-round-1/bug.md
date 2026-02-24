@@ -13,6 +13,10 @@ These missing files now also lead to incorrect interpretation of their state as 
 
 Another issue is that I cannot start a bug because it expects a DOR score. This is potentially regression again because that was already solved. I'm sick and fucking tired of this fucking regression. I'm fucking pissed off about those things. So fuck fuck fuck. So I want to look at what is going wrong here, and I want to know how we can consolidate the best of these past commits and all of this stuff around this, because this is just going back and forth and back and forth. What the fuck?
 
+### TUI not reloading correctly on SIGUSR 1/2
+
+Right now when I change from light to dark mode and vice versa, there are glitches on the screen. The biggest glitch being that the background of the TUI pane is not changed.
+
 ## Discovery Context
 
 Reported by: manual
