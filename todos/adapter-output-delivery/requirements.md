@@ -2,35 +2,55 @@
 
 ## Goal
 
-Guarantee complete, continuous output delivery from agent sessions to all UI adapters, and ensure user input from any adapter is reflected to all others.
+Guarantee continuous agent output delivery and consistent cross-adapter input reflection while preserving clear origin UX behavior.
 
 ## Scope
 
 ### In scope
 
-1. **Text delivery between tool calls** — threaded adapters (Claude/Discord, Gemini/Telegram, Gemini/Discord) receive all assistant text, not just tool-call boundaries.
-2. **User input reflection across adapters** — when a user sends input from any adapter (terminal, Telegram, Discord), that input is broadcast to all OTHER UI adapters as a formatted message (`"{SOURCE} @ {computer_name}:\n\n{text}"`). Currently broken for terminal input.
+1. **Continuous output delivery**
+
+- Threaded adapters receive assistant output between tool calls, not only at tool boundaries.
+- Output stream traffic follows dual-lane delivery (origin + admin destinations).
+
+2. **Routing contract alignment**
+
+- `feedback_notice_error_status` is `ORIGIN_ONLY`.
+- `last_output_summary` is `ORIGIN_ONLY` and non-threaded/in-edit UX only.
+- `output_stream_chunk_final_threaded` is `DUAL`.
+
+3. **Reflection lane behavior**
+
+- User input reflection is sent to all provisioned non-source UI adapters.
+- Reflection applies consistently for text, voice, and MCP-origin input.
+- Reflection attribution uses actor metadata (`reflection_actor_id`, `reflection_actor_name`, `reflection_actor_avatar_url`) with best-effort fallback naming.
+
+4. **Adapter rendering behavior**
+
+- Discord reflection uses webhook presentation when available, with safe fallback to bot send.
 
 ### Out of scope
 
-- Discord infrastructure provisioning (separate todo: `discord-adapter-integrity`).
-- Per-computer project categories (separate todo: `discord-adapter-integrity`).
-- Discord forum input routing (separate todo: `discord-adapter-integrity`).
+- Discord infrastructure provisioning and category policy.
+- Per-computer project category strategy.
+- Changes to experiment config format or evaluation logic.
 
 ## Success Criteria
 
-- [ ] A Claude session on Discord shows text output between tool calls within ~2s of it appearing in the transcript.
-- [ ] A Gemini session on Telegram shows the same continuous delivery.
-- [ ] User input from the terminal appears in Discord/Telegram threads as "TUI @ {computer_name}:\n\n{text}" within seconds.
-- [ ] User input from Telegram appears in Discord threads (and vice versa) with correct source attribution.
-- [ ] MCP-origin input is still NOT broadcast (intentional filter).
+- [ ] Claude/Gemini threaded sessions deliver intermediate output between tool calls.
+- [ ] Notices/errors/status messages remain origin-only.
+- [ ] `last_output_summary` remains origin-only and non-threaded.
+- [ ] Reflections fan out to all non-source provisioned adapters for text/voice/MCP origins.
+- [ ] Reflections include actor attribution metadata with stable fallback behavior.
+- [ ] Discord reflection presentation works via webhook path with fallback safety.
 
 ## Constraints
 
-- Daemon availability policy: restarts must be brief and verified via `make restart` / `make status`.
-- No changes to the experiment config format or evaluation logic.
-- Existing hook-triggered incremental rendering path must remain untouched.
+- Keep daemon lifecycle policy intact.
+- Keep hook-triggered incremental rendering path intact.
+- Do not couple cleanup trigger semantics to recipient selection.
 
 ## Risks
 
-- Poller-triggered incremental rendering adds ~1 transcript parse per second per threaded session. Acceptable given cursor-based reads and digest dedup, but worth monitoring.
+- Cross-adapter fanout volume increases with active destinations.
+- Reflection presentation differs by adapter capabilities; behavior must remain contract-consistent.

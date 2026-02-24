@@ -427,17 +427,18 @@ class AgentCoordinator:
             or f"operator@{config.computer.name}"
         )
 
-        broadcast_result = self.client.broadcast_user_input(
-            session,
-            prompt_text,
-            InputOrigin.HOOK.value,
-        )
-        if inspect.isawaitable(broadcast_result):
-            await broadcast_result
-
         # Non-headless: DB write done above, no further routing needed
         # (the agent already received the input directly)
         if session.lifecycle_status != "headless":
+            broadcast_result = self.client.broadcast_user_input(
+                session,
+                prompt_text,
+                InputOrigin.HOOK.value,
+                actor_id=f"hook:{config.computer.name}:{session_id}",
+                actor_name=hook_actor_name,
+            )
+            if inspect.isawaitable(broadcast_result):
+                await broadcast_result
             return
 
         # Headless: route through unified process_message path

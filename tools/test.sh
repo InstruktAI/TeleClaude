@@ -18,18 +18,16 @@ cd "${REPO_ROOT}"
 export TELECLAUDE_CONFIG_PATH="${TELECLAUDE_CONFIG_PATH:-tests/integration/config.yml}"
 export TELECLAUDE_ENV_PATH="${TELECLAUDE_ENV_PATH:-tests/integration/.env}"
 
-# Run unit and integration suites separately with a bounded wall-clock timeout.
+# Run unit and integration suites separately with strict per-test timeouts.
 # Expensive tests (real LLM API calls) are excluded by default — use `make test-agents`.
-TEST_TIMEOUT_SECONDS="${TELECLAUDE_TEST_TIMEOUT_SECONDS:-120}"
-
 if [ "${1:-}" = "--cov" ]; then
     echo "Running tests with coverage..."
-    timeout "$TEST_TIMEOUT_SECONDS" pytest tests/unit tests/integration -n auto -m "not expensive" --cov=teleclaude --cov-report=html --cov-report=term-missing
+    timeout 10 pytest tests/unit tests/integration -n auto -m "not expensive" --cov=teleclaude --cov-report=html --cov-report=term-missing
 
     # Generate absolute path for clickable link
     REPORT_PATH="$(pwd)/coverage/html/index.html"
     echo ""
     echo "✓ Coverage report generated: file://$REPORT_PATH"
 else
-    timeout "$TEST_TIMEOUT_SECONDS" pytest tests/unit tests/integration -n auto -m "not expensive" -q
+    timeout 10 pytest tests/unit tests/integration -n auto -m "not expensive" -q
 fi

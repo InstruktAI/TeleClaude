@@ -9,13 +9,11 @@ for the orchestrator AI to execute literally.
 """
 
 import asyncio
-import inspect
 import json
 import os
 import re
 import shutil
 import subprocess
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
@@ -1374,9 +1372,7 @@ async def compose_agent_guidance(db: Db) -> str:
     lines = ["AGENT SELECTION GUIDANCE:"]
 
     # Clear expired availability first
-    clear_state = await db.clear_expired_agent_availability()
-    if inspect.isawaitable(clear_state):
-        await clear_state
+    await db.clear_expired_agent_availability()
 
     listed_count = 0
 
@@ -1388,10 +1384,8 @@ async def compose_agent_guidance(db: Db) -> str:
 
         # Check runtime status
         availability = await db.get_agent_availability(name)
-        if inspect.isawaitable(availability):
-            availability = await availability
         status_note = ""
-        if isinstance(availability, Mapping):
+        if availability:
             status = availability.get("status")
             if status == "unavailable":
                 continue  # Skip completely

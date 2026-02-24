@@ -3,26 +3,28 @@
 ## Validation
 
 ```bash
-# Verify HOOK is no longer hard-filtered by _NON_INTERACTIVE
+# Verify _NON_INTERACTIVE no longer blocks HOOK origin
 python3 -c "
 import ast, sys
 with open('teleclaude/core/adapter_client.py') as f:
     tree = ast.parse(f.read())
-filter_missing = True
 for node in ast.walk(tree):
     if isinstance(node, ast.Assign):
         for target in node.targets:
             if isinstance(target, ast.Name) and target.id == '_NON_INTERACTIVE':
-                filter_missing = False
+                elts = [e.attr for e in node.value.elts if isinstance(e, ast.Attribute)]
+                if 'HOOK' in [e.split('.')[-1] if '.' in e else e for e in elts]:
+                    print('FAIL: HOOK still in _NON_INTERACTIVE')
+                    sys.exit(1)
+                # Check via string representation
                 src = ast.dump(node.value)
                 if 'HOOK' in src:
-                    print('FAIL: _NON_INTERACTIVE still references HOOK')
+                    print('FAIL: HOOK still in _NON_INTERACTIVE')
                     sys.exit(1)
-                print('PASS: _NON_INTERACTIVE does not reference HOOK')
+                print('PASS: HOOK removed from _NON_INTERACTIVE')
                 sys.exit(0)
-if filter_missing:
-    print('PASS: _NON_INTERACTIVE removed (HOOK filter no longer enforced there)')
-    sys.exit(0)
+print('FAIL: _NON_INTERACTIVE not found')
+sys.exit(1)
 "
 ```
 
