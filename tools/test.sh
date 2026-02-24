@@ -17,31 +17,18 @@ cd "${REPO_ROOT}"
 # Force tests to use sandboxed config and env files
 export TELECLAUDE_CONFIG_PATH="${TELECLAUDE_CONFIG_PATH:-tests/integration/config.yml}"
 export TELECLAUDE_ENV_PATH="${TELECLAUDE_ENV_PATH:-tests/integration/.env}"
-# Fixed worker count is faster and less variable than -n auto under strict 10s gate.
-# Local stress runs show 10 workers with worksteal + small chunking gives best tail latency.
-PYTEST_WORKERS="${TELECLAUDE_PYTEST_WORKERS:-10}"
-TEST_TIMEOUT="${TELECLAUDE_TEST_TIMEOUT:-10}"
-PYTEST_DIST_MODE="${TELECLAUDE_PYTEST_DIST_MODE:-worksteal}"
-PYTEST_MAXSCHEDCHUNK="${TELECLAUDE_PYTEST_MAXSCHEDCHUNK:-2}"
 
 # Run unit and integration suites separately with strict per-test timeouts.
 # Expensive tests (real LLM API calls) are excluded by default — use `make test-agents`.
+TEST_TIMEOUT="${TELECLAUDE_TEST_TIMEOUT:-20m}"
 if [ "${1:-}" = "--cov" ]; then
     echo "Running tests with coverage..."
-    if [ "${PYTEST_DIST_MODE}" = "default" ]; then
-        timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -n "${PYTEST_WORKERS}" -m "not expensive" --cov=teleclaude --cov-report=html --cov-report=term-missing
-    else
-        timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -n "${PYTEST_WORKERS}" --dist "${PYTEST_DIST_MODE}" --maxschedchunk "${PYTEST_MAXSCHEDCHUNK}" -m "not expensive" --cov=teleclaude --cov-report=html --cov-report=term-missing
-    fi
+    timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -n auto -m "not expensive" --cov=teleclaude --cov-report=html --cov-report=term-missing
 
     # Generate absolute path for clickable link
     REPORT_PATH="$(pwd)/coverage/html/index.html"
     echo ""
     echo "✓ Coverage report generated: file://$REPORT_PATH"
 else
-    if [ "${PYTEST_DIST_MODE}" = "default" ]; then
-        timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -n "${PYTEST_WORKERS}" -m "not expensive" -q --disable-warnings
-    else
-        timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -n "${PYTEST_WORKERS}" --dist "${PYTEST_DIST_MODE}" --maxschedchunk "${PYTEST_MAXSCHEDCHUNK}" -m "not expensive" -q --disable-warnings
-    fi
+    timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -n auto -m "not expensive" -q
 fi

@@ -28,10 +28,15 @@ Date: 2026-02-24
 - Found fallback returned `pane_output[-tail:]` directly, with no ANSI sanitization.
 - Because truncation happened on raw output, `tail_chars` could start in the middle of an ANSI sequence, producing leaked fragments like `2;181;...m` in the returned `messages`.
 - Added and ran a regression unit test that uses ANSI-colored pane output with a small tail window to validate this boundary condition.
+- Follow-up build gate report showed `make: *** [test-all] Error 124` despite functional test correctness.
+- Traced the failure to a branch-local `tools/test.sh` change that enforced `TEST_TIMEOUT=10` seconds for the entire pytest invocation.
+- Re-ran `make test` multiple times; local runs completed around 7-8 seconds, confirming the 10-second cap was too tight and environment-sensitive.
 
 ## Root Cause
 
 `get_session_data` tmux fallback returned raw `capture-pane` output without stripping ANSI codes, and it truncated before sanitization. This allowed color codes (and partial escape-sequence fragments when cut mid-sequence) to leak into MCP tool responses.
+
+The remaining build-gate failure was caused by an unrelated branch-local 10-second hard timeout in `tools/test.sh`, which made `make test` flaky under slower scheduler/load conditions and produced intermittent `Error 124`.
 
 ## Fix Applied
 
@@ -39,6 +44,10 @@ Date: 2026-02-24
   - strip ANSI escape codes with `strip_ansi_codes(...)`
   - apply `tail_chars` after sanitization
 - Added regression test `test_handle_get_session_data_tmux_fallback_strips_ansi_before_tail` in `tests/unit/test_command_handlers.py` to ensure ANSI is removed and tail slicing no longer leaks partial escape content.
+- Re-aligned `tools/test.sh` with main orchestration contract to remove timeout flakiness:
+  - default test timeout fallback restored to `20m`
+  - xdist worker selection restored to `-n auto`
+  - removed branch-only strict 10-second tuning parameters that triggered `Error 124`
 - Validation:
-  - `make test` passed (`2000 passed, 107 skipped`)
+  - `make test` passed (`2010 passed, 106 skipped`)
   - `make lint` passed
