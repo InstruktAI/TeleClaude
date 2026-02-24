@@ -2,109 +2,71 @@
 
 ## Objective
 
-Unify Web and TUI with the same adapter pipeline and realtime contract used by other adapters, eliminating bypass paths for core output delivery.
+Maintain `unified-client-adapter-pipeline` as a parent orchestration item that governs
+child-scope decomposition, dependency integrity, and readiness tracking. No runtime
+implementation work is executed under this parent slug.
 
 ## Requirement Traceability
 
-- Phase 1 -> R1, R5
-- Phase 2 -> R2, R4
-- Phase 3 -> R2
-- Phase 4 -> R3, R4
-- Phase 5 -> non-functional compatibility requirements, risks
-- Phase 6 -> acceptance criteria 1-5
+- Phase 1 -> R1, R2
+- Phase 2 -> R3
+- Phase 3 -> R4
+- Phase 4 -> R5 and Acceptance Criteria 1-5
 
-## Phase 0 - Baseline Inventory
+## Phase 1 - Parent Scope and Dependency Reconciliation
 
-- [ ] Inventory current Web/TUI output and input paths, including all live-output bypass call sites.
-- [ ] Map each bypass path to the target adapter/distributor route before code changes.
-- [ ] Confirm no new third-party integrations are required for this todo.
+- [ ] Verify parent slug remains umbrella-only in requirements, implementation plan, and demo artifacts.
+- [ ] Verify UCAP child set and dependency ordering in `todos/roadmap.yaml` match parent requirements.
+- [ ] Record parent-artifact updates whenever dependency edges or child set change.
 
 ### Files (expected)
 
-- `teleclaude/api/streaming.py`
-- `teleclaude/core/adapter_client.py`
-- `teleclaude/core/polling_coordinator.py`
-- `teleclaude/core/agent_coordinator.py`
-- architecture/spec docs referenced by requirements
+- `todos/roadmap.yaml`
+- `todos/unified-client-adapter-pipeline/requirements.md`
+- `todos/unified-client-adapter-pipeline/implementation-plan.md`
+- `todos/unified-client-adapter-pipeline/demo.md`
 
-## Phase 1 - Canonical Realtime Contract
+## Phase 2 - Child Preparation Artifact Hygiene
 
-- [ ] Define canonical event payload schema for client-facing realtime updates.
-- [ ] Align event naming with target activity contract (`user_prompt_submit`, `agent_output_update`, `agent_output_stop`).
-- [ ] Document required fields and compatibility rules.
-- [ ] Add contract validation helpers and shared serializers.
+- [ ] Confirm each UCAP child slug contains `requirements.md`, `implementation-plan.md`, `dor-report.md`, and `state.yaml`.
+- [ ] Confirm each child implementation plan traces to that child's requirements.
+- [ ] Record missing/stale child artifacts as parent DOR blockers.
 
 ### Files (expected)
 
-- adapter client contract/schema modules in `teleclaude/core/*` and/or `teleclaude/api/*`
-- project/spec docs for realtime payloads
+- `todos/ucap-canonical-contract/*`
+- `todos/ucap-truthful-session-status/*`
+- `todos/ucap-web-adapter-alignment/*`
+- `todos/ucap-tui-adapter-alignment/*`
+- `todos/ucap-ingress-provisioning-harmonization/*`
+- `todos/ucap-cutover-parity-validation/*`
 
-## Phase 2 - Web Adapter Alignment
+## Phase 3 - Readiness and Dispatch Governance
 
-- [ ] Introduce or align a dedicated Web adapter lane to consume canonical contract events.
-- [ ] Replace direct web bypass output path with adapter-driven updates.
-- [ ] Keep protocol translation (SSE/UIMessage stream formatting) at the adapter edge only.
-- [ ] Keep snapshot/history endpoints as read APIs, not realtime bypass producers.
-
-### Files (expected)
-
-- `teleclaude/api_server.py`
-- web adapter/session streaming modules under `teleclaude/adapters/*` and/or `teleclaude/api/*`
-
-## Phase 3 - TUI Alignment
-
-- [ ] Ensure TUI realtime updates consume the same canonical contract as Web.
-- [ ] Remove TUI-specific bypasses for core output progression.
-- [ ] Keep TUI-specific presentation logic local to TUI components only.
+- [ ] Validate each child `state.yaml` has `dor` metadata (`score`, `status`, `last_assessed_at`).
+- [ ] Preserve dispatch rule: only child slugs with `dor.score >= 8` are ready candidates for build dispatch.
+- [ ] Keep parent focused on readiness governance; do not convert parent into executable build scope.
 
 ### Files (expected)
 
-- `teleclaude/cli/*`
-- adapter/realtime transport modules shared with Web lane
+- `todos/ucap-*/state.yaml`
+- `todos/unified-client-adapter-pipeline/dor-report.md`
+- `todos/unified-client-adapter-pipeline/state.yaml`
 
-## Phase 4 - Ingress and Provisioning Harmonization
+## Phase 4 - Program Readiness Reporting
 
-- [ ] Standardize input mapping for Web/TUI/Telegram/Discord through one command ingress contract.
-- [ ] Centralize channel/provisioning decisions in adapter orchestration.
-- [ ] Remove duplicate per-client routing logic where contract already covers it.
-
-### Files (expected)
-
-- `teleclaude/core/command_handlers.py`
-- `teleclaude/core/adapter_client.py`
-- adapter-specific ingress glue where necessary
-
-## Phase 5 - Migration and Cutover
-
-- [ ] Add migration toggle/shadow mode to compare legacy and unified paths.
-- [ ] Capture parity metrics and verify no duplicate sends.
-- [ ] Document compatibility window and explicit rollback trigger.
-- [ ] Remove legacy bypass paths after parity criteria pass.
+- [ ] Keep parent `dor-report.md` synchronized with current child readiness and dependency state.
+- [ ] Keep parent demo commands focused on orchestration verification rather than runtime tests.
+- [ ] Re-run parent gate whenever parent artifacts or UCAP dependency structure changes.
 
 ### Files (expected)
 
-- runtime config/feature-flag modules
-- relevant API/adapter glue modules
-
-## Phase 6 - Validation
-
-- [ ] Unit tests for canonical payload schema and serialization.
-- [ ] Integration tests for Web and TUI parity on the same session updates.
-- [ ] Regression tests for input provenance and delivery consistency.
-- [ ] Observability assertions for per-adapter delivery traceability.
-
-### Files (expected)
-
-- `tests/unit/*` contract tests
-- `tests/integration/*` web/tui parity tests
-
-## Rollout Notes
-
-- This todo must start only after `transcript-first-output-and-hook-backpressure` is complete.
-- Prefer progressive cutover with explicit parity checks before legacy path removal.
+- `todos/unified-client-adapter-pipeline/dor-report.md`
+- `todos/unified-client-adapter-pipeline/demo.md`
+- `todos/unified-client-adapter-pipeline/state.yaml`
 
 ## Definition of Done
 
-- [ ] One canonical realtime contract is used across Web/TUI and adapter lanes.
-- [ ] Core output progression no longer uses bypass paths.
-- [ ] Delivery and provenance behavior is consistent across all clients.
+- [ ] Parent artifacts are umbrella-only and aligned with roadmap decomposition.
+- [ ] Child ownership and dependency order are explicit and consistent.
+- [ ] Parent DOR can be evaluated without parent runtime implementation tasks.

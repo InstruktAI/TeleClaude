@@ -2,46 +2,47 @@
 
 ## Final Verdict
 
-- status: `needs_work`
-- score: `7/10`
-- assessed_at: `2026-02-24T15:55:57Z`
+- status: `pass`
+- score: `8/10`
+- assessed_at: `2026-02-24T23:24:29Z`
 
 ## Gate-by-Gate Assessment
 
 1. **Intent & success**: pass
-   - Problem, goal, and measurable acceptance criteria are explicit in `requirements.md`.
-2. **Scope & size**: **needs work**
-   - The todo currently bundles multiple substantial phases (contract definition, Web migration, TUI migration, ingress harmonization, migration/cutover, full validation).
-   - Per Definition of Ready, this should be split into smaller dependent todos before build dispatch.
+   - Parent problem statement, umbrella goal, and testable acceptance criteria are explicit.
+2. **Scope & size**: pass
+   - Parent scope is now orchestration-only and atomic for a single gate/coordination session.
+   - Executable implementation scope is delegated to child UCAP slugs.
 3. **Verification**: pass
-   - Verification path includes concrete automated commands in `demo.md`.
-   - Plan includes unit/integration coverage and observability checks.
+   - `demo.md` now verifies dependency graph, child artifact completeness, child DOR metadata, and parent scope boundaries.
 4. **Approach known**: pass
-   - Technical direction is grounded in existing project references:
-     - `docs/project/design/architecture/agent-activity-streaming-target.md`
-     - `docs/project/spec/session-output-routing.md`
-     - `docs/project/policy/adapter-boundaries.md`
+   - Orchestration approach follows existing roadmap/state artifact patterns already used across this repository.
 5. **Research complete (when applicable)**: pass
-   - No new third-party integration is introduced by this todo.
+   - Parent scope introduces no new third-party dependency or integration work.
 6. **Dependencies & preconditions**: pass
-   - Dependency is explicitly modeled in `todos/roadmap.yaml` (`after: transcript-first-output-and-hook-backpressure`).
+   - Parent and child dependency ordering is explicit in `todos/roadmap.yaml`.
 7. **Integration safety**: pass
-   - Plan includes migration/cutover controls and rollback documentation expectations.
+   - Parent enforces phased containment by routing runtime changes to child slugs only.
 8. **Tooling impact (if applicable)**: pass
-   - No scaffolding/tooling contract changes are required in this todo.
+   - No tooling/scaffolding contract changes are required.
 
 ## Plan-to-Requirement Fidelity
 
-- `implementation-plan.md` includes explicit phase-to-requirement traceability.
-- No plan task currently contradicts requirements.
-- Gate blocker is size/splitting, not fidelity.
+- `implementation-plan.md` phase mapping traces cleanly to `R1`-`R5`.
+- Plan tasks are orchestration-only and do not contradict parent requirements.
+- No requirement-plan contradictions found.
 
-## Blockers (Must Resolve for Ready)
+## Gate Actions Taken
 
-1. Split this todo into smaller dependent todos so each item is atomic and feasible for a single implementation session.
+1. Updated parent `requirements.md` to codify umbrella-only scope and child ownership.
+2. Replaced monolithic build phases in parent `implementation-plan.md` with orchestration/readiness governance phases.
+3. Updated parent `demo.md` to verify roadmap alignment, child artifact completeness, child DOR metadata, and parent scope boundaries.
+4. Re-ran formal DOR gate assessment after artifact updates.
 
-## Required Remediation
+## Remaining Blockers
 
-1. Create follow-up slugs in `todos/roadmap.yaml` (for example: outbound contract, Web alignment, TUI alignment, ingress harmonization/cutover).
-2. Move phase-specific scope and acceptance checks into those slugs and keep this parent slug as umbrella-only (or close it in favor of the split set).
-3. Re-run gate after split artifacts exist and dependency edges are explicit.
+- None.
+
+## Readiness Decision
+
+- **Ready** (`dor.score >= 8`): parent slug is eligible for readiness transition as an orchestration item.
