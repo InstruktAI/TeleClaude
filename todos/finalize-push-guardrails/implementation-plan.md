@@ -30,7 +30,7 @@ Close all known paths where worktree-context agents can advance `origin/main` di
 - [x] Update finalize lifecycle procedure doc to explicit two-stage model in [`finalize.md`](../../docs/global/software-development/procedure/lifecycle/finalize.md):
   - worker `finalize-prepare`,
   - orchestrator `finalize-apply`.
-- [ ] Update next-machine finalize orchestration in [`core.py`](../../teleclaude/core/next_machine/core.py):
+- [x] Update next-machine finalize orchestration in [`core.py`](../../teleclaude/core/next_machine/core.py):
   - keep worker dispatch in `trees/{slug}` for prepare stage,
   - change post-completion contract to require `FINALIZE_READY` before apply,
   - run apply instructions from canonical repo root,
