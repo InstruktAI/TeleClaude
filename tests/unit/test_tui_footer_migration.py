@@ -168,6 +168,18 @@ def test_sessions_default_action_tracks_cursor_context() -> None:
 
 
 @pytest.mark.unit
+def test_sessions_default_action_is_executable_for_selected_node() -> None:
+    view = SessionsView()
+    view._nav_items = [_computer_header(), _project_header(), _session_row()]
+
+    for index in (0, 1, 2):
+        view.cursor_index = index
+        default_action = view._default_footer_action()
+        assert default_action is not None
+        assert view.check_action(default_action, ()) is True
+
+
+@pytest.mark.unit
 def test_preparation_check_action_is_context_sensitive() -> None:
     view = PreparationView()
     project = _project_header()
