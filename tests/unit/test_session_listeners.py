@@ -5,11 +5,19 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from teleclaude.core.session_listeners import (
+    add_link_member,
     cleanup_caller_listeners,
+    cleanup_session_links,
+    close_link_for_member,
     count_listeners,
+    create_link,
+    create_or_reuse_direct_link,
+    get_active_links_for_session,
     get_all_listeners,
+    get_link_members,
     get_listeners,
     get_listeners_for_caller,
+    get_peer_members,
     get_stale_targets,
     notify_stop,
     pop_listeners,
@@ -260,6 +268,93 @@ class TestGetStaleTargets:
         # Timestamp was reset, so second call finds nothing
         stale = await get_stale_targets(max_age_minutes=10)
         assert stale == []
+
+
+class TestConversationLinks:
+    """Tests for shared link primitives."""
+
+    @pytest.mark.asyncio
+    async def test_create_or_reuse_direct_link(self):
+        """Direct handshake should create once and reuse on repeat."""
+        first_link, first_created = await create_or_reuse_direct_link(
+            caller_session_id="sess-a",
+            target_session_id="sess-b",
+            caller_name="A",
+            target_name="B",
+            caller_computer="local",
+            target_computer="RemotePC",
+        )
+        second_link, second_created = await create_or_reuse_direct_link(
+            caller_session_id="sess-a",
+            target_session_id="sess-b",
+            caller_name="A",
+            target_name="B",
+            caller_computer="local",
+            target_computer="RemotePC",
+        )
+
+        assert first_created is True
+        assert second_created is False
+        assert second_link.link_id == first_link.link_id
+        members = await get_link_members(first_link.link_id)
+        assert {member.session_id for member in members} == {"sess-a", "sess-b"}
+
+    @pytest.mark.asyncio
+    async def test_gathering_link_supports_three_members(self):
+        """Gathering links support 3+ members and sender-excluded peer queries."""
+        link = await create_link(mode="gathering_link", created_by_session_id="sess-a")
+        await add_link_member(link_id=link.link_id, session_id="sess-a", participant_name="A", participant_number=1)
+        await add_link_member(link_id=link.link_id, session_id="sess-b", participant_name="B", participant_number=2)
+        await add_link_member(link_id=link.link_id, session_id="sess-c", participant_name="C", participant_number=3)
+
+        links = await get_active_links_for_session("sess-a")
+        assert any(item.link_id == link.link_id for item in links)
+
+        peers = await get_peer_members(link_id=link.link_id, sender_session_id="sess-a")
+        assert {member.session_id for member in peers} == {"sess-b", "sess-c"}
+
+    @pytest.mark.asyncio
+    async def test_close_link_for_member_severs_for_all(self):
+        """Either member can sever shared link in one action."""
+        link, _ = await create_or_reuse_direct_link(
+            caller_session_id="sess-a",
+            target_session_id="sess-b",
+            caller_name="A",
+            target_name="B",
+            caller_computer="local",
+            target_computer="local",
+        )
+
+        closed_link_id = await close_link_for_member(caller_session_id="sess-a", target_session_id="sess-b")
+
+        assert closed_link_id == link.link_id
+        assert await get_active_links_for_session("sess-a") == []
+        assert await get_active_links_for_session("sess-b") == []
+
+    @pytest.mark.asyncio
+    async def test_cleanup_session_links_closes_member_links(self):
+        """Session-end cleanup removes links to prevent orphan fan-out attempts."""
+        await create_or_reuse_direct_link(
+            caller_session_id="sess-a",
+            target_session_id="sess-b",
+            caller_name="A",
+            target_name="B",
+            caller_computer="local",
+            target_computer="local",
+        )
+        await create_or_reuse_direct_link(
+            caller_session_id="sess-a",
+            target_session_id="sess-c",
+            caller_name="A",
+            target_name="C",
+            caller_computer="local",
+            target_computer="local",
+        )
+
+        closed = await cleanup_session_links("sess-a")
+
+        assert closed == 2
+        assert await get_active_links_for_session("sess-a") == []
 
     @pytest.mark.asyncio
     async def test_multiple_stale_targets(self):

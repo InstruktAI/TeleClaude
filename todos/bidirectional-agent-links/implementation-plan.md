@@ -56,6 +56,8 @@ This is a hard cutover: the legacy tmux polling relay is removed in this todo (n
 
 ### Task 1: Link persistence + APIs
 
+- [x] Implemented and verified
+
 Add storage and APIs to:
 
 - create/reuse link
@@ -71,6 +73,8 @@ Acceptance:
 
 ### Task 2: Preserve worker listener behavior
 
+- [x] Implemented and verified
+
 Keep existing worker stop-notification flow untouched when direct links are not active.
 
 Acceptance:
@@ -78,6 +82,8 @@ Acceptance:
 - existing `notify_stop` text flow still works for non-direct workflows
 
 ### Task 3: Legacy relay decommission (hard cutover)
+
+- [x] Implemented and verified
 
 Remove the tmux polling relay path and its callsites:
 
@@ -94,6 +100,8 @@ Acceptance:
 
 ### Task 4: Direct handshake in `send_message`
 
+- [x] Implemented and verified
+
 Update `teleclaude__send_message` behavior:
 
 - `direct=true` creates or reuses a 2-member direct link
@@ -107,6 +115,8 @@ Acceptance:
 
 ### Task 5: Single-party severing
 
+- [x] Implemented and verified
+
 Add `close_link=true` to `send_message`.
 
 - if caller is a member, sever shared link in one action
@@ -118,6 +128,8 @@ Acceptance:
 
 ### Task 6: Sender-excluded user-message routing
 
+- [x] Implemented and verified
+
 When a member-originated message is processed, route it to all other link members and never to sender.
 
 Acceptance:
@@ -126,6 +138,8 @@ Acceptance:
 - 3-member link routes to two peers
 
 ### Task 7: Distilled `agent_stop` output fan-out
+
+- [x] Implemented and verified
 
 In `agent_stop` handling:
 
@@ -141,6 +155,8 @@ Acceptance:
 
 ### Task 8: Cross-computer direct links
 
+- [x] Implemented and verified
+
 Extend forwarding contract to carry data needed for remote peer injection (not only stop metadata).
 
 Acceptance:
@@ -148,6 +164,8 @@ Acceptance:
 - member on computer A receives linked output from member on computer B
 
 ### Task 9: Session-end cleanup
+
+- [x] Implemented and verified
 
 On session termination:
 
@@ -161,6 +179,8 @@ Acceptance:
 
 ### Task 10: Gathering compatibility surface
 
+- [x] Implemented and verified
+
 Expose APIs required by `start-gathering-tool`:
 
 - create multi-member link
@@ -172,6 +192,8 @@ Acceptance:
 - gathering todo can consume shared link primitive without legacy relay dependency
 
 ### Task 11: Tests
+
+- [x] Implemented and verified
 
 Unit coverage:
 

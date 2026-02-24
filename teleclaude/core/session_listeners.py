@@ -10,8 +10,10 @@ Only one listener per caller-target pair is allowed (deduped by caller, not by t
 Storage is SQLite-backed so listeners survive daemon restarts.
 """
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 from instrukt_ai_logging import get_logger
 
@@ -28,6 +30,71 @@ class SessionListener:
     caller_session_id: str  # Session that wants to be notified
     caller_tmux_session: str  # Tmux session name for injection
     registered_at: datetime
+
+
+@dataclass
+class ConversationLink:
+    """Conversation link metadata."""
+
+    link_id: str
+    mode: str
+    status: str
+    created_by_session_id: str
+    created_at: datetime
+    updated_at: datetime
+    closed_at: datetime | None
+    metadata: dict[str, object] | None  # guard: loose-dict - persisted link metadata JSON.
+
+
+@dataclass
+class ConversationLinkMember:
+    """Conversation link member metadata."""
+
+    link_id: str
+    session_id: str
+    participant_name: str | None
+    participant_number: int | None
+    participant_role: str | None
+    computer_name: str | None
+    joined_at: datetime
+
+
+def _to_conversation_link(row: object) -> ConversationLink:
+    metadata: dict[str, object] | None = None  # guard: loose-dict - metadata JSON from DB.
+    raw_metadata = getattr(row, "metadata_json", None)
+    if isinstance(raw_metadata, str) and raw_metadata:
+        try:
+            parsed = json.loads(raw_metadata)
+            if isinstance(parsed, dict):
+                metadata = parsed
+        except json.JSONDecodeError:
+            metadata = None
+
+    closed_at_raw = getattr(row, "closed_at", None)
+    closed_at = datetime.fromisoformat(closed_at_raw) if isinstance(closed_at_raw, str) and closed_at_raw else None
+
+    return ConversationLink(
+        link_id=str(getattr(row, "link_id", "")),
+        mode=str(getattr(row, "mode", "")),
+        status=str(getattr(row, "status", "")),
+        created_by_session_id=str(getattr(row, "created_by_session_id", "")),
+        created_at=datetime.fromisoformat(str(getattr(row, "created_at", ""))),
+        updated_at=datetime.fromisoformat(str(getattr(row, "updated_at", ""))),
+        closed_at=closed_at,
+        metadata=metadata,
+    )
+
+
+def _to_conversation_link_member(row: object) -> ConversationLinkMember:
+    return ConversationLinkMember(
+        link_id=str(getattr(row, "link_id", "")),
+        session_id=str(getattr(row, "session_id", "")),
+        participant_name=getattr(row, "participant_name", None),
+        participant_number=getattr(row, "participant_number", None),
+        participant_role=getattr(row, "participant_role", None),
+        computer_name=getattr(row, "computer_name", None),
+        joined_at=datetime.fromisoformat(str(getattr(row, "joined_at", ""))),
+    )
 
 
 async def register_listener(
@@ -341,3 +408,192 @@ async def notify_input_request(
         f"message='your response') to respond."
     )
     return await _notify_listeners(target_session_id, message)
+
+
+async def create_link(
+    *,
+    mode: Literal["direct_link", "gathering_link"],
+    created_by_session_id: str,
+    metadata: dict[str, object] | None = None,  # guard: loose-dict - persisted metadata payload.
+) -> ConversationLink:
+    """Create a conversation link."""
+    from teleclaude.core.db import db
+
+    metadata_json = json.dumps(metadata) if metadata is not None else None
+    row = await db.create_conversation_link(
+        mode=mode,
+        created_by_session_id=created_by_session_id,
+        metadata_json=metadata_json,
+    )
+    return _to_conversation_link(row)
+
+
+async def add_link_member(
+    *,
+    link_id: str,
+    session_id: str,
+    participant_name: str | None = None,
+    participant_number: int | None = None,
+    participant_role: str | None = None,
+    computer_name: str | None = None,
+) -> None:
+    """Create or update a link member."""
+    from teleclaude.core.db import db
+
+    await db.upsert_conversation_link_member(
+        link_id=link_id,
+        session_id=session_id,
+        participant_name=participant_name,
+        participant_number=participant_number,
+        participant_role=participant_role,
+        computer_name=computer_name,
+    )
+
+
+async def get_link_members(link_id: str) -> list[ConversationLinkMember]:
+    """List members for a link."""
+    from teleclaude.core.db import db
+
+    rows = await db.list_conversation_link_members(link_id)
+    return [_to_conversation_link_member(row) for row in rows]
+
+
+async def get_link(link_id: str) -> ConversationLink | None:
+    """Get link by ID."""
+    from teleclaude.core.db import db
+
+    row = await db.get_conversation_link(link_id)
+    if row is None:
+        return None
+    return _to_conversation_link(row)
+
+
+async def get_active_links_for_session(session_id: str) -> list[ConversationLink]:
+    """Get active links containing the provided member session."""
+    from teleclaude.core.db import db
+
+    try:
+        rows = await db.get_active_links_for_session(session_id)
+    except RuntimeError:
+        logger.debug("Link lookup skipped (db not initialized) for session %s", session_id[:8])
+        return []
+    return [_to_conversation_link(row) for row in rows]
+
+
+async def create_or_reuse_direct_link(
+    *,
+    caller_session_id: str,
+    target_session_id: str,
+    caller_name: str | None = None,
+    target_name: str | None = None,
+    caller_computer: str | None = None,
+    target_computer: str | None = None,
+) -> tuple[ConversationLink, bool]:
+    """Create or reuse an active two-member direct link."""
+    from teleclaude.core.db import db
+
+    existing = await db.get_active_link_between_sessions(caller_session_id, target_session_id, mode="direct_link")
+    if existing:
+        await add_link_member(
+            link_id=existing.link_id,
+            session_id=caller_session_id,
+            participant_name=caller_name,
+            participant_number=1,
+            participant_role="peer",
+            computer_name=caller_computer,
+        )
+        await add_link_member(
+            link_id=existing.link_id,
+            session_id=target_session_id,
+            participant_name=target_name,
+            participant_number=2,
+            participant_role="peer",
+            computer_name=target_computer,
+        )
+        return (_to_conversation_link(existing), False)
+
+    link = await create_link(mode="direct_link", created_by_session_id=caller_session_id)
+    await add_link_member(
+        link_id=link.link_id,
+        session_id=caller_session_id,
+        participant_name=caller_name,
+        participant_number=1,
+        participant_role="peer",
+        computer_name=caller_computer,
+    )
+    await add_link_member(
+        link_id=link.link_id,
+        session_id=target_session_id,
+        participant_name=target_name,
+        participant_number=2,
+        participant_role="peer",
+        computer_name=target_computer,
+    )
+    refreshed = await db.get_conversation_link(link.link_id)
+    if refreshed is None:
+        return (link, True)
+    return (_to_conversation_link(refreshed), True)
+
+
+async def resolve_link_for_sender_target(
+    *,
+    sender_session_id: str,
+    target_session_id: str,
+) -> tuple[ConversationLink, list[ConversationLinkMember]] | None:
+    """Find active link containing sender and target."""
+    links = await get_active_links_for_session(sender_session_id)
+    for link in links:
+        members = await get_link_members(link.link_id)
+        if any(member.session_id == target_session_id for member in members):
+            return (link, members)
+    return None
+
+
+async def get_peer_members(
+    *,
+    link_id: str,
+    sender_session_id: str,
+) -> list[ConversationLinkMember]:
+    """Get all active members except sender."""
+    members = await get_link_members(link_id)
+    return [member for member in members if member.session_id != sender_session_id]
+
+
+async def close_link(link_id: str) -> bool:
+    """Sever a shared link for all members."""
+    from teleclaude.core.db import db
+
+    return await db.sever_conversation_link(link_id)
+
+
+async def close_link_for_member(
+    *,
+    caller_session_id: str,
+    target_session_id: str | None = None,
+) -> str | None:
+    """Close a link if caller is a member (optionally scoped by target member)."""
+    from teleclaude.core.db import db
+
+    if target_session_id:
+        link = await db.get_active_link_between_sessions(caller_session_id, target_session_id)
+        if link:
+            await db.sever_conversation_link(link.link_id)
+            return link.link_id
+
+    links = await db.get_active_links_for_session(caller_session_id)
+    if not links:
+        return None
+    link = links[0]
+    await db.sever_conversation_link(link.link_id)
+    return link.link_id
+
+
+async def cleanup_session_links(session_id: str) -> int:
+    """Sever all active links involving this session."""
+    from teleclaude.core.db import db
+
+    try:
+        return await db.cleanup_conversation_links_for_session(session_id)
+    except RuntimeError:
+        logger.debug("Link cleanup skipped (db not initialized) for session %s", session_id[:8])
+        return 0
