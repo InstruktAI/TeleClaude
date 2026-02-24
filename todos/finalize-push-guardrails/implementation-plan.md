@@ -35,7 +35,7 @@ Close all known paths where worktree-context agents can advance `origin/main` di
   - change post-completion contract to require `FINALIZE_READY` before apply,
   - run apply instructions from canonical repo root,
   - keep lock held through apply completion and release only after completion signal.
-- [ ] Ensure bookkeeping references `todos/delivered.yaml` and `todos/roadmap.yaml` (not legacy `delivered.md` paths).
+- [x] Ensure bookkeeping references `todos/delivered.yaml` and `todos/roadmap.yaml` (not legacy `delivered.md` paths).
 
 ## Phase 2 - Main-Branch Guardrail Layers (R3, R4, R5, R6, R8)
 
