@@ -2,40 +2,36 @@
 
 ## Goal
 
-Restore and lock a deterministic 3-row footer contract in the TUI with binding-driven hints and node-context behavior, while preserving TeleClaude's bottom control row (agents + toggles) and reducing visible hint noise.
+Complete the remaining footer/key-contract work without redoing already delivered layout migration.
 
-Footer hard requirement:
+Baseline already delivered and not part of this todo:
 
-1. Row 1: context-aware actions for selected node
-2. Row 2: global actions
-3. Row 3: agent availability + controls (speech/theme/animation)
+1. Unified 3-row footer exists.
+2. View-switch keys (`1/2/3/4`) are hidden from footer.
+3. Arrow/navigation hints are hidden from footer.
+
+This todo now focuses only on missing behavior and correctness gaps.
 
 ## In Scope
-
-- Keep one unified footer widget rendering all three rows.
-- Drive row-1 and row-2 hints from real active bindings (no manual string drift).
-- Keep `1/2/3/4` tab switch keys active but hidden from footer.
-- Implement exact node-specific key visibility/behavior below.
 
 ### Sessions tab contract
 
 #### Computer node
 
-- `Enter`: New Session modal with additional inline project-path field.
-- Path field validates on submit.
-- Tilde paths resolve before validation.
+- `Enter`: New Session modal with an additional project-path input.
+- Path resolves `~` before validation.
 - Invalid path keeps modal open and shows inline field error.
 - `n`: New Project modal.
-- New Project modal captures name, description, and path (same validation component).
-- Project create fails if project/path already exists.
-- Successful create adds project path to `trusted_dirs`.
-- `R`: Restart All (all sessions for that computer).
+- New Project modal fields: name, description, path.
+- New Project fails if project/path already exists.
+- Successful create adds the new path to `trusted_dirs`.
+- `R`: Restart all sessions for that computer.
 - `+/-`: Collapse/Expand computer sessions.
 
 #### Project node
 
 - `Enter`: New Session in selected project.
-- `R`: Restart All (project sessions only).
+- `R`: Restart all sessions for that project.
 - `+/-`: Collapse/Expand selected project sessions.
 
 #### Session node
@@ -47,28 +43,28 @@ Footer hard requirement:
 
 ### Todo tab contract
 
-Computer grouping must be visible again in todo/preparation tree (same computer -> project grouping pattern).
+Computer grouping must be restored in the todo/preparation tree (computer -> project -> todo/files).
 
 #### Computer node
 
-- `n`: New Project (same behavior and validation contract as Sessions tab).
+- `n`: New Project (same behavior as Sessions tab).
 - `+/-`: Collapse/Expand computer todos.
 
 #### Project node
 
 - `t`: New Todo.
-- `Enter`: New Todo (default action; visually highlighted in footer).
+- `Enter`: New Todo (default action, visible in footer).
 - `b`: New Bug.
 - `+/-`: Collapse/Expand project todos.
 
 #### Todo node
 
 - `t`: New Todo.
-- `p`: Prepare (opens StartSession modal prefilled with `/next-prepare <slug>`).
-- `s`: Start (opens StartSession modal prefilled with `/next-work <slug>`).
+- `p`: Prepare (prefill `/next-prepare <slug>` in StartSession modal).
+- `s`: Start (prefill `/next-work <slug>` in StartSession modal).
 - `R`: Remove.
-- `Enter`: collapse/expand selected todo.
-- `Enter` remains active but hidden from footer on todo rows.
+- `Enter`: Collapse/Expand selected todo.
+- Todo-row `Enter` stays active but hidden from footer.
 
 #### Todo file node
 
@@ -85,25 +81,24 @@ Visible globals:
 - `s`: Speech toggle
 - `a`: Animation toggle
 
-Hidden globals:
+Hidden but active globals:
 
-- `1/2/3/4` tab switching stays active but hidden.
+- `1/2/3/4` tab switching
 
 ## Out of Scope
 
+- Rebuilding or redesigning the 3-row footer layout.
+- Reverting to ActionBar or multi-widget footer stacks.
 - Removing refresh behavior (`r`) in this todo.
-- Broader navigation redesign beyond described keymap.
-- Non-footer TUI redesign unrelated to this key contract.
+- Broader navigation redesign outside this key contract.
 
 ## Success Criteria
 
-- [ ] Footer always renders exactly 3 rows in running TUI.
-- [ ] Row 1 only shows context actions for current node.
-- [ ] Row 2 only shows global actions listed above.
-- [ ] Row 3 shows agents and controls; no clipping or row replacement.
-- [ ] Hidden bindings remain executable where specified (`1/2/3/4`, todo-row Enter).
 - [ ] Sessions node behavior matches contract exactly.
-- [ ] Todo node behavior matches contract exactly.
-- [ ] New Session modal path validation behaves as specified.
-- [ ] New Project creation behavior (validation + dedupe + trusted_dirs update) behaves as specified.
+- [ ] Todo tree computer grouping is restored with expected ordering.
+- [ ] Todo node and file-node behavior matches contract exactly.
+- [ ] Hidden bindings remain executable where specified (`1/2/3/4`, todo-row Enter).
+- [ ] New Session modal path validation behaves as specified (including `~` resolution and inline errors).
+- [ ] New Project behavior enforces dedupe and updates `trusted_dirs` on success.
+- [ ] Footer hints reflect only the intended visible actions per node/global contract.
 - [ ] Targeted tests covering node key visibility, hidden-active keys, and modal validation pass.
