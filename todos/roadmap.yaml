@@ -1,6 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: adapter-output-delivery
 - slug: consolidate-methodology-skills
   description: Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
     for cross-agent distribution
@@ -54,5 +53,3 @@
   description: Add Discord Application Commands (slash commands) mirroring Telegram
     command set
 - slug: agent-config-driven-selection-contract
-  after:
-  - adapter-output-delivery

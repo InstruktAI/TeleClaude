@@ -1,4 +1,9 @@
 # Delivered work items. Newest first.
+- slug: adapter-output-delivery
+  date: '2026-02-24'
+  title: Guarantee complete, continuous output delivery from agent sessions to all UI adapters, and ensure user input from any adapter is reflected to all others with correct provenance
+  outcome: DELIVERED
+  commit: 21544a6d
 - slug: discord-adapter-integrity
   date: '2026-02-24'
   title: Fix Discord adapter infrastructure and input routing so that the Discord guild is reliable, correctly partitioned per computer, and admin input from forums is routed correctly
