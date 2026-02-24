@@ -682,6 +682,37 @@ async def test_handle_get_session_data_codex_falls_back_to_tmux_when_no_transcri
 
 
 @pytest.mark.asyncio
+async def test_handle_get_session_data_tmux_fallback_strips_ansi_before_tail():
+    """Tmux fallback should strip ANSI codes before applying tail chars."""
+    mock_session = MagicMock()
+    mock_session.session_id = "codex-session-tmux-ansi"
+    mock_session.title = "Codex Session"
+    mock_session.project_path = "/home/user"
+    mock_session.subdir = None
+    mock_session.created_at = datetime.now()
+    mock_session.last_activity = datetime.now()
+    mock_session.native_log_file = None
+    mock_session.native_session_id = None
+    mock_session.active_agent = "codex"
+    mock_session.tmux_session_name = "tc_codex_ansi"
+
+    cmd = GetSessionDataCommand(session_id="codex-session-tmux-ansi", tail_chars=4)
+    pane_output = "abc\x1b[38;2;181;107;145mX\x1b[0mdef"
+
+    with (
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers.tmux_bridge, "capture_pane", new=AsyncMock(return_value=pane_output)),
+    ):
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        result = await command_handlers.get_session_data(cmd)
+
+    assert result["status"] == "success"
+    assert result["messages"] == "Xdef"
+    assert "\x1b" not in result["messages"]
+
+
+@pytest.mark.asyncio
 async def test_handle_get_session_data_non_codex_falls_back_to_tmux_before_pending():
     """Pre-stop non-codex sessions should prefer tmux output over pending transcript notice."""
     mock_session = MagicMock()
