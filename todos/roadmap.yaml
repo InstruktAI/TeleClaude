@@ -1,6 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: finalize-push-guardrails
 - slug: bidirectional-agent-links
   description: >
     Shared listener link primitive for direct agent conversation and gathering-ready

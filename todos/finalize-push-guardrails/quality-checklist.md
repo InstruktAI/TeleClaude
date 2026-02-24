@@ -13,5 +13,5 @@
 
 ## Finalize
 
-- [ ] Merged to main
-- [ ] Delivery logged
+- [x] Merged to main
+- [x] Delivery logged
