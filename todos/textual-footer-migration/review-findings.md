@@ -33,22 +33,6 @@
 - Executed: `telec todo demo textual-footer-migration` (fails at test block due timeout in `tests/unit/test_diagram_extractors.py::test_extract_modules_regression`).
 - Not directly observed: live TUI footer rendering and bold default-action styling during cursor movement.
 
-## Fixes Applied
-
-- Issue: `SessionsView` Enter/default-action contract on non-session rows.
-  Fix: Added `test_sessions_default_action_is_executable_for_selected_node` to assert each selected node's default action remains executable via `check_action`.
-  Commit: `3fea6f68`
-
-- Issue: Preparation todo-row Enter hint did not enforce runtime behavior in tests.
-  Fix: Added `test_preparation_activate_on_todo_toggles_expansion_not_edit` to verify todo-row Enter toggles expand/collapse and does not post edit requests.
-  Commit: `6e9d71d9`
-
-- Issue: `test_extract_modules_regression` timeout caused verification-gate instability.
-  Fix: Increased timeout budget for the repo-wide module extraction regression test from 5s to 20s with rationale comment.
-  Commit: `ee9904d6`
-
-- Re-verified: `uv run pytest tests/unit/test_diagram_extractors.py::test_extract_modules_regression -q` (pass), `make lint` (pass), and `telec todo demo textual-footer-migration` (7/7 blocks pass).
-
 ## Verdict
 
 REQUEST CHANGES
