@@ -1,0 +1,25 @@
+{
+  "slug": "fix-core-bugs-round-1",
+  "title": "ANSI-Safe Session Data Fallback",
+  "version": "0.1.0",
+  "delivered_date": "2026-02-24",
+  "merge_commit": "d82900492d2ca04177d22f9904d711b95151000f",
+  "metrics": {
+    "commits": 8,
+    "files_changed": 8,
+    "files_created": 3,
+    "insertions": 0,
+    "deletions": 0,
+    "test_files_added": 1,
+    "review_rounds": 1,
+    "critical_findings": 0,
+    "important_findings": 0,
+    "suggestions": 1
+  },
+  "acts": {
+    "challenge": "tmux fallback output in get_session_data leaked ANSI/control fragments, and build-gate retries were destabilized by strict branch-local timeout tuning.",
+    "build": "Implemented ANSI sanitization before tail slicing in get_session_data, added regression coverage for the boundary case, and aligned test gate timeout behavior back to the main branch contract.",
+    "gauntlet": "Work progressed through repeated gate retries, a worktree sync/rebase conflict in tools/test.sh, and reviewer validation. Final review approved with no critical or important findings.",
+    "next": "Monitor test gate reliability under normal load and add focused tooling tests where parser or runtime extraction behavior is operationally critical."
+  }
+}
