@@ -128,17 +128,18 @@ Footer {
     color: $foreground;
 }
 
-Footer > .footer--highlight {
-    background: $connector;
-}
-
-Footer > .footer--key {
+FooterKey .footer-key--key {
     text-style: bold;
     color: $connector;
 }
 
-Footer > .footer--description {
+FooterKey .footer-key--description {
     color: $foreground;
+}
+
+FooterKey.default-action .footer-key--key,
+FooterKey.default-action .footer-key--description {
+    text-style: bold;
 }
 
 StatusBar {

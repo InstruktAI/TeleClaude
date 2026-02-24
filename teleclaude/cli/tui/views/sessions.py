@@ -11,6 +11,7 @@ from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
+from textual.widgets import Footer
 
 from teleclaude.cli.models import ComputerInfo, ProjectInfo, SessionInfo
 from teleclaude.cli.tui.messages import (
@@ -783,10 +784,39 @@ class SessionsView(Widget, can_focus=True):
             return isinstance(item, ComputerHeader)
         return True
 
+    def _default_footer_action(self) -> str | None:
+        """Return the primary action for the selected node."""
+        item = self._current_item()
+        if isinstance(item, ComputerHeader):
+            return "restart_all"
+        if isinstance(item, ProjectHeader):
+            return "new_session"
+        if isinstance(item, SessionRow):
+            return "focus_pane"
+        return None
+
+    def _sync_default_footer_action(self) -> None:
+        """Mark the active default action in Footer."""
+        if not self.is_attached:
+            return
+        try:
+            footer = self.app.query_one(Footer)
+        except Exception:
+            return
+        default_action = self._default_footer_action()
+        for key_widget in footer.query("FooterKey"):
+            key_widget.set_class(getattr(key_widget, "action", None) == default_action, "default-action")
+
     def watch_cursor_index(self, _index: int) -> None:
         """Refresh key bindings when node context changes."""
         if self.is_attached:
             self.app.refresh_bindings()
+            self.call_after_refresh(self._sync_default_footer_action)
+
+    def on_focus(self) -> None:
+        """Sync default footer styling when the view receives focus."""
+        self.app.refresh_bindings()
+        self.call_after_refresh(self._sync_default_footer_action)
 
     # --- Reactive watchers ---
 
