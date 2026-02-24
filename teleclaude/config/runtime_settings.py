@@ -126,9 +126,13 @@ class RuntimeSettings:
         return SettingsPatch(tts=tts_patch)
 
     def _schedule_flush(self) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return  # No running event loop — skip deferred flush (sync context)
         if self._flush_task and not self._flush_task.done():
             self._flush_task.cancel()
-        self._flush_task = asyncio.ensure_future(self._debounced_flush())
+        self._flush_task = loop.create_task(self._debounced_flush())
 
     async def _debounced_flush(self) -> None:
         await asyncio.sleep(FLUSH_DELAY_S)

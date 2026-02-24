@@ -41,6 +41,54 @@ class CommandMapper:
     """Maps transport-specific payloads to internal command models."""
 
     @staticmethod
+    def _normalize_actor_id(source: str, source_id: object) -> Optional[str]:
+        text = str(source_id).strip() if source_id is not None else ""
+        if not text:
+            return None
+        return f"{source}:{text}"
+
+    @staticmethod
+    def _extract_actor_from_channel_metadata(
+        channel_metadata: Optional[Dict[str, object]], source: str
+    ) -> tuple[Optional[str], Optional[str], Optional[str]]:
+        if not channel_metadata:
+            return (None, None, None)
+
+        actor_id_obj = channel_metadata.get("actor_id")
+        actor_name_obj = channel_metadata.get("actor_name")
+        actor_avatar_obj = channel_metadata.get("actor_avatar_url")
+
+        actor_id = str(actor_id_obj).strip() if actor_id_obj is not None else ""
+        actor_name = str(actor_name_obj).strip() if actor_name_obj is not None else ""
+        actor_avatar = str(actor_avatar_obj).strip() if actor_avatar_obj is not None else ""
+        if actor_id and actor_name:
+            return (
+                actor_id,
+                actor_name,
+                actor_avatar or None,
+            )
+
+        source_user_id = channel_metadata.get("user_id")
+        if source_user_id is None and source == InputOrigin.DISCORD.value:
+            source_user_id = channel_metadata.get("discord_user_id")
+        if source_user_id is None and source == InputOrigin.TELEGRAM.value:
+            source_user_id = channel_metadata.get("telegram_user_id")
+        if source == InputOrigin.DISCORD.value and source_user_id is not None:
+            actor_id = actor_id or CommandMapper._normalize_actor_id("discord", source_user_id) or ""
+        elif source == InputOrigin.TELEGRAM.value and source_user_id is not None:
+            actor_id = actor_id or CommandMapper._normalize_actor_id("telegram", source_user_id) or ""
+
+        source_name_obj = channel_metadata.get("user_name") or channel_metadata.get("display_name")
+        source_name = str(source_name_obj).strip() if source_name_obj is not None else ""
+        actor_name = actor_name or source_name or actor_id
+
+        return (
+            actor_id or None,
+            actor_name or None,
+            actor_avatar or None,
+        )
+
+    @staticmethod
     def map_telegram_input(
         event: str,
         args: List[str],
@@ -72,10 +120,17 @@ class CommandMapper:
             )
 
         if event == "message":
+            actor_id, actor_name, actor_avatar_url = CommandMapper._extract_actor_from_channel_metadata(
+                metadata.channel_metadata,
+                metadata.origin or InputOrigin.TELEGRAM.value,
+            )
             return ProcessMessageCommand(
                 session_id=session_id or "",
                 text=" ".join(args),
-                origin=metadata.origin,
+                origin=metadata.origin or InputOrigin.TELEGRAM.value,
+                actor_id=actor_id,
+                actor_name=actor_name,
+                actor_avatar_url=actor_avatar_url,
             )
 
         if event == "agent":
@@ -116,6 +171,7 @@ class CommandMapper:
         title: Optional[str] = None,
         channel_metadata: Optional[Dict[str, object]] = None,
         launch_intent: Optional[SessionLaunchIntent | Dict[str, object]] = None,
+        initiator: Optional[str] = None,
     ) -> InternalCommand:
         """Map Redis inbound message to internal command."""
         cmd_name, args = parse_command_string(command_str)
@@ -135,10 +191,21 @@ class CommandMapper:
             )
 
         if cmd_name == "message":
+            actor_id, actor_name, actor_avatar_url = CommandMapper._extract_actor_from_channel_metadata(
+                channel_metadata,
+                origin,
+            )
+            if origin == InputOrigin.MCP.value:
+                computer = (initiator or "").strip() or "unknown"
+                actor_id = actor_id or f"system:{computer}:{session_id or 'mcp'}"
+                actor_name = actor_name or f"system@{computer}"
             return ProcessMessageCommand(
                 session_id=session_id or "",
                 text=" ".join(args) if args else "",
                 origin=origin,
+                actor_id=actor_id,
+                actor_name=actor_name,
+                actor_avatar_url=actor_avatar_url,
             )
 
         if cmd_name == "agent":
@@ -179,13 +246,6 @@ class CommandMapper:
                 origin=origin,
                 channel_metadata=channel_metadata,
                 launch_intent=launch_intent_obj,
-            )
-
-        if cmd_name == "message":
-            return ProcessMessageCommand(
-                session_id=session_id or "",
-                text=" ".join(args),
-                origin=origin,
             )
 
         if cmd_name == "agent_restart":
@@ -249,10 +309,23 @@ class CommandMapper:
             )
 
         if command_name == "message":
+            payload_actor_id_obj = payload.get("actor_id")
+            payload_actor_name_obj = payload.get("actor_name")
+            payload_actor_avatar_obj = payload.get("actor_avatar_url")
+            payload_actor_id = str(payload_actor_id_obj).strip() if payload_actor_id_obj is not None else ""
+            payload_actor_name = str(payload_actor_name_obj).strip() if payload_actor_name_obj is not None else ""
+            payload_actor_avatar = str(payload_actor_avatar_obj).strip() if payload_actor_avatar_obj is not None else ""
+            meta_actor_id, meta_actor_name, meta_actor_avatar = CommandMapper._extract_actor_from_channel_metadata(
+                metadata.channel_metadata,
+                metadata.origin or InputOrigin.API.value,
+            )
             return ProcessMessageCommand(
                 session_id=session_id,
                 text=str(payload.get("text", "")),
-                origin=metadata.origin,
+                origin=metadata.origin or InputOrigin.API.value,
+                actor_id=payload_actor_id or meta_actor_id,
+                actor_name=payload_actor_name or meta_actor_name,
+                actor_avatar_url=payload_actor_avatar or meta_actor_avatar,
             )
 
         if command_name == "keys":
@@ -265,13 +338,26 @@ class CommandMapper:
             )
 
         if command_name == "handle_voice":
+            payload_actor_id_obj = payload.get("actor_id")
+            payload_actor_name_obj = payload.get("actor_name")
+            payload_actor_avatar_obj = payload.get("actor_avatar_url")
+            payload_actor_id = str(payload_actor_id_obj).strip() if payload_actor_id_obj is not None else ""
+            payload_actor_name = str(payload_actor_name_obj).strip() if payload_actor_name_obj is not None else ""
+            payload_actor_avatar = str(payload_actor_avatar_obj).strip() if payload_actor_avatar_obj is not None else ""
+            meta_actor_id, meta_actor_name, meta_actor_avatar = CommandMapper._extract_actor_from_channel_metadata(
+                metadata.channel_metadata,
+                metadata.origin or InputOrigin.API.value,
+            )
             return HandleVoiceCommand(
                 session_id=session_id,
                 file_path=str(payload.get("file_path", "")),
                 duration=cast(float | None, payload.get("duration")),
                 message_id=cast(str | None, payload.get("message_id")),
                 message_thread_id=cast(int | None, payload.get("message_thread_id")),
-                origin=metadata.origin,
+                origin=metadata.origin or InputOrigin.API.value,
+                actor_id=payload_actor_id or meta_actor_id,
+                actor_name=payload_actor_name or meta_actor_name,
+                actor_avatar_url=payload_actor_avatar or meta_actor_avatar,
             )
 
         if command_name == "handle_file":

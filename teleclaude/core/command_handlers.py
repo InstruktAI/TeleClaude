@@ -281,13 +281,12 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
             Optional[str], cmd.channel_metadata.get("initiator_session_id")
         )
 
-    # Prefer parent origin for AI-to-AI sessions
+    # Origin provenance must reflect the actual source of this session creation.
+    # Do not inherit origin from parent sessions.
     last_input_origin = origin
     parent_session = None
     if initiator_session_id:
         parent_session = await db.get_session(initiator_session_id)
-        if parent_session and parent_session.last_input_origin:
-            last_input_origin = parent_session.last_input_origin
 
     # Resolve identity
     metadata_human_email: Optional[str] = None
@@ -386,11 +385,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         session_metadata=metadata_from_cmd,
         active_agent=launch.agent if launch else None,
         thinking_mode=launch.thinking_mode if launch else None,
-    )
-
-    event_bus.emit(
-        TeleClaudeEvents.SESSION_STARTED,
-        SessionLifecycleContext(session_id=session_id),
+        emit_session_started=False,
     )
 
     # Persist platform user_id on adapter metadata for derive_identity_key()
@@ -808,7 +803,14 @@ async def handle_voice(
         await client.break_threaded_turn(session)
 
     await process_message(
-        ProcessMessageCommand(session_id=cmd.session_id, text=transcribed, origin=cmd.origin),
+        ProcessMessageCommand(
+            session_id=cmd.session_id,
+            text=transcribed,
+            origin=cmd.origin or "api",
+            actor_id=cmd.actor_id,
+            actor_name=cmd.actor_name,
+            actor_avatar_url=cmd.actor_avatar_url,
+        ),
         client,
         start_polling,
     )
@@ -888,7 +890,14 @@ async def process_message(
 
     # Broadcast user input to other adapters (e.g. TUI input -> Telegram)
     if cmd.origin:
-        await client.broadcast_user_input(session, message_text, cmd.origin)
+        await client.broadcast_user_input(
+            session,
+            message_text,
+            cmd.origin,
+            actor_id=cmd.actor_id,
+            actor_name=cmd.actor_name,
+            actor_avatar_url=cmd.actor_avatar_url,
+        )
 
     active_agent = session.active_agent
     sanitized_text = tmux_io.wrap_bracketed_paste(message_text, active_agent=active_agent)

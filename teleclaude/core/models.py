@@ -381,6 +381,9 @@ class MessageMetadata:
     launch_intent: Optional["SessionLaunchIntent"] = None
     is_transcription: bool = False
     cleanup_trigger: Optional[str] = None
+    reflection_actor_id: Optional[str] = None
+    reflection_actor_name: Optional[str] = None
+    reflection_actor_avatar_url: Optional[str] = None
 
 
 @dataclass

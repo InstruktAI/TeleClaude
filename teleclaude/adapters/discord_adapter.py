@@ -78,6 +78,8 @@ class DiscordAdapter(UiAdapter):
         self._client: DiscordClientLike | None = None
         # project_path -> discord_forum_id mapping, built at startup
         self._project_forum_map: dict[str, int] = {}
+        # forum-channel-id -> webhook cache for actor-based reflection delivery
+        self._reflection_webhook_cache: dict[int, object] = {}
 
     async def start(self) -> None:
         """Initialize Discord client and start gateway task."""
@@ -780,12 +782,122 @@ class DiscordAdapter(UiAdapter):
         logger.debug("[DISCORD SEND] text=%r", text[:100])
 
         destination = await self._resolve_destination_channel(session, metadata=metadata)
+        if metadata and metadata.reflection_actor_name:
+            webhook_message_id = await self._send_reflection_via_webhook(destination, text, metadata)
+            if webhook_message_id:
+                return webhook_message_id
+
         send_fn = self._require_async_callable(getattr(destination, "send", None), label="Discord channel send")
         sent = await send_fn(text)
         message_id = getattr(sent, "id", None)
         if message_id is None:
             raise AdapterError("Discord send_message returned message without id")
         return str(message_id)
+
+    async def _send_reflection_via_webhook(
+        self,
+        destination: object,
+        text: str,
+        metadata: "MessageMetadata",
+    ) -> str | None:
+        actor_name = (metadata.reflection_actor_name or "").strip()
+        if not actor_name:
+            return None
+
+        thread = destination if self._is_thread_channel(destination) else None
+        webhook_channel = getattr(destination, "parent", None) if thread is not None else destination
+        channel_id = self._parse_optional_int(getattr(webhook_channel, "id", None))
+        if channel_id is None:
+            return None
+
+        webhook = await self._get_or_create_reflection_webhook(webhook_channel, channel_id)
+        if webhook is None:
+            return None
+
+        send_fn = self._require_async_callable(getattr(webhook, "send", None), label="Discord webhook send")
+        try:
+            if thread is not None and metadata.reflection_actor_avatar_url:
+                sent = await send_fn(
+                    content=text,
+                    username=actor_name,
+                    wait=True,
+                    avatar_url=metadata.reflection_actor_avatar_url,
+                    thread=thread,
+                )
+            elif thread is not None:
+                sent = await send_fn(
+                    content=text,
+                    username=actor_name,
+                    wait=True,
+                    thread=thread,
+                )
+            elif metadata.reflection_actor_avatar_url:
+                sent = await send_fn(
+                    content=text,
+                    username=actor_name,
+                    wait=True,
+                    avatar_url=metadata.reflection_actor_avatar_url,
+                )
+            else:
+                sent = await send_fn(
+                    content=text,
+                    username=actor_name,
+                    wait=True,
+                )
+        except Exception as exc:
+            logger.warning("Discord reflection webhook send failed: %s", exc)
+            return None
+
+        message_id = getattr(sent, "id", None)
+        return str(message_id) if message_id is not None else None
+
+    async def _get_or_create_reflection_webhook(self, channel: object, channel_id: int) -> object | None:
+        cached = self._reflection_webhook_cache.get(channel_id)
+        if cached is not None:
+            return cached
+
+        webhooks_fn = getattr(channel, "webhooks", None)
+        if callable(webhooks_fn):
+            try:
+                webhooks = await self._require_async_callable(webhooks_fn, label="Discord channel webhooks")()
+                if isinstance(webhooks, list):
+                    for webhook in webhooks:
+                        if getattr(webhook, "name", None) == "TeleClaude Reflections":
+                            self._reflection_webhook_cache[channel_id] = webhook
+                            return webhook
+            except Exception as exc:
+                logger.debug("Failed to list Discord webhooks for channel %s: %s", channel_id, exc)
+
+        create_fn = getattr(channel, "create_webhook", None)
+        if not callable(create_fn):
+            return None
+        try:
+            webhook = await self._require_async_callable(create_fn, label="Discord channel create_webhook")(
+                name="TeleClaude Reflections"
+            )
+            self._reflection_webhook_cache[channel_id] = webhook
+            return webhook
+        except Exception as exc:
+            logger.warning("Failed to create Discord reflection webhook for channel %s: %s", channel_id, exc)
+            return None
+
+    @staticmethod
+    def _discord_actor_name(author: object, user_id: str) -> str:
+        display_name = getattr(author, "display_name", None)
+        global_name = getattr(author, "global_name", None)
+        username = getattr(author, "name", None)
+        for candidate in (display_name, global_name, username):
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        return f"discord:{user_id}"
+
+    @staticmethod
+    def _discord_actor_avatar_url(author: object) -> str | None:
+        avatar = getattr(author, "display_avatar", None)
+        avatar_url = getattr(avatar, "url", None) if avatar is not None else None
+        if isinstance(avatar_url, str) and avatar_url.strip():
+            return avatar_url
+        return None
 
     async def edit_message(
         self,
@@ -990,10 +1102,15 @@ class DiscordAdapter(UiAdapter):
                 return
 
         # Process message
+        actor_name = (identity.person_name or "").strip() or self._discord_actor_name(author, user_id)
+        actor_avatar_url = self._discord_actor_avatar_url(author)
         cmd = ProcessMessageCommand(
             session_id=session.session_id,
             text=text,
             origin=InputOrigin.DISCORD.value,
+            actor_id=f"discord:{user_id}",
+            actor_name=actor_name,
+            actor_avatar_url=actor_avatar_url,
         )
         await get_command_service().process_message(cmd)
 
@@ -1140,11 +1257,23 @@ class DiscordAdapter(UiAdapter):
             "user_id": str(getattr(getattr(message, "author", None), "id", "")),
             "discord_user_id": str(getattr(getattr(message, "author", None), "id", "")),
         }
+        author_obj = getattr(message, "author", None)
+        if author_obj is not None:
+            channel_metadata["user_name"] = self._discord_actor_name(
+                author_obj,
+                str(getattr(author_obj, "id", "")),
+            )
         metadata = self._metadata(channel_metadata=channel_metadata)
+        actor_user_id = str(getattr(getattr(message, "author", None), "id", "")).strip() or "unknown"
+        actor_name = self._discord_actor_name(getattr(message, "author", None), actor_user_id)
+        actor_avatar_url = self._discord_actor_avatar_url(getattr(message, "author", None))
         cmd = ProcessMessageCommand(
             session_id=session.session_id,
             text=text,
             origin=InputOrigin.DISCORD.value,
+            actor_id=f"discord:{actor_user_id}",
+            actor_name=actor_name,
+            actor_avatar_url=actor_avatar_url,
         )
         await self._dispatch_command(
             session,
@@ -1326,6 +1455,12 @@ class DiscordAdapter(UiAdapter):
                     duration=duration,
                     message_id=message_id,
                     origin=InputOrigin.DISCORD.value,
+                    actor_id=f"discord:{getattr(getattr(message, 'author', None), 'id', 'unknown')}",
+                    actor_name=self._discord_actor_name(
+                        getattr(message, "author", None),
+                        str(getattr(getattr(message, "author", None), "id", "unknown")),
+                    ),
+                    actor_avatar_url=self._discord_actor_avatar_url(getattr(message, "author", None)),
                 )
             )
         except Exception as exc:

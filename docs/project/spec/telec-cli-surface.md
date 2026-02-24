@@ -115,6 +115,8 @@ subcommands:
           --commit: 'Commit hash.'
           --title: 'Delivery title.'
           --project-root: 'Project root (default: cwd).'
+  bugs:
+    description: 'Manage bug backlog.'
   config:
     description: 'Interactive configuration (or get/patch/validate subcommands).'
     subcommands:

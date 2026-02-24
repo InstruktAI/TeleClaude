@@ -499,6 +499,8 @@ class TelegramAdapter(
             session_id=session.session_id,
             text=text,
             origin="telegram",
+            actor_id=f"telegram:{user_id}",
+            actor_name=identity.person_name or f"telegram:{user_id}",
             request_id=str(update.effective_message.message_id),
         )
 

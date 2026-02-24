@@ -8,6 +8,7 @@ Handles agent lifecycle events (start, stop, notification) and routes them to:
 
 import asyncio
 import base64
+import inspect
 import random
 import re
 from collections.abc import Mapping
@@ -420,10 +421,24 @@ class AgentCoordinator:
         # Emit activity event for UI updates.
         # Synthetic Codex prompts are still real input events.
         self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
+        hook_actor_name = (
+            (getattr(session, "human_name", "") or "").strip()
+            or (getattr(session, "human_email", "") or "").strip()
+            or f"operator@{config.computer.name}"
+        )
 
         # Non-headless: DB write done above, no further routing needed
         # (the agent already received the input directly)
         if session.lifecycle_status != "headless":
+            broadcast_result = self.client.broadcast_user_input(
+                session,
+                prompt_text,
+                InputOrigin.HOOK.value,
+                actor_id=f"hook:{config.computer.name}:{session_id}",
+                actor_name=hook_actor_name,
+            )
+            if inspect.isawaitable(broadcast_result):
+                await broadcast_result
             return
 
         # Headless: route through unified process_message path
@@ -434,6 +449,8 @@ class AgentCoordinator:
             session_id=session_id,
             text=prompt_text,
             origin=InputOrigin.HOOK.value,
+            actor_id=f"hook:{config.computer.name}:{session_id}",
+            actor_name=hook_actor_name,
         )
 
         logger.debug(
@@ -767,6 +784,18 @@ class AgentCoordinator:
                 logger.warning("Failed to send incremental output: %s", exc, extra={"session_id": session_id[:8]})
 
         return False
+
+    async def trigger_incremental_output(self, session_id: str) -> bool:
+        """Trigger incremental threaded output refresh for a session."""
+        session = await db.get_session(session_id)
+        if not session:
+            return False
+
+        if not is_threaded_output_enabled(session.active_agent):
+            return False
+
+        payload = AgentOutputPayload(session_id=session_id, transcript_path=session.native_log_file)
+        return await self._maybe_send_incremental_output(session_id, payload)
 
     async def handle_notification(self, context: AgentEventContext) -> None:
         """Handle notification event - input request."""

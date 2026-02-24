@@ -150,6 +150,9 @@ class ProcessMessageCommand(InternalCommand):
     session_id: str
     text: str
     origin: str
+    actor_id: Optional[str] = None
+    actor_name: Optional[str] = None
+    actor_avatar_url: Optional[str] = None
 
     def __init__(
         self,
@@ -157,15 +160,28 @@ class ProcessMessageCommand(InternalCommand):
         session_id: str,
         text: str,
         origin: str,
+        actor_id: Optional[str] = None,
+        actor_name: Optional[str] = None,
+        actor_avatar_url: Optional[str] = None,
         request_id: Optional[str] = None,
     ):
         super().__init__(command_type=CommandType.PROCESS_MESSAGE, request_id=request_id)
         self.session_id = session_id
         self.text = text
         self.origin = origin
+        self.actor_id = actor_id
+        self.actor_name = actor_name
+        self.actor_avatar_url = actor_avatar_url
 
     def to_payload(self) -> Dict[str, object]:
-        return {"session_id": self.session_id, "text": self.text, "origin": self.origin}
+        payload: Dict[str, object] = {"session_id": self.session_id, "text": self.text, "origin": self.origin}
+        if self.actor_id is not None:
+            payload["actor_id"] = self.actor_id
+        if self.actor_name is not None:
+            payload["actor_name"] = self.actor_name
+        if self.actor_avatar_url is not None:
+            payload["actor_avatar_url"] = self.actor_avatar_url
+        return payload
 
 
 @dataclass(kw_only=True)
@@ -178,6 +194,9 @@ class HandleVoiceCommand(InternalCommand):
     message_id: Optional[str] = None
     message_thread_id: Optional[int] = None
     origin: Optional[str] = None
+    actor_id: Optional[str] = None
+    actor_name: Optional[str] = None
+    actor_avatar_url: Optional[str] = None
 
     def __init__(
         self,
@@ -188,6 +207,9 @@ class HandleVoiceCommand(InternalCommand):
         message_id: Optional[str] = None,
         message_thread_id: Optional[int] = None,
         origin: Optional[str] = None,
+        actor_id: Optional[str] = None,
+        actor_name: Optional[str] = None,
+        actor_avatar_url: Optional[str] = None,
         request_id: Optional[str] = None,
     ):
         super().__init__(command_type=CommandType.HANDLE_VOICE, request_id=request_id)
@@ -197,6 +219,9 @@ class HandleVoiceCommand(InternalCommand):
         self.message_id = message_id
         self.message_thread_id = message_thread_id
         self.origin = origin
+        self.actor_id = actor_id
+        self.actor_name = actor_name
+        self.actor_avatar_url = actor_avatar_url
 
     def to_payload(self) -> Dict[str, object]:
         payload: Dict[str, object] = {
@@ -211,6 +236,12 @@ class HandleVoiceCommand(InternalCommand):
             payload["message_thread_id"] = self.message_thread_id
         if self.origin is not None:
             payload["origin"] = self.origin
+        if self.actor_id is not None:
+            payload["actor_id"] = self.actor_id
+        if self.actor_name is not None:
+            payload["actor_name"] = self.actor_name
+        if self.actor_avatar_url is not None:
+            payload["actor_avatar_url"] = self.actor_avatar_url
         return payload
 
 

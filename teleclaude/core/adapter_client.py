@@ -27,6 +27,7 @@ from teleclaude.core.session_utils import get_display_title_for_session
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
+    from teleclaude.core.agent_coordinator import AgentCoordinator
     from teleclaude.core.events import AgentEventContext
     from teleclaude.core.models import Session
     from teleclaude.core.task_registry import TaskRegistry
@@ -62,6 +63,7 @@ class AdapterClient:
         self.is_shutting_down = False
         # Direct handler for agent events (set by daemon, replaces event bus for AGENT_EVENT)
         self.agent_event_handler: Callable[["AgentEventContext"], Awaitable[None]] | None = None
+        self.agent_coordinator: "AgentCoordinator | None" = None
         # Per-session lock for channel provisioning (prevents concurrent ensure_channel races)
         self._channel_ensure_locks: dict[str, asyncio.Lock] = {}
 
@@ -114,6 +116,7 @@ class AdapterClient:
         session: "Session",
         operation: str,
         task_factory: Callable[[UiAdapter, "Session"], Awaitable[object]],
+        include_adapters: set[str] | None = None,
     ) -> list[tuple[str, object]]:
         """Send operation to all UI adapters sequentially.
 
@@ -122,6 +125,10 @@ class AdapterClient:
         adapter's writes before persisting its own changes.
         """
         ui_adapters = self._ui_adapters()
+        if include_adapters is not None:
+            ui_adapters = [
+                (adapter_type, adapter) for adapter_type, adapter in ui_adapters if adapter_type in include_adapters
+            ]
         if not ui_adapters:
             logger.warning("No UI adapters available for %s (session %s)", operation, session.session_id[:8])
             return []
@@ -243,6 +250,7 @@ class AdapterClient:
         session: "Session",
         method: str,
         *args: object,
+        include_adapters: set[str] | None = None,
         **kwargs: object,
     ) -> object:
         """Send operation to all UI adapters, returning the entry point result.
@@ -266,7 +274,7 @@ class AdapterClient:
             method,
             entry_point,
         )
-        results = await self._broadcast_to_ui_adapters(session, method, make_task)
+        results = await self._broadcast_to_ui_adapters(session, method, make_task, include_adapters=include_adapters)
 
         # Prefer result from entry point adapter, fall back to first success
         entry_point_result: object = None
@@ -358,13 +366,30 @@ class AdapterClient:
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session
 
-        # Route to all UI adapters (entry point result preferred)
+        # Notices are an origin UX path only.
+        # If the origin is not a registered UI adapter, skip delivery.
+        include_adapters: set[str] | None = None
+        if feedback:
+            origin_adapter = (session_to_use.last_input_origin or "").strip()
+            origin_ui_adapter = self.adapters.get(origin_adapter)
+            if isinstance(origin_ui_adapter, UiAdapter):
+                include_adapters = {origin_adapter}
+            else:
+                logger.debug(
+                    "Skipping notice with non-UI origin: session=%s origin=%s",
+                    session_to_use.session_id[:8],
+                    origin_adapter or "<none>",
+                )
+                return None
+
+        # Route to chosen UI adapters (entry point result preferred)
         result = await self._route_to_ui(
             session_to_use,
             "send_message",
             text,
             metadata=metadata,
             multi_message=multi_message,
+            include_adapters=include_adapters,
         )
         message_id = str(result) if result else None
 
@@ -552,30 +577,45 @@ class AdapterClient:
         session: "Session",
         text: str,
         source: str,
+        *,
+        actor_id: str | None = None,
+        actor_name: str | None = None,
+        actor_avatar_url: str | None = None,
     ) -> None:
-        """Broadcast user input to all UI adapters except the source.
+        """Reflect user input to all UI adapters except the source adapter.
 
-        Formats input with source attribution (e.g. "TUI @ macbook") and
-        sends to all UI adapters except the one that received the input
-        (to avoid echoing back to the sender).
+        This keeps direct user experience local while fanning out for admin visibility.
         """
-        _NON_INTERACTIVE = {InputOrigin.MCP.value, InputOrigin.HOOK.value}
-        if source in _NON_INTERACTIVE:
-            return
+        default_actor = "TUI" if source.lower() in {InputOrigin.API.value, InputOrigin.HOOK.value} else source.upper()
+        normalized_actor_name = (actor_name or "").strip() or (actor_id or "").strip() or default_actor
+        fresh_session = await db.get_session(session.session_id)
+        session_to_use = fresh_session or session
+        final_text = f"{normalized_actor_name} @ {session_to_use.computer_name}:\n\n{text}"
 
-        source_display = "TUI" if source.lower() == "api" else source.upper()
-        computer_name = config.computer.name
-        header = f"{source_display} @ {computer_name}:"
-        final_text = f"{header}\n\n{text}"
+        source_adapter = source.strip().lower()
+        reflection_metadata = MessageMetadata(
+            parse_mode=None,
+            reflection_actor_id=(actor_id or "").strip() or None,
+            reflection_actor_name=normalized_actor_name,
+            reflection_actor_avatar_url=(actor_avatar_url or "").strip() or None,
+        )
 
-        async def send_to_adapter(ui_adapter: UiAdapter, lane_session: "Session") -> Optional[str]:
-            return await ui_adapter.send_message(
-                lane_session,
-                final_text,
-                metadata=MessageMetadata(parse_mode=None),
+        def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
+            return cast(
+                Awaitable[object],
+                adapter.send_message(
+                    lane_session,
+                    final_text,
+                    metadata=reflection_metadata,
+                ),
             )
 
-        await self._fanout_excluding(session, "broadcast_user_input", send_to_adapter, exclude=source)
+        await self._fanout_excluding(
+            session_to_use,
+            "send_user_input_reflection",
+            make_task,
+            exclude=source_adapter,
+        )
 
     async def _run_ui_lane(
         self,

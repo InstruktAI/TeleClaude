@@ -57,6 +57,7 @@ def test_configure_claude_never_embeds_worktree_path(tmp_path, monkeypatch):
     """Hook commands always point to main repo receiver, never a worktree."""
     monkeypatch.setenv("HOME", str(tmp_path))
     real_repo = Path(__file__).resolve().parents[2]
+    main_repo = install_hooks.resolve_main_repo_root(real_repo)
 
     install_hooks.configure_claude(real_repo)
 
@@ -65,7 +66,7 @@ def test_configure_claude_never_embeds_worktree_path(tmp_path, monkeypatch):
     hook_cmd = data["hooks"]["SessionStart"][0]["hooks"][0]["command"]
 
     assert "trees/" not in hook_cmd
-    assert str(real_repo / "teleclaude" / "hooks" / "receiver.py") in hook_cmd
+    assert str(main_repo / "teleclaude" / "hooks" / "receiver.py") in hook_cmd
 
 
 def test_merge_hooks_replaces_existing_hook_definition():
@@ -341,6 +342,7 @@ def test_configure_codex_replaces_existing_mcp_block(tmp_path, monkeypatch):
     """Existing MCP block is replaced with the repo venv config."""
     monkeypatch.setenv("HOME", str(tmp_path))
     repo_root = Path(__file__).resolve().parents[2]
+    main_repo = install_hooks.resolve_main_repo_root(repo_root)
 
     codex_dir = tmp_path / ".codex"
     codex_dir.mkdir(parents=True)
@@ -362,7 +364,7 @@ def test_configure_codex_replaces_existing_mcp_block(tmp_path, monkeypatch):
         "run",
         "--quiet",
         "--project",
-        str(repo_root),
-        str(repo_root / "bin" / "mcp-wrapper.py"),
+        str(main_repo),
+        str(main_repo / "bin" / "mcp-wrapper.py"),
     ]
-    assert str(repo_root / "bin" / "mcp-wrapper.py") in data["mcp_servers"]["teleclaude"]["args"][-1]
+    assert str(main_repo / "bin" / "mcp-wrapper.py") in data["mcp_servers"]["teleclaude"]["args"][-1]

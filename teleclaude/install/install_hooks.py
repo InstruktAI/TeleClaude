@@ -348,6 +348,7 @@ def _configure_json_agent_hooks(
 
 def configure_claude(repo_root: Path) -> None:
     """Configure Claude Code hooks."""
+    repo_root = resolve_main_repo_root(repo_root)
     _configure_json_agent_hooks(
         repo_root,
         "claude",
@@ -358,6 +359,7 @@ def configure_claude(repo_root: Path) -> None:
 
 def configure_gemini(repo_root: Path) -> None:
     """Configure Gemini CLI hooks."""
+    repo_root = resolve_main_repo_root(repo_root)
     _configure_json_agent_hooks(
         repo_root,
         "gemini",
@@ -375,6 +377,7 @@ def configure_codex(repo_root: Path) -> None:
     with nested hook structures, Codex only supports one hook event type:
     `agent-turn-complete` which maps to our internal "agent_stop" event.
     """
+    repo_root = resolve_main_repo_root(repo_root)
     receiver_script = repo_root / "teleclaude" / "hooks" / "receiver.py"
     if not receiver_script.exists():
         print(f"Warning: Codex receiver not found at {receiver_script}")

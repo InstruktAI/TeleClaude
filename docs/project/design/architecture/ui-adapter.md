@@ -10,6 +10,7 @@ type: 'design'
 ## Required reads
 
 - @docs/project/policy/ux-message-cleanup.md
+- @docs/project/spec/session-output-routing.md
 
 ## Purpose
 
@@ -18,7 +19,8 @@ Responsibilities
 - Normalize user commands and messages into daemon events.
 - Render session output and feedback according to UX cleanup rules.
 - Manage topics or channels for per-session organization.
-- Preserve session affinity (route feedback back to the last input origin).
+- Preserve origin-endpoint continuity for direct user replies.
+- Decide local presentation strategy (edit-in-place, threaded, or multi-placement) for delivered messages.
 
 Boundaries
 
@@ -54,8 +56,9 @@ Invariants
 - **Platform-Agnostic Commands**: User actions normalized to command objects (CreateSessionCommand, SendMessageCommand); platform details in metadata only.
 - **Consistent Cleanup Rules**: pending_message_deletions enforced uniformly across all UI adapters; trigger conditions identical.
 - **Single Output Message**: One persistent output message per session, edited repeatedly; message_id tracked in adapter_metadata namespace.
-- **Session Affinity**: Feedback routed to last_input_origin; user sees responses in the adapter they sent from.
-- **Origin Semantics**: last_input_origin uses InputOrigin values (telegram, redis, api, hook, mcp). Non-UI origins (api/hook/mcp) are treated as originless and broadcast to all UI adapters.
+- **Scope Contract**: Core defines recipients via delivery scope. Adapters must not broaden `ORIGIN_ONLY` recipient sets.
+- **Origin Endpoint UX**: `ORIGIN_ONLY` messages appear only at the origin endpoint.
+- **Summary Rule**: `last_output_summary` is origin-only and non-threaded only (in-edit UX path).
 
 ## Primary flows
 
@@ -176,15 +179,15 @@ sequenceDiagram
 
 ### 7. Voice Message Processing
 
-| Step | Actor     | Action                                  |
-| ---- | --------- | --------------------------------------- |
-| 1    | User      | Sends voice message                     |
-| 2    | Platform  | Downloads audio file to /tmp            |
-| 3    | UiAdapter | Sends "🎤 Transcribing..." notice       |
-| 4    | TTS       | Transcribes audio via Whisper API       |
-| 5    | UiAdapter | Sends transcribed text to session       |
-| 6    | UiAdapter | Sends "🎤 Sent: {text}" feedback        |
-| 7    | UiAdapter | Deletes voice message per cleanup rules |
+| Step | Actor     | Action                                          |
+| ---- | --------- | ----------------------------------------------- |
+| 1    | User      | Sends voice message                             |
+| 2    | Platform  | Downloads audio file to /tmp                    |
+| 3    | UiAdapter | Sends "🎤 Transcribing..." notice (origin-only) |
+| 4    | TTS       | Transcribes audio via Whisper API               |
+| 5    | UiAdapter | Sends transcribed text to session               |
+| 6    | UiAdapter | Sends "🎤 Sent: {text}" feedback                |
+| 7    | UiAdapter | Deletes voice message per cleanup rules         |
 
 ### 8. File Upload Flow
 
@@ -215,4 +218,4 @@ sequenceDiagram
 - **Feedback Routing Failure**: last_input_origin adapter offline. Feedback not delivered; logged. User sees nothing.
 - **Voice Transcription Failure**: TTS API down or audio format unsupported. User sees error notice; voice message not deleted.
 - **File Download Failure**: Platform API error during download. User sees error feedback; no file sent to AI.
-- **Multiple Adapters Active**: User sends from Telegram, expects response in WhatsApp. Feedback routed to Telegram (last_input_origin). Expected behavior.
+- **Multiple Adapters Active**: Origin-only feedback appears only on the origin endpoint. Non-origin endpoints rely on dual-lane stream traffic.

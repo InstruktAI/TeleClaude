@@ -727,6 +727,9 @@ def is_ready_for_work(cwd: str, slug: str) -> bool:
     phase = state.get("phase")
     if phase != ItemPhase.PENDING.value:
         return False
+    build = state.get(PhaseName.BUILD.value)
+    if build != PhaseStatus.PENDING.value:
+        return False
     dor = state.get("dor")
     if not isinstance(dor, dict):
         return False
@@ -928,9 +931,24 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
             # Not in roadmap - treat as satisfied (completed and cleaned up)
             continue
 
-        dep_phase = get_item_phase(cwd, dep)
-        if dep_phase != ItemPhase.DONE.value:
-            return False
+        dep_state = read_phase_state(cwd, dep)
+        dep_phase = dep_state.get("phase")
+        if dep_phase == ItemPhase.DONE.value:
+            continue
+
+        dep_review = dep_state.get(PhaseName.REVIEW.value)
+        if dep_review == PhaseStatus.APPROVED.value:
+            continue
+
+        # Backward compatibility with older state where only build/review fields
+        # were used and "phase" was derived later.
+        if (
+            dep_state.get(PhaseName.BUILD.value) == PhaseStatus.COMPLETE.value
+            and dep_state.get(PhaseName.REVIEW.value) == PhaseStatus.APPROVED.value
+        ):
+            continue
+
+        return False
 
     return True
 

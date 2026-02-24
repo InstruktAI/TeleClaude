@@ -234,3 +234,60 @@ async def test_threaded_output_prefers_payload_agent_over_session_agent(coordina
         mock_enabled.assert_called_once_with("claude")
         mock_get_messages.assert_not_called()
         mock_client.send_threaded_output.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_trigger_incremental_output_fires_for_threaded_session(coordinator):
+    session_id = "session-123"
+    session = Session(
+        session_id=session_id,
+        computer_name="macbook",
+        tmux_session_name="tmux-123",
+        title="Test Session",
+        active_agent="gemini",
+        native_log_file="/path/to/transcript.jsonl",
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=True),
+        patch.object(
+            coordinator, "_maybe_send_incremental_output", new=AsyncMock(return_value=True)
+        ) as mock_maybe_send,
+    ):
+        mock_get_session.return_value = session
+        result = await coordinator.trigger_incremental_output(session_id)
+
+    assert result is True
+    mock_get_session.assert_awaited_once_with(session_id)
+    mock_maybe_send.assert_awaited_once()
+    payload = mock_maybe_send.await_args.args[1]
+    assert payload.session_id == session_id
+    assert payload.transcript_path == "/path/to/transcript.jsonl"
+
+
+@pytest.mark.asyncio
+async def test_trigger_incremental_output_skips_non_threaded_session(coordinator):
+    session_id = "session-124"
+    session = Session(
+        session_id=session_id,
+        computer_name="macbook",
+        tmux_session_name="tmux-124",
+        title="Test Session",
+        active_agent="claude",
+        native_log_file="/path/to/transcript.jsonl",
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=False),
+        patch.object(
+            coordinator, "_maybe_send_incremental_output", new=AsyncMock(return_value=False)
+        ) as mock_maybe_send,
+    ):
+        mock_get_session.return_value = session
+        result = await coordinator.trigger_incremental_output(session_id)
+
+    assert result is False
+    mock_get_session.assert_awaited_once_with(session_id)
+    mock_maybe_send.assert_not_awaited()

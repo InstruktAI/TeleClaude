@@ -652,7 +652,8 @@ snippets:
   role: member
   source_project: TeleClaude
 - id: project/spec/session-output-routing
-  description: Routing rules for session output across UI adapters (Telegram, Discord).
+  description: Canonical routing contract for session messages across origin UX and
+    admin lanes.
   type: spec
   scope: project
   path: docs/project/spec/session-output-routing.md
