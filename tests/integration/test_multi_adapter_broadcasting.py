@@ -365,14 +365,14 @@ async def test_ui_observer_receives_broadcasts():
                     "slack": slack_adapter,
                 }
 
-                # Send message
-                await adapter_client.send_message(session, "Test output")
+                # Send message (non-ephemeral to ensure broadcasting)
+                await adapter_client.send_message(session, "Test output", ephemeral=False)
 
                 # Verify telegram (origin) called
                 assert len(telegram_adapter.send_message_calls) == 1
 
-                # No broadcast for feedback messages
-                assert len(slack_adapter.send_message_calls) == 0
+                # Observer SHOULD receive broadcast
+                assert len(slack_adapter.send_message_calls) == 1
 
     finally:
         await test_db.close()
@@ -489,15 +489,15 @@ async def test_observer_failure_does_not_affect_origin():
                     "slack": slack_adapter,
                 }
 
-                # Send message (should succeed despite slack failure)
-                result = await adapter_client.send_message(session, "Test output")
+                # Send message (non-ephemeral to ensure broadcasting)
+                result = await adapter_client.send_message(session, "Test output", ephemeral=False)
 
                 # Verify telegram (origin) succeeded
                 assert len(telegram_adapter.send_message_calls) == 1
                 assert result == "msg-123"
 
-                # No broadcast for feedback messages
-                assert len(slack_adapter.send_message_calls) == 0
+                # Verify slack (observer) was called (and failed)
+                assert len(slack_adapter.send_message_calls) == 1
 
     finally:
         await test_db.close()

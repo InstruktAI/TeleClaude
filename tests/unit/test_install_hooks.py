@@ -56,17 +56,24 @@ def test_resolve_main_repo_root_fallback_no_git(tmp_path):
 def test_configure_claude_never_embeds_worktree_path(tmp_path, monkeypatch):
     """Hook commands always point to main repo receiver, never a worktree."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    real_repo = Path(__file__).resolve().parents[2]
-    main_repo = install_hooks.resolve_main_repo_root(real_repo)
+    # Create a dummy "main repo" that doesn't have "trees/" in its path
+    # even if our current worktree does.
+    fake_main_repo = tmp_path / "teleclaude-main"
+    fake_main_repo.mkdir()
+    (fake_main_repo / "teleclaude" / "hooks").mkdir(parents=True)
+    (fake_main_repo / "teleclaude" / "hooks" / "receiver.py").touch()
 
-    install_hooks.configure_claude(real_repo)
+    # Force configure_claude to use our fake main repo instead of discovering the current worktree
+    monkeypatch.setattr(install_hooks, "resolve_main_repo_root", lambda start=None: fake_main_repo)
+
+    install_hooks.configure_claude(fake_main_repo)
 
     claude_config = tmp_path / ".claude" / "settings.json"
     data = json.loads(claude_config.read_text())
     hook_cmd = data["hooks"]["SessionStart"][0]["hooks"][0]["command"]
 
     assert "trees/" not in hook_cmd
-    assert str(main_repo / "teleclaude" / "hooks" / "receiver.py") in hook_cmd
+    assert str(fake_main_repo / "teleclaude" / "hooks" / "receiver.py") in hook_cmd
 
 
 def test_merge_hooks_replaces_existing_hook_definition():

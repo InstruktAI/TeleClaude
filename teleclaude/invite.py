@@ -11,6 +11,7 @@ Provides:
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import httpx
@@ -194,11 +195,11 @@ async def send_invite_email(
         logger.warning("BREVO_SMTP_USER not set — printing invite links instead of sending email")
         if not print_links_if_missing_smtp:
             return
-        print(f"\n=== Invite Links for {name} ({email}) ===")
+        print(f"\n=== Invite Links for {name} ({email}) ===", file=sys.stderr)
         for platform, link in links.items():
             if link:
-                print(f"{platform.capitalize()}: {link}")
-        print("=" * 50)
+                print(f"{platform.capitalize()}: {link}", file=sys.stderr)
+        print("=" * 50, file=sys.stderr)
         return
 
     # Load templates

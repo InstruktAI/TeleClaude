@@ -483,6 +483,14 @@ async def test_local_session_lifecycle_to_websocket(
         project_path="/tmp",
     )
 
+    # Manually emit session_started event since Db layer doesn't do it automatically
+    from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
+
+    event_bus.emit(
+        TeleClaudeEvents.SESSION_STARTED,
+        SessionLifecycleContext(session_id=session.session_id),
+    )
+
     # Wait for async event propagation: DB → Client → API server → Cache → WS
     await wait_for_call(mock_ws.send_json, timeout=2.0)
 

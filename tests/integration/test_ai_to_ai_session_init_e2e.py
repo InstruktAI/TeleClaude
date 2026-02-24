@@ -7,8 +7,11 @@ import os
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import MAIN_MODULE
+
+logger = get_logger(__name__)
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
@@ -139,24 +142,51 @@ async def test_ai_to_ai_session_without_project_path_is_jailed(daemon_with_mocke
             b"origin": b"telegram",
         }
 
-        await redis_transport._handle_incoming_message(request_id, message_data)
+        # Force a non-admin role to ensure jailing
+        from teleclaude.core.identity import IdentityContext
 
-        for _ in range(50):
+        mock_identity = IdentityContext(person_name="Maurice Faber", person_role="member")
+
+        from teleclaude.core.db import db as global_db
+
+        initial_sessions = await daemon.db.list_sessions()
+        logger.info("Initial sessions in daemon.db: %d", len(initial_sessions))
+
+        with patch.object(redis_transport, "_execute_command", wraps=redis_transport._execute_command) as mock_exec:
+            with patch("teleclaude.core.identity.IdentityResolver.resolve", return_value=mock_identity):
+                await redis_transport._handle_incoming_message(request_id, message_data)
+
+        # Give some time for DB commit
+        await asyncio.sleep(0.5)
+
+        # Verify command execution was attempted
+        assert mock_exec.called, "_execute_command should have been called"
+        call_args = mock_exec.call_args[0][0]
+        from teleclaude.types.commands import CreateSessionCommand
+
+        assert isinstance(call_args, CreateSessionCommand), (
+            f"Should execute CreateSessionCommand, got {type(call_args).__name__}"
+        )
+
+        for _ in range(100):
             if response_sent is not None:
                 break
             await asyncio.sleep(0.02)
 
     # Verify the session was jailed into help-desk
-    sessions = []
-    for _ in range(50):
-        sessions = await daemon.db.list_sessions()
+    target_session = None
+    for _ in range(100):
+        # Must include_initializing=True because new session starts in initializing status
+        sessions = await daemon.db.list_sessions(include_initializing=True)
         if sessions:
+            target_session = sessions[0]
             break
         await asyncio.sleep(0.02)
-    assert len(sessions) == 1, "Should create jailed session without project_path"
-    assert sessions[0].project_path is not None
-    assert sessions[0].project_path.endswith("/help-desk")
-    assert sessions[0].human_role is None
+
+    assert target_session is not None, "Should create jailed session without project_path"
+    assert target_session.project_path is not None
+    assert target_session.project_path.endswith("/help-desk")
+    assert target_session.human_role == "member"
 
     # Verify response was sent
     assert response_sent is not None

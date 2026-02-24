@@ -9,6 +9,9 @@ from unittest.mock import AsyncMock
 import pytest
 import redis.asyncio as redis_asyncio
 from dotenv import load_dotenv
+from instrukt_ai_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class MockRedisClient:
@@ -128,6 +131,11 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     """
     base_dir = Path(__file__).parent
     load_dotenv(base_dir / ".env")
+
+    # CRITICAL: Reset CommandService so each test gets a fresh one
+    from teleclaude.core.command_registry import reset_command_service
+
+    reset_command_service()
 
     # CRITICAL: Set a fake token so adapter_client.start() enters the telegram
     # branch and instantiates MockTelegramAdapter (patched below).
@@ -273,6 +281,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
 
     # CRITICAL: Reinitialize db singleton with test database path
     # This ensures each test gets isolated database even in parallel execution
+    logger.info("Initializing test DB at: %s", temp_db_path)
     db_module.db = Db(temp_db_path)
     await db_module.db.initialize()
 
