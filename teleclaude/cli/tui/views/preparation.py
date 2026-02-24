@@ -53,7 +53,7 @@ class PreparationView(Widget, can_focus=True):
         Binding("down", "cursor_down", "Down", key_display="↓", group=Binding.Group("Nav", compact=True)),
         Binding("left", "collapse", "Collapse", key_display="←", group=Binding.Group("Fold", compact=True)),
         Binding("right", "expand", "Expand", key_display="→", group=Binding.Group("Fold", compact=True)),
-        Binding("enter", "activate", "Edit"),
+        Binding("enter", "activate", "Toggle/Edit"),
         Binding("space", "preview_file", "View"),
         Binding("equals_sign", "expand_all", "All", key_display="+", group=Binding.Group("Fold", compact=True)),
         Binding("minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True)),

@@ -198,6 +198,12 @@ def test_preparation_check_action_is_context_sensitive() -> None:
 
 
 @pytest.mark.unit
+def test_preparation_enter_hint_matches_activate_behavior() -> None:
+    enter_binding = next(binding for binding in PreparationView.BINDINGS if binding.action == "activate")
+    assert enter_binding.description == "Toggle/Edit"
+
+
+@pytest.mark.unit
 def test_preparation_default_action_tracks_cursor_context() -> None:
     view = PreparationView()
     view._nav_items = [_project_header(), _todo_row(), _todo_file_row()]
