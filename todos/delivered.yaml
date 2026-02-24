@@ -1,4 +1,14 @@
 # Delivered work items. Newest first.
+- slug: finalize-push-guardrails
+  date: '2026-02-24'
+  title: Split finalize ownership and enforce main-targeting push/merge guardrails
+  outcome: DELIVERED
+  commit: 4146edd1
+- slug: textual-footer-migration
+  date: '2026-02-24'
+  title: Replace ActionBar with Textual Footer and complete footer-context migration
+  outcome: DELIVERED
+  commit: ccad44b7
 - slug: adapter-output-delivery
   date: '2026-02-24'
   title: Guarantee complete, continuous output delivery from agent sessions to all UI adapters, and ensure user input from any adapter is reflected to all others with correct provenance

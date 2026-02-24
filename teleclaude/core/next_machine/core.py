@@ -119,23 +119,36 @@ POST_COMPLETION: dict[str, str] = {
 3. Call {next_call}
 """,
     "next-finalize": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data. Confirm merge succeeded.
-2. teleclaude__end_session(computer="local", session_id="<session_id>")
-3. DEMO SNAPSHOT (orchestrator-owned — stamp delivery metadata while artifacts exist):
+1. Read worker output via get_session_data.
+2. Confirm worker reported exactly `FINALIZE_READY: {args}`.
+   If missing: send worker feedback to report FINALIZE_READY and stop (do NOT apply).
+3. teleclaude__end_session(computer="local", session_id="<session_id>")
+4. FINALIZE APPLY (orchestrator-owned, canonical root only — NEVER cd into worktree):
+   a. MAIN_REPO="$(git rev-parse --git-common-dir)/.."
+   b. git -C "$MAIN_REPO" fetch origin main
+   c. git -C "$MAIN_REPO" switch main
+   d. git -C "$MAIN_REPO" pull --ff-only origin main
+   e. git -C "$MAIN_REPO" merge {args} --no-edit
+   f. MERGE_COMMIT="$(git -C "$MAIN_REPO" rev-parse HEAD)"
+   g. If "$MAIN_REPO/todos/{args}/bug.md" exists: skip delivery bookkeeping.
+      Else: telec roadmap deliver {args} --commit "$MERGE_COMMIT" --project-root "$MAIN_REPO"
+            && git -C "$MAIN_REPO" add todos/delivered.yaml todos/roadmap.yaml
+            && git -C "$MAIN_REPO" commit -m "chore({args}): record delivery"
+5. DEMO SNAPSHOT (orchestrator-owned — stamp delivery metadata while artifacts exist):
    If demos/{args}/demo.md exists (builder created it during build):
-   a. Get merge commit hash: git rev-parse HEAD
-   b. Read todos/{args}/requirements.md title and implementation-plan.md metrics
-   c. Generate demos/{args}/snapshot.json with: slug, title, version (from pyproject.toml),
+   a. Read todos/{args}/requirements.md title and implementation-plan.md metrics
+   b. Generate demos/{args}/snapshot.json with: slug, title, version (from pyproject.toml),
       delivered_date (today), merge_commit, metrics, and five acts narrative from the todo artifacts.
-   d. git add demos/{args}/snapshot.json && git commit -m "chore({args}): add demo snapshot"
+   c. git -C "$MAIN_REPO" add demos/{args}/snapshot.json && git -C "$MAIN_REPO" commit -m "chore({args}): add demo snapshot"
    If demos/{args}/demo.md does NOT exist, skip — no demo was created for this delivery.
-4. CLEANUP (orchestrator-owned, from main repo root — NEVER cd into worktree):
-   a. git worktree remove trees/{args} --force
-   b. git branch -d {args}
-   c. rm -rf todos/{args}
-   d. git add -A && git commit -m "chore: cleanup {args}"
-5. make restart (daemon picks up merged code before next dispatch)
-6. Call {next_call}
+6. CLEANUP (orchestrator-owned, from main repo root):
+   a. git -C "$MAIN_REPO" worktree remove trees/{args} --force
+   b. git -C "$MAIN_REPO" branch -d {args}
+   c. rm -rf "$MAIN_REPO/todos/{args}"
+   d. git -C "$MAIN_REPO" add -A && git -C "$MAIN_REPO" commit -m "chore: cleanup {args}"
+7. git -C "$MAIN_REPO" push origin main
+8. make restart (daemon picks up merged code before next dispatch)
+9. Call {next_call}
 """,
 }
 
@@ -2345,7 +2358,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
         )
 
-    # 9. Review approved - dispatch finalize (serialized via finalize lock)
+    # 9. Review approved - dispatch finalize prepare (serialized via finalize lock)
     if has_uncommitted_changes(cwd, resolved_slug):
         return format_uncommitted_changes(resolved_slug)
     session_id = caller_session_id or "unknown"
@@ -2358,9 +2371,9 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         release_finalize_lock(cwd, session_id)
         return format_error("NO_AGENTS", str(exc))
 
-    # Bugs skip delivered.md entry and are removed from todos entirely
+    # Bugs skip delivered.yaml bookkeeping and are removed from todos entirely
     is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
-    note = "BUG FIX: Skip delivered.md entry. Delete todo directory after merge." if is_bug else ""
+    note = "BUG FIX: Skip delivered.yaml bookkeeping. Delete todo directory after merge." if is_bug else ""
 
     return format_tool_call(
         command="next-finalize",

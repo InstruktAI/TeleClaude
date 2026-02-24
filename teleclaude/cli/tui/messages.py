@@ -99,6 +99,15 @@ class RestartSessionRequest(Message):
         self.computer = computer
 
 
+class RestartSessionsRequest(Message):
+    """Request to restart multiple sessions on a computer."""
+
+    def __init__(self, computer: str, session_ids: list[str]) -> None:
+        super().__init__()
+        self.computer = computer
+        self.session_ids = session_ids
+
+
 class ReviveSessionRequest(Message):
     """Request to revive a headless session (create its tmux pane)."""
 
@@ -206,17 +215,6 @@ class DocEditRequest(Message):
         self.doc_id = doc_id
         self.command = command
         self.title = title
-
-
-# --- Cursor context messages ---
-
-
-class CursorContextChanged(Message):
-    """Cursor moved to a different item type — ActionBar should update hints."""
-
-    def __init__(self, item_type: str) -> None:
-        super().__init__()
-        self.item_type = item_type  # "session" | "computer" | "project"
 
 
 # --- Settings messages ---

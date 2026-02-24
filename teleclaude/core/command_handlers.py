@@ -64,6 +64,7 @@ from teleclaude.types.commands import (
     RunAgentCommand,
     StartAgentCommand,
 )
+from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import (
     get_transcript_parser_info,
     parse_session_transcript,
@@ -622,6 +623,9 @@ async def get_session_data(
             return None
 
         tail = cmd.tail_chars if cmd.tail_chars > 0 else 2000
+        # Strip ANSI before truncation so tail slicing cannot split escape codes.
+        sanitized_output = strip_ansi_codes(pane_output)
+        messages = sanitized_output[-tail:] if len(sanitized_output) > tail else sanitized_output
         logger.debug(
             "Returning tmux fallback output for session %s (%s)",
             session_id[:8],
@@ -632,7 +636,7 @@ async def get_session_data(
             "session_id": session_id,
             "project_path": session.project_path,
             "subdir": session.subdir,
-            "messages": pane_output[-tail:],
+            "messages": messages,
             "created_at": session.created_at.isoformat() if session.created_at else None,
             "last_activity": (session.last_activity.isoformat() if session.last_activity else None),
         }

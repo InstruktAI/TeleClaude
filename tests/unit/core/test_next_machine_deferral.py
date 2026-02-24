@@ -149,3 +149,4 @@ async def test_next_work_skips_defer_if_processed():
 
         # Should go to finalize
         assert 'command="/next-finalize"' in result
+        assert "FINALIZE_READY: processed-item" in result

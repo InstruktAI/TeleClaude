@@ -1,5 +1,5 @@
 ---
-description: 'Finalize phase. Verify approval, merge to main, log delivery, and cleanup.'
+description: 'Finalize phase. Two-stage finalize: worker prepare, orchestrator apply.'
 id: 'software-development/procedure/lifecycle/finalize'
 scope: 'domain'
 type: 'procedure'
@@ -13,7 +13,7 @@ type: 'procedure'
 
 ## Goal
 
-Merge approved work to main, log delivery, and clean up.
+Advance `origin/main` only through canonical-root orchestrator apply after a worker proves the branch is finalize-ready.
 
 ## Preconditions
 
@@ -21,68 +21,63 @@ Merge approved work to main, log delivery, and clean up.
 - `todos/{slug}/quality-checklist.md` exists.
 - No unresolved deferrals.
 
-## Steps
+## Stage A — Worker: finalize-prepare (worktree)
 
 1. Read `todos/{slug}/review-findings.md` and confirm verdict APPROVE.
-2. Update only the Finalize section in `quality-checklist.md`.
-   - Do not edit Build or Review sections.
-3. Use commit hooks for verification (lint + unit tests).
-4. Integrate main into the branch (inside the worktree — you have code context to resolve conflicts):
+2. Integrate latest main inside the worktree:
 
    ```bash
    git fetch origin main
    git merge origin/main --no-edit
    ```
 
-   If conflicts occur, resolve them here in the worktree where you have full code context,
-   commit the resolution, and re-run verification.
+3. Resolve conflicts in the worktree where code context is available.
+4. Report exactly:
 
-5. Merge branch to main (from the worktree, use `git -C` to operate on the main repo):
+   ```
+   FINALIZE_READY: {slug}
+   ```
+
+5. Stop. Do **not** merge into canonical `main`, push, or modify delivery bookkeeping.
+
+## Stage B — Orchestrator: finalize-apply (canonical root)
+
+1. Verify worker output contains `FINALIZE_READY: {slug}`.
+2. From canonical repository root on branch `main`, run apply:
 
    ```bash
-   MAIN_REPO="$(git rev-parse --git-common-dir)/.."
-   git -C "$MAIN_REPO" fetch origin main
-   git -C "$MAIN_REPO" switch main
-   git -C "$MAIN_REPO" pull --ff-only origin main
-   git -C "$MAIN_REPO" merge {slug} --no-edit
+   git fetch origin main
+   git switch main
+   git pull --ff-only origin main
+   git merge {slug} --no-edit
    ```
 
-   This merge should be clean because step 4 already integrated main into the branch.
-
-6. Push main:
+3. Apply delivery bookkeeping:
+   - non-bug todos: append to `todos/delivered.yaml` and remove from `todos/roadmap.yaml`
+   - bug todos: skip delivery bookkeeping
+4. Push canonical `main`:
 
    ```bash
-   git -C "$MAIN_REPO" push origin main
+   git push origin main
    ```
 
-7. Append to `todos/delivered.md` (use `$MAIN_REPO/todos/` paths):
+5. Continue orchestrator-owned snapshot/cleanup workflow.
 
-   ```
-   | {date} | {slug} | {title} | DELIVERED | {commit-hash} |
-   ```
-
-8. Remove the item for `{slug}` from `todos/roadmap.yaml`.
-
-**STOP HERE.** Do not delete `todos/{slug}/`, the worktree, or the feature branch.
-The orchestrator owns cleanup after `end_session` — the worker cannot safely delete
-its own working directory.
-
-## Report format
+## Report format (worker)
 
 ```
-FINALIZE COMPLETE: {slug}
+FINALIZE_READY: {slug}
 
-Merged: yes
-Delivered log: updated
-Roadmap: updated
-Cleanup: orchestrator-owned (worktree, branch, todo folder)
+Main integrated: yes
+Apply ownership: orchestrator
 ```
 
 ## Outputs
 
-- Merged changes on `main`.
-- Updated `todos/delivered.md` and `todos/roadmap.yaml`.
+- Worktree branch rebased/merged with latest `origin/main`.
+- Orchestrator receives `FINALIZE_READY` and can safely apply from canonical root.
 
 ## Recovery
 
-- If verification fails or merge conflicts persist, report the blocker and stop.
+- If conflicts cannot be resolved in worker prepare, report blocker and stop.
+- If apply fails (dirty canonical main, merge conflict, push rejection), resolve in orchestrator apply and retry.
