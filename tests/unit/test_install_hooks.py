@@ -398,3 +398,23 @@ def test_install_agent_wrapper_renders_canonical_root(tmp_path, monkeypatch):
     assert target.exists()
     assert f"canonical={repo_root}" in target.read_text(encoding="utf-8")
     assert target.stat().st_mode & 0o111
+
+
+def test_install_agent_wrapper_supports_gh_binary(tmp_path, monkeypatch):
+    """GH wrapper templates should be rendered and installed idempotently."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    template_dir = tmp_path / "wrapper-templates"
+    template_dir.mkdir(parents=True, exist_ok=True)
+    (template_dir / "gh").write_text("#!/usr/bin/env bash\nroot={{CANONICAL_ROOT}}\n", encoding="utf-8")
+    monkeypatch.setattr(install_hooks, "WRAPPER_TEMPLATE_DIR", template_dir)
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir(parents=True, exist_ok=True)
+
+    install_hooks.install_agent_wrapper(repo_root, "gh")
+    install_hooks.install_agent_wrapper(repo_root, "gh")
+
+    target = tmp_path / ".teleclaude" / "bin" / "gh"
+    assert target.exists()
+    assert f"root={repo_root}" in target.read_text(encoding="utf-8")

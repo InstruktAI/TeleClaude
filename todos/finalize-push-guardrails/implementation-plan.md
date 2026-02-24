@@ -45,7 +45,7 @@ Close all known paths where worktree-context agents can advance `origin/main` di
   - detect main-targeting push refspecs,
   - block from non-canonical context even with `--no-verify`,
   - preserve non-main push behavior.
-- [ ] Add `gh` wrapper guard for `gh pr merge` to base `main` from non-canonical contexts.
+- [x] Add `gh` wrapper guard for `gh pr merge` to base `main` from non-canonical contexts.
 - [ ] Keep wrapper scope limited to agent sessions via PATH injection in [`tmux_bridge.py`](../../teleclaude/core/tmux_bridge.py).
 - [ ] Emit structured rejection logs with cwd, branch, target, command, and session context (when present).
 
