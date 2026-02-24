@@ -53,10 +53,16 @@ class JobsView(Widget, can_focus=True):
     BINDINGS = [
         Binding("up", "cursor_up", "Up", key_display="↑", group=Binding.Group("Nav", compact=True)),
         Binding("down", "cursor_down", "Down", key_display="↓", group=Binding.Group("Nav", compact=True)),
-        Binding("enter", "run_job", "Run"),
+        Binding("enter", "run_job", "[b]Run[/b]", key_display="[b]↵[/b]"),
     ]
 
     cursor_index = reactive(0)
+
+    def watch_cursor_index(self, value: int) -> None:
+        """Update cursor highlight and refresh footer bindings on move."""
+        self._update_cursor_highlight()
+        if self.is_attached:
+            self.app.refresh_bindings()
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)

@@ -48,7 +48,7 @@ class ConfigView(Widget, can_focus=True):
 
     BINDINGS = [
         Binding("v", "run_validation", "Validate"),
-        Binding("r", "refresh_config", "Refresh"),
+        Binding("r", "refresh_config", "Refresh", key_display="↻"),
         Binding("tab", "next_subtab", "Tab", key_display="⇥", group=Binding.Group("Tabs", compact=True)),
         Binding("shift+tab", "prev_subtab", "Back", key_display="⇤", group=Binding.Group("Tabs", compact=True)),
         Binding("left", "prev_adapter_tab", "Prev", key_display="←", group=Binding.Group("Adapters", compact=True)),
@@ -57,6 +57,21 @@ class ConfigView(Widget, can_focus=True):
 
     active_subtab = reactive(0)
     active_adapter_tab = reactive(0)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action in ("next_adapter_tab", "prev_adapter_tab"):
+            return self.active_subtab == 0
+        return True
+
+    def watch_active_subtab(self, value: int) -> None:
+        self._sync_content()
+        if self.is_attached:
+            self.app.refresh_bindings()
+
+    def watch_active_adapter_tab(self, value: int) -> None:
+        self._sync_content()
+        if self.is_attached:
+            self.app.refresh_bindings()
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="config-scroll"):
@@ -100,9 +115,6 @@ class ConfigView(Widget, can_focus=True):
         if self.active_subtab == 0:
             self.active_adapter_tab = (self.active_adapter_tab - 1) % len(_ADAPTER_TABS)
             self._sync_content()
-
-    def watch_active_subtab(self, _value: int) -> None:
-        self._sync_content()
 
 
 class ConfigContent(TelecMixin, Widget):

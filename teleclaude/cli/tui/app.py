@@ -89,13 +89,13 @@ class TelecApp(App[str | None]):
     TITLE = "TeleClaude"
 
     BINDINGS = [
-        Binding("q", "quit", "Quit"),
-        Binding("1", "switch_tab('sessions')", "Sessions", key_display="1", group=Binding.Group("Views", compact=True)),
-        Binding("2", "switch_tab('preparation')", "Prep", key_display="2", group=Binding.Group("Views", compact=True)),
-        Binding("3", "switch_tab('jobs')", "Jobs", key_display="3", group=Binding.Group("Views", compact=True)),
-        Binding("4", "switch_tab('config')", "Config", key_display="4", group=Binding.Group("Views", compact=True)),
-        Binding("r", "refresh", "Refresh"),
-        Binding("t", "cycle_pane_theming", "Cycle Theme", key_display="t"),
+        Binding("q", "quit", "Quit", key_display="⏻"),
+        Binding("1", "switch_tab('sessions')", "Sessions", key_display="①", group=Binding.Group("Views", compact=True)),
+        Binding("2", "switch_tab('preparation')", "Prep", key_display="②", group=Binding.Group("Views", compact=True)),
+        Binding("3", "switch_tab('jobs')", "Jobs", key_display="③", group=Binding.Group("Views", compact=True)),
+        Binding("4", "switch_tab('config')", "Config", key_display="④", group=Binding.Group("Views", compact=True)),
+        Binding("r", "refresh", "Refresh", key_display="↻"),
+        Binding("t", "cycle_pane_theming", "Cycle Theme", key_display="◑"),
     ]
 
     def __init__(
