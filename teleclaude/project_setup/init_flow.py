@@ -7,7 +7,7 @@ from pathlib import Path
 
 from teleclaude.install.install_hooks import main as install_agent_hooks
 from teleclaude.project_setup.git_filters import setup_git_filters
-from teleclaude.project_setup.git_repo import ensure_git_repo
+from teleclaude.project_setup.git_repo import ensure_git_repo, ensure_hooks_path
 from teleclaude.project_setup.gitattributes import update_gitattributes
 from teleclaude.project_setup.hooks import install_precommit_hook
 from teleclaude.project_setup.macos_setup import install_launchers, is_macos, run_permissions_probe
@@ -30,6 +30,7 @@ def init_project(project_root: Path) -> None:
     """
     install_agent_hooks()
     ensure_git_repo(project_root)
+    ensure_hooks_path(project_root)
     setup_git_filters(project_root)
     update_gitattributes(project_root)
     install_precommit_hook(project_root)
