@@ -13,7 +13,7 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
-from textual.widgets import Footer, TabbedContent, TabPane
+from textual.widgets import TabbedContent, TabPane
 
 from teleclaude.cli.models import (
     AgentActivityEvent,
@@ -64,6 +64,7 @@ from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
+from teleclaude.cli.tui.widgets.hints_footer import HintsFooter
 from teleclaude.cli.tui.widgets.status_bar import StatusBar
 
 if TYPE_CHECKING:
@@ -182,7 +183,7 @@ class TelecApp(App[str | None]):
             with TabPane("Config", id="config"):
                 yield ConfigView(id="config-view")
         with Vertical(id="footer-area"):
-            yield Footer(compact=True, show_command_palette=False)
+            yield HintsFooter(id="hints-footer")
             yield StatusBar(id="status-bar")
         yield PaneManagerBridge(is_reload=self._is_reload, id="pane-bridge")
         logger.trace("[PERF] compose END t=%.3f", _t.monotonic())
