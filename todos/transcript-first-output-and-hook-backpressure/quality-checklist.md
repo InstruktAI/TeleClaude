@@ -10,20 +10,15 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [x] Requirements implemented according to scope
-- [x] Implementation-plan task checkboxes all `[x]`
-- [x] Tests pass (`make test`)
-- [x] Lint passes (`make lint`)
-- [x] No silent deferrals in implementation plan
-- [x] Code committed
-- [x] Demo validated (`telec todo demo transcript-first-output-and-hook-backpressure` exits 0, or exception noted)
-- [x] Working tree clean
-- [x] Comments/docstrings updated where behavior changed
-
-Manual verification notes (Builder):
-
-- Automated checks: `make test` passed (`2005 passed, 107 skipped`), `make lint` passed, `telec todo demo validate transcript-first-output-and-hook-backpressure` passed (`3 executable block(s)`).
-- Live runtime spot-check in a busy session was not executed in this worktree build; synthetic burst/lag assertions in `tests/unit/test_daemon.py` cover the contract in CI-safe form.
+- [ ] Requirements implemented according to scope
+- [ ] Implementation-plan task checkboxes all `[x]`
+- [ ] Tests pass (`make test`)
+- [ ] Lint passes (`make lint`)
+- [ ] No silent deferrals in implementation plan
+- [ ] Code committed
+- [ ] Demo validated (`telec todo demo transcript-first-output-and-hook-backpressure` exits 0, or exception noted)
+- [ ] Working tree clean
+- [ ] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 
