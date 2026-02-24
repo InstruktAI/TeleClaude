@@ -64,7 +64,7 @@ def _render_gh_wrapper(tmp_path: Path, canonical_root: Path) -> Path:
 def _base_env(tmp_path: Path, wrapper_dir: Path, fake_bin: Path) -> dict[str, str]:
     env = os.environ.copy()
     env["HOME"] = str(tmp_path)
-    env["PATH"] = f"{wrapper_dir}:{fake_bin}"
+    env["PATH"] = f"{wrapper_dir}:{fake_bin}:/usr/bin:/bin"
     env["TELECLAUDE_SESSION_ID"] = "sess-456"
     return env
 

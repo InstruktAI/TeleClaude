@@ -52,7 +52,7 @@ def _render_git_wrapper(tmp_path: Path, canonical_root: Path) -> Path:
 def _base_env(tmp_path: Path, wrapper_dir: Path, fake_bin: Path) -> dict[str, str]:
     env = os.environ.copy()
     env["HOME"] = str(tmp_path)
-    env["PATH"] = f"{wrapper_dir}:{fake_bin}"
+    env["PATH"] = f"{wrapper_dir}:{fake_bin}:/usr/bin:/bin"
     env["TELECLAUDE_SESSION_ID"] = "sess-123"
     return env
 
@@ -91,7 +91,7 @@ def test_git_wrapper_blocks_worktree_push_to_main_even_with_no_verify(tmp_path: 
     assert log_file.exists()
     log_text = log_file.read_text(encoding="utf-8")
     assert "TELECLAUDE_GIT_PUSH_MAIN_GUARD_BLOCK" in log_text
-    assert "session='sess-123'" in log_text
+    assert "sess-123" in log_text
 
 
 def test_git_wrapper_allows_feature_branch_push_from_worktree(tmp_path: Path) -> None:

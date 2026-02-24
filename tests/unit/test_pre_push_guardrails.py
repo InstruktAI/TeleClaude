@@ -37,7 +37,7 @@ def _write_fake_git(bin_dir: Path) -> Path:
 def _base_env(tmp_path: Path, fake_bin: Path) -> dict[str, str]:
     env = os.environ.copy()
     env["HOME"] = str(tmp_path)
-    env["PATH"] = str(fake_bin)
+    env["PATH"] = f"{fake_bin}:/usr/bin:/bin"
     env["TELECLAUDE_SESSION_ID"] = "sess-789"
     return env
 
