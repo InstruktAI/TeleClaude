@@ -70,12 +70,12 @@ class SessionsView(Widget, can_focus=True):
     """
 
     BINDINGS = [
-        Binding("up", "cursor_up", "Up", key_display="↑", group=Binding.Group("Nav", compact=True)),
-        Binding("down", "cursor_down", "Down", key_display="↓", group=Binding.Group("Nav", compact=True)),
+        Binding("up", "cursor_up", "Up", key_display="↑", group=Binding.Group("Nav", compact=True), show=False),
+        Binding("down", "cursor_down", "Down", key_display="↓", group=Binding.Group("Nav", compact=True), show=False),
         Binding("space", "toggle_preview", "Preview/Sticky"),
         Binding("enter", "focus_pane", "Focus"),
-        Binding("left", "collapse", "Collapse", key_display="←", group=Binding.Group("Fold", compact=True)),
-        Binding("right", "expand", "Expand", key_display="→", group=Binding.Group("Fold", compact=True)),
+        Binding("left", "collapse", "Collapse", key_display="←", group=Binding.Group("Fold", compact=True), show=False),
+        Binding("right", "expand", "Expand", key_display="→", group=Binding.Group("Fold", compact=True), show=False),
         Binding("equals_sign", "expand_all", "All", key_display="+", group=Binding.Group("Fold", compact=True)),
         Binding("minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True)),
         Binding("n", "new_session", "New"),

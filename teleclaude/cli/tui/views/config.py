@@ -51,8 +51,22 @@ class ConfigView(Widget, can_focus=True):
         Binding("r", "refresh_config", "Refresh", key_display="↻"),
         Binding("tab", "next_subtab", "Tab", key_display="⇥", group=Binding.Group("Tabs", compact=True)),
         Binding("shift+tab", "prev_subtab", "Back", key_display="⇤", group=Binding.Group("Tabs", compact=True)),
-        Binding("left", "prev_adapter_tab", "Prev", key_display="←", group=Binding.Group("Adapters", compact=True)),
-        Binding("right", "next_adapter_tab", "Next", key_display="→", group=Binding.Group("Adapters", compact=True)),
+        Binding(
+            "left",
+            "prev_adapter_tab",
+            "Prev",
+            key_display="←",
+            group=Binding.Group("Adapters", compact=True),
+            show=False,
+        ),
+        Binding(
+            "right",
+            "next_adapter_tab",
+            "Next",
+            key_display="→",
+            group=Binding.Group("Adapters", compact=True),
+            show=False,
+        ),
     ]
 
     active_subtab = reactive(0)

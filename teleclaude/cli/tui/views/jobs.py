@@ -51,8 +51,8 @@ class JobsView(Widget, can_focus=True):
     """
 
     BINDINGS = [
-        Binding("up", "cursor_up", "Up", key_display="↑", group=Binding.Group("Nav", compact=True)),
-        Binding("down", "cursor_down", "Down", key_display="↓", group=Binding.Group("Nav", compact=True)),
+        Binding("up", "cursor_up", "Up", key_display="↑", group=Binding.Group("Nav", compact=True), show=False),
+        Binding("down", "cursor_down", "Down", key_display="↓", group=Binding.Group("Nav", compact=True), show=False),
         Binding("enter", "run_job", "[b]Run[/b]", key_display="[b]↵[/b]"),
     ]
 
