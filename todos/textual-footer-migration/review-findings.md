@@ -25,3 +25,30 @@
 ## Verdict
 
 REQUEST CHANGES
+
+## Fixes Applied
+
+- Issue: Dynamic footer context missing and no computer-level restart action in `SessionsView`.
+  Fix: Added node-aware `check_action` + `watch_cursor_index` binding refresh in `SessionsView` and `PreparationView`; introduced `restart_all` binding/action on computer nodes; added `RestartSessionsRequest` handling in app layer to restart all sessions on selected computer.
+  Commit: `b547c489`
+
+- Issue: Prepare/start workflow bypassed modal and did not support project-node slug omission.
+  Fix: Refactored `PreparationView` prepare/start flows to always open `StartSessionModal` with prefilled `/next-prepare` or `/next-work`, resolving context from project/todo/file cursor nodes and omitting slug on project nodes.
+  Commit: `23d62db9`
+
+- Issue: Footer styling used wrong selectors and lacked default-action emphasis.
+  Fix: Switched TCSS footer styling to `FooterKey .footer-key--key` / `.footer-key--description`; added contextual default-action highlighting via `default-action` class assignment on footer keys from both tree views.
+  Commit: `bad37310`
+
+- Issue: Legacy footer stub file not removed.
+  Fix: Deleted `teleclaude/cli/tui/widgets/footer.py`.
+  Commit: `1a55badc`
+
+- Issue: Footer migration coverage missing.
+  Fix: Added non-skipped behavior tests in `tests/unit/test_tui_footer_migration.py` for `SessionsView`/`PreparationView` context-sensitive actions, default-action selection, and modal-first launch commands.
+  Commit: `26db554f`
+
+- Issue: Manual UI verification evidence missing.
+  Fix: Ran migration demo verification command and recorded pass status for all scripted checks:
+  `telec todo demo textual-footer-migration` -> `Demo passed: 7/7 blocks`.
+  Commit: pending (documented in this findings update commit).
