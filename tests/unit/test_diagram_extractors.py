@@ -121,7 +121,8 @@ def test_extract_data_model_regression() -> None:
     assert "session" in mermaid
 
 
-@pytest.mark.timeout(5)
+# Parses imports across the full teleclaude package tree; allow CI variance.
+@pytest.mark.timeout(20)
 def test_extract_modules_regression() -> None:
     module = _load_script_module("extract_modules")
 
