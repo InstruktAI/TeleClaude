@@ -34,9 +34,10 @@ class SessionRow(TelecMixin, Widget):
     class Pressed(Message):
         """Posted when a session row is clicked."""
 
-        def __init__(self, session_row: SessionRow) -> None:
+        def __init__(self, session_row: SessionRow, *, shift: bool = False) -> None:
             super().__init__()
             self.session_row = session_row
+            self.shift = shift
 
     DEFAULT_CSS = """
     SessionRow {
@@ -286,7 +287,7 @@ class SessionRow(TelecMixin, Widget):
     def on_click(self, event: Click) -> None:
         """Post Pressed message when clicked."""
         event.stop()
-        self.post_message(self.Pressed(self))
+        self.post_message(self.Pressed(self, shift=event.shift))
 
     def update_session(self, session: SessionInfo) -> None:
         """Update the underlying session data and trigger re-render."""

@@ -456,6 +456,7 @@ class SessionsView(Widget, can_focus=True):
 
         Single click: move cursor + preview with focus.
         Double click: toggle sticky.
+        Shift+click: behave like Space (preview/sticky without focus).
         """
         row = message.session_row
         idx = self._find_nav_index(row)
@@ -465,6 +466,11 @@ class SessionsView(Widget, can_focus=True):
         self.cursor_index = idx
         self._update_cursor_highlight()
         self._scroll_to_cursor()
+
+        if message.shift:
+            self.action_toggle_preview()
+            self.focus()
+            return
 
         session_id = row.session_id
         now = time.monotonic()
