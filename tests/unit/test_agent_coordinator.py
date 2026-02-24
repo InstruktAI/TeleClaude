@@ -287,11 +287,13 @@ async def test_user_prompt_submit_broadcasts_hook_input_for_non_headless_session
             await coordinator.handle_user_prompt_submit(context)
             mock_emit.assert_called_once_with("sess-1", AgentHookEvents.USER_PROMPT_SUBMIT)
 
-    mock_client.broadcast_user_input.assert_awaited_once_with(
-        session,
-        "please continue",
-        InputOrigin.HOOK.value,
-    )
+    mock_client.broadcast_user_input.assert_awaited_once()
+    broadcast_call = mock_client.broadcast_user_input.await_args
+    assert broadcast_call.args == (session, "please continue", InputOrigin.HOOK.value)
+    assert isinstance(broadcast_call.kwargs.get("actor_id"), str)
+    assert broadcast_call.kwargs["actor_id"].endswith(":sess-1")
+    assert isinstance(broadcast_call.kwargs.get("actor_name"), str)
+    assert broadcast_call.kwargs["actor_name"]
 
 
 @pytest.mark.asyncio
@@ -327,17 +329,18 @@ async def test_user_prompt_submit_broadcasts_hook_input_for_headless_sessions(co
         await coordinator.handle_user_prompt_submit(context)
         mock_emit.assert_called_once_with("sess-2", AgentHookEvents.USER_PROMPT_SUBMIT)
 
-    mock_client.broadcast_user_input.assert_awaited_once_with(
-        session,
-        "please continue",
-        InputOrigin.HOOK.value,
-    )
+    # In headless mode, coordinator delegates reflection to process_message path.
+    mock_client.broadcast_user_input.assert_not_awaited()
     process_message.assert_awaited_once()
     command = process_message.await_args.args[0]
     assert isinstance(command, ProcessMessageCommand)
     assert command.session_id == "sess-2"
     assert command.text == "please continue"
     assert command.origin == InputOrigin.HOOK.value
+    assert isinstance(command.actor_id, str)
+    assert command.actor_id.endswith(":sess-2")
+    assert isinstance(command.actor_name, str)
+    assert command.actor_name
 
 
 @pytest.mark.asyncio
