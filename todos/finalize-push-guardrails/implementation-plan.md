@@ -23,47 +23,47 @@ Close all known paths where worktree-context agents can advance `origin/main` di
 
 ## Phase 1 - Finalize Split (R1, R2, R7)
 
-- [x] Convert [`next-finalize`](../../agents/commands/next-finalize.md) to prepare-only behavior:
+- [ ] Convert [`next-finalize`](../../agents/commands/next-finalize.md) to prepare-only behavior:
   - integrate `origin/main` into the worktree branch,
   - run required verification guidance,
   - emit `FINALIZE_READY: {slug}` and stop.
-- [x] Update finalize lifecycle procedure doc to explicit two-stage model in [`finalize.md`](../../docs/global/software-development/procedure/lifecycle/finalize.md):
+- [ ] Update finalize lifecycle procedure doc to explicit two-stage model in [`finalize.md`](../../docs/global/software-development/procedure/lifecycle/finalize.md):
   - worker `finalize-prepare`,
   - orchestrator `finalize-apply`.
-- [x] Update next-machine finalize orchestration in [`core.py`](../../teleclaude/core/next_machine/core.py):
+- [ ] Update next-machine finalize orchestration in [`core.py`](../../teleclaude/core/next_machine/core.py):
   - keep worker dispatch in `trees/{slug}` for prepare stage,
   - change post-completion contract to require `FINALIZE_READY` before apply,
   - run apply instructions from canonical repo root,
   - keep lock held through apply completion and release only after completion signal.
-- [x] Ensure bookkeeping references `todos/delivered.yaml` and `todos/roadmap.yaml` (not legacy `delivered.md` paths).
+- [ ] Ensure bookkeeping references `todos/delivered.yaml` and `todos/roadmap.yaml` (not legacy `delivered.md` paths).
 
 ## Phase 2 - Main-Branch Guardrail Layers (R3, R4, R5, R6, R8)
 
-- [x] Add `.githooks/pre-push` guard to reject non-canonical pushes targeting `refs/heads/main`.
-- [x] Ensure `telec init` configures `core.hooksPath=.githooks` idempotently.
-- [x] Harden git wrapper behavior for push-to-main:
+- [ ] Add `.githooks/pre-push` guard to reject non-canonical pushes targeting `refs/heads/main`.
+- [ ] Ensure `telec init` configures `core.hooksPath=.githooks` idempotently.
+- [ ] Harden git wrapper behavior for push-to-main:
   - detect main-targeting push refspecs,
   - block from non-canonical context even with `--no-verify`,
   - preserve non-main push behavior.
-- [x] Add `gh` wrapper guard for `gh pr merge` to base `main` from non-canonical contexts.
-- [x] Keep wrapper scope limited to agent sessions via PATH injection in [`tmux_bridge.py`](../../teleclaude/core/tmux_bridge.py).
-- [x] Emit structured rejection logs with cwd, branch, target, command, and session context (when present).
+- [ ] Add `gh` wrapper guard for `gh pr merge` to base `main` from non-canonical contexts.
+- [ ] Keep wrapper scope limited to agent sessions via PATH injection in [`tmux_bridge.py`](../../teleclaude/core/tmux_bridge.py).
+- [ ] Emit structured rejection logs with cwd, branch, target, command, and session context (when present).
 
 ## Phase 3 - Auditability and Operator UX (R6)
 
-- [x] Standardize rejection message text so agents are instructed to stop and report `FINALIZE_READY`.
-- [x] Add log-grep friendly marker strings for blocked push/merge events.
-- [x] Update docs/policy references where wording still implies single-stage finalize or `delivered.md`.
+- [ ] Standardize rejection message text so agents are instructed to stop and report `FINALIZE_READY`.
+- [ ] Add log-grep friendly marker strings for blocked push/merge events.
+- [ ] Update docs/policy references where wording still implies single-stage finalize or `delivered.md`.
 
 ## Phase 4 - Validation and Safety Checks (R7)
 
-- [x] Extend next-machine tests for finalize flow and post-completion expectations:
+- [ ] Extend next-machine tests for finalize flow and post-completion expectations:
   - [`test_next_machine_state_deps.py`](../../tests/unit/test_next_machine_state_deps.py)
   - [`test_next_machine_hitl.py`](../../tests/unit/test_next_machine_hitl.py)
   - [`test_next_machine_deferral.py`](../../tests/unit/core/test_next_machine_deferral.py)
-- [x] Add unit tests for guardrail enforcement logic (pre-push/git/gh wrappers).
-- [x] Verify no regressions in feature-branch workflows.
-- [x] Run:
+- [ ] Add unit tests for guardrail enforcement logic (pre-push/git/gh wrappers).
+- [ ] Verify no regressions in feature-branch workflows.
+- [ ] Run:
   - `make test`
   - `make lint`
   - `telec todo validate finalize-push-guardrails`
@@ -79,7 +79,7 @@ Close all known paths where worktree-context agents can advance `origin/main` di
 
 ## Definition of Done
 
-- [x] Finalize is two-stage and `FINALIZE_READY`-gated.
-- [x] Worktree-originated main advancement paths are blocked for both git and gh flows.
-- [x] Delivery bookkeeping remains correct in `delivered.yaml` + roadmap removal.
-- [x] Regression tests and lint pass.
+- [ ] Finalize is two-stage and `FINALIZE_READY`-gated.
+- [ ] Worktree-originated main advancement paths are blocked for both git and gh flows.
+- [ ] Delivery bookkeeping remains correct in `delivered.yaml` + roadmap removal.
+- [ ] Regression tests and lint pass.

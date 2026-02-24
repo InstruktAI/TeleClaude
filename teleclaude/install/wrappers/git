@@ -136,6 +136,7 @@ if [ "$_subcmd" = "push" ]; then
         target_main=0
         local_ref=""
         remote_seen=0
+        remote_name=""
         expect_value=0
         refspecs=()
 
@@ -167,6 +168,7 @@ if [ "$_subcmd" = "push" ]; then
                 *)
                     if [ "$remote_seen" -eq 0 ]; then
                         remote_seen=1
+                        remote_name="$arg"
                         continue
                     fi
                     refspecs+=("$arg")
@@ -178,6 +180,42 @@ if [ "$_subcmd" = "push" ]; then
             if [ "$branch" = "main" ]; then
                 target_main=1
                 local_ref="refs/heads/main"
+            fi
+            if [ "$target_main" -eq 0 ]; then
+                push_default="$(_real_git config --get push.default 2>/dev/null || true)"
+                [ -z "$push_default" ] && push_default="simple"
+
+                upstream_ref="$(_real_git rev-parse --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+                upstream_remote=""
+                upstream_branch=""
+                if [[ "$upstream_ref" == refs/remotes/*/* ]]; then
+                    upstream_path="${upstream_ref#refs/remotes/}"
+                    upstream_remote="${upstream_path%%/*}"
+                    upstream_branch="${upstream_path#*/}"
+                fi
+
+                case "$push_default" in
+                    upstream)
+                        if [ "$upstream_branch" = "main" ]; then
+                            if [ -z "$remote_name" ] || [ -z "$upstream_remote" ] || [ "$remote_name" = "$upstream_remote" ]; then
+                                target_main=1
+                                local_ref="refs/heads/$branch"
+                            fi
+                        fi
+                        ;;
+                    current)
+                        if [ "$branch" = "main" ]; then
+                            target_main=1
+                            local_ref="refs/heads/main"
+                        fi
+                        ;;
+                    matching)
+                        if _real_git show-ref --verify --quiet refs/heads/main; then
+                            target_main=1
+                            local_ref="refs/heads/main"
+                        fi
+                        ;;
+                esac
             fi
         else
             for refspec in "${refspecs[@]}"; do
