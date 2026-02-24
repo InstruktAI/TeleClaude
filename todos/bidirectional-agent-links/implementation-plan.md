@@ -1,298 +1,189 @@
-# Bidirectional Agent Links — Implementation Plan
+# Implementation Plan: bidirectional-agent-links
 
 ## Approach
 
-Extend the existing one-shot listener system with a persistent bidirectional link
-registry. When `send_message` creates a link, both sessions' `agent_stop` events
-trigger output injection into the peer's tmux session. The existing checkpoint
-filtering logic is extended to prevent checkpoint responses from crossing links.
+Implement a shared listener/link primitive with explicit modes:
 
-The implementation is additive — the one-way listener model continues to work
-unchanged for sessions that don't use bidirectional links.
+- `worker_notify` mode: existing stop-notification behavior for orchestrator-worker flows
+- `direct_link` mode: peer conversation link with member-based fan-out
 
-## Files to Change
-
-| File                                     | Change                                       |
-| ---------------------------------------- | -------------------------------------------- |
-| `teleclaude/core/session_listeners.py`   | Add BidirectionalLink dataclass + registry   |
-| `teleclaude/core/agent_coordinator.py`   | Inject linked output on agent_stop           |
-| `teleclaude/core/tmux_bridge.py`         | No changes (reuse send_keys_existing_tmux)   |
-| `teleclaude/core/tmux_delivery.py`       | Add deliver_link_output function             |
-| `teleclaude/mcp/handlers.py`             | Create bidi link on send_message             |
-| `teleclaude/mcp/tool_definitions.py`     | Add close_link param to send_message schema  |
-| `teleclaude/hooks/receiver.py`           | Extend checkpoint detection for link context |
-| `teleclaude/constants.py`                | Add DEFAULT_LINK_TURN_BUDGET constant        |
-| `tests/unit/test_session_listeners.py`   | New — link registry unit tests               |
-| `tests/unit/test_bidirectional_links.py` | New — integration tests for link flow        |
+Direct conversation becomes first-class listener behavior instead of a separate relay path.
 
-## Files to Create
+## Architecture
 
-| File                                                      | Purpose            |
-| --------------------------------------------------------- | ------------------ |
-| `docs/project/design/architecture/bidirectional-links.md` | Architecture doc   |
-| `docs/project/spec/bidirectional-link-protocol.md`        | Link protocol spec |
+### Data model
 
-## Task Sequence
+- `conversation_links`
+  - `link_id`
+  - `mode` (`direct_link` or `gathering_link`)
+  - `status` (`active`, `closed`)
+  - `created_by_session_id`
+  - timestamps
+  - optional metadata JSON
+- `conversation_link_members`
+  - `link_id`
+  - `session_id`
+  - optional `participant_name`, `participant_number`, `role`
+  - `joined_at`
 
-### Task 1: BidirectionalLink Data Structure
+### Runtime behavior
 
-**File**: `teleclaude/core/session_listeners.py`
+- Link lookup by member session ID
+- Sender-excluded fan-out to other active members
+- Distilled `agent_stop` output routing through direct link mode
+- Single-party sever removes link and all members
 
-Add dataclass and registry alongside existing SessionListener:
+## File Plan
 
-```python
-@dataclass
-class BidirectionalLink:
-    session_a_id: str           # Initiator
-    session_b_id: str           # Responder
-    tmux_a: str                 # Initiator's tmux session name
-    tmux_b: str                 # Responder's tmux session name
-    title_a: str                # Initiator's session title (for framing)
-    title_b: str                # Responder's session title (for framing)
-    turn_count: int = 0         # Turns consumed
-    turn_budget: int = 8        # Maximum turns (backstop)
-    created_at: datetime
-```
+| File                                      | Change                                            |
+| ----------------------------------------- | ------------------------------------------------- |
+| `teleclaude/core/schema.sql`              | add link + member tables                          |
+| `teleclaude/core/db_models.py`            | add ORM models                                    |
+| `teleclaude/core/db.py`                   | add link CRUD/membership APIs                     |
+| `teleclaude/core/session_listeners.py`    | add high-level link service helpers               |
+| `teleclaude/mcp/tool_definitions.py`      | add `close_link` to `send_message`                |
+| `teleclaude/mcp/handlers.py`              | `direct=true` handshake + `close_link` sever path |
+| `teleclaude/core/agent_coordinator.py`    | route linked `agent_stop` output to peers         |
+| `teleclaude/transport/redis_transport.py` | support cross-computer linked output forwarding   |
+| `teleclaude/core/session_cleanup.py`      | cleanup links on session end                      |
+| `tests/unit/test_session_listeners.py`    | add link/membership tests                         |
+| `tests/unit/test_bidirectional_links.py`  | add direct-link integration tests                 |
 
-Registry functions:
+## Tasks
 
-- `create_link(session_a_id, session_b_id, tmux_a, tmux_b, title_a, title_b, budget) -> BidirectionalLink`
-- `get_link_for_session(session_id) -> Optional[BidirectionalLink]` — find link involving this session
-- `get_peer_info(session_id) -> Optional[tuple[str, str, str]]` — return (peer_session_id, peer_tmux, peer_title)
-- `increment_turn(session_id) -> bool` — increment, return False if budget exhausted
-- `sever_link(session_id) -> bool` — remove the link
-- `cleanup_session_links(session_id) -> int` — remove all links for a session (on session end)
+### Task 1: Link persistence + APIs
 
-In-memory storage: `_links: dict[str, BidirectionalLink]` keyed by a stable link ID
-(sorted tuple of session IDs).
+Add storage and APIs to:
 
-**Verification**: Unit test creates link, queries by either session ID, increments
-turns, severs. Verify cleanup removes link.
+- create/reuse link
+- add/remove/list members
+- lookup link by session
+- sever link
+- cleanup links by session
 
-### Task 2: Output Injection on Agent Stop
+Acceptance:
 
-**File**: `teleclaude/core/agent_coordinator.py`
+- one link can hold 2+ members
+- lookup by member returns peer list
 
-In `handle_agent_stop()`, after existing `_notify_session_listener()` call (line ~302),
-add bidirectional link injection:
+### Task 2: Preserve worker listener behavior
 
-```python
-# After existing listener notification
-await self._inject_linked_output(context)
-```
+Keep existing worker stop-notification flow untouched when direct links are not active.
 
-New method `_inject_linked_output(context)`:
+Acceptance:
 
-1. Call `get_link_for_session(session_id)` — if no link, return early.
-2. Get agent output from `session.last_output_raw` (already extracted by
-   `_extract_agent_output()` earlier in the handler).
-3. **Checkpoint filter**: if output contains `CHECKPOINT_MESSAGE` prefix or is empty,
-   skip injection. Do NOT increment turn count.
-4. Call `increment_turn(session_id)` — if budget exhausted, sever link and return.
-5. Get peer info via `get_peer_info(session_id)`.
-6. Frame the output: `[From {peer_title}] {output}`.
-7. Call `deliver_link_output(peer_tmux, framed_output)` to inject into peer's tmux.
-8. Log at DEBUG: link injection details, turn count, remaining budget.
+- existing `notify_stop` text flow still works for non-direct workflows
 
-**Verification**: Two test sessions with a link. Trigger agent_stop on one. Verify
-the other's tmux receives the framed output. Verify turn counter incremented.
+### Task 3: Direct handshake in `send_message`
 
-### Task 3: Checkpoint Filtering for Links
+Update `teleclaude__send_message` behavior:
 
-**File**: `teleclaude/core/agent_coordinator.py`
+- `direct=true` creates or reuses a 2-member direct link
+- avoids worker listener registration for that direct pair
+- still delivers the initial message
 
-In `_inject_linked_output()`, detect checkpoint content in the output before injection.
+Acceptance:
 
-Detection logic (reuse from `hooks/receiver.py`):
+- first direct message creates link
+- subsequent direct messages do not duplicate links
 
-```python
-from teleclaude.constants import CHECKPOINT_MESSAGE
+### Task 4: Single-party severing
 
-if not output or CHECKPOINT_MESSAGE[:50] in output:
-    logger.debug("Skipping link injection — checkpoint response")
-    return
-```
+Add `close_link=true` to `send_message`.
 
-Also filter empty/whitespace-only output.
+- if caller is a member, sever shared link in one action
+- removal applies to both/all members immediately
 
-**Verification**: Agent stops with checkpoint response. Verify link peer does NOT
-receive injection. Verify turn counter is NOT incremented.
+Acceptance:
 
-### Task 4: Link Creation in send_message
+- either party can end the link without bilateral unsubscribe
 
-**File**: `teleclaude/mcp/handlers.py`
+### Task 5: Sender-excluded user-message routing
 
-In `teleclaude__send_message()`, after existing `_register_listener_if_present()`,
-add bidirectional link creation:
+When a member-originated message is processed, route it to all other link members and never to sender.
 
-```python
-# After listener registration
-await self._create_bidirectional_link(session_id, caller_session_id)
-```
+Acceptance:
 
-New method `_create_bidirectional_link(target_id, caller_id)`:
+- 2-member link routes to one peer
+- 3-member link routes to two peers
 
-1. Look up both sessions from DB (need tmux_session_name and title).
-2. If either session missing, log warning and return.
-3. Check if link already exists between these two sessions — if so, skip.
-4. Call `create_link(caller_id, target_id, caller_tmux, target_tmux,
-caller_title, target_title, budget=DEFAULT_LINK_TURN_BUDGET)`.
-5. Log at INFO: link created between sessions.
+### Task 6: Distilled `agent_stop` output fan-out
 
-**Verification**: send_message from A to B. Verify link registry contains a link
-between A and B. Send again — verify no duplicate link created.
+In `agent_stop` handling:
 
-### Task 5: Link Termination — close_link Parameter
+- detect active direct link membership
+- extract final output
+- filter checkpoint/empty content
+- inject framed output to peer members
 
-**Files**: `teleclaude/mcp/handlers.py`, `teleclaude/mcp/tool_definitions.py`
+Acceptance:
 
-Add `close_link: bool = False` parameter to `send_message` tool definition.
+- peers receive framed final output only
+- checkpoint responses do not cross
 
-In handler:
+### Task 7: Cross-computer direct links
 
-1. If `close_link=True`, deliver the message to the target session.
-2. Sever the link after delivery.
-3. Return confirmation that link was closed.
+Extend forwarding contract to carry data needed for remote peer injection (not only stop metadata).
 
-**Verification**: Create link. Send message with close_link=true. Verify message
-delivered AND link severed. Subsequent agent_stop does NOT inject.
+Acceptance:
 
-### Task 6: Link Cleanup on Session End
+- member on computer A receives linked output from member on computer B
 
-**File**: `teleclaude/core/agent_coordinator.py` (or session lifecycle code)
+### Task 8: Session-end cleanup
 
-When a session is ended (via `end_session` or session cleanup), call
-`cleanup_session_links(session_id)` to remove any active links.
+On session termination:
 
-This parallels existing `cleanup_caller_listeners(session_id)`.
+- remove session membership
+- sever/cleanup affected links
+- prevent orphan delivery attempts
 
-**Verification**: Create link between A and B. End session A. Verify link is
-removed. Agent_stop on B does NOT attempt injection into dead session.
+Acceptance:
 
-### Task 7: Delivery Function
+- no post-close injections to ended sessions
 
-**File**: `teleclaude/core/tmux_delivery.py`
+### Task 9: Gathering compatibility surface
 
-Add `deliver_link_output()` alongside existing `deliver_listener_message()`:
+Expose APIs required by `start-gathering-tool`:
 
-```python
-async def deliver_link_output(
-    tmux_session: str,
-    framed_output: str,
-) -> bool:
-    """Deliver bidirectional link output to a peer session via tmux."""
-    return await tmux_bridge.send_keys_existing_tmux(
-        session_name=tmux_session,
-        text=framed_output,
-        send_enter=True,
-    )
-```
+- create multi-member link
+- query ordered member metadata
+- sender-excluded fan-out primitives
 
-**Verification**: Call with a valid tmux session. Verify text appears in the pane.
+Acceptance:
 
-### Task 8: Remote/Cross-Computer Links
+- gathering todo can consume shared link primitive without legacy relay dependency
 
-**File**: `teleclaude/core/agent_coordinator.py`
+### Task 10: Tests
 
-Extend `_forward_stop_to_initiator()` logic: when a remote session stops AND has
-a bidirectional link, forward the output (not just the stop notification) via Redis.
+Unit coverage:
 
-The receiving computer extracts the output from the Redis payload and injects it
-into the local peer's tmux session.
+- link create/reuse/sever
+- membership add/remove/query
+- sender-excluded routing
+- checkpoint filtering
+- session cleanup behavior
 
-This mirrors how stop notifications currently cross computers, but carries the
-output payload.
+Integration coverage:
 
-**Verification**: Cross-computer test. Session on computer A linked to session on
-computer B. B stops. Verify A receives B's output via Redis forwarding.
+- direct handshake link creation
+- linked `agent_stop` output routing
+- single-party `close_link` severing
+- cross-computer routing
+- regression guard: worker listener flow unchanged
 
-### Task 9: Unit Tests — Link Registry
+## Risks
 
-**File**: `tests/unit/test_session_listeners.py` (extend existing)
+- Routing loop risk in peer mode
+  - Mitigation: sender-excluded routing + explicit link mode checks
+- Cross-computer payload mismatch
+  - Mitigation: typed forwarding contract tests
+- Cleanup leaks
+  - Mitigation: mandatory cleanup hooks on session end + tests
 
-Tests:
+## Sequence
 
-- `test_create_link` — creates link, verifies fields
-- `test_get_link_for_session` — query by either session ID
-- `test_get_peer_info` — returns correct peer
-- `test_increment_turn` — counts correctly, returns False at budget
-- `test_sever_link` — removes link, get returns None
-- `test_cleanup_session_links` — removes all links for a session
-- `test_no_duplicate_link` — creating same link twice is idempotent
-
-### Task 10: Integration Tests — Link Flow
-
-**File**: `tests/unit/test_bidirectional_links.py` (new)
-
-Tests:
-
-- `test_agent_stop_injects_to_peer` — mock agent_stop, verify tmux injection
-- `test_checkpoint_not_injected` — checkpoint output filtered
-- `test_turn_budget_severs_link` — budget exhaustion severs
-- `test_close_link_parameter` — explicit close works
-- `test_session_end_cleans_link` — session end severs link
-- `test_empty_output_not_injected` — empty/whitespace filtered
-- `test_existing_listeners_still_work` — one-way model unaffected
-
-### Task 11: Heartbeat Prompting Update
-
-**File**: Documentation + agent system prompt updates
-
-Update the heartbeat policy documentation to include:
-
-- Intent types: anchor, check, wait
-- The anchoring rule (always have a work timer)
-- Game rules for absorption without response
-- Timer implementation (echo intent && sleep N)
-- Anti-chattiness rules for linked exchanges
-
-This is a prompting/documentation change, not a code change. The timer mechanism
-already exists (background bash). The intent is carried by the echo output.
-
-### Task 12: Architecture Documentation
-
-**Files**: `docs/project/design/architecture/bidirectional-links.md`,
-`docs/project/spec/bidirectional-link-protocol.md`
-
-Document:
-
-- Link registry design and lifecycle
-- Event flow (agent_stop → filter → inject)
-- Checkpoint filtering contract
-- Turn budget semantics
-- Cross-computer forwarding
-- Intentional heartbeat protocol
-
-## Risks and Mitigations
-
-| Risk                                | Mitigation                                     |
-| ----------------------------------- | ---------------------------------------------- |
-| Agents loop despite prompting       | Turn budget backstop severs link automatically |
-| Checkpoint echo across links        | Explicit filter on CHECKPOINT_MESSAGE prefix   |
-| Memory leak from uncleaned links    | cleanup_session_links on every session end     |
-| Output too large for tmux injection | Truncate to UI_MESSAGE_MAX_CHARS before inject |
-| Cross-computer latency              | Async Redis forwarding (existing pattern)      |
-| Feature branch diverges from main   | Keep changes additive, no breaking refactors   |
-
-## Assumptions
-
-1. The existing `send_keys_existing_tmux()` reliably injects text into agent sessions.
-2. `session.last_output_raw` contains the agent's final output at agent_stop.
-3. The checkpoint message prefix is stable and detectable via string matching.
-4. In-memory link storage (no DB persistence) is acceptable for this experiment.
-5. Agents will follow intentional heartbeat prompting with reasonable reliability
-   (the same discipline level as checkpoint behavior).
-
-## Build Order
-
-Tasks 1-3 form the core (link registry + injection + filtering).
-Task 4 wires it into the MCP tool.
-Tasks 5-6 handle lifecycle.
-Task 7 is the delivery plumbing.
-Task 8 extends to cross-computer.
-Tasks 9-10 verify everything.
-Tasks 11-12 document the protocol.
-
-Sequential dependency: 1 → 2 → 3 → 4 → 5 → 6 (core chain).
-Task 7 can parallel with 2. Tasks 9-10 can start after 6. Tasks 11-12 after 10.
-Task 8 can follow after 4.
+1. Task 1-2 (foundations)
+2. Task 3-4 (direct lifecycle)
+3. Task 5-6 (routing semantics)
+4. Task 7-8 (distributed + cleanup)
+5. Task 9-10 (gathering alignment + verification)

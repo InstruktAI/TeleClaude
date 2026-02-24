@@ -1,221 +1,50 @@
-# Bidirectional Agent Links — Direct Agent-to-Agent Communication
+# Input: bidirectional-agent-links
 
-## Context
+## Problem to Solve
 
-Today, agent-to-agent communication is one-way and mechanical:
+Current behavior mixes two different collaboration modes:
 
-1. Agent A calls `send_message` to Agent B
-2. A one-way listener is created: A gets notified when B goes idle
-3. A uses `get_session_data` to poll B's transcript (reading a log, not engaging)
-4. A processes the output as a chore, not as cognitive input
+1. **Worker notification mode** (orchestrator <-> worker): caller gets a stop notice and inspects via `get_session_data`.
+2. **Direct peer mode** (agent <-> agent): peers should see each other's turn output directly as input.
 
-This creates **disengaged orchestrators** — agents that check boxes instead of
-reasoning about what other agents produced. The polling model was a safety mechanism
-against the chattiness problem (two LLMs in open conversation loop infinitely), but
-it comes at the cost of genuine intellectual engagement between agents.
+These two modes are currently entangled. `direct=true` bypasses listener registration and routes to a separate relay path, which does not match expected direct-conversation behavior.
 
-## The Feature
+## Required Model
 
-Two interconnected changes that transform agent-to-agent collaboration:
+Introduce a **single shared listener object** per conversation link, with participant membership:
 
-1. **Bidirectional links**: When Agent A sends a message to Agent B, both agents'
-   `agent_stop` output is injected directly into the other's session. No polling,
-   no artificial "go read the output" instructions.
+- One link record holds two session IDs for direct peer conversations.
+- The same primitive must support 3+ participants for gathering scenarios.
+- Sender is identified per event; fan-out excludes sender and targets all other active members.
 
-2. **Intentional heartbeats**: Agents set timers with explicit intent — anchoring
-   them to their own work while enabling deliberate, proactive engagement with peers.
-   This replaces the reactive loop with a disciplined rhythm of work and collaboration.
+This is not two unilateral subscriptions. It is one conversation link with members.
 
-## Part 1: Bidirectional Links (The Plumbing)
+## Desired Runtime Behavior
 
-### How It Works
+### Direct peer mode (2 participants)
 
-```
-A sends_message to B → bidirectional link created
+- Handshake: first `send_message(..., direct=true)` creates/reuses a 2-member link.
+- After handshake, each side works in its own session normally.
+- On each `agent_stop`, distilled output from speaker is injected into the other member session.
+- No worker-style "session finished, inspect via get_session_data" notification for linked peers.
 
-B thinks, calls tools, reasons (PRIVATE — not visible to A)
-B stops → agent_stop → B's output injected into A's session as input
+### Multi-participant mode (3+ participants)
 
-A thinks, calls tools, reasons (PRIVATE — not visible to B)
-A stops → agent_stop → A's output injected into B's session as input
-```
+- Same link primitive, multiple members.
+- No speaker numbering requirement in 2-party mode.
+- Participant names/numbers/roles become relevant when gathering orchestrator enforces turns.
+- This todo does **not** implement full gathering turn-control; it delivers the reusable primitive.
 
-### Privacy: Only Agent Stop Output Crosses the Link
+## Link Severing Rules
 
-Thoughts, tool calls, intermediate reasoning stay private. Each agent sees the
-other's distilled product, not the process. This preserves cognitive privacy and
-prevents noise.
+- Any participant may close the link explicitly (single-party sever).
+- Closing removes the shared link object and all membership edges in one action.
+- Session end of any member also severs/cleans affected links.
+- No requirement for both parties to unsubscribe.
 
-The `agent_stop` event IS the natural turn boundary. When an agent stops — finished
-its thought, done with its tool calls — that's the moment it has something to say.
-No new event types required.
+## Alignment Requirement
 
-### Event System Alignment
-
-- **Claude/Gemini**: Rich normalized event stream (thought, tool_call, agent_output,
-  agent_stop). Well-normalized via the hook receiver. Only agent_stop crosses links.
-- **Codex**: Only agent_stop. Very silent — but that's fine since we only need
-  agent_stop for the bidirectional link.
-
-The plumbing change: when `agent_stop` fires on a session with a bidirectional link,
-inject the output into the linked session. Same mechanism as today's idle notification,
-but instead of "B went idle" metadata, it's B's actual output arriving as input.
-
-### Checkpoint Filtering (Hard Requirement)
-
-Checkpoint messages injected by the system (after agent_stop) must NEVER cross a
-bidirectional link. A checkpoint response is internal housekeeping — not conversational
-output for the linked agent.
-
-A checkpoint response crossing the link would:
-
-- Confuse the receiving agent (not addressed to them)
-- Trigger a response, starting a checkpoint-echo loop
-- Pollute the exchange with meta-process noise
-
-Filtering approach: the checkpoint string is already identifiable (injected via tmux
-send-keys with a known pattern). The same identification used by
-`handle_user_prompt_submit`'s early return must be applied to link injection. If the
-agent_stop output is a checkpoint response, skip injection — the link stays open,
-no turn is consumed.
-
-### Coexistence with get_session_data
-
-The bidirectional link does NOT replace `get_session_data`. Both coexist:
-
-- **Direct injection** (link): Cognitive engagement. Output hits reasoning as input.
-- **get_session_data** (tool): Deep-dive scrubber. Full transcript, tool calls,
-  reasoning trace — when the injected output isn't enough.
-
-The link gives you the summary at the coffee machine. The scrubber lets you read
-their full notes. Agents already have `get_session_data` in their tool belt; the
-link adds engagement on top, it doesn't replace inspection underneath.
-
-### Message Framing
-
-When B's output arrives in A's session, it should feel direct:
-
-```
-[From worker-feasibility] The core finding: idea X requires rewriting the
-adapter registration system. Effort: 3-4 sessions. Risk: high.
-```
-
-Not a system notification. Not a log excerpt. A direct statement from a peer.
-
-## Part 2: Intentional Heartbeats (The Discipline)
-
-### The Problem with Reactive Links
-
-Bidirectional injection alone creates a reactive loop: A speaks → B reacts → A
-reacts → infinite. LLMs are trained to respond to input. Always. There's no
-intrinsic mechanism to absorb input without responding, then go back to work.
-
-Turn budgets (hard turn limits) are a brute-force solution — they cut the wire.
-But they don't solve the underlying problem: agents need a way to be **proactive**
-about collaboration instead of **reactive** to input.
-
-### The Solution: Heartbeats with Intent
-
-The heartbeat currently serves one purpose: "Am I on track?" — a self-check during
-sustained work. We extend it to carry **intent**: metadata about what to do when
-the timer fires.
-
-**Timer intents:**
-
-| Intent     | What happens when it fires                               |
-| ---------- | -------------------------------------------------------- |
-| **Anchor** | Return to your own work. Non-negotiable. Always present. |
-| **Check**  | Read another agent's status. Don't message — just look.  |
-| **Wait**   | You asked a question. Check if the response arrived.     |
-
-### The Anchoring Rule (Black and White)
-
-**There must ALWAYS be an anchoring timer pointed at your own work.** This is the
-gravity well. Non-negotiable. Every other timer is orbit; the anchor is gravity.
-
-You can set additional timers with intent (check on a peer, wait for a response),
-but the work anchor is the one that always fires. When it does, you go back to
-your work regardless of what else is happening.
-
-### The Game Rules
-
-1. **You always have an anchoring timer pointed at your own work.**
-2. **You can set additional timers with intent** (check peer, wait for response).
-3. **When input arrives from another agent, you absorb it. You are NOT required
-   to respond.** Absorption without response is the default. The anchor timer is
-   your dominant intent.
-4. **If you choose to respond, you set a new anchor FIRST.** Before saying anything
-   to another agent, plant your flag: "I'm coming back to my work after this."
-5. **The anchor timer always wins.** When it fires, you return to work.
-
-### The Flow
-
-```
-A is working on task 3. Anchor set: "continue task 3 in 5 min"
-
-A finishes a unit. Curious about B.
-A sets check timer: "read B's status in 2 min"
-A sets NEW anchor: "return to task 3 in 5 min"
-
-Check timer fires →
-  A reads B's status (get_session_data — proactive, not reactive)
-
-  B is idle and stuck?
-    → A sets anchor: "back to task 3 in 3 min"
-    → A sends message to B (bidirectional link activates)
-    → B responds (injected via link)
-    → A absorbs B's response
-    → Anchor fires → A returns to task 3
-
-  B is productive?
-    → A does nothing. Anchor fires → back to task 3.
-
-  B responded to an earlier question? (injection arrived)
-    → A absorbs it. Anchor is still ticking.
-    → Anchor fires → A factors B's input into task 3. No response needed.
-```
-
-### Why This Solves Chattiness
-
-The reactive loop (A speaks → B reacts → A reacts) breaks because:
-
-1. **Absorption is the default.** When B's output arrives via the link, A absorbs
-   it as context. A does not have to produce output in response. The anchor timer
-   is the dominant intent — A continues working.
-
-2. **Engagement is deliberate, not automatic.** You check on peers by setting a
-   timer with check intent. You look before you speak. You decide whether to
-   engage. This is proactive, not reactive.
-
-3. **Every engagement starts with a new anchor.** Before responding to another
-   agent, you set a timer to bring yourself back. The anchor is the first action,
-   not an afterthought.
-
-4. **The other agent follows the same rules.** B also has an anchor. B also absorbs
-   without necessarily responding. Two anchored agents naturally limit their exchange
-   to what's productive, because both are being pulled back to their own work.
-
-### Timer Implementation
-
-The timer's output IS the intent. When a background task completes, the output
-appears in context as the agent's own breadcrumb:
-
-```bash
-echo "ANCHOR: return to task 3 — implement the report generator" && sleep 300
-```
-
-```bash
-echo "CHECK: read worker-feasibility status, help if stuck" && sleep 120
-```
-
-```bash
-echo "WAIT: check if worker-B responded to my question" && sleep 180
-```
-
-When the timer fires, the agent reads its own breadcrumb and knows what to do.
-No new infrastructure needed — this uses the existing background bash mechanism.
-
-### Anti-Chattiness Prompting (Injected on Link Creation)
+`todos/start-gathering-tool/*` must depend on this link primitive, not on the previous session-relay behavior. Gathering should layer turn enforcement on top of this shared listener model.
 
 When a bidirectional link is established, both agents receive context with rules:
 

@@ -1,121 +1,127 @@
-# Bidirectional Agent Links — Requirements
+# Requirements: bidirectional-agent-links
 
-## Problem Statement
+## Goal
 
-Agent-to-agent communication is one-way and mechanical. When Agent A dispatches
-work to Agent B, A receives an idle notification when B stops, then must poll B's
-transcript via `get_session_data` to understand what B produced. This creates
-disengaged orchestrators that process worker output as a bureaucratic chore rather
-than cognitive input to reason about.
+Deliver a shared listener/link primitive that supports:
 
-The root cause is structural: the listener system is one-directional (caller →
-target), one-shot (fires once then deregisters), and metadata-only (delivers "B
-went idle", not B's actual output).
+- 2-party direct peer conversation (`direct=true`)
+- 3+ participant conversations as the base primitive for gathering orchestration
+- strict coexistence with existing worker notification listeners
 
-## Intended Outcome
+## Key Design Contract
 
-Agents can communicate directly. When A sends a message to B, both agents' output
-flows to the other as conversational input. Each agent feels present in the
-exchange. The system prevents infinite loops through anchoring discipline and
-turn budget backstops.
+- Worker notification listeners and direct conversation links are distinct listener modes.
+- A direct conversation uses one shared link object with member sessions.
+- Any member can sever the link in one action.
 
 ## Success Criteria
 
-### SC-1: Bidirectional Output Injection
+### SC-1: One Link Object, Two Members (Direct Mode)
 
-When Agent A sends a message to Agent B via `send_message`, B's `agent_stop`
-output is injected into A's tmux session as input. A's subsequent `agent_stop`
-output is injected into B's tmux session. Both directions work.
+When A starts direct conversation with B, system creates/reuses one shared link containing both session IDs.
 
-**Verification**: Start two sessions. A sends message to B. B produces output and
-stops. Verify A's tmux session receives B's output as input. A responds and stops.
-Verify B's tmux session receives A's output.
+Verification:
 
-### SC-2: Privacy — Only Distilled Output Crosses
+- Query link store after handshake.
+- Confirm one active link object with two members (A, B).
+- Confirm no duplicate one-way rows are required.
 
-Only `agent_stop` output (the final product of a turn) is injected. Thoughts,
-tool calls, and intermediate reasoning stay private to the producing agent.
+### SC-2: Link Supports 3+ Members (Gathering-Ready Primitive)
 
-**Verification**: During a linked exchange, verify B's tmux input contains only
-B's final output text, not tool call payloads or thinking blocks.
+Link model supports N members with optional participant metadata (name, number, role).
 
-### SC-3: Checkpoint Filtering
+Verification:
 
-Checkpoint messages (system-injected after agent_stop) never cross a bidirectional
-link. If an agent's output at agent_stop is a checkpoint response, the injection
-is skipped and no turn is consumed.
+- Create link with 3 participants.
+- Confirm membership persists and can be queried by session ID.
+- Confirm 2-party links work without requiring numbering.
 
-**Verification**: Agent stops, checkpoint fires, agent responds to checkpoint.
-Verify linked agent does NOT receive the checkpoint response as input.
+### SC-3: Direct Handshake Behavior
 
-### SC-4: Turn Budget Backstop
+`send_message(..., direct=true)` must:
 
-Links have a configurable maximum turn count. When the budget is exhausted, the
-link is severed. Output at the final turn stays in the producing agent's session
-and is not injected.
+- deliver initial message
+- create/reuse direct link
+- suppress worker-style stop-notification listener registration for that pair
 
-**Verification**: Set budget to 4. Exchange 4 turns. Verify 5th output is NOT
-injected. Verify both agents continue independently.
+Verification:
 
-### SC-5: Link Termination
+- Handshake from A to B returns link-created/reused result.
+- A does not receive worker stop notification text for B while link active.
 
-The initiator can explicitly close a link via `send_message` with `close_link=true`.
-Links are also severed when either session ends.
+### SC-4: Sender-Excluded Fan-Out for User Messages
 
-**Verification**: (a) Initiator sends close_link=true. Verify link is severed.
-(b) End one session. Verify link is severed and surviving session continues.
+When a message is sent by a link member, link fan-out targets all other active members and excludes sender.
 
-### SC-6: Message Framing
+Verification:
 
-Injected output is framed as a direct statement from the peer, not a system
-notification. Format: `[From {agent_title}] {output}`.
+- In a 2-member link, sender message is delivered only to the peer.
+- In a 3-member link, sender message is delivered to the other two only.
 
-**Verification**: Inspect tmux input on receiving end. Confirm framing matches
-the expected format.
+### SC-5: Distilled `agent_stop` Output Fan-Out
 
-### SC-7: Coexistence with Existing Tools
+For linked sessions, only distilled final `agent_stop` output crosses to peers as framed input.
 
-`get_session_data` remains functional alongside active bidirectional links. Agents
-can use it for deep-dive inspection at any time. The one-way listener model still
-works for sessions where bidirectional links are not activated.
+Verification:
 
-**Verification**: While a link is active, call `get_session_data` on the linked
-session. Verify it returns the full transcript as before.
+- Trigger `agent_stop` on A.
+- Confirm B receives framed output from A.
+- Confirm tool-call payloads/intermediate reasoning are not forwarded.
 
-### SC-8: Intentional Heartbeat Prompting
+### SC-6: Checkpoint and Empty Output Filtering
 
-Agents working with bidirectional links follow the anchor/check/wait timer pattern.
-The anchoring timer to own work is always present. Absorption without response is
-the default when input arrives.
+Checkpoint responses and empty output never cross a link and do not consume turn budget.
 
-**Verification**: Observe agent behavior during linked exchange. Agent receives
-peer input, continues working (anchor fires), does NOT produce an automatic
-response unless it chooses to engage.
+Verification:
+
+- Trigger checkpoint response turn.
+- Confirm no peer injection for that turn.
+
+### SC-7: Single-Party Link Severing
+
+Any member can terminate the shared link (e.g., `close_link=true`), and link is removed for all members.
+
+Verification:
+
+- A closes link; B no longer receives A output and vice versa.
+- No second unsubscribe action is required.
+
+### SC-8: Session-End Cleanup
+
+If any member session ends, links involving that session are cleaned and no orphan injection occurs.
+
+Verification:
+
+- End one member session.
+- Confirm link removed and no injection attempts to closed tmux session.
+
+### SC-9: Coexistence with Existing Worker Mode
+
+Non-direct workflows retain existing stop-notification behavior and `get_session_data`-first inspection model.
+
+Verification:
+
+- Standard worker dispatch without direct mode still emits existing stop notification text.
+- `get_session_data` remains unchanged.
+
+### SC-10: Cross-Computer Link Routing
+
+Direct link fan-out works across computers using existing Redis transport, including forwarded stop payloads required for peer injection.
+
+Verification:
+
+- Create cross-computer direct link.
+- Trigger stop on remote member and confirm local peer receives framed output.
 
 ## Constraints
 
-1. **Branch-based**: All changes in a feature branch. Must be fully revertible
-   by returning to main.
-2. **No breaking changes**: Existing one-way listener model continues to work
-   for sessions that don't use bidirectional links.
-3. **Codex compatibility**: Codex only emits agent_stop. The link must work
-   with Codex sessions (output extraction may differ).
-4. **Cross-computer**: Links must work across computers via Redis transport,
-   same as current listener forwarding.
-5. **Daemon restart**: Links are in-memory (like current listeners). After
-   daemon restart, links are gone. This is acceptable.
-
-## Non-Functional Requirements
-
-1. **No memory leaks**: Links must be cleaned up when sessions end.
-2. **No orphan injection**: If a session is ended while a link is active, the
-   remaining session must not receive phantom injections.
-3. **Logging**: All link events (creation, injection, filtering, severing) must
-   be logged at DEBUG level for troubleshooting.
+1. No breaking changes to worker notification flow.
+2. Works for Claude, Gemini, and Codex sessions.
+3. Compatible with upcoming `start-gathering-tool` orchestration.
+4. Link lifecycle can be in-memory or durable, but cleanup guarantees must hold.
 
 ## Out of Scope
 
-- Group conversations (3+ agents in a shared exchange)
-- Streaming intermediate output across links
-- Persistent links across daemon restarts
-- Automatic intent inference for heartbeats
+- Gathering talking-piece enforcement and phase orchestration.
+- Group policy logic beyond sender-excluded fan-out and membership management.
+- Persistent links across daemon restart if not selected in implementation.

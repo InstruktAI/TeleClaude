@@ -2,19 +2,19 @@
 
 ## Goal
 
-Build a `start_gathering` MCP tool that orchestrates gathering ceremonies on top of the session relay primitive (delivered by `session-relay` todo). The tool spawns participant sessions, distributes seed messages, and runs the ceremony: talking piece, heartbeats, phase management, and harvester hand-off.
+Build a `start_gathering` MCP tool that orchestrates gathering ceremonies on top of the shared listener/link primitive (delivered by `bidirectional-agent-links` todo). The tool spawns participant sessions, distributes seed messages, and runs the ceremony: talking piece, heartbeats, phase management, and harvester hand-off.
 
 ## Dependency
 
-**Requires `session-relay` to be delivered first.** The gathering uses the relay's `create_relay()` to establish the communication fabric and controls which participant's monitor is active based on the talking piece.
+**Requires `bidirectional-agent-links` to be delivered first.** The gathering uses the shared link primitive to establish communication fabric and controls which participant is allowed to fan out based on the talking piece.
 
 ## Scope
 
 ### In scope
 
 - **Gathering state model** — in-memory state tracking gathering lifecycle, participants, current speaker, beat counters
-- **`start_gathering` MCP tool** — spawns N sessions with `direct=true`, assigns each participant an identity (name + number), distributes seed message with full participant map and rhythm configuration
-- **Gathering orchestrator** — turn-managed relay: only current speaker's output is monitored and fanned out. Uses the session relay primitive with turn enforcement layered on top.
+- **`start_gathering` MCP tool** — spawns N sessions, assigns each participant an identity (name + number), distributes seed message with full participant map and rhythm configuration, and initializes a multi-member shared link
+- **Gathering orchestrator** — turn-managed fan-out: only current speaker's output is fanned out. Uses the shared listener/link primitive with turn enforcement layered on top.
 - **Talking piece management** — enforces turn order, detects explicit pass directives, advances to next speaker; harvester excluded from speaking order
 - **Thought heartbeats** — daemon injects grounding prompts into the speaking agent's session at configured intervals with micro-pulse signal snapshot and beat counter
 - **Turn boundaries** — graceful close prompt on final beat, early pass honored at any beat
@@ -28,8 +28,8 @@ Build a `start_gathering` MCP tool that orchestrates gathering ceremonies on top
 
 ### Out of scope
 
-- Session relay primitive (delivered by `session-relay` todo)
-- 1:1 direct conversations (delivered by `session-relay` todo)
+- Shared listener/link primitive (delivered by `bidirectional-agent-links` todo)
+- 1:1 direct conversations (delivered by `bidirectional-agent-links` todo)
 - Agent Direct Conversation procedure update (separate doc-only todo)
 - Rhythm sub-procedures (separate todo: `gathering-rhythm-subprocedures`)
 - Trail file creation (separate todo: `gathering-trail-files`)
@@ -42,8 +42,8 @@ Build a `start_gathering` MCP tool that orchestrates gathering ceremonies on top
 
 Once the gathering is seeded, **`send_message` is never called again**. The tool call is the handshake. After that:
 
-1. The gathering orchestrator activates the current speaker's monitor in the relay
-2. When new output is detected, the relay delivers it to all other participant sessions as: `"[Name] ([number]):\n\n[their words]"`
+1. The gathering orchestrator designates the current speaker in the shared link
+2. When new output is detected, the listener delivers it to all other participant sessions as: `"[Name] ([number]):\n\n[their words]"`
 3. Other participants see attributed messages injected directly into their sessions
 4. When the talking piece moves, the orchestrator deactivates the previous speaker's monitor and activates the next
 
@@ -57,11 +57,11 @@ Each participant's seed message establishes their identity:
 
 ### Output monitoring design
 
-The key challenge: distinguishing the agent's own output from previously injected messages. The relay's baseline snapshot mechanism handles this — only delta beyond baseline is captured.
+The key challenge: distinguishing the agent's own output from previously injected messages. The shared link baseline/delta mechanism handles this — only new output beyond baseline is captured.
 
 ### Feedback loop prevention
 
-The relay's baseline mechanism handles this. When a new speaker starts, the baseline includes all previously injected content.
+The shared link baseline mechanism handles this. When a new speaker starts, the baseline includes all previously injected content.
 
 ## Roles
 
@@ -107,9 +107,9 @@ Human is a named participant with a number. Messages fan out with same attributi
 
 ## Success Criteria
 
-- [ ] `start_gathering(rhythm, participants, ...)` spawns N sessions with `direct=true` and delivers seed messages with identity assignment
+- [ ] `start_gathering(rhythm, participants, ...)` spawns N sessions, initializes multi-member shared link, and delivers seed messages with identity assignment
 - [ ] Each participant's seed includes: name, number, role, full participant map, breath structure, rhythm, opening question, proprioception pulse
-- [ ] Speaking agent's output is automatically fanned out to all other sessions with attribution (via relay)
+- [ ] Speaking agent's output is automatically fanned out to all other sessions with attribution (via shared link)
 - [ ] Talking piece enforces turn order — only current speaker's output is fanned out; harvester never holds the piece
 - [ ] Heartbeat prompts are injected into the speaking agent's session at configured intervals
 - [ ] Early pass is detected and honored
@@ -125,25 +125,25 @@ Human is a named participant with a number. Messages fan out with same attributi
 
 ## Key Files
 
-| File                                 | What changes                                                           |
-| ------------------------------------ | ---------------------------------------------------------------------- |
-| `teleclaude/core/gathering.py`       | New: gathering state model, orchestrator, phase management, heartbeats |
-| `teleclaude/mcp/handlers.py`         | New `teleclaude__start_gathering` handler                              |
-| `teleclaude/mcp/tool_definitions.py` | New tool definition and schema                                         |
-| `teleclaude/mcp_server.py`           | Tool dispatch, `ToolName` enum addition                                |
-| `teleclaude/core/session_relay.py`   | Used (not modified) — relay primitive from session-relay todo          |
+| File                                 | What changes                                                                         |
+| ------------------------------------ | ------------------------------------------------------------------------------------ |
+| `teleclaude/core/gathering.py`       | New: gathering state model, orchestrator, phase management, heartbeats               |
+| `teleclaude/mcp/handlers.py`         | New `teleclaude__start_gathering` handler                                            |
+| `teleclaude/mcp/tool_definitions.py` | New tool definition and schema                                                       |
+| `teleclaude/mcp_server.py`           | Tool dispatch, `ToolName` enum addition                                              |
+| `teleclaude/core/session_links.py`   | Used (or added) — shared listener/link primitive from bidirectional-agent-links todo |
 
 ## Constraints
 
 - Must not break existing session management or notification behavior
-- Must use `direct=true` for all spawned sessions
-- Fan-out delivery via the relay handles 1-second tmux send-keys delay
+- Must initialize a shared listener link containing all gathering participants
+- Fan-out delivery uses sender-excluded shared-link routing
 - Gathering state is in-memory (ephemeral)
 - Must work with existing MCP server architecture
 
 ## Risks
 
 - **Pass detection false positives**: Conservative phrase matching mitigates
-- **Output latency for N participants**: ~N seconds per message via relay fan-out. Acceptable for ceremony pace.
+- **Output latency for N participants**: ~N seconds per message via shared-link fan-out. Acceptable for ceremony pace.
 - **Context window pressure**: Fixed round structure bounds total content
 - **Daemon restart**: In-memory state lost. Gathering must be restarted.

@@ -1,5 +1,6 @@
 # Parked work items. Promote back to roadmap.yaml when priority changes.
 
+- slug: start-gathering-tool
 - slug: gathering-trail-files
 - slug: gathering-rhythm-subprocedures
 - slug: multi-user-db-abstraction
@@ -62,10 +63,6 @@
     behind core identity/streaming/web delivery.
 - slug: code-context-auditor
   description: Drift-auditing layer for context annotations. Depends on code-context-annotations.
-- slug: bidirectional-agent-links
-  description:
-    Agent-to-agent chat/link system. Nice-to-have, not on the near-term
-    product path.
 - slug: github-maintenance-runner
   description:
     Periodic GitHub bug triage and automated bugfix PR flow in a dedicated
