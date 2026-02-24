@@ -1,41 +1,106 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: discord-session-routing
-  description:
-    Per-project Discord forums, role-based routing, adapter-specific titles,
-    enriched footer
 - slug: consolidate-methodology-skills
-  description:
-    Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
+  description: Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
     for cross-agent distribution
-- slug: frontend-theming-tui-parity
-  description:
-    Port TUI agent color theming to Next.js frontend with peaceful/themed
-    toggle, CSS variable system, and white-label override file
-- slug: textual-footer-migration
 - slug: tui-state-persistence
+- slug: cross-project-context
+- slug: transcript-first-output-and-hook-backpressure
+  group: unified-client-adapter-pipeline
+  description: Make native transcript deltas the single output data plane, keep hooks
+    control-plane only, and establish the foundation for unified client adapter pipeline
+    cutover.
+- slug: unified-client-adapter-pipeline
+  after:
+  - transcript-first-output-and-hook-backpressure
+  description: 'Umbrella: split Web/TUI adapter pipeline unification into atomic child
+    todos and track dependency-gated delivery.'
+- slug: ucap-canonical-contract
+  group: unified-client-adapter-pipeline
+  after:
+  - transcript-first-output-and-hook-backpressure
+  description: 'Phase 1: Define canonical outbound realtime contract and shared serializer/validation
+    utilities across adapters.'
+- slug: ucap-truthful-session-status
+  group: unified-client-adapter-pipeline
+  after:
+  - ucap-canonical-contract
+  description: 'Phase 2: Make core the source of truth for session lifecycle status
+    and map that contract to each adapter''s UI capabilities.'
+- slug: ucap-web-adapter-alignment
+  group: unified-client-adapter-pipeline
+  after:
+  - ucap-truthful-session-status
+  description: 'Phase 3: Align Web realtime delivery to adapter-driven contract and
+    remove direct Web bypass paths.'
+- slug: ucap-tui-adapter-alignment
+  group: unified-client-adapter-pipeline
+  after:
+  - ucap-truthful-session-status
+  description: 'Phase 4: Align TUI realtime delivery to adapter-driven contract and
+    remove direct TUI bypass paths.'
+- slug: ucap-ingress-provisioning-harmonization
+  group: unified-client-adapter-pipeline
+  after:
+  - ucap-canonical-contract
+  description: 'Phase 5: Standardize ingress semantics and centralize channel/provisioning
+    orchestration for client adapters.'
+- slug: ucap-cutover-parity-validation
+  group: unified-client-adapter-pipeline
+  after:
+  - ucap-web-adapter-alignment
+  - ucap-tui-adapter-alignment
+  - ucap-ingress-provisioning-harmonization
+  description: 'Phase 6: Execute shadow/cutover, parity metrics validation, rollback
+    criteria, and final bypass removal checks.'
 - slug: mcp-migration-telec-commands
   group: mcp-to-tool-specs
-  description:
-    'Phase 1: Add telec subcommands for all 24 tools with rich --help,
+  description: 'Phase 1: Add telec subcommands for all 24 tools with rich --help,
     extend REST API, update telec-cli spec doc with @exec directives'
 - slug: mcp-migration-agent-config
   group: mcp-to-tool-specs
   after:
-    - mcp-migration-telec-commands
-  description:
-    'Phase 2: Remove MCP from agent session configs, validate all agent
+  - mcp-migration-telec-commands
+  description: 'Phase 2: Remove MCP from agent session configs, validate all agent
     types and workflows'
 - slug: mcp-migration-delete-mcp
   group: mcp-to-tool-specs
   after:
-    - mcp-migration-agent-config
-  description:
-    'Phase 3: Delete all MCP server code (~3,400 lines), update architecture
+  - mcp-migration-agent-config
+  description: 'Phase 3: Delete all MCP server code (~3,400 lines), update architecture
     and policy docs'
 - slug: rolling-session-titles
-  description:
-    Re-summarize session titles based on the last 3 user inputs instead
+  description: Re-summarize session titles based on the last 3 user inputs instead
     of only the first. Use a dedicated rolling prompt that captures session direction.
     Reset the output message on any title change so the telegram title feedback floats
     to the top in Telegram.
+- slug: help-desk-whatsapp
+  description: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
+- slug: deployment-versioning
+  group: mature-deployment
+  description: 'Phase 1: Runtime __version__, telec version command, pyproject.toml
+    1.0.0'
+- slug: deployment-migrations
+  group: mature-deployment
+  description: 'Phase 2: Migration manifest format, runner, version utilities (no
+    CLI — internal library)'
+- slug: deployment-channels
+  group: mature-deployment
+  after:
+  - deployment-versioning
+  - deployment-migrations
+  description: 'Phase 3: Channel config, webhook handler, update executor, Redis fan-out'
+- slug: deployment-cleanup
+  group: mature-deployment
+  after:
+  - deployment-channels
+  description: 'Phase 4: Remove deploy_service, MCP tool (if still present), update
+    docs, write pipeline doc'
+- slug: discord-slash-commands-like-telegram
+  description: Add Discord Application Commands (slash commands) mirroring Telegram
+    command set
+- slug: agent-config-driven-selection-contract
+- slug: assemble-todo-shared-loader
+  description: Unify todo data access behind shared roadmap/todo assembly helpers;
+    add telec todo get and migrate non-next-machine call sites off direct roadmap
+    loaders.
