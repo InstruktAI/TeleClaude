@@ -281,13 +281,12 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
             Optional[str], cmd.channel_metadata.get("initiator_session_id")
         )
 
-    # Prefer parent origin for AI-to-AI sessions
+    # Origin provenance must reflect the actual source of this session creation.
+    # Do not inherit origin from parent sessions.
     last_input_origin = origin
     parent_session = None
     if initiator_session_id:
         parent_session = await db.get_session(initiator_session_id)
-        if parent_session and parent_session.last_input_origin:
-            last_input_origin = parent_session.last_input_origin
 
     # Resolve identity
     metadata_human_email: Optional[str] = None
