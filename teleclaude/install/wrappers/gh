@@ -14,7 +14,10 @@ _real_gh() {
     IFS=: read -ra path_parts <<< "$PATH"
     for dir in "${path_parts[@]}"; do
         [ "$dir" = "$SCRIPT_DIR" ] && continue
-        [ -x "$dir/gh" ] && "$dir/gh" "$@" && return 0
+        if [ -x "$dir/gh" ]; then
+            "$dir/gh" "$@"
+            return $?
+        fi
     done
     echo "ERROR: real gh binary not found in PATH" >&2
     exit 1

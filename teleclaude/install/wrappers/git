@@ -14,7 +14,10 @@ _real_git() {
     IFS=: read -ra path_parts <<< "$PATH"
     for dir in "${path_parts[@]}"; do
         [ "$dir" = "$SCRIPT_DIR" ] && continue
-        [ -x "$dir/git" ] && "$dir/git" "$@" && return 0
+        if [ -x "$dir/git" ]; then
+            "$dir/git" "$@"
+            return $?
+        fi
     done
     echo "ERROR: real git binary not found in PATH" >&2
     exit 1
