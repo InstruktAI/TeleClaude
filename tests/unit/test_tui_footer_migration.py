@@ -216,6 +216,31 @@ def test_preparation_enter_hint_matches_activate_behavior() -> None:
 
 
 @pytest.mark.unit
+def test_preparation_activate_on_todo_toggles_expansion_not_edit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    view = PreparationView()
+    view._nav_items = [_project_header(), _todo_row(slug="todo-2")]
+    view.cursor_index = 1
+
+    toggle_calls: list[str] = []
+    post_calls: list[object] = []
+    is_expanded = {"value": False}
+
+    monkeypatch.setattr(view, "_expand_todo", lambda row: toggle_calls.append(f"expand:{row.slug}"))
+    monkeypatch.setattr(view, "_collapse_todo", lambda row: toggle_calls.append(f"collapse:{row.slug}"))
+    monkeypatch.setattr(view, "_is_expanded", lambda _slug: is_expanded["value"])
+    monkeypatch.setattr(view, "post_message", lambda message: post_calls.append(message))
+
+    view.action_activate()
+    is_expanded["value"] = True
+    view.action_activate()
+
+    assert toggle_calls == ["expand:todo-2", "collapse:todo-2"]
+    assert post_calls == []
+
+
+@pytest.mark.unit
 def test_preparation_default_action_tracks_cursor_context() -> None:
     view = PreparationView()
     view._nav_items = [_project_header(), _todo_row(), _todo_file_row()]
