@@ -41,6 +41,9 @@ def _write_fake_gh(bin_dir: Path) -> Path:
     script.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
+        'if [ -n "${FAKE_GH_CALLS_FILE:-}" ]; then\n'
+        '  echo "$*" >> "${FAKE_GH_CALLS_FILE}"\n'
+        "fi\n"
         'if [ "${1:-}" = "pr" ] && [ "${2:-}" = "view" ]; then\n'
         '  echo "${FAKE_GH_BASE:-main}"\n'
         "  exit 0\n"
@@ -139,6 +142,41 @@ def test_gh_wrapper_allows_non_main_merge(tmp_path: Path) -> None:
 
     assert result.returncode == 0
     assert "REAL_GH_CALLED pr merge 123 --base release" in result.stdout
+
+
+@pytest.mark.timeout(5)
+def test_gh_wrapper_non_merge_command_executes_once(tmp_path: Path) -> None:
+    canonical_root = tmp_path / "repo"
+    worktree = canonical_root / "trees" / "slug"
+    (canonical_root / ".git").mkdir(parents=True, exist_ok=True)
+    worktree.mkdir(parents=True, exist_ok=True)
+
+    wrapper = _render_gh_wrapper(tmp_path, canonical_root)
+    fake_bin = tmp_path / "real-bin"
+    fake_bin.mkdir(parents=True, exist_ok=True)
+    _write_fake_git(fake_bin)
+    _write_fake_gh(fake_bin)
+    calls_file = tmp_path / "gh-calls.log"
+
+    env = _base_env(tmp_path, wrapper.parent, fake_bin)
+    env["FAKE_GIT_COMMON_DIR"] = str(canonical_root / ".git")
+    env["FAKE_GIT_TOPLEVEL"] = str(worktree)
+    env["FAKE_GIT_BRANCH"] = "feature"
+    env["FAKE_GIT_DIR"] = str(canonical_root / ".git" / "worktrees" / "slug")
+    env["FAKE_GH_CALLS_FILE"] = str(calls_file)
+
+    result = subprocess.run(
+        [str(wrapper), "auth", "status"],
+        cwd=worktree,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout.count("REAL_GH_CALLED auth status") == 1
+    assert calls_file.read_text(encoding="utf-8").splitlines() == ["auth status"]
 
 
 @pytest.mark.timeout(5)

@@ -23,8 +23,20 @@ def _write_fake_git(bin_dir: Path) -> Path:
         '      --show-toplevel) echo "${FAKE_GIT_TOPLEVEL:-$PWD}" ;;\n'
         '      --abbrev-ref) echo "${FAKE_GIT_BRANCH:-main}" ;;\n'
         '      --git-dir) echo "${FAKE_GIT_DIR:-.git}" ;;\n'
+        "      --symbolic-full-name)\n"
+        '        if [ "${3:-}" = "@{upstream}" ]; then\n'
+        '          echo "${FAKE_GIT_UPSTREAM:-refs/remotes/origin/main}"\n'
+        "        fi\n"
+        "        ;;\n"
         '      *) echo "${FAKE_GIT_TOPLEVEL:-$PWD}" ;;\n'
         "    esac\n"
+        "    ;;\n"
+        "  config)\n"
+        '    if [ "${2:-}" = "--get" ] && [ "${3:-}" = "push.default" ]; then\n'
+        '      echo "${FAKE_GIT_PUSH_DEFAULT:-simple}"\n'
+        "      exit 0\n"
+        "    fi\n"
+        "    exit 1\n"
         "    ;;\n"
         "  show-ref)\n"
         '    if [ "${FAKE_GIT_HAS_MAIN:-1}" = "1" ]; then exit 0; fi\n'
@@ -126,6 +138,40 @@ def test_git_wrapper_allows_feature_branch_push_from_worktree(tmp_path: Path) ->
 
     assert result.returncode == 0
     assert "REAL_GIT_CALLED push origin feature" in result.stdout
+
+
+@pytest.mark.timeout(5)
+def test_git_wrapper_blocks_no_refspec_upstream_push_to_main_even_with_no_verify(tmp_path: Path) -> None:
+    canonical_root = tmp_path / "repo"
+    worktree = canonical_root / "trees" / "slug"
+    (canonical_root / ".git").mkdir(parents=True, exist_ok=True)
+    worktree.mkdir(parents=True, exist_ok=True)
+
+    wrapper = _render_git_wrapper(tmp_path, canonical_root)
+    fake_bin = tmp_path / "real-bin"
+    fake_bin.mkdir(parents=True, exist_ok=True)
+    _write_fake_git(fake_bin)
+
+    env = _base_env(tmp_path, wrapper.parent, fake_bin)
+    env["FAKE_GIT_COMMON_DIR"] = str(canonical_root / ".git")
+    env["FAKE_GIT_TOPLEVEL"] = str(worktree)
+    env["FAKE_GIT_BRANCH"] = "feature"
+    env["FAKE_GIT_DIR"] = str(canonical_root / ".git" / "worktrees" / "slug")
+    env["FAKE_GIT_PUSH_DEFAULT"] = "upstream"
+    env["FAKE_GIT_UPSTREAM"] = "refs/remotes/origin/main"
+
+    result = subprocess.run(
+        [str(wrapper), "push", "--no-verify"],
+        cwd=worktree,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "MAIN_GUARDRAIL_BLOCKED" in result.stderr
+    assert "GUARDRAIL_MARKER" in result.stderr
 
 
 @pytest.mark.timeout(5)
