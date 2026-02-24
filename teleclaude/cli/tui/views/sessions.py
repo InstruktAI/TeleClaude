@@ -598,13 +598,17 @@ class SessionsView(Widget, can_focus=True):
     def action_focus_pane(self) -> None:
         """Enter: on a session — preview AND focus the tmux pane.
 
-        On a project/computer header — open new session modal.
+        On a project header — open new session modal.
+        On a computer header — restart all sessions on that computer.
         If session is headless, revive it first.
         """
         row = self._current_session_row()
         if not row:
-            # On a project or computer header — open new session modal
-            self.action_new_session()
+            item = self._current_item()
+            if isinstance(item, ComputerHeader):
+                self.action_restart_all()
+            else:
+                self.action_new_session()
             return
 
         # Headless sessions: revive instead of focus
@@ -778,7 +782,9 @@ class SessionsView(Widget, can_focus=True):
 
         if action == "new_session":
             return isinstance(item, ProjectHeader)
-        if action in {"kill_session", "restart_session", "focus_pane", "toggle_preview"}:
+        if action == "focus_pane":
+            return isinstance(item, (ProjectHeader, ComputerHeader, SessionRow))
+        if action in {"kill_session", "restart_session", "toggle_preview"}:
             return isinstance(item, SessionRow)
         if action == "restart_all":
             return isinstance(item, ComputerHeader)

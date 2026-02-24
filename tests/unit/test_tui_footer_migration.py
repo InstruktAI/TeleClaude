@@ -117,12 +117,14 @@ def test_sessions_check_action_is_context_sensitive() -> None:
     view.cursor_index = 0
     assert view.check_action("restart_all", ()) is True
     assert view.check_action("new_session", ()) is False
+    assert view.check_action("focus_pane", ()) is True
     assert view.check_action("kill_session", ()) is False
     assert view.check_action("restart_session", ()) is False
 
     view.cursor_index = 1
     assert view.check_action("new_session", ()) is True
     assert view.check_action("restart_all", ()) is False
+    assert view.check_action("focus_pane", ()) is True
     assert view.check_action("kill_session", ()) is False
     assert view.check_action("restart_session", ()) is False
 
@@ -132,6 +134,24 @@ def test_sessions_check_action_is_context_sensitive() -> None:
     assert view.check_action("focus_pane", ()) is True
     assert view.check_action("new_session", ()) is False
     assert view.check_action("restart_all", ()) is False
+
+
+@pytest.mark.unit
+def test_sessions_focus_pane_routes_to_header_default_actions(monkeypatch: pytest.MonkeyPatch) -> None:
+    view = SessionsView()
+    view._nav_items = [_computer_header(), _project_header(), _session_row()]
+    called: list[str] = []
+
+    monkeypatch.setattr(view, "action_restart_all", lambda: called.append("restart_all"))
+    monkeypatch.setattr(view, "action_new_session", lambda: called.append("new_session"))
+
+    view.cursor_index = 0
+    view.action_focus_pane()
+    assert called == ["restart_all"]
+
+    view.cursor_index = 1
+    view.action_focus_pane()
+    assert called == ["restart_all", "new_session"]
 
 
 @pytest.mark.unit
