@@ -76,6 +76,7 @@ class DatabaseConfig:
 @dataclass
 class PollingConfig:
     directory_check_interval: int
+    output_cadence_s: float = 1.0
 
 
 @dataclass
@@ -335,6 +336,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
     },
     "polling": {
         "directory_check_interval": DIRECTORY_CHECK_INTERVAL,
+        "output_cadence_s": 1.0,
     },
     "redis": {
         "enabled": False,
@@ -667,6 +669,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
         ),
         polling=PollingConfig(
             directory_check_interval=int(polling_raw["directory_check_interval"]),  # type: ignore[index,misc]
+            output_cadence_s=float(polling_raw.get("output_cadence_s", 1.0)),  # type: ignore[union-attr]
         ),
         redis=RedisConfig(
             enabled=bool(redis_raw["enabled"]),  # type: ignore[index,misc]

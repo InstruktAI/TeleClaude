@@ -726,14 +726,12 @@ class AgentCoordinator:
             await db.update_session(session_id, last_tool_use_at=now.isoformat())
             logger.debug("tool_use recorded for session %s", session_id[:8])
 
-        # Trigger incremental output update so the tool call (wrench) appears immediately.
-        await self._maybe_send_incremental_output(session_id, payload)
+        # Output fanout is transcript-driven from polling; hooks stay control-plane only.
+        # tool_use still emits activity + checkpoint timing metadata.
 
     async def handle_tool_done(self, context: AgentEventContext) -> None:
         """Handle tool_done event — tool execution completed, output available."""
         session_id = context.session_id
-        payload = cast(AgentOutputPayload, context.data)
-        await self._maybe_send_incremental_output(session_id, payload)
 
         # Emit activity event for UI updates
         self._emit_activity_event(session_id, AgentHookEvents.TOOL_DONE)

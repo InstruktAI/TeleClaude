@@ -79,15 +79,14 @@ class OutputPoller:
             OutputEvent subclasses (OutputChanged, ProcessExited, DirectoryChanged)
         """
         # Configuration
-        poll_interval = 1.0
-        global_update_interval = 3  # Global update interval (seconds) - first update after 1s
+        output_cadence_s = max(0.1, float(getattr(_CONFIG_FOR_TESTS.polling, "output_cadence_s", 1.0)))
+        poll_interval = min(1.0, output_cadence_s)
         directory_check_interval = DIRECTORY_CHECK_INTERVAL
 
         # State tracking
         idle_ticks = 0
         started_at: float | None = None
         last_output_changed_at = 0.0
-        current_update_interval = global_update_interval  # Start with global interval
         last_directory: str | None = None
         directory_check_ticks = 0
         poll_iteration = 0
@@ -106,7 +105,7 @@ class OutputPoller:
             await asyncio.sleep(1.0)
             started_at = time.time()
             last_output_changed_at = started_at
-            last_yield_time = started_at - current_update_interval  # Force first send after interval check
+            last_yield_time = started_at - output_cadence_s  # Force first send after cadence check
             last_summary_time = started_at
             logger.trace("Polling started for %s", session_id[:8])
 
@@ -121,11 +120,11 @@ class OutputPoller:
                     return
                 idle_for = max(0.0, now - last_output_changed_at)
                 logger.trace(
-                    "[POLL %s] idle: unchanged for %.1fs (suppressed=%d, interval=%ds, idle_ticks=%d)",
+                    "[POLL %s] idle: unchanged for %.1fs (suppressed=%d, cadence_s=%.2f, idle_ticks=%d)",
                     session_id[:8],
                     idle_for,
                     suppressed_idle_ticks,
-                    current_update_interval,
+                    output_cadence_s,
                     idle_ticks,
                 )
                 suppressed_idle_ticks = 0
@@ -214,7 +213,6 @@ class OutputPoller:
                     previous_output = current_cleaned
                     idle_ticks = 0
                     last_output_changed_at = time.time()
-                    current_update_interval = global_update_interval
                     pending_output = True
                     pending_idle_flush = True
                     # Output file persistence removed; downloads now use native session logs.
@@ -226,7 +224,7 @@ class OutputPoller:
                 # Send updates based on time interval, but only when output changes
                 # (or when we have never sent output yet). This avoids UI spam when idle.
                 did_yield = False
-                if elapsed_since_last_yield >= current_update_interval:
+                if elapsed_since_last_yield >= output_cadence_s:
                     should_send = False
                     if output_sent_at_least_once:
                         should_send = pending_output
@@ -292,10 +290,6 @@ class OutputPoller:
                     )
                     logger.info("Shell exited for %s, stopping poll", session_id[:8])
                     break
-
-                # Apply exponential backoff when idle: 3s -> 6s -> 9s -> 12s -> 15s
-                if idle_ticks >= current_update_interval:
-                    current_update_interval = min(current_update_interval + 3, 15)
 
                 # Increment idle counter when no new content
                 if not output_changed:

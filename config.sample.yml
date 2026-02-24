@@ -24,6 +24,10 @@ computer:
 database:
   path: ${WORKING_DIR}/teleclaude.db
 
+polling:
+  directory_check_interval: 5
+  output_cadence_s: 1.0 # Output update cadence target (seconds)
+
 telegram:
   # Whitelist of trusted bots (security for AI-to-AI communication)
   trusted_bots:

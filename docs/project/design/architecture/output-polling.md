@@ -13,30 +13,29 @@ type: 'design'
 
 1. **OutputPoller**: A per-session worker that reads from the tmux output buffer.
 2. **PollingCoordinator**: Manages the collection of pollers and ensures they start/stop with the session lifecycle.
-3. **Dual Mode**:
-   - **Human Mode**: Raw output streaming for manual sessions.
-   - **AI Mode**: Smart output capture for agent-to-agent sessions, detecting turn completion.
-
+3. **Single data plane**:
+   - Output progression is transcript/tmux polling driven.
+   - Hook `tool_use` / `tool_done` are control-plane signals only.
 4. **Read**: Poller executes `tmux capture-pane`.
-5. **Diff**: Only new lines since the last read are captured.
-6. **Emit**: `OutputEvent` is sent to the `EventBus`.
-7. **Broadcast**: `AdapterClient` routes the event to all active observers (Telegram, WS, MCP).
+5. **Diff**: Full pane snapshots are compared against prior capture.
+6. **Emit**: `OutputEvent` is yielded to `PollingCoordinator`.
+7. **Broadcast**: `AdapterClient` routes output updates to active observers.
 
 ```mermaid
 sequenceDiagram
     participant Tmux
     participant Poller
-    participant EventBus
+    participant Coordinator
     participant AdapterClient
     participant UI
 
-    loop Every ~200ms
+    loop Every configured cadence tick
         Poller->>Tmux: capture-pane -p
         Tmux->>Poller: Full buffer
         Poller->>Poller: Diff since last read
         alt New output detected
-            Poller->>EventBus: OUTPUT_UPDATE event
-            EventBus->>AdapterClient: Broadcast
+            Poller->>Coordinator: OutputChanged
+            Coordinator->>AdapterClient: send_output_update / threaded refresh
             AdapterClient->>UI: Stream to user
         else No changes
             Poller->>Poller: Skip emission
@@ -63,6 +62,7 @@ sequenceDiagram
 - **One Poller Per Session**: Each active session has exactly one poller instance; no duplicates.
 - **Poller Lifecycle Matches Session**: Poller starts when session becomes active, stops when session closes.
 - **Diff-Only Emission**: Only new lines since last poll are emitted; no duplicate output.
+- **Deterministic cadence**: Output cadence is config-driven (`polling.output_cadence_s`, default `1.0`).
 - **No Blocking**: Polling runs in async task; never blocks main event loop or command execution.
 - **Graceful Stop**: Poller cleanup completes before session marked fully closed.
 
