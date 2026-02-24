@@ -39,7 +39,7 @@ Close all known paths where worktree-context agents can advance `origin/main` di
 
 ## Phase 2 - Main-Branch Guardrail Layers (R3, R4, R5, R6, R8)
 
-- [ ] Add `.githooks/pre-push` guard to reject non-canonical pushes targeting `refs/heads/main`.
+- [x] Add `.githooks/pre-push` guard to reject non-canonical pushes targeting `refs/heads/main`.
 - [ ] Ensure `telec init` configures `core.hooksPath=.githooks` idempotently.
 - [ ] Harden git wrapper behavior for push-to-main:
   - detect main-targeting push refspecs,
