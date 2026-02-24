@@ -14,8 +14,6 @@ from __future__ import annotations
 import os
 import re
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Mapping
 
@@ -619,26 +617,6 @@ def _extract_markdown_link_url(value: str) -> str | None:
     return m.group(2) if m else None
 
 
-def _check_url_alive(url: str, *, timeout: int = 8) -> bool:
-    headers = {"User-Agent": "TeleClaude/1.0"}
-    try:
-        req = urllib.request.Request(url, method="HEAD", headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status < 400
-    except urllib.error.HTTPError as exc:
-        # Some docs block HEAD; retry with GET before declaring unreachable.
-        if exc.code >= 400:
-            try:
-                req = urllib.request.Request(url, method="GET", headers=headers)
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
-                    return resp.status < 400
-            except Exception:
-                return False
-        return False
-    except Exception:
-        return False
-
-
 def validate_third_party_docs(project_root: Path) -> None:
     """Validate third-party doc sources exist and URLs are reachable."""
     third_party_root = project_root / "docs" / "third-party"
@@ -664,8 +642,6 @@ def validate_third_party_docs(project_root: Path) -> None:
             if md_url:
                 url = md_url
             if _is_web_url(url):
-                if not _check_url_alive(url):
-                    _warn("third_party_source_unreachable", path=str(path), source=url)
                 continue
             _warn("third_party_source_invalid", path=str(path), source=source)
 

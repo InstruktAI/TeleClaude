@@ -190,11 +190,13 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
               {(["claude", "gemini", "codex"] as AgentName[]).map((a) => (
                 <label
                   key={a}
-                  className={`flex-1 cursor-pointer rounded-md border px-3 py-2 text-center text-sm transition-colors ${
-                    agent === a
-                      ? "border-primary bg-primary/5 font-medium"
-                      : "hover:bg-accent"
-                  }`}
+                  className="flex-1 cursor-pointer rounded-md border px-3 py-2 text-center text-sm transition-all"
+                  style={{
+                    borderColor: agent === a ? `var(--tc-agent-${a}-normal)` : undefined,
+                    backgroundColor: agent === a ? `var(--tc-agent-${a}-subtle)` : undefined,
+                    color: agent === a ? "var(--tc-text-primary)" : undefined,
+                    fontWeight: agent === a ? 600 : undefined,
+                  }}
                 >
                   <input
                     type="radio"
@@ -204,7 +206,7 @@ export function NewSessionDialog({ open, onOpenChange }: Props) {
                     onChange={() => setAgent(a)}
                     className="sr-only"
                   />
-                  {a}
+                  {a.charAt(0).toUpperCase() + a.slice(1)}
                 </label>
               ))}
             </div>

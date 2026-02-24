@@ -1,0 +1,135 @@
+/* ---------------------------------------------------------------------------
+ * TeleClaude Design Tokens
+ * ---------------------------------------------------------------------------
+ * This file is the absolute source of truth for all colors in the frontend.
+ * Editing this file gives you full IDE support (color pickers, auto-completion).
+ * --------------------------------------------------------------------------- */
+
+:root {
+  /* -- Backgrounds -- */
+  --tc-bg-base: #fdf6e3;
+  --tc-bg-surface: #f0ead8;
+  --tc-bg-elevated: #e8e0cc;
+  --tc-bg-overlay: rgba(255, 255, 255, 0.6);
+
+  /* -- Text -- */
+  --tc-text-primary: #303030;
+  --tc-text-secondary: #444444;
+  --tc-text-muted: #808080;
+
+  /* -- Borders -- */
+  --tc-border-default: #a8a8a8;
+  --tc-border-subtle: #c6c6c6;
+  --tc-border-modal: #303030;
+  --tc-border-input: #585858;
+
+  /* -- Selection -- */
+  --tc-selection-base: #d0d0d0;
+  --tc-selection-surface: #c6c6c6;
+  --tc-selection-elevated: #bcbcbc;
+
+  /* -- Status -- */
+  --tc-status-active: #008700;
+  --tc-status-idle: #a8a8a8;
+  --tc-status-error: #d70000;
+  --tc-status-ready: #008700;
+  --tc-status-warning: #af8700;
+
+  /* -- Agents (Claude) -- */
+  --tc-agent-claude-subtle: #d7af87;
+  --tc-agent-claude-muted: #af875f;
+  --tc-agent-claude-normal: #875f00;
+  --tc-agent-claude-highlight: #000000;
+  --tc-agent-claude-haze: #af875f;
+
+  /* -- Agents (Gemini) -- */
+  --tc-agent-gemini-subtle: #d787ff;
+  --tc-agent-gemini-muted: #af5fff;
+  --tc-agent-gemini-normal: #870087;
+  --tc-agent-gemini-highlight: #000000;
+  --tc-agent-gemini-haze: #af5fff;
+
+  /* -- Agents (Codex) -- */
+  --tc-agent-codex-subtle: #87afd7;
+  --tc-agent-codex-muted: #5f87af;
+  --tc-agent-codex-normal: #005f87;
+  --tc-agent-codex-highlight: #000000;
+  --tc-agent-codex-haze: #5f8787;
+
+  /* -- User -- */
+  --tc-user-bubble-bg: #e07030;
+  --tc-user-bubble-text: #ffffff;
+
+  /* -- Misc -- */
+  --tc-banner: #808080;
+  --tc-tab-line: #808080;
+  --tc-peaceful-normal: #444444;
+  --tc-peaceful-muted: #808080;
+  --tc-status-bar-fg: #727578;
+
+  /* -- Semantic Aliases -- */
+  --tc-primary: #303030;
+  --tc-primary-fg: #fdf6e3;
+}
+
+.dark {
+  /* -- Backgrounds -- */
+  --tc-bg-base: #000000;
+  --tc-bg-surface: #262626;
+  --tc-bg-elevated: #303030;
+  --tc-bg-overlay: rgba(0, 0, 0, 0.6);
+
+  /* -- Text -- */
+  --tc-text-primary: #d0d0d0;
+  --tc-text-secondary: #bcbcbc;
+  --tc-text-muted: #808080;
+
+  /* -- Borders -- */
+  --tc-border-default: #585858;
+  --tc-border-subtle: #3a3a3a;
+  --tc-border-modal: #bcbcbc;
+  --tc-border-input: #8a8a8a;
+
+  /* -- Selection -- */
+  --tc-selection-base: #444444;
+  --tc-selection-surface: #4e4e4e;
+  --tc-selection-elevated: #585858;
+
+  /* -- Status -- */
+  --tc-status-active: #5faf5f;
+  --tc-status-idle: #585858;
+  --tc-status-error: #ff5f5f;
+  --tc-status-ready: #5faf5f;
+  --tc-status-warning: #d7af00;
+
+  /* -- Agents (Claude) -- */
+  --tc-agent-claude-subtle: #875f00;
+  --tc-agent-claude-muted: #af875f;
+  --tc-agent-claude-normal: #d7af87;
+  --tc-agent-claude-highlight: #ffffff;
+  --tc-agent-claude-haze: #af875f;
+
+  /* -- Agents (Gemini) -- */
+  --tc-agent-gemini-subtle: #8866d1;
+  --tc-agent-gemini-muted: #af87ff;
+  --tc-agent-gemini-normal: #d7afff;
+  --tc-agent-gemini-highlight: #ffffff;
+  --tc-agent-gemini-haze: #af87ff;
+
+  /* -- Agents (Codex) -- */
+  --tc-agent-codex-subtle: #5f87af;
+  --tc-agent-codex-muted: #87afd7;
+  --tc-agent-codex-normal: #afd7ff;
+  --tc-agent-codex-highlight: #ffffff;
+  --tc-agent-codex-haze: #87afaf;
+
+  /* -- Misc -- */
+  --tc-banner: #585858;
+  --tc-tab-line: #585858;
+  --tc-peaceful-normal: #bcbcbc;
+  --tc-peaceful-muted: #585858;
+
+  /* -- Semantic Aliases -- */
+  --tc-primary: #d0d0d0;
+  --tc-primary-fg: #000000;
+}

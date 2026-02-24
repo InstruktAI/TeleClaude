@@ -8,14 +8,15 @@ import { useAgentTheming } from "@/hooks/useAgentTheming";
 import { useAgentColors } from "@/hooks/useAgentColors";
 import { safeAgent, type AgentType } from "@/lib/theme/tokens";
 
-function agentIcon(agent: string | null | undefined) {
+function agentIcon(agent: string | null | undefined, color: string) {
+  const className = "h-3.5 w-3.5";
   switch (agent) {
     case "gemini":
-      return <Sparkles className="h-3.5 w-3.5 text-blue-500" />;
+      return <Sparkles className={className} style={{ color }} />;
     case "codex":
-      return <Code2 className="h-3.5 w-3.5 text-green-500" />;
+      return <Code2 className={className} style={{ color }} />;
     default:
-      return <Brain className="h-3.5 w-3.5 text-purple-500" />;
+      return <Brain className={className} style={{ color }} />;
   }
 }
 
@@ -56,7 +57,7 @@ function SessionItem({ session, isActive }: { session: any; isActive: boolean })
           : "hover:bg-sidebar-accent/50"
       }`}
     >
-      {agentIcon(session.active_agent)}
+      {agentIcon(session.active_agent, colors.sidebarText)}
       <div className="min-w-0 flex-1">
         <p
           className="truncate font-medium text-xs"
