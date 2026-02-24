@@ -15,9 +15,9 @@ from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
-from teleclaude.cli.tui.widgets.hints_footer import HintsFooter
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.session_row import SessionRow
+from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD
@@ -39,7 +39,7 @@ async def test_telec_app_uses_compact_textual_footer() -> None:
     app = TelecApp(api)  # type: ignore[arg-type]
 
     async with app.run_test():
-        footer = app.query_one(HintsFooter)
+        footer = app.query_one(TelecFooter)
         assert footer is not None
         assert not app.query("#action-bar")
 

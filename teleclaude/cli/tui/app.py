@@ -64,8 +64,7 @@ from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
-from teleclaude.cli.tui.widgets.hints_footer import HintsFooter
-from teleclaude.cli.tui.widgets.status_bar import StatusBar
+from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 
 if TYPE_CHECKING:
     from teleclaude.cli.api_client import TelecAPIClient
@@ -183,8 +182,7 @@ class TelecApp(App[str | None]):
             with TabPane("Config", id="config"):
                 yield ConfigView(id="config-view")
         with Vertical(id="footer-area"):
-            yield HintsFooter(id="hints-footer")
-            yield StatusBar(id="status-bar")
+            yield TelecFooter(id="telec-footer")
         yield PaneManagerBridge(is_reload=self._is_reload, id="pane-bridge")
         logger.trace("[PERF] compose END t=%.3f", _t.monotonic())
 
@@ -195,7 +193,7 @@ class TelecApp(App[str | None]):
         # Restore persisted state to views
         sessions_view = self.query_one("#sessions-view", SessionsView)
         prep_view = self.query_one("#preparation-view", PreparationView)
-        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
 
         sessions_view.load_persisted_state(
             sticky_ids=self._persisted.sticky_session_ids,
@@ -324,7 +322,7 @@ class TelecApp(App[str | None]):
         sessions_view = self.query_one("#sessions-view", SessionsView)
         prep_view = self.query_one("#preparation-view", PreparationView)
         jobs_view = self.query_one("#jobs-view", JobsView)
-        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
 
         sessions_view.update_data(
             computers=message.computers,
@@ -602,7 +600,7 @@ class TelecApp(App[str | None]):
             # Handle agent pill clicks: cycle available → degraded → unavailable → available
             if isinstance(message.value, dict):
                 agent = str(message.value.get("agent", ""))
-                status_bar = self.query_one("#status-bar", StatusBar)
+                status_bar = self.query_one("#telec-footer", TelecFooter)
                 current_info = status_bar._agent_availability.get(agent)
 
                 # Determine next status
@@ -694,7 +692,7 @@ class TelecApp(App[str | None]):
         else:
             self.theme = "teleclaude-light-agent" if is_agent else "teleclaude-light"
 
-        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
         status_bar.pane_theming_mode = mode
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.reapply_colors()
@@ -712,10 +710,10 @@ class TelecApp(App[str | None]):
         """Toggle TTS on/off via API."""
         from teleclaude.cli.models import SettingsPatchInfo, TTSSettingsPatchInfo
 
-        new_val = not self.query_one("#status-bar", StatusBar).tts_enabled
+        new_val = not self.query_one("#telec-footer", TelecFooter).tts_enabled
         try:
             await self.api.patch_settings(SettingsPatchInfo(tts=TTSSettingsPatchInfo(enabled=new_val)))
-            status_bar = self.query_one("#status-bar", StatusBar)
+            status_bar = self.query_one("#telec-footer", TelecFooter)
             status_bar.tts_enabled = new_val
         except Exception as e:
             self.notify(f"Failed to toggle TTS: {e}", severity="error")
@@ -795,7 +793,7 @@ class TelecApp(App[str | None]):
     def _cycle_animation(self, new_mode: str) -> None:
         """Set animation mode, reconfigure engine, and update status bar."""
         self._start_animation_mode(new_mode)
-        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
         status_bar.animation_mode = new_mode
         self._save_state()
 
@@ -809,7 +807,7 @@ class TelecApp(App[str | None]):
     def _save_state(self) -> None:
         sessions_view = self.query_one("#sessions-view", SessionsView)
         prep_view = self.query_one("#preparation-view", PreparationView)
-        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
         save_state(
             sessions_state=sessions_view.get_persisted_state(),
             preparation_state=prep_view.get_persisted_state(),

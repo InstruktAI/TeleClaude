@@ -120,17 +120,12 @@ ConfigView {
 #footer-area {
     dock: bottom;
     height: 3;
-    border-top: hkey $connector;
 }
 
-HintsFooter {
-    height: 2;
+TelecFooter {
+    height: 3;
     background: $panel;
     color: $foreground;
-}
-
-StatusBar {
-    height: 1;
 }
 
 /* ── Session tree rows ─────────────────────────────────── */
