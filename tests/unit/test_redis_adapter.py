@@ -189,6 +189,33 @@ async def test_stop_notification_emits_agent_stop_event():
 
 
 @pytest.mark.asyncio
+async def test_stop_notification_decodes_linked_output_payload():
+    """stop_notification should decode optional linked output payload."""
+    from teleclaude.core.events import AgentHookEvents
+    from teleclaude.transport.redis_transport import RedisTransport
+
+    mock_client = MagicMock()
+    mock_client.agent_event_handler = AsyncMock()
+    adapter = RedisTransport(mock_client)
+    adapter.send_response = AsyncMock()
+
+    data = {
+        b"command": b"/stop_notification sess-123 RemotePC VGVzdCBUaXRsZQ== bGlua2VkIG91dHB1dA==",
+        b"timestamp": b"1",
+        b"initiator": b"RemotePC",
+        b"origin": b"telegram",
+    }
+
+    await adapter._handle_incoming_message("msg-2", data)
+
+    mock_client.agent_event_handler.assert_called_once()
+    context = mock_client.agent_event_handler.call_args[0][0]
+    assert context.event_type == AgentHookEvents.AGENT_STOP
+    payload = context.data
+    assert payload.raw.get("linked_output") == "linked output"
+
+
+@pytest.mark.asyncio
 async def test_discover_peers_skips_self():
     """Test that discover_peers excludes the local computer."""
     from teleclaude.transport.redis_transport import RedisTransport

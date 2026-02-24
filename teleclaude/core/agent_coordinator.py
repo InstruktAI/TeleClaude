@@ -11,6 +11,7 @@ import base64
 import inspect
 import random
 import re
+import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -27,6 +28,7 @@ from teleclaude.constants import (
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.core.checkpoint_dispatch import inject_checkpoint_if_needed
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -44,7 +46,12 @@ from teleclaude.core.events import (
 from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.session_listeners import notify_input_request, notify_stop
+from teleclaude.core.session_listeners import (
+    get_active_links_for_session,
+    get_peer_members,
+    notify_input_request,
+    notify_stop,
+)
 from teleclaude.core.summarizer import summarize_agent_output, summarize_user_input_title
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
@@ -68,6 +75,7 @@ logger = get_logger(__name__)
 
 _PASTED_CONTENT_PLACEHOLDER_RE = re.compile(r"^\[Pasted Content \d+ chars\]$")
 _NOOP_LOG_INTERVAL_SECONDS = 30.0
+_MAX_FORWARDED_LINK_OUTPUT_CHARS = 12000
 
 SESSION_START_MESSAGES = [
     "Standing by with grep patterns locked and loaded. What can I find?",
@@ -637,12 +645,20 @@ class AgentCoordinator:
             self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
 
         raw_output = await self._extract_agent_output(session_id, payload)
+        forwarded_output_raw = payload.raw.get("linked_output")
+        forwarded_output = forwarded_output_raw if isinstance(forwarded_output_raw, str) else None
+        link_output = raw_output or forwarded_output
         if raw_output:
             if config.terminal.strip_ansi:
                 raw_output = strip_ansi_codes(raw_output)
             if not raw_output.strip():
                 logger.debug("Skip stop summary/TTS (agent output empty after normalization)", session=session_id[:8])
                 raw_output = None
+                link_output = None
+            else:
+                link_output = raw_output
+        if payload.prompt and _is_checkpoint_prompt(payload.prompt, raw_payload=payload.raw):
+            link_output = None
 
         summary: str | None = None
         if raw_output:
@@ -685,14 +701,20 @@ class AgentCoordinator:
         # Clear turn-specific cursor at turn completion
         await db.update_session(session_id, last_tool_done_at=None)
 
-        # 3. Notify local listeners (AI-to-AI on same computer)
-        await self._notify_session_listener(session_id, source_computer=source_computer)
+        # 3. Fan out distilled stop output across active direct/gathering links
+        if link_output and link_output.strip():
+            await self._fanout_linked_stop_output(session_id, link_output, source_computer=source_computer)
 
-        # 4. Forward to remote initiator (AI-to-AI across computers)
+        # 4. Notify local listeners (worker orchestration mode)
+        title_raw = payload.raw.get("title")
+        title = title_raw if isinstance(title_raw, str) and title_raw else None
+        await self._notify_session_listener(session_id, source_computer=source_computer, title_override=title)
+
+        # 5. Forward to remote initiator (AI-to-AI across computers)
         if not (source_computer and source_computer != config.computer.name):
-            await self._forward_stop_to_initiator(session_id)
+            await self._forward_stop_to_initiator(session_id, link_output)
 
-        # 5. Inject checkpoint into the stopped agent's tmux pane
+        # 6. Inject checkpoint into the stopped agent's tmux pane
         await self._maybe_inject_checkpoint(session_id, session)
 
     async def handle_tool_use(self, context: AgentEventContext) -> None:
@@ -1081,14 +1103,15 @@ class AgentCoordinator:
         target_session_id: str,
         *,
         source_computer: str | None = None,
+        title_override: str | None = None,
     ) -> None:
         """Notify local listeners via tmux injection."""
         target_session = await db.get_session(target_session_id)
-        display_title = target_session.title if target_session else "Unknown"
+        display_title = title_override or (target_session.title if target_session else "Unknown")
         computer = source_computer or LOCAL_COMPUTER
         await notify_stop(target_session_id, computer, title=display_title)
 
-    async def _forward_stop_to_initiator(self, session_id: str) -> None:
+    async def _forward_stop_to_initiator(self, session_id: str, linked_output: str | None = None) -> None:
         """Forward stop event to remote initiator via Redis.
 
         Uses session.title from DB (stable, canonical) rather than
@@ -1107,20 +1130,102 @@ class AgentCoordinator:
             return
 
         # Use stable title from session record
-        title_arg = ""
+        title_b64 = "-"
         if session.title:
             title_b64 = base64.b64encode(session.title.encode()).decode()
-            title_arg = f" {title_b64}"
+        output_arg = ""
+        if linked_output and linked_output.strip():
+            distilled = linked_output.strip()
+            if len(distilled) > _MAX_FORWARDED_LINK_OUTPUT_CHARS:
+                distilled = distilled[:_MAX_FORWARDED_LINK_OUTPUT_CHARS]
+            output_b64 = base64.b64encode(distilled.encode()).decode()
+            output_arg = f" {output_b64}"
 
         try:
             await self.client.send_request(
                 computer_name=initiator_computer,
-                command=f"/stop_notification {session_id} {config.computer.name}{title_arg}",
+                command=f"/stop_notification {session_id} {config.computer.name} {title_b64}{output_arg}",
                 metadata=MessageMetadata(),
             )
             logger.info("Forwarded stop to %s", initiator_computer)
         except Exception as e:
             logger.warning("Failed to forward stop to %s: %s", initiator_computer, e)
+
+    async def _fanout_linked_stop_output(
+        self,
+        sender_session_id: str,
+        distilled_output: str,
+        *,
+        source_computer: str | None = None,
+    ) -> int:
+        """Fan out distilled stop output to peers in active links, excluding sender."""
+        links = await get_active_links_for_session(sender_session_id)
+        if not links:
+            return 0
+
+        sender = await db.get_session(sender_session_id)
+        sender_label = sender.title if sender and sender.title else sender_session_id[:8]
+        sender_computer = source_computer or (sender.computer_name if sender else config.computer.name)
+        framed_message = (
+            f"[Linked output from {sender_label} ({sender_session_id[:8]}) on {sender_computer}]\n\n"
+            f"{distilled_output.strip()}"
+        )
+
+        delivered = 0
+        for link in links:
+            peers = await get_peer_members(link_id=link.link_id, sender_session_id=sender_session_id)
+            for peer in peers:
+                target_computer = (
+                    peer.computer_name
+                    if peer.computer_name and peer.computer_name not in {LOCAL_COMPUTER, "local"}
+                    else config.computer.name
+                )
+                actor_id = f"system:{sender_computer}:{sender_session_id}"
+                actor_name = f"system@{sender_computer}"
+
+                try:
+                    if target_computer == config.computer.name:
+                        cmd = ProcessMessageCommand(
+                            session_id=peer.session_id,
+                            text=framed_message,
+                            origin=InputOrigin.MCP.value,
+                            actor_id=actor_id,
+                            actor_name=actor_name,
+                        )
+                        await get_command_service().process_message(cmd)
+                    else:
+                        await self.client.send_request(
+                            computer_name=target_computer,
+                            command=f"message {shlex.quote(framed_message)}",
+                            session_id=peer.session_id,
+                            metadata=MessageMetadata(
+                                origin=InputOrigin.MCP.value,
+                                channel_metadata={
+                                    "actor_id": actor_id,
+                                    "actor_name": actor_name,
+                                    "actor_role": "system",
+                                    "actor_agent": "system",
+                                    "actor_computer": sender_computer,
+                                },
+                            ),
+                        )
+                    delivered += 1
+                except Exception as exc:  # noqa: BLE001 - peer delivery failures must not abort stop lifecycle
+                    logger.warning(
+                        "Linked stop output delivery failed: sender=%s peer=%s target=%s error=%s",
+                        sender_session_id[:8],
+                        peer.session_id[:8],
+                        target_computer,
+                        exc,
+                    )
+
+        if delivered:
+            logger.info(
+                "Linked stop output fan-out: sender=%s delivered=%d",
+                sender_session_id[:8],
+                delivered,
+            )
+        return delivered
 
     async def _forward_notification_to_initiator(self, session_id: str, message: str) -> None:
         """Forward notification to remote initiator."""

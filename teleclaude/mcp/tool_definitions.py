@@ -423,8 +423,16 @@ def get_tool_definitions() -> list[Tool]:
                         "type": "boolean",
                         "default": False,
                         "description": (
-                            "When true, skip automatic notification subscription. "
-                            "Use for peer-to-peer agent communication where neither agent supervises the other."
+                            "When true, create/reuse a shared direct link and fan out sender messages to all peers "
+                            "(excluding the sender). Worker stop-notification listeners are not registered."
+                        ),
+                    },
+                    "close_link": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "When true, sever the caller's shared link in one action. "
+                            "Either member can close; removal applies to all members."
                         ),
                     },
                 },

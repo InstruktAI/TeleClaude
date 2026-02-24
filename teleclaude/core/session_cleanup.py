@@ -26,7 +26,7 @@ from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.next_machine.core import release_finalize_lock
-from teleclaude.core.session_listeners import cleanup_caller_listeners, pop_listeners
+from teleclaude.core.session_listeners import cleanup_caller_listeners, cleanup_session_links, pop_listeners
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 
 if TYPE_CHECKING:
@@ -67,16 +67,13 @@ async def cleanup_session_resources(
     if project_path:
         release_finalize_lock(project_path, session_id)
 
-    # Stop any active relay this session is part of (defense-in-depth)
-    from teleclaude.core.session_relay import get_relay_for_session, stop_relay
-
-    relay_id = await get_relay_for_session(session_id)
-    if relay_id:
-        try:
-            await stop_relay(relay_id)
-            logger.debug("Stopped relay %s for terminated session %s", relay_id[:8], session_id[:8])
-        except Exception as e:
-            logger.warning("Failed to stop relay for session %s: %s", session_id[:8], e)
+    closed_links = await cleanup_session_links(session_id)
+    if closed_links:
+        logger.debug(
+            "Closed %d conversation link(s) for terminated session %s",
+            closed_links,
+            session_id[:8],
+        )
 
     # Remove listeners waiting on this session (target listeners)
     target_listeners = await pop_listeners(session_id)

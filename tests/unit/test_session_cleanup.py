@@ -67,6 +67,33 @@ async def test_cleanup_stale_session_detects_missing_tmux():
 
 
 @pytest.mark.asyncio
+async def test_cleanup_session_resources_closes_conversation_links(tmp_path: Path):
+    """Session cleanup should sever links for ended sessions."""
+    mock_session = MagicMock()
+    mock_session.session_id = "session-123"
+    mock_session.project_path = None
+
+    mock_adapter_client = MagicMock()
+    mock_adapter_client.delete_channel = AsyncMock()
+
+    with (
+        patch("teleclaude.core.session_cleanup.cleanup_session_links", new_callable=AsyncMock) as mock_cleanup_links,
+        patch("teleclaude.core.session_cleanup.pop_listeners", new_callable=AsyncMock) as mock_pop,
+        patch(
+            "teleclaude.core.session_cleanup.cleanup_caller_listeners", new_callable=AsyncMock
+        ) as mock_cleanup_caller,
+        patch("teleclaude.core.session_cleanup.get_session_output_dir", return_value=tmp_path / "missing"),
+    ):
+        mock_cleanup_links.return_value = 1
+        mock_pop.return_value = []
+        mock_cleanup_caller.return_value = 0
+
+        await session_cleanup.cleanup_session_resources(mock_session, mock_adapter_client, delete_channel=False)
+
+    mock_cleanup_links.assert_called_once_with("session-123")
+
+
+@pytest.mark.asyncio
 async def test_cleanup_stale_session_skips_healthy_session():
     """Paranoid test that cleanup_stale_session skips healthy sessions."""
     mock_session = MagicMock()
