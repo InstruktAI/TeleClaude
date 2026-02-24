@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extract module dependency graph from import statements across teleclaude/."""
 
-import ast
+import re
 import sys
 from pathlib import Path
 
@@ -34,6 +34,9 @@ KNOWN_PACKAGES = {
     "tagging",
 }
 
+IMPORT_RE = re.compile(r"^\s*import\s+(.+)$", re.MULTILINE)
+FROM_RE = re.compile(r"^\s*from\s+([A-Za-z0-9_\.]+)\s+import\b", re.MULTILINE)
+
 
 def extract_package_deps() -> dict[str, set[str]]:
     """Walk teleclaude/ and extract inter-package dependencies."""
@@ -52,25 +55,38 @@ def extract_package_deps() -> dict[str, set[str]]:
 
         try:
             source = py_file.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=str(py_file))
-        except (SyntaxError, UnicodeDecodeError):
+        except UnicodeDecodeError:
             continue
 
-        for node in ast.walk(tree):
-            target_pkg = None
-
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    target_pkg = _resolve_teleclaude_package(alias.name)
-
-            elif isinstance(node, ast.ImportFrom):
-                if node.module:
-                    target_pkg = _resolve_teleclaude_package(node.module)
-
-            if target_pkg and target_pkg != source_pkg and target_pkg in KNOWN_PACKAGES:
-                deps[source_pkg].add(target_pkg)
+        for line in source.splitlines():
+            for target_pkg in _resolve_import_line(line):
+                if target_pkg != source_pkg and target_pkg in KNOWN_PACKAGES:
+                    deps[source_pkg].add(target_pkg)
 
     return deps
+
+
+def _resolve_import_line(line: str) -> set[str]:
+    """Resolve one import statement line to teleclaude packages, if present."""
+    targets: set[str] = set()
+
+    import_match = IMPORT_RE.match(line)
+    if import_match:
+        imports = import_match.group(1)
+        for candidate in imports.split(","):
+            module_path = candidate.strip().split(" as ", 1)[0].strip()
+            target_pkg = _resolve_teleclaude_package(module_path)
+            if target_pkg:
+                targets.add(target_pkg)
+        return targets
+
+    from_match = FROM_RE.match(line)
+    if from_match:
+        target_pkg = _resolve_teleclaude_package(from_match.group(1).strip())
+        if target_pkg:
+            targets.add(target_pkg)
+
+    return targets
 
 
 def _resolve_teleclaude_package(module_path: str) -> str | None:
