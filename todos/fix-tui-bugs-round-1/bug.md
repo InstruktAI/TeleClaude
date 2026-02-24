@@ -11,6 +11,8 @@ Right now the selected agent session in the TUI node is not reflected onto the a
 Bugs are skaffolded to only have a `bug.md` and `state.yaml`, but I guess they also need more as they also go through the review process.
 These missing files now also lead to incorrect interpretation of their state as bugs are now incorrrectly shown as `B:started` when their state.yaml says pending
 
+Another issue is that I cannot start a bug because it expects a DOR score. This is potentially regression again because that was already solved. I'm sick and fucking tired of this fucking regression. I'm fucking pissed off about those things. So fuck fuck fuck. So I want to look at what is going wrong here, and I want to know how we can consolidate the best of these past commits and all of this stuff around this, because this is just going back and forth and back and forth. What the fuck?
+
 ## Discovery Context
 
 Reported by: manual

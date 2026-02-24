@@ -1,13 +1,13 @@
 phase: in_progress
 build: started
-review: changes_requested
-deferrals_processed: false
+review: approved
+deferrals_processed: true
 breakdown:
-  assessed: false
+  assessed: true
   todos: []
-review_round: 1
+review_round: 2
 max_review_rounds: 3
-review_baseline_commit: b93637817b12bd07ad82a4cd9d94cc7f81936a81
+review_baseline_commit: 16432f19ffb73ce85b8e3bdfbcb8009ca53a8a05
 unresolved_findings: []
 resolved_findings: []
 dor:
@@ -17,8 +17,8 @@ dor:
   schema_version: 1
   blockers: []
   actions_taken:
-    requirements_updated: false
-    implementation_plan_updated: false
+    requirements_updated: true
+    implementation_plan_updated: true
     demo_updated: true
     dor_report_created: true
     gate_validation_complete: true

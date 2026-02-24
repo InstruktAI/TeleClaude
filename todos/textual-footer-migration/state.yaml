@@ -1,4 +1,5 @@
-build: pending
+phase: in_progress
+build: started
 review: pending
 deferrals_processed: false
 breakdown:
@@ -10,12 +11,12 @@ review_baseline_commit: ''
 unresolved_findings: []
 resolved_findings: []
 dor:
-  last_assessed_at: '2026-02-24T12:00:00Z'
-  score: 8
+  last_assessed_at: '2026-02-23T12:30:00Z'
+  score: 9
   status: pass
   schema_version: 1
   blockers: []
   actions_taken:
-    requirements_updated: false
+    requirements_updated: true
     implementation_plan_updated: true
 schema_version: 1
