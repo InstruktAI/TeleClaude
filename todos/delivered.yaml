@@ -1,4 +1,9 @@
 # Delivered work items. Newest first.
+- slug: transcript-first-output-and-hook-backpressure
+  date: '2026-02-24'
+  title: Make transcript deltas the only output data plane and add bounded hook backpressure/coalescing
+  outcome: DELIVERED
+  commit: 5405aa00
 - slug: finalize-push-guardrails
   date: '2026-02-24'
   title: Split finalize ownership and enforce main-targeting push/merge guardrails
