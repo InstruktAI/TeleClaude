@@ -1,5 +1,6 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
+- slug: finalize-push-guardrails
 - slug: consolidate-methodology-skills
   description: Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
     for cross-agent distribution
@@ -100,7 +101,3 @@
   description: Add Discord Application Commands (slash commands) mirroring Telegram
     command set
 - slug: agent-config-driven-selection-contract
-- slug: assemble-todo-shared-loader
-  description: Unify todo data access behind shared roadmap/todo assembly helpers;
-    add telec todo get and migrate non-next-machine call sites off direct roadmap
-    loaders.
