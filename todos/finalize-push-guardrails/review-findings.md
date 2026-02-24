@@ -2,46 +2,35 @@
 
 ## Paradigm-Fit Assessment
 
-- Data flow: Guardrails were implemented in boundary layers (`.githooks`, agent PATH wrappers, init/install paths) rather than core domain logic, which fits the existing adapter/boundary model.
-- Component reuse: Existing install and tmux session wiring were reused (`install_hooks`, `init_flow`, `tmux_bridge`) instead of introducing parallel mechanisms.
-- Pattern consistency: Finalize split and `FINALIZE_READY` gating are consistent with next-machine staged orchestration patterns.
+- Data flow: Main-protection logic is implemented at transport/boundary layers (`.githooks`, session-scoped wrappers, init/install paths), preserving the existing core-orchestration model.
+- Component reuse: The change reuses established setup/session components (`install_hooks`, `init_flow`, `tmux_bridge`) instead of creating parallel entry points.
+- Pattern consistency: Finalize remains staged in next-machine with explicit worker output gating (`FINALIZE_READY`) and orchestrator-owned apply.
 
 ## Manual Verification Evidence
 
-- Ran targeted test suite for changed areas:
-  - `pytest -q tests/unit/test_pre_push_guardrails.py tests/unit/test_git_wrapper_guardrails.py tests/unit/test_gh_wrapper_guardrails.py tests/unit/test_install_hooks.py tests/unit/test_next_machine_hitl.py tests/unit/test_next_machine_state_deps.py tests/unit/core/test_next_machine_deferral.py tests/unit/test_project_setup_init_flow.py tests/unit/test_tmux_bridge_tmpdir.py`
-  - Result: `105 passed`.
-- Reproduced wrapper behavior with concrete command traces in isolated temp repos/scripts to validate real execution paths.
+- Targeted tests:
+  - `pytest -q -n 1 tests/unit/test_pre_push_guardrails.py tests/unit/test_git_wrapper_guardrails.py tests/unit/test_gh_wrapper_guardrails.py tests/unit/test_install_hooks.py tests/unit/test_next_machine_hitl.py tests/unit/test_next_machine_state_deps.py tests/unit/core/test_next_machine_deferral.py tests/unit/test_project_setup_init_flow.py tests/unit/test_tmux_bridge_tmpdir.py`
+  - Result: `107 passed`.
+- Concrete runtime trace of wrapper dispatch:
+  - `git` wrapper with PATH entries `wrapper:bin1:bin2` where first real git exits non-zero and second exits zero invoked both binaries for one command (`BIN1 status`, then `BIN2 status`).
+  - `gh` wrapper shows the same behavior (`GH1 auth status`, then `GH2 auth status`).
 
 ## Critical
 
-1. `git push --no-verify` main-protection bypass when no refspec is provided and push target resolves to `origin/main`.
-   - Location: `teleclaude/install/wrappers/git:177`
+1. `R2-F1` Real-binary dispatch retries failed commands across PATH entries, causing duplicate execution and failure masking.
+   - Location: `teleclaude/install/wrappers/git:17`, `teleclaude/install/wrappers/gh:17`
    - Confidence: 99
-   - Details: When no refspecs are present, wrapper logic only marks `target_main=1` if current branch is `main` (`if [ "$branch" = "main" ]`). It does not resolve implicit push destination (upstream/push.default). In a concrete replay with `push.default=upstream` and feature branch upstream set to `origin/main`, `git push --no-verify` from a worktree advanced remote `main` (`feature -> main`) and returned success.
-   - Requirement impact: Violates `R4` (must block even with `--no-verify`) and success criteria 2/4.
-   - Fix direction: Resolve effective push destination for no-refspec pushes (including upstream and push.default modes). If destination resolves to `refs/heads/main`, enforce canonical-context block.
-
-2. `gh` wrapper runs real commands multiple times and applies merge-guard flow to non-merge commands.
-   - Location: `teleclaude/install/wrappers/gh:85`, `teleclaude/install/wrappers/gh:89`, `teleclaude/install/wrappers/gh:93`, `teleclaude/install/wrappers/gh:169`
-   - Confidence: 99
-   - Details: Pass-through branches call `_real_gh "$@"` but do not exit. Execution continues into base-branch parsing and final `_real_gh "$@"`. Concrete replay showed `gh auth status` invoked real gh three times. Non-PR commands can therefore duplicate side effects and still run PR-view probing unexpectedly.
-   - Requirement impact: Breaks command fidelity and creates high-risk duplicate execution behavior in agent sessions.
-   - Fix direction: Exit immediately after each pass-through `_real_gh` call (prefer `exec`). Gate base-branch parsing strictly behind confirmed `pr merge` path.
+   - Details: `_real_git`/`_real_gh` use `[ -x ... ] && binary "$@" && return 0`. A non-zero exit does not return; the loop continues and executes the next PATH candidate (including duplicate PATH entries). This can replay side-effecting commands and convert an initial failure into apparent success.
+   - Requirement impact: Violates command-fidelity expectations under `R7` (lifecycle behavior should remain intact) and creates high-risk side effects for guardrail enforcement paths.
+   - Fix direction: Execute the first discovered real binary exactly once and propagate its exact exit status (`exec` preferred).
 
 ## Important
 
-1. Test coverage missed both critical regressions in wrapper behavior.
+1. `R2-F2` Regression tests do not cover failing real-binary dispatch behavior in wrappers.
    - Location: `tests/unit/test_git_wrapper_guardrails.py`, `tests/unit/test_gh_wrapper_guardrails.py`
    - Confidence: 95
-   - Details: Added tests cover explicit refspec paths for `git push` and `pr merge` paths for `gh`, but do not cover:
-     - no-refspec push with upstream resolving to `main` (`--no-verify` bypass case),
-     - non-`pr merge` gh commands executing exactly once.
-   - Fix direction: Add explicit regression tests for both paths before approval.
-
-## Suggestions
-
-- Add a small shared parser/helper for wrapper pass-through flow to avoid control-flow drift and duplicated early-return mistakes.
+   - Details: Current tests cover blocked/allowed guardrail paths and a non-merge single-execution success case, but do not assert behavior when the first PATH-resolved binary returns non-zero.
+   - Fix direction: Add tests that simulate multiple PATH candidates with first-command failure and assert exactly one invocation with preserved failure status.
 
 ## Verdict
 
@@ -49,14 +38,5 @@ REQUEST CHANGES
 
 ## Fixes Applied
 
-1. Critical: `git push --no-verify` no-refspec bypass to `origin/main`
-   - Fix: Extended wrapper no-refspec push resolution to account for `push.default` + upstream destination and block implicit main-targeting pushes from non-canonical contexts.
-   - Commit: `d9a7777a`
-
-2. Critical: `gh` wrapper duplicate execution on non-merge commands
-   - Fix: Added immediate exits after pass-through `_real_gh` calls so non-`pr merge` commands terminate after a single real invocation.
-   - Commit: `6264315f`
-
-3. Important: missing regression coverage for implicit push/gh pass-through paths
-   - Fix: Added tests for no-refspec upstream-to-main `git push --no-verify` and for non-merge `gh` commands executing exactly once.
-   - Commit: `04486e1f`
+- `R2-F1` (Critical): Updated `_real_git` and `_real_gh` to execute the first PATH-resolved binary exactly once and return its exact exit status, preventing retry/masking behavior. Commit: `9ca1fad8`.
+- `R2-F2` (Important): Added regression tests for wrapper dispatch failure behavior to assert first-binary single invocation and preserved non-zero status for both `git` and `gh` wrappers. Commit: `9c23f9c7`.
