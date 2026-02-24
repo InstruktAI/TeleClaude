@@ -38,6 +38,7 @@ from teleclaude.cli.tui.messages import (
     KillSessionRequest,
     PreviewChanged,
     RestartSessionRequest,
+    RestartSessionsRequest,
     ReviveSessionRequest,
     SessionClosed,
     SessionStarted,
@@ -569,6 +570,24 @@ class TelecApp(App[str | None]):
             self.notify("Restarting agent...")
         except Exception as e:
             self.notify(f"Failed to restart session: {e}", severity="error")
+
+    @work(exclusive=True, group="session-action")
+    async def on_restart_sessions_request(self, message: RestartSessionsRequest) -> None:
+        failures = 0
+        for session_id in message.session_ids:
+            try:
+                await self.api.agent_restart(session_id)
+            except Exception:
+                failures += 1
+                logger.exception("Failed to restart session %s", session_id)
+
+        if failures:
+            self.notify(
+                f"Restarted {len(message.session_ids) - failures}/{len(message.session_ids)} sessions",
+                severity="warning",
+            )
+        else:
+            self.notify(f"Restarted {len(message.session_ids)} sessions on {message.computer}")
 
     async def on_settings_changed(self, message: SettingsChanged) -> None:
         key = message.key

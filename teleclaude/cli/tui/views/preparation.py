@@ -346,6 +346,10 @@ class PreparationView(Widget, can_focus=True):
         item = self._current_item()
         return item if isinstance(item, TodoFileRow) else None
 
+    def _current_project_header(self) -> ProjectHeader | None:
+        item = self._current_item()
+        return item if isinstance(item, ProjectHeader) else None
+
     def _editor_command(self, filepath: str, *, view: bool = False) -> str:
         """Build an editor command with absolute path for tmux pane."""
         flags = []
@@ -402,6 +406,33 @@ class PreparationView(Widget, can_focus=True):
             self._update_cursor_highlight()
             if 0 <= self.cursor_index < len(self._nav_items):
                 self._nav_items[self.cursor_index].scroll_visible()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Enable/hide actions based on current tree node type."""
+        del parameters
+        item = self._current_item()
+
+        if isinstance(item, ProjectHeader):
+            if action in {"remove_todo", "activate", "preview_file"}:
+                return False
+            return True
+
+        if isinstance(item, TodoRow):
+            if action == "preview_file":
+                return False
+            return True
+
+        if isinstance(item, TodoFileRow):
+            if action in {"new_todo", "new_bug"}:
+                return False
+            return True
+
+        return True
+
+    def watch_cursor_index(self, _index: int) -> None:
+        """Refresh key bindings when node context changes."""
+        if self.is_attached:
+            self.app.refresh_bindings()
 
     def action_expand(self) -> None:
         """Right: expand todo to show files."""

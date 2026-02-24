@@ -99,6 +99,15 @@ class RestartSessionRequest(Message):
         self.computer = computer
 
 
+class RestartSessionsRequest(Message):
+    """Request to restart multiple sessions on a computer."""
+
+    def __init__(self, computer: str, session_ids: list[str]) -> None:
+        super().__init__()
+        self.computer = computer
+        self.session_ids = session_ids
+
+
 class ReviveSessionRequest(Message):
     """Request to revive a headless session (create its tmux pane)."""
 

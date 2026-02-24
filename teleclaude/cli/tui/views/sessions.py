@@ -17,6 +17,7 @@ from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
     KillSessionRequest,
     PreviewChanged,
+    RestartSessionsRequest,
     ReviveSessionRequest,
     StateDirty,
     StickyChanged,
@@ -79,6 +80,7 @@ class SessionsView(Widget, can_focus=True):
         Binding("n", "new_session", "New"),
         Binding("k", "kill_session", "Kill"),
         Binding("R", "restart_session", "Restart"),
+        Binding("R", "restart_all", "Restart All"),
     ]
 
     preview_session_id = reactive[str | None](None)
@@ -356,6 +358,12 @@ class SessionsView(Widget, can_focus=True):
             return None
         item = self._nav_items[self.cursor_index]
         return item if isinstance(item, SessionRow) else None
+
+    def _current_item(self) -> Widget | None:
+        """Get current cursor item."""
+        if not self._nav_items or self.cursor_index >= len(self._nav_items):
+            return None
+        return self._nav_items[self.cursor_index]
 
     # --- Helpers ---
 
@@ -738,6 +746,47 @@ class SessionsView(Widget, can_focus=True):
         from teleclaude.cli.tui.messages import RestartSessionRequest
 
         self.post_message(RestartSessionRequest(row.session_id, row.session.computer or "local"))
+
+    def action_restart_all(self) -> None:
+        """R on computer header: restart all sessions on that computer."""
+        item = self._current_item()
+        if not isinstance(item, ComputerHeader):
+            return
+
+        computer = item.data.computer.name
+        session_ids = sorted({s.session_id for s in self._sessions if (s.computer or "local") == computer})
+        if not session_ids:
+            self.app.notify(f"No sessions to restart on {computer}", severity="warning")
+            return
+
+        modal = ConfirmModal(
+            title="Restart All Sessions",
+            message=f"Restart {len(session_ids)} sessions on '{computer}'?",
+        )
+
+        def on_confirm(confirmed: bool | None) -> None:
+            if confirmed:
+                self.post_message(RestartSessionsRequest(computer=computer, session_ids=session_ids))
+
+        self.app.push_screen(modal, on_confirm)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Enable/hide actions based on current tree node type."""
+        del parameters
+        item = self._current_item()
+
+        if action == "new_session":
+            return isinstance(item, ProjectHeader)
+        if action in {"kill_session", "restart_session", "focus_pane", "toggle_preview"}:
+            return isinstance(item, SessionRow)
+        if action == "restart_all":
+            return isinstance(item, ComputerHeader)
+        return True
+
+    def watch_cursor_index(self, _index: int) -> None:
+        """Refresh key bindings when node context changes."""
+        if self.is_attached:
+            self.app.refresh_bindings()
 
     # --- Reactive watchers ---
 
