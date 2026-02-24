@@ -55,6 +55,21 @@ def _write_fake_gh(bin_dir: Path) -> Path:
     return script
 
 
+def _write_logging_gh(bin_dir: Path, label: str, exit_code: int) -> Path:
+    script = bin_dir / "gh"
+    script.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'if [ -n "${FAKE_GH_CALLS_FILE:-}" ]; then\n'
+        f'  echo "{label} $*" >> "${{FAKE_GH_CALLS_FILE}}"\n'
+        "fi\n"
+        f"exit {exit_code}\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return script
+
+
 def _render_gh_wrapper(tmp_path: Path, canonical_root: Path) -> Path:
     template = (Path(__file__).resolve().parents[2] / "teleclaude" / "install" / "wrappers" / "gh").read_text(
         encoding="utf-8"
@@ -207,3 +222,38 @@ def test_gh_wrapper_allows_main_merge_from_canonical_main(tmp_path: Path) -> Non
 
     assert result.returncode == 0
     assert "REAL_GH_CALLED pr merge 123 --base main" in result.stdout
+
+
+@pytest.mark.timeout(5)
+def test_gh_wrapper_preserves_first_real_binary_failure(tmp_path: Path) -> None:
+    canonical_root = tmp_path / "repo"
+    worktree = canonical_root / "trees" / "slug"
+    (canonical_root / ".git").mkdir(parents=True, exist_ok=True)
+    worktree.mkdir(parents=True, exist_ok=True)
+
+    wrapper = _render_gh_wrapper(tmp_path, canonical_root)
+    first_bin = tmp_path / "real-bin-1"
+    second_bin = tmp_path / "real-bin-2"
+    first_bin.mkdir(parents=True, exist_ok=True)
+    second_bin.mkdir(parents=True, exist_ok=True)
+    _write_logging_gh(first_bin, "GH1", 19)
+    _write_logging_gh(second_bin, "GH2", 0)
+    calls_file = tmp_path / "gh-calls.log"
+
+    env = os.environ.copy()
+    env["HOME"] = str(tmp_path)
+    env["PATH"] = f"{wrapper.parent}:{first_bin}:{second_bin}:/usr/bin:/bin"
+    env["TELECLAUDE_SESSION_ID"] = "sess-456"
+    env["FAKE_GH_CALLS_FILE"] = str(calls_file)
+
+    result = subprocess.run(
+        [str(wrapper), "auth", "status"],
+        cwd=worktree,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 19
+    assert calls_file.read_text(encoding="utf-8").splitlines() == ["GH1 auth status"]

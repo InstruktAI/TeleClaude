@@ -52,6 +52,21 @@ def _write_fake_git(bin_dir: Path) -> Path:
     return script
 
 
+def _write_logging_git(bin_dir: Path, label: str, exit_code: int) -> Path:
+    script = bin_dir / "git"
+    script.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'if [ -n "${FAKE_GIT_CALLS_FILE:-}" ]; then\n'
+        f'  echo "{label} $*" >> "${{FAKE_GIT_CALLS_FILE}}"\n'
+        "fi\n"
+        f"exit {exit_code}\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return script
+
+
 def _render_git_wrapper(tmp_path: Path, canonical_root: Path) -> Path:
     template = (Path(__file__).resolve().parents[2] / "teleclaude" / "install" / "wrappers" / "git").read_text(
         encoding="utf-8"
@@ -201,3 +216,38 @@ def test_git_wrapper_allows_canonical_main_push(tmp_path: Path) -> None:
 
     assert result.returncode == 0
     assert "REAL_GIT_CALLED push origin main" in result.stdout
+
+
+@pytest.mark.timeout(5)
+def test_git_wrapper_preserves_first_real_binary_failure(tmp_path: Path) -> None:
+    canonical_root = tmp_path / "repo"
+    worktree = canonical_root / "trees" / "slug"
+    (canonical_root / ".git").mkdir(parents=True, exist_ok=True)
+    worktree.mkdir(parents=True, exist_ok=True)
+
+    wrapper = _render_git_wrapper(tmp_path, canonical_root)
+    first_bin = tmp_path / "real-bin-1"
+    second_bin = tmp_path / "real-bin-2"
+    first_bin.mkdir(parents=True, exist_ok=True)
+    second_bin.mkdir(parents=True, exist_ok=True)
+    _write_logging_git(first_bin, "BIN1", 23)
+    _write_logging_git(second_bin, "BIN2", 0)
+    calls_file = tmp_path / "git-calls.log"
+
+    env = os.environ.copy()
+    env["HOME"] = str(tmp_path)
+    env["PATH"] = f"{wrapper.parent}:{first_bin}:{second_bin}:/usr/bin:/bin"
+    env["TELECLAUDE_SESSION_ID"] = "sess-123"
+    env["FAKE_GIT_CALLS_FILE"] = str(calls_file)
+
+    result = subprocess.run(
+        [str(wrapper), "status"],
+        cwd=worktree,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 23
+    assert calls_file.read_text(encoding="utf-8").splitlines() == ["BIN1 status"]
