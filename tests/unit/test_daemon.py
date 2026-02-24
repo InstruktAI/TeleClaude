@@ -265,8 +265,8 @@ async def test_hook_outbox_critical_boundary_prevents_cross_segment_coalescing()
 
 
 @pytest.mark.asyncio
-async def test_hook_outbox_preserves_critical_events_when_capacity_full() -> None:
-    """Critical rows must not be dropped when queue capacity is saturated."""
+async def test_hook_outbox_drops_bursty_when_capacity_full_of_critical() -> None:
+    """When full with critical rows, incoming bursty rows should be coalesced/dropped."""
     daemon = _make_hook_queue_daemon()
     session_id = "sess-critical"
     worker = MagicMock()
@@ -314,6 +314,62 @@ async def test_hook_outbox_preserves_critical_events_when_capacity_full() -> Non
     assert daemon._hook_outbox_coalesced_count == 1
     mock_mark_delivered.assert_awaited_once()
     assert mock_mark_delivered.await_args.args[0] == 3
+
+
+@pytest.mark.asyncio
+async def test_hook_outbox_requeues_critical_when_capacity_full_of_critical() -> None:
+    """Critical overflow should stay bounded in-memory and be retried from DB."""
+    daemon = _make_hook_queue_daemon()
+    session_id = "sess-critical-overflow"
+    worker = MagicMock()
+    worker.done.return_value = False
+    daemon._session_outbox_workers[session_id] = worker
+
+    rows = [
+        {
+            "id": 1,
+            "session_id": session_id,
+            "event_type": AgentHookEvents.AGENT_SESSION_START,
+            "payload": "{}",
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        {
+            "id": 2,
+            "session_id": session_id,
+            "event_type": AgentHookEvents.USER_PROMPT_SUBMIT,
+            "payload": '{"prompt":"x"}',
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        {
+            "id": 3,
+            "session_id": session_id,
+            "event_type": AgentHookEvents.AGENT_STOP,
+            "payload": "{}",
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+    ]
+
+    with (
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_MAX_PENDING", 2),
+        patch("teleclaude.daemon.db.mark_hook_outbox_delivered", new_callable=AsyncMock) as mock_mark_delivered,
+        patch("teleclaude.daemon.db.mark_hook_outbox_failed", new_callable=AsyncMock) as mock_mark_failed,
+    ):
+        await daemon._enqueue_session_outbox_item(session_id, rows[0])
+        await daemon._enqueue_session_outbox_item(session_id, rows[1])
+        await daemon._enqueue_session_outbox_item(session_id, rows[2])
+
+    queue_state = daemon._session_outbox_queues[session_id]
+    assert [item.row["id"] for item in queue_state.pending] == [1, 2]
+    assert daemon._hook_outbox_coalesced_count == 0
+    mock_mark_delivered.assert_not_awaited()
+    mock_mark_failed.assert_awaited_once()
+    assert mock_mark_failed.await_args.kwargs["row_id"] == 3
+    assert mock_mark_failed.await_args.kwargs["attempt_count"] == 0
+    assert mock_mark_failed.await_args.kwargs["error"] == "backpressure:session_queue_full"
+    assert isinstance(mock_mark_failed.await_args.kwargs["next_attempt_at"], str)
 
 
 @pytest.mark.asyncio

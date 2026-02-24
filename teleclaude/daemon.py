@@ -1072,6 +1072,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         dropped_rows: list[HookOutboxRow] = []
         enqueued = True
+        requeue_claimed_critical = False
         queue_item = _HookOutboxQueueItem(
             row=row,
             event_type=event_type,
@@ -1101,9 +1102,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 while len(pending) >= HOOK_OUTBOX_SESSION_MAX_PENDING:
                     drop_idx = self._find_oldest_bursty_index(pending)
                     if drop_idx is None:
+                        # Queue is full of critical rows. Keep the claimed row durable in DB and retry later.
+                        requeue_claimed_critical = True
+                        enqueued = False
                         break
                     dropped_rows.append(pending.pop(drop_idx).row)
-                pending.append(queue_item)
+                if enqueued:
+                    pending.append(queue_item)
 
             queue_depth = len(pending)
             if enqueued:
@@ -1117,6 +1122,22 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     dropped_id,
                     error=f"coalesced:{event_type or 'unknown'}",
                 )
+
+        if requeue_claimed_critical:
+            logger.debug(
+                "Hook outbox session queue at capacity; deferring claimed critical row",
+                session_id=session_id[:8],
+                row_id=row["id"],
+                queue_depth=queue_depth,
+                max_pending=HOOK_OUTBOX_SESSION_MAX_PENDING,
+            )
+            retry_at = (datetime.now(timezone.utc) + timedelta(seconds=HOOK_OUTBOX_POLL_INTERVAL_S)).isoformat()
+            await db.mark_hook_outbox_failed(
+                row_id=row["id"],
+                attempt_count=int(row.get("attempt_count", 0)),
+                next_attempt_at=retry_at,
+                error="backpressure:session_queue_full",
+            )
 
         self._maybe_warn_hook_backlog(session_id, queue_depth)
 
