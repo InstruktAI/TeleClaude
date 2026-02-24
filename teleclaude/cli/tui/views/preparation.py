@@ -372,12 +372,8 @@ class PreparationView(Widget, can_focus=True):
                 return item
         return None
 
-    def _open_session_modal(self, slug: str, default_message: str) -> None:
-        """Open StartSessionModal for a todo with a pre-filled prompt."""
-        computer = self._slug_to_computer.get(slug, "local")
-        project_path = self._slug_to_project_path.get(slug, "")
-        if not project_path:
-            return
+    def _open_session_modal(self, *, computer: str, project_path: str, default_message: str) -> None:
+        """Open StartSessionModal with a pre-filled prompt."""
         modal = StartSessionModal(
             computer=computer,
             project_path=project_path,
@@ -390,6 +386,69 @@ class PreparationView(Widget, can_focus=True):
         """Handle result from StartSessionModal."""
         if result:
             self.post_message(result)
+
+    def _resolve_project_header_for_index(self, index: int) -> ProjectHeader | None:
+        """Find nearest project header above a nav item index."""
+        for i in range(index, -1, -1):
+            item = self._nav_items[i]
+            if isinstance(item, ProjectHeader):
+                return item
+        return None
+
+    def _resolve_cursor_context(self) -> tuple[str, str, str | None] | None:
+        """Resolve computer, project path, and optional slug from cursor."""
+        item = self._current_item()
+        if item is None:
+            return None
+
+        if isinstance(item, ProjectHeader):
+            return (item.project.computer or "local", item.project.path, None)
+
+        if isinstance(item, TodoRow):
+            slug = item.slug
+            project_path = self._slug_to_project_path.get(slug, "")
+            computer = self._slug_to_computer.get(slug, "local")
+            if project_path:
+                return (computer, project_path, slug)
+            try:
+                idx = self._nav_items.index(item)
+            except ValueError:
+                return None
+            header = self._resolve_project_header_for_index(idx)
+            if header:
+                return (header.project.computer or "local", header.project.path, slug)
+            return None
+
+        if isinstance(item, TodoFileRow) and item.slug:
+            slug = item.slug
+            project_path = self._slug_to_project_path.get(slug, "")
+            computer = self._slug_to_computer.get(slug, "local")
+            if project_path:
+                return (computer, project_path, slug)
+            try:
+                idx = self._nav_items.index(item)
+            except ValueError:
+                return None
+            header = self._resolve_project_header_for_index(idx)
+            if header:
+                return (header.project.computer or "local", header.project.path, slug)
+        return None
+
+    def _resolve_todo_for_cursor(self) -> TodoRow | None:
+        """Resolve selected todo row from todo/file cursor items."""
+        todo_row = self._current_todo_row()
+        if todo_row:
+            return todo_row
+
+        file_row = self._current_file_row()
+        if file_row:
+            return self._find_parent_todo(file_row)
+        return None
+
+    @staticmethod
+    def _next_command(base: str, slug: str | None) -> str:
+        """Build /next-* command with optional slug."""
+        return f"/{base} {slug}" if slug else f"/{base}"
 
     # --- Keyboard actions ---
 
@@ -599,43 +658,41 @@ class PreparationView(Widget, can_focus=True):
         )
 
     def action_prepare(self) -> None:
-        """p: directly start a prepare session with defaults."""
-        row = self._current_todo_row()
-        slug = row.slug if row else None
-        if not slug:
-            file_row = self._current_file_row()
-            if file_row:
-                slug = file_row.slug
-        if not slug:
+        """p: open session modal prefilled with /next-prepare [slug]."""
+        context = self._resolve_cursor_context()
+        if not context:
             return
-        computer = self._slug_to_computer.get(slug, "local")
-        project_path = self._slug_to_project_path.get(slug, "")
-        if not project_path:
-            return
-        self.post_message(
-            CreateSessionRequest(
-                computer=computer,
-                project_path=project_path,
-                agent="claude",
-                thinking_mode="slow",
-                title=f"Prepare {slug}",
-                message=f"/next-prepare {slug}",
-            )
+        computer, project_path, slug = context
+        self._open_session_modal(
+            computer=computer,
+            project_path=project_path,
+            default_message=self._next_command("next-prepare", slug),
         )
 
     def action_start_work(self) -> None:
-        """s: open agent session modal with /next-work prompt.
+        """s: open session modal prefilled with /next-work [slug].
 
-        Gated on DOR readiness - todo must meet DOR_READY_THRESHOLD.
+        Gated on DOR readiness when a specific todo is selected.
         """
-        row = self._current_todo_row()
-        if not row:
+        context = self._resolve_cursor_context()
+        if not context:
             return
-        dor = row.todo.dor_score
-        if dor is None or dor < DOR_READY_THRESHOLD:
-            self.app.notify(f"DOR score too low ({dor or 0}/{DOR_READY_THRESHOLD})", severity="warning")
-            return
-        self._open_session_modal(row.slug, f"/next-work {row.slug}")
+        computer, project_path, slug = context
+
+        if slug:
+            todo_row = self._resolve_todo_for_cursor()
+            if not todo_row:
+                return
+            dor = todo_row.todo.dor_score
+            if dor is None or dor < DOR_READY_THRESHOLD:
+                self.app.notify(f"DOR score too low ({dor or 0}/{DOR_READY_THRESHOLD})", severity="warning")
+                return
+
+        self._open_session_modal(
+            computer=computer,
+            project_path=project_path,
+            default_message=self._next_command("next-work", slug),
+        )
 
     # --- Click handlers ---
 
