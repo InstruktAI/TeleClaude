@@ -57,7 +57,7 @@ Close all known paths where worktree-context agents can advance `origin/main` di
 
 ## Phase 4 - Validation and Safety Checks (R7)
 
-- [ ] Extend next-machine tests for finalize flow and post-completion expectations:
+- [x] Extend next-machine tests for finalize flow and post-completion expectations:
   - [`test_next_machine_state_deps.py`](../../tests/unit/test_next_machine_state_deps.py)
   - [`test_next_machine_hitl.py`](../../tests/unit/test_next_machine_hitl.py)
   - [`test_next_machine_deferral.py`](../../tests/unit/core/test_next_machine_deferral.py)

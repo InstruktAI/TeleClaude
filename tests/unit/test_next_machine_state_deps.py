@@ -527,6 +527,8 @@ async def test_next_work_finalize_next_call_without_slug():
     assert 'command="/next-finalize"' in result
     assert "Call teleclaude__next_work()" in result
     assert "Call teleclaude__next_work(slug=" not in result
+    assert "FINALIZE_READY: final-item" in result
+    assert "telec roadmap deliver final-item" in result
 
 
 # =============================================================================
