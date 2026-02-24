@@ -683,19 +683,22 @@ class MCPHandlersMixin:
         if caller_session_id:
             caller = await db.get_session(caller_session_id)
             if caller:
-                role = "orchestrator" if not caller.initiator_session_id else "worker"
-                agent = (caller.active_agent or "ai").strip() or "ai"
                 computer = (caller.computer_name or config.computer.name).strip() or config.computer.name
-                actor_id = f"ai:{computer}:{caller_session_id}"
-                actor_name = f"{role}:{agent}@{computer}"
-                return (actor_id, actor_name, role, agent, computer)
+                human_email = (caller.human_email or "").strip()
+                if human_email:
+                    local_part = human_email.split("@", 1)[0] or human_email
+                    actor_id = f"human:{human_email}"
+                    actor_name = f"{local_part}@{computer}"
+                    return (actor_id, actor_name, "human", "human", computer)
+
+                actor_id = f"system:{computer}:{caller_session_id}"
+                actor_name = f"system@{computer}"
+                return (actor_id, actor_name, "system", "system", computer)
 
         computer = config.computer.name
-        role = "worker"
-        agent = "ai"
-        actor_id = f"ai:{computer}:{caller_session_id or 'unknown'}"
-        actor_name = f"{role}:{agent}@{computer}"
-        return (actor_id, actor_name, role, agent, computer)
+        actor_id = f"system:{computer}:{caller_session_id or 'mcp'}"
+        actor_name = f"system@{computer}"
+        return (actor_id, actor_name, "system", "system", computer)
 
     async def _start_local_session_with_auto_command(
         self,

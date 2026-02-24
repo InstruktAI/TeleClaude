@@ -2,22 +2,23 @@
 
 ## Goal
 
-Make session routing predictable and observable:
+Guarantee complete, continuous output delivery from agent sessions to all UI adapters, and ensure user input from any adapter is reflected to all others.
 
-- Keep direct reply continuity at the origin UX.
-- Keep operational visibility for admins.
-- Reflect user/actor input clearly across observer adapters.
+## Identity and Ownership Semantics
+
+- Input origin is provenance, not a routing gate.
+- MCP-origin messages are valid injected session messages and follow normal reflection routing.
+- Ownership for MCP-origin messages is derived from caller lineage:
+  - Human-owned caller session: preserve and propagate human ownership.
+  - No human owner in lineage: treat as system-owned automation.
 
 ## Scope
 
 ### In scope
 
-1. **Text delivery between tool calls** - threaded adapters (Claude/Discord, Gemini/Telegram, Gemini/Discord) receive all assistant text, not only tool-call boundaries.
-2. **Origin UX-only notices** - feedback notices and user-facing errors stay on the origin endpoint and do not fan out to non-origin admin destinations.
-3. **Origin UX-only summary path** - `last_output_summary` is origin UX only, rendered through non-threaded/in-edit paths (for example TUI session field and Telegram edit-message placement), not threaded admin output.
-4. **Input reflection fan-out** - text, voice, and MCP input are reflected to every other provisioned UI adapter except the source adapter.
-5. **Actor-attributed reflections** - reflected input includes best-effort actor identity (`actor_name`, optional avatar), so admins can see who sent the input without relying on adapter name alone.
-6. **Discord reflection rendering** - Discord uses webhook-based reflection presentation when available (actor name/avatar), with fallback to standard bot posting when webhook delivery is unavailable.
+1. **Text delivery between tool calls** — threaded adapters (Claude/Discord, Gemini/Telegram, Gemini/Discord) receive all assistant text, not just tool-call boundaries.
+2. **User input reflection across adapters** — when a user sends input from any adapter (terminal, Telegram, Discord), that input is broadcast to all OTHER UI adapters as a formatted message (`"{SOURCE} @ {computer_name}:\n\n{text}"`).
+3. **Ownership-aware MCP reflections** — MCP-injected messages are reflected using lineage-resolved ownership attribution.
 
 ### Out of scope
 
@@ -29,12 +30,9 @@ Make session routing predictable and observable:
 
 - [ ] A Claude session on Discord shows text output between tool calls within ~2s of it appearing in the transcript.
 - [ ] A Gemini session on Telegram shows the same continuous delivery.
-- [ ] Feedback notices and user-facing errors stay origin-only and never fan out to non-origin admin destinations.
-- [ ] `last_output_summary` is delivered through the origin UX in-edit path only, not threaded admin output.
-- [ ] User input from terminal/Telegram/Discord is reflected to all other provisioned adapters (source excluded) with actor attribution.
-- [ ] Voice input follows the same reflection contract as text input.
-- [ ] MCP input follows the same reflection contract as text/voice input, with actor attribution.
-- [ ] On Discord, actor-attributed reflections render via webhook when possible and safely fall back to normal send when not.
+- [ ] User input from the terminal appears in Discord/Telegram threads as "TUI @ {computer_name}:\n\n{text}" within seconds.
+- [ ] User input from Telegram appears in Discord threads (and vice versa) with correct source attribution.
+- [ ] MCP-origin injected messages are reflected like other inputs, with ownership resolved from lineage (human owner when present, otherwise system owner).
 
 ## Constraints
 
