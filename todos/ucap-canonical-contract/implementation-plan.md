@@ -23,14 +23,14 @@ semantics per adapter.
 
 ## Phase 1 - Contract Definition and Baseline Inventory (R1, R2)
 
-- [x] Inventory current outbound activity payload producers and consumers.
-- [x] Define canonical event vocabulary and schema fields for:
+- [ ] Inventory current outbound activity payload producers and consumers.
+- [ ] Define canonical event vocabulary and schema fields for:
   - `user_prompt_submit`
   - `agent_output_update`
   - `agent_output_stop`
-- [x] Define canonical routing metadata expectations (`message_intent`, `delivery_scope`)
+- [ ] Define canonical routing metadata expectations (`message_intent`, `delivery_scope`)
       aligned with session output routing spec.
-- [x] Record compatibility behavior for legacy consumers during migration.
+- [ ] Record compatibility behavior for legacy consumers during migration.
 
 ### Files (expected)
 
@@ -42,9 +42,9 @@ semantics per adapter.
 
 ## Phase 2 - Shared Serializer/Validation Utilities (R2, R3)
 
-- [x] Add a shared canonical contract utility module for serialization and validation.
-- [x] Define explicit validation failure behavior (error reporting + non-crashing fallback).
-- [x] Ensure utility APIs are adapter-agnostic and reusable by multiple producer paths.
+- [ ] Add a shared canonical contract utility module for serialization and validation.
+- [ ] Define explicit validation failure behavior (error reporting + non-crashing fallback).
+- [ ] Ensure utility APIs are adapter-agnostic and reusable by multiple producer paths.
 
 ### Files (expected)
 
@@ -54,9 +54,9 @@ semantics per adapter.
 
 ## Phase 3 - Producer Boundary Adoption (R3, R4)
 
-- [x] Route poller/coordinator outbound activity emission through the shared canonical utility layer.
-- [x] Remove ad-hoc producer-side payload shaping where canonical utility now applies.
-- [x] Preserve existing output cadence and threaded/non-threaded behavior.
+- [ ] Route poller/coordinator outbound activity emission through the shared canonical utility layer.
+- [ ] Remove ad-hoc producer-side payload shaping where canonical utility now applies.
+- [ ] Preserve existing output cadence and threaded/non-threaded behavior.
 
 ### Files (expected)
 
@@ -67,10 +67,10 @@ semantics per adapter.
 
 ## Phase 4 - Compatibility Bridge (R5)
 
-- [x] Implement translation from canonical contract to current legacy consumer payloads
+- [ ] Implement translation from canonical contract to current legacy consumer payloads
       where needed.
-- [x] Keep compatibility mapping centralized so legacy shape is derived from canonical events.
-- [x] Verify no direct adapter-specific legacy shaping is reintroduced in core logic.
+- [ ] Keep compatibility mapping centralized so legacy shape is derived from canonical events.
+- [ ] Verify no direct adapter-specific legacy shaping is reintroduced in core logic.
 
 ### Files (expected)
 
@@ -80,11 +80,11 @@ semantics per adapter.
 
 ## Phase 5 - Verification and Documentation Completion (R1-R6)
 
-- [x] Add/extend unit tests for canonical schema, serialization, validation failures,
+- [ ] Add/extend unit tests for canonical schema, serialization, validation failures,
       and event mapping behavior.
-- [x] Add regression tests ensuring current activity event consumers continue to pass.
-- [x] Update docs with canonical contract examples and migration notes.
-- [x] Update `demo.md` commands for deterministic validation execution.
+- [ ] Add regression tests ensuring current activity event consumers continue to pass.
+- [ ] Update docs with canonical contract examples and migration notes.
+- [ ] Update `demo.md` commands for deterministic validation execution.
 
 ### Files (expected)
 
@@ -104,7 +104,7 @@ semantics per adapter.
 
 ## Definition of Done
 
-- [x] Canonical outbound activity contract is documented and test-backed.
-- [x] Shared serializer/validator utilities are in place and used by producer paths.
-- [x] Compatibility bridge preserves existing consumer behavior during migration.
-- [x] No unresolved contradiction exists between contract docs and implementation plan tasks.
+- [ ] Canonical outbound activity contract is documented and test-backed.
+- [ ] Shared serializer/validator utilities are in place and used by producer paths.
+- [ ] Compatibility bridge preserves existing consumer behavior during migration.
+- [ ] No unresolved contradiction exists between contract docs and implementation plan tasks.
