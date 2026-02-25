@@ -1,0 +1,25 @@
+{
+  "slug": "consolidate-methodology-skills",
+  "title": "Consolidate Methodology Skills",
+  "version": "0.1.0",
+  "delivered_date": "2026-02-25",
+  "merge_commit": "72e6f9b2",
+  "metrics": {
+    "commits": 22,
+    "files_changed": 22,
+    "files_created": 9,
+    "insertions": 592,
+    "deletions": 169,
+    "test_files_added": 0,
+    "review_rounds": 4,
+    "critical_findings": 0,
+    "important_findings": 1,
+    "suggestions": 2
+  },
+  "acts": {
+    "challenge": "Consolidate six methodology skills into shared TeleClaude artifacts and distribute them consistently across Claude, Codex, and Gemini runtimes.",
+    "build": "Implemented six new skills under `agents/skills`, wired sync/distribution validation, and aligned supporting CLI/runtime/test surfaces that were already part of the branch history.",
+    "gauntlet": "Build gates repeatedly failed due test-runner instability and scope-traceability review findings; multiple fix/review loops resolved gate reliability and documented scope alignment before closure.",
+    "next": "Keep future todos strictly scope-aligned up front so runtime/CLI/test changes are explicitly scoped before build, avoiding late review-cycle contract drift."
+  }
+}
