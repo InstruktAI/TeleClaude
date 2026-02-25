@@ -1,0 +1,17 @@
+{
+  "slug": "ucap-truthful-session-status",
+  "title": "Requirements - ucap-truthful-session-status",
+  "version": "0.1.0",
+  "delivered_date": "2026-02-25",
+  "merge_commit": "38c12b2a99bc29801f50e23d85c1f2edea1887da",
+  "metrics": {
+    "plan_checklist_items": 23,
+    "plan_checklist_completed": 0
+  },
+  "acts": {
+    "challenge": "",
+    "build": "",
+    "gauntlet": "",
+    "next": ""
+  }
+}
