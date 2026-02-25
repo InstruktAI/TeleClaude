@@ -61,6 +61,7 @@ from teleclaude.mcp.types import (
     StopNotificationsResult,
     WidgetIndexEntry,
 )
+from teleclaude.project_manifest import load_manifest
 from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types import SystemStats
 from teleclaude.types.commands import (
@@ -79,6 +80,23 @@ logger = get_logger(__name__)
 
 # Max chars for session data response
 MCP_SESSION_DATA_MAX_CHARS = 48000
+
+
+def _snippet_ids_require_project_root(snippet_ids: list[str] | None) -> bool:
+    """Return True when snippet IDs depend on local project-root resolution."""
+    if not snippet_ids:
+        return False
+
+    manifest_project_prefixes = {entry.name.strip().lower() for entry in load_manifest() if entry.name.strip()}
+    for snippet_id in snippet_ids:
+        if "/" not in snippet_id:
+            continue
+        prefix = snippet_id.split("/", 1)[0].strip().lower()
+        if not prefix:
+            continue
+        if prefix == "project" or prefix in manifest_project_prefixes:
+            return True
+    return False
 
 
 class MCPHandlersMixin:
@@ -1176,7 +1194,7 @@ class MCPHandlersMixin:
             effective_root = str(config.computer.default_working_dir)
         if areas is None:
             areas = []
-        if snippet_ids and any("/" in sid and not sid.startswith(("general/", "third-party/")) for sid in snippet_ids):
+        if _snippet_ids_require_project_root(snippet_ids):
             root = Path(effective_root).expanduser().resolve()
             while True:
                 if (root / "teleclaude.yml").exists():

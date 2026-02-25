@@ -75,3 +75,41 @@ async def test_get_context_defaults_user_role_to_admin_when_session_missing() ->
     kwargs = mock_build.call_args.kwargs
     assert kwargs["list_projects"] is True
     assert kwargs["caller_role"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_get_context_allows_non_project_snippet_ids_without_project_root() -> None:
+    handler = DummyHandlers()
+
+    with (
+        patch("teleclaude.mcp.handlers.db.get_session", new=AsyncMock(return_value=None)),
+        patch("teleclaude.mcp.handlers.load_manifest", return_value=[]),
+        patch("teleclaude.mcp.handlers.build_context_output", return_value="ok") as mock_build,
+    ):
+        result = await handler.teleclaude__get_context(
+            snippet_ids=["software-development/policy/commits"],
+            caller_session_id="missing",
+            cwd="/",
+        )
+
+    assert result == "ok"
+    assert mock_build.called
+
+
+@pytest.mark.asyncio
+async def test_get_context_requires_project_root_for_project_snippet_ids() -> None:
+    handler = DummyHandlers()
+
+    with (
+        patch("teleclaude.mcp.handlers.db.get_session", new=AsyncMock(return_value=None)),
+        patch("teleclaude.mcp.handlers.load_manifest", return_value=[]),
+        patch("teleclaude.mcp.handlers.build_context_output", return_value="ok") as mock_build,
+    ):
+        result = await handler.teleclaude__get_context(
+            snippet_ids=["project/policy/default"],
+            caller_session_id="missing",
+            cwd="/",
+        )
+
+    assert result.startswith("ERROR: NO_PROJECT_ROOT")
+    mock_build.assert_not_called()
