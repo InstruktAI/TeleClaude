@@ -7,6 +7,8 @@ import importlib.util
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = PROJECT_ROOT / "scripts" / "diagrams"
 
@@ -122,6 +124,8 @@ def test_extract_data_model_regression() -> None:
     assert "session" in mermaid
 
 
+# Parses imports across the full teleclaude package tree; allow CI variance.
+@pytest.mark.timeout(20)
 def test_extract_modules_regression() -> None:
     module = _load_script_module("extract_modules")
 
