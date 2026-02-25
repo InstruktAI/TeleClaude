@@ -594,6 +594,42 @@ def test_admin_sees_all_visibility_levels(tmp_path: Path, monkeypatch: pytest.Mo
     assert "project/policy/internal" in output
 
 
+def test_caller_role_admin_is_authoritative_over_human_role(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project_root = tmp_path / "project"
+    global_root = tmp_path / "global"
+    global_snippets_root = global_root / "agents" / "docs"
+    _write_index(global_snippets_root / "index.yaml", global_root, [])
+    monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
+
+    _write(
+        project_root / "docs" / "project" / "policy" / "internal.md",
+        "---\nid: project/policy/internal\ntype: policy\nscope: project\ndescription: Internal\nvisibility: internal\n---\n\nInternal\n",
+    )
+    _write_index(
+        project_root / "docs" / "project" / "index.yaml",
+        project_root,
+        [
+            {
+                "id": "project/policy/internal",
+                "description": "Internal",
+                "type": "policy",
+                "scope": "project",
+                "path": "docs/project/policy/internal.md",
+                "visibility": "internal",
+            }
+        ],
+    )
+
+    output = context_selector.build_context_output(
+        areas=["policy"],
+        project_root=project_root,
+        caller_role="admin",
+        human_role="member",
+    )
+
+    assert "project/policy/internal" in output
+
+
 def test_phase2_denies_default_internal_for_non_admin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project_root = tmp_path / "project"
     global_root = tmp_path / "global"

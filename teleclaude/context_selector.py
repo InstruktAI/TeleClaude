@@ -607,7 +607,7 @@ def build_context_output(
 
     def _include_snippet(snippet: SnippetMeta) -> bool:
         resolved_role = (caller_role or "").strip().lower()
-        if human_role and (not resolved_role or resolved_role == "admin"):
+        if human_role and not resolved_role:
             resolved_role = human_role.strip().lower()
         if not resolved_role:
             resolved_role = "admin"
