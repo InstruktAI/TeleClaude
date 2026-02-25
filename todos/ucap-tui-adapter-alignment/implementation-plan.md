@@ -34,8 +34,8 @@ Migrate TUI realtime behavior onto canonical adapter output while preserving TUI
 
 ## Phase 3 - TUI Validation and Observability
 
-- [ ] Add tests for canonical contract path in TUI lane.
-- [ ] Add/verify TUI lane observability fields (lane, event type, session).
+- [x] Add tests for canonical contract path in TUI lane.
+- [x] Add/verify TUI lane observability fields (lane, event type, session).
 
 ### Files (expected)
 
@@ -44,6 +44,6 @@ Migrate TUI realtime behavior onto canonical adapter output while preserving TUI
 
 ## Definition of Done
 
-- [ ] TUI lane uses canonical outbound contract.
-- [ ] TUI bypass path is removed for core output progression.
-- [ ] TUI presentation boundary remains intact.
+- [x] TUI lane uses canonical outbound contract.
+- [x] TUI bypass path is removed for core output progression.
+- [x] TUI presentation boundary remains intact.
