@@ -603,6 +603,8 @@ def build_context_output(
             for snippet in loaded:
                 snippets_by_path[str(snippet.path)] = snippet
 
+    requested_ids = {sid.strip() for sid in (snippet_ids or []) if sid.strip()}
+
     def _include_snippet(snippet: SnippetMeta) -> bool:
         resolved_role = (caller_role or "").strip().lower()
         if human_role and (not resolved_role or resolved_role == "admin"):
@@ -616,7 +618,12 @@ def build_context_output(
                 return True
             return any(snippet.snippet_id.startswith(f"{domain}/") for domain in domain_config)
         if snippet.scope == "project":
-            if projects and snippet.source_project and snippet.source_project.lower() != current_project_name.lower():
+            is_cross_project = (
+                bool(snippet.source_project) and snippet.source_project.lower() != current_project_name.lower()
+            )
+            if requested_ids and snippet.snippet_id in requested_ids and is_cross_project:
+                return True
+            if projects and is_cross_project:
                 return True
             return any(
                 root in snippet.path.parents or root == snippet.path.parent for root in project_domain_roots.values()

@@ -317,6 +317,59 @@ def test_projects_filter_merges_multiple_projects(tmp_path: Path, monkeypatch: p
     assert "itsup/policy/two" in output
 
 
+def test_phase2_cross_project_request_without_projects_returns_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    current_root = tmp_path / "current"
+    current_root.mkdir(parents=True, exist_ok=True)
+    global_root = tmp_path / "global"
+    global_snippets_root = global_root / "agents" / "docs"
+    _write_index(global_snippets_root / "index.yaml", global_root, [])
+    monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
+
+    teleclaude_root = tmp_path / "teleclaude"
+    teleclaude_doc = teleclaude_root / "docs" / "project" / "design" / "architecture.md"
+    _write(
+        teleclaude_doc,
+        "---\nid: project/design/architecture\ntype: design\nscope: project\n"
+        "description: Architecture\nvisibility: public\n---\n\nArchitecture details.\n",
+    )
+    _write_index(
+        teleclaude_root / "docs" / "project" / "index.yaml",
+        teleclaude_root,
+        [
+            {
+                "id": "project/design/architecture",
+                "description": "Architecture",
+                "type": "design",
+                "scope": "project",
+                "path": "docs/project/design/architecture.md",
+                "visibility": "public",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        context_selector,
+        "load_manifest",
+        lambda: [
+            ProjectManifestEntry(
+                "teleclaude", "", str(teleclaude_root / "docs" / "project" / "index.yaml"), str(teleclaude_root)
+            ),
+        ],
+    )
+
+    output = context_selector.build_context_output(
+        areas=[],
+        project_root=current_root,
+        snippet_ids=["teleclaude/design/architecture"],
+        caller_role="admin",
+    )
+
+    assert "teleclaude/design/architecture" in output
+    assert "Architecture details." in output
+    assert "access: denied" not in output
+
+
 def test_single_project_mode_keeps_project_prefix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project_root = tmp_path / "project"
     global_root = tmp_path / "global"
