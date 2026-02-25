@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -136,3 +137,45 @@ async def test_pre_post_handlers_skip_without_message_id():
 
     assert adapter.pre_calls == []
     assert adapter.post_calls == []
+
+
+@pytest.mark.asyncio
+async def test_ui_lane_error_log_identifies_adapter_and_session(caplog):
+    """ERROR log from a lane failure must include adapter key and session ID (R5.1).
+
+    R5.1: Error logs must identify adapter lane and session for ingress/provisioning failures.
+    A regression dropping adapter type or session ID from the error log must be caught.
+    """
+
+    class FailingAdapter(PrePostUiAdapter):
+        async def send_message(  # type: ignore[override]
+            self, session: Session, text: str, *, metadata: MessageMetadata | None = None
+        ) -> str:
+            raise RuntimeError("simulated lane failure")
+
+    client = AdapterClient()
+    adapter = FailingAdapter(client)
+    session = _make_session()  # session_id="sess-1"
+
+    with patch(
+        "teleclaude.core.adapter_client.get_display_title_for_session",
+        AsyncMock(return_value="Test Session"),
+    ):
+        with caplog.at_level(logging.ERROR, logger="teleclaude.core.adapter_client"):
+            result = await client._run_ui_lane(
+                session,
+                "telegram",
+                adapter,
+                lambda a, s: a.send_message(s, "test text"),
+            )
+
+    assert result is None, "Lane must return None after unrecoverable failure"
+
+    error_records = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert error_records, "Expected at least one ERROR log record from lane failure"
+
+    error_msg = error_records[0].getMessage()
+    # R5.1: log must identify the adapter lane
+    assert "telegram" in error_msg, f"Adapter key missing from error log: {error_msg!r}"
+    # R5.1: log must identify the session
+    assert session.session_id[:8] in error_msg, f"Session ID missing from error log: {error_msg!r}"

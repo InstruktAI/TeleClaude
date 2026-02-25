@@ -26,38 +26,17 @@ so adapter differences remain edge concerns only.
 
 **File(s):** `teleclaude/core/command_mapper.py`, `teleclaude/core/command_handlers.py`, `teleclaude/api_server.py`
 
-- [x] Enumerate all interactive input paths that produce `ProcessMessageCommand` or adjacent command types.
-- [x] Document where `origin`, actor attribution, and `last_input_origin` are set/updated.
-- [x] Mark any duplicated or conflicting origin/provenance mutations.
-
-**Audit notes:**
-
-- `CommandMapper.map_telegram_input("message", ...)` → `ProcessMessageCommand` with `origin=metadata.origin or TELEGRAM`; actor extracted via `_extract_actor_from_channel_metadata` using `telegram_user_id` fallback.
-- `CommandMapper.map_redis_input("message", ...)` → `ProcessMessageCommand` with `origin` from parameter; actor extracted similarly. MCP origin gets a synthetic `system:<computer>` actor_id.
-- `CommandMapper.map_api_input("message", ...)` → `ProcessMessageCommand` with `origin=metadata.origin or API`; actor from payload fields with channel_metadata fallback.
-- `process_message()` (command_handlers.py:899-904): updates `last_input_origin=cmd.origin` in DB **before** `broadcast_user_input()` at line 906. Ordering is correct.
-- `handle_voice()` (command_handlers.py:763-764): updates `last_input_origin=cmd.origin` **before** feedback status at lines 768+. Comment explicitly documents this. Ordering is correct.
-- `create_session()` sets `last_input_origin=origin` from the command at creation time. No inheritance from parent (documented as intentional).
-- `run_agent_command()` updates `last_input_origin=cmd.origin` in DB.
-- No duplicated or conflicting provenance mutations found. Each handler owns exactly one provenance write per call.
+- [ ] Enumerate all interactive input paths that produce `ProcessMessageCommand` or adjacent command types.
+- [ ] Document where `origin`, actor attribution, and `last_input_origin` are set/updated.
+- [ ] Mark any duplicated or conflicting origin/provenance mutations.
 
 ### Task 0.2: Inventory provisioning call sites
 
 **File(s):** `teleclaude/core/adapter_client.py`, `teleclaude/adapters/ui_adapter.py`, `teleclaude/adapters/telegram_adapter.py`, `teleclaude/adapters/discord_adapter.py`
 
-- [x] Confirm all UI message paths pass through `ensure_ui_channels()` before delivery.
-- [x] Identify direct/duplicate channel creation patterns that bypass shared orchestration intent.
-- [x] Record adapter-specific exceptions that are intentional (for example customer skip behavior).
-
-**Audit notes:**
-
-- `_route_to_ui()` (adapter_client.py:265) calls `ensure_ui_channels(session)` as first action before any fanout. All output paths (`send_message`, `send_threaded_output`, `send_output_update`, `edit_message`, `delete_message`, `send_file`, `update_channel_title`) route through `_route_to_ui()`.
-- `delete_channel()` deliberately bypasses `ensure_ui_channels()` to avoid creating channels during teardown. This is intentional.
-- `broadcast_user_input()` uses `_fanout_excluding()` directly (not `_route_to_ui()`), bypassing channel provisioning for reflections. This is intentional: reflections are sent to already-provisioned adapters.
-- `ensure_ui_channels()` uses a per-session asyncio.Lock to prevent concurrent provisioning races.
-- `UiAdapter.ensure_channel()` is a no-op base implementation; subclasses override for platform-specific provisioning.
-- No direct channel creation that bypasses `ensure_ui_channels()` was found in the output path.
-- Telegram customer-session skip: TelegramAdapter's `ensure_channel()` in `ChannelOperationsMixin` handles the customer skip behavior as an adapter-specific exception within the shared funnel.
+- [ ] Confirm all UI message paths pass through `ensure_ui_channels()` before delivery.
+- [ ] Identify direct/duplicate channel creation patterns that bypass shared orchestration intent.
+- [ ] Record adapter-specific exceptions that are intentional (for example customer skip behavior).
 
 ---
 
@@ -67,20 +46,16 @@ so adapter differences remain edge concerns only.
 
 **File(s):** `teleclaude/core/command_mapper.py`, `teleclaude/api_server.py`
 
-- [x] Ensure interactive entry points produce consistent `origin` and actor attribution values.
-- [x] Keep adapter-specific extraction at mapper edges, not in downstream core branches.
-
-**Notes:** All mapper paths (`map_telegram_input`, `map_redis_input`, `map_api_input`) already produce consistent `origin` and actor fields. Adapter-specific extraction (Telegram `telegram_user_id`, Discord `discord_user_id`) is confined to `_extract_actor_from_channel_metadata`. No downstream core branching on adapter type. Tests added in Task 3.1.
+- [ ] Ensure interactive entry points produce consistent `origin` and actor attribution values.
+- [ ] Keep adapter-specific extraction at mapper edges, not in downstream core branches.
 
 ### Task 1.2: Normalize provenance write timing
 
 **File(s):** `teleclaude/core/command_handlers.py`, `teleclaude/adapters/ui_adapter.py`
 
-- [x] Ensure `last_input_origin` updates occur before feedback/fanout operations that depend on it.
-- [x] Remove or reconcile duplicated provenance mutation points where they can drift.
-- [x] Preserve current behavior for headless/session-adoption flows.
-
-**Notes:** `process_message()` updates provenance before broadcast; `handle_voice()` updates provenance before feedback. No duplicated mutations. Tests added in Task 3.1.
+- [ ] Ensure `last_input_origin` updates occur before feedback/fanout operations that depend on it.
+- [ ] Remove or reconcile duplicated provenance mutation points where they can drift.
+- [ ] Preserve current behavior for headless/session-adoption flows.
 
 ---
 
@@ -90,20 +65,16 @@ so adapter differences remain edge concerns only.
 
 **File(s):** `teleclaude/core/adapter_client.py`
 
-- [x] Verify UI delivery paths depend on `ensure_ui_channels()` and per-session provisioning lock behavior.
-- [x] Tighten call-site behavior where provisioning can be skipped incorrectly or repeated unnecessarily.
-
-**Notes:** All output paths go through `_route_to_ui()` which calls `ensure_ui_channels()` first. Lock prevents concurrent provisioning races. `delete_channel()` intentionally bypasses provisioning. No tightening needed. Tests added in Task 3.1.
+- [ ] Verify UI delivery paths depend on `ensure_ui_channels()` and per-session provisioning lock behavior.
+- [ ] Tighten call-site behavior where provisioning can be skipped incorrectly or repeated unnecessarily.
 
 ### Task 2.2: Align adapter ensure-channel implementations with orchestration contract
 
 **File(s):** `teleclaude/adapters/telegram_adapter.py`, `teleclaude/adapters/discord_adapter.py`, `teleclaude/adapters/ui_adapter.py`
 
-- [x] Keep adapter-specific channel rules explicit and minimal.
-- [x] Ensure channel ID persistence and recovery logic remain compatible with shared orchestration.
-- [x] Avoid introducing new adapter-to-core coupling.
-
-**Notes:** `UiAdapter.ensure_channel()` is a clean no-op base. Subclass overrides stay adapter-specific. No new coupling introduced. Tests added in Task 3.1.
+- [ ] Keep adapter-specific channel rules explicit and minimal.
+- [ ] Ensure channel ID persistence and recovery logic remain compatible with shared orchestration.
+- [ ] Avoid introducing new adapter-to-core coupling.
 
 ---
 
@@ -113,19 +84,19 @@ so adapter differences remain edge concerns only.
 
 **File(s):** `tests/unit/test_command_mapper.py`, `tests/unit/test_command_handlers.py`, `tests/unit/test_adapter_client.py`, `tests/unit/test_adapter_client_handlers.py`, `tests/unit/test_telegram_adapter.py`, `tests/unit/test_discord_adapter.py`, `tests/integration/test_multi_adapter_broadcasting.py`
 
-- [x] Add/update tests for command mapping parity, provenance updates, and provisioning orchestration paths.
-- [x] Verify adapter-specific exceptions remain intentional and covered.
+- [ ] Add/update tests for command mapping parity, provenance updates, and provisioning orchestration paths.
+- [ ] Verify adapter-specific exceptions remain intentional and covered.
 
 ### Task 3.2: Validation commands
 
-- [x] Run targeted test commands listed in `demo.md`.
-- [x] Run `make lint`.
-- [x] Verify no unchecked implementation tasks remain.
+- [ ] Run targeted test commands listed in `demo.md`.
+- [ ] Run `make lint`.
+- [ ] Verify no unchecked implementation tasks remain.
 
 ---
 
 ## Phase 4: Review Readiness
 
-- [x] Confirm requirements are reflected in code changes
-- [x] Confirm implementation tasks are all marked `[x]`
-- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [ ] Confirm requirements are reflected in code changes
+- [ ] Confirm implementation tasks are all marked `[x]`
+- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)

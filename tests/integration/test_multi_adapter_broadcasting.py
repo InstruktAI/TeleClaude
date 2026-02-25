@@ -761,15 +761,14 @@ async def test_discover_peers_respects_redis_enabled_flag():
 
 
 @pytest.mark.integration
-async def test_ensure_channel_called_per_adapter_on_output():
+async def test_ensure_channel_called_per_adapter_on_output(tmp_path):
     """ensure_channel() called for each UI adapter before output delivery (R3).
 
     Provisioning is adapter-specific but orchestrated through the shared
     ensure_ui_channels() funnel. Both adapters must be provisioned before
     any message is delivered.
     """
-    db_path = "/tmp/test_ensure_channel_parity.db"
-    Path(db_path).unlink(missing_ok=True)
+    db_path = str(tmp_path / "test_ensure_channel_parity.db")
 
     test_db = Db(db_path)
     await test_db.initialize()
@@ -822,18 +821,16 @@ async def test_ensure_channel_called_per_adapter_on_output():
 
     finally:
         await test_db.close()
-        Path(db_path).unlink(missing_ok=True)
 
 
 @pytest.mark.integration
-async def test_broadcast_user_input_source_adapter_not_echoed():
+async def test_broadcast_user_input_source_adapter_not_echoed(tmp_path):
     """Source adapter is excluded from broadcast_user_input reflection (R2).
 
     When a Telegram user sends a message, the reflection must NOT be sent
     back to Telegram. Only other UI adapters receive the echo.
     """
-    db_path = "/tmp/test_broadcast_no_echo.db"
-    Path(db_path).unlink(missing_ok=True)
+    db_path = str(tmp_path / "test_broadcast_no_echo.db")
 
     test_db = Db(db_path)
     await test_db.initialize()
@@ -873,7 +870,6 @@ async def test_broadcast_user_input_source_adapter_not_echoed():
 
     finally:
         await test_db.close()
-        Path(db_path).unlink(missing_ok=True)
 
 
 if __name__ == MAIN_MODULE:
