@@ -83,11 +83,28 @@ async def test_get_context_allows_non_project_snippet_ids_without_project_root()
 
     with (
         patch("teleclaude.mcp.handlers.db.get_session", new=AsyncMock(return_value=None)),
-        patch("teleclaude.mcp.handlers.load_manifest", return_value=[]),
         patch("teleclaude.mcp.handlers.build_context_output", return_value="ok") as mock_build,
     ):
         result = await handler.teleclaude__get_context(
             snippet_ids=["software-development/policy/commits"],
+            caller_session_id="missing",
+            cwd="/",
+        )
+
+    assert result == "ok"
+    assert mock_build.called
+
+
+@pytest.mark.asyncio
+async def test_get_context_allows_cross_project_snippet_ids_without_project_root() -> None:
+    handler = DummyHandlers()
+
+    with (
+        patch("teleclaude.mcp.handlers.db.get_session", new=AsyncMock(return_value=None)),
+        patch("teleclaude.mcp.handlers.build_context_output", return_value="ok") as mock_build,
+    ):
+        result = await handler.teleclaude__get_context(
+            snippet_ids=["teleclaude/design/architecture"],
             caller_session_id="missing",
             cwd="/",
         )
@@ -102,7 +119,6 @@ async def test_get_context_requires_project_root_for_project_snippet_ids() -> No
 
     with (
         patch("teleclaude.mcp.handlers.db.get_session", new=AsyncMock(return_value=None)),
-        patch("teleclaude.mcp.handlers.load_manifest", return_value=[]),
         patch("teleclaude.mcp.handlers.build_context_output", return_value="ok") as mock_build,
     ):
         result = await handler.teleclaude__get_context(

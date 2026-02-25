@@ -61,7 +61,6 @@ from teleclaude.mcp.types import (
     StopNotificationsResult,
     WidgetIndexEntry,
 )
-from teleclaude.project_manifest import load_manifest
 from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types import SystemStats
 from teleclaude.types.commands import (
@@ -87,14 +86,15 @@ def _snippet_ids_require_project_root(snippet_ids: list[str] | None) -> bool:
     if not snippet_ids:
         return False
 
-    manifest_project_prefixes = {entry.name.strip().lower() for entry in load_manifest() if entry.name.strip()}
     for snippet_id in snippet_ids:
         if "/" not in snippet_id:
             continue
         prefix = snippet_id.split("/", 1)[0].strip().lower()
         if not prefix:
             continue
-        if prefix == "project" or prefix in manifest_project_prefixes:
+        # Only local project IDs require resolving a project root from cwd.
+        # Cross-project IDs (manifest prefixes) are resolved downstream.
+        if prefix == "project":
             return True
     return False
 
