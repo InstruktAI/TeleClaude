@@ -892,7 +892,7 @@ class APIServer:
         @self.app.post("/sessions/run")
         async def run_session(  # pyright: ignore
             request: RunSessionRequest,
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_RUN),  # noqa: ARG001
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_RUN),
         ) -> CreateSessionResponseDTO:
             """Run a slash command on a new agent session.
 
@@ -911,10 +911,15 @@ class APIServer:
             quoted_command = shlex.quote(full_command)
             auto_command = f"agent_then_message {request.agent} {request.thinking_mode} {quoted_command}"
 
+            channel_metadata: dict[str, str] | None = None
+            if identity.session_id and not identity.session_id.startswith("web:"):
+                channel_metadata = {"initiator_session_id": identity.session_id}
+
             metadata = self._metadata(
                 title=full_command,
                 project_path=request.project,
                 subdir=request.subfolder or None,
+                channel_metadata=channel_metadata,
             )
             metadata.auto_command = auto_command
 

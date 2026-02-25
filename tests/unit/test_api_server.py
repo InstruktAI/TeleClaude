@@ -386,6 +386,29 @@ def test_create_session_uses_auto_command_override(test_client, mock_command_ser
     assert cmd.auto_command == "custom_cmd"
 
 
+def test_run_session_sets_initiator_session_id(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """sessions/run should preserve caller linkage metadata."""
+    mock_command_service.create_session.return_value = {
+        "session_id": "sess-run-1",
+        "tmux_session_name": "tc_run_1",
+    }
+
+    response = test_client.post(
+        "/sessions/run",
+        json={
+            "command": "/next-build",
+            "project": "/tmp/project",
+            "args": "my-slug",
+        },
+    )
+    assert response.status_code == 200
+
+    call_args = mock_command_service.create_session.call_args
+    cmd = call_args.args[0]
+    assert cmd.channel_metadata is not None
+    assert cmd.channel_metadata.get("initiator_session_id") == "test-session"
+
+
 def test_create_session_populates_tmux_session_name(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     """Test that create_session populates tmux_session_name in response."""
     mock_command_service.create_session.return_value = {
