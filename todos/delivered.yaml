@@ -1,5 +1,10 @@
 # Delivered work items. Newest first.
 
+- slug: consolidate-methodology-skills
+  date: '2026-02-25'
+  title: Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
+    for cross-agent distribution
+  commit: 72e6f9b2
 - slug: bidirectional-agent-links
   date: '2026-02-25'
   title: 'Shared listener link primitive for direct agent conversation and gathering-ready

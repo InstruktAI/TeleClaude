@@ -1,8 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: consolidate-methodology-skills
-  description: Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
-    for cross-agent distribution
 - slug: tui-state-persistence
 - slug: cross-project-context
 - slug: unified-client-adapter-pipeline
