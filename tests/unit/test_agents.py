@@ -71,6 +71,46 @@ def test_known_agent_ids_constant_is_canonical():
     assert agents.KNOWN_AGENT_IDS == agents.AgentName.choices()
 
 
+def test_get_known_agents_returns_canonical_tuple():
+    assert agents.get_known_agents() == agents.KNOWN_AGENT_IDS
+
+
+def test_get_enabled_agents_filters_disabled(monkeypatch):
+    cfg = _fake_config()
+    cfg["codex"].enabled = False
+    monkeypatch.setattr(agents, "config", type("Cfg", (), {"agents": cfg})())
+
+    assert agents.get_enabled_agents() == ("claude", "gemini")
+
+
+def test_is_agent_enabled_handles_known_and_unknown(monkeypatch):
+    cfg = _fake_config()
+    cfg["gemini"].enabled = False
+    monkeypatch.setattr(agents, "config", type("Cfg", (), {"agents": cfg})())
+
+    assert agents.is_agent_enabled("claude") is True
+    assert agents.is_agent_enabled("gemini") is False
+    assert agents.is_agent_enabled("nope") is False
+
+
+def test_assert_agent_enabled_returns_normalized_name():
+    assert agents.assert_agent_enabled(" CLAUDE ") == "claude"
+
+
+def test_assert_agent_enabled_rejects_disabled_agent(monkeypatch):
+    cfg = _fake_config()
+    cfg["codex"].enabled = False
+    monkeypatch.setattr(agents, "config", type("Cfg", (), {"agents": cfg})())
+
+    with pytest.raises(ValueError, match=r"config\.yml:agents\.codex\.enabled"):
+        agents.assert_agent_enabled("codex")
+
+
+def test_assert_agent_enabled_rejects_unknown_agent():
+    with pytest.raises(ValueError, match="Unknown agent"):
+        agents.assert_agent_enabled("unknown")
+
+
 def test_get_agent_command_defaults_to_slow_mode():
     """Test that get_agent_command defaults to the slow model flag."""
     cmd = agents.get_agent_command("claude")

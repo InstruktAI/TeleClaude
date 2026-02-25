@@ -30,11 +30,11 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
 ## Phase 2 — Central Agent Policy Surface
 
 - [x] Add/standardize canonical known-agent constant(s) in one module.
-- [ ] Add helper APIs:
-  - [ ] `get_known_agents()`
-  - [ ] `get_enabled_agents()`
-  - [ ] `is_agent_enabled(name)`
-  - [ ] rejection helper for disabled agent selection
+- [x] Add helper APIs:
+  - [x] `get_known_agents()`
+  - [x] `get_enabled_agents()`
+  - [x] `is_agent_enabled(name)`
+  - [x] rejection helper for disabled agent selection
 - [ ] Ensure helpers are import-safe and reusable across core/API/TUI/MCP.
 
 ### Files (expected)
