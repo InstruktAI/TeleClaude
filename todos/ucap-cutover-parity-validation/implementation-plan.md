@@ -120,5 +120,6 @@ Deliver a greenfield pilot cutover to the unified adapter pipeline with lightwei
 <!-- Grep audit complete. All callers route through AdapterClient. -->
 - [x] Cross-client parity validation is demonstrated for three representative pilot scenarios.
 <!-- Three scenarios validated across Telegram, Discord, Web/TUI, Redis (excluded) surfaces. -->
-- [ ] Follow-up hardening todo is created for production-grade percentage/SLO thresholds.
-<!-- Pending: create ucap-slo-hardening todo. -->
+- [x] Follow-up hardening todo is created for production-grade percentage/SLO thresholds.
+<!-- Created: todos/ucap-slo-hardening/ with requirements.md defining delivery metrics, SLO thresholds,
+     and observer retry policy. Depends on ucap-cutover-parity-validation. -->
