@@ -1,5 +1,5 @@
-project_root: ~/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-delete-mcp
-snippets_root: ~/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-delete-mcp/docs/project
+project_root: ~/Workspace/InstruktAI/TeleClaude
+snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/project
 snippets:
 - id: project/concept/ai-worker
   description: The role of an AI agent session in the TeleClaude network.
