@@ -55,6 +55,3 @@
   description: Add Discord Application Commands (slash commands) mirroring Telegram
     command set
 - slug: agent-config-driven-selection-contract
-- slug: ucap-slo-hardening
-  after:
-  - ucap-cutover-parity-validation
