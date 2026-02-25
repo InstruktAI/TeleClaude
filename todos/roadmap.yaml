@@ -1,8 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: unified-client-adapter-pipeline
-  description: 'Umbrella: split Web/TUI adapter pipeline unification into atomic child
-    todos and track dependency-gated delivery.'
 - slug: ucap-canonical-contract
   group: unified-client-adapter-pipeline
   description: 'Phase 1: Define canonical outbound realtime contract and shared serializer/validation

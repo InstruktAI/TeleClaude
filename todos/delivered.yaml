@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: unified-client-adapter-pipeline
+  date: '2026-02-25'
+  title: 'Umbrella: split Web/TUI adapter pipeline unification into atomic child todos
+    and track dependency-gated delivery.'
+  commit: ef5280e395ae3a1419cf106b24e08ffd18f0ee93
+  description: 'Umbrella: split Web/TUI adapter pipeline unification into atomic child
+    todos and track dependency-gated delivery.'
 - slug: cross-project-context
   date: '2026-02-25'
   commit: 22ed1ed2b4ed75552461ad137053aca2355fcf84
