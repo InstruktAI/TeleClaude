@@ -157,6 +157,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--computer", desc="Target computer (default: local)"),
                     Flag("--subfolder", desc="Subdirectory within the project"),
                 ],
+                notes=[
+                    "Creates a fresh session and runs the slash command as the first agent message.",
+                    "Worker lifecycle commands: /next-build, /next-review, /next-fix-review, /next-finalize.",
+                    "Example: telec sessions run --command /next-build --args my-slug --project /repo/path",
+                ],
             ),
             "end": CommandDef(
                 desc="End (terminate) a session",
@@ -275,6 +280,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
             Flag("--areas", "-a", "Filter by taxonomy type"),
             Flag("--domains", "-d", "Filter by domain"),
             _PROJECT_ROOT,
+        ],
+        notes=[
+            "Phase 1 (index): run without IDs to list snippets and select IDs to retrieve.",
+            "Phase 2 (content): pass one or more IDs to fetch full snippet content.",
+            "Example phase 1: telec docs --areas policy,procedure --domains software-development",
+            "Example phase 2: telec docs software-development/policy/testing project/spec/command-surface",
         ],
     ),
     "todo": CommandDef(

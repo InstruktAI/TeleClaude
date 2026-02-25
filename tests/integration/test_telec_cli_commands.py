@@ -176,3 +176,21 @@ def test_completion_docs_flags(monkeypatch: pytest.MonkeyPatch, capsys: pytest.C
 
     output = capsys.readouterr().out
     assert "--areas" in output
+
+
+@pytest.mark.integration
+def test_sessions_run_help_includes_behavior_and_example(capsys: pytest.CaptureFixture[str]) -> None:
+    """sessions run --help should include behavioral guidance and example usage."""
+    telec._handle_cli_command(["sessions", "run", "--help"])
+    output = capsys.readouterr().out
+    assert "Creates a fresh session and runs the slash command" in output
+    assert "Example: telec sessions run --command /next-build" in output
+
+
+@pytest.mark.integration
+def test_docs_help_includes_two_phase_guidance(capsys: pytest.CaptureFixture[str]) -> None:
+    """docs --help should explain phase-1 index and phase-2 content retrieval."""
+    telec._handle_cli_command(["docs", "--help"])
+    output = capsys.readouterr().out
+    assert "Phase 1 (index): run without IDs" in output
+    assert "Phase 2 (content): pass one or more IDs" in output
