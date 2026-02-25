@@ -5,17 +5,10 @@ deferrals_processed: false
 breakdown:
   assessed: false
   todos: []
-review_round: 1
+review_round: 2
 max_review_rounds: 3
-review_baseline_commit: '76ce6dab'
-unresolved_findings:
-  - C1-stall-task-leak-on-close
-  - C2-stall-task-leak-on-error
-  - C3-status-message-id-deserialization
-  - I1-closed-bypasses-contract-validation
-  - I2-no-adapter-status-tests
-  - I3-no-coordinator-status-tests
-  - I4-stall-task-not-tracked
+review_baseline_commit: f9f851d3671255de4d6e0ad6a4204e7e0acd3583
+unresolved_findings: []
 resolved_findings: []
 dor:
   last_assessed_at: '2026-02-24T17:08:48Z'

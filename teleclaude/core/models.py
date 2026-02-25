@@ -312,6 +312,8 @@ class SessionAdapterMetadata:
                 user_id = str(raw_user_id) if raw_user_id is not None else None
                 raw_output_msg = discord_raw.get("output_message_id")
                 discord_output_message_id = str(raw_output_msg) if raw_output_msg is not None else None
+                raw_status_msg = discord_raw.get("status_message_id")
+                discord_status_message_id = str(raw_status_msg) if raw_status_msg is not None else None
                 discord_metadata = DiscordAdapterMetadata(
                     user_id=user_id,
                     guild_id=_get_int_or_none("guild_id"),
@@ -319,6 +321,7 @@ class SessionAdapterMetadata:
                     thread_id=_get_int_or_none("thread_id"),
                     all_sessions_thread_id=_get_int_or_none("all_sessions_thread_id"),
                     output_message_id=discord_output_message_id,
+                    status_message_id=discord_status_message_id,
                     badge_sent=bool(discord_raw.get("badge_sent", False)),
                     char_offset=int(discord_raw.get("char_offset", 0)),
                 )
