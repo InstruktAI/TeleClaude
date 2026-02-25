@@ -66,6 +66,11 @@ def patch_config(monkeypatch):
     yield
 
 
+def test_known_agent_ids_constant_is_canonical():
+    """Canonical known-agent constant should stay aligned with AgentName enum."""
+    assert agents.KNOWN_AGENT_IDS == agents.AgentName.choices()
+
+
 def test_get_agent_command_defaults_to_slow_mode():
     """Test that get_agent_command defaults to the slow model flag."""
     cmd = agents.get_agent_command("claude")

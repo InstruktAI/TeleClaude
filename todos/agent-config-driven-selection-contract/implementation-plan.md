@@ -29,7 +29,7 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
 
 ## Phase 2 — Central Agent Policy Surface
 
-- [ ] Add/standardize canonical known-agent constant(s) in one module.
+- [x] Add/standardize canonical known-agent constant(s) in one module.
 - [ ] Add helper APIs:
   - [ ] `get_known_agents()`
   - [ ] `get_enabled_agents()`
