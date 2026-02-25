@@ -3,6 +3,7 @@ description: 'Tactical implementation. Follow architecture, write code matching 
 id: 'software-development/concept/builder'
 scope: 'domain'
 type: 'concept'
+visibility: 'public'
 ---
 
 # Builder — Concept

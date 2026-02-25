@@ -38,6 +38,7 @@ class TestWriteIndexYaml:
         data = yaml.safe_load(index.read_text())
         assert len(data["snippets"]) == 1
         assert data["snippets"][0]["id"] == "test/snippet"
+        assert data["snippets"][0]["visibility"] == "internal"
 
     def test_skips_when_unchanged(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         docs = tmp_path / "docs" / "project"
@@ -104,6 +105,23 @@ class TestBuildIndexPayload:
         payload = build_index_payload(tmp_path, docs)
         ids = [s["id"] for s in payload["snippets"]]
         assert "general/policy/test" in ids
+
+    def test_visibility_from_frontmatter_is_emitted(self, tmp_path: Path) -> None:
+        docs = tmp_path / "docs" / "project"
+        path = docs / "test.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "---\n"
+            "id: project/policy/test\n"
+            "type: policy\n"
+            "scope: project\n"
+            "description: Test\n"
+            "visibility: public\n"
+            "---\n\n# Title\n\n## Body\n\nContent.\n",
+            encoding="utf-8",
+        )
+        payload = build_index_payload(tmp_path, docs)
+        assert payload["snippets"][0]["visibility"] == "public"
 
 
 # ---------------------------------------------------------------------------

@@ -44,24 +44,24 @@ Extend `get_context` to serve documentation across all TeleClaude-aware projects
 
 **File(s):** `teleclaude/constants.py` (or wherever allowed frontmatter values live)
 
-- [ ] Add `visibility` as an allowed frontmatter field with values: `public`, `internal`
-- [ ] Update snippet validation to accept `visibility` (if validated)
+- [x] Add `visibility` as an allowed frontmatter field with values: `public`, `internal`
+- [x] Update snippet validation to accept `visibility` (if validated)
 
 ### Task 2.2: Add `visibility` to index generation
 
 **File(s):** `teleclaude/docs_index.py`
 
-- [ ] Read `visibility` from snippet frontmatter during `build_index_payload`
-- [ ] Include `visibility` field in `SnippetEntry` TypedDict (default: `internal`)
-- [ ] Emit `visibility` in generated `index.yaml` entries
+- [x] Read `visibility` from snippet frontmatter during `build_index_payload`
+- [x] Include `visibility` field in `SnippetEntry` TypedDict (default: `internal`)
+- [x] Emit `visibility` in generated `index.yaml` entries
 
 ### Task 2.3: Batch-add `visibility: public` to intended public snippets
 
 **File(s):** `docs/**/*.md` (selective)
 
-- [ ] Identify which snippets should be public (concepts, high-level designs, public procedures)
-- [ ] Add `visibility: 'public'` to their frontmatter
-- [ ] Snippets without the field default to `internal` (safe by default)
+- [x] Identify which snippets should be public (concepts, high-level designs, public procedures)
+- [x] Add `visibility: 'public'` to their frontmatter
+- [x] Snippets without the field default to `internal` (safe by default)
 
 ---
 
