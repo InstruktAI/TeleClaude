@@ -30,6 +30,13 @@
 - Runtime distribution spot-check for all six skills in `~/.claude/skills`, `~/.codex/skills`, `~/.gemini/skills` -> passed.
 - `telec sync --validate-only` -> exit 0 with pre-existing global documentation warnings (no validation errors).
 - `make lint` -> passed (`ruff` + `pyright` clean; pre-existing docs validation warnings only).
+- `make test-unit` -> 1841 passed, 107 skipped, 1 pre-existing warning.
+
+## Fixes Applied
+
+- Issue: Scope/contract mismatch between active todo definition and delivered branch behavior.
+  Fix: Re-scoped `requirements.md` and `implementation-plan.md` to explicitly include the delivered CLI/runtime/install/test/doc/roadmap surfaces, plus explicit branch-alignment acceptance criteria and validation steps.
+  Commit: `a90413d2`
 
 ## Verdict
 
