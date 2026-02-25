@@ -15,9 +15,9 @@ implementation work is executed under this parent slug.
 
 ## Phase 1 - Parent Scope and Dependency Reconciliation
 
-- [ ] Verify parent slug remains umbrella-only in requirements, implementation plan, and demo artifacts.
-- [ ] Verify UCAP child set and dependency ordering in `todos/roadmap.yaml` match parent requirements.
-- [ ] Record parent-artifact updates whenever dependency edges or child set change.
+- [x] Verify parent slug remains umbrella-only in requirements, implementation plan, and demo artifacts.
+- [x] Verify UCAP child set and dependency ordering in `todos/roadmap.yaml` match parent requirements.
+- [x] Record parent-artifact updates whenever dependency edges or child set change.
 
 ### Files (expected)
 
@@ -28,9 +28,9 @@ implementation work is executed under this parent slug.
 
 ## Phase 2 - Child Preparation Artifact Hygiene
 
-- [ ] Confirm each UCAP child slug contains `requirements.md`, `implementation-plan.md`, `dor-report.md`, and `state.yaml`.
-- [ ] Confirm each child implementation plan traces to that child's requirements.
-- [ ] Record missing/stale child artifacts as parent DOR blockers.
+- [x] Confirm each UCAP child slug contains `requirements.md`, `implementation-plan.md`, `dor-report.md`, and `state.yaml`.
+- [x] Confirm each child implementation plan traces to that child's requirements.
+- [x] Record missing/stale child artifacts as parent DOR blockers.
 
 ### Files (expected)
 
@@ -43,9 +43,9 @@ implementation work is executed under this parent slug.
 
 ## Phase 3 - Readiness and Dispatch Governance
 
-- [ ] Validate each child `state.yaml` has `dor` metadata (`score`, `status`, `last_assessed_at`).
-- [ ] Preserve dispatch rule: only child slugs with `dor.score >= 8` are ready candidates for build dispatch.
-- [ ] Keep parent focused on readiness governance; do not convert parent into executable build scope.
+- [x] Validate each child `state.yaml` has `dor` metadata (`score`, `status`, `last_assessed_at`).
+- [x] Preserve dispatch rule: only child slugs with `dor.score >= 8` are ready candidates for build dispatch.
+- [x] Keep parent focused on readiness governance; do not convert parent into executable build scope.
 
 ### Files (expected)
 
@@ -55,9 +55,9 @@ implementation work is executed under this parent slug.
 
 ## Phase 4 - Program Readiness Reporting
 
-- [ ] Keep parent `dor-report.md` synchronized with current child readiness and dependency state.
-- [ ] Keep parent demo commands focused on orchestration verification rather than runtime tests.
-- [ ] Re-run parent gate whenever parent artifacts or UCAP dependency structure changes.
+- [x] Keep parent `dor-report.md` synchronized with current child readiness and dependency state.
+- [x] Keep parent demo commands focused on orchestration verification rather than runtime tests.
+- [x] Re-run parent gate whenever parent artifacts or UCAP dependency structure changes.
 
 ### Files (expected)
 
@@ -67,6 +67,6 @@ implementation work is executed under this parent slug.
 
 ## Definition of Done
 
-- [ ] Parent artifacts are umbrella-only and aligned with roadmap decomposition.
-- [ ] Child ownership and dependency order are explicit and consistent.
-- [ ] Parent DOR can be evaluated without parent runtime implementation tasks.
+- [x] Parent artifacts are umbrella-only and aligned with roadmap decomposition.
+- [x] Child ownership and dependency order are explicit and consistent.
+- [x] Parent DOR can be evaluated without parent runtime implementation tasks.

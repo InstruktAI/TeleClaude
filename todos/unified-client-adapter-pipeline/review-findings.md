@@ -6,42 +6,38 @@
 
 ## Important
 
-- Demo verification loops can produce false-positive success and mask missing child artifacts or DOR fields.  
+- Build completion evidence is internally inconsistent, so the review cannot validate the implementation as complete.  
   Confidence: 99%  
-  Evidence: [demos/unified-client-adapter-pipeline/demo.md](demos/unified-client-adapter-pipeline/demo.md):10 and [demos/unified-client-adapter-pipeline/demo.md](demos/unified-client-adapter-pipeline/demo.md):25 iterate checks without `set -e` or per-iteration failure propagation. Concrete trace with `missing-slug` first and a valid slug last still exits `0`, so the command can pass despite earlier failures.  
-  Why this matters: Build gate evidence can pass while R3/R4 preconditions are violated, weakening readiness guarantees.  
-  Suggested fix: Make each loop fail-fast (`... || exit 1`), or enable strict mode (`set -euo pipefail`) around these validation blocks.
+  Evidence: [implementation-plan.md](todos/unified-client-adapter-pipeline/implementation-plan.md):18-72 has all phase and Definition of Done checkboxes unchecked (`[ ]`) while [state.yaml](todos/unified-client-adapter-pipeline/state.yaml):2 records `build: complete`.  
+  Why this matters: Review procedure requires all implementation-plan tasks checked before approval; this mismatch breaks requirement traceability and completion proof.  
+  Suggested fix: Either mark completed plan tasks `[x]` with accurate evidence, or set build state back to non-complete and finish outstanding work before re-review.
 
-- Child readiness snapshot timestamp is internally inconsistent with included child evidence.  
+- Build-gate checklist is not complete, which blocks reviewer approval by policy.  
+  Confidence: 99%  
+  Evidence: [quality-checklist.md](todos/unified-client-adapter-pipeline/quality-checklist.md):13-22 leaves every Build gate unchecked, including `Implementation-plan task checkboxes all [x]` and `Demo validated`, despite the branch being submitted for review.  
+  Why this matters: Review procedure explicitly requires the Build section to be fully checked (or explicitly blocked) before review can pass.  
+  Suggested fix: Update Build gates to reflect actual completed verification (or record explicit blocker notes) before requesting another review pass.
+
+- DOR timestamps are inconsistent between parent artifacts.  
   Confidence: 95%  
-  Evidence: [todos/unified-client-adapter-pipeline/dor-report.md](todos/unified-client-adapter-pipeline/dor-report.md):29 labels snapshot time `2026-02-25T04:24:29Z`, but [todos/unified-client-adapter-pipeline/dor-report.md](todos/unified-client-adapter-pipeline/dor-report.md):35 includes child `last_assessed_at=2026-02-25T12:00:00Z` (later than the claimed snapshot instant).  
-  Why this matters: DOR audit trail becomes time-incoherent and reduces trust in readiness evidence.  
-  Suggested fix: Regenerate the snapshot from current child states at one consistent timestamp, or correct the snapshot header to reflect the actual extraction time.
+  Evidence: [dor-report.md](todos/unified-client-adapter-pipeline/dor-report.md):7 shows `assessed_at: 2026-02-24T23:24:29Z` while [state.yaml](todos/unified-client-adapter-pipeline/state.yaml):14 shows `dor.last_assessed_at: 2026-02-25T04:24:29Z`.  
+  Why this matters: A single DOR assessment should have one coherent timestamp; conflicting timestamps weaken readiness auditability.  
+  Suggested fix: Regenerate or align parent DOR artifacts from one authoritative assessment instant.
 
 ## Suggestions
 
 - None.
 
-## Fixes Applied
-
-1. Issue: Demo verification loops could mask early failures and still return success.
-   Fix: Added per-iteration fail-fast guards (`|| { ...; exit 1; }`) in both parent demo artifacts so missing child artifacts or DOR metadata immediately fail execution.
-   Commit: `e393ecd6c44c754564f0ef123b6031fd0c36f0e6`
-
-2. Issue: Child readiness snapshot timestamp coherence.
-   Fix: Reintroduced the parent DOR child snapshot with an explicit consistency basis (`snapshot_consistent_as_of` = max child `dor.last_assessed_at`) and refreshed child evidence lines.
-   Commit: `0d911b479cedea26bc833c170636477d9bcd19d9`
-
 ## Paradigm-Fit Assessment
 
-- Data flow: Reviewed as artifact-only orchestration updates; no inline runtime-path hacks or adapter/core boundary violations introduced.
-- Component reuse: No copy-paste runtime implementation introduced; changes remain in parent orchestration artifacts and demo validation instructions.
-- Pattern consistency: Parent remains umbrella-only and child ownership stays aligned with roadmap decomposition.
+- Data flow: Artifact-only updates; no adapter/core boundary leakage or runtime-path bypass introduced.
+- Component reuse: Parent remains a coordination artifact and continues to reuse the existing child-todo decomposition model from roadmap/state artifacts.
+- Pattern consistency: Parent remains umbrella-only, but process-state artifacts are inconsistent (`build: complete` vs unchecked build/proof artifacts), so governance pattern is not fully upheld.
 
 ## Manual Verification Evidence
 
-- Executed roadmap/dependency and child-artifact checks against `todos/roadmap.yaml` and all six UCAP child slugs.
-- Executed concrete shell traces demonstrating loop exit-status behavior with failing first iteration and successful last iteration (`exit=0` repro).
-- Verified parent runtime-scope guard query (`teleclaude/` scan in parent implementation plan) returns no matches.
+- Executed `telec todo demo unified-client-adapter-pipeline` (exit `0`), which ran all four demo blocks successfully against current worktree.
+- Re-ran child artifact and DOR-field checks across all six UCAP child slugs; all required files and `dor` metadata keys are present.
+- Re-ran parent runtime-scope guard (`rg "teleclaude/"` against parent implementation plan); no runtime-scope entries found.
 
 Verdict: REQUEST CHANGES
