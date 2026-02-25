@@ -17,7 +17,8 @@ for s in \
   test -f "todos/$s/requirements.md" &&
   test -f "todos/$s/implementation-plan.md" &&
   test -f "todos/$s/dor-report.md" &&
-  test -f "todos/$s/state.yaml"
+  test -f "todos/$s/state.yaml" ||
+  { echo "Missing required artifact(s) for $s"; exit 1; }
 done
 ```
 
@@ -30,7 +31,8 @@ for s in \
   ucap-ingress-provisioning-harmonization \
   ucap-cutover-parity-validation; do
   echo "== $s ==" &&
-  rg -n "last_assessed_at|score:|status:" "todos/$s/state.yaml"
+  rg -n "last_assessed_at|score:|status:" "todos/$s/state.yaml" ||
+  { echo "Missing DOR metadata fields in todos/$s/state.yaml"; exit 1; }
 done
 ```
 
