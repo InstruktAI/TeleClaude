@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: ucap-truthful-session-status
+  date: '2026-02-25'
+  title: 'Phase 2: Make core the source of truth for session lifecycle status and
+    map that contract to each adapter''s UI capabilities.'
+  commit: 38c12b2a99bc29801f50e23d85c1f2edea1887da
+  description: 'Phase 2: Make core the source of truth for session lifecycle status
+    and map that contract to each adapter''s UI capabilities.'
 - slug: ucap-canonical-contract
   date: '2026-02-25'
   title: 'Phase 1: Define canonical outbound realtime contract and shared serializer/validation

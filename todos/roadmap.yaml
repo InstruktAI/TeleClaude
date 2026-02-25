@@ -1,11 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: ucap-truthful-session-status
-  group: unified-client-adapter-pipeline
-  after:
-  - ucap-canonical-contract
-  description: 'Phase 2: Make core the source of truth for session lifecycle status
-    and map that contract to each adapter''s UI capabilities.'
 - slug: ucap-web-adapter-alignment
   group: unified-client-adapter-pipeline
   after:
