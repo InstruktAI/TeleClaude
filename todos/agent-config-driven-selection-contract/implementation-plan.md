@@ -17,7 +17,7 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
 
 - [x] Require explicit `agents` section in effective config load path.
 - [x] Validate allowed keys and reject unknown agent keys.
-- [ ] Enforce at least one enabled agent.
+- [x] Enforce at least one enabled agent.
 - [ ] Return precise, actionable validation errors referencing `config.yml` paths.
 - [ ] Update config spec docs to match enforced contract.
 

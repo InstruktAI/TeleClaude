@@ -656,6 +656,12 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
             avoid=str(user_agent_config.get("avoid", "")),
         )
 
+    if not any(agent_cfg.enabled for agent_cfg in agents_registry.values()):
+        raise ValueError(
+            "config.yml key `agents` must enable at least one agent. "
+            "Set `config.yml:agents.<agent>.enabled: true` for at least one configured agent."
+        )
+
     experiments = []
     if isinstance(experiments_raw, list):
         for exp_data in experiments_raw:
