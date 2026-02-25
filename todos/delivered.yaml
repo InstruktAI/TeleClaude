@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: ucap-canonical-contract
+  date: '2026-02-25'
+  title: 'Phase 1: Define canonical outbound realtime contract and shared serializer/validation
+    utilities across adapters.'
+  commit: ee0980110fac811bcc93491bb28e9ffdc37b86b0
+  description: 'Phase 1: Define canonical outbound realtime contract and shared serializer/validation
+    utilities across adapters.'
 - slug: unified-client-adapter-pipeline
   date: '2026-02-25'
   title: 'Umbrella: split Web/TUI adapter pipeline unification into atomic child todos

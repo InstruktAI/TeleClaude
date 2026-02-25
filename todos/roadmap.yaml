@@ -1,9 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: ucap-canonical-contract
-  group: unified-client-adapter-pipeline
-  description: 'Phase 1: Define canonical outbound realtime contract and shared serializer/validation
-    utilities across adapters.'
 - slug: ucap-truthful-session-status
   group: unified-client-adapter-pipeline
   after:
