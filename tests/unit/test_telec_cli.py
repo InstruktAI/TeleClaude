@@ -102,3 +102,22 @@ def test_revive_session_warns_when_kick_fails(
     out = capsys.readouterr().out
     assert "Revived session sess-1" in out
     assert "Warning: revive kick failed: kick failed" in out
+
+
+def test_help_includes_notes_and_examples_for_all_subcommands() -> None:
+    for cmd_name, cmd in telec.CLI_SURFACE.items():
+        if not cmd.subcommands:
+            continue
+        for sub_name in cmd.subcommands:
+            output = telec._usage(cmd_name, sub_name)
+            assert "\nNotes:\n" in output
+            assert "\nExamples:\n" in output
+
+
+def test_help_includes_notes_and_examples_for_top_level_leaf_commands() -> None:
+    for cmd_name, cmd in telec.CLI_SURFACE.items():
+        if cmd.subcommands:
+            continue
+        output = telec._usage(cmd_name)
+        assert "\nNotes:\n" in output
+        assert "\nExamples:\n" in output

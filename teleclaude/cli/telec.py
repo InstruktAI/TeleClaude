@@ -534,6 +534,145 @@ def _usage_main() -> str:
     return "\n".join(lines) + "\n"
 
 
+def _sample_positional_value(token: str) -> str:
+    """Return a practical sample value for a positional argument token."""
+    key = token.strip("<>[]").rstrip(".,").lower()
+    if "session" in key:
+        return "sess-123"
+    if "slug" in key:
+        return "my-slug"
+    if "project" in key or "cwd" in key or "root" in key:
+        return "/tmp/project"
+    if "path" in key or "file" in key:
+        return "/tmp/example.txt"
+    if "agent" in key:
+        return "claude"
+    if "phase" in key:
+        return "build"
+    if "status" in key:
+        return "complete"
+    if "channel" in key:
+        return "channel:demo:events"
+    if "json" in key or "data" in key:
+        return '\'{"key":"value"}\''
+    if "id" in key:
+        return "item-1"
+    if "description" in key or "message" in key or "content" in key:
+        return '"example"'
+    return "value"
+
+
+def _sample_flag_value(flag: Flag) -> str | None:
+    """Return a sample value for a flag, or None for boolean/toggle flags."""
+    if flag.long in {
+        "--all",
+        "--closed",
+        "--clear",
+        "--attach",
+        "--baseline-only",
+        "--third-party",
+        "--validate-only",
+        "--warn-only",
+        "--no-hitl",
+    }:
+        return None
+
+    long_key = flag.long.lstrip("-").lower()
+    desc = flag.desc.lower()
+    if "json" in desc or "payload" in desc or "widget expression" in desc:
+        return '\'{"key":"value"}\''
+    if "iso8601" in desc or "iso 8601" in desc or "utc" in desc or "expiry" in desc:
+        return "2026-01-01T00:00:00Z"
+    if "project root" in desc or "project directory" in desc or "directory" in desc:
+        return "/tmp/project"
+    if "path" in desc or "file" in desc:
+        return "/tmp/example.txt"
+    if "agent" in desc:
+        return "claude"
+    if "thinking mode" in desc:
+        return "slow"
+    if "phase" in desc:
+        return "build"
+    if "status" in desc:
+        return "degraded"
+    if "format" in desc:
+        return "markdown"
+    if "reason" in desc:
+        return '"example reason"'
+    if "summary" in desc:
+        return '"example summary"'
+    if "customer" in desc:
+        return '"Jane Doe"'
+    if "channel" in desc:
+        return "channel:demo:events"
+
+    if "session" in long_key:
+        return "sess-123"
+    if "slug" in long_key:
+        return "my-slug"
+    if "project" in long_key or "cwd" in long_key or "root" in long_key:
+        return "/tmp/project"
+    if "path" in long_key or "file" in long_key:
+        return "/tmp/example.txt"
+    if "agent" in long_key:
+        return "claude"
+    if "mode" in long_key:
+        return "slow"
+    if "phase" in long_key:
+        return "build"
+    if "status" in long_key:
+        return "degraded"
+    if "format" in long_key:
+        return "markdown"
+    if "until" in long_key or "date" in long_key:
+        return "2026-01-01T00:00:00Z"
+    if "data" in long_key:
+        return '\'{"key":"value"}\''
+    if "after" in long_key:
+        return "dep-a"
+    if "before" in long_key:
+        return "target-slug"
+    if "title" in long_key:
+        return '"Example Title"'
+    if "description" in long_key or "message" in long_key or "content" in long_key:
+        return '"example"'
+    return "value"
+
+
+def _example_positionals(args_spec: str) -> list[str]:
+    """Build sample positional arguments from a usage args spec string."""
+    values: list[str] = []
+    for raw in args_spec.split():
+        token = raw.strip()
+        if not token:
+            continue
+        if token.startswith("-"):
+            continue
+        values.append(_sample_positional_value(token))
+    return values
+
+
+def _example_commands(command_parts: list[str], args_spec: str, flags: list[Flag]) -> list[str]:
+    """Generate example command lines that touch positional args and each flag."""
+    base = ["telec", *command_parts, *_example_positionals(args_spec)]
+    examples: list[str] = [" ".join(base).strip()]
+    seen: set[str] = set(examples)
+
+    for flag in flags:
+        if flag.long == "--help":
+            continue
+        value = _sample_flag_value(flag)
+        parts = [*base, flag.long]
+        if value is not None:
+            parts.append(value)
+        line = " ".join(parts).strip()
+        if line not in seen:
+            seen.add(line)
+            examples.append(line)
+
+    return examples
+
+
 def _usage_subcmd(cmd_name: str) -> str:
     """Generate detailed subcommand help. All flags shown."""
     cmd = CLI_SURFACE[cmd_name]
@@ -569,13 +708,24 @@ def _usage_subcmd(cmd_name: str) -> str:
     else:
         args_str = f" {cmd.args}" if cmd.args else ""
         lines.append(f"  telec {cmd_name}{args_str}")
+        visible = [f for f in cmd.flags if f.long != "--help"] if cmd.flags else []
         if cmd.flags:
-            visible = [f for f in cmd.flags if f.long != "--help"]
             if visible:
                 lines.append("\nOptions:")
                 for f in visible:
                     flag_label = f"  {f.short}, {f.long}" if f.short else f"  {f.long}"
                     lines.append(f"{flag_label:<25s}{f.desc}")
+
+        notes = cmd.notes or [f"Use this command to {cmd.desc.lower()}."]
+        lines.append("\nNotes:")
+        for note in notes:
+            lines.append(f"  {note}")
+
+        examples = _example_commands([cmd_name], cmd.args, visible)
+        if examples:
+            lines.append("\nExamples:")
+            for example in examples:
+                lines.append(f"  {example}")
 
     # Collect notes from subcommands and command
     all_notes: list[str] = []
@@ -608,10 +758,16 @@ def _usage_leaf(cmd_name: str, sub_name: str) -> str:
             flag_label = f"  {f.short}, {f.long}" if f.short else f"  {f.long}"
             lines.append(f"{flag_label:<25s}{f.desc}")
 
-    if sub.notes:
-        lines.append("\nNotes:")
-        for note in sub.notes:
-            lines.append(f"  {note}")
+    notes = sub.notes or [f"Use this command to {sub.desc.lower()}."]
+    lines.append("\nNotes:")
+    for note in notes:
+        lines.append(f"  {note}")
+
+    examples = _example_commands([cmd_name, sub_name], sub.args, visible)
+    if examples:
+        lines.append("\nExamples:")
+        for example in examples:
+            lines.append(f"  {example}")
 
     return "\n".join(lines) + "\n"
 
