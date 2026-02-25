@@ -1,0 +1,25 @@
+{
+  "slug": "cross-project-context",
+  "title": "Cross Project Context",
+  "version": "0.1.0",
+  "delivered_date": "2026-02-25",
+  "merge_commit": "22ed1ed2b4ed75552461ad137053aca2355fcf84",
+  "metrics": {
+    "commits": 11,
+    "files_changed": 37,
+    "files_created": 7,
+    "insertions": 1671,
+    "deletions": 332,
+    "test_files_added": 2,
+    "review_rounds": 2,
+    "critical_findings": 0,
+    "important_findings": 2,
+    "suggestions": 1
+  },
+  "acts": {
+    "challenge": "Enable `get_context` to serve documentation from multiple TeleClaude-aware projects through three-phase progressive disclosure, with role-based visibility filtering:",
+    "build": "Extend `get_context` to serve documentation across all TeleClaude-aware projects using three-phase progressive disclosure with role-based visibility filtering. The approach adds a project manifest (`~/.teleclaude/projects.yaml`) built by `telec sync`, extends `context_selector.py` with new parameters, and adds a `visibility` frontmatter field to snippets. Existing single-project behavior is untouched.",
+    "gauntlet": "Work completed through multiple review/fix loops to resolve gating and role-precedence issues, with final pragmatic closure at review round limit once no unresolved critical risk remained.",
+    "next": "- Add regression tests for: - `teleclaude__get_context(snippet_ids=[\"teleclaude/design/...\"], cwd=<no teleclaude.yml>)` should not fail with `NO_PROJECT_ROOT`. - `build_context_output(caller_role=\"admin\", human_role=\"member\")` should still include internal snippets."
+  }
+}
