@@ -26,17 +26,38 @@ so adapter differences remain edge concerns only.
 
 **File(s):** `teleclaude/core/command_mapper.py`, `teleclaude/core/command_handlers.py`, `teleclaude/api_server.py`
 
-- [ ] Enumerate all interactive input paths that produce `ProcessMessageCommand` or adjacent command types.
-- [ ] Document where `origin`, actor attribution, and `last_input_origin` are set/updated.
-- [ ] Mark any duplicated or conflicting origin/provenance mutations.
+- [x] Enumerate all interactive input paths that produce `ProcessMessageCommand` or adjacent command types.
+- [x] Document where `origin`, actor attribution, and `last_input_origin` are set/updated.
+- [x] Mark any duplicated or conflicting origin/provenance mutations.
+
+**Audit notes:**
+
+- `CommandMapper.map_telegram_input("message", ...)` → `ProcessMessageCommand` with `origin=metadata.origin or TELEGRAM`; actor extracted via `_extract_actor_from_channel_metadata` using `telegram_user_id` fallback.
+- `CommandMapper.map_redis_input("message", ...)` → `ProcessMessageCommand` with `origin` from parameter; actor extracted similarly. MCP origin gets a synthetic `system:<computer>` actor_id.
+- `CommandMapper.map_api_input("message", ...)` → `ProcessMessageCommand` with `origin=metadata.origin or API`; actor from payload fields with channel_metadata fallback.
+- `process_message()` (command_handlers.py:899-904): updates `last_input_origin=cmd.origin` in DB **before** `broadcast_user_input()` at line 906. Ordering is correct.
+- `handle_voice()` (command_handlers.py:763-764): updates `last_input_origin=cmd.origin` **before** feedback status at lines 768+. Comment explicitly documents this. Ordering is correct.
+- `create_session()` sets `last_input_origin=origin` from the command at creation time. No inheritance from parent (documented as intentional).
+- `run_agent_command()` updates `last_input_origin=cmd.origin` in DB.
+- No duplicated or conflicting provenance mutations found. Each handler owns exactly one provenance write per call.
 
 ### Task 0.2: Inventory provisioning call sites
 
 **File(s):** `teleclaude/core/adapter_client.py`, `teleclaude/adapters/ui_adapter.py`, `teleclaude/adapters/telegram_adapter.py`, `teleclaude/adapters/discord_adapter.py`
 
-- [ ] Confirm all UI message paths pass through `ensure_ui_channels()` before delivery.
-- [ ] Identify direct/duplicate channel creation patterns that bypass shared orchestration intent.
-- [ ] Record adapter-specific exceptions that are intentional (for example customer skip behavior).
+- [x] Confirm all UI message paths pass through `ensure_ui_channels()` before delivery.
+- [x] Identify direct/duplicate channel creation patterns that bypass shared orchestration intent.
+- [x] Record adapter-specific exceptions that are intentional (for example customer skip behavior).
+
+**Audit notes:**
+
+- `_route_to_ui()` (adapter_client.py:265) calls `ensure_ui_channels(session)` as first action before any fanout. All output paths (`send_message`, `send_threaded_output`, `send_output_update`, `edit_message`, `delete_message`, `send_file`, `update_channel_title`) route through `_route_to_ui()`.
+- `delete_channel()` deliberately bypasses `ensure_ui_channels()` to avoid creating channels during teardown. This is intentional.
+- `broadcast_user_input()` uses `_fanout_excluding()` directly (not `_route_to_ui()`), bypassing channel provisioning for reflections. This is intentional: reflections are sent to already-provisioned adapters.
+- `ensure_ui_channels()` uses a per-session asyncio.Lock to prevent concurrent provisioning races.
+- `UiAdapter.ensure_channel()` is a no-op base implementation; subclasses override for platform-specific provisioning.
+- No direct channel creation that bypasses `ensure_ui_channels()` was found in the output path.
+- Telegram customer-session skip: TelegramAdapter's `ensure_channel()` in `ChannelOperationsMixin` handles the customer skip behavior as an adapter-specific exception within the shared funnel.
 
 ---
 
