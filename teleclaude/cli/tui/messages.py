@@ -220,8 +220,8 @@ class DocEditRequest(Message):
 # --- Settings messages ---
 
 
-class StateDirty(Message):
-    """View state changed and should be persisted to disk."""
+class StateChanged(Message):
+    """State changed and should be persisted to disk."""
 
 
 class SettingsChanged(Message):

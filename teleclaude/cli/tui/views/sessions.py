@@ -20,7 +20,7 @@ from teleclaude.cli.tui.messages import (
     PreviewChanged,
     RestartSessionsRequest,
     ReviveSessionRequest,
-    StateDirty,
+    StateChanged,
     StickyChanged,
 )
 from teleclaude.cli.tui.tree import (
@@ -86,6 +86,7 @@ class SessionsView(Widget, can_focus=True):
 
     preview_session_id = reactive[str | None](None)
     cursor_index = reactive(0)
+    persistence_key = "sessions"
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
@@ -144,13 +145,16 @@ class SessionsView(Widget, can_focus=True):
             self._availability = availability
 
         # Prune stale session IDs from sticky/preview state
+        state_changed = False
         stale_sticky = [sid for sid in self._sticky_session_ids if sid not in new_ids]
         if stale_sticky:
             self._logger.info("Pruning %d stale sticky IDs: %s", len(stale_sticky), [s[:8] for s in stale_sticky])
             self._sticky_session_ids = [sid for sid in self._sticky_session_ids if sid in new_ids]
+            state_changed = True
         if self.preview_session_id and self.preview_session_id not in new_ids:
             self._logger.info("Pruning stale preview ID: %s", self.preview_session_id[:8])
             self.preview_session_id = None
+            state_changed = True
 
         if old_ids != new_ids or not self._nav_items:
             # Session list changed — full rebuild (includes _apply_pending_selection)
@@ -164,23 +168,48 @@ class SessionsView(Widget, can_focus=True):
             # Session data updated — pending session may now have a tmux pane
             self._apply_pending_selection()
 
-    def load_persisted_state(
-        self,
-        sticky_ids: list[str],
-        input_highlights: set[str],
-        output_highlights: set[str],
-        last_output_summary: dict[str, dict[str, object]],  # guard: loose-dict
-        collapsed_sessions: set[str],
-        preview_session_id: str | None,
-    ) -> None:
+        if state_changed:
+            self._notify_state_changed()
+
+    def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict
         """Restore persisted state from state_store."""
-        self._sticky_session_ids = sticky_ids
-        self._input_highlights = input_highlights
-        self._output_highlights = output_highlights
-        self._last_output_summary = last_output_summary
-        self._collapsed_sessions = collapsed_sessions
-        if preview_session_id:
-            self.preview_session_id = preview_session_id
+        sticky_data = data.get("sticky_sessions", [])
+        if isinstance(sticky_data, list):
+            self._sticky_session_ids = [
+                str(item.get("session_id", ""))
+                for item in sticky_data
+                if isinstance(item, dict) and item.get("session_id")
+            ]
+
+        input_highlights = data.get("input_highlights", [])
+        if isinstance(input_highlights, list):
+            self._input_highlights = {str(item) for item in input_highlights}
+
+        output_highlights = data.get("output_highlights", [])
+        if isinstance(output_highlights, list):
+            self._output_highlights = {str(item) for item in output_highlights}
+
+        last_output_summary = data.get("last_output_summary", {})
+        if isinstance(last_output_summary, dict):
+            parsed: dict[str, dict[str, object]] = {}  # guard: loose-dict - persisted activity summaries
+            for session_id, value in last_output_summary.items():
+                if not isinstance(session_id, str):
+                    continue
+                if isinstance(value, dict) and "text" in value:
+                    parsed[session_id] = value
+                elif isinstance(value, str):
+                    parsed[session_id] = {"text": value, "ts": 0.0}
+            self._last_output_summary = parsed
+
+        collapsed_sessions = data.get("collapsed_sessions", [])
+        if isinstance(collapsed_sessions, list):
+            self._collapsed_sessions = {str(item) for item in collapsed_sessions}
+
+        preview_data = data.get("preview")
+        if isinstance(preview_data, dict):
+            preview_id = preview_data.get("session_id")
+            if isinstance(preview_id, str) and preview_id:
+                self.preview_session_id = preview_id
 
     def request_select_session(self, session_id: str) -> None:
         """Request auto-selection of a session once it appears in the tree.
@@ -215,6 +244,7 @@ class SessionsView(Widget, can_focus=True):
                 self.preview_session_id = target_id
                 self._clear_session_highlights(target_id)
                 self.post_message(PreviewChanged(target_id, request_focus=False))
+                self._notify_state_changed()
                 return
 
         # Not in tree yet — keep pending
@@ -366,6 +396,9 @@ class SessionsView(Widget, can_focus=True):
             return None
         return self._nav_items[self.cursor_index]
 
+    def _notify_state_changed(self) -> None:
+        self.post_message(StateChanged())
+
     # --- Helpers ---
 
     def _find_last_session_row_in_group(self, project_node: TreeNode) -> SessionRow | None:
@@ -415,14 +448,21 @@ class SessionsView(Widget, can_focus=True):
 
     def _clear_session_highlights(self, session_id: str) -> None:
         """Clear input/output highlights and active tool for a session."""
+        had_input = session_id in self._input_highlights
+        had_output = session_id in self._output_highlights
         self._cancel_highlight_timer(session_id)
         self._input_highlights.discard(session_id)
         self._output_highlights.discard(session_id)
+        changed = had_input or had_output
         for widget in self._nav_items:
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
+                if widget.active_tool:
+                    changed = True
                 widget.highlight_type = ""
                 widget.active_tool = ""
                 break
+        if changed:
+            self._notify_state_changed()
 
     def _cancel_highlight_timer(self, session_id: str) -> None:
         """Cancel any pending highlight auto-clear timer for a session."""
@@ -441,13 +481,20 @@ class SessionsView(Widget, can_focus=True):
     def _auto_clear_highlight(self, session_id: str) -> None:
         """Auto-clear callback — remove highlights and active tool."""
         self._highlight_timers.pop(session_id, None)
+        had_input = session_id in self._input_highlights
+        had_output = session_id in self._output_highlights
         self._input_highlights.discard(session_id)
         self._output_highlights.discard(session_id)
+        changed = had_input or had_output
         for widget in self._nav_items:
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
+                if widget.active_tool:
+                    changed = True
                 widget.highlight_type = ""
                 widget.active_tool = ""
                 break
+        if changed:
+            self._notify_state_changed()
 
     # --- Mouse click handling (widget-level Pressed messages) ---
 
@@ -495,6 +542,7 @@ class SessionsView(Widget, can_focus=True):
         self.preview_session_id = session_id
         self._clear_session_highlights(session_id)
         self.post_message(PreviewChanged(session_id, request_focus=True))
+        self._notify_state_changed()
         self.focus()
 
     def on_computer_header_pressed(self, message: ComputerHeader.Pressed) -> None:
@@ -572,18 +620,21 @@ class SessionsView(Widget, can_focus=True):
                 self.preview_session_id = session_id
                 self._clear_session_highlights(session_id)
                 self.post_message(PreviewChanged(session_id, request_focus=False))
+            self._notify_state_changed()
 
         elif decision.action == TreeInteractionAction.TOGGLE_STICKY:
             self._toggle_sticky(session_id)
             if decision.clear_preview:
                 self.preview_session_id = None
                 self.post_message(PreviewChanged(None, request_focus=False))
+                self._notify_state_changed()
             self._interaction.mark_double_press_guard(session_id, now)
 
         elif decision.action == TreeInteractionAction.CLEAR_STICKY_PREVIEW:
             self.preview_session_id = None
             self._clear_session_highlights(session_id)
             self.post_message(PreviewChanged(None, request_focus=False))
+            self._notify_state_changed()
 
     def _toggle_sticky(self, session_id: str) -> None:
         """Toggle sticky status for a session."""
@@ -600,6 +651,7 @@ class SessionsView(Widget, can_focus=True):
                 widget.is_sticky = widget.session_id in self._sticky_session_ids
 
         self.post_message(StickyChanged(self._sticky_session_ids.copy()))
+        self._notify_state_changed()
 
     def action_focus_pane(self) -> None:
         """Enter: on a session — preview AND focus the tmux pane.
@@ -632,6 +684,7 @@ class SessionsView(Widget, can_focus=True):
 
         # Post with request_focus=True — pane shows AND cursor transfers to it
         self.post_message(PreviewChanged(session_id, request_focus=True))
+        self._notify_state_changed()
 
     def action_collapse(self) -> None:
         """Left: collapse selected session row."""
@@ -639,7 +692,7 @@ class SessionsView(Widget, can_focus=True):
         if row and not row.collapsed:
             row.collapsed = True
             self._collapsed_sessions.discard(row.session_id)
-            self.post_message(StateDirty())
+            self._notify_state_changed()
 
     def action_expand(self) -> None:
         """Right: expand selected session row."""
@@ -647,7 +700,7 @@ class SessionsView(Widget, can_focus=True):
         if row and row.collapsed:
             row.collapsed = False
             self._collapsed_sessions.add(row.session_id)
-            self.post_message(StateDirty())
+            self._notify_state_changed()
 
     def action_expand_all(self) -> None:
         """+ : expand all session rows."""
@@ -655,7 +708,7 @@ class SessionsView(Widget, can_focus=True):
             if isinstance(widget, SessionRow):
                 widget.collapsed = False
                 self._collapsed_sessions.add(widget.session_id)
-        self.post_message(StateDirty())
+        self._notify_state_changed()
 
     def action_collapse_all(self) -> None:
         """- : collapse all session rows."""
@@ -663,7 +716,7 @@ class SessionsView(Widget, can_focus=True):
             if isinstance(widget, SessionRow):
                 widget.collapsed = True
         self._collapsed_sessions.clear()
-        self.post_message(StateDirty())
+        self._notify_state_changed()
 
     def _resolve_context_for_cursor(self) -> tuple[str, str] | None:
         """Resolve computer + project_path from the current cursor position.
@@ -860,6 +913,7 @@ class SessionsView(Widget, can_focus=True):
         self._update_row_highlight(session_id, "input")
         if session_id == self.preview_session_id:
             self._schedule_highlight_clear(session_id)
+        self._notify_state_changed()
 
     def set_output_highlight(self, session_id: str, summary: str = "") -> None:
         """Mark session as having new output.
@@ -881,12 +935,14 @@ class SessionsView(Widget, can_focus=True):
         self._update_row_highlight(session_id, "output")
         if session_id == self.preview_session_id:
             self._schedule_highlight_clear(session_id)
+        self._notify_state_changed()
 
     def clear_highlight(self, session_id: str) -> None:
         """Clear highlight for a session."""
         self._input_highlights.discard(session_id)
         self._output_highlights.discard(session_id)
         self._update_row_highlight(session_id, "")
+        self._notify_state_changed()
 
     def _update_row_highlight(self, session_id: str, highlight_type: str) -> None:
         """Update highlight type on a session row."""
@@ -920,13 +976,18 @@ class SessionsView(Widget, can_focus=True):
                 break
         if session_id == self.preview_session_id:
             self._schedule_highlight_clear(session_id)
+        self._notify_state_changed()
 
     def clear_active_tool(self, session_id: str) -> None:
         """Clear active tool display for a session."""
+        changed = False
         for widget in self._nav_items:
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
+                changed = bool(widget.active_tool)
                 widget.active_tool = ""
                 break
+        if changed:
+            self._notify_state_changed()
 
     # --- State export for persistence ---
 

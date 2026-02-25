@@ -10,7 +10,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.cli.models import AgentAvailabilityInfo
-from teleclaude.cli.tui.messages import SettingsChanged
+from teleclaude.cli.tui.messages import SettingsChanged, StateChanged
 from teleclaude.cli.tui.theme import get_agent_color, get_agent_style
 from teleclaude.cli.tui.utils.formatters import format_countdown
 
@@ -33,6 +33,7 @@ class TelecFooter(Widget):
     tts_enabled = reactive(False)
     animation_mode = reactive("periodic")
     pane_theming_mode = reactive("off")
+    persistence_key = "status_bar"
 
     def __init__(
         self,
@@ -234,6 +235,30 @@ class TelecFooter(Widget):
 
     def watch_animation_mode(self, _value: str) -> None:
         self.refresh()
+        if self.is_mounted:
+            self.post_message(StateChanged())
 
     def watch_pane_theming_mode(self, _value: str) -> None:
         self.refresh()
+        if self.is_mounted:
+            self.post_message(StateChanged())
+
+    def get_persisted_state(self) -> dict[str, object]:  # guard: loose-dict - widget state payload
+        return {
+            "animation_mode": self.animation_mode,
+            "pane_theming_mode": self.pane_theming_mode,
+        }
+
+    def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict - widget state payload
+        animation_mode = data.get("animation_mode")
+        if isinstance(animation_mode, str) and animation_mode in {"off", "periodic", "party"}:
+            self.animation_mode = animation_mode
+
+        pane_theming_mode = data.get("pane_theming_mode")
+        if isinstance(pane_theming_mode, str) and pane_theming_mode:
+            from teleclaude.cli.tui.theme import normalize_pane_theming_mode
+
+            try:
+                self.pane_theming_mode = normalize_pane_theming_mode(pane_theming_mode)
+            except ValueError:
+                pass

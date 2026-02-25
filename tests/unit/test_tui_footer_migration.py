@@ -9,6 +9,7 @@ import pytest
 
 from teleclaude.cli.models import ComputerInfo, ProjectInfo, SessionInfo
 from teleclaude.cli.tui.app import TelecApp
+from teleclaude.cli.tui.persistence import Persistable
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.tree import ComputerDisplayInfo
 from teleclaude.cli.tui.types import TodoStatus
@@ -42,6 +43,42 @@ async def test_telec_app_uses_compact_textual_footer() -> None:
         footer = app.query_one(TelecFooter)
         assert footer is not None
         assert not app.query("#action-bar")
+
+
+@pytest.mark.unit
+def test_telec_footer_implements_persistable_protocol() -> None:
+    footer = TelecFooter()
+
+    assert isinstance(footer, Persistable)
+    footer.load_persisted_state({"animation_mode": "party", "pane_theming_mode": "agent_plus"})
+
+    assert footer.get_persisted_state() == {
+        "animation_mode": "party",
+        "pane_theming_mode": "agent_plus",
+    }
+
+
+@pytest.mark.unit
+def test_sessions_view_persisted_state_round_trip() -> None:
+    view = SessionsView()
+    view.load_persisted_state(
+        {
+            "sticky_sessions": [{"session_id": "sess-1"}],
+            "input_highlights": ["sess-1"],
+            "output_highlights": ["sess-2"],
+            "last_output_summary": {"sess-2": {"text": "done", "ts": 1.0}},
+            "collapsed_sessions": ["sess-3"],
+            "preview": {"session_id": "sess-1"},
+        }
+    )
+
+    state = view.get_persisted_state()
+    assert state["sticky_sessions"] == [{"session_id": "sess-1"}]
+    assert state["input_highlights"] == ["sess-1"]
+    assert state["output_highlights"] == ["sess-2"]
+    assert state["last_output_summary"] == {"sess-2": {"text": "done", "ts": 1.0}}
+    assert state["collapsed_sessions"] == ["sess-3"]
+    assert state["preview"] == {"session_id": "sess-1"}
 
 
 def _computer_header() -> ComputerHeader:

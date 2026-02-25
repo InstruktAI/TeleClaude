@@ -17,7 +17,7 @@ from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
     DocEditRequest,
     DocPreviewRequest,
-    StateDirty,
+    StateChanged,
 )
 from teleclaude.cli.tui.prep_tree import build_dep_tree
 from teleclaude.cli.tui.todos import TodoItem
@@ -65,6 +65,7 @@ class PreparationView(Widget, can_focus=True):
     ]
 
     cursor_index = reactive(0)
+    persistence_key = "preparation"
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
@@ -94,6 +95,8 @@ class PreparationView(Widget, can_focus=True):
                 t.review_status or "",
                 t.deferrals_status or "",
                 str(t.findings_count),
+                str(t.has_requirements),
+                str(t.has_impl_plan),
                 ",".join(t.files),
                 ",".join(t.after),
                 t.group or "",
@@ -119,9 +122,11 @@ class PreparationView(Widget, can_focus=True):
         if old_fp != new_fp or not self._nav_items:
             self._rebuild()
 
-    def load_persisted_state(self, expanded_todos: set[str]) -> None:
+    def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict
         """Restore persisted expanded state."""
-        self._expanded_todos = expanded_todos
+        expanded_todos = data.get("expanded_todos", [])
+        if isinstance(expanded_todos, list):
+            self._expanded_todos = {str(item) for item in expanded_todos}
 
     def _rebuild(self) -> None:
         """Rebuild the todo display from current data."""
@@ -307,7 +312,7 @@ class PreparationView(Widget, can_focus=True):
         if slug in self._expanded_todos:
             return
         self._expanded_todos.add(slug)
-        self.post_message(StateDirty())
+        self.post_message(StateChanged())
         if not todo_row.todo.files:
             return
         container = self.query_one("#preparation-scroll", VerticalScroll)
@@ -319,7 +324,7 @@ class PreparationView(Widget, can_focus=True):
         if slug not in self._expanded_todos:
             return
         self._expanded_todos.discard(slug)
-        self.post_message(StateDirty())
+        self.post_message(StateChanged())
         self._remove_file_rows(todo_row)
         # Clamp cursor if it was on a removed file row
         if self.cursor_index >= len(self._nav_items):

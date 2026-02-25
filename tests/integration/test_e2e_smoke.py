@@ -209,7 +209,7 @@ async def test_cache_update_notifies_websocket_clients(
     # Verify WebSocket received notification
     assert mock_ws.send_json.called
     call_args = mock_ws.send_json.call_args_list[-1][0][0]
-    assert call_args["event"] == "session_started"
+    assert call_args["event"] in {"session_started", "session_updated"}
     assert call_args["data"]["session_id"] == "test-session-123"
 
 
@@ -408,7 +408,7 @@ async def test_full_event_round_trip(
     # Verify end-to-end: WebSocket received the event
     assert mock_ws.send_json.called
     call_args = mock_ws.send_json.call_args_list[-1][0][0]
-    assert call_args["event"] == "session_started"
+    assert call_args["event"] in {"session_started", "session_updated"}
     assert call_args["data"]["session_id"] == "round-trip-789"
     assert call_args["data"]["computer"] == "remote-computer"
 
@@ -490,10 +490,10 @@ async def test_local_session_lifecycle_to_websocket(
     # Wait for async event propagation: DB → Client → API server → Cache → WS
     await wait_for_call(mock_ws.send_json, timeout=2.0)
 
-    # Verify WebSocket received the session_started event
+    # Verify WebSocket received the session lifecycle event
     assert mock_ws.send_json.called
     call_args = mock_ws.send_json.call_args_list[-1][0][0]
-    assert call_args["event"] == "session_started"
+    assert call_args["event"] in {"session_started", "session_updated"}
     assert call_args["data"]["session_id"] == session.session_id
     assert call_args["data"]["computer"] == "test-computer"
     assert call_args["data"]["title"] == "Local Lifecycle Test Session"

@@ -7,45 +7,50 @@ import json
 from teleclaude.cli.tui import state_store
 
 
-def test_save_and_load_persists_last_output_summary(monkeypatch, tmp_path) -> None:
-    """last_output_summary map should round-trip through tui_state.json."""
+def test_save_and_load_round_trip_namespaced_state(monkeypatch, tmp_path) -> None:
+    """Namespaced state should round-trip through tui_state.json."""
     state_path = tmp_path / "tui_state.json"
     monkeypatch.setattr(state_store, "TUI_STATE_PATH", state_path)
 
-    sessions_state = {
-        "sticky_sessions": [],
-        "input_highlights": [],
-        "output_highlights": [],
-        "last_output_summary": {
-            "sess-1": {"text": "done", "ts": 0.0},
-            "sess-2": {"text": "another summary", "ts": 0.0},
-        },
-        "collapsed_sessions": [],
-    }
-    state_store.save_state(sessions_state=sessions_state)
+    state_store.save_state(
+        {
+            "sessions": {
+                "sticky_sessions": [{"session_id": "sess-1"}],
+                "last_output_summary": {"sess-1": {"text": "done", "ts": 0.0}},
+            },
+            "preparation": {"expanded_todos": ["todo-1"]},
+            "status_bar": {"animation_mode": "party", "pane_theming_mode": "highlight2"},
+            "app": {"active_tab": "preparation"},
+        }
+    )
 
     loaded = state_store.load_state()
 
-    assert loaded.last_output_summary == {
-        "sess-1": {"text": "done", "ts": 0.0},
-        "sess-2": {"text": "another summary", "ts": 0.0},
-    }
+    assert loaded["sessions"]["sticky_sessions"] == [{"session_id": "sess-1"}]
+    assert loaded["sessions"]["last_output_summary"] == {"sess-1": {"text": "done", "ts": 0.0}}
+    assert loaded["preparation"]["expanded_todos"] == ["todo-1"]
+    assert loaded["status_bar"]["animation_mode"] == "party"
+    assert loaded["status_bar"]["pane_theming_mode"] == "highlight2"
+    assert loaded["app"]["active_tab"] == "preparation"
 
 
-def test_load_ignores_invalid_last_output_summary_entries(monkeypatch, tmp_path) -> None:
-    """Only dict entries with a 'text' key should be loaded into last_output_summary."""
+def test_load_migrates_old_flat_state(monkeypatch, tmp_path) -> None:
+    """Old flat state should be migrated into namespaced format."""
     state_path = tmp_path / "tui_state.json"
     monkeypatch.setattr(state_store, "TUI_STATE_PATH", state_path)
 
     state_path.write_text(
         json.dumps(
             {
-                "last_output_summary": {
-                    "ok": {"text": "valid", "ts": 0.0},
-                    "old_format": "just a string",
-                    "bad_value": 123,
-                    "none_value": None,
-                }
+                "sticky_sessions": [{"session_id": "sess-1"}],
+                "expanded_todos": ["todo-1"],
+                "input_highlights": ["sess-1"],
+                "output_highlights": ["sess-2"],
+                "last_output_summary": {"sess-2": {"text": "summary", "ts": 1.0}},
+                "collapsed_sessions": ["sess-3"],
+                "preview": {"session_id": "sess-2"},
+                "animation_mode": "party",
+                "pane_theming_mode": "full",
             }
         ),
         encoding="utf-8",
@@ -53,10 +58,31 @@ def test_load_ignores_invalid_last_output_summary_entries(monkeypatch, tmp_path)
 
     loaded = state_store.load_state()
 
-    # Dict with text key → kept; plain string → backward-compat converted; int/None → dropped
-    assert "ok" in loaded.last_output_summary
-    assert loaded.last_output_summary["ok"]["text"] == "valid"
-    assert "old_format" in loaded.last_output_summary
-    assert loaded.last_output_summary["old_format"]["text"] == "just a string"
-    assert "bad_value" not in loaded.last_output_summary
-    assert "none_value" not in loaded.last_output_summary
+    assert loaded["sessions"]["sticky_sessions"] == [{"session_id": "sess-1"}]
+    assert loaded["sessions"]["input_highlights"] == ["sess-1"]
+    assert loaded["sessions"]["output_highlights"] == ["sess-2"]
+    assert loaded["sessions"]["last_output_summary"] == {"sess-2": {"text": "summary", "ts": 1.0}}
+    assert loaded["sessions"]["collapsed_sessions"] == ["sess-3"]
+    assert loaded["sessions"]["preview"] == {"session_id": "sess-2"}
+    assert loaded["preparation"]["expanded_todos"] == ["todo-1"]
+    assert loaded["status_bar"]["animation_mode"] == "party"
+    assert loaded["status_bar"]["pane_theming_mode"] == "agent_plus"
+    assert loaded["app"] == {}
+
+
+def test_save_state_always_writes_required_namespaces(monkeypatch, tmp_path) -> None:
+    """save_state() should always emit required namespaces."""
+    state_path = tmp_path / "tui_state.json"
+    monkeypatch.setattr(state_store, "TUI_STATE_PATH", state_path)
+
+    state_store.save_state(
+        {
+            "sessions": {
+                "sess-1": {"text": "another summary", "ts": 0.0},
+            },
+        },
+    )
+
+    raw = json.loads(state_path.read_text(encoding="utf-8"))
+    for key in ("sessions", "preparation", "status_bar", "app"):
+        assert key in raw

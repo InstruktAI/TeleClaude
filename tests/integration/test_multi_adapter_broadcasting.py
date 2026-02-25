@@ -13,7 +13,7 @@ from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.db import Db
-from teleclaude.core.models import ChannelMetadata, MessageMetadata, Session
+from teleclaude.core.models import ChannelMetadata, CleanupTrigger, MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
 
 
@@ -242,7 +242,11 @@ async def test_redis_observer_skipped_no_ui():
                 }
 
                 # Send message (origin: telegram, observer: redis)
-                await adapter_client.send_message(session, "Test output")
+                await adapter_client.send_message(
+                    session,
+                    "Test output",
+                    cleanup_trigger=CleanupTrigger.NEXT_TURN,
+                )
 
                 # Verify telegram (origin) received message
                 assert len(telegram_adapter.send_message_calls) == 1
@@ -366,7 +370,11 @@ async def test_ui_observer_receives_broadcasts():
                 }
 
                 # Send message
-                await adapter_client.send_message(session, "Test output")
+                await adapter_client.send_message(
+                    session,
+                    "Test output",
+                    cleanup_trigger=CleanupTrigger.NEXT_TURN,
+                )
 
                 # Verify telegram (origin) called
                 assert len(telegram_adapter.send_message_calls) == 1
@@ -490,7 +498,11 @@ async def test_observer_failure_does_not_affect_origin():
                 }
 
                 # Send message (should succeed despite slack failure)
-                result = await adapter_client.send_message(session, "Test output")
+                result = await adapter_client.send_message(
+                    session,
+                    "Test output",
+                    cleanup_trigger=CleanupTrigger.NEXT_TURN,
+                )
 
                 # Verify telegram (origin) succeeded
                 assert len(telegram_adapter.send_message_calls) == 1
