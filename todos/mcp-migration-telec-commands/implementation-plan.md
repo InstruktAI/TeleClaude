@@ -340,7 +340,7 @@ Add: computers, projects, deploy, agents (status + availability), channels (list
 - [x] Run `make lint` and `make test`
 - [x] Verify existing commands unaffected
 - [x] Verify TUI still works
-- [ ] Verify `telec --help` shows correct structure
+- [x] Verify `telec --help` shows correct structure
 
 ---
 

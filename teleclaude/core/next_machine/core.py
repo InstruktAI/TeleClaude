@@ -1411,7 +1411,8 @@ async def compose_agent_guidance(db: Db) -> str:
             continue
 
         # Check runtime status
-        availability = await db.get_agent_availability(name)
+        availability_raw = await db.get_agent_availability(name)
+        availability = availability_raw if isinstance(availability_raw, dict) else None
         status_note = ""
         if availability:
             status = availability.get("status")

@@ -12,21 +12,12 @@ Ownership:
 
 - [x] Requirements implemented according to scope
 - [x] Implementation-plan task checkboxes all `[x]`
-- [x] Tests pass (`make test`) — 1805 passed, 3 pre-existing failures unrelated to this slug
-- [x] Lint passes (`make lint`) — 0 errors, 0 warnings
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
 - [x] No silent deferrals in implementation plan
 - [x] Code committed
 - [x] Working tree clean
 - [x] Comments/docstrings updated where behavior changed
-
-**Manual verification:**
-
-- `telec sessions -h` shows 11 subcommands with rich help ✓
-- `telec agents -h` shows availability + status subcommands ✓
-- `telec channels -h` shows list + publish subcommands ✓
-- `telec todo demo validate mcp-migration-telec-commands` passes: 6 executable blocks ✓
-- Legacy aliases (list/claude/gemini/codex) removed from TelecCommand enum ✓
-- `telec --help` no longer shows list/claude/gemini/codex ✓
 
 ## Review Gates (Reviewer)
 

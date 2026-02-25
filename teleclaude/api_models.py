@@ -526,5 +526,6 @@ class AgentStatusRequest(BaseModel):  # type: ignore[explicit-any]
 
     status: Literal["available", "unavailable", "degraded"] | None = None
     reason: str | None = None
+    duration_minutes: int | None = None
     unavailable_until: str | None = None
     clear: bool = False

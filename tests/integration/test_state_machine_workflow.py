@@ -18,6 +18,7 @@ from teleclaude.core.next_machine import (
     PhaseName,
     PhaseStatus,
     check_dependencies_satisfied,
+    get_item_phase,
     mark_phase,
     next_work,
     read_phase_state,

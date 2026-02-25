@@ -6,7 +6,6 @@ import subprocess
 import sys
 import time as _t
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
@@ -301,6 +300,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _PROJECT_ROOT_LONG,
                 ],
                 notes=["Also registers the entry in roadmap.yaml when --after is provided."],
+            ),
+            "remove": CommandDef(
+                desc="Remove a todo and its roadmap entry",
+                args="<slug>",
+                flags=[_PROJECT_ROOT_LONG],
             ),
             "validate": CommandDef(
                 desc="Validate todo files and state.yaml schema",
@@ -1358,6 +1362,8 @@ def _handle_todo(args: list[str]) -> None:
     subcommand = args[0]
     if subcommand == "create":
         _handle_todo_create(args[1:])
+    elif subcommand == "remove":
+        _handle_todo_remove(args[1:])
     elif subcommand == "validate":
         _handle_todo_validate(args[1:])
     elif subcommand == "demo":
@@ -1422,142 +1428,29 @@ def _handle_todo_validate(args: list[str]) -> None:
         print("✓ All active todos are valid")
 
 
-def _handle_todo_demo_validate(slug: str | None, project_root: Path) -> None:
-    """Validate that todos/{slug}/demo.md has executable bash blocks."""
+def _extract_demo_blocks(content: str) -> list[tuple[int, str, bool, str]]:
+    """Extract bash blocks from demo.md with skip-validation metadata.
+
+    Returns tuples of (line_number, block_text, skipped, skip_reason).
+    """
     import re
 
-    if not slug:
-        print("Error: slug is required for validate")
-        raise SystemExit(1)
-
-    demo_md = project_root / "todos" / slug / "demo.md"
-    if not demo_md.exists():
-        print(f"Error: {demo_md} not found")
-        raise SystemExit(1)
-
-    content = demo_md.read_text(encoding="utf-8")
-    bash_blocks = re.findall(r"```bash\n[\s\S]*?```", content)
-    # Filter out blocks marked with skip-validation
-    executable_blocks = [b for b in bash_blocks if "skip-validation" not in b]
-
-    if not executable_blocks:
-        print(f"FAIL: {demo_md} has no executable bash blocks")
-        raise SystemExit(1)
-
-    print(f"OK: {demo_md} has {len(executable_blocks)} executable bash block(s)")
-
-
-def _handle_todo_demo_run(slug: str | None, project_root: Path) -> None:
-    """Execute bash blocks from demos/{slug}/demo.md sequentially."""
-    if not slug:
-        print("Error: slug is required for run")
-        raise SystemExit(1)
-
-    demo_md = project_root / "demos" / slug / "demo.md"
-    if not demo_md.exists():
-        print(f"Error: {demo_md} not found")
-        raise SystemExit(1)
-
-    content = demo_md.read_text(encoding="utf-8")
-    # Find bash blocks; skip those annotated with skip-validation comment above them
-    lines = content.split("\n")
-    blocks: list[str] = []
-    i = 0
-    while i < len(lines):
-        # Check for skip-validation annotation on preceding comment line
-        skip = False
-        if lines[i].strip().startswith("<!--") and "skip-validation" in lines[i]:
-            skip = True
-            i += 1
-            continue
-        if lines[i].startswith("```bash"):
-            block_lines: list[str] = []
-            i += 1
-            while i < len(lines) and not lines[i].startswith("```"):
-                block_lines.append(lines[i])
-                i += 1
-            if not skip:
-                blocks.append("\n".join(block_lines))
-        i += 1
-
-    if not blocks:
-        print(f"Error: no executable bash blocks found in {demo_md}")
-        raise SystemExit(1)
-
-    print(f"Running {len(blocks)} bash block(s) from {demo_md}\n")
-    for idx, block in enumerate(blocks, start=1):
-        print(f"--- Block {idx} ---")
-        print(block)
-        result = subprocess.run(block, shell=True, cwd=project_root)
-        if result.returncode != 0:
-            print(f"\nBlock {idx} failed with exit code {result.returncode}")
-            raise SystemExit(result.returncode)
-    print("\nAll blocks passed.")
-
-
-def _handle_todo_demo_create(slug: str | None, project_root: Path) -> None:
-    """Promote todos/{slug}/demo.md to demos/{slug}/demo.md."""
-    import shutil
-
-    if not slug:
-        print("Error: slug is required for create")
-        raise SystemExit(1)
-
-    src = project_root / "todos" / slug / "demo.md"
-    if not src.exists():
-        print(f"Error: {src} not found")
-        raise SystemExit(1)
-
-    dest_dir = project_root / "demos" / slug
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / "demo.md"
-    shutil.copy2(src, dest)
-    print(f"Created {dest}")
-
-
-def _handle_todo_demo(args: list[str]) -> None:
-    """Handle telec todo demo - run, validate, create or list demo artifacts."""
-    import json
-    import re
-
-    # Dispatch subcommands: validate, run, create
-    if args and args[0] in ("validate", "run", "create"):
-        subcommand = args[0]
-        rest = args[1:]
-        slug: str | None = None
-        project_root = Path.cwd()
-        for i, arg in enumerate(rest):
-            if arg == "--project-root" and i + 1 < len(rest):
-                project_root = Path(rest[i + 1]).expanduser().resolve()
-            elif not arg.startswith("-") and slug is None:
-                slug = arg
-        if subcommand == "validate":
-            _handle_todo_demo_validate(slug, project_root)
-        elif subcommand == "run":
-            _handle_todo_demo_run(slug, project_root)
-        elif subcommand == "create":
-            _handle_todo_demo_create(slug, project_root)
-        return
-
-    slug = None
-    project_root = Path.cwd()
-
+    blocks: list[tuple[int, str, bool, str]] = []
+    skip_pattern = re.compile(r"<!--\s*skip-validation:\s*(.+?)\s*-->")
     lines = content.split("\n")
     i = 0
     while i < len(lines):
         line = lines[i]
 
-        # Check for skip-validation comment
         skip_match = skip_pattern.search(line)
         if skip_match:
             skip_reason = skip_match.group(1)
-            # Look for the next bash fence
             j = i + 1
             while j < len(lines) and lines[j].strip() == "":
                 j += 1
             if j < len(lines) and lines[j].strip().startswith("```bash"):
                 block_start = j + 1
-                block_lines = []
+                block_lines: list[str] = []
                 k = block_start
                 while k < len(lines) and lines[k].strip() != "```":
                     block_lines.append(lines[k])
@@ -1568,10 +1461,9 @@ def _handle_todo_demo(args: list[str]) -> None:
             i += 1
             continue
 
-        # Check for bash fence
         if line.strip().startswith("```bash"):
             block_start = i + 1
-            block_lines = []
+            block_lines: list[str] = []
             k = block_start
             while k < len(lines) and lines[k].strip() != "```":
                 block_lines.append(lines[k])

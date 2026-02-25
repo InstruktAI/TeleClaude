@@ -79,7 +79,6 @@ from teleclaude.api_models import (
     SessionsInitialEventDTO,
     SessionStartedEventDTO,
     SessionUpdatedEventDTO,
-    SetAgentStatusRequest,
     SettingsDTO,
     TodoDTO,
     TTSSettingsDTO,
@@ -438,6 +437,7 @@ class APIServer:
         async def list_sessions(  # pyright: ignore
             request: "Request",
             computer: str | None = None,
+            include_closed: bool = Query(False, alias="closed"),
             all_sessions: bool = Query(False, alias="all"),
             identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_LIST),  # noqa: ARG001
         ) -> list[SessionDTO]:
@@ -1401,30 +1401,56 @@ class APIServer:
             Marks an agent as available, unavailable (with optional expiry), or degraded.
             Use clear=true to reset to available. Requires admin clearance.
             """
-            from teleclaude.core.agents import normalize_agent_name
-
-            agent_name = normalize_agent_name(agent)
-            if request.clear:
-                await db.mark_agent_available(agent_name)
-                return {"status": "success", "message": f"{agent_name} marked available"}
-
-            normalized_status = (request.status or "unavailable").strip().lower()
-            if normalized_status not in {"available", "unavailable", "degraded"}:
-                raise HTTPException(status_code=400, detail="status must be one of: available, unavailable, degraded")
-            if normalized_status == "available":
-                await db.mark_agent_available(agent_name)
-                return {"status": "success", "message": f"{agent_name} marked available"}
-            if normalized_status == "degraded":
-                await db.mark_agent_degraded(agent_name, reason=request.reason or "degraded")
-                return {"status": "success", "message": f"{agent_name} marked degraded"}
-            # unavailable
-            if not request.reason:
-                raise HTTPException(status_code=400, detail="reason required when marking unavailable")
             from datetime import datetime, timedelta, timezone
 
-            expiry = request.unavailable_until or (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
-            await db.mark_agent_unavailable(agent_name, unavailable_until=expiry, reason=request.reason)
-            return {"status": "success", "message": f"{agent_name} marked unavailable until {expiry}"}
+            from teleclaude.core.agents import normalize_agent_name
+
+            try:
+                agent_name = normalize_agent_name(agent)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e)) from e
+
+            try:
+                if request.clear:
+                    await db.mark_agent_available(agent_name)
+                else:
+                    normalized_status = (request.status or "unavailable").strip().lower()
+                    if normalized_status not in {"available", "unavailable", "degraded"}:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="status must be one of: available, unavailable, degraded",
+                        )
+
+                    if normalized_status == "available":
+                        await db.mark_agent_available(agent_name)
+                    elif normalized_status == "degraded":
+                        degraded_until: str | None = None
+                        if request.duration_minutes is not None:
+                            degraded_until = (
+                                datetime.now(timezone.utc) + timedelta(minutes=request.duration_minutes)
+                            ).isoformat()
+                        await db.mark_agent_degraded(
+                            agent_name,
+                            request.reason or "degraded",
+                            degraded_until=degraded_until,
+                        )
+                    else:
+                        if not request.reason:
+                            raise HTTPException(status_code=400, detail="reason required when marking unavailable")
+                        minutes = request.duration_minutes or 30
+                        expiry = (
+                            request.unavailable_until
+                            or (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat()
+                        )
+                        await db.mark_agent_unavailable(agent_name, expiry, request.reason)
+
+                info = await db.get_agent_availability(agent_name)
+                return _build_agent_dto(agent_name, info).model_dump()
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error("set_agent_status failed: %s", e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to set agent status: {e}") from e
 
         @self.app.post("/deploy")
         async def deploy_endpoint(  # pyright: ignore
