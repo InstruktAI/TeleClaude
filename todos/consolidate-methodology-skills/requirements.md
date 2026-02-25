@@ -2,7 +2,7 @@
 
 ## Goal
 
-Consolidate 6 methodology skills from Claude Code plugins (superpowers, frontend-design) into `agents/skills/` so that all agent runtimes (Claude, Gemini, Codex) receive the same process disciplines via `telec sync`.
+Consolidate 6 methodology skills from Claude Code plugins (superpowers, frontend-design) into `agents/skills/` so that all agent runtimes (Claude, Gemini, Codex) receive the same process disciplines via `telec sync`, and align adjacent CLI/runtime/test surfaces changed in this branch with that delivery.
 
 ## Scope
 
@@ -14,6 +14,7 @@ Consolidate 6 methodology skills from Claude Code plugins (superpowers, frontend
 4. **brainstorming** — Socratic design refinement with hard gate before implementation. Source: superpowers plugin.
 5. **receiving-code-review** — Technical rigor over performative agreement when handling review feedback. Source: superpowers plugin.
 6. **frontend-design** — Distinctive UI creation methodology (typography, motion, spatial composition). Source: frontend-design plugin.
+7. **Branch alignment work already introduced with this todo** — keep `telec todo demo`, invite fallback output, runtime/install hooks, and test harness behavior/docs internally consistent with the skills consolidation branch (`teleclaude/cli/telec.py`, `teleclaude/cli/config_cli.py`, `teleclaude/config/runtime_settings.py`, `teleclaude/install/install_hooks.py`, `teleclaude/invite.py`, `tests/*`, `tools/test.sh`, `docs/project/spec/telec-cli-surface.md`, `todos/roadmap.yaml`).
 
 Each skill:
 
@@ -42,7 +43,7 @@ Each skill:
 - Follow the artifact schema from `general/spec/agent-artifacts`: frontmatter (`name`, `description`), body sections (`# Title`, `## Purpose`, `## Scope`, `## Inputs`, `## Outputs`, `## Procedure`).
 - Do not copy source material verbatim — adapt to our schema while preserving the methodology's substance and rigor.
 - Skills must not assume any specific runtime's tool set. They describe thinking processes, not tool invocations.
-- No new Python code or tests required — this is purely artifact authoring work.
+- Python/test/doc changes are allowed only for the explicitly listed branch-alignment surfaces above; avoid unrelated feature expansion.
 
 ## Risks
 

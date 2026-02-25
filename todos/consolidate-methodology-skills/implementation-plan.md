@@ -2,9 +2,14 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Create 6 methodology skills in `agents/skills/` adapted from Claude Code plugin sources, validate with `telec sync`, and distribute to all runtimes.
+**Goal:** Create 6 methodology skills in `agents/skills/` adapted from Claude Code plugin sources, validate with `telec sync`, distribute to all runtimes, and keep branch-adjacent CLI/runtime/test surfaces consistent.
 
-**Approach:** Pure artifact authoring. Read each source skill, adapt content to the TeleClaude skill schema, write the SKILL.md, and validate. No Python code changes.
+**Approach:** Two-track execution:
+
+1. Artifact authoring for the six skills.
+2. Alignment updates for already-landed branch behavior in CLI/runtime/install/docs/tests (`teleclaude/cli/telec.py`, `teleclaude/cli/config_cli.py`, `teleclaude/config/runtime_settings.py`, `teleclaude/install/install_hooks.py`, `teleclaude/invite.py`, `tests/*`, `tools/test.sh`, `docs/project/spec/telec-cli-surface.md`, `todos/roadmap.yaml`).
+
+No unrelated feature work outside those paths.
 
 **Reference pattern:** `agents/skills/research/SKILL.md`, `agents/skills/next-code-reviewer/SKILL.md` — follow their frontmatter and section structure.
 
@@ -15,7 +20,7 @@
 
 ---
 
-### [x] Task 1: systematic-debugging
+### Task 1: systematic-debugging
 
 **File(s):** `agents/skills/systematic-debugging/SKILL.md`
 
@@ -29,7 +34,7 @@
 
 ---
 
-### [x] Task 2: test-driven-development
+### Task 2: test-driven-development
 
 **File(s):** `agents/skills/test-driven-development/SKILL.md`
 
@@ -42,7 +47,7 @@
 
 ---
 
-### [x] Task 3: verification-before-completion
+### Task 3: verification-before-completion
 
 **File(s):** `agents/skills/verification-before-completion/SKILL.md`
 
@@ -55,7 +60,7 @@
 
 ---
 
-### [x] Task 4: brainstorming
+### Task 4: brainstorming
 
 **File(s):** `agents/skills/brainstorming/SKILL.md`
 
@@ -68,7 +73,7 @@
 
 ---
 
-### [x] Task 5: receiving-code-review
+### Task 5: receiving-code-review
 
 **File(s):** `agents/skills/receiving-code-review/SKILL.md`
 
@@ -81,7 +86,7 @@
 
 ---
 
-### [x] Task 6: frontend-design
+### Task 6: frontend-design
 
 **File(s):** `agents/skills/frontend-design/SKILL.md`
 
@@ -94,7 +99,7 @@
 
 ---
 
-### [x] Task 7: Validate and Distribute
+### Task 7: Validate and Distribute
 
 **File(s):** All 6 skills
 
@@ -110,26 +115,20 @@
 
 ### Task 2.1: Quality Checks
 
-- [x] `telec sync --validate-only` passes with no errors
-- [x] All 6 skills distributed to all 3 runtime directories
-- [x] No Claude-specific tool references in any skill content
-- [x] Each skill follows the artifact schema (frontmatter + required sections)
+- [ ] `telec sync --validate-only` passes with no errors
+- [ ] All 6 skills distributed to all 3 runtime directories
+- [ ] No Claude-specific tool references in any skill content
+- [ ] Each skill follows the artifact schema (frontmatter + required sections)
 
 ### Task 2.2: Content Verification
 
-- [x] Each skill preserves the core methodology discipline from its source
-- [x] No verbatim copy — content is adapted to our schema
+- [ ] Each skill preserves the core methodology discipline from its source
+- [ ] No verbatim copy — content is adapted to our schema
 
 ---
 
 ## Phase 3: Review Readiness
 
-- [x] Requirements reflected in created files
-- [x] Implementation tasks all marked `[x]`
-- [x] Deferrals documented if applicable (no deferrals needed)
-
-Build notes (2026-02-25):
-
-- Gate rerun complete: `make test` passed with unit and integration suites green.
-- Stabilized gate runner under xdist worker instability by capping workers in `tools/test.sh` (`TELECLAUDE_PYTEST_WORKERS`, default `4`) and retaining `--max-worker-restart=2`.
-- Demo gate passed with `telec todo demo validate consolidate-methodology-skills` (3 executable blocks).
+- [ ] Requirements reflected in created files
+- [ ] Implementation tasks all marked `[x]`
+- [ ] Deferrals documented if applicable
