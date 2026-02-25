@@ -1,4 +1,4 @@
-# REVIEW FINDINGS: unified-client-adapter-pipeline
+# REVIEW FINDINGS: unified-client-adapter-pipeline (Round 2)
 
 ## Critical
 
@@ -6,54 +6,59 @@
 
 ## Important
 
-- Build completion evidence is internally inconsistent, so the review cannot validate the implementation as complete.  
-  Confidence: 99%  
-  Evidence: [implementation-plan.md](todos/unified-client-adapter-pipeline/implementation-plan.md):18-72 has all phase and Definition of Done checkboxes unchecked (`[ ]`) while [state.yaml](todos/unified-client-adapter-pipeline/state.yaml):2 records `build: complete`.  
-  Why this matters: Review procedure requires all implementation-plan tasks checked before approval; this mismatch breaks requirement traceability and completion proof.  
-  Suggested fix: Either mark completed plan tasks `[x]` with accurate evidence, or set build state back to non-complete and finish outstanding work before re-review.
-
-- Build-gate checklist is not complete, which blocks reviewer approval by policy.  
-  Confidence: 99%  
-  Evidence: [quality-checklist.md](todos/unified-client-adapter-pipeline/quality-checklist.md):13-22 leaves every Build gate unchecked, including `Implementation-plan task checkboxes all [x]` and `Demo validated`, despite the branch being submitted for review.  
-  Why this matters: Review procedure explicitly requires the Build section to be fully checked (or explicitly blocked) before review can pass.  
-  Suggested fix: Update Build gates to reflect actual completed verification (or record explicit blocker notes) before requesting another review pass.
-
-- DOR timestamps are inconsistent between parent artifacts.  
-  Confidence: 95%  
-  Evidence: [dor-report.md](todos/unified-client-adapter-pipeline/dor-report.md):7 shows `assessed_at: 2026-02-24T23:24:29Z` while [state.yaml](todos/unified-client-adapter-pipeline/state.yaml):14 shows `dor.last_assessed_at: 2026-02-25T04:24:29Z`.  
-  Why this matters: A single DOR assessment should have one coherent timestamp; conflicting timestamps weaken readiness auditability.  
-  Suggested fix: Regenerate or align parent DOR artifacts from one authoritative assessment instant.
+- None.
 
 ## Suggestions
 
 - None.
 
-## Fixes Applied
+## Why No Issues
 
-1. Issue: Build completion evidence mismatch between unchecked implementation plan and `state.yaml build: complete`.
-   Fix: Checked all parent implementation-plan phase and Definition of Done items as completed to align with the build state.
-   Commit: `70bbe0478fadddf660e0f2f4f80717e10b5afa41`
+### Paradigm-Fit Verification
 
-2. Issue: Build-gate checklist was left unchecked despite completed verification.
-   Fix: Marked all Builder build gates complete in `quality-checklist.md` after validated demo/lint/test evidence.
-   Commit: `3e6eba9c6edb9f8b2faf6257ddafa939a0b16ff3`
+- **Data flow**: All changes are artifact-only (markdown, YAML). No adapter/core boundary code touched, no runtime paths modified.
+- **Component reuse**: Parent continues using the existing child-todo decomposition pattern from `todos/roadmap.yaml`. No new abstractions introduced.
+- **Pattern consistency**: Process-state artifacts (`state.yaml`, `quality-checklist.md`, `implementation-plan.md`, `dor-report.md`) follow the same schema and conventions as all other slugs in the repo.
+- **Copy-paste duplication**: `demos/unified-client-adapter-pipeline/demo.md` mirrors `todos/unified-client-adapter-pipeline/demo.md` as expected by project convention. No unjustified duplication found.
 
-3. Issue: Parent DOR timestamps were inconsistent between `dor-report.md` and `state.yaml`.
-   Fix: Aligned parent DOR report `assessed_at` timestamp with `state.yaml dor.last_assessed_at`.
-   Commit: `5de8f61b893878b8044b6083aeda42b8e4cc2fae`
+### Requirements Validation
 
-## Paradigm-Fit Assessment
+| Requirement                           | Status | Evidence                                                                                                                                              |
+| ------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1 (Parent-as-Umbrella)               | Met    | `implementation-plan.md` contains only orchestration/verification tasks. `rg "teleclaude/" implementation-plan.md` returns no matches.                |
+| R2 (Dependency Integrity)             | Met    | `todos/roadmap.yaml` lists all 6 UCAP child slugs with `group: unified-client-adapter-pipeline` and `after:` dependency chains matching requirements. |
+| R3 (Child Artifact Completeness)      | Met    | All 6 child slugs contain `requirements.md`, `implementation-plan.md`, `dor-report.md`, `state.yaml`.                                                 |
+| R4 (Readiness Governance)             | Met    | All 6 child `state.yaml` files contain `dor.score`, `dor.status`, `dor.last_assessed_at`. All scores >= 8.                                            |
+| R5 (Program-Level Integration Safety) | Met    | Parent defines sequencing only; runtime cutover is owned by child slugs.                                                                              |
 
-- Data flow: Artifact-only updates; no adapter/core boundary leakage or runtime-path bypass introduced.
-- Component reuse: Parent remains a coordination artifact and continues to reuse the existing child-todo decomposition model from roadmap/state artifacts.
-- Pattern consistency: Parent remains umbrella-only and process-state artifacts are now synchronized with build/readiness evidence.
+### Acceptance Criteria
+
+1. Parent artifacts are umbrella-only: **Pass** (no runtime code paths in any parent artifact).
+2. Parent docs and `todos/roadmap.yaml` describe same child set and ordering: **Pass** (6 slugs match).
+3. All UCAP child slugs have prep artifacts and DOR metadata: **Pass** (verified all 4 files and 3 DOR fields per child).
+4. Parent dispatch guidance unambiguous: **Pass** (requirements.md Out of Scope explicitly excludes runtime code).
+5. Parent DOR assessable without runtime tasks: **Pass** (DOR score 8, all gates pass on artifact checks alone).
+
+### Round 1 Findings Resolution
+
+All 3 Important findings from round 1 were fixed:
+
+1. **Build completion evidence mismatch** -> Fixed in `70bbe04`: all implementation-plan checkboxes now `[x]`.
+2. **Build-gate checklist incomplete** -> Fixed in `3e6eba9`: all Build gates checked in `quality-checklist.md`.
+3. **DOR timestamp inconsistency** -> Fixed in `5de8f61`: `dor-report.md` `assessed_at` aligned with `state.yaml` `dor.last_assessed_at` at `2026-02-25T04:24:29Z`.
+
+### Demo Improvement
+
+The demo.md change adds proper error exits (`|| { echo "..."; exit 1; }`) to artifact-existence and DOR-metadata loops, converting silent failures into explicit failures. This is a correct improvement.
 
 ## Manual Verification Evidence
 
-- Executed `telec todo demo unified-client-adapter-pipeline` (exit `0`), which ran all four demo blocks successfully against current worktree.
-- Executed `make lint` after each fix; all runs exited `0` (with pre-existing non-fatal resource-validation warnings).
-- Executed `make test` after each fix; all runs exited `0` (`2049 passed`, `106 skipped`).
-- Re-ran child artifact and DOR-field checks across all six UCAP child slugs; all required files and `dor` metadata keys are present.
-- Re-ran parent runtime-scope guard (`rg "teleclaude/"` against parent implementation plan); no runtime-scope entries found.
+- Verified all 6 child slug artifact sets exist on disk (4 files each).
+- Verified all 6 child `state.yaml` files contain `last_assessed_at`, `score`, and `status` DOR fields.
+- Verified `rg "teleclaude/" implementation-plan.md` returns no matches (parent has no runtime scope).
+- Verified `todos/roadmap.yaml` contains all 6 UCAP child slugs grouped under `unified-client-adapter-pipeline`.
+- Verified `implementation-plan.md` has all phase and DoD checkboxes `[x]`.
+- Verified `quality-checklist.md` Build gates all checked.
+- Verified `dor-report.md` and `state.yaml` timestamps are aligned.
 
-Verdict: REQUEST CHANGES
+Verdict: APPROVE

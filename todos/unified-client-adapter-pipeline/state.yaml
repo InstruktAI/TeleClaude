@@ -1,6 +1,6 @@
 phase: in_progress
 build: complete
-review: changes_requested
+review: approved
 deferrals_processed: false
 breakdown:
   assessed: false
@@ -10,9 +10,9 @@ max_review_rounds: 3
 review_baseline_commit: 6cf610523b7e79236c49a1a0ff849d6d7974e3f8
 unresolved_findings: []
 resolved_findings:
-  - build_completion_evidence_mismatch
-  - build_gate_checklist_incomplete
-  - dor_timestamp_inconsistency
+- build_completion_evidence_mismatch
+- build_gate_checklist_incomplete
+- dor_timestamp_inconsistency
 dor:
   last_assessed_at: '2026-02-25T04:24:29Z'
   score: 8
