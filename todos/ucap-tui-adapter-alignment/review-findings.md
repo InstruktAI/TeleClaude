@@ -1,12 +1,10 @@
 # Review Findings - ucap-tui-adapter-alignment
 
-## Verdict: REQUEST CHANGES
+## Verdict: APPROVE
 
 ## Summary
 
-The core implementation is well-structured: `canonical_type` is correctly threaded from `AgentActivityEventDTO` through `AgentActivity` message to the `on_agent_activity` handler. The old `activity_type`-based bypass paths are fully removed. The `HOOK_TO_CANONICAL` mapping and `serialize_activity_event` are solid. The paradigm fit is correct — the WS event → DTO → Message → handler chain follows established data flow patterns.
-
-Two findings require changes before approval.
+Round 2 re-review after fix-review commit `c41cf4be`. Both Important findings from round 1 are properly resolved. The implementation correctly threads `canonical_type` through the full WS event → DTO → Message → handler chain. The handler dispatches on canonical vocabulary instead of hook types. Structured observability fields are present on both debug and warning log paths. Handler dispatch tests cover all branches including edge cases.
 
 ---
 
@@ -16,116 +14,57 @@ None.
 
 ## Important
 
-### 1. Warning log missing structured `extra` fields — R4 violation
-
-**File:** `teleclaude/cli/tui/app.py:542-546`
-
-The debug log at line 535 correctly populates `extra={"lane": "tui", "canonical_type": canonical, "session_id": ...}` (satisfying R4). However, the warning log for the `canonical is None` path omits the `extra` dict entirely:
-
-```python
-logger.warning(
-    "tui lane: AgentActivity missing canonical_type lane=tui hook_type=%s session=%s",
-    message.activity_type,
-    message.session_id[:8] if message.session_id else "",
-    # No extra= here — R4 structured fields absent
-)
-```
-
-R4 requires TUI lane logs to carry `lane` and `canonical_type` in structured fields. The `None` case is exactly the signal downstream metrics/alerting needs.
-
-**Fix:** Add `extra={"lane": "tui", "canonical_type": None, "session_id": message.session_id}`.
-
-### 2. `on_agent_activity` handler dispatch logic is entirely untested
-
-**File:** `tests/unit/test_threaded_output_updates.py`
-
-The 8 new tests cover:
-
-- `AgentActivity` message attribute storage (4 tests) — correct but tests data holding, not behavior
-- `serialize_activity_event` canonical mappings (3 tests) — duplicates coverage already in `test_activity_contract.py`
-- Observability fields on `CanonicalActivityEvent` (1 test) — also duplicates `test_activity_contract.py`
-
-None of the tests exercise the rewritten `on_agent_activity` handler itself — the highest-risk changed code. Untested paths:
-
-- `canonical is None` → early return, no `sessions_view` calls
-- `canonical == "user_prompt_submit"` → `clear_active_tool` + `set_input_highlight`
-- `canonical == "agent_output_stop"` → `clear_active_tool` + `set_output_highlight` with summary
-- `canonical == "agent_output_update"` with `tool_name` → preview-stripping logic at lines 557-559
-- `canonical == "agent_output_update"` without `tool_name` → `clear_active_tool`
-- Unknown `canonical_type` → falls through silently (intentional?)
-
-Acceptance criterion 4 states "TUI-focused tests validate canonical contract path and regressions." The handler IS the canonical contract path for TUI. The existing tests validate upstream (serializer) and data transport (message class), but not the dispatch behavior.
-
-The preview-stripping logic (`if preview.startswith(message.tool_name): preview = preview[len(...):]`) has edge cases worth covering: tool_preview == tool_name (empty remainder), tool_preview with different prefix, etc.
-
-**Fix:** Add handler-level tests. Either use a mocked `SessionsView` injected into the handler, or extract the dispatch logic into a testable pure function.
-
----
+None.
 
 ## Suggestions
 
-### 3. Serializer tests duplicate `test_activity_contract.py`
+### 1. Redundant inline imports in data-holding tests
 
-Tests 5-8 (lines 398-459) exercise `serialize_activity_event` directly. The dedicated `test_activity_contract.py` already covers these exact mappings more completely (parametrized across all hook types, validation failures, routing metadata, optional fields). The duplication inflates maintenance cost without differentiated regression value.
+**File:** `tests/unit/test_threaded_output_updates.py:349,362,373,386`
 
-**Suggestion:** Remove or relocate these to their natural home in `test_activity_contract.py` if any gap is identified there. Replace them with handler-level tests that actually exercise the TUI dispatch.
+Tests 1-4 (`test_agent_activity_*`) contain inline `from teleclaude.cli.tui.messages import AgentActivity` despite the module-level import at line 6. The inline imports are redundant and inconsistent with the handler tests which use the module-level import. Not a behavioral issue.
 
-### 4. Inline imports inconsistent with file convention
+### 2. Serializer tests still duplicate `test_activity_contract.py`
 
-Tests 1-8 use inline `from ... import` inside each function body. All pre-existing tests in this file use top-level imports. Neither `AgentActivity` nor `serialize_activity_event` are heavy imports requiring deferral.
-
-**Suggestion:** Hoist to module-level imports for consistency.
+Tests 5-8 exercise `serialize_activity_event` directly with the same mappings covered by `test_activity_contract.py`. Maintenance cost without differentiated regression value. Consider consolidating in a future cleanup.
 
 ---
 
 ## Paradigm-Fit Assessment
 
-1. **Data flow**: Correct. The implementation follows the established WS event → DTO model → Textual Message → handler pattern without introducing any bypass.
-2. **Component reuse**: Correct. `AgentActivity` message class was extended (not copied), `on_agent_activity` was refactored in place.
-3. **Pattern consistency**: Correct. The handler structure matches the sibling handlers in `app.py`. Structured logging follows the `instrukt_ai_logging` pattern with `extra` dicts.
-
----
+1. **Data flow**: Correct. WS event → `AgentActivityEventDTO` → `AgentActivityEvent` → `AgentActivity` Message → `on_agent_activity` handler. No bypass paths. `canonical_type` threaded through all layers as optional field.
+2. **Component reuse**: Correct. `AgentActivity` message class extended in place (not duplicated). Handler refactored in situ.
+3. **Pattern consistency**: Correct. Handler structure matches sibling handlers in `app.py`. Structured logging uses `extra` dicts per `instrukt_ai_logging` convention. Tests follow existing file patterns.
 
 ## Requirement Verification
 
-| Requirement                        | Status        | Evidence                                                                                |
-| ---------------------------------- | ------------- | --------------------------------------------------------------------------------------- |
-| R1: Canonical contract consumption | Met           | `on_agent_activity` dispatches on `canonical_type`, not `activity_type`                 |
-| R2: Bypass removal                 | Met           | Old `activity_type` branches removed; `canonical is None` guard prevents untyped events |
-| R3: Presentation boundary          | Met           | Tool preview formatting stays in TUI handler; canonical payload is not mutated          |
-| R4: Observability parity           | Partially met | Debug log has structured fields; warning log (finding #1) does not                      |
+| Requirement                        | Status | Evidence                                                                                |
+| ---------------------------------- | ------ | --------------------------------------------------------------------------------------- |
+| R1: Canonical contract consumption | Met    | `on_agent_activity` dispatches on `canonical_type`, not `activity_type`                 |
+| R2: Bypass removal                 | Met    | Old `activity_type` branches removed; `canonical is None` guard prevents untyped events |
+| R3: Presentation boundary          | Met    | Tool preview formatting stays in TUI handler; canonical payload not mutated             |
+| R4: Observability parity           | Met    | Both debug log (line 535) and warning log (line 542) carry structured `extra` fields    |
 
-## Build Checklist Validation
-
-- Implementation plan tasks: All checked ✓
-- Build section in quality-checklist: All checked ✓
-- Commits exist: `ae6b1f0c` (build phase), `0393dad6` (feat) ✓
-- No deferrals.md: ✓
-
-## Fixes Applied
+## Round 1 Finding Resolution
 
 ### Finding #1 — R4 structured log fields on warning path
 
-**Fix:** Added `extra={"lane": "tui", "canonical_type": None, "session_id": message.session_id}` to the `logger.warning(...)` call in `on_agent_activity` when `canonical is None`.
-
-**Commit:** `c41cf4be`
+**Status:** Resolved in `c41cf4be`.
+**Verification:** `app.py:546` now includes `extra={"lane": "tui", "canonical_type": None, "session_id": message.session_id}`.
 
 ### Finding #2 — Handler dispatch logic untested
 
-**Fix:** Added 9 handler-level tests to `tests/unit/test_threaded_output_updates.py` covering all dispatch branches:
+**Status:** Resolved in `c41cf4be`.
+**Verification:** 9 handler-level tests added covering all branches: `canonical is None` early return, `user_prompt_submit`, `agent_output_stop` with/without summary, `agent_output_update` with tool (prefix stripping, no prefix, preview == name), `agent_output_update` without tool, and unknown canonical fallthrough.
 
-- `canonical is None` → early return, no `sessions_view` calls
-- `canonical == "user_prompt_submit"` → `clear_active_tool` + `set_input_highlight`
-- `canonical == "agent_output_stop"` → `clear_active_tool` + `set_output_highlight` with/without summary
-- `canonical == "agent_output_update"` with `tool_name` (no-prefix and prefix-stripped cases)
-- `canonical == "agent_output_update"` with `tool_preview == tool_name` (empty remainder edge case)
-- `canonical == "agent_output_update"` without `tool_name` → `clear_active_tool`
-- Unknown `canonical_type` → falls through silently
+## Build Checklist Validation
 
-Also hoisted `TelecApp` and `AgentActivity` imports to module-level per file convention (suggestion #4 addressed).
-
-**Commit:** `c41cf4be`
+- Implementation plan tasks: All checked
+- Build section in quality-checklist: All checked
+- Tests pass: 2132 passed, 106 skipped
+- No deferrals.md
+- Commits: `0393dad6` (feat), `ae6b1f0c` (build), `c41cf4be` (fix-review)
 
 ## Review Round
 
-1 of 3.
+2 of 3.
