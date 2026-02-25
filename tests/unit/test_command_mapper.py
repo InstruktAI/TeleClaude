@@ -125,25 +125,6 @@ def test_map_discord_message_actor_from_channel_metadata():
     assert cmd.actor_name == "bob"
 
 
-def test_map_redis_mcp_message_actor_synthesis():
-    """MCP-origin messages get a synthetic system actor_id from computer/session."""
-    cmd = CommandMapper.map_redis_input(
-        "message some prompt",
-        origin=InputOrigin.MCP.value,
-        session_id="sess_mcp",
-        initiator="workstation",
-    )
-    assert isinstance(cmd, ProcessMessageCommand)
-    assert cmd.origin == InputOrigin.MCP.value
-    assert cmd.actor_id is not None
-    # Contract: system:{computer}:{session_id} — assert structural prefix not just substring
-    assert cmd.actor_id.startswith("system:workstation:"), (
-        f"actor_id must follow 'system:{{computer}}:{{session_id}}' format, got: {cmd.actor_id!r}"
-    )
-    assert cmd.actor_name is not None
-    assert "workstation" in cmd.actor_name
-
-
 def test_map_api_message_actor_from_payload():
     """API message uses actor fields from payload directly."""
     payload = {

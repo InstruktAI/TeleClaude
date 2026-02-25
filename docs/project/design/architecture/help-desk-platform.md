@@ -229,12 +229,12 @@ An MCP tool (`teleclaude__escalate`) that customer-facing agents call when they 
 
 **Documentation layering:**
 
-| Artifact               | Location                                           | What it covers                                        |
-| ---------------------- | -------------------------------------------------- | ----------------------------------------------------- |
-| Tool spec              | Help desk `docs/project/spec/tools/escalation.md`  | Parameters, return values, behavior contract          |
-| Escalation policy      | Help desk `docs/project/policy/escalation.md`      | When to escalate, thresholds, what qualifies          |
-| Escalation procedure   | Help desk `docs/project/procedure/escalation.md`   | Step-by-step: recognize → call tool → inform customer |
-| MCP tool surface entry | TeleClaude `docs/project/spec/mcp-tool-surface.md` | Tool registration and role gating                     |
+| Artifact                | Location                                            | What it covers                                        |
+| ----------------------- | --------------------------------------------------- | ----------------------------------------------------- |
+| Tool spec               | Help desk `docs/project/spec/tools/escalation.md`   | Parameters, return values, behavior contract          |
+| Escalation policy       | Help desk `docs/project/policy/escalation.md`       | When to escalate, thresholds, what qualifies          |
+| Escalation procedure    | Help desk `docs/project/procedure/escalation.md`    | Step-by-step: recognize → call tool → inform customer |
+| Telec CLI surface entry | TeleClaude `docs/project/spec/telec-cli-surface.md` | Session and operator command surface                  |
 
 The operator brain (`AGENTS.master.md`) references the help desk docs:
 
@@ -940,4 +940,4 @@ sequenceDiagram
 - docs/project/design/architecture/outbox.md — Durable outbox for hook event delivery
 - docs/project/design/architecture/jobs-runner.md — Scheduled job runner architecture
 - docs/project/spec/teleclaude-config.md — Configuration schema
-- docs/project/spec/mcp-tool-surface.md — MCP tool registration and role gating
+- docs/project/spec/telec-cli-surface.md — Telec command surface for session and orchestration flows

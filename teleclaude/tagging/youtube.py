@@ -302,7 +302,6 @@ def call_agent(
             prompt=prompt,
             schema=schema,
             tools="web_search" if use_web else "",
-            mcp_tools="",
             timeout_s=60,
         )
         result = payload.get("result", {})

@@ -451,7 +451,6 @@ def configure_codex(repo_root: Path) -> None:
     # Phase 2 (mcp-migration-agent-config): stop injecting MCP server config
     # and scrub any legacy TeleClaude MCP section from existing Codex config.
     content = _remove_codex_mcp_config(content)
-    # Keep ensure_codex_mcp_config() defined for Phase 3 cleanup.
     content = _apply_codex_settings_overrides(content)
     config_path.write_text(content)
     print(f"Codex hooks and settings configured in {config_path}")
@@ -501,30 +500,6 @@ def _remove_codex_mcp_config(content: str) -> str:
     )
     content = section_pattern.sub("", content)
     return content.rstrip() + "\n" if content.strip() else ""
-
-
-def ensure_codex_mcp_config(content: str, repo_root: Path) -> str:
-    # Deprecated in Phase 2 (mcp-migration-agent-config).
-    # Retained temporarily for Phase 3 MCP code deletion.
-    """Ensure Codex MCP server config points at the repo root wrapper command."""
-    wrapper_path = repo_root / "bin" / "mcp-wrapper.py"
-
-    desired_block = (
-        "# TeleClaude MCP Server\n"
-        "[mcp_servers.teleclaude]\n"
-        'type = "stdio"\n'
-        'command = "uv"\n'
-        f'args = ["run", "--quiet", "--project", "{repo_root}", "{wrapper_path}"]\n'
-    )
-
-    section_name = "mcp_servers.teleclaude"
-    section_pattern = re.compile(
-        rf"(?m)^(?:[ \t]*#\s*TeleClaude MCP Server[ \t]*\n)?[ \t]*\[{re.escape(section_name)}\]\n"
-        r"(?:^(?![ \t]*\[).*(?:\n|$))*"
-    )
-    content = section_pattern.sub("", content)
-    content = content.rstrip() + "\n\n" + desired_block
-    return content
 
 
 def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:

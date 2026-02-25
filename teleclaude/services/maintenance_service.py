@@ -52,7 +52,6 @@ class MaintenanceService:
                 await session_cleanup.emit_recently_closed_session_events(hours=12)
                 await session_cleanup.cleanup_orphan_tmux_sessions()
                 await session_cleanup.cleanup_orphan_workspaces()
-                await session_cleanup.cleanup_orphan_mcp_wrappers()
                 await db.cleanup_stale_voice_assignments()
                 await self._check_idle_compaction()
                 await self._cleanup_adapter_resources()

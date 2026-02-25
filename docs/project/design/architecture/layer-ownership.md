@@ -131,5 +131,4 @@ A layer accesses another layer's internals directly instead of going through the
 ## See Also
 
 - project/design/architecture/system-overview
-- project/design/architecture/mcp-layer
 - project/design/architecture/daemon

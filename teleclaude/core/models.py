@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, cast
 
-from teleclaude.constants import FIELD_ADAPTER_METADATA, FIELD_COMMAND, FIELD_COMPUTER
+from teleclaude.constants import FIELD_ADAPTER_METADATA
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
 from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.types import SystemStats
@@ -724,7 +724,7 @@ class ThinkingMode(str, Enum):
 
 @dataclass
 class StartSessionArgs:
-    """Typed arguments for starting a session via MCP/Redis tools."""
+    """Typed arguments for starting a session."""
 
     computer: str
     project_path: str
@@ -735,48 +735,10 @@ class StartSessionArgs:
     caller_session_id: Optional[str] = None
     direct: bool = False
 
-    @classmethod
-    def from_mcp(
-        cls,
-        arguments: Dict[str, object],  # guard: loose-dict - MCP protocol boundary
-        caller_session_id: Optional[str],
-    ) -> "StartSessionArgs":
-        """Build args from MCP tool call."""
-        required = ["computer", "project_path", "title", "message"]
-        missing = [r for r in required if r not in arguments]
-        if missing:
-            raise ValueError(f"Arguments required for teleclaude__start_session: {', '.join(missing)}")
-
-        agent = str(arguments.get("agent", "claude"))
-        thinking_mode_raw = arguments.get("thinking_mode")
-        if isinstance(thinking_mode_raw, ThinkingMode):
-            thinking_mode_raw = thinking_mode_raw.value
-        else:
-            thinking_mode_raw = str(thinking_mode_raw or ThinkingMode.SLOW.value)
-
-        allowed_modes = {mode.value for mode in ThinkingMode}
-        if thinking_mode_raw not in allowed_modes:
-            raise ValueError(f"thinking_mode must be one of: {', '.join(sorted(allowed_modes))}")
-        thinking_mode = ThinkingMode(thinking_mode_raw)
-
-        direct_raw = arguments.get("direct", False)
-        direct = bool(direct_raw) if direct_raw is not None else False
-
-        return cls(
-            computer=str(arguments["computer"]),
-            project_path=str(arguments["project_path"]),
-            title=str(arguments["title"]),
-            message=str(arguments["message"]),
-            agent=agent,
-            thinking_mode=thinking_mode,
-            caller_session_id=caller_session_id,
-            direct=direct,
-        )
-
 
 @dataclass
 class RunAgentCommandArgs:
-    """Typed arguments for teleclaude__run_agent_command."""
+    """Typed arguments for run-agent command execution."""
 
     computer: str
     command: str
@@ -786,40 +748,6 @@ class RunAgentCommandArgs:
     thinking_mode: ThinkingMode = ThinkingMode.SLOW
     subfolder: str = ""
     caller_session_id: Optional[str] = None
-
-    @classmethod
-    def from_mcp(
-        cls,
-        arguments: Dict[str, object],  # guard: loose-dict - MCP protocol boundary
-        caller_session_id: Optional[str],
-    ) -> "RunAgentCommandArgs":
-        """Build args from MCP tool call."""
-        if not arguments or FIELD_COMPUTER not in arguments or FIELD_COMMAND not in arguments:
-            raise ValueError("Arguments required for teleclaude__run_agent_command: computer, command")
-
-        thinking_mode_raw = arguments.get("thinking_mode")
-        if isinstance(thinking_mode_raw, ThinkingMode):
-            thinking_mode_raw = thinking_mode_raw.value
-        else:
-            thinking_mode_raw = str(thinking_mode_raw or ThinkingMode.SLOW.value)
-
-        allowed_modes = {mode.value for mode in ThinkingMode}
-        if thinking_mode_raw not in allowed_modes:
-            raise ValueError(f"thinking_mode must be one of: {', '.join(sorted(allowed_modes))}")
-        thinking_mode = ThinkingMode(thinking_mode_raw)
-
-        project_arg = arguments.get("project")
-
-        return cls(
-            computer=str(arguments[FIELD_COMPUTER]),
-            command=str(arguments[FIELD_COMMAND]),
-            args=str(arguments.get("args", "")),
-            project=str(project_arg) if project_arg else None,
-            agent=str(arguments.get("agent", "claude")),
-            thinking_mode=thinking_mode,
-            subfolder=str(arguments.get("subfolder", "")) if arguments.get("subfolder") else "",
-            caller_session_id=caller_session_id,
-        )
 
 
 @dataclass

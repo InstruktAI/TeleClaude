@@ -66,7 +66,6 @@ def mock_daemon():
         patch("teleclaude.core.voice_message_handler.tmux_bridge", mock_tb),
         patch("teleclaude.core.tmux_io.tmux_bridge", mock_tb),
         patch("teleclaude.daemon.TelegramAdapter") as mock_ta,
-        patch("teleclaude.daemon.TeleClaudeMCPServer") as mock_mcp,
         patch.object(config_module, "_config", None),
     ):  # Reset config before each test
         # Create daemon instance
@@ -125,10 +124,6 @@ def mock_daemon():
 
         # Mock adapter registry
         daemon.adapters = {"telegram": daemon.telegram}
-
-        # Mock mcp_server (Phase 1 MCP support)
-        daemon.mcp_server = mock_mcp.return_value
-        daemon.mcp_server.start = AsyncMock()
 
         # Mock helper methods
         daemon._get_adapter_by_type = MagicMock(return_value=daemon.telegram)
@@ -828,131 +823,6 @@ async def test_agent_then_message_fails_on_command_acceptance_timeout():
 
         assert result["status"] == "error"
         assert "Timeout waiting for command acceptance" in result["message"]
-
-
-@pytest.mark.asyncio
-async def test_restart_mcp_server_replaces_task():
-    """Test that restarting MCP server replaces the running task."""
-    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-    daemon.mcp_server = MagicMock()
-    daemon.mcp_server.start = AsyncMock()
-    daemon.mcp_server.stop = AsyncMock()
-    daemon.shutdown_event = asyncio.Event()
-    daemon._mcp_restart_lock = asyncio.Lock()
-    daemon._mcp_restart_attempts = 0
-    daemon._mcp_restart_window_start = 0.0
-    daemon._log_background_task_exception = MagicMock(return_value=lambda _task: None)
-    daemon._handle_mcp_task_done = MagicMock()
-
-    daemon.mcp_task = asyncio.create_task(asyncio.sleep(10))
-
-    ok = await daemon._restart_mcp_server("test")
-
-    assert ok is True
-    assert daemon.mcp_task is not None
-    assert daemon.mcp_task.done() is False
-
-    daemon.mcp_task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await daemon.mcp_task
-
-
-@pytest.mark.asyncio
-async def test_check_mcp_socket_health_uses_snapshot():
-    """Test that MCP socket health uses snapshot without probing when fresh."""
-    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-    daemon.mcp_server = MagicMock()
-    daemon.mcp_server.health_snapshot = AsyncMock(
-        return_value={
-            "is_serving": True,
-            "socket_exists": True,
-            "active_connections": 0,
-            "last_accept_age_s": 1.0,
-        }
-    )
-    daemon._mcp_restart_lock = asyncio.Lock()
-    daemon._last_mcp_restart_at = 0.0
-    daemon._last_mcp_probe_at = 10.0
-    daemon._last_mcp_probe_ok = False
-
-    with patch("teleclaude.daemon.asyncio.open_unix_connection", new_callable=AsyncMock) as mock_open:
-        healthy = await TeleClaudeDaemon._check_mcp_socket_health(daemon)
-
-    assert healthy is True
-    assert daemon._last_mcp_probe_at == 10.0
-    assert daemon._last_mcp_probe_ok is False
-
-
-@pytest.mark.asyncio
-async def test_check_mcp_socket_health_probes_when_accept_stale_with_active_connections():
-    """Test that MCP socket health probes when accepts are stale with connections."""
-    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-    daemon.mcp_server = MagicMock()
-    daemon.mcp_server.health_snapshot = AsyncMock(
-        return_value={
-            "is_serving": True,
-            "socket_exists": True,
-            "active_connections": 2,
-            "last_accept_age_s": 999.0,
-        }
-    )
-    daemon._mcp_restart_lock = asyncio.Lock()
-    daemon._last_mcp_restart_at = 0.0
-    daemon._last_mcp_probe_at = 0.0
-
-    dummy_writer = MagicMock()
-    closed = {"close": False, "wait": False}
-
-    def _close():
-        closed["close"] = True
-
-    async def _wait_closed():
-        closed["wait"] = True
-
-    with patch(
-        "teleclaude.daemon.asyncio.open_unix_connection",
-        new_callable=AsyncMock,
-        return_value=(AsyncMock(), dummy_writer),
-    ) as mock_open:
-        dummy_writer.close = _close
-        dummy_writer.wait_closed = _wait_closed
-        healthy = await TeleClaudeDaemon._check_mcp_socket_health(daemon)
-
-    assert healthy is True
-    assert daemon._last_mcp_probe_ok is True
-    assert daemon._last_mcp_probe_at > 0.0
-    assert closed["close"] is True
-    assert closed["wait"] is True
-
-
-@pytest.mark.asyncio
-async def test_check_mcp_socket_health_returns_unhealthy_within_probe_interval_after_failure():
-    """Test that recent probe failure suppresses immediate re-probe."""
-    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-    daemon.mcp_server = MagicMock()
-    daemon.mcp_server.health_snapshot = AsyncMock(
-        return_value={
-            "is_serving": True,
-            "socket_exists": True,
-            "active_connections": 1,
-            "last_accept_age_s": 999.0,
-        }
-    )
-    daemon._mcp_restart_lock = asyncio.Lock()
-    daemon._last_mcp_restart_at = 0.0
-    daemon._last_mcp_probe_at = 123.0
-    daemon._last_mcp_probe_ok = False
-
-    with (
-        patch("teleclaude.daemon.asyncio.get_running_loop") as mock_loop,
-        patch("teleclaude.daemon.asyncio.open_unix_connection", new_callable=AsyncMock) as mock_open,
-    ):
-        mock_loop.return_value.time.return_value = 123.5
-        healthy = await TeleClaudeDaemon._check_mcp_socket_health(daemon)
-
-    assert healthy is False
-    assert daemon._last_mcp_probe_at == 123.0
-    assert daemon._last_mcp_probe_ok is False
 
 
 def test_summarize_output_change_reports_diff():
@@ -1716,10 +1586,6 @@ async def test_periodic_cleanup_replays_recent_closed_sessions() -> None:
         ),
         patch(
             "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_workspaces", new_callable=AsyncMock
-        ),
-        patch(
-            "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_mcp_wrappers",
-            new_callable=AsyncMock,
         ),
         patch("teleclaude.services.maintenance_service.db.cleanup_stale_voice_assignments", new_callable=AsyncMock),
         patch(

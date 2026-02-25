@@ -23,7 +23,7 @@ from teleclaude.constants import (
     HUMAN_ROLE_MEMBER,
     HUMAN_ROLE_NEWCOMER,
 )
-from teleclaude.mcp.role_tools import filter_tool_names, get_excluded_tools
+from teleclaude.core.tool_access import filter_tool_names, get_excluded_tools
 
 # =========================================================================
 # Identity Key Derivation

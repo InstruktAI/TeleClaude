@@ -20,8 +20,7 @@ TYPE_SUFFIX = {
     "spec": "Spec",
 }
 
-# MCP Configuration
-MCP_SOCKET_PATH = "/tmp/teleclaude.sock"
+# API socket configuration
 API_SOCKET_PATH = "/tmp/teleclaude-api.sock"
 
 # Internal configuration (not user-configurable)
@@ -34,7 +33,7 @@ MAIN_MODULE = "__main__"
 LOCAL_COMPUTER = "local"
 ENV_ENABLE = "1"
 
-# MCP roles
+# System roles
 ROLE_ORCHESTRATOR = "orchestrator"
 ROLE_WORKER = "worker"
 

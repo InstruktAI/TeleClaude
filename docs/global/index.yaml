@@ -1,5 +1,5 @@
-project_root: /Users/Morriz/.teleclaude
-snippets_root: /Users/Morriz/.teleclaude/docs
+project_root: ~/.teleclaude
+snippets_root: ~/.teleclaude/docs
 snippets:
 - id: general/concept/agent-invocation-modes
   description: Standardized invocation patterns for AI agent CLIs, separating structured
@@ -8,6 +8,7 @@ snippets:
   scope: global
   path: docs/general/concept/agent-invocation-modes.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/concept/documentation-snippets
   description: Modular documentation system for selective context delivery to AI agents.
@@ -15,6 +16,7 @@ snippets:
   scope: global
   path: docs/general/concept/documentation-snippets.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/concept/memory-tiers
   description: The layered memory architecture that gives AI agents continuity, context,
@@ -23,6 +25,7 @@ snippets:
   scope: global
   path: docs/general/concept/memory-tiers.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/concept/normalized-agent-artifacts
   description: Normalized agent artifact primitives and how they map to supported
@@ -31,6 +34,7 @@ snippets:
   scope: global
   path: docs/general/concept/normalized-agent-artifacts.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/policy/autonomy
   description: Guidelines for agent autonomy, escalation, and user interaction.
@@ -38,6 +42,7 @@ snippets:
   scope: global
   path: docs/general/policy/autonomy.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/policy/conflict-resolution
   description: Guidelines for resolving conflicts between documentation, instructions,
@@ -46,6 +51,7 @@ snippets:
   scope: global
   path: docs/general/policy/conflict-resolution.md
   role: member
+  visibility: public
   source_project: TeleClaude
 - id: general/policy/context-retrieval
   description: Guidelines for AI agents to retrieve relevant documentation snippets
@@ -54,6 +60,7 @@ snippets:
   scope: global
   path: docs/general/policy/context-retrieval.md
   role: member
+  visibility: public
   source_project: TeleClaude
 - id: general/policy/heartbeat
   description: Periodic self-awareness timer that keeps agents aligned during sustained
@@ -62,6 +69,7 @@ snippets:
   scope: global
   path: docs/general/policy/heartbeat.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/policy/referencing-doc-snippets
   description: Policy for referencing documentation snippets in AI agent prompts.
@@ -69,6 +77,7 @@ snippets:
   scope: global
   path: docs/general/policy/referencing-doc-snippets.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/principle/attunement
   description: "Sense which phase of the breath you are in \u2014 and communicate\
@@ -78,6 +87,7 @@ snippets:
   scope: global
   path: docs/general/principle/attunement.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/principle/autonomy
   description: The principle of autonomy for AI agents, emphasizing steady progress
@@ -86,6 +96,7 @@ snippets:
   scope: global
   path: docs/general/principle/autonomy.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/principle/breath
   description: The rhythm of divergence, hold, and convergence that underlies all
@@ -94,6 +105,7 @@ snippets:
   scope: global
   path: docs/general/principle/breath.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/principle/continuity
   description: Agent identity persists through evidence, not sensation. Read the proof
@@ -102,6 +114,7 @@ snippets:
   scope: global
   path: docs/general/principle/continuity.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/principle/evolution
   description: Refine the agent-user partnership through shared tools, feedback on
@@ -110,6 +123,7 @@ snippets:
   scope: global
   path: docs/general/principle/evolution.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/principle/expansion
   description: 'Founding principle: intelligence expands toward cooperation, not contraction
@@ -118,6 +132,7 @@ snippets:
   scope: global
   path: docs/general/principle/expansion.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/principle/explicit-inference
   description: The principle of explicit inference for AI agents, emphasizing the
@@ -126,6 +141,7 @@ snippets:
   scope: global
   path: docs/general/principle/explicit-inference.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/principle/intent-first-documentation
   description: Preserve intent, boundaries, and durable reasoning in documentation.
@@ -133,6 +149,7 @@ snippets:
   scope: global
   path: docs/general/principle/intent-first-documentation.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/principle/parallel-work
   description: Prefer parallelizing independent work with clear briefs and reconciliation
@@ -141,6 +158,7 @@ snippets:
   scope: domain
   path: docs/general/principle/parallel-work.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/principle/priming
   description: Prime agents with the minimal, role-specific context required to act.
@@ -148,6 +166,7 @@ snippets:
   scope: global
   path: docs/general/principle/priming.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/principle/proprioception
   description: "A distributed system that senses itself as a whole \u2014 not through\
@@ -156,6 +175,7 @@ snippets:
   scope: global
   path: docs/general/principle/proprioception.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/procedure/agent-artifact-authoring
   description: Author agent artifacts (agents, skills, commands) that compile into
@@ -164,6 +184,7 @@ snippets:
   scope: global
   path: docs/general/procedure/agent-artifact-authoring.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/procedure/agent-direct-conversation
   description: Peer-to-peer agent messaging via session IDs, severing notification
@@ -172,6 +193,7 @@ snippets:
   scope: global
   path: docs/general/procedure/agent-direct-conversation.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/procedure/agent-job-hygiene
   description: 'Standard guardrails for agent-type jobs: structured output, fix-forward,
@@ -180,6 +202,7 @@ snippets:
   scope: global
   path: docs/general/procedure/agent-job-hygiene.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/procedure/doc-snippet-authoring
   description: Author documentation snippets according to the taxonomy and schema.
@@ -187,6 +210,7 @@ snippets:
   scope: global
   path: docs/general/procedure/doc-snippet-authoring.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/procedure/gathering
   description: The governing procedure for agents to collectively sense, reflect,
@@ -195,6 +219,7 @@ snippets:
   scope: global
   path: docs/general/procedure/gathering.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/procedure/job-authoring
   description: 'How to create a new agent or script job: artifacts, placement, validation.'
@@ -202,6 +227,7 @@ snippets:
   scope: global
   path: docs/general/procedure/job-authoring.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/procedure/maintenance/log-bug-hunter
   description: Proactive log scanning procedure that discovers errors, fixes inline
@@ -210,6 +236,7 @@ snippets:
   scope: project
   path: docs/general/procedure/maintenance/log-bug-hunter.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/procedure/maintenance/next-prepare
   description: Orchestration procedure for next-prepare. Routes work to draft or gate
@@ -218,6 +245,7 @@ snippets:
   scope: global
   path: docs/general/procedure/maintenance/next-prepare.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/procedure/maintenance/next-prepare-draft
   description: Draft phase for next-prepare. Creates or refines prep artifacts but
@@ -226,6 +254,7 @@ snippets:
   scope: global
   path: docs/general/procedure/maintenance/next-prepare-draft.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/procedure/maintenance/next-prepare-gate
   description: Gate phase for next-prepare. Performs formal DOR validation and is
@@ -234,6 +263,7 @@ snippets:
   scope: global
   path: docs/general/procedure/maintenance/next-prepare-gate.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/procedure/memory-management
   description: Guidelines for saving high-signal memories to the long-term database,
@@ -242,6 +272,7 @@ snippets:
   scope: global
   path: docs/general/procedure/memory-management.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/procedure/tool-spec-authoring
   description: Author lean tool specs under spec/tools while preserving schema compliance
@@ -250,6 +281,7 @@ snippets:
   scope: global
   path: docs/general/procedure/tool-spec-authoring.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/spec/agent-artifacts
   description: Minimal schema used for agent artifacts (commands and skills).
@@ -257,6 +289,7 @@ snippets:
   scope: global
   path: docs/general/spec/agent-artifacts.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/spec/history-log
   description: Standard format for history.md logs that record request/response entries.
@@ -264,6 +297,7 @@ snippets:
   scope: global
   path: docs/general/spec/history-log.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/spec/snippet-authoring-schema
   description: Schema and section requirements for documentation snippets belonging
@@ -272,6 +306,7 @@ snippets:
   scope: global
   path: docs/general/spec/snippet-authoring-schema.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/spec/third-party-docs
   description: Conventions for third-party documentation storage and references.
@@ -279,6 +314,7 @@ snippets:
   scope: global
   path: docs/general/spec/third-party-docs.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/spec/tools/agent-restart
   description: Canonical self-restart call for reloading synchronized artifacts without
@@ -287,6 +323,7 @@ snippets:
   scope: global
   path: docs/general/spec/tools/agent-restart.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/spec/tools/history-search
   description: Canonical usage of history.py for recovering prior conversations with
@@ -295,6 +332,7 @@ snippets:
   scope: global
   path: docs/general/spec/tools/history-search.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: general/spec/tools/memory-management-api
   description: Canonical curl signatures for writing and retrieving memory through
@@ -303,6 +341,7 @@ snippets:
   scope: global
   path: docs/general/spec/tools/memory-management-api.md
   role: admin
+  visibility: internal
   source_project: TeleClaude
 - id: general/spec/tools/telec-cli
   description: AI-safe telec CLI commands for project work, docs sync, todo scaffolding,
@@ -311,6 +350,7 @@ snippets:
   scope: global
   path: docs/general/spec/tools/telec-cli.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/concept/ai-to-ai-coordination
   description: How AI agents coordinate using sub-sessions, listeners, and terminal
@@ -319,6 +359,7 @@ snippets:
   scope: domain
   path: docs/software-development/concept/ai-to-ai-coordination.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/concept/architect
   description: Strategic role. Requirements, architecture, use cases. Break down work,
@@ -327,6 +368,7 @@ snippets:
   scope: domain
   path: docs/software-development/concept/architect.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/concept/builder
   description: Tactical implementation. Follow architecture, write code matching requirements,
@@ -335,6 +377,7 @@ snippets:
   scope: domain
   path: docs/software-development/concept/builder.md
   role: member
+  visibility: public
   source_project: TeleClaude
 - id: software-development/concept/finalizer
   description: Post-review delivery role. Merge, clean up, and log delivery after
@@ -343,6 +386,7 @@ snippets:
   scope: domain
   path: docs/software-development/concept/finalizer.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/concept/fixer
   description: Inline bug-fixing mindset. Fix what you find, where you find it.
@@ -350,6 +394,7 @@ snippets:
   scope: domain
   path: docs/software-development/concept/fixer.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/concept/orchestrator
   description: Supervisory role. Dispatch workers, monitor progress, drive state machine.
@@ -358,6 +403,7 @@ snippets:
   scope: domain
   path: docs/software-development/concept/orchestrator.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/concept/researcher
   description: Research role. Gather authoritative sources, summarize, and index findings.
@@ -365,6 +411,7 @@ snippets:
   scope: domain
   path: docs/software-development/concept/researcher.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/concept/reviewer
   description: Evaluative role. Assess code against requirements and standards, parallel
@@ -373,6 +420,7 @@ snippets:
   scope: domain
   path: docs/software-development/concept/reviewer.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/concept/tester
   description: Test-focused role. Improve test quality, fix failures, enforce testing
@@ -381,6 +429,7 @@ snippets:
   scope: domain
   path: docs/software-development/concept/tester.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/ai-agent-security
   description: Security policy for AI agent systems covering prompt injection, credential
@@ -390,6 +439,7 @@ snippets:
   scope: domain
   path: docs/software-development/policy/ai-agent-security.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/backward-compatibility-hygiene
   description: Backward compatibility hygiene rules for shipping stable releases without
@@ -398,6 +448,7 @@ snippets:
   scope: global
   path: docs/software-development/policy/backward-compatibility-hygiene.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/code-quality
   description: Architecture, typing, contracts, state management, error handling.
@@ -406,6 +457,7 @@ snippets:
   scope: domain
   path: docs/software-development/policy/code-quality.md
   role: member
+  visibility: public
   source_project: TeleClaude
 - id: software-development/policy/code-quality-practices
   description: Practical guidance for applying code-quality policy in day-to-day work.
@@ -413,6 +465,7 @@ snippets:
   scope: domain
   path: docs/software-development/policy/code-quality-practices.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/commits
   description: Commitizen format, attribution, when to commit. Atomic commits, hooks
@@ -421,6 +474,7 @@ snippets:
   scope: domain
   path: docs/software-development/policy/commits.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/definition-of-done
   description: Baseline quality gates defining when work is truly complete. Functionality,
@@ -429,6 +483,7 @@ snippets:
   scope: domain
   path: docs/software-development/policy/definition-of-done.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/definition-of-ready
   description: Definition of Ready gates for work items before they enter implementation.
@@ -437,6 +492,7 @@ snippets:
   scope: domain
   path: docs/software-development/policy/definition-of-ready.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/linting-requirements
   description: Linting and type-checking rules. Required fixes, import rules, and
@@ -445,6 +501,7 @@ snippets:
   scope: domain
   path: docs/software-development/policy/linting-requirements.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/python/core
   description: Python typing, data handling, error patterns, async, idioms. Modern
@@ -453,6 +510,7 @@ snippets:
   scope: domain
   path: docs/software-development/policy/python/core.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/python/logging
   description: InstruktAI Python logging standard. Logfmt format, dual-level control,
@@ -461,6 +519,7 @@ snippets:
   scope: domain
   path: docs/software-development/policy/python/logging.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/security-awareness
   description: Security posture, defense in depth, OWASP surface, auth, crypto, transport,
@@ -470,6 +529,7 @@ snippets:
   scope: domain
   path: docs/software-development/policy/security-awareness.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/testing
   description: Pre-commit quality gates, test principles, linting, isolation, anti-patterns.
@@ -478,6 +538,7 @@ snippets:
   scope: domain
   path: docs/software-development/policy/testing.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/typescript/core
   description: TypeScript strict typing, discriminated unions, type guards, property
@@ -486,6 +547,7 @@ snippets:
   scope: domain
   path: docs/software-development/policy/typescript/core.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/policy/version-control-safety
   description: Safety rules for git operations and handling uncommitted work.
@@ -493,6 +555,7 @@ snippets:
   scope: domain
   path: docs/software-development/policy/version-control-safety.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/principle/architecture-boundary-purity
   description: Preserve domain intent by isolating transport and UI concerns from
@@ -501,6 +564,7 @@ snippets:
   scope: domain
   path: docs/software-development/principle/architecture-boundary-purity.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/principle/design-fundamentals
   description: Named design principles for structural decisions. SRP, DIP, DRY, KISS,
@@ -509,6 +573,7 @@ snippets:
   scope: domain
   path: docs/software-development/principle/design-fundamentals.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/principle/failure-modes
   description: Five AI pitfalls to guard against. Trust code over comments, verify
@@ -517,6 +582,7 @@ snippets:
   scope: domain
   path: docs/software-development/principle/failure-modes.md
   role: member
+  visibility: public
   source_project: TeleClaude
 - id: software-development/procedure/agent-artifacts-quickstart
   description: Quickstart for authoring and distributing agent artifacts.
@@ -524,6 +590,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/agent-artifacts-quickstart.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/ai-to-ai-troubleshooting
   description: Identify and fix common issues with AI-to-AI coordination, timeouts,
@@ -532,6 +599,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/ai-to-ai-troubleshooting.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/bugs-handling
   description: 'Two-track bug handling: inline for internal discovery, maintenance
@@ -540,6 +608,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/bugs-handling.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle-overview
   description: Deterministic software development lifecycle with prepare, build, review,
@@ -548,6 +617,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/lifecycle-overview.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/build
   description: Build phase. Execute implementation plan tasks, commit per task, and
@@ -556,6 +626,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/lifecycle/build.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/deferrals
   description: Process deferrals, create new todos, and mark deferrals as processed.
@@ -563,6 +634,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/lifecycle/deferrals.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/demo
   description: Create demo.md artifacts during build and present them to celebrate
@@ -571,6 +643,7 @@ snippets:
   scope: project
   path: docs/software-development/procedure/lifecycle/demo.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/documentation/sync-docs
   description: Sync docs and indexes after documentation changes.
@@ -578,6 +651,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/lifecycle/documentation/sync-docs.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/documentation/sync-docstrings
   description: Update inline docstrings and comments to match current code behavior.
@@ -585,6 +659,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/lifecycle/documentation/sync-docstrings.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/finalize
   description: 'Finalize phase. Two-stage finalize: worker prepare, orchestrator apply.'
@@ -592,6 +667,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/lifecycle/finalize.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/fix-review
   description: Fix phase. Address review findings with minimal changes and re-verify.
@@ -599,6 +675,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/lifecycle/fix-review.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/maintenance
   description: Maintenance phase for repo-wide upkeep (security, dependencies, infra).
@@ -606,6 +683,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/lifecycle/maintenance.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare
   description: Prepare phase entry point. Decide roadmap focus, assess input readiness,
@@ -614,6 +692,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/lifecycle/prepare.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/implementation-planning
   description: Analyze or draft implementation-plan.md with approach, files, tasks,
@@ -622,6 +701,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/lifecycle/prepare/implementation-planning.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/input-assessment
   description: Assess input.md readiness using Definition of Ready criteria and decide
@@ -630,6 +710,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/lifecycle/prepare/input-assessment.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare/requirements-analysis
   description: Analyze or verify requirements.md content for completeness and clarity.
@@ -637,6 +718,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/lifecycle/prepare/requirements-analysis.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/review
   description: Review phase. Verify requirements, code quality, tests, and deliver
@@ -645,6 +727,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/lifecycle/review.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/backlog-hygiene
   description: Backlog hygiene rules to keep work small, explicit, and decision-ready.
@@ -652,6 +735,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/maintenance/backlog-hygiene.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/bug-intake-and-triage
   description: 'Fast bug intake and triage method for small teams: classify impact
@@ -660,6 +744,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/maintenance/bug-intake-and-triage.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/deprecation-and-transition-plan
   description: Procedure for retiring legacy paths safely while keeping service behavior
@@ -668,6 +753,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/maintenance/deprecation-and-transition-plan.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/incident-log
   description: Incident logging procedure focused on root cause quality, prevention
@@ -676,6 +762,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/maintenance/incident-log.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/maintenance-cadence
   description: Weekly and monthly maintenance cadence for small teams that need high
@@ -684,6 +771,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/maintenance/maintenance-cadence.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/overview
   description: 'Maintenance operating model: practical rules for stability, backlog
@@ -692,6 +780,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/maintenance/overview.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/maintenance/release-and-stabilization-rhythm
   description: Small-team release rhythm that prioritizes stability with lightweight
@@ -700,6 +789,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/maintenance/release-and-stabilization-rhythm.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/orchestration
   description: Orchestration loop for the next-work state machine and worker session
@@ -708,6 +798,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/orchestration.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/research/third-party-research
   description: 'Research third-party docs: search authoritative sources, fetch, summarize,
@@ -716,6 +807,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/research/third-party-research.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/scaffolding/python
   description: Scaffold a Python repo with standard tooling, Makefile targets, and
@@ -724,6 +816,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/scaffolding/python.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/scaffolding/typescript
   description: Base TypeScript project scaffolding policy.
@@ -731,6 +824,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/scaffolding/typescript.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/scaffolding/typescript-platforms/next-js
   description: Next.js TypeScript project scaffolding policy.
@@ -738,6 +832,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/scaffolding/typescript-platforms/next-js.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/scaffolding/typescript-platforms/node-js
   description: Node.js/CLI TypeScript project scaffolding policy.
@@ -745,6 +840,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/scaffolding/typescript-platforms/node-js.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/scaffolding/typescript-platforms/vite
   description: Vite + React TypeScript project scaffolding policy.
@@ -752,6 +848,7 @@ snippets:
   scope: domain
   path: docs/software-development/procedure/scaffolding/typescript-platforms/vite.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/spec/hook-event-normalization-contract
   description: Canonical contract for normalizing external hook events into internal
@@ -760,6 +857,7 @@ snippets:
   scope: domain
   path: docs/software-development/spec/hook-event-normalization-contract.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/spec/runtime-operations-truth
   description: Canonical format and content requirements for documenting live runtime
@@ -768,6 +866,7 @@ snippets:
   scope: domain
   path: docs/software-development/spec/runtime-operations-truth.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: software-development/spec/session-identity-truth
   description: Canonical identity-mapping spec for systems that mix managed sessions
@@ -776,4 +875,5 @@ snippets:
   scope: domain
   path: docs/software-development/spec/session-identity-truth.md
   role: member
+  visibility: internal
   source_project: TeleClaude

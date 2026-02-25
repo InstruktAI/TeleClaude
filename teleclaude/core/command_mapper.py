@@ -195,10 +195,6 @@ class CommandMapper:
                 channel_metadata,
                 origin,
             )
-            if origin == InputOrigin.MCP.value:
-                computer = (initiator or "").strip() or "unknown"
-                actor_id = actor_id or f"system:{computer}:{session_id or 'mcp'}"
-                actor_name = actor_name or f"system@{computer}"
             return ProcessMessageCommand(
                 session_id=session_id or "",
                 text=" ".join(args) if args else "",

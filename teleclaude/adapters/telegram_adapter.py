@@ -160,7 +160,6 @@ class TelegramAdapter(
         self.is_master = config.computer.is_master
         self.app: Optional[TelegramApp] = None
         self._processed_voice_messages: set[str] = set()  # Track processed voice message IDs with edit state
-        self._mcp_message_queues: dict[int, asyncio.Queue[object]] = {}  #  Event-driven MCP delivery: topic_id -> queue
         self._pending_edits: dict[str, EditContext] = {}  # Track pending edits (message_id -> mutable context)
         self._last_edit_hash: dict[str, str] = {}  # message_id -> content hash (skip no-op edits)
         self._topic_creation_locks: dict[str, asyncio.Lock] = {}  # Prevent duplicate topic creation per session_id
@@ -1181,8 +1180,6 @@ class TelegramAdapter(
         """
         return []
 
-    # === MCP Server Support Methods ===
-
     async def create_topic(self, title: str) -> ForumTopic:
         """Create a new forum topic and return the topic object."""
         self._ensure_started()
@@ -1232,38 +1229,6 @@ class TelegramAdapter(
             )
 
         return message
-
-    async def register_mcp_listener(self, topic_id: int) -> asyncio.Queue[object]:
-        """Register MCP listener queue for instant message delivery.
-
-        When messages arrive for this topic_id, they'll be pushed to the queue.
-        This enables event-driven message delivery for MCP (zero latency).
-
-        Args:
-            topic_id: Telegram message_thread_id to listen to
-
-        Returns:
-            Queue that will receive Message objects as they arrive
-
-        Note:
-            Caller MUST call unregister_mcp_listener() when done to avoid leaks.
-            Use try/finally pattern to ensure cleanup.
-        """
-        self._ensure_started()
-
-        queue: asyncio.Queue[object] = asyncio.Queue()
-        self._mcp_message_queues[topic_id] = queue
-        logger.info("Registered MCP listener for topic %s", topic_id)
-        return queue
-
-    async def unregister_mcp_listener(self, topic_id: int) -> None:
-        """Unregister MCP listener queue.
-
-        Args:
-            topic_id: Telegram message_thread_id to stop listening to
-        """
-        self._mcp_message_queues.pop(topic_id, None)
-        logger.info("Unregistered MCP listener for topic %s", topic_id)
 
     # ==================== AI-to-AI Communication ====================
 

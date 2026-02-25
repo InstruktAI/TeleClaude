@@ -1333,7 +1333,7 @@ class AgentCoordinator:
                         cmd = ProcessMessageCommand(
                             session_id=peer.session_id,
                             text=framed_message,
-                            origin=InputOrigin.MCP.value,
+                            origin=InputOrigin.REDIS.value,
                             actor_id=actor_id,
                             actor_name=actor_name,
                         )
@@ -1344,7 +1344,7 @@ class AgentCoordinator:
                             command=f"message {shlex.quote(framed_message)}",
                             session_id=peer.session_id,
                             metadata=MessageMetadata(
-                                origin=InputOrigin.MCP.value,
+                                origin=InputOrigin.REDIS.value,
                                 channel_metadata={
                                     "actor_id": actor_id,
                                     "actor_name": actor_name,

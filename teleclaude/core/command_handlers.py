@@ -419,7 +419,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
 async def list_sessions(*, include_closed: bool = False) -> list[SessionSnapshot]:
     """List sessions from local database.
 
-    Ephemeral request/response for MCP/Redis only - no DB session required.
+    Ephemeral request/response for tool/API callers only - no DB session required.
     UI adapters (Telegram) should not have access to this command.
     """
     sessions = await db.list_sessions(include_headless=True, include_closed=include_closed)
@@ -1417,9 +1417,9 @@ async def end_session(
     cmd: CloseSessionCommand,
     client: "AdapterClient",
 ) -> EndSessionHandlerResult:
-    """End a session - graceful termination for MCP tool.
+    """End a session via tool/API request.
 
-    Similar to close_session but designed for MCP tool calls.
+    Similar to close_session but designed for direct command calls.
     Kills tmux, deletes the session, cleans up resources.
 
     Args:
@@ -1536,7 +1536,7 @@ async def start_agent(
         user_args=user_args,
     )
 
-    # Persist chosen thinking_mode so subsequent MCP calls (or resumes) can reuse it.
+    # Persist chosen thinking_mode so subsequent calls (or resumes) can reuse it.
     await db.update_session(session.session_id, thinking_mode=start_args.thinking_mode.value)
 
     # Include interactive flag when there's a prompt (user_args contains the prompt)

@@ -988,8 +988,8 @@ async def test_broadcast_user_input_includes_origin_attribution():
 
 
 @pytest.mark.asyncio
-async def test_broadcast_user_input_reflects_mcp_input():
-    """MCP-origin prompts are reflected like other inputs."""
+async def test_broadcast_user_input_reflects_redis_input():
+    """Redis-origin prompts are reflected like other inputs."""
     client = AdapterClient()
 
     telegram = DummyTelegramAdapter(client, send_message_return="tg-msg")
@@ -998,9 +998,9 @@ async def test_broadcast_user_input_reflects_mcp_input():
     client.register_adapter("slack", slack)
 
     session = Session(
-        session_id="session-mcp",
+        session_id="session-redis",
         computer_name="test",
-        tmux_session_name="tc_mcp",
+        tmux_session_name="tc_redis",
         last_input_origin=InputOrigin.TELEGRAM.value,
         title="Test Session",
     )
@@ -1008,12 +1008,12 @@ async def test_broadcast_user_input_reflects_mcp_input():
     mock_db = AsyncMock()
     mock_db.get_session = AsyncMock(return_value=session)
     with patch("teleclaude.core.adapter_client.db", mock_db):
-        await client.broadcast_user_input(session, "mcp input", InputOrigin.MCP.value)
+        await client.broadcast_user_input(session, "redis input", InputOrigin.REDIS.value)
 
     assert len(telegram.sent_messages) == 1
     assert len(slack.sent_messages) == 1
-    assert "MCP" in telegram.sent_messages[0]
-    assert "mcp input" in telegram.sent_messages[0]
+    assert "REDIS" in telegram.sent_messages[0]
+    assert "redis input" in telegram.sent_messages[0]
 
 
 # --- R3: Single provisioning funnel tests ---

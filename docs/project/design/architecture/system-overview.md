@@ -9,20 +9,20 @@ type: 'design'
 
 ## Purpose
 
-TeleClaude acts as a "dumb pipe" terminal bridge between UI adapters (Telegram, TUI, MCP) and tmux execution environments.
+TeleClaude acts as a terminal bridge between user-facing interfaces (telec API/TUI and Telegram) and tmux execution environments.
 
 ```mermaid
 flowchart LR
     subgraph Clients
         TelecCLI["Telec CLI (TUI)"]
-        MCPClient["MCP Client"]
         TGUser["Telegram User"]
+        Automation["Automation / Jobs"]
     end
 
     subgraph ServiceInterfaces["Service Interfaces"]
         RESTServer["API Server"]
-        MCPServer["MCP Server"]
         TGAdapter["Telegram Adapter"]
+        RedisIngress["Redis Transport Listener"]
     end
 
     subgraph Core["Core (Command Pipeline)"]
@@ -34,7 +34,6 @@ flowchart LR
         Hooks["Hook Receiver + Agent Coordinator"]
         Events["Domain Events"]
         Cache["Read Cache (Snapshots)"]
-        RedisIngress["Redis Transport Listener"]
         NextMachine["Next Machine (Orchestrator)"]
     end
 
@@ -46,11 +45,10 @@ flowchart LR
     end
 
     TelecCLI --> RESTServer
-    MCPClient --> MCPServer
     TGUser --> TGAdapter
+    Automation --> RESTServer
 
     RESTServer --> Ingress
-    MCPServer --> Ingress
     TGAdapter --> Ingress
     RedisIngress --> Ingress
 
@@ -78,24 +76,23 @@ flowchart LR
 
 1. **Service Interfaces**:
    - **Telegram Adapter**: Normalizes chat interactions.
-   - **MCP Server**: Stdio-based interface for AI agents.
-   - **API Server**: Resource-first REST/WS interface for TUIs.
+   - **API Server**: Resource-first REST/WS interface for telec and automation clients.
 2. **Core Pipeline**:
    - **Command Ingress**: Normalizes all inputs into Command objects.
    - **Command Queue**: SQLite-backed durable execution.
    - **Session Manager**: Manages tmux lifecycles and process mapping.
 3. **Execution Layer**:
-   - **tmux**: The runtime for all terminal sessions.
+   - **tmux**: Runtime for all terminal sessions.
    - **Output Poller**: Streams real-time updates from tmux to domain events.
 4. **Orchestration**:
-   - **Next Machine**: Stateless state machine for complex project-based workflows.
+   - **Next Machine**: Stateless state machine for project-based workflows.
    - **Agent Coordinator**: Single source of truth for routing agent lifecycle hooks.
 
 ## Inputs/Outputs
 
 **Inputs:**
 
-- User commands from UI adapters (Telegram, TUI, MCP)
+- User commands from UI adapters (Telegram, TUI/API)
 - Redis transport messages from remote computers
 - Agent lifecycle hooks via hook receiver
 - Tmux output streams
@@ -104,8 +101,8 @@ flowchart LR
 **Outputs:**
 
 - Tmux session creation and input delivery
-- Adapter feedback (Telegram messages, API responses, MCP tool results)
-- Domain events (session_started, session_closed, output_update)
+- Adapter feedback (Telegram messages, API responses)
+- Domain events (`session_started`, `session_closed`, `output_update`)
 - Cached snapshots (sessions, projects, todos, computers)
 - Persistent database records (sessions, commands, hooks)
 
@@ -113,7 +110,7 @@ flowchart LR
 
 - **Single Database**: One SQLite database per repository root; no file duplication or sharding.
 - **Command Idempotency**: Commands can be replayed safely; duplicate execution is prevented via queue tracking.
-- **Event-Driven Updates**: All cache and adapter updates are triggered by domain events, never by polling state.
+- **Event-Driven Updates**: Cache and adapter updates are triggered by domain events, never by polling state.
 - **Session Ownership**: Each session has exactly one owning adapter that created it; other adapters can observe but not modify.
 - **Decoupled Adapters**: Core logic never imports adapter-specific code; all communication via Protocols.
 - **Durable Execution**: Commands and hook events persist to SQLite queue/outbox tables before processing; restarts recover pending work.
@@ -164,24 +161,26 @@ sequenceDiagram
     end
 ```
 
-### 3. AI-to-AI Delegation (MCP)
+### 3. Cross-Computer Delegation
 
 ```mermaid
 sequenceDiagram
-    participant MasterAI
-    participant MCPServer
+    participant Operator
+    participant TelecCLI
+    participant APIServer
     participant Redis
     participant RemoteComputer
     participant WorkerAI
 
-    MasterAI->>MCPServer: teleclaude__start_session
-    MCPServer->>Redis: Publish command
+    Operator->>TelecCLI: telec sessions run / next-work
+    TelecCLI->>APIServer: Session command
+    APIServer->>Redis: Publish command
     Redis->>RemoteComputer: Transport event
     RemoteComputer->>WorkerAI: Launch agent
     WorkerAI->>RemoteComputer: Emits hooks
     RemoteComputer->>Redis: Publish notification
-    Redis->>MCPServer: Deliver notification
-    MCPServer->>MasterAI: Worker completed
+    Redis->>APIServer: Deliver notification
+    APIServer->>TelecCLI: Worker completed
 ```
 
 ### 4. Cache Refresh & WS Push
@@ -201,7 +200,7 @@ sequenceDiagram
 
 ## Failure modes
 
-- **Interface Startup Failure**: Required interface startup failures (adapter/API/MCP) fail daemon startup rather than silently running in partial mode.
+- **Interface Startup Failure**: Required interface startup failures (adapter/API) fail daemon startup rather than silently running in partial mode.
 - **Tmux Process Death**: If tmux dies unexpectedly, OutputPoller detects exit and marks session as failed. Cleanup may be incomplete.
 - **Redis Unavailable**: Remote execution fails gracefully. Local operations continue. Heartbeat detection resumes when Redis recovers.
 - **SQLite Lock Contention**: Rare under normal load. Commands queue and retry. Long locks indicate resource exhaustion.

@@ -1,8 +1,4 @@
-"""Role-based tool filtering for TeleClaude MCP.
-
-This module defines which tools are available to different agent roles.
-Filtering only applies when a role marker is present and role == worker.
-"""
+"""Role-based tool access filtering."""
 
 from typing_extensions import TypedDict
 
@@ -79,7 +75,7 @@ def get_excluded_tools(role: str | None, human_role: str | None = None) -> set[s
     if human_role == HUMAN_ROLE_CUSTOMER:
         excluded.update(CUSTOMER_EXCLUDED_TOOLS)
         return excluded
-    elif human_role in {HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER}:
+    if human_role in {HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER}:
         excluded.update(MEMBER_EXCLUDED_TOOLS)
     elif human_role is None:
         excluded.update(UNAUTHORIZED_EXCLUDED_TOOLS)
@@ -91,24 +87,12 @@ def get_excluded_tools(role: str | None, human_role: str | None = None) -> set[s
 
 
 def is_tool_allowed(role: str | None, tool_name: str, human_role: str | None = None) -> bool:
-    """Return whether a tool is allowed for the given role.
-
-    Args:
-        role: The role name, if any.
-        tool_name: The tool name.
-        human_role: The human role name, if any.
-
-    Returns:
-        True if the tool is allowed for the role or no filtering applies.
-    """
+    """Return whether a tool is allowed for the given role."""
     return tool_name not in get_excluded_tools(role, human_role)
 
 
 def filter_tool_names(role: str | None, tool_names: list[str], human_role: str | None = None) -> list[str]:
-    """Return filtered tool names for a role.
-
-    If no role marker is found, returns the original list (no filtering).
-    """
+    """Return filtered tool names for a role."""
     excluded = get_excluded_tools(role, human_role)
     if not excluded:
         return tool_names
@@ -116,10 +100,7 @@ def filter_tool_names(role: str | None, tool_names: list[str], human_role: str |
 
 
 def filter_tool_specs(role: str | None, tools: list[ToolSpec], human_role: str | None = None) -> list[ToolSpec]:
-    """Return filtered tool specs for a role.
-
-    If no role marker is found, returns the original list (no filtering).
-    """
+    """Return filtered tool specs for a role."""
     excluded = get_excluded_tools(role, human_role)
     if not excluded:
         return tools
@@ -127,14 +108,5 @@ def filter_tool_specs(role: str | None, tools: list[ToolSpec], human_role: str |
 
 
 def get_allowed_tools(role: str | None, all_tool_names: list[str], human_role: str | None = None) -> list[str]:
-    """Return list of allowed tool names for a role.
-
-    Args:
-        role: The role name, if any.
-        all_tool_names: Full list of available tool names.
-        human_role: The human role name, if any.
-
-    Returns:
-        Filtered list of tool names.
-    """
+    """Return list of allowed tool names for a role."""
     return filter_tool_names(role, all_tool_names, human_role)

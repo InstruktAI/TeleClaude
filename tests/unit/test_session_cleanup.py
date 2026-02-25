@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import signal
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,7 +17,6 @@ from teleclaude.core import session_cleanup
 from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.session_cleanup import (
     cleanup_all_stale_sessions,
-    cleanup_orphan_mcp_wrappers,
     cleanup_orphan_workspaces,
     cleanup_stale_session,
     emit_recently_closed_session_events,
@@ -241,32 +239,6 @@ async def test_cleanup_orphan_workspaces_handles_missing_directory():
         removed = await cleanup_orphan_workspaces()
 
     assert removed == 0
-
-
-@pytest.mark.asyncio
-@patch("teleclaude.core.session_cleanup.subprocess.run")
-@patch("teleclaude.core.session_cleanup.os.kill")
-async def test_cleanup_orphan_mcp_wrappers_kills_ppid1(mock_kill, mock_run):
-    """Test that orphaned MCP wrappers with PPID 1 are terminated."""
-    mock_run.return_value = MagicMock(
-        stdout=" 111 1 /usr/bin/python /path/bin/mcp-wrapper.py\n 222 2 /usr/bin/python /path/bin/mcp-wrapper.py\n"
-    )
-
-    killed = await cleanup_orphan_mcp_wrappers()
-
-    assert killed == 1
-    assert mock_kill.call_args == ((111, signal.SIGTERM), {})
-
-
-@pytest.mark.asyncio
-@patch("teleclaude.core.session_cleanup.subprocess.run")
-async def test_cleanup_orphan_mcp_wrappers_noop(mock_run):
-    """Test that cleanup_orphan_mcp_wrappers skips non-orphaned processes."""
-    mock_run.return_value = MagicMock(stdout=" 111 2 /usr/bin/python /path/bin/mcp-wrapper.py\n")
-
-    killed = await cleanup_orphan_mcp_wrappers()
-
-    assert killed == 0
 
 
 @pytest.mark.asyncio

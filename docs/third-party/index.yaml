@@ -1,4 +1,4 @@
-snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/third-party
+snippets_root: ~/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-delete-mcp/docs/third-party
 snippets:
 - id: third-party/a2a-protocol/agent-card
   description: A2A Agent Card

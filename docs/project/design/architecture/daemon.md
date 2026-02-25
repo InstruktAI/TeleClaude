@@ -9,7 +9,7 @@ type: 'design'
 
 ## Required reads
 
-- @docs/project/design/system-overview.md
+- @docs/project/design/architecture/system-overview.md
 
 ## Purpose
 
@@ -38,13 +38,12 @@ stateDiagram-v2
 - Adapter events and inbound command objects
 - SIGTERM/SIGINT for graceful shutdown
 - Redis transport messages (if enabled)
-- Adapter-specific inputs (Telegram bot API, MCP stdio, API HTTP requests)
+- Adapter-specific inputs (Telegram bot API, API HTTP requests)
 - Filesystem artifacts (session transcripts, project registries)
 
 **Outputs:**
 
 - Adapter initialization and registration
-- Command execution, tmux orchestration, and cache updates
 - Command execution via CommandService
 - Tmux session orchestration
 - Cache population and updates
@@ -79,11 +78,11 @@ sequenceDiagram
     Daemon->>DB: Run migrations
     Daemon->>Cache: Warmup snapshots
     Cache->>DB: Load sessions, projects, etc
-    Daemon->>Adapters: Initialize (Telegram, API, MCP)
+    Daemon->>Adapters: Initialize (Telegram, API)
     Adapters->>Daemon: Register via AdapterClient
     Daemon->>Workers: Start background tasks
     Workers->>Workers: Hook outbox processing
-    Workers->>Workers: MCP socket watch + poller watch
+    Workers->>Workers: Poller watch
     Workers->>Workers: Resource monitor + WAL checkpoint
     Daemon->>SystemD: Ready signal
 ```
@@ -114,7 +113,6 @@ sequenceDiagram
 | Worker                | Interval (default) | Purpose                                                            |
 | --------------------- | ------------------ | ------------------------------------------------------------------ |
 | Hook Outbox           | 1s                 | Process agent lifecycle hooks                                      |
-| MCP Socket Watcher    | 2s                 | Monitor MCP socket health and trigger restart                      |
 | Poller Watch          | 5s                 | Keep per-session output pollers aligned with tmux                  |
 | Resource Monitor      | 60s                | Emit runtime resource snapshots                                    |
 | WAL Checkpoint        | 300s               | Prevent unbounded SQLite WAL growth                                |
@@ -124,31 +122,14 @@ sequenceDiagram
 
 An operator can force the same behavior on demand with:
 
-```
+```bash
 uv run scripts/cleanup_closed_session_channels.py [--hours 12] [--dry-run]
 ```
 
 The helper queries local closed sessions within the window and replays their
 `session_closed` handling through the running daemon API.
 
-### 4. MCP Server Auto-Restart
-
-```mermaid
-sequenceDiagram
-    participant Daemon
-    participant MCPServer
-    participant Watcher
-
-    loop Every 2s
-        Watcher->>MCPServer: Check socket health
-        alt Socket dead
-            Watcher->>MCPServer: Restart server
-            MCPServer->>Daemon: New socket created
-        end
-    end
-```
-
-### 5. Graceful Shutdown
+### 4. Graceful Shutdown
 
 ```mermaid
 sequenceDiagram
@@ -175,10 +156,9 @@ sequenceDiagram
 - **Config Parse Error**: Daemon exits immediately with error. Systemd restarts with exponential backoff.
 - **SQLite Lock Failure**: Another daemon instance is running. Refuses to start. Indicates configuration or deployment issue.
 - **Migration Failure**: Database schema incompatible. Manual intervention required. No automatic rollback.
-- **Interface Startup Failure (API/MCP/Adapter)**: Daemon fails startup (fail-fast) rather than running in partial mode.
+- **Interface Startup Failure (API/Adapter)**: Daemon fails startup (fail-fast) rather than running in partial mode.
 - **Redis Unavailable**: Multi-computer features disabled. Local operations continue. Redis transport retries via a single reconnect loop; tasks wait on readiness.
 - **Cache Warmup Timeout**: Daemon fails to start. Indicates database corruption or resource exhaustion.
 - **Unclean Shutdown (SIGKILL)**: Hooks and commands may be partially processed. Next startup recovers from outbox.
-- **Worker Task Crash**: Background worker stops. Dependent features stall (e.g., no output polling = frozen sessions). Daemon logs error but continues.
-- **MCP Restart Storm**: MCP crashes repeatedly. Rate-limited to prevent infinite loop. Clients see connection errors.
+- **Worker Task Crash**: Background worker stops. Dependent features stall (for example, no output polling means frozen sessions). Daemon logs error but continues.
 - **Shutdown Timeout**: Cleanup takes too long; systemd may SIGKILL and leak resources.

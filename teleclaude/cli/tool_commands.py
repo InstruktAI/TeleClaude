@@ -552,7 +552,7 @@ def handle_sessions_widget(args: list[str]) -> None:
     retrieval. The data must be a valid widget expression JSON object.
 
     Widget sections: text, input, actions, image, table, file, code, divider.
-    See MCP tool documentation for the full widget schema.
+    See the TeleClaude tool API documentation for the full widget schema.
 
     Options:
       --data <json>   Widget expression as a JSON string

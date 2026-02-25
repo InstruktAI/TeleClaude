@@ -54,7 +54,6 @@ class InputHandlersMixin:
     Required from host class:
     - client: AdapterClient
     - user_whitelist: set[int]
-    - _mcp_message_queues: dict[int, asyncio.Queue[Message]]
     - _processed_voice_messages: set[str]
     - _topic_ready_events: dict[int, asyncio.Event]
     - _topic_ready_cache: set[int]
@@ -67,7 +66,6 @@ class InputHandlersMixin:
     # Abstract properties/attributes (declared for type hints)
     client: "AdapterClient"
     user_whitelist: set[int]
-    _mcp_message_queues: dict[int, "asyncio.Queue[object]"]
     _processed_voice_messages: set[str]
     _topic_ready_events: dict[int, asyncio.Event]
     _topic_ready_cache: set[int]
@@ -153,19 +151,6 @@ Usage:
         Messages with message_thread_id are in specific topics.
         Messages without message_thread_id are in General topic.
         """
-        # Handle both new messages and edited messages
-        message: Message | None = update.message or update.edited_message
-        if message:
-            topic_id = message.message_thread_id
-            # ALSO push to MCP queue if registered (event-driven delivery for AI-to-AI)
-            # Only push new messages, not edits (edits are not user input)
-            if update.message and topic_id in self._mcp_message_queues:
-                try:
-                    self._mcp_message_queues[topic_id].put_nowait(update.message)
-                    logger.debug("Pushed message to MCP queue for topic %s", topic_id)
-                except asyncio.QueueFull:
-                    logger.warning("MCP queue full for topic %s", topic_id)
-
         session = await self._get_session_from_topic(update)
         if not session:
             effective_message = update.effective_message

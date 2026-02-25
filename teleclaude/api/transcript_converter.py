@@ -134,7 +134,7 @@ def convert_tool_result_block(block: dict[str, object]) -> Iterator[str]:  # gua
 
 
 def convert_send_result(data: object) -> str:
-    """Emit ``data-send-result`` custom part for MCP send_result events."""
+    """Emit ``data-send-result`` custom part for send_result events."""
     return _sse_event({"type": "data-send-result", "data": data})
 
 

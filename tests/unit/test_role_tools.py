@@ -1,7 +1,7 @@
 """Unit tests for role-based tool filtering."""
 
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, ROLE_WORKER
-from teleclaude.mcp.role_tools import filter_tool_names
+from teleclaude.core.tool_access import filter_tool_names
 
 
 def test_filter_member():

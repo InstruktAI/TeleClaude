@@ -19,13 +19,9 @@ async def test_warm_local_sessions_cache_seeds_cache(monkeypatch: pytest.MonkeyP
     lifecycle = DaemonLifecycle(
         client=MagicMock(),
         cache=DaemonCache(),
-        mcp_server=None,
         shutdown_event=asyncio.Event(),
         task_registry=MagicMock(),
         log_background_task_exception=lambda _name: lambda _task: None,
-        handle_mcp_task_done=lambda _task: None,
-        mcp_watch_factory=lambda: asyncio.create_task(asyncio.sleep(0)),
-        set_last_mcp_restart_at=lambda _val: None,
         init_voice_handler=lambda: None,
         api_restart_max=1,
         api_restart_window_s=1.0,

@@ -141,12 +141,12 @@ def _filter_sessions_by_role(request: Request, sessions: list[SessionSnapshot]) 
     """Apply role-based visibility filtering to session list.
 
     Only filters when identity headers are present (web interface).
-    TUI/MCP clients without headers see all sessions (existing behavior).
+    TUI/tool clients without headers see all sessions (existing behavior).
     """
     email = request.headers.get("x-web-user-email")
     role = request.headers.get("x-web-user-role")
 
-    # No identity headers = TUI/MCP client, return all
+    # No identity headers = TUI/tool client, return all
     if not email:
         return sessions
 
@@ -444,7 +444,7 @@ class APIServer:
             """List sessions from local storage and remote cache.
 
             Applies role-based filtering when identity headers are present
-            (web interface requests). TUI/MCP clients without headers see all.
+            (web interface requests). TUI/tool clients without headers see all.
 
             Args:
                 request: FastAPI request (for identity headers)
@@ -652,7 +652,7 @@ class APIServer:
             computer: str = Query(...),  # noqa: ARG001 - For API consistency, only local sessions supported
             identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_END),  # noqa: ARG001
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
-            """End session - local sessions only (remote session management via MCP tools)."""
+            """End session - local sessions only (remote management uses RPC transport)."""
             from teleclaude.api.session_access import check_session_access
 
             user_agent = request.headers.get("user-agent", "no-ua")

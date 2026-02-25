@@ -1,7 +1,7 @@
 """Daemon-side role enforcement for telec API endpoints.
 
 Provides FastAPI dependencies for dual-factor caller identity verification
-and role-based clearance checks. Replaces the MCP wrapper's file-based
+and role-based clearance checks. Replaces legacy wrapper-side
 tool filtering with tamper-resistant server-side enforcement.
 
 Identity verification flow:
@@ -24,7 +24,7 @@ from fastapi import Depends, Header, HTTPException, Request
 
 from teleclaude.constants import ROLE_ORCHESTRATOR, ROLE_WORKER
 from teleclaude.core.db import db
-from teleclaude.mcp.role_tools import get_excluded_tools
+from teleclaude.core.tool_access import get_excluded_tools
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -110,11 +110,10 @@ def _is_tool_denied(tool_name: str, identity: CallerIdentity) -> bool:
 def require_clearance(tool_name: str):
     """FastAPI dependency factory: check role clearance for a specific tool.
 
-    Maps CLI endpoint names to MCP tool names and uses the existing permission
-    matrix from role_tools.py to check clearance.
+    Maps CLI endpoint names to teleclaude tool names and checks role clearance.
 
     Args:
-        tool_name: MCP tool name (e.g. "teleclaude__start_session")
+        tool_name: Tool name (e.g. "teleclaude__start_session")
 
     Returns:
         A FastAPI dependency function that returns CallerIdentity on success or
@@ -134,7 +133,6 @@ def require_clearance(tool_name: str):
 
 
 # Pre-built clearance dependencies for each CLI endpoint
-# Maps endpoint → MCP tool name for permission matrix lookup
 
 CLEARANCE_SESSIONS_START = require_clearance("teleclaude__start_session")
 CLEARANCE_SESSIONS_LIST = require_clearance("teleclaude__list_sessions")

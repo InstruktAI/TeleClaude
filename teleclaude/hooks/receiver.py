@@ -75,8 +75,8 @@ from teleclaude.hooks.checkpoint_flags import (  # noqa: E402
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
 
-# Only these events are forwarded to MCP. All others are silently dropped.
-# This prevents zombie mcp-wrapper processes from intermediate hooks.
+# Only these events are forwarded to daemon processing. Others are dropped.
+# This prevents noisy intermediate hook traffic from reaching command handlers.
 # Only events with actual handlers in the daemon - infrastructure events are dropped.
 _HANDLED_EVENTS: frozenset[AgentHookEventType] = AgentHookEvents.RECEIVER_HANDLED
 

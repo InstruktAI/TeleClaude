@@ -17,7 +17,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api_server import APIServer
 from teleclaude.core.lifecycle import DaemonLifecycle
 from teleclaude.core.task_registry import TaskRegistry
-from teleclaude.mcp_server import TeleClaudeMCPServer
 
 logger = get_logger(__name__)
 
@@ -54,7 +53,6 @@ class MonitoringService:
         self,
         *,
         lifecycle: DaemonLifecycle,
-        mcp_server: TeleClaudeMCPServer,
         task_registry: TaskRegistry,
         shutdown_event: asyncio.Event,
         start_time: float,
@@ -63,7 +61,6 @@ class MonitoringService:
         db_path: str = "",
     ) -> None:
         self._lifecycle = lifecycle
-        self._mcp_server = mcp_server
         self._task_registry = task_registry
         self._shutdown_event = shutdown_event
         self._start_time = start_time
@@ -141,10 +138,6 @@ class MonitoringService:
         if isinstance(api_server, APIServer):
             api_ws_clients = len(api_server._ws_clients)
 
-        mcp_connections: int | None = None
-        if self._mcp_server:
-            mcp_connections = self._mcp_server._active_connections
-
         tracked = self._task_registry.task_count()
         if tracked > self._task_hwm:
             self._task_hwm = tracked
@@ -162,7 +155,6 @@ class MonitoringService:
             "tracked_tasks": tracked,
             "tracked_tasks_hwm": self._task_hwm,
             "wal_size_kb": self._get_wal_size_kb(),
-            "mcp_connections": mcp_connections,
             "api_ws_clients": api_ws_clients,
         }
         if self._last_loop_lag_ms is not None:

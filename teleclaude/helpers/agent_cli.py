@@ -55,7 +55,6 @@ class _OneshotSpec(TypedDict, total=False):
     response_field: str
     response_field_type: str
     tools_arg: str
-    mcp_tools_arg: str
     tools_map: dict[str, str]
     exec_subcommand: str
 
@@ -95,7 +94,6 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
         "response_field": "result",
         "response_field_type": "string_json",
         "tools_arg": "--allowed-tools",
-        "mcp_tools_arg": "",
         "tools_map": {"web_search": "web_search"},
     },
     "gemini": {
@@ -107,7 +105,6 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
         "response_field": "response",
         "response_field_type": "string_json",
         "tools_arg": "--allowed-tools",
-        "mcp_tools_arg": "--allowed-mcp-server-names",
         "tools_map": {"web_search": "google_web_search"},
     },
     "codex": {
@@ -121,7 +118,6 @@ _ONESHOT_SPEC: dict[str, _OneshotSpec] = {
         "response_field": "",
         "response_field_type": "object",
         "tools_arg": "",
-        "mcp_tools_arg": "",
         "tools_map": {"web_search": "web_search"},
     },
 }
@@ -284,7 +280,6 @@ def _run_agent(
     schema: dict[str, object],  # guard: loose-dict - JSON schema
     *,
     tools: str | None,
-    mcp_tools: str | None,
     input_mode: Literal["stdin", "arg"] = "stdin",
     debug_raw: bool = False,
     timeout_s: int | None = None,
@@ -334,10 +329,6 @@ def _run_agent(
     if tools_arg and tools is not None:
         cmd_parts.extend([tools_arg, tools])
 
-    mcp_tools_arg = str(spec.get("mcp_tools_arg", "") or "")
-    if mcp_tools_arg and mcp_tools is not None:
-        cmd_parts.extend([mcp_tools_arg, mcp_tools])
-
     # Handle prompt passing based on input_mode
     use_stdin = input_mode == "stdin"
 
@@ -386,7 +377,7 @@ def _run_agent(
 
 
 # ---------------------------------------------------------------------------
-# Job invocation — full interactive subprocess with tools enabled and MCP blocked.
+# Job invocation — full interactive subprocess with tools enabled.
 # Unlike run_once (schema-constrained JSON), run_job gives the agent full tool access.
 # ---------------------------------------------------------------------------
 
@@ -405,7 +396,7 @@ _JOB_SPEC: dict[str, dict[str, str | dict[str, str]]] = {
         "model_flags": _AGENT_MODEL_FLAGS["gemini"],
     },
     "codex": {
-        # Codex exec has no per-session MCP allow/deny flag; MCP is blocked by config absence.
+        # Codex exec has no per-session tool-server allow/deny flag.
         "flags": "--dangerously-bypass-approvals-and-sandbox",
         "model_flags": _AGENT_MODEL_FLAGS["codex"],
         "exec_subcommand": "exec",
@@ -425,7 +416,7 @@ def run_job(
     """Spawn a full interactive agent subprocess for a cron job.
 
     Unlike run_once, the agent has full tool access (bash, read, write, etc.).
-    MCP is disabled via agent-specific CLI/config guards. Returns subprocess exit code.
+    Tool servers are restricted via agent-specific CLI/config guards. Returns subprocess exit code.
 
     This function blocks until the subprocess completes. Job metadata is passed
     via environment variables so the agent process can register itself with the
@@ -483,7 +474,6 @@ def run_once(
     prompt: str,
     schema: dict[str, object],  # guard: loose-dict - JSON schema
     tools: str | None = None,
-    mcp_tools: str | None = None,
     input_mode: Literal["stdin", "arg"] = "stdin",
     debug_raw: bool = False,
     timeout_s: int | None = None,
@@ -503,7 +493,6 @@ def run_once(
         combined_prompt,
         schema,
         tools=tools,
-        mcp_tools=mcp_tools,
         input_mode=input_mode,
         debug_raw=debug_raw,
         timeout_s=timeout_s,
@@ -571,10 +560,6 @@ def main() -> int:
         "--tools",
         help='Tools list. "" disables tools. Omit to allow all.',
     )
-    parser.add_argument(
-        "--mcp-tools",
-        help='MCP tools list. "" disables. Omit to allow all.',
-    )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--prompt", help="User prompt string")
     group.add_argument("--prompt-file", help="Path to file containing user prompt")
@@ -600,7 +585,6 @@ def main() -> int:
             prompt=prompt,
             schema=schema,
             tools=args.tools,
-            mcp_tools=args.mcp_tools,
             input_mode=input_mode,
         )
         print(json.dumps(payload))

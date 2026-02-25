@@ -165,7 +165,6 @@ def _call_agent_cli(
     *,
     debug: bool = False,
     tools: str | None = None,
-    mcp_tools: str | None = "",
 ) -> JsonDict | None:
     if debug:
         print(json.dumps({"debug_prompt": prompt}))
@@ -178,7 +177,6 @@ def _call_agent_cli(
             schema=schema,
             debug_raw=debug,
             tools=tools,
-            mcp_tools=mcp_tools,
             timeout_s=60,
         )
         if debug:
@@ -493,7 +491,6 @@ def main() -> int:
                 logger,
                 debug=args.debug,
                 tools="web_search" if use_web else "",
-                mcp_tools="",
             )
             if result is None:
                 return ["n/a"]
@@ -538,7 +535,6 @@ def main() -> int:
                     logger,
                     debug=args.debug,
                     tools="web_search" if use_web else "",
-                    mcp_tools="",
                 )
                 if args.debug:
                     print(json.dumps({"debug_duration_ms": int((time.monotonic() - start) * 1000)}))
@@ -590,7 +586,6 @@ def main() -> int:
                     logger,
                     debug=args.debug,
                     tools="web_search" if use_web else "",
-                    mcp_tools="",
                 )
                 if args.debug:
                     print(json.dumps({"debug_duration_ms": int((time.monotonic() - start) * 1000)}))

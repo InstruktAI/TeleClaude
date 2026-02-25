@@ -1,5 +1,5 @@
-project_root: ~/Workspace/InstruktAI/TeleClaude
-snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/project
+project_root: ~/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-delete-mcp
+snippets_root: ~/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-delete-mcp/docs/project
 snippets:
 - id: project/concept/ai-worker
   description: The role of an AI agent session in the TeleClaude network.
@@ -7,6 +7,7 @@ snippets:
   scope: global
   path: docs/project/concept/ai-worker.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/concept/master-bot
   description: The role of the master bot in a multi-computer Telegram supergroup.
@@ -14,6 +15,7 @@ snippets:
   scope: global
   path: docs/project/concept/master-bot.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/adapter-client
   description: AdapterClient centralizes UI adapter lifecycle, delivery, and cross-computer
@@ -22,6 +24,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/adapter-client.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/agent-activity-streaming-target
   description: Target architecture for unified agent activity streaming across Telegram,
@@ -30,6 +33,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/agent-activity-streaming-target.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/api-server
   description: Local HTTP and WebSocket API that reads from cache and routes writes
@@ -38,6 +42,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/api-server.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/cache
   description: DaemonCache snapshot layer for computers, projects, todos, sessions,
@@ -46,6 +51,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/cache.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/cache-system
   description: Event-driven read-cache architecture using SQLite snapshots.
@@ -53,6 +59,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/cache-system.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/checkpoint-system
   description: Checkpoint injection mechanism that delivers structured debrief prompts
@@ -61,6 +68,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/checkpoint-system.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/context-index
   description: Snippet index generation that produces docs/index.yaml from snippet
@@ -69,6 +77,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/context-index.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/context-selection
   description: Context selection pipeline that picks relevant docs for MCP get_context.
@@ -76,6 +85,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/context-selection.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/daemon
   description: Daemon orchestration responsibilities, boundaries, and background services.
@@ -83,6 +93,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/daemon.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/database
   description: SQLite persistence for sessions, hook outbox, memory, UX state, and
@@ -91,6 +102,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/database.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/feature-flags
   description: Design of the experiment and feature-flag system for safe feature toggling.
@@ -98,6 +110,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/feature-flags.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/help-desk-platform
   description: Help desk platform with identity-scoped memory, admin relay channels,
@@ -106,6 +119,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/help-desk-platform.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/hook-service
   description: Contract-based pub/sub webhook service for event routing, inbound webhook
@@ -114,6 +128,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/hook-service.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/jobs-runner
   description: 'Scheduled job runner: architecture, job contract, and configuration
@@ -122,6 +137,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/jobs-runner.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/layer-ownership
   description: Architectural layer boundaries, ownership rules, and the cross-cutting
@@ -130,13 +146,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/layer-ownership.md
   role: member
-  source_project: TeleClaude
-- id: project/design/architecture/mcp-layer
-  description: Resilient two-layer MCP architecture for AI-to-AI communication.
-  type: design
-  scope: global
-  path: docs/project/design/architecture/mcp-layer.md
-  role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/memory-system
   description: Persistent memory subsystem for storing, searching, and injecting relationship-centric
@@ -145,6 +155,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/memory-system.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/next-machine
   description: Stateless state machine for orchestrating multi-phase project workflows.
@@ -152,6 +163,7 @@ snippets:
   scope: global
   path: docs/project/design/architecture/next-machine.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/outbox
   description: Durable outbox table for agent hook events.
@@ -159,6 +171,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/outbox.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/output-delivery
   description: Output and footer message separation in UI adapters, with delivery
@@ -167,6 +180,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/output-delivery.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/output-polling
   description: Mechanism for real-time terminal output capture and streaming.
@@ -174,6 +188,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/output-polling.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/output-sizing
   description: 'Two-layer output sizing pipeline: content selection in ui_adapter
@@ -182,6 +197,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/output-sizing.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/redis-transport
   description: Redis Streams transport for cross-computer request/response and peer
@@ -190,6 +206,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/redis-transport.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/session-lifecycle
   description: Complete lifecycle of a terminal session from creation to cleanup.
@@ -197,6 +214,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/session-lifecycle.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/session-listeners
   description: In-memory listener registry that notifies callers when target sessions
@@ -205,6 +223,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/session-listeners.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/system-overview
   description: High-level architectural blueprint of TeleClaude components and data
@@ -213,6 +232,7 @@ snippets:
   scope: global
   path: docs/project/design/architecture/system-overview.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/telegram-adapter
   description: Telegram UI adapter that maps topics to sessions and enforces UX cleanup
@@ -221,6 +241,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/telegram-adapter.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/tmux-management
   description: Tmux session orchestration, input injection, and per-session temp directories.
@@ -228,6 +249,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/tmux-management.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/tts-system
   description: Text-to-speech system with multi-backend fallback, per-session voice
@@ -236,6 +258,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/tts-system.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/tui-state-layout
   description: State-driven layout model for the Telec TUI sessions and preparation
@@ -244,6 +267,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/tui-state-layout.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/ui-adapter
   description: UI adapters translate human inputs into events and render outputs with
@@ -252,6 +276,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/ui-adapter.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/web-api-facade
   description: Next.js API facade as the canonical web contract, proxying to daemon
@@ -260,6 +285,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/web-api-facade.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/web-interface
   description: High-level architecture of the TeleClaude Next.js web interface.
@@ -267,6 +293,7 @@ snippets:
   scope: project
   path: docs/project/design/architecture/web-interface.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/ux/session-highlight
   description: Session highlight system for user attention in TUI.
@@ -274,6 +301,7 @@ snippets:
   scope: project
   path: docs/project/design/ux/session-highlight.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/design/ux/session-highlight/implementation-plan
   description: Implementation plan for explicit reason-driven highlight system.
@@ -281,6 +309,7 @@ snippets:
   scope: project
   path: docs/project/design/ux/session-highlight/implementation-plan.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/policy/adapter-boundaries
   description: Strict separation between adapters and core logic.
@@ -288,6 +317,7 @@ snippets:
   scope: project
   path: docs/project/policy/adapter-boundaries.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/policy/agent-artifact-governance
   description: Governance rules for agent artifact sources, transforms, and ownership.
@@ -295,6 +325,7 @@ snippets:
   scope: project
   path: docs/project/policy/agent-artifact-governance.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/policy/agent-service-control
   description: Defines which service/daemon commands agents may run, which are conditional,
@@ -303,6 +334,7 @@ snippets:
   scope: project
   path: docs/project/policy/agent-service-control.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/policy/bin-bootstrap-boundary
   description: Defines bin/ as bootstrap-only and clarifies where runtime and internal
@@ -311,6 +343,7 @@ snippets:
   scope: project
   path: docs/project/policy/bin-bootstrap-boundary.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/policy/cache-contract
   description: Cache contract for snapshot reads, TTL refresh, and websocket updates.
@@ -318,6 +351,7 @@ snippets:
   scope: project
   path: docs/project/policy/cache-contract.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/policy/daemon-availability
   description: The TeleClaude daemon must stay up; restarts must be brief and verified.
@@ -325,6 +359,7 @@ snippets:
   scope: project
   path: docs/project/policy/daemon-availability.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/policy/data-modeling
   description: Data modeling, validation, and resource representation rules.
@@ -332,6 +367,7 @@ snippets:
   scope: project
   path: docs/project/policy/data-modeling.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/policy/feature-flag-usage
   description: Rules for when to use feature flags and when to avoid them.
@@ -339,6 +375,7 @@ snippets:
   scope: project
   path: docs/project/policy/feature-flag-usage.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/policy/master-bot-registration
   description: Policy for Telegram command registration in multi-computer setups.
@@ -346,22 +383,7 @@ snippets:
   scope: global
   path: docs/project/policy/master-bot-registration.md
   role: member
-  source_project: TeleClaude
-- id: project/policy/mcp-connection-management
-  description: Architecture policy for MCP clients - tool-call filtering, connection
-    handling, to guarantee stable connection between daemon restarts.
-  type: policy
-  scope: global
-  path: docs/project/policy/mcp-connection-management.md
-  role: member
-  source_project: TeleClaude
-- id: project/policy/mcp-tool-filtering
-  description: Role-based filtering of teleclaude tools to enforce least-privilege
-    for scoped agents.
-  type: policy
-  scope: project
-  path: docs/project/policy/mcp-tool-filtering.md
-  role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/policy/orchestrator-jurisdiction
   description: Enforces strict separation between process state management and system
@@ -370,6 +392,7 @@ snippets:
   scope: project
   path: docs/project/policy/orchestrator-jurisdiction.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/policy/scripts-standalone-execution
   description: 'Execution contract for scripts/: portable invocation, uv metadata,
@@ -378,6 +401,7 @@ snippets:
   scope: project
   path: docs/project/policy/scripts-standalone-execution.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/policy/single-database
   description: Guaranteed single database file usage for the daemon to prevent data
@@ -386,6 +410,7 @@ snippets:
   scope: project
   path: docs/project/policy/single-database.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/policy/telegram-command-registration
   description: Rules for registering Telegram commands and keeping the command list
@@ -394,6 +419,7 @@ snippets:
   scope: project
   path: docs/project/policy/telegram-command-registration.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/policy/ux-message-cleanup
   description: Automatic cleanup of Telegram message clutter for a clean UI.
@@ -401,6 +427,7 @@ snippets:
   scope: project
   path: docs/project/policy/ux-message-cleanup.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/add-adapter
   description: Steps to add a new adapter implementation and wire it into the daemon.
@@ -408,6 +435,7 @@ snippets:
   scope: project
   path: docs/project/procedure/add-adapter.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/add-telegram-command
   description: Steps to add a new Telegram command end-to-end.
@@ -415,6 +443,7 @@ snippets:
   scope: project
   path: docs/project/procedure/add-telegram-command.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/agent-artifact-distribution
   description: Steps to build and distribute agent artifacts in this repository.
@@ -422,6 +451,7 @@ snippets:
   scope: project
   path: docs/project/procedure/agent-artifact-distribution.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/ai-to-ai-operations
   description: Recommended flow for delegating work using TeleClaude MCP tools.
@@ -429,6 +459,7 @@ snippets:
   scope: project
   path: docs/project/procedure/ai-to-ai-operations.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/deploy
   description: Deploy TeleClaude changes safely with verification.
@@ -436,6 +467,7 @@ snippets:
   scope: project
   path: docs/project/procedure/deploy.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/host-health-checks
   description: Diagnostic checks for macOS host health on TeleClaude computers.
@@ -443,6 +475,7 @@ snippets:
   scope: project
   path: docs/project/procedure/host-health-checks.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/member-onboarding
   description: Invite a new member by email with deep links to their personal AI assistant
@@ -451,6 +484,7 @@ snippets:
   scope: project
   path: docs/project/procedure/member-onboarding.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/multi-computer-setup
   description: Guide for setting up a distributed TeleClaude network.
@@ -458,6 +492,7 @@ snippets:
   scope: project
   path: docs/project/procedure/multi-computer-setup.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/out-of-band-telegram-alerts
   description: Send Telegram alerts when the daemon is down using standalone scripts.
@@ -465,6 +500,7 @@ snippets:
   scope: project
   path: docs/project/procedure/out-of-band-telegram-alerts.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/restart-daemon
   description: Controlled daemon restart with verification and log checks.
@@ -472,6 +508,7 @@ snippets:
   scope: project
   path: docs/project/procedure/restart-daemon.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/rsync-development
   description: High-speed iteration workflow using rsync instead of git push/pull.
@@ -479,6 +516,7 @@ snippets:
   scope: project
   path: docs/project/procedure/rsync-development.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/runner-operations
   description: Self-hosted GitHub Actions runner lifecycle, diagnostics, and recovery.
@@ -486,6 +524,7 @@ snippets:
   scope: project
   path: docs/project/procedure/runner-operations.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/service-management
   description: Standard commands for managing the TeleClaude daemon service.
@@ -493,6 +532,7 @@ snippets:
   scope: project
   path: docs/project/procedure/service-management.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/ssh-agent-deployments
   description: Configure SSH agent access for automated git operations and deployments.
@@ -500,6 +540,7 @@ snippets:
   scope: project
   path: docs/project/procedure/ssh-agent-deployments.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/ssh-agent-keychain
   description: Procedure for configuring persistent SSH agent access for the daemon.
@@ -507,6 +548,7 @@ snippets:
   scope: global
   path: docs/project/procedure/ssh-agent-keychain.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/procedure/troubleshooting
   description: Operational runbooks for TeleClaude incidents and infrastructure failures.
@@ -514,6 +556,7 @@ snippets:
   scope: project
   path: docs/project/procedure/troubleshooting.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/agent-artifact-automation
   description: Automation that rebuilds and deploys agent artifacts when sources change.
@@ -521,6 +564,7 @@ snippets:
   scope: project
   path: docs/project/spec/agent-artifact-automation.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/cache-ttl-matrix
   description: TTL and scope matrix for cache refresh behavior.
@@ -528,6 +572,7 @@ snippets:
   scope: project
   path: docs/project/spec/cache-ttl-matrix.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/command-contracts
   description: Command contract highlights for session creation, messaging, and agent
@@ -536,6 +581,7 @@ snippets:
   scope: project
   path: docs/project/spec/command-contracts.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/command-surface
   description: Command surface contract for TeleClaude client interfaces.
@@ -543,6 +589,7 @@ snippets:
   scope: project
   path: docs/project/spec/command-surface.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/demo-artifact
   description: 'Demo artifact format: slug-based folders with snapshot.json and demo.md.'
@@ -550,6 +597,7 @@ snippets:
   scope: project
   path: docs/project/spec/demo-artifact.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/event-vocabulary
   description: Authoritative vocabulary for TeleClaude internal and external events.
@@ -557,6 +605,7 @@ snippets:
   scope: project
   path: docs/project/spec/event-vocabulary.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/git-docs-filter
   description: Git filter that expands tilde paths for agents and normalizes them
@@ -565,6 +614,7 @@ snippets:
   scope: project
   path: docs/project/spec/git-docs-filter.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/hook-normalized-events
   description: Plain-language contract for how TeleClaude maps raw hook events and
@@ -573,6 +623,7 @@ snippets:
   scope: project
   path: docs/project/spec/hook-normalized-events.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/identity-and-auth
   description: Authoritative surface for system-wide identity, authentication, and
@@ -581,6 +632,7 @@ snippets:
   scope: project
   path: docs/project/spec/identity-and-auth.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/jobs/log-bug-hunter
   description: Hourly agent job that scans daemon logs for errors, fixes inline or
@@ -589,6 +641,7 @@ snippets:
   scope: project
   path: docs/project/spec/jobs/log-bug-hunter.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/jobs/memory-review
   description: 'Memory review job: periodic AI analysis of accumulated memories for
@@ -597,6 +650,7 @@ snippets:
   scope: project
   path: docs/project/spec/jobs/memory-review.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/jobs/youtube-sync-subscriptions
   description: 'YouTube subscription tagger job: nightly AI classification of untagged
@@ -605,13 +659,7 @@ snippets:
   scope: project
   path: docs/project/spec/jobs/youtube-sync-subscriptions.md
   role: member
-  source_project: TeleClaude
-- id: project/spec/mcp-tool-surface
-  description: Authoritative surface for Model Context Protocol (MCP) tools.
-  type: spec
-  scope: project
-  path: docs/project/spec/mcp-tool-surface.md
-  role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/messaging
   description: "Messaging tools for Telegram, Discord, and email delivery \u2014 hooks,\
@@ -620,6 +668,7 @@ snippets:
   scope: project
   path: docs/project/spec/messaging.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/release-inspector-prompt
   description: Canonical prompt for AI release inspectors.
@@ -627,6 +676,7 @@ snippets:
   scope: project
   path: docs/project/spec/release-inspector-prompt.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/release-report-schema
   description: Standardized JSON schema for AI release inspector reports.
@@ -634,6 +684,7 @@ snippets:
   scope: project
   path: docs/project/spec/release-report-schema.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/runtime-operations-truth
   description: Practical contract for documenting daemon background operations and
@@ -642,6 +693,7 @@ snippets:
   scope: project
   path: docs/project/spec/runtime-operations-truth.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/session-identity-truth
   description: Practical identity rules for assigning hooks to the correct TeleClaude
@@ -650,6 +702,7 @@ snippets:
   scope: project
   path: docs/project/spec/session-identity-truth.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/session-output-routing
   description: Canonical routing contract for session messages across origin UX and
@@ -658,6 +711,7 @@ snippets:
   scope: project
   path: docs/project/spec/session-output-routing.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/telec-cli-surface
   description: Authoritative surface for the telec command-line tool.
@@ -665,6 +719,7 @@ snippets:
   scope: project
   path: docs/project/spec/telec-cli-surface.md
   role: member
+  visibility: internal
   source_project: TeleClaude
 - id: project/spec/teleclaude-config
   description: Authoritative surface for TeleClaude YAML configuration and environment
@@ -673,4 +728,5 @@ snippets:
   scope: project
   path: docs/project/spec/teleclaude-config.md
   role: member
+  visibility: internal
   source_project: TeleClaude

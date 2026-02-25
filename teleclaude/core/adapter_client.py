@@ -1,7 +1,7 @@
 """Unified client managing multiple adapters per session.
 
 This module provides AdapterClient, which abstracts adapter complexity behind
-a clean, unified interface for the daemon and MCP server.
+a clean, unified interface for the daemon and API tools.
 """
 
 import asyncio
@@ -309,7 +309,7 @@ class AdapterClient:
                 - CleanupTrigger.NEXT_NOTICE: removed on next notice message
                 - CleanupTrigger.NEXT_TURN: removed on next user turn
             ephemeral: If True (default), track message for deletion.
-                      Use False for persistent content (agent output, MCP results).
+                      Use False for persistent content (agent output, tool results).
             multi_message: If True, content is a multi-message payload needing quoting.
 
         Returns:

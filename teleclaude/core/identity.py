@@ -100,9 +100,6 @@ class IdentityResolver:
         Returns:
             IdentityContext if resolved, None if unauthorized/unknown.
         """
-        if origin == "mcp":
-            return None
-
         if origin == "telegram":
             user_id = channel_metadata.get("user_id")
             if user_id:

@@ -92,7 +92,7 @@ class RemoteExecutionProtocol(Protocol):
             Response chunks
 
         Note:
-            Current MCP usage polls session output via get_session_data; Redis output streaming is disabled.
+            Current tool usage polls session output via get_session_data; Redis output streaming is disabled.
 
         Raises:
             TimeoutError: If no response received within timeout

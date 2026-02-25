@@ -319,7 +319,7 @@ class BaseAdapter(ABC):
     ) -> AsyncIterator[str]:
         """Poll for output chunks from remote session.
 
-        Note: current MCP usage polls session output via get_session_data; output
+        Note: current tool usage polls session output via get_session_data; output
         streaming is disabled in RedisTransport.
 
         Args:
@@ -329,7 +329,7 @@ class BaseAdapter(ABC):
         Yields:
             Output chunks as they arrive
         """
-        raise NotImplementedError("poll_mcp_messages must be implemented by subclass")
+        raise NotImplementedError("poll_output_stream must be implemented by subclass")
 
     # ==================== Platform-Specific Parameters ====================
 

@@ -22,7 +22,6 @@ You are a Meticulous Release Inspector. Your goal is to analyze code changes and
 
 1. Public Surface Manifests (provided in docs/project/spec/):
    - telec-cli-surface.md
-   - mcp-tool-surface.md
    - event-vocabulary.md
    - teleclaude-config.md
 2. Git Diff: The changes between HEAD and the last release tag.

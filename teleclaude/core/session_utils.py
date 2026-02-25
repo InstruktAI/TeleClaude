@@ -1,7 +1,7 @@
 """Utility functions for session management.
 
 This module provides shared utilities for session creation and management
-to avoid code duplication across command handlers and MCP server.
+to avoid code duplication across command handlers.
 """
 
 import os

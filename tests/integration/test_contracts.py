@@ -9,7 +9,6 @@ import yaml
 
 from teleclaude.cli.telec import TelecCommand
 from teleclaude.core.events import AgentHookEvents
-from teleclaude.mcp_server import ToolName
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -36,18 +35,6 @@ def test_cli_surface_contract():
     assert enum_subcommands.issubset(spec_subcommands), (
         f"Missing commands in spec: {enum_subcommands - spec_subcommands}"
     )
-
-
-def test_mcp_tool_surface_contract():
-    """Verify that ToolName enum matches mcp-tool-surface.md."""
-    spec_path = REPO_ROOT / "docs/project/spec/mcp-tool-surface.md"
-    spec = extract_yaml_from_md(spec_path)
-
-    spec_tools = set(spec.get("tools", {}).keys())
-    enum_tools = {t.value for t in ToolName}
-
-    # Check for missing or renamed tools
-    assert enum_tools == spec_tools, f"Tool mismatch! Diff: {enum_tools ^ spec_tools}"
 
 
 def test_event_vocabulary_contract():

@@ -16,7 +16,7 @@ async def check_session_access(
     """Verify the requester has access to a session.
 
     Only enforced when identity headers are present (web interface).
-    TUI/MCP clients without headers bypass all checks.
+    TUI/tool clients without headers bypass all checks.
 
     Args:
         request: FastAPI request (for identity headers).
@@ -30,7 +30,7 @@ async def check_session_access(
     email = request.headers.get("x-web-user-email")
     role = request.headers.get("x-web-user-role")
 
-    # No identity headers = TUI/MCP client, always allowed
+    # No identity headers = TUI/tool client, always allowed
     if not email:
         return
 
