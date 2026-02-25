@@ -137,3 +137,45 @@ However, three critical gaps prevent approval:
 3. The close/error terminal paths bypass the coordinator and contract validation.
 
 These are all fixable without architectural changes.
+
+---
+
+## Fixes Applied
+
+### C1 — Stall tasks not cancelled on session close
+
+**Fix:** Added `self.agent_coordinator._cancel_stall_task(ctx.session_id)` in `daemon.py:_handle_session_closed` before `terminate_session`.
+**Commit:** 545f5ecf
+
+### C2 — Stall tasks not cancelled on agent error
+
+**Fix:** Added `_cancel_stall_task` and `_emit_status_event(session_id, "error", "agent_error")` in the `AGENT_ERROR` branch in `daemon.py`.
+**Commit:** 39719a52
+
+### C3 — `status_message_id` not deserialized in `from_json()`
+
+**Fix:** Added `raw_status_msg` deserialization and `status_message_id=discord_status_message_id` to `DiscordAdapterMetadata` constructor in `models.py`.
+**Commit:** cb2cc0a0
+
+### I1 — `_handle_session_closed_event` bypasses contract validation
+
+**Fix:** Added `serialize_status_event()` call before DTO construction in `api_server.py:_handle_session_closed_event`. Moved inline `datetime` import to module level. Added `serialize_status_event` import from `status_contract`.
+**Commit:** c6179953
+
+### I2 — No tests for adapter-level `_handle_session_status`
+
+**Fix:** Added Discord tests (send/edit/fallback/skip) in `test_discord_adapter.py` and Telegram tests (footer update/skip) in `test_telegram_adapter.py`.
+**Commit:** 824bde68
+
+### I3 — No tests for coordinator status emission or stall detection
+
+**Fix:** Added 5 new tests in `test_agent_coordinator.py` covering: accepted status emission, active_output with stall cancel, completed with stall cancel, stall detection transitions, cancellation preventing stale events.
+**Commit:** 2e01e2f3
+
+### I4 — Stall watcher task not tracked in `_background_tasks`
+
+**Fix:** Added broad `except Exception` handler inside `_stall_watcher` to log and surface errors that would otherwise be silently swallowed at GC time.
+**Commit:** c4379ac0
+
+**Tests:** PASSING (2013 passed, 106 skipped)
+**Lint:** PASSING
