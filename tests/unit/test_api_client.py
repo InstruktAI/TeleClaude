@@ -83,6 +83,30 @@ async def test_list_sessions_success():
 
 
 @pytest.mark.asyncio
+async def test_request_includes_identity_headers():
+    """_request() should attach caller identity headers to API calls."""
+    client = TelecAPIClient()
+    await client.connect()
+    client._identity_headers = {
+        "x-caller-session-id": "sess-1",
+        "x-tmux-session": "tc_abc",
+    }
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.raise_for_status = MagicMock()
+
+    with patch.object(client._client, "get", new=AsyncMock(return_value=mock_response)) as mock_get:
+        await client._request("GET", "/sessions")
+
+    _args, kwargs = mock_get.call_args
+    assert kwargs["headers"]["x-caller-session-id"] == "sess-1"
+    assert kwargs["headers"]["x-tmux-session"] == "tc_abc"
+
+    await client.close()
+
+
+@pytest.mark.asyncio
 async def test_connect_error_debounced_logging():
     """Log connect errors at most once per debounce window."""
     client = TelecAPIClient()

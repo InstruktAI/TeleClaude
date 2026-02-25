@@ -4,10 +4,12 @@ import asyncio
 import json
 import os
 import stat
+import subprocess
 import threading
 import time
 from collections.abc import Callable
 from http import HTTPMethod
+from pathlib import Path
 from typing import TypeAlias
 
 import httpx
@@ -79,10 +81,12 @@ class TelecAPIClient:
         self._ws_callback: Callable[[WsEvent], None] | None = None
         self._ws_lock = threading.Lock()
         self._last_connect_error_log: float | None = None
+        self._identity_headers: dict[str, str] = {}
 
     async def connect(self) -> None:
         """Connect to API socket."""
         transport = httpx.AsyncHTTPTransport(uds=self.socket_path)
+        self._identity_headers = self._build_identity_headers()
         self._client = httpx.AsyncClient(
             transport=transport,
             base_url=BASE_URL,
@@ -278,13 +282,35 @@ class TelecAPIClient:
                     await asyncio.sleep(delay)
                 try:
                     if method_enum is HTTPMethod.GET:
-                        resp = await self._client.get(url, params=params, timeout=request_timeout)
+                        resp = await self._client.get(
+                            url,
+                            params=params,
+                            headers=self._identity_headers,
+                            timeout=request_timeout,
+                        )
                     elif method_enum is HTTPMethod.POST:
-                        resp = await self._client.post(url, params=params, json=json_body, timeout=request_timeout)
+                        resp = await self._client.post(
+                            url,
+                            params=params,
+                            json=json_body,
+                            headers=self._identity_headers,
+                            timeout=request_timeout,
+                        )
                     elif method_enum is HTTPMethod.PATCH:
-                        resp = await self._client.patch(url, params=params, json=json_body, timeout=request_timeout)
+                        resp = await self._client.patch(
+                            url,
+                            params=params,
+                            json=json_body,
+                            headers=self._identity_headers,
+                            timeout=request_timeout,
+                        )
                     elif method_enum is HTTPMethod.DELETE:
-                        resp = await self._client.delete(url, params=params, timeout=request_timeout)
+                        resp = await self._client.delete(
+                            url,
+                            params=params,
+                            headers=self._identity_headers,
+                            timeout=request_timeout,
+                        )
                     else:
                         raise APIError(f"Unsupported HTTP method: {method}")
 
@@ -333,6 +359,48 @@ class TelecAPIClient:
     def _now_monotonic(self) -> float:
         """Return a monotonic timestamp for debounce logic."""
         return time.monotonic()
+
+    def _build_identity_headers(self) -> dict[str, str]:
+        """Build caller identity headers for daemon-side auth checks."""
+        headers: dict[str, str] = {}
+        session_id = self._read_caller_session_id()
+        if session_id:
+            headers["x-caller-session-id"] = session_id
+
+        tmux_session = self._read_tmux_session_name()
+        if tmux_session:
+            headers["x-tmux-session"] = tmux_session
+
+        return headers
+
+    def _read_caller_session_id(self) -> str | None:
+        """Read caller session_id from TMPDIR/teleclaude_session_id."""
+        tmpdir = os.environ.get("TMPDIR", "")
+        if not tmpdir:
+            return None
+
+        marker = Path(tmpdir) / "teleclaude_session_id"
+        try:
+            return marker.read_text(encoding="utf-8").strip() or None
+        except OSError:
+            return None
+
+    def _read_tmux_session_name(self) -> str | None:
+        """Read tmux session name from tmux server for dual-factor checks."""
+        try:
+            result = subprocess.run(
+                ["tmux", "display-message", "-p", "#S"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return None
+
+        if result.returncode != 0:
+            return None
+        return result.stdout.strip() or None
 
     async def _wait_for_socket(self, *, timeout_s: float = 1.0) -> None:
         """Wait briefly for the API socket to appear and be connectable."""
