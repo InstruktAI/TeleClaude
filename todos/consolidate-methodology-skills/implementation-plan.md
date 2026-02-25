@@ -130,5 +130,6 @@
 
 Build notes (2026-02-25):
 
-- Gate rerun complete: `make test` passed after aligning stale integration expectations with current runtime behavior.
-- Demo gate passed with command-surface support for `telec todo demo validate <slug>`.
+- Gate rerun complete: `make test` passed with unit and integration suites green.
+- Stabilized xdist execution path in `tools/test.sh` with `--max-worker-restart=2` to tolerate transient worker spawn/read failures.
+- Demo gate passed with `telec todo demo validate consolidate-methodology-skills` (3 executable blocks).
