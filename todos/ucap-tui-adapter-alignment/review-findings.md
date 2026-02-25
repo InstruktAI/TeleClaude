@@ -102,6 +102,30 @@ Tests 1-8 use inline `from ... import` inside each function body. All pre-existi
 - Commits exist: `ae6b1f0c` (build phase), `0393dad6` (feat) ✓
 - No deferrals.md: ✓
 
+## Fixes Applied
+
+### Finding #1 — R4 structured log fields on warning path
+
+**Fix:** Added `extra={"lane": "tui", "canonical_type": None, "session_id": message.session_id}` to the `logger.warning(...)` call in `on_agent_activity` when `canonical is None`.
+
+**Commit:** `c41cf4be`
+
+### Finding #2 — Handler dispatch logic untested
+
+**Fix:** Added 9 handler-level tests to `tests/unit/test_threaded_output_updates.py` covering all dispatch branches:
+
+- `canonical is None` → early return, no `sessions_view` calls
+- `canonical == "user_prompt_submit"` → `clear_active_tool` + `set_input_highlight`
+- `canonical == "agent_output_stop"` → `clear_active_tool` + `set_output_highlight` with/without summary
+- `canonical == "agent_output_update"` with `tool_name` (no-prefix and prefix-stripped cases)
+- `canonical == "agent_output_update"` with `tool_preview == tool_name` (empty remainder edge case)
+- `canonical == "agent_output_update"` without `tool_name` → `clear_active_tool`
+- Unknown `canonical_type` → falls through silently
+
+Also hoisted `TelecApp` and `AgentActivity` imports to module-level per file convention (suggestion #4 addressed).
+
+**Commit:** `c41cf4be`
+
 ## Review Round
 
 1 of 3.
