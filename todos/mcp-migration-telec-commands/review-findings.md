@@ -2,92 +2,111 @@
 
 ## Critical
 
-1. Role enforcement is bypassable on legacy endpoints that the new CLI still uses.
+1. **R1-F1 — Role enforcement is still bypassable on multiple session endpoints, including `telec sessions tail`.**
    - Evidence:
-     - `Depends(CLEARANCE_...)` is present for new routes only (`/sessions/run`, `/sessions/{id}/unsubscribe`, `/sessions/{id}/result`, `/sessions/{id}/widget`, `/sessions/{id}/escalate`, `/agents/{agent}/status`, `/deploy`) in [teleclaude/api_server.py:853](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:853), [teleclaude/api_server.py:901](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:901), [teleclaude/api_server.py:919](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:919), [teleclaude/api_server.py:972](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:972), [teleclaude/api_server.py:1043](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:1043), [teleclaude/api_server.py:1262](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:1262), [teleclaude/api_server.py:1298](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:1298).
-     - Core legacy endpoints have no clearance dependency (`/sessions`, `/sessions` POST, `/sessions/{id}` DELETE, `/sessions/{id}/message`, `/sessions/{id}/file`, `/computers`, `/projects`, `/agents/availability`) at [teleclaude/api_server.py:369](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:369), [teleclaude/api_server.py:419](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:419), [teleclaude/api_server.py:568](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:568), [teleclaude/api_server.py:591](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:591), [teleclaude/api_server.py:672](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:672), [teleclaude/api_server.py:1092](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:1092), [teleclaude/api_server.py:1128](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:1128), [teleclaude/api_server.py:1210](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:1210).
-     - Channel routes are also unauthenticated in [teleclaude/channels/api_routes.py:46](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/channels/api_routes.py:46) and [teleclaude/channels/api_routes.py:55](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/channels/api_routes.py:55).
-     - Existing access check explicitly bypasses controls when identity headers are absent in [teleclaude/api/session_access.py:30](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api/session_access.py:30).
-   - Impact: The stated requirement “every API endpoint checks caller system/human role” is not met, and blocked actions remain callable through legacy paths.
+     - These routes do not require any `CLEARANCE_*` dependency:
+       [teleclaude/api_server.py:636](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:636),
+       [teleclaude/api_server.py:663](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:663),
+       [teleclaude/api_server.py:724](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:724),
+       [teleclaude/api_server.py:756](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:756),
+       [teleclaude/api_server.py:795](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:795).
+     - These handlers rely on `check_session_access(...)`, which explicitly allows access when web identity headers are absent:
+       [teleclaude/api/session_access.py:33](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api/session_access.py:33).
+     - Authorization tests cover only a subset of routes and omit these endpoints:
+       [tests/unit/test_api_route_auth.py:25](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/tests/unit/test_api_route_auth.py:25).
+   - Impact: caller role checks are incomplete; transcript reads and session-control operations can bypass the new clearance layer.
 
-2. System-role enforcement still depends on a writable role marker file, not a tamper-resistant server authority.
+2. **R1-F2 — The new route-level authorization gates regress TUI behavior.**
    - Evidence:
-     - API auth reads system role from `~/.teleclaude/tmp/sessions/{id}/teleclaude_role` in [teleclaude/api/auth.py:46](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api/auth.py:46).
-     - Wrapper writes the same marker in [teleclaude/entrypoints/mcp_wrapper.py:261](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/entrypoints/mcp_wrapper.py:261).
-     - If marker read fails, auth falls back to `None` role in [teleclaude/api/auth.py:58](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api/auth.py:58), then uses wrapper denylist logic via `get_excluded_tools(...)` at [teleclaude/api/auth.py:116](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api/auth.py:116).
-   - Impact: This does not satisfy the stated replacement of file-based filtering with tamper-resistant daemon-side enforcement, and leaves a privilege-escalation path if marker state is altered.
+     - `GET /sessions`, `GET /computers`, `GET /projects`, and `GET /agents/availability` now require clearance:
+       [teleclaude/api_server.py:377](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:377),
+       [teleclaude/api_server.py:1114](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:1114),
+       [teleclaude/api_server.py:1152](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:1152),
+       [teleclaude/api_server.py:1235](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:1235).
+     - `TelecAPIClient` does not send identity headers on requests:
+       [teleclaude/cli/api_client.py:85](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/cli/api_client.py:85),
+       [teleclaude/cli/api_client.py:280](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/cli/api_client.py:280).
+     - TUI startup refresh depends on those endpoints:
+       [teleclaude/cli/tui/app.py:272](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/cli/tui/app.py:272).
+   - Impact: TUI data refresh now receives 401s and fails to hydrate core views, violating the non-regression constraint.
+
+3. **R1-F3 — Dual-factor identity is bypassable via web headers over Unix socket.**
+   - Evidence:
+     - `verify_caller(...)` accepts `x-web-user-email`/`x-web-user-role` and skips `X-Caller-Session-Id` entirely:
+       [teleclaude/api/auth.py:81](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api/auth.py:81).
+     - Middleware treats Unix-socket requests (`request.client is None`) as trusted for those headers:
+       [teleclaude/api_server.py:347](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:347).
+   - Impact: a local caller can present forged web-role headers and bypass the session-id/tmux verification path, conflicting with the tamper-resistant enforcement goal and the `no session_id -> 401` acceptance criterion.
 
 ## Important
 
-1. `--help` output does not provide the required rich behavioral guidance/examples; `telec docs --help` also misses two-phase guidance.
+1. **R1-F4 — `sessions run` does not persist caller linkage, so default caller-scoped listing can hide newly created run sessions.**
    - Evidence:
-     - Help is intercepted before command handlers by `_maybe_show_help(...)` in [teleclaude/cli/telec.py:482](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/cli/telec.py:482) and [teleclaude/cli/telec.py:856](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/cli/telec.py:856), so handler docstring examples are not shown.
-     - `docs` command surface has no notes for phase-1/phase-2 usage in [teleclaude/cli/telec.py:268](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/cli/telec.py:268).
-     - Manual check: `.venv/bin/python -m teleclaude.cli.telec sessions run --help` and `.venv/bin/python -m teleclaude.cli.telec docs --help` showed only usage/options, not behavioral guidance/examples.
-   - Impact: Core help-text acceptance criteria are not met.
+     - `run_session(...)` ignores `identity` and creates metadata without `initiator_session_id`:
+       [teleclaude/api_server.py:876](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:876),
+       [teleclaude/api_server.py:897](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:897).
+     - `create_session(...)` does inject `initiator_session_id`, but only on that path:
+       [teleclaude/api_server.py:460](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:460).
+     - Caller-scoped session listing depends on `initiator_session_id`:
+       [teleclaude/api_server.py:421](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:421).
+   - Impact: user-visible behavior is inconsistent between `sessions start` and `sessions run`.
 
-2. `sessions list` behavior and help text disagree; current implementation returns global sessions by default.
+2. **R1-F5 — Help-text acceptance criteria remain incomplete for many subcommands.**
    - Evidence:
-     - Help states default is “spawned by current” in [teleclaude/cli/tool_commands.py:98](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/cli/tool_commands.py:98).
-     - Implementation sends plain `GET /sessions` without caller filtering in [teleclaude/cli/tool_commands.py:107](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/cli/tool_commands.py:107) and [teleclaude/cli/tool_commands.py:114](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/cli/tool_commands.py:114).
-   - Impact: Misleading operator behavior and unnecessary session exposure.
-
-3. New auth/endpoint behavior is largely untested.
-   - Evidence:
-     - No tests found targeting `teleclaude/api/auth.py`, `verify_caller`, or new tool routes (`/sessions/run`, `/sessions/{id}/unsubscribe`, `/sessions/{id}/result`, `/sessions/{id}/widget`, `/sessions/{id}/escalate`, `/todos/*`, `/deploy`, `/agents/{agent}/status`) in the changed test set.
-   - Impact: High-risk security and boundary behavior lacks regression protection.
+     - Leaf help only includes guidance/examples when `sub.notes` is populated:
+       [teleclaude/cli/telec.py:611](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/cli/telec.py:611).
+     - Multiple subcommands define flags but no notes/examples (for example `sessions start`, `todo prepare`, `channels publish`):
+       [teleclaude/cli/telec.py:120](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/cli/telec.py:120),
+       [teleclaude/cli/telec.py:321](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/cli/telec.py:321),
+       [teleclaude/cli/telec.py:246](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/cli/telec.py:246).
+     - Manual checks confirm those help outputs show usage/options only.
+   - Impact: requirement “every subcommand help has behavioral guidance and examples covering parameters/input shapes” is not yet satisfied.
 
 ## Suggestions
 
-1. Return a 400-class error for unknown agent names in `/agents/{agent}/status` by converting `ValueError` from `normalize_agent_name(...)` to `HTTPException(400)` at [teleclaude/api_server.py:1275](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:1275).
+1. Convert `normalize_agent_name(...)` `ValueError` to `HTTPException(400)` in
+   [teleclaude/api_server.py:1302](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/api_server.py:1302)
+   so invalid agent values do not surface as 500s.
 
-2. Consider failing unknown removed aliases (`telec list`, `telec claude`, `telec gemini`, `telec codex`) with explicit non-zero “unknown command” instead of silent exit, currently reachable via [teleclaude/cli/telec.py:761](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/cli/telec.py:761).
+2. Either implement `--closed` behavior end-to-end or remove the flag from CLI surface/help:
+   [teleclaude/cli/telec.py:117](/Users/Morriz/Workspace/InstruktAI/TeleClaude/trees/mcp-migration-telec-commands/teleclaude/cli/telec.py:117).
 
 ## Paradigm-Fit Assessment
 
-- Data flow: The PR keeps HTTP boundary translation in adapter/CLI layers, but the role model still leaks legacy wrapper/file-based policy into core API authorization.
-- Component reuse: Good reuse of shared `tool_api_call()` and `CommandMapper`, but help-generation architecture now suppresses per-command rich guidance.
-- Pattern consistency: New endpoint patterns are consistent, yet security is inconsistent across adjacent routes (new routes protected, legacy routes unprotected).
+- Data flow: adapter/core boundary intent is improved, but several legacy session routes still bypass the same clearance pathway used by new routes.
+- Component reuse: good reuse of `tool_api_call()` and central CLI surface, but authorization and identity handling are inconsistent across API clients (`tool_client` vs `api_client`).
+- Pattern consistency: adjacent session endpoints now use mixed security patterns (clearance dependencies vs `check_session_access` bypass), creating non-uniform trust boundaries.
 
 ## Manual Verification Evidence
 
-- Executed:
-  - `.venv/bin/python -m teleclaude.cli.telec --help`
-  - `.venv/bin/python -m teleclaude.cli.telec sessions --help`
-  - `.venv/bin/python -m teleclaude.cli.telec sessions run --help`
-  - `.venv/bin/python -m teleclaude.cli.telec todo --help`
-  - `.venv/bin/python -m teleclaude.cli.telec docs --help`
 - Targeted tests run:
-  - `pytest -q tests/unit/test_telec_cli.py`
-  - `pytest -q tests/unit/test_install_hooks.py`
-  - `pytest -q tests/unit/test_diagram_extractors.py`
-  - `pytest -q tests/unit/test_next_machine_demo.py`
-  - `pytest -q tests/integration/test_e2e_smoke.py`
-  - `pytest -q tests/integration/test_multi_adapter_broadcasting.py`
-  - `pytest -q tests/integration/test_state_machine_workflow.py`
+  - `pytest -q tests/unit/test_api_auth.py tests/unit/test_api_route_auth.py tests/unit/test_api_server.py::test_list_sessions_defaults_to_caller_spawned_only tests/unit/test_api_server.py::test_list_sessions_all_flag_disables_caller_filter tests/integration/test_telec_cli_commands.py::test_sessions_run_help_includes_behavior_and_example tests/integration/test_telec_cli_commands.py::test_docs_help_includes_two_phase_guidance`
+- Manual CLI help checks:
+  - `.venv/bin/python -m teleclaude.cli.telec sessions start --help`
+  - `.venv/bin/python -m teleclaude.cli.telec sessions run --help`
+  - `.venv/bin/python -m teleclaude.cli.telec todo prepare --help`
+  - `.venv/bin/python -m teleclaude.cli.telec channels publish --help`
+- Additional verification:
+  - Confirmed via local UDS probe that Unix-socket requests expose `request.client` as `None`, which satisfies the middleware “trusted” condition for web identity headers.
+
+## Fixes Applied
+
+- **R1-F1**
+  - Fix: Added clearance dependencies to uncovered session endpoints (`keys`, `voice`, `agent-restart`, `revive`, `messages`) and extended route-auth coverage for these paths.
+  - Commit: `8c38dd28`
+- **R1-F2**
+  - Fix: Updated `TelecAPIClient` to send caller identity headers (`x-caller-session-id`, `x-tmux-session`) on daemon API requests; added unit coverage for header propagation.
+  - Commit: `6fba42fe`
+- **R1-F3**
+  - Fix: Enforced `X-Caller-Session-Id` requirement in `verify_caller` and tightened identity-header middleware trust to loopback TCP hosts only.
+  - Commit: `ae6dd4d9`
+- **R1-F4**
+  - Fix: Added `initiator_session_id` propagation for `sessions run` via channel metadata and covered linkage with a focused API server unit test.
+  - Commit: `d09ad75b`
+- **R1-F5**
+  - Fix: Added generated behavioral notes/examples for all help leaves (subcommands + top-level leaf commands) and added tests enforcing Notes/Examples presence.
+  - Commit: `ed04c453`
 
 ## Verdict
 
 REQUEST CHANGES
-
-## Fixes Applied
-
-- Issue: Critical 1 - role enforcement bypass on legacy/channel endpoints.
-  Fix: Added clearance dependencies to legacy API routes (`/sessions`, `/sessions/{id}` delete/message/file, `/computers`, `/projects`, `/agents/availability`) and channel routes (`/api/channels/*`), with web-header identity support in `verify_caller`.
-  Commit: `5193e8ca`
-
-- Issue: Critical 2 - system-role trust based on writable marker files.
-  Fix: Replaced marker-file role lookup with daemon-owned session-state derivation (`session_metadata.system_role` with `working_slug` worker fallback) in API auth.
-  Commit: `0528126d`
-
-- Issue: Important 1 - `--help` lacks behavioral guidance and docs two-phase usage.
-  Fix: Added schema-driven notes/examples for `sessions run --help` and explicit phase-1/phase-2 guidance for `docs --help`, with integration coverage.
-  Commit: `3f0d9b2b`
-
-- Issue: Important 2 - `sessions list` default behavior mismatched help text.
-  Fix: Updated `/sessions` to default-filter by caller-spawned sessions when `x-caller-session-id` is present, and honor `?all=true` for global visibility; added unit tests for both paths.
-  Commit: `dc8c30fc`
-
-- Issue: Important 3 - insufficient auth/endpoint regression tests.
-  Fix: Added targeted unit tests for `verify_caller` identity and role derivation, plus route-level authorization tests across protected legacy and new tool endpoints.
-  Commit: `309ca78f`
