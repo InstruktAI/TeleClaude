@@ -14,6 +14,7 @@ EventType = Literal[
     "session_started",
     "session_closed",
     "session_updated",
+    "session_status",
     "agent_event",
     "agent_activity",
     "error",
@@ -351,6 +352,7 @@ class TeleClaudeEvents:
     SESSION_STARTED: Literal["session_started"] = "session_started"
     SESSION_CLOSED: Literal["session_closed"] = "session_closed"
     SESSION_UPDATED: Literal["session_updated"] = "session_updated"  # Session fields updated in DB
+    SESSION_STATUS: Literal["session_status"] = "session_status"  # Canonical lifecycle status transition
     AGENT_EVENT: Literal["agent_event"] = "agent_event"  # Agent events (title change, etc.)
     AGENT_ACTIVITY: Literal["agent_activity"] = "agent_activity"  # Agent activity events (tool_use, tool_done, etc.)
     ERROR: Literal["error"] = "error"
@@ -477,6 +479,28 @@ class SessionUpdatedContext:
 
 
 @dataclass(frozen=True)
+class SessionStatusContext:
+    """Context for canonical session lifecycle status transition events.
+
+    Canonical contract fields (ucap-truthful-session-status):
+      status: Canonical lifecycle status value (accepted, awaiting_output,
+              active_output, stalled, completed, error, closed).
+      reason: Reason code for the transition.
+      last_activity_at: ISO 8601 UTC timestamp of last known activity (optional).
+      message_intent: Routing intent (ctrl_status).
+      delivery_scope: Routing scope (CTRL for all status events).
+    """
+
+    session_id: str
+    status: str
+    reason: str
+    timestamp: str
+    last_activity_at: str | None = None
+    message_intent: str | None = None
+    delivery_scope: str | None = None
+
+
+@dataclass(frozen=True)
 class AgentActivityEvent:
     """Agent activity event for real-time UI updates.
 
@@ -526,5 +550,6 @@ EventContext = (
     | AgentEventContext
     | ErrorEventContext
     | SessionUpdatedContext
+    | SessionStatusContext
     | AgentActivityEvent
 )

@@ -41,6 +41,7 @@ from teleclaude.core.events import (
     AgentSessionEndPayload,
     AgentSessionStartPayload,
     AgentStopPayload,
+    SessionStatusContext,
     TeleClaudeEvents,
     UserPromptSubmitPayload,
 )
@@ -52,6 +53,11 @@ from teleclaude.core.session_listeners import (
     get_peer_members,
     notify_input_request,
     notify_stop,
+)
+from teleclaude.core.status_contract import (
+    AWAITING_OUTPUT_THRESHOLD_SECONDS,
+    STALL_THRESHOLD_SECONDS,
+    serialize_status_event,
 )
 from teleclaude.core.summarizer import summarize_agent_output, summarize_user_input_title
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
@@ -222,6 +228,8 @@ class AgentCoordinator:
         self._incremental_noop_state: dict[str, _SuppressionState] = {}
         self._tool_use_skip_state: dict[str, _SuppressionState] = {}
         self._incremental_eval_state: dict[str, tuple[str, bool]] = {}
+        # Stall detection: one pending task per session, cancelled on output arrival (R4)
+        self._stall_tasks: dict[str, asyncio.Task[object]] = {}
 
     def _queue_background_task(
         self,
@@ -395,6 +403,101 @@ class AgentCoordinator:
                 extra={"session_id": session_id[:8], "event_type": event_type},
             )
 
+    def _emit_status_event(
+        self,
+        session_id: str,
+        status: str,
+        reason: str,
+        *,
+        last_activity_at: str | None = None,
+    ) -> None:
+        """Emit a canonical lifecycle status transition event.
+
+        Routes through status_contract.serialize_status_event() for validation.
+        Failures are logged but never crash the event flow (parallel to _emit_activity_event).
+
+        Args:
+            session_id: Session identifier.
+            status: Target lifecycle status (must be a valid LifecycleStatus value).
+            reason: Reason code for this transition.
+            last_activity_at: ISO 8601 UTC timestamp of last known activity (optional).
+        """
+        try:
+            timestamp = datetime.now(timezone.utc).isoformat()
+            canonical = serialize_status_event(
+                session_id=session_id,
+                status=status,
+                reason=reason,
+                timestamp=timestamp,
+                last_activity_at=last_activity_at,
+            )
+            if canonical is None:
+                return
+            event_bus.emit(
+                TeleClaudeEvents.SESSION_STATUS,
+                SessionStatusContext(
+                    session_id=session_id,
+                    status=status,
+                    reason=reason,
+                    timestamp=timestamp,
+                    last_activity_at=last_activity_at,
+                    message_intent=canonical.message_intent,
+                    delivery_scope=canonical.delivery_scope,
+                ),
+            )
+            logger.debug(
+                "status transition: session=%s %s (reason=%s)",
+                session_id[:8],
+                status,
+                reason,
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to emit status event: %s",
+                exc,
+                exc_info=True,
+                extra={"session_id": session_id[:8], "status": status},
+            )
+
+    def _cancel_stall_task(self, session_id: str) -> None:
+        """Cancel any pending stall detection task for a session."""
+        task = self._stall_tasks.pop(session_id, None)
+        if task and not task.done():
+            task.cancel()
+
+    def _schedule_stall_detection(self, session_id: str, last_activity_at: str) -> None:
+        """Schedule background stall detection after user_prompt_submit (R4).
+
+        Sequence:
+          t=0                    → accepted emitted (caller)
+          t=AWAITING_THRESHOLD   → awaiting_output
+          t=STALL_THRESHOLD      → stalled
+        Cancelled automatically when output arrives (tool_use or agent_stop).
+        """
+        self._cancel_stall_task(session_id)
+
+        async def _stall_watcher() -> None:
+            try:
+                await asyncio.sleep(AWAITING_OUTPUT_THRESHOLD_SECONDS)
+                self._emit_status_event(
+                    session_id,
+                    "awaiting_output",
+                    "awaiting_output_timeout",
+                    last_activity_at=last_activity_at,
+                )
+                await asyncio.sleep(STALL_THRESHOLD_SECONDS - AWAITING_OUTPUT_THRESHOLD_SECONDS)
+                self._emit_status_event(
+                    session_id,
+                    "stalled",
+                    "stall_timeout",
+                    last_activity_at=last_activity_at,
+                )
+            except asyncio.CancelledError:
+                pass  # Cancelled by output arrival — normal flow
+
+        task = asyncio.create_task(_stall_watcher())
+        self._stall_tasks[session_id] = task
+
     async def handle_event(self, context: AgentEventContext) -> None:
         """Handle any agent lifecycle event."""
         if context.event_type == AgentHookEvents.AGENT_SESSION_START:
@@ -549,6 +652,12 @@ class AgentCoordinator:
         # Emit activity event for UI updates.
         # Synthetic Codex prompts are still real input events.
         self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
+
+        # Emit canonical lifecycle status: accepted → schedule stall detection (R2, R4)
+        now_ts = datetime.now(timezone.utc).isoformat()
+        self._emit_status_event(session_id, "accepted", "user_prompt_accepted", last_activity_at=now_ts)
+        self._schedule_stall_detection(session_id, last_activity_at=now_ts)
+
         hook_actor_name = (
             (getattr(session, "human_name", "") or "").strip()
             or (getattr(session, "human_email", "") or "").strip()
@@ -703,8 +812,15 @@ class AgentCoordinator:
         if feedback_update_kwargs:
             await db.update_session(session_id, **feedback_update_kwargs)
 
+        # Cancel stall detection — turn complete (R4)
+        self._cancel_stall_task(session_id)
+
         # Emit activity event for UI updates (summary flows to TUI via event, not DB)
         self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)
+
+        # Emit canonical lifecycle status: completed (R2)
+        now_ts = datetime.now(timezone.utc).isoformat()
+        self._emit_status_event(session_id, "completed", "agent_turn_complete", last_activity_at=now_ts)
 
         # 2. Incremental threaded output (final turn portion)
         await self._maybe_send_incremental_output(session_id, payload)
@@ -754,6 +870,11 @@ class AgentCoordinator:
             tool_name,
             tool_preview=tool_preview,
         )
+
+        # Output evidence observed → active_output; cancel any pending stall (R4)
+        self._cancel_stall_task(session_id)
+        now_ts = datetime.now(timezone.utc).isoformat()
+        self._emit_status_event(session_id, "active_output", "output_observed", last_activity_at=now_ts)
 
         # DB write is deduped: only record the FIRST tool_use per turn for checkpoint timing
         session = await db.get_session(session_id)

@@ -43,6 +43,7 @@ from teleclaude.api_models import (
     SessionClosedDataDTO,
     SessionClosedEventDTO,
     SessionDTO,
+    SessionLifecycleStatusEventDTO,
     SessionMessagesDTO,
     SessionsInitialDataDTO,
     SessionsInitialEventDTO,
@@ -66,6 +67,7 @@ from teleclaude.core.events import (
     AgentActivityEvent,
     ErrorEventContext,
     SessionLifecycleContext,
+    SessionStatusContext,
     SessionUpdatedContext,
     TeleClaudeEvents,
 )
@@ -193,6 +195,7 @@ class APIServer:
         event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated_event)
         event_bus.subscribe(TeleClaudeEvents.SESSION_STARTED, self._handle_session_started_event)
         event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSED, self._handle_session_closed_event)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._handle_session_status_event)
         event_bus.subscribe(TeleClaudeEvents.AGENT_ACTIVITY, self._handle_agent_activity_event)
         event_bus.subscribe(TeleClaudeEvents.ERROR, self._handle_error_event)
 
@@ -256,11 +259,44 @@ class APIServer:
         _event: str,
         context: SessionLifecycleContext,
     ) -> None:
-        """Handle local session removal by updating cache."""
+        """Handle local session removal by updating cache and broadcasting closed status."""
         if not self.cache:
             logger.warning("Cache unavailable, cannot remove session from cache")
             return
         self.cache.remove_session(context.session_id)
+
+        # Broadcast canonical closed status (R2) to WS clients
+        from datetime import datetime, timezone
+
+        dto = SessionLifecycleStatusEventDTO(
+            session_id=context.session_id,
+            status="closed",
+            reason="session_closed",
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+        self._broadcast_payload("session_status", dto.model_dump(exclude_none=True))
+
+    async def _handle_session_status_event(
+        self,
+        _event: str,
+        context: SessionStatusContext,
+    ) -> None:
+        """Broadcast canonical lifecycle status transition events to WS clients.
+
+        Delivers the contract-defined status vocabulary (R2) directly to connected
+        clients without cache or DB re-read. Clients use this to render truthful
+        session status without adapter-local heuristics (R1, R3).
+        """
+        dto = SessionLifecycleStatusEventDTO(
+            session_id=context.session_id,
+            status=context.status,
+            reason=context.reason,
+            timestamp=context.timestamp,
+            last_activity_at=context.last_activity_at,
+            message_intent=context.message_intent,
+            delivery_scope=context.delivery_scope,
+        )
+        self._broadcast_payload("session_status", dto.model_dump(exclude_none=True))
 
     async def _handle_agent_activity_event(
         self,

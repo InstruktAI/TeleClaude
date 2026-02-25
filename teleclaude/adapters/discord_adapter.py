@@ -19,7 +19,7 @@ from teleclaude.config import config
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionLifecycleContext
+from teleclaude.core.events import SessionLifecycleContext, SessionStatusContext
 from teleclaude.core.models import SessionAdapterMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
@@ -654,6 +654,34 @@ class DiscordAdapter(UiAdapter):
         if trigger_typing_fn and callable(trigger_typing_fn):
             typing_fn = self._require_async_callable(trigger_typing_fn, label="Discord thread trigger_typing")
             await typing_fn()
+
+    async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
+        """Send or edit the tracked status message in the Discord thread."""
+        session = await db.get_session(context.session_id)
+        if not session:
+            return
+        discord_meta = session.get_metadata().get_ui().get_discord()
+        if discord_meta.thread_id is None:
+            return  # No Discord thread for this session
+        status_text = self._format_lifecycle_status(context.status)
+        existing_id = discord_meta.status_message_id
+        if existing_id:
+            edited = await self.edit_message(session, existing_id, status_text)
+            if edited:
+                return
+            # Edit failed (message deleted?) — clear and fall through to send
+            discord_meta.status_message_id = None
+            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        try:
+            new_id = await self.send_message(session, status_text)
+            discord_meta.status_message_id = new_id
+            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        except Exception as exc:
+            logger.debug(
+                "Discord status message update failed for session %s: %s",
+                context.session_id[:8],
+                exc,
+            )
 
     async def create_channel(self, session: "Session", title: str, metadata: "ChannelMetadata") -> str:
         _ = metadata

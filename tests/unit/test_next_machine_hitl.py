@@ -570,7 +570,6 @@ from teleclaude.core.next_machine import next_work
 from teleclaude.core.next_machine.core import (
     POST_COMPLETION,
     format_build_gate_failure,
-    run_build_gates,
 )
 
 

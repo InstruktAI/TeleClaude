@@ -63,9 +63,11 @@ async def test_handle_tool_use_emits_activity_event(coordinator):
         mock_db.update_session = AsyncMock()
         await coordinator.handle_tool_use(context)
 
-        # Verify activity event was emitted
-        mock_event_bus.emit.assert_called_once()
-        call_args = mock_event_bus.emit.call_args
+        # Verify activity event was emitted (may be followed by a session_status emit)
+        assert mock_event_bus.emit.call_count >= 1
+        activity_calls = [c for c in mock_event_bus.emit.call_args_list if c[0][0] == TeleClaudeEvents.AGENT_ACTIVITY]
+        assert len(activity_calls) == 1
+        call_args = activity_calls[0]
         assert call_args[0][0] == TeleClaudeEvents.AGENT_ACTIVITY
         event: AgentActivityEvent = call_args[0][1]
         assert event.session_id == session_id
@@ -213,7 +215,9 @@ async def test_activity_event_fields_are_populated(coordinator):
         mock_db.update_session = AsyncMock()
         await coordinator.handle_tool_use(context)
 
-        event: AgentActivityEvent = mock_event_bus.emit.call_args[0][1]
+        event: AgentActivityEvent = next(
+            c[0][1] for c in mock_event_bus.emit.call_args_list if c[0][0] == TeleClaudeEvents.AGENT_ACTIVITY
+        )
         # Verify all fields
         assert isinstance(event.session_id, str)
         assert event.session_id == session_id
@@ -252,7 +256,9 @@ async def test_handle_tool_use_builds_preview_from_command(coordinator):
         mock_db.update_session = AsyncMock()
         await coordinator.handle_tool_use(context)
 
-        event: AgentActivityEvent = mock_event_bus.emit.call_args[0][1]
+        event: AgentActivityEvent = next(
+            c[0][1] for c in mock_event_bus.emit.call_args_list if c[0][0] == TeleClaudeEvents.AGENT_ACTIVITY
+        )
         assert event.tool_name == "run_shell_command"
         assert event.tool_preview == "run_shell_command git status --short"
 
@@ -284,7 +290,9 @@ async def test_handle_tool_use_emits_canonical_contract_fields(coordinator):
         mock_db.update_session = AsyncMock()
         await coordinator.handle_tool_use(context)
 
-        event: AgentActivityEvent = mock_event_bus.emit.call_args[0][1]
+        event: AgentActivityEvent = next(
+            c[0][1] for c in mock_event_bus.emit.call_args_list if c[0][0] == TeleClaudeEvents.AGENT_ACTIVITY
+        )
         # hook type preserved for compat
         assert event.event_type == "tool_use"
         # canonical contract fields present
@@ -362,7 +370,9 @@ async def test_handle_tool_done_emits_canonical_contract_fields(coordinator):
         mock_db.get_session = AsyncMock(return_value=session)
         await coordinator.handle_tool_done(context)
 
-        event: AgentActivityEvent = mock_event_bus.emit.call_args[0][1]
+        event: AgentActivityEvent = next(
+            c[0][1] for c in mock_event_bus.emit.call_args_list if c[0][0] == TeleClaudeEvents.AGENT_ACTIVITY
+        )
         assert event.event_type == "tool_done"
         assert event.canonical_type == "agent_output_update"
         assert event.message_intent == "ctrl_activity"

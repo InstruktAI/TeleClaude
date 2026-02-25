@@ -23,6 +23,7 @@ from teleclaude.cli.models import (
     ProjectsInitialEvent,
     ProjectWithTodosInfo,
     SessionClosedEvent,
+    SessionLifecycleStatusEvent,
     SessionsInitialEvent,
     SessionStartedEvent,
     SessionUpdatedEvent,
@@ -487,6 +488,11 @@ class TelecApp(App[str | None]):
         elif isinstance(event, SessionClosedEvent):
             self.post_message(SessionClosed(event.data.session_id))
             self._session_status_cache.pop(event.data.session_id, None)
+
+        elif isinstance(event, SessionLifecycleStatusEvent):
+            # Surface stall and error transitions as TUI notifications.
+            if event.status in ("stalled", "error"):
+                self.notify(f"Session {event.session_id[:8]}: {event.status}", severity="warning")
 
         elif isinstance(event, ErrorEvent):
             self.notify(event.data.message, severity="error")

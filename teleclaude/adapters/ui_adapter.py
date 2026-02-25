@@ -23,7 +23,7 @@ from teleclaude.config import config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionUpdatedContext, TeleClaudeEvents, UiCommands
+from teleclaude.core.events import SessionStatusContext, SessionUpdatedContext, TeleClaudeEvents, UiCommands
 from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.models import (
@@ -85,6 +85,7 @@ class UiAdapter(BaseAdapter):
 
         # Register event listeners
         event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._handle_session_status)
 
     # === Adapter Metadata Helpers ===
 
@@ -842,6 +843,24 @@ class UiAdapter(BaseAdapter):
         return get_output_file(session_id)
 
     # ==================== Event Handlers ====================
+
+    async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
+        """Handle lifecycle status transitions. No-op by default; override per platform adapter."""
+
+    @staticmethod
+    def _format_lifecycle_status(status: str) -> str:
+        """Format a lifecycle status string for platform display."""
+        _EMOJI: dict[str, str] = {
+            "accepted": "⏱",
+            "awaiting_output": "🟡",
+            "active_output": "🔄",
+            "stalled": "🔴",
+            "completed": "✅",
+            "error": "❌",
+            "closed": "🔒",
+        }
+        emoji = _EMOJI.get(status, "❓")
+        return f"{emoji} {status.replace('_', ' ')}"
 
     async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
         """Handle session_updated event - update channel title when fields change.

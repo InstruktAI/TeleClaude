@@ -1,7 +1,3 @@
-import fcntl
-import os
-from pathlib import Path
-
 import pytest
 
 from teleclaude.cli import config_handlers

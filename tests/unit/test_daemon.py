@@ -1753,7 +1753,8 @@ def test_all_events_have_handlers():
 
     # Check each event has a handler
     # Events that don't require explicit daemon handlers
-    SKIP_HANDLERS = {"session_updated", "agent_activity"}
+    # session_status is handled by api_server.py (WS broadcast) and ui_adapter.py (platform footers)
+    SKIP_HANDLERS = {"session_updated", "agent_activity", "session_status"}
 
     missing_handlers = []
     for event in all_events:

@@ -58,7 +58,7 @@ if __name__ == "__main__":
 
     counts = migrate_state_files(todos_root)
 
-    print(f"\n📊 Migration complete:")
+    print("\n📊 Migration complete:")
     print(f"   ✅ Migrated: {counts['migrated']}")
     print(f"   ⏭️  Skipped: {counts['skipped']}")
     print(f"   ❌ Failed: {counts['failed']}")

@@ -43,7 +43,7 @@ from teleclaude.config import config
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
-from teleclaude.core.events import UiCommands
+from teleclaude.core.events import SessionStatusContext, UiCommands
 from teleclaude.core.models import (
     ChannelMetadata,
     MessageMetadata,
@@ -190,6 +190,24 @@ class TelegramAdapter(
         meta = session.get_metadata().get_ui().get_telegram()
         meta.output_message_id = None
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+
+    async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
+        """Update Telegram topic footer with canonical lifecycle status."""
+        session = await db.get_session(context.session_id)
+        if not session:
+            return
+        telegram_meta = session.get_metadata().get_ui().get_telegram()
+        if not telegram_meta.topic_id:
+            return  # No Telegram topic for this session
+        status_line = self._format_lifecycle_status(context.status)
+        try:
+            await self._send_footer(session, status_line=status_line)
+        except Exception as exc:
+            logger.debug(
+                "Telegram status footer update failed for session %s: %s",
+                context.session_id[:8],
+                exc,
+            )
 
     async def send_typing_indicator(self, session: "Session") -> None:
         """Send typing indicator to Telegram topic."""
