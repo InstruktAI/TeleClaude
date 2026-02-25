@@ -166,7 +166,7 @@ flowchart TD
     ORIGIN -->|Telegram| TG_LOOKUP[Lookup telegram_user_id in people config]
     ORIGIN -->|Discord| DC_LOOKUP[Lookup discord_user_id in people config]
     ORIGIN -->|Web| WEB_LOOKUP[Lookup email in people config]
-    ORIGIN -->|API/MCP| API[No identity — unrestricted]
+    ORIGIN -->|API| API[No identity — unrestricted]
 
     TG_LOOKUP --> FOUND{Person found?}
     DC_LOOKUP --> FOUND
@@ -200,9 +200,9 @@ flowchart TD
 
 A helper function on the session model or identity module handles this derivation. The memory system receives the opaque string and stores/matches it without parsing.
 
-### MCP Role Propagation for Customers
+### Role Propagation for Customers
 
-The MCP wrapper already propagates `human_role` for tool filtering: `_read_human_role()` does a DB lookup via session_id, and `get_excluded_tools()` applies filtering tiers.
+The tool-access path propagates `human_role` for filtering: session role lookup is used to apply role-based tool tiers in `get_excluded_tools()`.
 
 **Addition:** A `CUSTOMER_EXCLUDED_TOOLS` tier in `role_tools.py` that restricts what a customer's agent can access. Customers get help desk interaction tools only — no session management, no deployment, no orchestration, no channel publishing.
 
@@ -210,7 +210,7 @@ The `get_excluded_tools()` function gains a branch: `if human_role == "customer"
 
 ### Escalation Tool
 
-An MCP tool (`teleclaude__escalate`) that customer-facing agents call when they need admin assistance. The tool is registered globally in the daemon but role-gated: added to `MEMBER_EXCLUDED_TOOLS`, `WORKER_EXCLUDED_TOOLS`, and `UNAUTHORIZED_EXCLUDED_TOOLS` so only sessions with `human_role: "customer"` see it.
+A TeleClaude tool (`teleclaude__escalate`) that customer-facing agents call when they need admin assistance. The tool is registered globally in the daemon but role-gated: added to `MEMBER_EXCLUDED_TOOLS`, `WORKER_EXCLUDED_TOOLS`, and `UNAUTHORIZED_EXCLUDED_TOOLS` so only sessions with `human_role: "customer"` see it.
 
 **Parameters:**
 
@@ -494,7 +494,7 @@ flowchart LR
 
 **Channel naming:** `channel:{project}:{topic}` — e.g., `channel:help-desk:actions`, `channel:engineering:bug-reports`.
 
-**Publishing:** Agents publish via an MCP tool (`teleclaude__publish`) or HTTP API (`POST /api/channels/{name}/publish`). The agent doesn't need to know who subscribes — it folds the mail, puts it in the pipe, and moves on.
+**Publishing:** Agents publish via a TeleClaude tool (`teleclaude__publish`) or HTTP API (`POST /api/channels/{name}/publish`). The agent doesn't need to know who subscribes — it folds the mail, puts it in the pipe, and moves on.
 
 **Subscribing:** Configured per-project in `teleclaude.yml`. Each subscription maps a channel pattern to an agent command that processes incoming messages:
 
@@ -539,7 +539,7 @@ channels:
 
 **Cross-computer routing:** Redis Streams are inherently cross-computer. An agent on the raspi publishes to `channel:help-desk:actions`; the macbook's consumer picks it up. No extra plumbing needed beyond the existing Redis connection.
 
-**MCP tool surface:**
+**Tool surface:**
 
 ```
 teleclaude__publish(channel, payload)    # Publish a message to a channel
@@ -740,8 +740,8 @@ flowchart TD
     C[Frontmatter audience tagging<br/>Role-filtered get_context] --> H[Operator brain<br/>AGENTS.master.md with get_context]
     ORG --> H
 
-    ROLE[Customer role in MCP<br/>CUSTOMER_EXCLUDED_TOOLS tier] --> G
-    ESC[Escalation tool<br/>teleclaude__escalate MCP tool] --> RELAY
+    ROLE[Customer role in tool access<br/>CUSTOMER_EXCLUDED_TOOLS tier] --> G
+    ESC[Escalation tool<br/>teleclaude__escalate] --> RELAY
     ROLE --> ESC
 
     RELAY[Admin relay channel<br/>Discord thread + message bridge] --> G
