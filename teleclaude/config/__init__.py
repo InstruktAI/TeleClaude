@@ -450,10 +450,10 @@ def _require_agents_section(raw_config: dict[str, object]) -> dict[str, object]:
     agents_raw = raw_config.get("agents")
     if agents_raw is None:
         raise ValueError(
-            "config.yml is missing required key `agents`. Add `agents:` with at least one configured agent entry."
+            "Missing required config key `config.yml:agents`. Add `agents:` with at least one configured agent entry."
         )
     if not isinstance(agents_raw, dict):
-        raise ValueError("config.yml key `agents` must be a mapping of agent names to settings.")
+        raise ValueError("Invalid config key `config.yml:agents`: expected a mapping of agent names to settings.")
     return agents_raw
 
 
@@ -465,9 +465,7 @@ def _validate_known_agent_keys(
     unknown = sorted(str(name) for name in agents_raw.keys() if str(name) not in known_agents)
     if unknown:
         raise ValueError(
-            "config.yml key `agents` contains unknown agent keys: "
-            f"{', '.join(unknown)}. "
-            f"Allowed keys: {', '.join(known_agents)}."
+            f"Unknown key(s) under `config.yml:agents`: {', '.join(unknown)}. Allowed keys: {', '.join(known_agents)}."
         )
 
 
@@ -638,6 +636,8 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
     for name, protocol in AGENT_PROTOCOL.items():
         # Get user overrides for this agent if any
         val = agents_raw.get(name)
+        if val is not None and not isinstance(val, dict):
+            raise ValueError(f"Invalid config key `config.yml:agents.{name}`: expected a mapping of agent settings.")
         user_agent_config = val if isinstance(val, dict) else {}
 
         agents_registry[name] = AgentConfig(
@@ -658,7 +658,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
 
     if not any(agent_cfg.enabled for agent_cfg in agents_registry.values()):
         raise ValueError(
-            "config.yml key `agents` must enable at least one agent. "
+            "Invalid config at `config.yml:agents`: all known agents are disabled. "
             "Set `config.yml:agents.<agent>.enabled: true` for at least one configured agent."
         )
 
