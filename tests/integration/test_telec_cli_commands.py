@@ -179,18 +179,26 @@ def test_completion_docs_flags(monkeypatch: pytest.MonkeyPatch, capsys: pytest.C
 
 
 @pytest.mark.integration
-def test_sessions_run_help_includes_behavior_and_example(capsys: pytest.CaptureFixture[str]) -> None:
-    """sessions run --help should include behavioral guidance and example usage."""
+def test_sessions_run_help_exposes_command_interface(capsys: pytest.CaptureFixture[str]) -> None:
+    """sessions run --help should expose usage, required flags, and examples."""
     telec._handle_cli_command(["sessions", "run", "--help"])
     output = capsys.readouterr().out
-    assert "Creates a fresh session and runs the slash command" in output
-    assert "Example: telec sessions run --command /next-build" in output
+    assert "Usage:" in output
+    assert "telec sessions run" in output
+    assert "--command" in output
+    assert "--project" in output
+    assert "Examples:" in output
+    assert "/next-build" in output
 
 
 @pytest.mark.integration
-def test_docs_help_includes_two_phase_guidance(capsys: pytest.CaptureFixture[str]) -> None:
-    """docs --help should explain phase-1 index and phase-2 content retrieval."""
+def test_docs_help_exposes_ids_and_filters(capsys: pytest.CaptureFixture[str]) -> None:
+    """docs --help should expose IDS input shape, filters, and examples."""
     telec._handle_cli_command(["docs", "--help"])
     output = capsys.readouterr().out
-    assert "Phase 1 (index): run without IDs" in output
-    assert "Phase 2 (content): pass one or more IDs" in output
+    assert "Usage:" in output
+    assert "telec docs [IDS...]" in output
+    assert "--areas" in output
+    assert "--domains" in output
+    assert "Examples:" in output
+    assert "telec docs software-development/policy/testing" in output
