@@ -22,12 +22,12 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior — R1–R4 audit claims verified against source; R5 observability gap identified
+- [x] Deferrals justified and not hiding required scope — no deferrals.md exists; no silent deferrals found
+- [x] Findings written in `review-findings.md`
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES
+- [x] Critical issues resolved or explicitly blocked — no critical issues
+- [x] Test coverage and regression risk assessed — R5 logging invariant has zero regression coverage; `/tmp` paths not parallel-safe
 
 ## Finalize Gates (Finalizer)
 
