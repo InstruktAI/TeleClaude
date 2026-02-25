@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: ucap-cutover-parity-validation
+  date: '2026-02-25'
+  title: 'Phase 6: Execute shadow/cutover, parity metrics validation, rollback criteria,
+    and final bypass removal checks.'
+  commit: 3ad158134ae5704037a16cb6d75837212287d8dc
+  description: 'Phase 6: Execute shadow/cutover, parity metrics validation, rollback
+    criteria, and final bypass removal checks.'
 - slug: ucap-ingress-provisioning-harmonization
   date: '2026-02-25'
   title: 'Phase 5: Standardize ingress semantics and centralize channel/provisioning

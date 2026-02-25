@@ -1,13 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: ucap-cutover-parity-validation
-  group: unified-client-adapter-pipeline
-  after:
-  - ucap-web-adapter-alignment
-  - ucap-tui-adapter-alignment
-  - ucap-ingress-provisioning-harmonization
-  description: 'Phase 6: Execute shadow/cutover, parity metrics validation, rollback
-    criteria, and final bypass removal checks.'
 - slug: mcp-migration-telec-commands
   group: mcp-to-tool-specs
   description: 'Phase 1: Add telec subcommands for all 24 tools with rich --help,
