@@ -203,4 +203,4 @@ None. Code quality of the fixes is good.
 
 **Fix:** Restored `implementation-plan.md` with all `[x]` checkboxes and Phase 0 audit notes from commit `30e22226`. Restored `quality-checklist.md` Build Gates to fully-checked state with annotations.
 
-**Commit:** TBD
+**Commit:** `946c75a5`
