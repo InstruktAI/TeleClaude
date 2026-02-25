@@ -1,0 +1,17 @@
+{
+  "slug": "ucap-canonical-contract",
+  "title": "Requirements: ucap-canonical-contract",
+  "version": "0.1.0",
+  "delivered_date": "2026-02-25",
+  "merge_commit": "ee0980110fac811bcc93491bb28e9ffdc37b86b0",
+  "metrics": {
+    "plan_checklist_items": 21,
+    "plan_checklist_completed": 0
+  },
+  "acts": {
+    "challenge": "",
+    "build": "",
+    "gauntlet": "",
+    "next": ""
+  }
+}
