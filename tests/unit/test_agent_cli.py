@@ -216,6 +216,10 @@ def test_agent_protocol_blocks_mcp_for_interactive_profiles() -> None:
     assert "--allowed-mcp-server-names _none_" in gemini_profiles["default"]
     assert "--allowed-mcp-server-names _none_" in gemini_profiles["restricted"]
 
+    codex_profiles = AGENT_PROTOCOL["codex"]["profiles"]
+    assert isinstance(codex_profiles, dict)
+    assert all("mcp" not in profile.lower() for profile in codex_profiles.values())
+
 
 def test_job_spec_blocks_mcp_for_agent_jobs() -> None:
     claude_flags = str(agent_cli._JOB_SPEC["claude"]["flags"])
@@ -224,3 +228,7 @@ def test_job_spec_blocks_mcp_for_agent_jobs() -> None:
 
     gemini_flags = str(agent_cli._JOB_SPEC["gemini"]["flags"])
     assert "--allowed-mcp-server-names _none_" in gemini_flags
+
+    codex_spec = agent_cli._JOB_SPEC["codex"]
+    assert str(codex_spec.get("mcp_tools_arg", "")) == ""
+    assert "mcp" not in str(codex_spec["flags"]).lower()

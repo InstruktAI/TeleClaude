@@ -16,7 +16,7 @@ agents can perform all existing operations using `telec` subcommands instead of 
 - Remove MCP server injection from `bin/init/setup_mcp_config.sh`
 - Remove Codex MCP config injection from `install_hooks.py`
 - Ensure `$TMPDIR/teleclaude_session_id` continues to be written
-- End-to-end validation with Claude, Gemini, and Codex agents
+- End-to-end validation of agent startup contracts for Claude, Gemini, and Codex
 - Validate orchestrator workflow: prepare → build → review → finalize
 - Validate worker isolation: daemon-side role enforcement returns 403 when
   worker agents attempt orchestration commands (sessions start, todo work, etc.)
@@ -31,9 +31,9 @@ agents can perform all existing operations using `telec` subcommands instead of 
 
 ## Success Criteria
 
-- [ ] Claude Code sessions start without MCP server in config
-- [ ] Gemini sessions start without MCP server in config
-- [ ] Codex sessions start without MCP server in config
+- [ ] Claude startup contract blocks MCP servers in session profile flags
+- [ ] Gemini startup contract blocks MCP servers in session profile flags
+- [ ] Codex startup contract contains no MCP server injection path
 - [ ] Full orchestrator cycle works via telec tools
 - [ ] Worker agents cannot discover orchestration tools
 - [ ] Agent jobs (cron runner) still function
