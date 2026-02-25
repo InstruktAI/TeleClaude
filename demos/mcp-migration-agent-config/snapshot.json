@@ -1,0 +1,19 @@
+{
+  "slug": "mcp-migration-agent-config",
+  "title": "mcp-migration-agent-config",
+  "version": "0.1.0",
+  "delivered_date": "2026-02-25",
+  "merge_commit": "d23e3e820f14164696f0e1751b3b354770b7dae4",
+  "metrics": {
+    "implementation_plan_tasks_total": 29,
+    "implementation_plan_tasks_checked": 0,
+    "review_items_documented": 12
+  },
+  "five_acts": {
+    "act1_prepare": "Remove MCP server configuration from all agent session types and validate that agents can perform all existing operations using `telec` subcommands instead of MCP tools.",
+    "act2_build": "Remove MCP server configuration from all agent session types so agents use `telec` CLI subcommands instead of MCP tools. The approach modifies the agent command profiles (AGENT_PROTOCOL), job specs, and installer scripts — all",
+    "act3_review": "Review/fix loop completed with requested changes resolved.",
+    "act4_finalize": "Finalize prepare integrated origin/main and emitted FINALIZE_READY.",
+    "act5_demo": "Demo markdown was produced for post-merge presentation."
+  }
+}
