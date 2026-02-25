@@ -445,6 +445,18 @@ def _validate_disallowed_runtime_keys(user_config: dict[str, object]) -> None:  
         )
 
 
+def _require_agents_section(raw_config: dict[str, object]) -> dict[str, object]:  # guard: loose-dict
+    """Require an explicit top-level `agents` mapping in config.yml."""
+    agents_raw = raw_config.get("agents")
+    if agents_raw is None:
+        raise ValueError(
+            "config.yml is missing required key `agents`. Add `agents:` with at least one configured agent entry."
+        )
+    if not isinstance(agents_raw, dict):
+        raise ValueError("config.yml key `agents` must be a mapping of agent names to settings.")
+    return agents_raw
+
+
 def _parse_categories(raw: object) -> dict[str, int] | None:
     """Parse Discord categories dict from config (name -> channel ID)."""
     if not isinstance(raw, dict):
@@ -600,7 +612,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
     tts_raw = raw.get("tts", None)
     stt_raw = raw.get("stt", None)
     experiments_raw = raw.get("experiments", [])
-    agents_raw = raw.get("agents", {})
+    agents_raw = _require_agents_section(raw)
 
     # Import AGENT_PROTOCOL from constants
     from teleclaude.constants import AGENT_PROTOCOL
@@ -608,11 +620,8 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
     agents_registry: Dict[str, AgentConfig] = {}
     for name, protocol in AGENT_PROTOCOL.items():
         # Get user overrides for this agent if any
-        user_agent_config = {}
-        if isinstance(agents_raw, dict):
-            val = agents_raw.get(name)
-            if isinstance(val, dict):
-                user_agent_config = val
+        val = agents_raw.get(name)
+        user_agent_config = val if isinstance(val, dict) else {}
 
         agents_registry[name] = AgentConfig(
             binary=resolve_agent_binary(name),

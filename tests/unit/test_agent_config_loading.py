@@ -56,6 +56,33 @@ def test_agent_config_loading_defaults(mock_tmux, mock_binary, mock_agent_protoc
 
 @patch("teleclaude.config.resolve_agent_binary", return_value="test_bin")
 @patch("teleclaude.config.resolve_tmux_binary", return_value="tmux")
+def test_agent_config_loading_requires_agents_section(mock_tmux, mock_binary, mock_agent_protocol):
+    with patch("teleclaude.constants.AGENT_PROTOCOL", mock_agent_protocol):
+        raw_config = {
+            "database": {"path": ":memory:"},
+            "computer": {
+                "name": "test",
+                "user": "test",
+                "role": "test",
+                "timezone": "UTC",
+                "default_working_dir": ".",
+                "help_desk_dir": ".",
+                "is_master": False,
+                "trusted_dirs": [],
+                "host": None,
+            },
+            "polling": {"directory_check_interval": 10},
+            "redis": {"enabled": False, "url": "redis://localhost", "password": None},
+            "telegram": {"trusted_bots": []},
+            "ui": {"animations_enabled": False, "animations_periodic_interval": 60},
+        }
+
+        with pytest.raises(ValueError, match="missing required key `agents`"):
+            _build_config(raw_config)
+
+
+@patch("teleclaude.config.resolve_agent_binary", return_value="test_bin")
+@patch("teleclaude.config.resolve_tmux_binary", return_value="tmux")
 def test_agent_config_loading_overrides(mock_tmux, mock_binary, mock_agent_protocol):
     with patch("teleclaude.constants.AGENT_PROTOCOL", mock_agent_protocol):
         raw_config = {
