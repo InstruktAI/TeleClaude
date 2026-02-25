@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: tui-state-persistence
+  date: '2026-02-25'
+  commit: d644465a70e773c19960384867a90ea57082730f
 - slug: consolidate-methodology-skills
   date: '2026-02-25'
   title: Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
