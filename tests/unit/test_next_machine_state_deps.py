@@ -522,13 +522,47 @@ async def test_next_work_finalize_next_call_without_slug():
                 new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
             ),
         ):
-            result = await next_work(db, slug=slug, cwd=tmpdir)
+            result = await next_work(db, slug=slug, cwd=tmpdir, caller_session_id="orchestrator-session")
 
     assert 'command="/next-finalize"' in result
     assert "Call teleclaude__next_work()" in result
     assert "Call teleclaude__next_work(slug=" not in result
     assert "FINALIZE_READY: final-item" in result
     assert "telec roadmap deliver final-item" in result
+
+
+@pytest.mark.asyncio
+async def test_next_work_finalize_requires_caller_session_id():
+    """Finalize dispatch must require caller session identity for lock ownership."""
+    db = MagicMock(spec=Db)
+    slug = "final-item-no-caller"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Requirements\n")
+        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "approved"}')
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
+            ),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir, caller_session_id=None)
+
+    assert "ERROR: CALLER_SESSION_REQUIRED" in result
 
 
 # =============================================================================

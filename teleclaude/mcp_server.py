@@ -529,7 +529,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                 slug = self._str_arg(arguments, "slug") or None
                 cwd = self._str_arg(arguments, "cwd") or None
                 logger.debug("next_work request", slug=slug, cwd=cwd)
-                return [TextContent(type="text", text=await self.teleclaude__next_work(slug, cwd))]
+                return [TextContent(type="text", text=await self.teleclaude__next_work(slug, cwd, caller_session_id))]
 
             async def _handle_next_maintain() -> list[TextContent]:
                 cwd = self._str_arg(arguments, "cwd") or None

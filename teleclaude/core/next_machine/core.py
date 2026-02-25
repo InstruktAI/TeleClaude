@@ -120,10 +120,17 @@ POST_COMPLETION: dict[str, str] = {
 """,
     "next-finalize": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data.
-2. Confirm worker reported exactly `FINALIZE_READY: {args}`.
+2. Accept completion only for the dispatched worker session `<session_id>`.
+   Ignore notifications from any other session.
+3. Verify finalize lock ownership before consuming FINALIZE_READY:
+   - Lock file `todos/.finalize-lock` must exist.
+   - Lock `slug` must equal `{args}`.
+   - Lock `session_id` must equal your orchestrator `TELECLAUDE_SESSION_ID`.
+   If any check fails: stop and report FINALIZE_LOCK_MISMATCH (do NOT apply).
+4. Confirm worker reported exactly `FINALIZE_READY: {args}` in session `<session_id>` transcript.
    If missing: send worker feedback to report FINALIZE_READY and stop (do NOT apply).
-3. teleclaude__end_session(computer="local", session_id="<session_id>")
-4. FINALIZE APPLY (orchestrator-owned, canonical root only — NEVER cd into worktree):
+5. teleclaude__end_session(computer="local", session_id="<session_id>")
+6. FINALIZE APPLY (orchestrator-owned, canonical root only — NEVER cd into worktree):
    a. MAIN_REPO="$(git rev-parse --git-common-dir)/.."
    b. git -C "$MAIN_REPO" fetch origin main
    c. git -C "$MAIN_REPO" switch main
@@ -134,21 +141,21 @@ POST_COMPLETION: dict[str, str] = {
       Else: telec roadmap deliver {args} --commit "$MERGE_COMMIT" --project-root "$MAIN_REPO"
             && git -C "$MAIN_REPO" add todos/delivered.yaml todos/roadmap.yaml
             && git -C "$MAIN_REPO" commit -m "chore({args}): record delivery"
-5. DEMO SNAPSHOT (orchestrator-owned — stamp delivery metadata while artifacts exist):
+7. DEMO SNAPSHOT (orchestrator-owned — stamp delivery metadata while artifacts exist):
    If demos/{args}/demo.md exists (builder created it during build):
    a. Read todos/{args}/requirements.md title and implementation-plan.md metrics
    b. Generate demos/{args}/snapshot.json with: slug, title, version (from pyproject.toml),
       delivered_date (today), merge_commit, metrics, and five acts narrative from the todo artifacts.
    c. git -C "$MAIN_REPO" add demos/{args}/snapshot.json && git -C "$MAIN_REPO" commit -m "chore({args}): add demo snapshot"
    If demos/{args}/demo.md does NOT exist, skip — no demo was created for this delivery.
-6. CLEANUP (orchestrator-owned, from main repo root):
+8. CLEANUP (orchestrator-owned, from main repo root):
    a. git -C "$MAIN_REPO" worktree remove trees/{args} --force
    b. git -C "$MAIN_REPO" branch -d {args}
    c. rm -rf "$MAIN_REPO/todos/{args}"
    d. git -C "$MAIN_REPO" add -A && git -C "$MAIN_REPO" commit -m "chore: cleanup {args}"
-7. git -C "$MAIN_REPO" push origin main
-8. make restart (daemon picks up merged code before next dispatch)
-9. Call {next_call}
+9. git -C "$MAIN_REPO" push origin main
+10. make restart (daemon picks up merged code before next dispatch)
+11. Call {next_call}
 """,
 }
 
@@ -2361,7 +2368,19 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     # 9. Review approved - dispatch finalize prepare (serialized via finalize lock)
     if has_uncommitted_changes(cwd, resolved_slug):
         return format_uncommitted_changes(resolved_slug)
-    session_id = caller_session_id or "unknown"
+    if not caller_session_id:
+        return format_error(
+            "CALLER_SESSION_REQUIRED",
+            (
+                "Finalize dispatch requires caller_session_id so FINALIZE_READY consumption stays "
+                "bound to the orchestrator lock owner."
+            ),
+            next_call=(
+                "Call teleclaude__next_work from a wrapper-injected orchestrator session so "
+                "caller_session_id is present."
+            ),
+        )
+    session_id = caller_session_id
     lock_error = acquire_finalize_lock(cwd, resolved_slug, session_id)
     if lock_error:
         return lock_error
