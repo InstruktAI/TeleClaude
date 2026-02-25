@@ -552,9 +552,9 @@ class MCPHandlersMixin:
                     target_session_id=session_id,
                 )
                 if not closed_link_id:
-                    yield f"No active link found for caller {caller_session_id[:8]}."
+                    yield f"No active link found for caller {caller_session_id}."
                     return
-                yield f"Closed shared link {closed_link_id[:8]} for caller {caller_session_id[:8]}."
+                yield f"Closed shared link {closed_link_id} for caller {caller_session_id}."
                 return
 
             if not direct:
@@ -568,8 +568,8 @@ class MCPHandlersMixin:
             if direct and caller_session_id:
                 caller = await db.get_session(caller_session_id)
                 target = await db.get_session(session_id)
-                caller_label = caller.title if caller and caller.title else caller_session_id[:8]
-                target_label = target.title if target and target.title else session_id[:8]
+                caller_label = caller.title if caller and caller.title else caller_session_id
+                target_label = target.title if target and target.title else session_id
                 caller_computer = caller.computer_name if caller else self.computer_name
                 target_computer = self.computer_name if self._is_local_computer(computer) else computer
                 link_ctx = await resolve_link_for_sender_target(
@@ -632,7 +632,7 @@ class MCPHandlersMixin:
                 link_state = "created" if created else "reused"
                 peer_count = max(len(members) - 1, 1)
                 yield (
-                    f"Message sent to direct link {link.link_id[:8]} ({link_state}). "
+                    f"Message sent to direct link {link.link_id} ({link_state}). "
                     f"Delivered to {peer_count} peer(s). Use teleclaude__get_session_data to check status."
                 )
                 return
@@ -648,7 +648,7 @@ class MCPHandlersMixin:
                 actor_agent=actor_agent,
                 actor_computer=actor_computer,
             )
-            yield f"Message sent to session {session_id[:8]} on {computer}. Use teleclaude__get_session_data to check status."
+            yield f"Message sent to session {session_id} on {computer}. Use teleclaude__get_session_data to check status."
         except Exception as e:
             logger.error("Failed to send message to session %s: %s", session_id[:8], e)
             yield f"[Error: Failed to send message: {str(e)}]"
@@ -981,8 +981,8 @@ class MCPHandlersMixin:
         if self._is_local_computer(computer):
             success = await unregister_listener(target_session_id=session_id, caller_session_id=caller_session_id)
             if success:
-                return {"status": "success", "message": f"Stopped notifications from session {session_id[:8]}"}
-            return {"status": "error", "message": f"No listener found for session {session_id[:8]}"}
+                return {"status": "success", "message": f"Stopped notifications from session {session_id}"}
+            return {"status": "error", "message": f"No listener found for session {session_id}"}
 
         try:
             envelope = await self._send_remote_request(
@@ -1582,7 +1582,7 @@ class MCPHandlersMixin:
 
         session = await db.get_session(caller_session_id)
         if not session:
-            return f"Error: Session {caller_session_id[:8]} not found"
+            return f"Error: Session {caller_session_id} not found"
 
         if session.human_role != "customer":
             return "Error: Escalation is only available in customer sessions"

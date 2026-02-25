@@ -1,4 +1,5 @@
-build: pending
+phase: in_progress
+build: started
 review: pending
 deferrals_processed: false
 breakdown:

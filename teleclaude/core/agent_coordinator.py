@@ -1164,10 +1164,10 @@ class AgentCoordinator:
             return 0
 
         sender = await db.get_session(sender_session_id)
-        sender_label = sender.title if sender and sender.title else sender_session_id[:8]
+        sender_label = sender.title if sender and sender.title else sender_session_id
         sender_computer = source_computer or (sender.computer_name if sender else config.computer.name)
         framed_message = (
-            f"[Linked output from {sender_label} ({sender_session_id[:8]}) on {sender_computer}]\n\n"
+            f"[Linked output from {sender_label} ({sender_session_id}) on {sender_computer}]\n\n"
             f"{distilled_output.strip()}"
         )
 
