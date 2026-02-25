@@ -22,12 +22,12 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior — R1–R5 all verified; code fixes correct
+- [x] Deferrals justified and not hiding required scope — no deferrals.md exists
+- [x] Findings written in `review-findings.md`
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES (round 2)
+- [x] Critical issues resolved or explicitly blocked — no critical issues; 1 Important: documentation state regression
+- [x] Test coverage and regression risk assessed — 2132 passed, R1–R5 all covered, no regression risk from fixes
 
 ## Finalize Gates (Finalizer)
 

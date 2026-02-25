@@ -1,7 +1,7 @@
 # Review Findings: ucap-ingress-provisioning-harmonization
 
-**Review round:** 1
-**Reviewer approach:** Audit verification + test quality analysis
+**Review round:** 2 (previous: round 1 → REQUEST CHANGES)
+**Reviewer approach:** Fix verification + documentation state audit
 **Verdict:** REQUEST CHANGES
 
 ## Context
@@ -130,3 +130,65 @@ The test short-circuits at `mock_voice.handle_voice = AsyncMock(return_value=Non
 **Fix:** Removed the mutation.
 
 **Commit:** `fb67cbac`
+
+---
+
+## Round 2 Review
+
+### Round 1 Fix Verification
+
+All 6 round-1 findings have been correctly addressed:
+
+| #   | Finding                   | Status       | Verification                                                                                                                                                                                          |
+| --- | ------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | R5 observability test gap | **Resolved** | `test_ui_lane_error_log_identifies_adapter_and_session` added in `test_adapter_client_handlers.py:142-181`. Uses `FailingAdapter` + `caplog`, asserts adapter key and session ID in error log. Sound. |
+| 2   | Hardcoded `/tmp` paths    | **Resolved** | Both integration tests now use `tmp_path` fixture. Manual `Path.unlink` cleanup removed.                                                                                                              |
+| 3   | Voice ordering test       | **Resolved** | `fake_handle_voice` coroutine now calls `send_message` before returning transcription. Index-based ordering assertion (`update_idx < send_idx`) proves the claim.                                     |
+| 4   | MCP actor assertion       | **Resolved** | `startswith("system:workstation:")` asserts structural contract, not just substring.                                                                                                                  |
+| 5   | Inline imports            | **Resolved** | `ProcessMessageCommand` promoted to module-level import; inline imports removed.                                                                                                                      |
+| 6   | ADAPTER_KEY mutation      | **Resolved** | Removed.                                                                                                                                                                                              |
+
+### Paradigm-Fit Assessment (Round 2)
+
+1. **Data flow:** Fix commits only touch test files. No production code changed. Test data flow patterns are correct.
+2. **Component reuse:** `FailingAdapter` extends existing `PrePostUiAdapter` test class. No copy-paste duplication.
+3. **Pattern consistency:** All fixes follow established test patterns in their respective files.
+
+### Test Quality Assessment
+
+Full test suite: **2132 passed**, 106 skipped, 10 warnings. All new and modified tests pass.
+
+Coverage by requirement:
+
+- **R1** (ingress mapping): 4 tests — Telegram, Redis, MCP, API paths
+- **R2** (provenance): 3 tests — process_message ordering, voice ordering, broadcast exclusion
+- **R3** (provisioning funnel): 2 tests — per-adapter provisioning, lock behavior
+- **R4** (routing policy): Covered implicitly through R1–R3
+- **R5** (observability): 1 test — error log adapter+session identification
+
+No regression risk identified from the fix commits.
+
+## Critical (Round 2)
+
+None.
+
+## Important (Round 2)
+
+### 7. Documentation state regression — implementation plan and quality checklist reverted
+
+**Commit:** `9d5ee7fe`
+
+**Finding:** The fix commit that added R5 coverage and tmp_path isolation also reverted `implementation-plan.md` and `quality-checklist.md` to their initial unchecked state:
+
+- **implementation-plan.md:** All task checkboxes reverted from `[x]` to `[ ]`. All audit notes documenting Phase 0 findings were removed (enumeration of ingress paths, provenance mutation points, provisioning call sites).
+- **quality-checklist.md:** All Build Gates reverted from `[x]` (with annotations) to `[ ]` (bare).
+
+`state.yaml` declares `build: complete` but the implementation plan shows zero completed tasks. This is contradictory state.
+
+The audit notes in particular are valuable documentation — they record the evidence trail for the audit-and-verify approach. Losing them weakens the build's verifiability.
+
+**Fix:** Restore the `[x]` checkboxes and audit notes in `implementation-plan.md` to match the build-complete state in `state.yaml`. Restore the Build Gates checkboxes in `quality-checklist.md`.
+
+## Suggestions (Round 2)
+
+None. Code quality of the fixes is good.
