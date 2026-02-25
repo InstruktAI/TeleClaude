@@ -347,11 +347,12 @@ class TelecAPIClient:
                 pass
             await asyncio.sleep(0.05)
 
-    async def list_sessions(self, computer: str | None = None) -> list[SessionInfo]:
+    async def list_sessions(self, computer: str | None = None, *, include_closed: bool = False) -> list[SessionInfo]:
         """List sessions from all computers or specific computer.
 
         Args:
             computer: Filter by computer name (None = all)
+            include_closed: Include closed sessions
 
         Returns:
             List of session dicts
@@ -359,7 +360,11 @@ class TelecAPIClient:
         Raises:
             APIError: If request fails
         """
-        params: dict[str, str] = {"computer": computer} if computer else {}
+        params: dict[str, str] = {}
+        if computer:
+            params["computer"] = computer
+        if include_closed:
+            params["include_closed"] = "true"
         resp = await self._request("GET", "/sessions", params=params)
         return TypeAdapter(list[SessionInfo]).validate_json(resp.text)
 
@@ -510,6 +515,34 @@ class TelecAPIClient:
         """
         resp = await self._request("GET", "/agents/availability")
         return TypeAdapter(dict[str, AgentAvailabilityInfo]).validate_json(resp.text)
+
+    async def set_agent_status(
+        self,
+        agent: str,
+        status: str,
+        reason: str | None = None,
+        duration_minutes: int = 60,
+    ) -> AgentAvailabilityInfo:
+        """Set agent availability status.
+
+        Args:
+            agent: Agent name (claude, gemini, codex)
+            status: Desired status (available, degraded, unavailable)
+            reason: Optional reason for status change
+            duration_minutes: Duration in minutes for degraded/unavailable (default 60)
+
+        Returns:
+            Updated agent availability info
+
+        Raises:
+            APIError: If request fails
+        """
+        resp = await self._request(
+            "POST",
+            f"/agents/{agent}/status",
+            json_body={"status": status, "reason": reason, "duration_minutes": duration_minutes},
+        )
+        return TypeAdapter(AgentAvailabilityInfo).validate_json(resp.text)
 
     async def list_projects_with_todos(self) -> list[ProjectWithTodosInfo]:
         """List all projects with their todos included.

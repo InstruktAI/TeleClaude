@@ -7,16 +7,18 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger as _get_logger
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
+from textual.widgets import Footer
 
 from teleclaude.cli.models import ComputerInfo, ProjectInfo, SessionInfo
 from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
-    CursorContextChanged,
     KillSessionRequest,
     PreviewChanged,
+    RestartSessionsRequest,
     ReviveSessionRequest,
     StateDirty,
     StickyChanged,
@@ -68,17 +70,18 @@ class SessionsView(Widget, can_focus=True):
     """
 
     BINDINGS = [
-        ("up", "cursor_up", "Previous"),
-        ("down", "cursor_down", "Next"),
-        ("space", "toggle_preview", "Preview/Sticky"),
-        ("enter", "focus_pane", "Focus pane"),
-        ("left", "collapse", "Collapse"),
-        ("right", "expand", "Expand"),
-        ("equals_sign", "expand_all", "Expand all"),
-        ("minus", "collapse_all", "Collapse all"),
-        ("n", "new_session", "New session"),
-        ("k", "kill_session", "Kill session"),
-        ("R", "restart_session", "Restart session"),
+        Binding("up", "cursor_up", "Up", key_display="↑", group=Binding.Group("Nav", compact=True), show=False),
+        Binding("down", "cursor_down", "Down", key_display="↓", group=Binding.Group("Nav", compact=True), show=False),
+        Binding("space", "toggle_preview", "Preview/Sticky"),
+        Binding("enter", "focus_pane", "Focus"),
+        Binding("left", "collapse", "Collapse", key_display="←", group=Binding.Group("Fold", compact=True), show=False),
+        Binding("right", "expand", "Expand", key_display="→", group=Binding.Group("Fold", compact=True), show=False),
+        Binding("equals_sign", "expand_all", "All", key_display="+", group=Binding.Group("Fold", compact=True)),
+        Binding("minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True)),
+        Binding("n", "new_session", "New"),
+        Binding("k", "kill_session", "Kill"),
+        Binding("R", "restart_session", "Restart"),
+        Binding("R", "restart_all", "Restart All"),
     ]
 
     preview_session_id = reactive[str | None](None)
@@ -342,7 +345,6 @@ class SessionsView(Widget, can_focus=True):
 
         Selection visuals are handled in each widget's render() method (not CSS),
         so we must explicitly refresh widgets when their selected state changes.
-        Also posts CursorContextChanged so ActionBar shows relevant hints.
         """
         for i, widget in enumerate(self._nav_items):
             was_selected = widget.has_class("selected")
@@ -350,15 +352,6 @@ class SessionsView(Widget, can_focus=True):
             widget.set_class(is_selected, "selected")
             if was_selected != is_selected:
                 widget.refresh()
-        # Notify ActionBar of cursor item type
-        if self._nav_items and 0 <= self.cursor_index < len(self._nav_items):
-            item = self._nav_items[self.cursor_index]
-            if isinstance(item, SessionRow):
-                self.post_message(CursorContextChanged("session"))
-            elif isinstance(item, ComputerHeader):
-                self.post_message(CursorContextChanged("computer"))
-            elif isinstance(item, ProjectHeader):
-                self.post_message(CursorContextChanged("project"))
 
     def _current_session_row(self) -> SessionRow | None:
         """Get the SessionRow at the current cursor position, if any."""
@@ -366,6 +359,12 @@ class SessionsView(Widget, can_focus=True):
             return None
         item = self._nav_items[self.cursor_index]
         return item if isinstance(item, SessionRow) else None
+
+    def _current_item(self) -> Widget | None:
+        """Get current cursor item."""
+        if not self._nav_items or self.cursor_index >= len(self._nav_items):
+            return None
+        return self._nav_items[self.cursor_index]
 
     # --- Helpers ---
 
@@ -457,6 +456,7 @@ class SessionsView(Widget, can_focus=True):
 
         Single click: move cursor + preview with focus.
         Double click: toggle sticky.
+        Shift+click: behave like Space (preview/sticky without focus).
         """
         row = message.session_row
         idx = self._find_nav_index(row)
@@ -466,6 +466,11 @@ class SessionsView(Widget, can_focus=True):
         self.cursor_index = idx
         self._update_cursor_highlight()
         self._scroll_to_cursor()
+
+        if message.shift:
+            self.action_toggle_preview()
+            self.focus()
+            return
 
         session_id = row.session_id
         now = time.monotonic()
@@ -599,13 +604,17 @@ class SessionsView(Widget, can_focus=True):
     def action_focus_pane(self) -> None:
         """Enter: on a session — preview AND focus the tmux pane.
 
-        On a project/computer header — open new session modal.
+        On a project header — open new session modal.
+        On a computer header — restart all sessions on that computer.
         If session is headless, revive it first.
         """
         row = self._current_session_row()
         if not row:
-            # On a project or computer header — open new session modal
-            self.action_new_session()
+            item = self._current_item()
+            if isinstance(item, ComputerHeader):
+                self.action_restart_all()
+            else:
+                self.action_new_session()
             return
 
         # Headless sessions: revive instead of focus
@@ -748,6 +757,78 @@ class SessionsView(Widget, can_focus=True):
         from teleclaude.cli.tui.messages import RestartSessionRequest
 
         self.post_message(RestartSessionRequest(row.session_id, row.session.computer or "local"))
+
+    def action_restart_all(self) -> None:
+        """R on computer header: restart all sessions on that computer."""
+        item = self._current_item()
+        if not isinstance(item, ComputerHeader):
+            return
+
+        computer = item.data.computer.name
+        session_ids = sorted({s.session_id for s in self._sessions if (s.computer or "local") == computer})
+        if not session_ids:
+            self.app.notify(f"No sessions to restart on {computer}", severity="warning")
+            return
+
+        modal = ConfirmModal(
+            title="Restart All Sessions",
+            message=f"Restart {len(session_ids)} sessions on '{computer}'?",
+        )
+
+        def on_confirm(confirmed: bool | None) -> None:
+            if confirmed:
+                self.post_message(RestartSessionsRequest(computer=computer, session_ids=session_ids))
+
+        self.app.push_screen(modal, on_confirm)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Enable/hide actions based on current tree node type."""
+        del parameters
+        item = self._current_item()
+
+        if action == "new_session":
+            return isinstance(item, ProjectHeader)
+        if action == "focus_pane":
+            return isinstance(item, (ProjectHeader, ComputerHeader, SessionRow))
+        if action in {"kill_session", "restart_session", "toggle_preview"}:
+            return isinstance(item, SessionRow)
+        if action == "restart_all":
+            return isinstance(item, ComputerHeader)
+        return True
+
+    def _default_footer_action(self) -> str | None:
+        """Return the primary action for the selected node."""
+        item = self._current_item()
+        if isinstance(item, ComputerHeader):
+            return "restart_all"
+        if isinstance(item, ProjectHeader):
+            return "new_session"
+        if isinstance(item, SessionRow):
+            return "focus_pane"
+        return None
+
+    def _sync_default_footer_action(self) -> None:
+        """Mark the active default action in Footer."""
+        if not self.is_attached:
+            return
+        try:
+            footer = self.app.query_one(Footer)
+        except Exception:
+            return
+        default_action = self._default_footer_action()
+        for key_widget in footer.query("FooterKey"):
+            key_widget.set_class(getattr(key_widget, "action", None) == default_action, "default-action")
+
+    def watch_cursor_index(self, _index: int) -> None:
+        """Refresh key bindings when node context changes."""
+        if self.is_attached:
+            self.app.refresh_bindings()
+            self.call_after_refresh(self._sync_default_footer_action)
+
+    def on_focus(self) -> None:
+        """Sync default footer styling when the view receives focus."""
+        self.app.refresh_bindings()
+        self.call_after_refresh(self._sync_default_footer_action)
 
     # --- Reactive watchers ---
 

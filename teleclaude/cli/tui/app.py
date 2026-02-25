@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from textual import work
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import TabbedContent, TabPane
 
@@ -30,7 +31,6 @@ from teleclaude.cli.models import (
 from teleclaude.cli.tui.messages import (
     AgentActivity,
     CreateSessionRequest,
-    CursorContextChanged,
     DataRefreshed,
     DocEditRequest,
     DocPreviewRequest,
@@ -38,6 +38,7 @@ from teleclaude.cli.tui.messages import (
     KillSessionRequest,
     PreviewChanged,
     RestartSessionRequest,
+    RestartSessionsRequest,
     ReviveSessionRequest,
     SessionClosed,
     SessionStarted,
@@ -61,10 +62,9 @@ from teleclaude.cli.tui.views.config import ConfigView
 from teleclaude.cli.tui.views.jobs import JobsView
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
-from teleclaude.cli.tui.widgets.action_bar import ActionBar
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
-from teleclaude.cli.tui.widgets.status_bar import StatusBar
+from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 
 if TYPE_CHECKING:
     from teleclaude.cli.api_client import TelecAPIClient
@@ -89,13 +89,41 @@ class TelecApp(App[str | None]):
     TITLE = "TeleClaude"
 
     BINDINGS = [
-        ("q", "quit", "Quit"),
-        ("1", "switch_tab('sessions')", "Sessions"),
-        ("2", "switch_tab('preparation')", "Preparation"),
-        ("3", "switch_tab('jobs')", "Jobs"),
-        ("4", "switch_tab('config')", "Config"),
-        ("r", "refresh", "Refresh"),
-        ("t", "cycle_pane_theming", "Cycle pane theme"),
+        Binding("q", "quit", "Quit", key_display="⏻"),
+        Binding(
+            "1",
+            "switch_tab('sessions')",
+            "Sessions",
+            key_display="①",
+            group=Binding.Group("Views", compact=True),
+            show=False,
+        ),
+        Binding(
+            "2",
+            "switch_tab('preparation')",
+            "Prep",
+            key_display="②",
+            group=Binding.Group("Views", compact=True),
+            show=False,
+        ),
+        Binding(
+            "3",
+            "switch_tab('jobs')",
+            "Jobs",
+            key_display="③",
+            group=Binding.Group("Views", compact=True),
+            show=False,
+        ),
+        Binding(
+            "4",
+            "switch_tab('config')",
+            "Config",
+            key_display="④",
+            group=Binding.Group("Views", compact=True),
+            show=False,
+        ),
+        Binding("r", "refresh", "Refresh", key_display="↻"),
+        Binding("t", "cycle_pane_theming", "Cycle Theme", key_display="◑"),
     ]
 
     def __init__(
@@ -181,9 +209,8 @@ class TelecApp(App[str | None]):
                 yield JobsView(id="jobs-view")
             with TabPane("Config", id="config"):
                 yield ConfigView(id="config-view")
-        with Vertical(id="footer"):
-            yield ActionBar(id="action-bar")
-            yield StatusBar(id="status-bar")
+        with Vertical(id="footer-area"):
+            yield TelecFooter(id="telec-footer")
         yield PaneManagerBridge(is_reload=self._is_reload, id="pane-bridge")
         logger.trace("[PERF] compose END t=%.3f", _t.monotonic())
 
@@ -194,7 +221,7 @@ class TelecApp(App[str | None]):
         # Restore persisted state to views
         sessions_view = self.query_one("#sessions-view", SessionsView)
         prep_view = self.query_one("#preparation-view", PreparationView)
-        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
 
         sessions_view.load_persisted_state(
             sticky_ids=self._persisted.sticky_session_ids,
@@ -323,7 +350,7 @@ class TelecApp(App[str | None]):
         sessions_view = self.query_one("#sessions-view", SessionsView)
         prep_view = self.query_one("#preparation-view", PreparationView)
         jobs_view = self.query_one("#jobs-view", JobsView)
-        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
 
         sessions_view.update_data(
             computers=message.computers,
@@ -392,10 +419,6 @@ class TelecApp(App[str | None]):
     def on_doc_edit_request(self, message: DocEditRequest) -> None:
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_doc_edit_request(message)
-
-    def on_cursor_context_changed(self, message: CursorContextChanged) -> None:
-        action_bar = self.query_one("#action-bar", ActionBar)
-        action_bar.cursor_item_type = message.item_type
 
     # --- WebSocket event handling ---
 
@@ -575,6 +598,24 @@ class TelecApp(App[str | None]):
         except Exception as e:
             self.notify(f"Failed to restart session: {e}", severity="error")
 
+    @work(exclusive=True, group="session-action")
+    async def on_restart_sessions_request(self, message: RestartSessionsRequest) -> None:
+        failures = 0
+        for session_id in message.session_ids:
+            try:
+                await self.api.agent_restart(session_id)
+            except Exception:
+                failures += 1
+                logger.exception("Failed to restart session %s", session_id)
+
+        if failures:
+            self.notify(
+                f"Restarted {len(message.session_ids) - failures}/{len(message.session_ids)} sessions",
+                severity="warning",
+            )
+        else:
+            self.notify(f"Restarted {len(message.session_ids)} sessions on {message.computer}")
+
     async def on_settings_changed(self, message: SettingsChanged) -> None:
         key = message.key
         if key == "pane_theming_mode":
@@ -583,6 +624,33 @@ class TelecApp(App[str | None]):
             self._toggle_tts()
         elif key == "animation_mode":
             self._cycle_animation(str(message.value))
+        elif key == "agent_status":
+            # Handle agent pill clicks: cycle available → degraded → unavailable → available
+            if isinstance(message.value, dict):
+                agent = str(message.value.get("agent", ""))
+                status_bar = self.query_one("#telec-footer", TelecFooter)
+                current_info = status_bar._agent_availability.get(agent)
+
+                # Determine next status
+                if current_info:
+                    current_status = current_info.status or "available"
+                    if current_status == "available":
+                        next_status = "degraded"
+                    elif current_status == "degraded":
+                        next_status = "unavailable"
+                    else:
+                        next_status = "available"
+                else:
+                    next_status = "degraded"
+
+                try:
+                    updated_info = await self.api.set_agent_status(
+                        agent, next_status, reason="manual", duration_minutes=60
+                    )
+                    status_bar._agent_availability[agent] = updated_info
+                    status_bar.refresh()
+                except Exception as e:
+                    self.notify(f"Failed to set agent status: {e}", severity="error")
         elif key.startswith("run_job:"):
             job_name = key.split(":", 1)[1]
             try:
@@ -600,8 +668,6 @@ class TelecApp(App[str | None]):
         tabs.active = tab_id
         box_tabs = self.query_one("#box-tab-bar", BoxTabBar)
         box_tabs.active_tab = tab_id
-        action_bar = self.query_one("#action-bar", ActionBar)
-        action_bar.active_view = tab_id
         self._focus_active_view(tab_id)
         self.call_after_refresh(
             lambda: logger.trace("[PERF] action_switch_tab(%s) PAINTED dt=%.3f", tab_id, _t.monotonic() - _sw0)
@@ -612,8 +678,6 @@ class TelecApp(App[str | None]):
         logger.trace("[PERF] tab_activated(%s) t=%.3f", tab_id, _t.monotonic())
         box_tabs = self.query_one("#box-tab-bar", BoxTabBar)
         box_tabs.active_tab = tab_id
-        action_bar = self.query_one("#action-bar", ActionBar)
-        action_bar.active_view = tab_id
         self._focus_active_view(tab_id)
 
     def on_box_tab_bar_tab_clicked(self, message: BoxTabBar.TabClicked) -> None:
@@ -656,7 +720,7 @@ class TelecApp(App[str | None]):
         else:
             self.theme = "teleclaude-light-agent" if is_agent else "teleclaude-light"
 
-        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
         status_bar.pane_theming_mode = mode
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.reapply_colors()
@@ -674,10 +738,10 @@ class TelecApp(App[str | None]):
         """Toggle TTS on/off via API."""
         from teleclaude.cli.models import SettingsPatchInfo, TTSSettingsPatchInfo
 
-        new_val = not self.query_one("#status-bar", StatusBar).tts_enabled
+        new_val = not self.query_one("#telec-footer", TelecFooter).tts_enabled
         try:
             await self.api.patch_settings(SettingsPatchInfo(tts=TTSSettingsPatchInfo(enabled=new_val)))
-            status_bar = self.query_one("#status-bar", StatusBar)
+            status_bar = self.query_one("#telec-footer", TelecFooter)
             status_bar.tts_enabled = new_val
         except Exception as e:
             self.notify(f"Failed to toggle TTS: {e}", severity="error")
@@ -757,7 +821,7 @@ class TelecApp(App[str | None]):
     def _cycle_animation(self, new_mode: str) -> None:
         """Set animation mode, reconfigure engine, and update status bar."""
         self._start_animation_mode(new_mode)
-        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
         status_bar.animation_mode = new_mode
         self._save_state()
 
@@ -771,7 +835,7 @@ class TelecApp(App[str | None]):
     def _save_state(self) -> None:
         sessions_view = self.query_one("#sessions-view", SessionsView)
         prep_view = self.query_one("#preparation-view", PreparationView)
-        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
         save_state(
             sessions_state=sessions_view.get_persisted_state(),
             preparation_state=prep_view.get_persisted_state(),

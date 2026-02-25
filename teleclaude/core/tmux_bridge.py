@@ -243,8 +243,8 @@ async def _create_tmux_session(
         # The plugin auto-restores the last directory when starting in $HOME unless this var is set.
         effective_env_vars["ZSH_LAST_WORKING_DIRECTORY"] = "1"
 
-        # Prepend TeleClaude bin to PATH so the git wrapper intercepts prohibited commands
-        # (stash, checkout, restore, reset --hard, clean). See: version-control-safety policy.
+        # Prepend TeleClaude bin to PATH so agent-session git/gh wrappers can enforce
+        # version-control guardrails. This is intentionally scoped to tmux agent sessions.
         teleclaude_bin = str(Path.home() / ".teleclaude" / "bin")
         current_path = os.environ.get("PATH", "/usr/bin:/bin")
         if teleclaude_bin not in current_path.split(os.pathsep):

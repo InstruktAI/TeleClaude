@@ -1,7 +1,6 @@
 """Unit tests for preparation view tree building from `after` graph."""
 
 from teleclaude.cli.tui.prep_tree import build_dep_tree
-
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 

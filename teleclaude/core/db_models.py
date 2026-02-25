@@ -111,6 +111,7 @@ class AgentAvailability(SQLModel, table=True):
     agent: str = Field(primary_key=True)
     available: Optional[int] = 1
     unavailable_until: Optional[str] = None
+    degraded_until: Optional[str] = None
     reason: Optional[str] = None
 
 
@@ -239,6 +240,37 @@ class SessionListenerRow(SQLModel, table=True):
     caller_session_id: str = Field(primary_key=True)
     caller_tmux_session: str
     registered_at: str
+
+
+class ConversationLinkRow(SQLModel, table=True):
+    """conversation_links table."""
+
+    __tablename__ = "conversation_links"
+    __table_args__ = {"extend_existing": True}
+
+    link_id: str = Field(primary_key=True)
+    mode: str
+    status: str = "active"
+    created_by_session_id: str
+    metadata_json: Optional[str] = None
+    created_at: str
+    updated_at: str
+    closed_at: Optional[str] = None
+
+
+class ConversationLinkMemberRow(SQLModel, table=True):
+    """conversation_link_members table."""
+
+    __tablename__ = "conversation_link_members"
+    __table_args__ = {"extend_existing": True}
+
+    link_id: str = Field(primary_key=True)
+    session_id: str = Field(primary_key=True)
+    participant_name: Optional[str] = None
+    participant_number: Optional[int] = None
+    participant_role: Optional[str] = None
+    computer_name: Optional[str] = None
+    joined_at: str
 
 
 class MemoryManualSession(SQLModel, table=True):

@@ -11,12 +11,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CORE_PATH = PROJECT_ROOT / "teleclaude" / "core" / "next_machine" / "core.py"
 OUTPUT_PATH = PROJECT_ROOT / "docs" / "diagrams" / "state-machines.mmd"
 
-MARKER_LABELS: dict[str, str] = {
-    "PENDING": "Pending",
-    "IN_PROGRESS": "In Progress",
-    "DONE": "Done",
-}
-
 
 def parse_enum_members(tree: ast.Module, class_name: str) -> list[tuple[str, str]]:
     """Extract (name, value) pairs from a str Enum class."""
@@ -138,88 +132,17 @@ def parse_phase_transitions(
     return deduped
 
 
-def parse_roadmap_transitions(source: str) -> list[tuple[str, str, str]]:
-    """Derive item phase transitions from set_item_phase call sites."""
-    lines = source.splitlines()
-    transitions: list[tuple[str, str, str]] = []
-
-    phase_by_value = {
-        "pending": "PENDING",
-        "in_progress": "IN_PROGRESS",
-        "done": "DONE",
-    }
-
-    for idx, line in enumerate(lines):
-        if "set_item_phase" not in line:
-            continue
-
-        dst: str | None = None
-        enum_match = re.search(r"ItemPhase\.([A-Z_]+)\.value", line)
-        if enum_match:
-            dst = enum_match.group(1)
-        else:
-            value_match = re.search(r'set_item_phase\([^,]+,\s*[^,]+,\s*"([a-z_]+)"\)', line)
-            if value_match:
-                dst = phase_by_value.get(value_match.group(1))
-
-        if not dst:
-            continue
-
-        src: str | None = None
-        window_start = max(0, idx - 10)
-        for prev in range(idx - 1, window_start - 1, -1):
-            prev_line = lines[prev]
-            src_match = re.search(r"current_phase\s*==\s*ItemPhase\.([A-Z_]+)\.value", prev_line)
-            if not src_match:
-                src_match = re.search(r"get_item_phase\s*==\s*ItemPhase\.([A-Z_]+)\.value", prev_line)
-            if src_match:
-                src = src_match.group(1)
-                break
-            if "ItemPhase.PENDING.value" in prev_line:
-                src = "PENDING"
-                break
-
-        if src:
-            transitions.append((src, dst, "set_item_phase"))
-
-    # Deduplicate
-    deduped: list[tuple[str, str, str]] = []
-    seen: set[tuple[str, str, str]] = set()
-    for transition in transitions:
-        if transition not in seen:
-            seen.add(transition)
-            deduped.append(transition)
-
-    return deduped
-
-
 def generate_mermaid(
     phase_statuses: list[tuple[str, str]],
-    roadmap_markers: list[tuple[str, str]],
-    roadmap_transitions: list[tuple[str, str, str]],
     phase_transitions: list[tuple[str, str, str]],
 ) -> str:
     """Generate Mermaid state diagram from parsed enums and extracted transitions."""
     lines: list[str] = [
         "---",
-        "title: Work Item State Machines",
+        "title: Work Item Phase State Machine",
         "---",
         "stateDiagram-v2",
     ]
-
-    lines.append('    state "Roadmap Lifecycle" as roadmap {')
-    for name, value in roadmap_markers:
-        label = MARKER_LABELS.get(name, f"{name} [{value}]")
-        lines.append(f"        r_{name}: {label}")
-
-    if any(name == "PENDING" for name, _ in roadmap_markers):
-        lines.append("        [*] --> r_PENDING")
-
-    for src, dst, label in roadmap_transitions:
-        lines.append(f"        r_{src} --> r_{dst}: {label}")
-    lines.append("    }")
-
-    lines.append("")
 
     lines.append('    state "Build/Review Phase" as phase {')
     status_name_to_value = {name.lower(): value for name, value in phase_statuses}
@@ -248,22 +171,16 @@ def main() -> None:
     tree = ast.parse(source, filename=str(CORE_PATH))
 
     phase_statuses = parse_enum_members(tree, "PhaseStatus")
-    roadmap_markers = parse_enum_members(tree, "ItemPhase")
     defaults = parse_default_phase_state(tree)
     post_completion = parse_post_completion_text(tree)
 
-    roadmap_transitions = parse_roadmap_transitions(source)
     phase_transitions = parse_phase_transitions(defaults, post_completion)
 
     if not phase_statuses:
         print("WARNING: No PhaseStatus members found", file=sys.stderr)
-    if not roadmap_markers:
-        print("WARNING: No ItemPhase members found", file=sys.stderr)
 
     mermaid = generate_mermaid(
         phase_statuses=phase_statuses,
-        roadmap_markers=roadmap_markers,
-        roadmap_transitions=roadmap_transitions,
         phase_transitions=phase_transitions,
     )
 

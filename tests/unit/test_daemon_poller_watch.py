@@ -42,10 +42,6 @@ async def test_poller_watch_ensures_ui_channels_for_all_origins():
             "teleclaude.services.maintenance_service.polling_coordinator.is_polling", new=AsyncMock(return_value=False)
         ),
         patch("teleclaude.services.maintenance_service.polling_coordinator.schedule_polling", new=AsyncMock()),
-        patch(
-            "teleclaude.services.maintenance_service.get_display_title_for_session",
-            new=AsyncMock(return_value="Test Session"),
-        ),
     ):
         await service._poller_watch_iteration()
 
@@ -86,10 +82,6 @@ async def test_poller_watch_recreates_missing_tmux_session():
             "teleclaude.services.maintenance_service.polling_coordinator.is_polling", new=AsyncMock(return_value=False)
         ),
         patch("teleclaude.services.maintenance_service.polling_coordinator.schedule_polling", new=AsyncMock()),
-        patch(
-            "teleclaude.services.maintenance_service.get_display_title_for_session",
-            new=AsyncMock(return_value="Test Session 2"),
-        ),
     ):
         await service._poller_watch_iteration()
 

@@ -81,15 +81,23 @@ FINDING_ID_PATTERN = re.compile(r"\bR\d+-F\d+\b")
 POST_COMPLETION: dict[str, str] = {
     "next-build": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. teleclaude__end_session(computer="local", session_id="<session_id>")
-3. teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
-4. Call {next_call}
+2. teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
+3. Call {next_call} — this runs build gates (tests + demo validation)
+4. If next_work says gates PASSED: teleclaude__end_session(computer="local", session_id="<session_id>") and continue
+5. If next_work says BUILD GATES FAILED:
+   a. Send the builder the failure message (do NOT end the session)
+   b. Wait for the builder to report completion again
+   c. Repeat from step 2
 """,
     "next-bugs-fix": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. teleclaude__end_session(computer="local", session_id="<session_id>")
-3. teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
-4. Call {next_call}
+2. teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
+3. Call {next_call} — this runs build gates (tests + demo validation)
+4. If next_work says gates PASSED: teleclaude__end_session(computer="local", session_id="<session_id>") and continue
+5. If next_work says BUILD GATES FAILED:
+   a. Send the builder the failure message (do NOT end the session)
+   b. Wait for the builder to report completion again
+   c. Repeat from step 2
 """,
     "next-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data to extract verdict
@@ -111,14 +119,36 @@ POST_COMPLETION: dict[str, str] = {
 3. Call {next_call}
 """,
     "next-finalize": """WHEN WORKER COMPLETES:
-1. Read worker output via get_session_data. Confirm merge succeeded.
-2. teleclaude__end_session(computer="local", session_id="<session_id>")
-3. CLEANUP (orchestrator-owned, from main repo root — NEVER cd into worktree):
-   a. git worktree remove trees/{args} --force
-   b. git branch -d {args}
-   c. rm -rf todos/{args}
-   d. git add -A && git commit -m "chore: cleanup {args}"
-4. Call {next_call}
+1. Read worker output via get_session_data.
+2. Confirm worker reported exactly `FINALIZE_READY: {args}`.
+   If missing: send worker feedback to report FINALIZE_READY and stop (do NOT apply).
+3. teleclaude__end_session(computer="local", session_id="<session_id>")
+4. FINALIZE APPLY (orchestrator-owned, canonical root only — NEVER cd into worktree):
+   a. MAIN_REPO="$(git rev-parse --git-common-dir)/.."
+   b. git -C "$MAIN_REPO" fetch origin main
+   c. git -C "$MAIN_REPO" switch main
+   d. git -C "$MAIN_REPO" pull --ff-only origin main
+   e. git -C "$MAIN_REPO" merge {args} --no-edit
+   f. MERGE_COMMIT="$(git -C "$MAIN_REPO" rev-parse HEAD)"
+   g. If "$MAIN_REPO/todos/{args}/bug.md" exists: skip delivery bookkeeping.
+      Else: telec roadmap deliver {args} --commit "$MERGE_COMMIT" --project-root "$MAIN_REPO"
+            && git -C "$MAIN_REPO" add todos/delivered.yaml todos/roadmap.yaml
+            && git -C "$MAIN_REPO" commit -m "chore({args}): record delivery"
+5. DEMO SNAPSHOT (orchestrator-owned — stamp delivery metadata while artifacts exist):
+   If demos/{args}/demo.md exists (builder created it during build):
+   a. Read todos/{args}/requirements.md title and implementation-plan.md metrics
+   b. Generate demos/{args}/snapshot.json with: slug, title, version (from pyproject.toml),
+      delivered_date (today), merge_commit, metrics, and five acts narrative from the todo artifacts.
+   c. git -C "$MAIN_REPO" add demos/{args}/snapshot.json && git -C "$MAIN_REPO" commit -m "chore({args}): add demo snapshot"
+   If demos/{args}/demo.md does NOT exist, skip — no demo was created for this delivery.
+6. CLEANUP (orchestrator-owned, from main repo root):
+   a. git -C "$MAIN_REPO" worktree remove trees/{args} --force
+   b. git -C "$MAIN_REPO" branch -d {args}
+   c. rm -rf "$MAIN_REPO/todos/{args}"
+   d. git -C "$MAIN_REPO" add -A && git -C "$MAIN_REPO" commit -m "chore: cleanup {args}"
+7. git -C "$MAIN_REPO" push origin main
+8. make restart (daemon picks up merged code before next dispatch)
+9. Call {next_call}
 """,
 }
 
@@ -142,6 +172,7 @@ def format_tool_call(
     note: str = "",
     next_call: str = "",
     completion_args: str | None = None,
+    pre_dispatch: str = "",
 ) -> str:
     """Format a literal tool call for the orchestrator to execute."""
     raw_command = command.lstrip("/")
@@ -157,11 +188,18 @@ def format_tool_call(
         # Substitute {args} and {next_call} placeholders
         post_completion = post_completion.format(args=completion_value, next_call=next_call_display)
 
+    pre_dispatch_block = ""
+    if pre_dispatch:
+        pre_dispatch_block = f"""STEP 0 - BEFORE DISPATCHING:
+{pre_dispatch}
+
+"""
+
     result = f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
 Execute these steps in order (FOLLOW TO THE LETTER!):
 
-STEP 1 - DISPATCH:
+{pre_dispatch_block}STEP 1 - DISPATCH:
 {guidance}
 
 Based on the above guidance and the work item details, select the best agent and thinking mode.
@@ -253,6 +291,82 @@ def format_stash_debt(slug: str, count: int) -> str:
             f'then call teleclaude__next_work(slug="{slug}") to continue.'
         ),
     )
+
+
+def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
+    """Run build gates (tests + demo validation) in the worktree.
+
+    Returns (all_passed, output_details).
+    """
+    results: list[str] = []
+    all_passed = True
+
+    # Gate 1: Test suite
+    try:
+        test_result = subprocess.run(
+            ["make", "test"],
+            cwd=worktree_cwd,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if test_result.returncode != 0:
+            all_passed = False
+            output = test_result.stdout[-2000:] if test_result.stdout else ""
+            stderr = test_result.stderr[-500:] if test_result.stderr else ""
+            results.append(f"GATE FAILED: make test (exit {test_result.returncode})\n{output}\n{stderr}")
+        else:
+            results.append("GATE PASSED: make test")
+    except subprocess.TimeoutExpired:
+        all_passed = False
+        results.append("GATE FAILED: make test (timed out after 300s)")
+    except OSError as exc:
+        all_passed = False
+        results.append(f"GATE FAILED: make test (error: {exc})")
+
+    # Gate 2: Demo structure validation
+    try:
+        demo_result = subprocess.run(
+            ["telec", "todo", "demo", "validate", slug, "--project-root", worktree_cwd],
+            cwd=worktree_cwd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if demo_result.returncode != 0:
+            all_passed = False
+            results.append(f"GATE FAILED: demo validate (exit {demo_result.returncode})\n{demo_result.stdout}")
+        else:
+            results.append(f"GATE PASSED: demo validate\n{demo_result.stdout.strip()}")
+    except subprocess.TimeoutExpired:
+        all_passed = False
+        results.append("GATE FAILED: demo validate (timed out)")
+    except OSError as exc:
+        all_passed = False
+        results.append(f"GATE FAILED: demo validate (error: {exc})")
+
+    return all_passed, "\n".join(results)
+
+
+def format_build_gate_failure(slug: str, gate_output: str, next_call: str) -> str:
+    """Format a gate-failure response for the orchestrator.
+
+    Instructs the orchestrator to send the failure details to the builder session
+    (without ending it) and wait for the builder to fix and report done again.
+    """
+    return f"""BUILD GATES FAILED: {slug}
+
+{gate_output}
+
+INSTRUCTIONS FOR ORCHESTRATOR:
+1. Send the above gate failure details to the builder session via teleclaude__send_message.
+   Tell the builder which gate(s) failed and include the output.
+   Do NOT end the builder session.
+2. Wait for the builder to report completion again.
+3. When the builder reports done:
+   a. teleclaude__mark_phase(slug="{slug}", phase="build", status="complete")
+   b. Call {next_call}
+   If gates fail again, repeat from step 1."""
 
 
 def format_hitl_guidance(context: str) -> str:
@@ -634,6 +748,9 @@ def is_ready_for_work(cwd: str, slug: str) -> bool:
     phase = state.get("phase")
     if phase != ItemPhase.PENDING.value:
         return False
+    build = state.get(PhaseName.BUILD.value)
+    if build != PhaseStatus.PENDING.value:
+        return False
     dor = state.get("dor")
     if not isinstance(dor, dict):
         return False
@@ -835,9 +952,24 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
             # Not in roadmap - treat as satisfied (completed and cleaned up)
             continue
 
-        dep_phase = get_item_phase(cwd, dep)
-        if dep_phase != ItemPhase.DONE.value:
-            return False
+        dep_state = read_phase_state(cwd, dep)
+        dep_phase = dep_state.get("phase")
+        if dep_phase == ItemPhase.DONE.value:
+            continue
+
+        dep_review = dep_state.get(PhaseName.REVIEW.value)
+        if dep_review == PhaseStatus.APPROVED.value:
+            continue
+
+        # Backward compatibility with older state where only build/review fields
+        # were used and "phase" was derived later.
+        if (
+            dep_state.get(PhaseName.BUILD.value) == PhaseStatus.COMPLETE.value
+            and dep_state.get(PhaseName.REVIEW.value) == PhaseStatus.APPROVED.value
+        ):
+            continue
+
+        return False
 
     return True
 
@@ -1335,17 +1467,6 @@ def _sync_file(src_root: Path, dst_root: Path, relative_path: str) -> bool:
     return True
 
 
-def _sync_file_if_missing(src_root: Path, dst_root: Path, relative_path: str) -> bool:
-    """Copy one file only when destination does not already exist."""
-    src = src_root / relative_path
-    dst = dst_root / relative_path
-    if not src.exists() or dst.exists():
-        return False
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dst)
-    return True
-
-
 def sync_main_to_worktree(cwd: str, slug: str, extra_files: list[str] | None = None) -> None:
     """Copy orchestrator-owned planning files from main repo into a slug worktree."""
     main_root = Path(cwd)
@@ -1398,24 +1519,36 @@ def sync_slug_todo_from_worktree_to_main(cwd: str, slug: str) -> None:
 
 
 def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> None:
-    """Copy canonical todo artifacts for a slug from main into worktree."""
+    """Copy canonical todo artifacts for a slug from main into worktree.
+
+    Planning artifacts are copied unconditionally (main is source of truth).
+    state.yaml is only seeded when missing — the worktree owns build/review
+    progress once work begins.
+    """
     todo_base = f"todos/{slug}"
     main_root = Path(cwd)
     worktree_root = Path(cwd) / "trees" / slug
     if not worktree_root.exists():
         return
+    # Planning artifacts: main always wins.
     for rel in [
         f"{todo_base}/input.md",
         f"{todo_base}/requirements.md",
         f"{todo_base}/implementation-plan.md",
         f"{todo_base}/quality-checklist.md",
-        f"{todo_base}/state.yaml",
         f"{todo_base}/review-findings.md",
         f"{todo_base}/deferrals.md",
         f"{todo_base}/breakdown.md",
         f"{todo_base}/dor-report.md",
     ]:
-        _sync_file_if_missing(main_root, worktree_root, rel)
+        _sync_file(main_root, worktree_root, rel)
+    # state.yaml: seed only — worktree owns build/review progress.
+    state_rel = f"{todo_base}/state.yaml"
+    src = main_root / state_rel
+    dst = worktree_root / state_rel
+    if src.exists() and not dst.exists():
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
 
 
 def _dirty_paths(repo: Repo) -> list[str]:
@@ -2103,31 +2236,32 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
 
     worktree_cwd = str(Path(cwd) / "trees" / resolved_slug)
 
-    # Bootstrap worktree from main only when it is first created.
-    if worktree_created:
-        await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
-        await asyncio.to_thread(sync_slug_todo_from_main_to_worktree, cwd, resolved_slug)
+    # Always sync main → worktree so the worktree starts with current files.
+    await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
+    await asyncio.to_thread(sync_slug_todo_from_main_to_worktree, cwd, resolved_slug)
 
     # 5. Check uncommitted changes
     if has_uncommitted_changes(cwd, resolved_slug):
         return format_uncommitted_changes(resolved_slug)
 
-    # 6. Mark as in-progress BEFORE dispatching (claim the item)
-    # Only transition pending (ready) -> in_progress (don't re-mark if already in_progress).
+    # 6. Claim the item (pending → in_progress) — safe to do here since it's
+    # just a "someone is looking at this" marker. Even if the orchestrator doesn't
+    # dispatch, the next next_work() call picks it up again.
     current_phase = await asyncio.to_thread(get_item_phase, worktree_cwd, resolved_slug)
     if current_phase == ItemPhase.PENDING.value:
         await asyncio.to_thread(set_item_phase, worktree_cwd, resolved_slug, ItemPhase.IN_PROGRESS.value)
 
     # 7. Check build status (from state.yaml in worktree)
+    # mark_phase(build, started) is deferred to the orchestrator via pre_dispatch
+    # to avoid orphaned "build: started" when the orchestrator decides not to dispatch.
     if not await asyncio.to_thread(is_build_complete, worktree_cwd, resolved_slug):
-        await asyncio.to_thread(
-            mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
-        )
-        await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
         try:
             guidance = await compose_agent_guidance(db)
         except RuntimeError as exc:
             return format_error("NO_AGENTS", str(exc))
+
+        # Build pre-dispatch marking instructions
+        pre_dispatch = f'teleclaude__mark_phase(slug="{resolved_slug}", phase="build", status="started")'
 
         # Bugs use next-bugs-fix instead of next-build
         is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
@@ -2140,6 +2274,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 guidance=guidance,
                 subfolder=f"trees/{resolved_slug}",
                 next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+                pre_dispatch=pre_dispatch,
             )
         else:
             return format_tool_call(
@@ -2149,7 +2284,20 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 guidance=guidance,
                 subfolder=f"trees/{resolved_slug}",
                 next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+                pre_dispatch=pre_dispatch,
             )
+
+    # 7.5 Build gates: verify tests and demo structure before allowing review
+    gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, resolved_slug)
+    if not gates_passed:
+        # Reset build to started so the builder can fix and try again
+        await asyncio.to_thread(
+            mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
+        )
+        # Sync reset state back to main
+        await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
+        next_call = f'teleclaude__next_work(slug="{resolved_slug}")'
+        return format_build_gate_failure(resolved_slug, gate_output, next_call)
 
     # 8. Check review status
     if not await asyncio.to_thread(is_review_approved, worktree_cwd, resolved_slug):
@@ -2210,7 +2358,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
         )
 
-    # 9. Review approved - dispatch finalize (serialized via finalize lock)
+    # 9. Review approved - dispatch finalize prepare (serialized via finalize lock)
     if has_uncommitted_changes(cwd, resolved_slug):
         return format_uncommitted_changes(resolved_slug)
     session_id = caller_session_id or "unknown"
@@ -2223,9 +2371,9 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         release_finalize_lock(cwd, session_id)
         return format_error("NO_AGENTS", str(exc))
 
-    # Bugs skip delivered.md entry and are removed from todos entirely
+    # Bugs skip delivered.yaml bookkeeping and are removed from todos entirely
     is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
-    note = "BUG FIX: Skip delivered.md entry. Delete todo directory after merge." if is_bug else ""
+    note = "BUG FIX: Skip delivered.yaml bookkeeping. Delete todo directory after merge." if is_bug else ""
 
     return format_tool_call(
         command="next-finalize",

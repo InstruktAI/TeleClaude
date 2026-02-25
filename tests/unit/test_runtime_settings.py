@@ -52,7 +52,8 @@ def test_get_state_initial(settings: RuntimeSettings, tts_manager: MagicMock) ->
     assert s2.get_state().tts.enabled is False
 
 
-def test_patch_valid_key(settings: RuntimeSettings, tts_manager: MagicMock) -> None:
+@pytest.mark.asyncio
+async def test_patch_valid_key(settings: RuntimeSettings, tts_manager: MagicMock) -> None:
     """patch() updates in-memory state and TTSManager.enabled."""
     result = settings.patch(SettingsPatch(tts=TTSSettingsPatch(enabled=False)))
     assert isinstance(result, SettingsState)
@@ -61,7 +62,8 @@ def test_patch_valid_key(settings: RuntimeSettings, tts_manager: MagicMock) -> N
     assert settings.get_state().tts.enabled is False
 
 
-def test_patch_no_fields_raises(settings: RuntimeSettings) -> None:
+@pytest.mark.asyncio
+async def test_patch_no_fields_raises(settings: RuntimeSettings) -> None:
     """patch() rejects when no mutable fields are provided."""
     with pytest.raises(ValueError, match="No mutable settings"):
         settings.patch(SettingsPatch())

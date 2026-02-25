@@ -5,7 +5,6 @@ from __future__ import annotations
 from teleclaude.config import config
 
 THREADED_OUTPUT_EXPERIMENT = "threaded_output"
-DISCORD_PROJECT_FORUM_MIRRORING = "discord_project_forum_mirroring"
 
 
 def _normalize_agent(agent_key: str | None) -> str | None:
@@ -25,8 +24,3 @@ def is_threaded_output_enabled(agent_key: str | None, adapter: str | None = None
     """
     normalized_agent = _normalize_agent(agent_key)
     return config.is_experiment_enabled(THREADED_OUTPUT_EXPERIMENT, normalized_agent, adapter=adapter)
-
-
-def is_discord_project_forum_mirroring_enabled() -> bool:
-    """Return True when project-scoped Discord forum mirroring is enabled."""
-    return config.is_experiment_enabled(DISCORD_PROJECT_FORUM_MIRRORING)

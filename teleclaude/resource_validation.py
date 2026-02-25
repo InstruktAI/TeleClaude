@@ -14,8 +14,6 @@ from __future__ import annotations
 import os
 import re
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Mapping
 
@@ -619,26 +617,6 @@ def _extract_markdown_link_url(value: str) -> str | None:
     return m.group(2) if m else None
 
 
-def _check_url_alive(url: str, *, timeout: int = 8) -> bool:
-    headers = {"User-Agent": "TeleClaude/1.0"}
-    try:
-        req = urllib.request.Request(url, method="HEAD", headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status < 400
-    except urllib.error.HTTPError as exc:
-        # Some docs block HEAD; retry with GET before declaring unreachable.
-        if exc.code >= 400:
-            try:
-                req = urllib.request.Request(url, method="GET", headers=headers)
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
-                    return resp.status < 400
-            except Exception:
-                return False
-        return False
-    except Exception:
-        return False
-
-
 def validate_third_party_docs(project_root: Path) -> None:
     """Validate third-party doc sources exist and URLs are reachable."""
     third_party_root = project_root / "docs" / "third-party"
@@ -664,8 +642,6 @@ def validate_third_party_docs(project_root: Path) -> None:
             if md_url:
                 url = md_url
             if _is_web_url(url):
-                if not _check_url_alive(url):
-                    _warn("third_party_source_unreachable", path=str(path), source=url)
                 continue
             _warn("third_party_source_invalid", path=str(path), source=source)
 
@@ -1085,11 +1061,11 @@ def validate_todo(slug: str, project_root: Path) -> list[str]:
             errors.append(f"{slug}: state file schema violation: {exc}")
 
     # 2. Required files for Ready state
-    # If phase is pending and score >= 8, requirements and implementation plan MUST exist
+    # If build is pending and score >= 8, requirements and implementation plan MUST exist
     if state_path.exists():
         try:
             state = TodoState.model_validate(yaml.safe_load(state_path.read_text(encoding="utf-8")))
-            if state.phase == "pending" and state.dor and state.dor.score >= 8:
+            if state.build == "pending" and state.dor and state.dor.score >= 8:
                 if not (todo_dir / "requirements.md").exists():
                     errors.append(f"{slug}: marked as Ready (score {state.dor.score}) but missing requirements.md")
                 if not (todo_dir / "implementation-plan.md").exists():

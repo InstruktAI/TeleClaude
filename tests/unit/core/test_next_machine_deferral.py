@@ -82,7 +82,7 @@ async def test_next_work_dispatches_defer():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Req")
         (item_dir / "implementation-plan.md").write_text("# Plan")
-        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         # Setup worktree state (Build complete, Review approved, Deferrals pending)
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
@@ -96,6 +96,7 @@ async def test_next_work_dispatches_defer():
             patch("teleclaude.core.next_machine.core.Repo"),
             patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
             patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
             patch(
                 "teleclaude.core.next_machine.core.compose_agent_guidance",
                 new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
@@ -124,7 +125,7 @@ async def test_next_work_skips_defer_if_processed():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Req")
         (item_dir / "implementation-plan.md").write_text("# Plan")
-        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         # Setup worktree state (Build complete, Review approved, Deferrals PROCESSED)
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
@@ -138,6 +139,7 @@ async def test_next_work_skips_defer_if_processed():
             patch("teleclaude.core.next_machine.core.Repo"),
             patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
             patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
             patch(
                 "teleclaude.core.next_machine.core.compose_agent_guidance",
                 new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
@@ -147,3 +149,4 @@ async def test_next_work_skips_defer_if_processed():
 
         # Should go to finalize
         assert 'command="/next-finalize"' in result
+        assert "FINALIZE_READY: processed-item" in result

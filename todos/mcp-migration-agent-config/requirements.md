@@ -18,8 +18,11 @@ agents can perform all existing operations using `telec` subcommands instead of 
 - Ensure `$TMPDIR/teleclaude_session_id` continues to be written
 - End-to-end validation with Claude, Gemini, and Codex agents
 - Validate orchestrator workflow: prepare → build → review → finalize
-- Validate worker isolation (MCP role filtering is removed — verify telec
-  equivalent or explicitly defer)
+- Validate worker isolation: daemon-side role enforcement returns 403 when
+  worker agents attempt orchestration commands (sessions start, todo work, etc.)
+- Validate tmux cross-check blocks forged session_ids (agent in tmux session A
+  claiming session B → 403 identity mismatch)
+- Validate context-selection hides orchestration tool docs from worker agents
 
 ### Out of scope
 

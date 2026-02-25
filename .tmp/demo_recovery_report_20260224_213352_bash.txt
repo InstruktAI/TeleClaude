@@ -1,0 +1,105 @@
+DEMO RECOVERY REPORT
+timestamp: 2026-02-24T21:33:52+01:00
+
+PRESENT adapter-output-delivery
+MISSING_NO_HISTORY agent-activity-events
+MISSING_NO_HISTORY agent-activity-events-phase-3-7
+MISSING_NO_HISTORY agent-dispatch-guidance
+MISSING_NO_HISTORY agent-output-monitor
+MISSING_NO_HISTORY auto-architecture-diagrams
+MISSING_NO_HISTORY banner-animations
+MISSING_NO_HISTORY bug-delivery-service
+MISSING_NO_HISTORY bugs-round-1
+MISSING_NO_HISTORY cache-deferreds
+MISSING_NO_HISTORY cache-startup-warmup
+MISSING_NO_HISTORY cache-unification
+MISSING_NO_HISTORY codebase-audit
+MISSING_NO_HISTORY config-schema-validation
+MISSING_NO_HISTORY daemon-independent-jobs
+MISSING_NO_HISTORY data-caching-pushing
+MISSING_NO_HISTORY db-raw-sql-cleanup
+MISSING_NO_HISTORY db-refactor
+MISSING_NO_HISTORY deferral-automation
+MISSING_NO_HISTORY delivery-verification-gates
+RECOVERED_TODOS_PATH discord-adapter-integrity 4be4b7acbdc7d7237db042febad815be16db7492
+RECOVERED_TODOS_PATH discord-media-handling a48d6183987b332910013929f2971a533dd42dd3
+MISSING_NO_HISTORY doc-access-control
+MISSING_NO_HISTORY e2e-smoke-tests
+RECOVERED_TODOS_PATH fix-demo-runner c0fbf982115e231237ae3df10713a7aa2432b5ff
+PRESENT frontend-theming-tui-parity
+MISSING_NO_HISTORY help-desk
+MISSING_NO_HISTORY help-desk-control-room
+MISSING_NO_HISTORY help-desk-discord
+MISSING_NO_HISTORY help-desk-platform
+RECOVERED_TODOS_PATH inbound-hook-service 4c73236c8163c99dcdd5eed73f27beebab3b3065
+MISSING_NO_HISTORY job-contract-refinements
+MISSING_NO_HISTORY job-report-notifications
+RECOVERED_TODOS_PATH lifecycle-enforcement-gates a7361db7065ce50fca3d5c4b4e9afb5ce7ab24d8
+MISSING_NO_HISTORY member-invite
+MISSING_NO_HISTORY mode-selector
+MISSING_NO_HISTORY model-boundary-consolidation
+MISSING_NO_HISTORY new-bug-key-in-todos-pane
+MISSING_NO_HISTORY next-machine
+MISSING_NO_HISTORY next-prepare-hitl
+MISSING_NO_HISTORY next-prepare-maintenance
+MISSING_NO_HISTORY output-origin-routing
+MISSING_NO_HISTORY pane-state-reconciliation
+MISSING_NO_HISTORY performance-hardening
+MISSING_NO_HISTORY reduce-loose-dict-typings
+MISSING_NO_HISTORY refactor-again
+MISSING_NO_HISTORY release-arbiter
+MISSING_NO_HISTORY release-automation
+MISSING_NO_HISTORY release-lane-claude
+MISSING_NO_HISTORY release-lane-codex
+MISSING_NO_HISTORY release-lane-gemini
+MISSING_NO_HISTORY release-manifests
+MISSING_NO_HISTORY release-pipeline-simulation
+MISSING_NO_HISTORY release-workflow-foundation
+RECOVERED_TODOS_PATH remove-phase-field 34f47ab79b98a5cb2a4475cba43506c996c9f814
+MISSING_NO_HISTORY role-based-notifications
+MISSING_NO_HISTORY role-tools-injection
+MISSING_NO_HISTORY run-agent-command
+MISSING_NO_HISTORY runtime-settings-tts-toggle
+MISSING_NO_HISTORY send-result
+MISSING_NO_HISTORY session-messages-api
+MISSING_NO_HISTORY session-relay
+MISSING_NO_HISTORY startup-cache-hook-fixes
+MISSING_NO_HISTORY state-machine-refinement
+MISSING_NO_HISTORY state-yaml-migration
+MISSING_NO_HISTORY telec-config-cli
+MISSING_NO_HISTORY telec-config-interactive
+MISSING_NO_HISTORY telec-enhancements
+MISSING_NO_HISTORY telec-todo-scaffold
+MISSING_NO_HISTORY telegram-adapter-hardening
+MISSING_NO_HISTORY terminal-adapter-refactor
+MISSING_NO_HISTORY test-cleanup
+PRESENT textual-footer-migration
+PRESENT themed-primary-color
+MISSING_NO_HISTORY threaded-output-experiment
+MISSING_NO_HISTORY title-update
+MISSING_NO_HISTORY todo-breakdown-assessment
+RECOVERED_TODOS_PATH todo-remove-cli-option b2f7a7b4101628bfafbf8ee2ba1f334782b697c5
+MISSING_NO_HISTORY tts-fallback-saturation
+MISSING_NO_HISTORY tui-config-experience
+RECOVERED_TODOS_PATH tui-footer-clickable-agents 34f47ab79b98a5cb2a4475cba43506c996c9f814
+PRESENT tui-markdown-editor
+MISSING_NO_HISTORY tui-snapshot-tests
+MISSING_NO_HISTORY tui-todo-dependencies
+RECOVERED_TODOS_PATH ui-adapter-pre-respond-trigger 45addf05ac67d01b4f23a4a7931f8f7faea0e597
+MISSING_NO_HISTORY universal-hooks
+MISSING_NO_HISTORY web-api-proxy-completion
+MISSING_NO_HISTORY web-interface
+MISSING_NO_HISTORY web-interface-1
+MISSING_NO_HISTORY web-interface-2
+MISSING_NO_HISTORY web-interface-3
+MISSING_NO_HISTORY web-interface-4
+MISSING_NO_HISTORY webhook-service
+MISSING_NO_HISTORY widget-sdk
+MISSING_NO_HISTORY worktree-preparation
+
+SUMMARY
+already_present=5
+recovered_total=9
+recovered_from_demos_path=0
+recovered_from_todos_path=9
+missing_no_history=81

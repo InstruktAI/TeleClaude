@@ -2,17 +2,17 @@
 
 ## Approach
 
-Build the gathering ceremony on top of the session relay primitive (delivered by `session-relay` todo). The relay handles output monitoring and fan-out. This todo adds: gathering state, MCP tool, turn-managed orchestration, talking piece, heartbeats, phase management, harvester, HITL, and history search.
+Build the gathering ceremony on top of the shared listener/link primitive (delivered by `bidirectional-agent-links` todo). The link handles participant membership and sender-excluded fan-out. This todo adds: gathering state, MCP tool, turn-managed orchestration, talking piece, heartbeats, phase management, harvester, HITL, and history search.
 
 ## Dependency
 
-**Requires `session-relay` to be delivered first.** The gathering orchestrator uses `create_relay()`, `stop_relay()`, and the relay's fan-out mechanism. For gathering mode, the orchestrator controls which participant's monitor is active (only the current speaker), rather than the relay's default of monitoring all participants simultaneously.
+**Requires `bidirectional-agent-links` to be delivered first.** The gathering orchestrator uses shared-link membership and fan-out APIs. For gathering mode, the orchestrator controls which participant is currently allowed to fan out.
 
 ## Architecture
 
 ```
-SessionRelay (from session-relay todo)
-  |-- create_relay, stop_relay, _monitor_output, _fanout
+SessionLink (from bidirectional-agent-links todo)
+  |-- create_link, sever_link, route_member_output
   |
   └── Gathering mode (via start_gathering)
         |-- GatheringState (in-memory, asyncio.Lock)
@@ -52,7 +52,7 @@ class BreathStructure:
 @dataclass
 class GatheringState:
     gathering_id: str
-    relay_id: str  # reference to the underlying SessionRelay
+    link_id: str  # reference to the underlying shared listener link
     rhythm: str  # daily, weekly, monthly
     participants: dict[int, Participant]
     speaker_order: list[int]  # speaker numbers only (harvester excluded)
@@ -103,18 +103,18 @@ Handler flow:
 5. For each non-human participant: call `_start_local_session(direct=True)` with seed message
 6. Seed message contains: identity, full participant map, breath structure, rhythm, opening question, proprioception pulse with history signals
 7. Build participant map with session IDs and tmux session names
-8. Create relay via `create_relay(participants)` from session_relay module
-9. Create `GatheringState` referencing the relay
+8. Create shared link via link service with all participants
+9. Create `GatheringState` referencing the link
 10. Launch `GatheringOrchestrator` as asyncio background task
 11. Return gathering_id and participant map
 
 **Verify:** Tool appears in MCP schema, handler creates sessions and state.
 
-### Task 3: Gathering orchestrator — turn-managed relay
+### Task 3: Gathering orchestrator — turn-managed fan-out
 
 **Files:** `teleclaude/core/gathering.py`
 
-The `GatheringOrchestrator` wraps the session relay with turn enforcement. Instead of monitoring all participants (as in 1:1), it controls which participant's monitor is active based on the talking piece.
+The `GatheringOrchestrator` wraps the shared link primitive with turn enforcement. Instead of allowing all participants to fan out concurrently, it controls which participant may fan out based on the talking piece.
 
 ```python
 async def run_gathering(gathering_id: str):
@@ -136,11 +136,11 @@ async def run_gathering(gathering_id: str):
 
 **Harvester signal**: At close, inject structured prompt into harvester's session with instructions to produce the harvest.
 
-**Output monitoring**: Uses the relay's `_monitor_output` for the current speaker only. Start/stop individual monitor tasks as the talking piece moves.
+**Output monitoring**: Uses shared-link output routing for the current speaker only. Start/stop speaker authorization as the talking piece moves.
 
-**Fan-out delivery**: Uses the relay's `_fanout` — delivers attributed content to all non-speaking participants including harvester.
+**Fan-out delivery**: Uses shared-link sender-excluded fan-out — delivers attributed content to all non-speaking participants including harvester.
 
-**Verify:** Mock tmux bridge, verify turn-managed relay delivers only current speaker's output.
+**Verify:** Mock tmux bridge, verify turn-managed fan-out delivers only current speaker's output.
 
 ### Task 4: Talking piece and heartbeat injection
 
@@ -176,7 +176,7 @@ For human participants:
 
 - No session is spawned (human has their own session via Telegram/Discord/web)
 - The human's `session_id` and `tmux_session_name` are resolved from the caller's session
-- Fan-out delivery to the human uses the same relay mechanism
+- Fan-out delivery to the human uses the same shared-link mechanism
 - When it's the human's turn, heartbeat prompts are injected into their session
 - The human's messages are detected via output monitoring of their session
 
@@ -252,7 +252,7 @@ Integration tests (mocked tmux bridge):
 
 1. Task 1 (gathering state model) — no internal dependencies
 2. Task 2 (MCP tool + handler) — depends on Task 1
-3. Task 3 (orchestrator) — depends on Task 1, uses session-relay
+3. Task 3 (orchestrator) — depends on Task 1, uses bidirectional-agent-links primitive
 4. Task 4 (talking piece + heartbeats) — depends on Task 3
 5. Task 5 (HITL) — depends on Task 3, Task 4
 6. Task 6 (phase management + harvester) — depends on Task 3, Task 4

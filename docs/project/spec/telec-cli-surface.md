@@ -73,6 +73,16 @@ subcommands:
           - slug: 'string (optional)'
         flags:
           --project-root: 'Project root (default: cwd).'
+      demo:
+        args:
+          - slug: 'string (optional)'
+        flags:
+          --project-root: 'Project root (default: cwd).'
+      remove:
+        args:
+          - slug: 'string'
+        flags:
+          --project-root: 'Project root (default: cwd).'
   roadmap:
     description: 'View and manage the work item roadmap.'
     subcommands:
@@ -116,18 +126,18 @@ subcommands:
           --title: 'Delivery title.'
           --project-root: 'Project root (default: cwd).'
   bugs:
-    description: 'Create, list, and report bug-fix work items.'
+    description: 'Manage bug reports and fixes.'
     subcommands:
-      create:
-        args:
-          - slug: 'string'
-        flags:
-          --project-root: 'Project root (default: cwd).'
       report:
         args:
           - description: 'string'
         flags:
-          --slug: 'Optional explicit slug.'
+          --slug: 'string (optional)'
+          --project-root: 'Project root (default: cwd).'
+      create:
+        args:
+          - slug: 'string'
+        flags:
           --project-root: 'Project root (default: cwd).'
       list:
         flags:
@@ -150,6 +160,14 @@ subcommands:
       validate:
         flags:
           -p, --project-root: 'Project root (default: cwd).'
+      people:
+        description: 'Manage people (list/add/edit/remove).'
+      env:
+        description: 'Manage environment variables (list/set).'
+      notify:
+        description: 'Toggle notification settings.'
+      invite:
+        description: 'Generate invite links for a person.'
   onboard:
     description: 'Guided onboarding wizard for first-run setup.'
 ```

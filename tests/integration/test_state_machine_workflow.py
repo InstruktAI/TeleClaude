@@ -15,13 +15,14 @@ import yaml
 
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import (
+    PhaseName,
+    PhaseStatus,
     check_dependencies_satisfied,
-    get_item_phase,
-    load_roadmap_deps,
+    mark_phase,
     next_work,
+    read_phase_state,
     resolve_slug,
     save_roadmap,
-    set_item_phase,
 )
 from teleclaude.core.next_machine.core import RoadmapEntry
 
@@ -34,7 +35,7 @@ def _write_roadmap_yaml(tmpdir: str, slugs: list[str], deps: dict[str, list[str]
 
 @pytest.mark.asyncio
 async def test_workflow_pending_to_done_with_dependencies():
-    """Integration test: pending → ready → in_progress → done with dependency gating"""
+    """Integration test: build pending → started → complete → review approved with dependency gating"""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create roadmap with dependency chain
         deps = {"main-item": ["dep-item"]}
@@ -44,39 +45,42 @@ async def test_workflow_pending_to_done_with_dependencies():
         for slug in ("dep-item", "main-item"):
             d = Path(tmpdir) / "todos" / slug
             d.mkdir(parents=True, exist_ok=True)
-            (d / "state.yaml").write_text('{"phase": "pending"}')
+            (d / "state.yaml").write_text('{"build": "pending", "review": "pending"}')
 
         # Step 1: Verify main-item cannot be selected (dependency unsatisfied)
         slug, is_ready, desc = resolve_slug(tmpdir, slug=None, ready_only=True)
         assert slug is None  # No ready items yet
 
         # Step 2: Mark dep-item as ready
-        set_item_phase(tmpdir, "dep-item", "pending")
+        # Write dor score to make it ready
         dep_state_path = Path(tmpdir) / "todos" / "dep-item" / "state.yaml"
         dep_state = yaml.safe_load(dep_state_path.read_text()) or {}
         dep_state["dor"] = {"score": 8}
-        dep_state_path.write_text(yaml.safe_dump(dep_state))
-        assert get_item_phase(tmpdir, "dep-item") == "pending"
+        dep_state_path.write_text(yaml.dump(dep_state, default_flow_style=False))
+        state = read_phase_state(tmpdir, "dep-item")
+        assert state.get(PhaseName.BUILD.value) == PhaseStatus.PENDING.value
 
-        # Step 3: Mark dep-item as in_progress
-        set_item_phase(tmpdir, "dep-item", "in_progress")
-        assert get_item_phase(tmpdir, "dep-item") == "in_progress"
+        # Step 3: Mark dep-item as in_progress (build started)
+        mark_phase(tmpdir, "dep-item", PhaseName.BUILD.value, PhaseStatus.STARTED.value)
+        state = read_phase_state(tmpdir, "dep-item")
+        assert state.get(PhaseName.BUILD.value) == PhaseStatus.STARTED.value
 
-        # Step 4: Mark dep-item as done
-        set_item_phase(tmpdir, "dep-item", "done")
-        assert get_item_phase(tmpdir, "dep-item") == "done"
+        # Step 4: Mark dep-item as approved
+        mark_phase(tmpdir, "dep-item", PhaseName.REVIEW.value, PhaseStatus.APPROVED.value)
+        state = read_phase_state(tmpdir, "dep-item")
+        assert state.get(PhaseName.REVIEW.value) == PhaseStatus.APPROVED.value
 
         # Step 5: Verify dependency is now satisfied
         satisfied = check_dependencies_satisfied(tmpdir, "main-item", deps)
         assert satisfied is True
 
         # Step 6: Mark main-item as ready
-        set_item_phase(tmpdir, "main-item", "pending")
         main_state_path = Path(tmpdir) / "todos" / "main-item" / "state.yaml"
         main_state = yaml.safe_load(main_state_path.read_text()) or {}
         main_state["dor"] = {"score": 8}
-        main_state_path.write_text(yaml.safe_dump(main_state))
-        assert get_item_phase(tmpdir, "main-item") == "pending"
+        main_state_path.write_text(yaml.dump(main_state, default_flow_style=False))
+        state = read_phase_state(tmpdir, "main-item")
+        assert state.get(PhaseName.BUILD.value) == PhaseStatus.PENDING.value
 
         # Step 7: Verify main-item is now selectable with ready_only
         slug, is_ready, desc = resolve_slug(tmpdir, slug=None, ready_only=True)
@@ -96,9 +100,9 @@ async def test_next_work_dependency_blocking():
 
         # Create state.yaml for items
         states = {
-            "foundation": '{"phase": "pending"}',
-            "blocked-feature": '{"phase": "pending", "dor": {"score": 8}}',
-            "independent-feature": '{"phase": "pending", "dor": {"score": 8}}',
+            "foundation": '{"build": "pending", "review": "pending"}',
+            "blocked-feature": '{"build": "pending", "review": "pending", "dor": {"score": 8}}',
+            "independent-feature": '{"build": "pending", "review": "pending", "dor": {"score": 8}}',
         }
         for slug, state in states.items():
             d = Path(tmpdir) / "todos" / slug
@@ -109,9 +113,7 @@ async def test_next_work_dependency_blocking():
         item_dir = Path(tmpdir) / "todos" / "independent-feature"
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.yaml").write_text(
-            '{"phase": "pending", "dor": {"score": 8}, "build": "pending", "review": "pending"}'
-        )
+        (item_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 8}}')
 
         # Step 1: next_work should select independent-feature (no dependencies)
         with (
@@ -128,16 +130,14 @@ async def test_next_work_dependency_blocking():
         assert "ERROR:" in result
         assert "DEPS_UNSATISFIED" in result
 
-        # Step 3: Complete foundation item via state.yaml phase
-        set_item_phase(tmpdir, "foundation", "done")
+        # Step 3: Complete foundation item via review approval
+        mark_phase(tmpdir, "foundation", PhaseName.REVIEW.value, PhaseStatus.APPROVED.value)
 
         # Step 4: Create required files for blocked-feature
         blocked_dir = Path(tmpdir) / "todos" / "blocked-feature"
         (blocked_dir / "requirements.md").write_text("# Requirements\n")
         (blocked_dir / "implementation-plan.md").write_text("# Plan\n")
-        (blocked_dir / "state.yaml").write_text(
-            '{"phase": "pending", "dor": {"score": 8}, "build": "pending", "review": "pending"}'
-        )
+        (blocked_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 8}}')
 
         # Step 5: Now next_work can select blocked-feature (dependency satisfied)
         with (
@@ -166,9 +166,7 @@ async def test_removed_dependency_satisfaction():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n")
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.yaml").write_text(
-            '{"phase": "pending", "dor": {"score": 8}, "build": "pending", "review": "pending"}'
-        )
+        (item_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 8}}')
 
         # Should be able to work on new-feature (missing dependency is satisfied)
         with (

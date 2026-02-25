@@ -64,6 +64,7 @@ from teleclaude.types.commands import (
     RunAgentCommand,
     StartAgentCommand,
 )
+from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import (
     get_transcript_parser_info,
     parse_session_transcript,
@@ -281,13 +282,12 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
             Optional[str], cmd.channel_metadata.get("initiator_session_id")
         )
 
-    # Prefer parent origin for AI-to-AI sessions
+    # Origin provenance must reflect the actual source of this session creation.
+    # Do not inherit origin from parent sessions.
     last_input_origin = origin
     parent_session = None
     if initiator_session_id:
         parent_session = await db.get_session(initiator_session_id)
-        if parent_session and parent_session.last_input_origin:
-            last_input_origin = parent_session.last_input_origin
 
     # Resolve identity
     metadata_human_email: Optional[str] = None
@@ -386,11 +386,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         session_metadata=metadata_from_cmd,
         active_agent=launch.agent if launch else None,
         thinking_mode=launch.thinking_mode if launch else None,
-    )
-
-    event_bus.emit(
-        TeleClaudeEvents.SESSION_STARTED,
-        SessionLifecycleContext(session_id=session_id),
+        emit_session_started=False,
     )
 
     # Persist platform user_id on adapter metadata for derive_identity_key()
@@ -410,13 +406,13 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     return {"session_id": session_id, "tmux_session_name": tmux_name}
 
 
-async def list_sessions() -> list[SessionSnapshot]:
-    """List all active sessions from local database.
+async def list_sessions(*, include_closed: bool = False) -> list[SessionSnapshot]:
+    """List sessions from local database.
 
     Ephemeral request/response for MCP/Redis only - no DB session required.
     UI adapters (Telegram) should not have access to this command.
     """
-    sessions = await db.list_sessions(include_headless=True)
+    sessions = await db.list_sessions(include_headless=True, include_closed=include_closed)
 
     results: list[SessionSnapshot] = []
     local_name = config.computer.name
@@ -433,6 +429,7 @@ async def list_sessions() -> list[SessionSnapshot]:
                 status=s.lifecycle_status or "active",
                 created_at=s.created_at.isoformat() if s.created_at else None,
                 last_activity=s.last_activity.isoformat() if s.last_activity else None,
+                closed_at=s.closed_at.isoformat() if s.closed_at else None,
                 last_input=s.last_message_sent,
                 last_input_at=s.last_message_sent_at.isoformat() if s.last_message_sent_at else None,
                 last_output_summary=get_last_output_summary(s),
@@ -626,6 +623,9 @@ async def get_session_data(
             return None
 
         tail = cmd.tail_chars if cmd.tail_chars > 0 else 2000
+        # Strip ANSI before truncation so tail slicing cannot split escape codes.
+        sanitized_output = strip_ansi_codes(pane_output)
+        messages = sanitized_output[-tail:] if len(sanitized_output) > tail else sanitized_output
         logger.debug(
             "Returning tmux fallback output for session %s (%s)",
             session_id[:8],
@@ -636,7 +636,7 @@ async def get_session_data(
             "session_id": session_id,
             "project_path": session.project_path,
             "subdir": session.subdir,
-            "messages": pane_output[-tail:],
+            "messages": messages,
             "created_at": session.created_at.isoformat() if session.created_at else None,
             "last_activity": (session.last_activity.isoformat() if session.last_activity else None),
         }
@@ -807,7 +807,14 @@ async def handle_voice(
         await client.break_threaded_turn(session)
 
     await process_message(
-        ProcessMessageCommand(session_id=cmd.session_id, text=transcribed, origin=cmd.origin),
+        ProcessMessageCommand(
+            session_id=cmd.session_id,
+            text=transcribed,
+            origin=cmd.origin or "api",
+            actor_id=cmd.actor_id,
+            actor_name=cmd.actor_name,
+            actor_avatar_url=cmd.actor_avatar_url,
+        ),
         client,
         start_polling,
     )
@@ -887,7 +894,14 @@ async def process_message(
 
     # Broadcast user input to other adapters (e.g. TUI input -> Telegram)
     if cmd.origin:
-        await client.broadcast_user_input(session, message_text, cmd.origin)
+        await client.broadcast_user_input(
+            session,
+            message_text,
+            cmd.origin,
+            actor_id=cmd.actor_id,
+            actor_name=cmd.actor_name,
+            actor_avatar_url=cmd.actor_avatar_url,
+        )
 
     active_agent = session.active_agent
     sanitized_text = tmux_io.wrap_bracketed_paste(message_text, active_agent=active_agent)

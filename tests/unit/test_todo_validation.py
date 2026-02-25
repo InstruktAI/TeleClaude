@@ -16,10 +16,9 @@ def test_validate_todo_pass(tmp_path: Path):
     todo_dir.mkdir(parents=True)
 
     state = {
-        "phase": "pending",
-        "dor": {"score": 10, "status": "pass"},
         "build": "pending",
         "review": "pending",
+        "dor": {"score": 10, "status": "pass"},
     }
     (todo_dir / "state.yaml").write_text(yaml.dump(state))
     (todo_dir / "requirements.md").touch()
@@ -35,8 +34,8 @@ def test_validate_todo_schema_violation(tmp_path: Path):
     todo_dir = tmp_path / "todos" / todo_slug
     todo_dir.mkdir(parents=True)
 
-    # phase should be string, not int
-    state = {"phase": 123}
+    # build should be string, not int
+    state = {"build": 123}
     (todo_dir / "state.yaml").write_text(yaml.dump(state))
 
     errors = validate_todo(todo_slug, tmp_path)
@@ -50,7 +49,7 @@ def test_validate_todo_missing_files_for_ready(tmp_path: Path):
     todo_dir.mkdir(parents=True)
 
     state = {
-        "phase": "pending",
+        "build": "pending",
         "dor": {"score": 8, "status": "pass"},
     }
     (todo_dir / "state.yaml").write_text(yaml.dump(state))

@@ -48,6 +48,7 @@ from teleclaude.api_models import (
     SessionsInitialEventDTO,
     SessionStartedEventDTO,
     SessionUpdatedEventDTO,
+    SetAgentStatusRequest,
     SettingsDTO,
     TodoDTO,
     TTSSettingsDTO,
@@ -351,6 +352,7 @@ class APIServer:
         async def list_sessions(  # pyright: ignore
             request: "Request",
             computer: str | None = None,
+            include_closed: bool = False,
         ) -> list[SessionDTO]:
             """List sessions from local storage and remote cache.
 
@@ -360,12 +362,13 @@ class APIServer:
             Args:
                 request: FastAPI request (for identity headers)
                 computer: Optional filter by computer name
+                include_closed: Include closed sessions
 
             Returns:
                 List of session summaries (merged local + cached remote)
             """
             try:
-                local_sessions = await command_handlers.list_sessions()
+                local_sessions = await command_handlers.list_sessions(include_closed=include_closed)
 
                 # No cache: serve local sessions only (respect computer filter)
                 if not self.cache:
@@ -554,6 +557,15 @@ class APIServer:
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """End session - local sessions only (remote session management via MCP tools)."""
             from teleclaude.api.session_access import check_session_access
+
+            user_agent = request.headers.get("user-agent", "no-ua")
+            identity_email = request.headers.get("x-web-email", "none")
+            logger.info(
+                "DELETE /sessions/%s (ua=%s, identity=%s)",
+                session_id[:8],
+                user_agent,
+                identity_email,
+            )
 
             await check_session_access(request, session_id, require_owner=True)
             try:
@@ -945,6 +957,30 @@ class APIServer:
                 logger.error("list_projects failed: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list projects: {e}") from e
 
+        def _build_agent_dto(agent: str, info: dict[str, bool | str | None] | None) -> AgentAvailabilityDTO:
+            """Convert db agent availability info dict to DTO."""
+            if info:
+                unavail_until = info.get("unavailable_until")
+                degraded_until = info.get("degraded_until")
+                reason_val = info.get("reason")
+                status_val = info.get("status")
+                status_text = str(status_val) if status_val in {"available", "unavailable", "degraded"} else None
+                return AgentAvailabilityDTO(
+                    agent=agent,
+                    available=bool(info.get("available", True)),
+                    status=status_text,
+                    unavailable_until=str(unavail_until) if unavail_until and unavail_until is not True else None,
+                    degraded_until=str(degraded_until) if degraded_until and degraded_until is not True else None,
+                    reason=str(reason_val) if reason_val and reason_val is not True else None,
+                )
+            else:
+                # No record means agent is available (never marked unavailable)
+                return AgentAvailabilityDTO(
+                    agent=agent,
+                    available=True,
+                    status="available",
+                )
+
         @self.app.get("/agents/availability")
         async def get_agent_availability() -> dict[str, AgentAvailabilityDTO]:  # pyright: ignore
             """Get agent availability."""
@@ -975,27 +1011,37 @@ class APIServer:
                     )
                     continue
 
-                if info:
-                    unavail_until = info.get("unavailable_until")
-                    reason_val = info.get("reason")
-                    status_val = info.get("status")
-                    status_text = str(status_val) if status_val in {"available", "unavailable", "degraded"} else None
-                    result[agent] = AgentAvailabilityDTO(
-                        agent=agent,
-                        available=bool(info.get("available", True)),
-                        status=status_text,
-                        unavailable_until=str(unavail_until) if unavail_until and unavail_until is not True else None,
-                        reason=str(reason_val) if reason_val and reason_val is not True else None,
-                    )
-                else:
-                    # No record means agent is available (never marked unavailable)
-                    result[agent] = AgentAvailabilityDTO(
-                        agent=agent,
-                        available=True,
-                        status="available",
-                    )
+                result[agent] = _build_agent_dto(agent, info)
 
             return result
+
+        @self.app.post("/agents/{agent}/status")
+        async def set_agent_status(  # pyright: ignore
+            agent: Literal["claude", "gemini", "codex"], body: SetAgentStatusRequest
+        ) -> AgentAvailabilityDTO:
+            """Set agent availability status."""
+            from datetime import datetime, timedelta, timezone
+
+            from teleclaude.core.db import db
+
+            try:
+                if body.status == "available":
+                    await db.mark_agent_available(agent)
+                elif body.status == "degraded":
+                    duration = body.duration_minutes or 60
+                    degraded_until = (datetime.now(timezone.utc) + timedelta(minutes=duration)).isoformat()
+                    await db.mark_agent_degraded(agent, body.reason or "manual", degraded_until=degraded_until)
+                elif body.status == "unavailable":
+                    duration = body.duration_minutes or 60
+                    unavailable_until = (datetime.now(timezone.utc) + timedelta(minutes=duration)).isoformat()
+                    await db.mark_agent_unavailable(agent, unavailable_until, body.reason or "manual")
+
+                # Re-fetch and return updated availability
+                info = await db.get_agent_availability(agent)
+                return _build_agent_dto(agent, info)
+            except Exception as e:
+                logger.error("Failed to set status for agent %s: %s", agent, e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to set agent status: {e}") from e
 
         @self.app.get("/api/people")
         async def list_people() -> list[PersonDTO]:  # pyright: ignore

@@ -36,7 +36,6 @@ def project_with_rich_state(tmp_path: Path) -> Path:
     (todos / "full-item" / "state.yaml").write_text(
         json.dumps(
             {
-                "phase": "in_progress",
                 "build": "complete",
                 "review": "changes_requested",
                 "deferrals_processed": True,
@@ -50,7 +49,9 @@ def project_with_rich_state(tmp_path: Path) -> Path:
     # Child item with minimal state
     (todos / "child-item").mkdir()
     (todos / "child-item" / "requirements.md").write_text("# Req")
-    (todos / "child-item" / "state.yaml").write_text(json.dumps({"phase": "pending", "dor": {"score": 3}}))
+    (todos / "child-item" / "state.yaml").write_text(
+        json.dumps({"build": "pending", "review": "pending", "dor": {"score": 3}})
+    )
 
     # Item with no state.yaml (only input.md)
     (todos / "bare-item").mkdir()

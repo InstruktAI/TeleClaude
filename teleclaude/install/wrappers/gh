@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# GitHub CLI wrapper for TeleClaude agent sessions.
+# Blocks `gh pr merge` to base main from non-canonical contexts.
+# Installed via `telec init` into ~/.teleclaude/bin/gh.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CANONICAL_ROOT="{{CANONICAL_ROOT}}"
+MARKER="TELECLAUDE_GH_MAIN_MERGE_GUARD_BLOCK"
+LOG_FILE="${HOME}/.teleclaude/logs/guardrails.log"
+
+_real_gh() {
+    IFS=: read -ra path_parts <<< "$PATH"
+    for dir in "${path_parts[@]}"; do
+        [ "$dir" = "$SCRIPT_DIR" ] && continue
+        if [ -x "$dir/gh" ]; then
+            "$dir/gh" "$@"
+            return $?
+        fi
+    done
+    echo "ERROR: real gh binary not found in PATH" >&2
+    exit 1
+}
+
+_read_session_id() {
+    if [ -n "${TELECLAUDE_SESSION_ID:-}" ]; then
+        printf '%s' "$TELECLAUDE_SESSION_ID"
+        return
+    fi
+    local sid_file="${TMPDIR:-}/teleclaude_session_id"
+    if [ -f "$sid_file" ]; then
+        tr -d '\n' < "$sid_file"
+        return
+    fi
+    printf 'unknown'
+}
+
+_log_block() {
+    local branch="$1"
+    local command="$2"
+    local repo_root="$3"
+    local common_root="$4"
+    local session_id="$5"
+    local ts
+    ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+    mkdir -p "$(dirname "$LOG_FILE")"
+    printf '%s marker=%s cwd=%q branch=%q target=%q command=%q session=%q repo_root=%q canonical_root=%q common_root=%q\n' \
+        "$ts" "$MARKER" "$PWD" "$branch" "main" "$command" "$session_id" "$repo_root" "$CANONICAL_ROOT" "$common_root" \
+        >> "$LOG_FILE"
+}
+
+first_cmd=""
+second_cmd=""
+first_index=0
+skip_next=0
+idx=0
+for arg in "$@"; do
+    idx=$((idx + 1))
+    if [ "$skip_next" -eq 1 ]; then
+        skip_next=0
+        continue
+    fi
+    case "$arg" in
+        --repo|-R|--hostname)
+            skip_next=1
+            continue
+            ;;
+        --repo=*|-R=*|--hostname=*)
+            continue
+            ;;
+        -*)
+            continue
+            ;;
+        *)
+            if [ -z "$first_cmd" ]; then
+                first_cmd="$arg"
+                first_index=$idx
+                continue
+            fi
+            second_cmd="$arg"
+            break
+            ;;
+    esac
+done
+
+if [ "$first_cmd" != "pr" ] || [ "$second_cmd" != "merge" ]; then
+    _real_gh "$@"
+    exit 0
+fi
+
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    _real_gh "$@"
+    exit 0
+fi
+
+common_root="$(cd "$(git rev-parse --git-common-dir)/.." && pwd -P 2>/dev/null || true)"
+if [ "$common_root" != "$CANONICAL_ROOT" ]; then
+    _real_gh "$@"
+    exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
+branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+git_dir="$(git rev-parse --git-dir 2>/dev/null || echo .git)"
+git_common_dir="$(git rev-parse --git-common-dir 2>/dev/null || echo .git)"
+session_id="$(_read_session_id)"
+
+base_branch=""
+selector=""
+start=$((first_index + 2))
+expect_value=0
+if [ "$start" -le "$#" ]; then
+    while [ "$start" -le "$#" ]; do
+        eval "arg=\${$start}"
+        if [ "$expect_value" -eq 1 ]; then
+            base_branch="$arg"
+            expect_value=0
+            start=$((start + 1))
+            continue
+        fi
+        case "$arg" in
+            --base|-B)
+                expect_value=1
+                ;;
+            --base=*|-B=*)
+                base_branch="${arg#*=}"
+                ;;
+            --repo|-R|--body|-b|--subject|-t)
+                start=$((start + 1))
+                ;;
+            --*)
+                ;;
+            -*)
+                ;;
+            *)
+                if [ -z "$selector" ]; then
+                    selector="$arg"
+                fi
+                ;;
+        esac
+        start=$((start + 1))
+    done
+fi
+
+if [ -z "$base_branch" ]; then
+    if [ -n "$selector" ]; then
+        base_branch="$(_real_gh pr view "$selector" --json baseRefName --jq '.baseRefName' 2>/dev/null || true)"
+    else
+        base_branch="$(_real_gh pr view --json baseRefName --jq '.baseRefName' 2>/dev/null || true)"
+    fi
+fi
+
+if [ "$base_branch" = "main" ]; then
+    canonical_context=0
+    if [ "$repo_root" = "$CANONICAL_ROOT" ] \
+        && [ "$branch" = "main" ] \
+        && [ "$git_dir" = "$git_common_dir" ]; then
+        canonical_context=1
+    fi
+
+    if [ "$canonical_context" -ne 1 ]; then
+        _log_block "$branch" "gh $*" "$repo_root" "$common_root" "$session_id"
+        echo "GUARDRAIL_MARKER: ${MARKER}" >&2
+        cat >&2 <<'MSG'
+ERROR: MAIN_GUARDRAIL_BLOCKED
+Main-targeting operations are allowed only from the canonical repository root on branch main.
+Stop now and report FINALIZE_READY to the orchestrator so finalize-apply can run in canonical context.
+MSG
+        exit 1
+    fi
+fi
+
+_real_gh "$@"

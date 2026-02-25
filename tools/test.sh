@@ -18,21 +18,17 @@ cd "${REPO_ROOT}"
 export TELECLAUDE_CONFIG_PATH="${TELECLAUDE_CONFIG_PATH:-tests/integration/config.yml}"
 export TELECLAUDE_ENV_PATH="${TELECLAUDE_ENV_PATH:-tests/integration/.env}"
 
-# Cap xdist workers to avoid transient execnet spawn/read failures in constrained environments.
-# Override with TELECLAUDE_PYTEST_WORKERS when needed.
-PYTEST_WORKERS="${TELECLAUDE_PYTEST_WORKERS:-4}"
-
 # Run unit and integration suites separately with strict per-test timeouts.
 # Expensive tests (real LLM API calls) are excluded by default — use `make test-agents`.
+TEST_TIMEOUT="${TELECLAUDE_TEST_TIMEOUT:-20m}"
 if [ "${1:-}" = "--cov" ]; then
     echo "Running tests with coverage..."
-    pytest tests/unit tests/integration -n "${PYTEST_WORKERS}" --max-worker-restart=2 --timeout=15 -m "not expensive" --cov=teleclaude --cov-report=html --cov-report=term-missing
+    timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -n auto -m "not expensive" --cov=teleclaude --cov-report=html --cov-report=term-missing
 
     # Generate absolute path for clickable link
     REPORT_PATH="$(pwd)/coverage/html/index.html"
     echo ""
     echo "✓ Coverage report generated: file://$REPORT_PATH"
 else
-    pytest tests/unit -n "${PYTEST_WORKERS}" --max-worker-restart=2 --timeout=5 -q
-    pytest tests/integration -n "${PYTEST_WORKERS}" --max-worker-restart=2 --timeout=15 -m "not expensive" -q
+    timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -n auto -m "not expensive" -q
 fi

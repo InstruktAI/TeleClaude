@@ -2,160 +2,220 @@
 
 ## Overview
 
-Add 12 new REST API endpoints and 22 telec CLI subcommands. Enrich `telec docs`
-help text. Write rich `--help` for all new subcommands with behavioral guidance
-and examples. Update the telec-cli spec doc with `@exec` directives for
-baseline tools. The approach:
+Add 8 new REST API endpoints and 22 telec CLI subcommands. Add daemon-side
+role enforcement. Enrich `telec docs` help text. Write rich `--help` for all
+new subcommands. Update telec-cli spec doc with `@exec` directives.
 
-1. New REST endpoints in a separate FastAPI router (`teleclaude/api/tool_routes.py`)
-   to avoid bloating `api_server.py` further. Each endpoint is a thin wrapper around
-   existing backend functions (same ones MCP handlers call).
-2. A shared sync HTTP helper (`teleclaude/cli/tool_client.py`) for one-shot CLI calls
-   to the daemon — simpler than the async `TelecAPIClient` which is designed for the TUI.
-3. CLI subcommand handlers in `teleclaude/cli/tool_commands.py`, one handler per group.
-   Each handler includes rich `--help` with behavioral guidance migrated from MCP
-   tool descriptions and usage examples covering every parameter/input shape.
-4. Wire new groups into `CLI_SURFACE`, `TelecCommand` enum, and dispatch.
-5. Enrich existing `telec docs --help` with two-phase flow guidance and examples.
-6. Update the telec-cli spec doc with `<!-- @exec: telec <cmd> -h -->` for baseline tools.
+The approach:
 
-**No `telec context` group.** `telec docs` already replaces `teleclaude__get_context`
-with the same two-phase flow (index without IDs, full content with IDs). The naming
-"docs" is correct — this is documentation snippets, not generic context. The
-`teleclaude__help` tool (TeleClaude capabilities summary) relocates to `telec infra help`.
+1. Role enforcement middleware in the daemon API (checks system_role + human_role).
+2. New REST endpoints in resource-scoped router files (sessions, todos, deploy).
+3. A shared sync HTTP helper for one-shot CLI calls to the daemon.
+4. CLI subcommand handlers extending existing resource groups.
+5. Wire into `CLI_SURFACE`, `TelecCommand` enum, and dispatch.
+6. Update telec-cli spec doc with `@exec` directives for baseline tools.
 
-No new business logic. All work is wiring: REST endpoint → backend function,
-CLI subcommand → REST endpoint, help text → `@exec` in spec doc.
+CLI structure mirrors REST resources. No invented groupings.
 
 ### Key Design Decisions
 
-1. **Separate router file** — `api_server.py` is 2,029 lines. Tool endpoints go in
-   `teleclaude/api/tool_routes.py` and are mounted via `include_router()`.
-2. **Sync HTTP client** — Tool CLI commands are one-shot. No async overhead needed.
-   `httpx.Client` with `HTTPTransport(uds=...)` directly.
-3. **JSON to stdout** — All tool subcommands output JSON. Errors go to stderr.
-   This is distinct from existing human-friendly commands (`telec list`, etc.).
-4. **`caller_session_id` injection** — Read from `$TMPDIR/teleclaude_session_id`,
-   sent as `X-Caller-Session-Id` header on every API call.
-5. **Help text as documentation** — The `--help` output carries the full behavioral
-   contract from MCP tool descriptions. Examples cover every parameter and shape.
-   The telec-cli spec doc inlines baseline help via `@exec` directives.
+1. **Resource-scoped routes** — New endpoints sit next to existing ones in their
+   resource routers. Session endpoints extend `/sessions/`, todo endpoints go
+   in a new `/todos/` router, deploy gets a top-level `POST /deploy`.
+2. **Sync HTTP client** — Tool CLI commands are one-shot. `httpx.Client` with
+   `HTTPTransport(uds=...)` directly. No async overhead.
+3. **JSON to stdout** — All tool subcommands output JSON. Errors to stderr.
+4. **Dual-factor identity** — `telec` sends two headers on every API call:
+   - `X-Caller-Session-Id`: read from `$TMPDIR/teleclaude_session_id`
+   - `X-Tmux-Session`: read from `tmux display-message -p '#S'` (queries tmux server)
+     The daemon cross-checks both against its DB before processing any request.
+     This prevents session_id forgery — the agent can write to the file but cannot
+     control the tmux server's answer about which session it's running in.
+5. **Daemon-side role enforcement** — FastAPI dependency reads both headers,
+   verifies tmux session matches the claimed session_id in DB, then looks up
+   system_role + human_role and checks clearance per endpoint. Returns 403 on
+   identity mismatch or insufficient clearance, 401 on missing session_id.
+   Replaces MCP wrapper's file-based `role_tools.py` filtering.
 
-### Endpoint Design for the 12 Missing Tools
+### New Endpoints (8 total)
 
-`telec docs` (get_context + help) needs no REST endpoint — it calls
-`build_context_output()` directly. `teleclaude__help` relocates to
-`telec infra help` (static text, no endpoint needed).
+| Resource  | Endpoint                          | Backend Function                            |
+| --------- | --------------------------------- | ------------------------------------------- |
+| sessions  | `POST /sessions/run`              | `create_session(auto_command=...)`          |
+| sessions  | `POST /sessions/{id}/unsubscribe` | `unregister_listener()`                     |
+| sessions  | `POST /sessions/{id}/result`      | `client.send_message()`                     |
+| sessions  | `POST /sessions/{id}/widget`      | `client.send_widget()`                      |
+| sessions  | `POST /sessions/{id}/escalate`    | `DiscordAdapter.create_escalation_thread()` |
+| todos     | `POST /todos/prepare`             | `next_prepare()`                            |
+| todos     | `POST /todos/work`                | `next_work()`                               |
+| todos     | `POST /todos/maintain`            | `next_maintain()`                           |
+| todos     | `POST /todos/mark-phase`          | `mark_phase()`                              |
+| todos     | `POST /todos/set-deps`            | `set_dependencies()`                        |
+| top-level | `POST /deploy`                    | `redis_transport.send_system_command()`     |
 
-| Group    | Tool               | REST Endpoint                | Backend Function                            |
-| -------- | ------------------ | ---------------------------- | ------------------------------------------- |
-| sessions | run-agent-command  | `POST /sessions/run`         | `create_session(auto_command=...)`          |
-| sessions | stop-notifications | `POST /sessions/unsubscribe` | `unregister_listener()`                     |
-| workflow | next-prepare       | `POST /workflow/prepare`     | `next_prepare()`                            |
-| workflow | next-work          | `POST /workflow/work`        | `next_work()`                               |
-| workflow | next-maintain      | `POST /workflow/maintain`    | `next_maintain()`                           |
-| workflow | mark-phase         | `POST /workflow/mark-phase`  | `mark_phase()`                              |
-| workflow | set-dependencies   | `POST /workflow/set-deps`    | `set_dependencies()`                        |
-| infra    | deploy             | `POST /infra/deploy`         | `redis_transport.send_system_command()`     |
-| infra    | mark-agent-status  | `POST /infra/agent-status`   | `db.mark_agent_*()`                         |
-| delivery | send-result        | `POST /delivery/result`      | `client.send_message()`                     |
-| delivery | render-widget      | `POST /delivery/widget`      | `client.send_message()` + widget render     |
-| delivery | escalate           | `POST /delivery/escalate`    | `DiscordAdapter.create_escalation_thread()` |
+Existing endpoints (15) need only CLI wiring — no API changes.
 
-Channels already have REST endpoints at `/api/channels/` (publish and list).
-CLI channels subcommands call these existing endpoints directly.
+### CLI Command Mapping
 
-New endpoints follow the same resource-based pattern as existing ones
-(`/sessions`, `/computers`, `/projects`). No artificial namespace prefixes.
-
-### CLI Command Mapping (22 new + `telec docs` existing)
-
-`telec docs` already covers `get_context` (two-phase: index without IDs,
-full content with comma-separated IDs). No new CLI command needed for it.
-
-| `telec` subcommand                                  | REST Endpoint                            |
-| --------------------------------------------------- | ---------------------------------------- |
-| `telec sessions list [--computer ...]`              | `GET /sessions` (existing)               |
-| `telec sessions start --computer --project --title` | `POST /sessions` (existing)              |
-| `telec sessions send --id --message`                | `POST /sessions/{id}/message` (existing) |
-| `telec sessions tail --id [--tail ...]`             | `GET /sessions/{id}/messages` (existing) |
-| `telec sessions run --computer --command`           | `POST /sessions/run`                     |
-| `telec sessions unsubscribe --id`                   | `POST /sessions/unsubscribe`             |
-| `telec sessions end --id`                           | `DELETE /sessions/{id}` (existing)       |
-| `telec workflow prepare [--slug ...]`               | `POST /workflow/prepare`                 |
-| `telec workflow work [--slug ...]`                  | `POST /workflow/work`                    |
-| `telec workflow maintain`                           | `POST /workflow/maintain`                |
-| `telec workflow mark-phase --slug --phase --status` | `POST /workflow/mark-phase`              |
-| `telec workflow set-deps --slug --after`            | `POST /workflow/set-deps`                |
-| `telec infra computers`                             | `GET /computers` (existing)              |
-| `telec infra projects --computer`                   | `GET /projects` (existing)               |
-| `telec infra deploy [--computers ...]`              | `POST /infra/deploy`                     |
-| `telec infra agent-status --agent --status`         | `POST /infra/agent-status`               |
-| `telec delivery result --session-id --content`      | `POST /delivery/result`                  |
-| `telec delivery file --session-id --path`           | `POST /sessions/{id}/file` (existing)    |
-| `telec delivery widget --session-id --data`         | `POST /delivery/widget`                  |
-| `telec delivery escalate --customer --reason`       | `POST /delivery/escalate`                |
-| `telec channels publish --channel --payload`        | `POST /api/channels/{name}/publish`      |
-| `telec channels list [--project]`                   | `GET /api/channels/`                     |
+| `telec` command              | REST endpoint                       |
+| ---------------------------- | ----------------------------------- |
+| `telec sessions list`        | `GET /sessions`                     |
+| `telec sessions start`       | `POST /sessions`                    |
+| `telec sessions send`        | `POST /sessions/{id}/message`       |
+| `telec sessions tail`        | `GET /sessions/{id}/messages`       |
+| `telec sessions run`         | `POST /sessions/run`                |
+| `telec sessions end`         | `DELETE /sessions/{id}`             |
+| `telec sessions unsubscribe` | `POST /sessions/{id}/unsubscribe`   |
+| `telec sessions result`      | `POST /sessions/{id}/result`        |
+| `telec sessions file`        | `POST /sessions/{id}/file`          |
+| `telec sessions widget`      | `POST /sessions/{id}/widget`        |
+| `telec sessions escalate`    | `POST /sessions/{id}/escalate`      |
+| `telec todo prepare`         | `POST /todos/prepare`               |
+| `telec todo work`            | `POST /todos/work`                  |
+| `telec todo maintain`        | `POST /todos/maintain`              |
+| `telec todo mark-phase`      | `POST /todos/mark-phase`            |
+| `telec todo set-deps`        | `POST /todos/set-deps`              |
+| `telec computers`            | `GET /computers`                    |
+| `telec projects`             | `GET /projects`                     |
+| `telec deploy`               | `POST /deploy`                      |
+| `telec agents status`        | `POST /agents/{agent}/status`       |
+| `telec agents availability`  | `GET /agents/availability`          |
+| `telec channels list`        | `GET /api/channels/`                |
+| `telec channels publish`     | `POST /api/channels/{name}/publish` |
 
 ---
 
-## Phase 1: REST API Tool Endpoints
+## Phase 1: Role Enforcement Middleware
 
-### Task 1.1: Create new route modules
+### Task 1.1: Create dual-factor identity verification
 
-**File(s):** `teleclaude/api/` (new files per resource group)
+**File(s):** `teleclaude/api/auth.py` (new)
 
-Add 12 new REST endpoints across resource groups. Each endpoint:
+A FastAPI dependency that verifies caller identity and checks role clearance:
 
-- Extracts typed parameters from the request body
-- Reads `X-Caller-Session-Id` header
-- Calls the appropriate backend function
-- Returns JSON result
+```python
+from fastapi import Header, HTTPException
 
-New endpoints extend existing resource paths (`/sessions/run` sits next to
-`POST /sessions`). They follow the same patterns as existing endpoints in
-`api_server.py` — resource-based paths, no artificial namespacing.
+async def verify_caller(
+    x_caller_session_id: str | None = Header(None),
+    x_tmux_session: str | None = Header(None),
+) -> CallerIdentity:
+    """Verify caller identity via dual-factor check.
 
-The routers need access to `AdapterClient`, `DaemonCache`, `db`, and
-`RedisTransport` — pass these via FastAPI dependency injection or app state,
-same pattern as existing endpoints.
+    Factor 1: session_id from $TMPDIR/teleclaude_session_id (file, writable)
+    Factor 2: tmux session name from tmux server (unforgeable)
 
-For workflow endpoints, import from `teleclaude.workflow.state_machines`.
-For channels, import from `teleclaude.channels.publisher`.
+    Both must agree with the daemon's DB records.
+    """
+    if not x_caller_session_id:
+        raise HTTPException(401, "session identity required")
 
-- [ ] Add session endpoints (`/sessions/run`, `/sessions/unsubscribe`)
-- [ ] Add workflow endpoints (`/workflow/prepare`, `/workflow/work`, `/workflow/maintain`, `/workflow/mark-phase`, `/workflow/set-deps`)
-- [ ] Add infra endpoints (`/infra/deploy`, `/infra/agent-status`)
-- [ ] Add delivery endpoints (`/delivery/result`, `/delivery/widget`, `/delivery/escalate`)
-      (Channels: use existing `/api/channels/` endpoints — no new routes needed)
+    session = await db.get_session(x_caller_session_id)
+    if not session:
+        raise HTTPException(401, "unknown session")
 
-### Task 1.2: Mount new routers on API server
+    # Cross-check: tmux session name must match DB record
+    if x_tmux_session and session.tmux_session_name:
+        if x_tmux_session != session.tmux_session_name:
+            raise HTTPException(403, "session identity mismatch")
 
-**File(s):** `teleclaude/api_server.py`
+    return CallerIdentity(
+        session_id=x_caller_session_id,
+        system_role=session.system_role,
+        human_role=session.human_role,
+    )
 
-- [ ] Import and mount new routers via `include_router()` in `__init__`
-- [ ] Pass required dependencies via app state (same pattern as existing routes)
+def require_clearance(system_min: str | None = None,
+                      human_min: str | None = None):
+    """Endpoint dependency that checks role clearance."""
+    ...
+```
+
+Enforcement order:
+
+1. Missing session_id → 401
+2. Unknown session_id → 401
+3. Tmux session mismatch → 403 (hijack attempt)
+4. Insufficient system_role → 403
+5. Insufficient human_role → 403
+6. All clear → proceed
+
+- [ ] Create `teleclaude/api/auth.py` with `verify_caller` dependency
+- [ ] Create `CallerIdentity` dataclass (session_id, system_role, human_role)
+- [ ] Implement `require_clearance` dependency with permission matrix
+- [ ] Return 403 on identity mismatch with "session identity mismatch" message
+- [ ] Return 403 on insufficient clearance with specific role/command in message
+- [ ] Return 401 on missing or unknown session_id
+- [ ] Store system_role on session records (extend DB schema if needed)
+- [ ] Write unit tests for:
+  - Permission matrix (all cells in the matrix from parent requirements)
+  - Tmux cross-check pass (matching tmux session name)
+  - Tmux cross-check fail (mismatched tmux session name → 403)
+  - Missing session_id → 401
+  - Unknown session_id → 401
+  - Graceful fallback when tmux header is absent (non-tmux callers like TUI)
 
 ---
 
-## Phase 2: CLI Tool Client
+## Phase 2: REST API Endpoints
 
-### Task 2.1: Create synchronous tool client
+### Task 2.1: Session endpoints
+
+**File(s):** `teleclaude/api_server.py` (extend existing session routes)
+
+- [ ] Add `POST /sessions/run` (run-agent-command)
+- [ ] Add `POST /sessions/{id}/unsubscribe` (stop-notifications)
+- [ ] Add `POST /sessions/{id}/result` (send-result)
+- [ ] Add `POST /sessions/{id}/widget` (render-widget)
+- [ ] Add `POST /sessions/{id}/escalate` (escalate)
+- [ ] Apply role enforcement dependency to all session endpoints
+
+### Task 2.2: Todo/workflow endpoints
+
+**File(s):** `teleclaude/api/todo_routes.py` (new router)
+
+- [ ] Add `POST /todos/prepare` (next-prepare state machine)
+- [ ] Add `POST /todos/work` (next-work state machine)
+- [ ] Add `POST /todos/maintain` (next-maintain)
+- [ ] Add `POST /todos/mark-phase` (mark phase completion)
+- [ ] Add `POST /todos/set-deps` (set dependencies)
+- [ ] Mount router in `api_server.py`
+- [ ] Apply role enforcement
+
+### Task 2.3: Deploy endpoint
+
+**File(s):** `teleclaude/api_server.py` (add top-level route)
+
+- [ ] Add `POST /deploy` (trigger deployment to remote computers)
+- [ ] Apply role enforcement (admin-only)
+
+### Task 2.4: Apply role enforcement to existing endpoints
+
+- [ ] Add enforcement dependency to existing session endpoints
+- [ ] Add enforcement dependency to existing computer/project endpoints
+- [ ] Add enforcement dependency to existing agent endpoints
+- [ ] Add enforcement dependency to existing channel endpoints
+
+---
+
+## Phase 3: CLI Tool Client
+
+### Task 3.1: Create synchronous tool client with dual-factor identity
 
 **File(s):** `teleclaude/cli/tool_client.py` (new)
 
-A lightweight sync HTTP client for one-shot CLI calls:
-
 ```python
+import subprocess
 import httpx
-from teleclaude.constants import API_SOCKET_PATH
 
-def tool_api_call(method: str, path: str, json: dict | None = None,
-                  params: dict | None = None) -> dict:
-    """Synchronous API call to daemon. Returns JSON result."""
+def tool_api_call(method: str, path: str, json=None, params=None) -> dict:
     session_id = _read_caller_session_id()
-    headers = {"x-caller-session-id": session_id} if session_id else {}
+    tmux_session = _read_tmux_session_name()
+    headers = {}
+    if session_id:
+        headers["x-caller-session-id"] = session_id
+    if tmux_session:
+        headers["x-tmux-session"] = tmux_session
     transport = httpx.HTTPTransport(uds=API_SOCKET_PATH)
     with httpx.Client(transport=transport, base_url="http://localhost",
                       timeout=30.0) as client:
@@ -165,171 +225,139 @@ def tool_api_call(method: str, path: str, json: dict | None = None,
         return resp.json()
 
 def _read_caller_session_id() -> str | None:
-    """Read caller session ID from $TMPDIR/teleclaude_session_id."""
+    """Read session_id from $TMPDIR/teleclaude_session_id."""
     ...
+
+def _read_tmux_session_name() -> str | None:
+    """Query tmux server for current session name.
+
+    Uses `tmux display-message -p '#S'` which asks the tmux server
+    process — not an env var. The agent cannot forge this value.
+    Returns None if not running inside tmux.
+    """
+    try:
+        result = subprocess.run(
+            ["tmux", "display-message", "-p", "#S"],
+            capture_output=True, text=True, timeout=2,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip() or None
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
 ```
 
 - [ ] Create `teleclaude/cli/tool_client.py`
 - [ ] Implement `tool_api_call()` with sync httpx + Unix socket transport
 - [ ] Implement `_read_caller_session_id()` from `$TMPDIR`
-- [ ] Handle daemon unavailable (socket missing/connection refused → stderr + exit 1)
-- [ ] Handle HTTP errors (4xx/5xx → stderr + exit 1)
+- [ ] Implement `_read_tmux_session_name()` via tmux server query
+- [ ] Send both `X-Caller-Session-Id` and `X-Tmux-Session` headers
+- [ ] Handle daemon unavailable (socket missing → stderr + exit 1)
+- [ ] Handle 401 (missing/unknown session → stderr + exit 1)
+- [ ] Handle 403 (identity mismatch or role denied → stderr + exit 1)
+- [ ] Handle other HTTP errors (4xx/5xx → stderr + exit 1)
+- [ ] Graceful when not inside tmux (omit header, daemon skips cross-check)
 
 ---
 
-## Phase 3: CLI Subcommand Groups with Rich Help
+## Phase 4: CLI Subcommand Handlers with Rich Help
 
-### Task 3.1: Create tool command handlers
+### Task 4.1: Extend sessions subcommands
 
 **File(s):** `teleclaude/cli/tool_commands.py` (new)
 
-One handler function per group. Each handler:
+Add handlers for: list, start, send, tail, run, end, unsubscribe, result, file, widget, escalate
 
-1. Parses subcommand and flags from args
-2. Calls `tool_api_call()` with appropriate method/path/params
-3. Prints JSON to stdout via `json.dumps(result, indent=2)`
-4. Has rich `--help` with behavioral guidance and examples
+Each handler parses flags, calls `tool_api_call()`, prints JSON to stdout.
+Rich `--help` with behavioral guidance from MCP tool descriptions.
 
-The help text for each subcommand must:
+- [ ] Implement sessions subcommand handlers (11 subcommands)
+- [ ] Rich `--help` for each with examples
 
-- Carry behavioral guidance from MCP tool descriptions (timer patterns,
-  reason gates, required workflows, etc.)
-- Include usage examples covering every parameter and input shape
-- Use structured format: Usage, Description, Arguments, Options, Examples
+### Task 4.2: Extend todo subcommands
 
-Source material for behavioral guidance: `teleclaude/mcp/tool_definitions.py`
-contains the rich description strings that must transfer to help text.
+**File(s):** `teleclaude/cli/tool_commands.py`
 
-- [ ] Implement `handle_sessions(args)` — list, start, send, tail, command, unsubscribe, end
-- [ ] Implement `handle_workflow(args)` — prepare, work, maintain, mark-phase, set-deps
-- [ ] Implement `handle_infra(args)` — computers, projects, deploy, agent-status
-- [ ] Implement `handle_delivery(args)` — result, file, widget, escalate
-- [ ] Implement `handle_channels(args)` — publish, list
-- [ ] Enrich `telec docs --help` with two-phase flow guidance and examples
-- [ ] Relocate `teleclaude__help` to `telec infra help` (static text)
-- [ ] Each handler has rich `--help` with examples covering all parameters
+Add handlers for: prepare, work, maintain, mark-phase, set-deps
+(extends existing `telec todo` group)
 
-### Task 3.2: Add CLI surface definitions and dispatch
+- [ ] Implement todo workflow subcommand handlers (5 subcommands)
+- [ ] Rich `--help` for each
 
-**File(s):** `teleclaude/cli/telec.py`
+### Task 4.3: Add top-level and new group commands
 
-Add new entries to `CLI_SURFACE`, `TelecCommand`, and `_handle_cli_command()`:
+**File(s):** `teleclaude/cli/tool_commands.py`
 
-- [ ] Add 5 new enum values to `TelecCommand` (sessions, workflow, infra, delivery, channels)
-- [ ] Add 5 new entries to `CLI_SURFACE` with subcommands and flags
-- [ ] Add dispatch cases in `_handle_cli_command()` for each group
-- [ ] Update `_handle_completion()` for new groups
-- [ ] Update `_usage_main()` output (new groups appear in help)
+Add: computers, projects, deploy, agents (status + availability), channels (list + publish)
 
-### Task 3.3: Remove legacy aliases
+- [ ] Implement top-level command handlers (computers, projects, deploy)
+- [ ] Implement agents group handlers (status, availability)
+- [ ] Implement channels group handlers (list, publish)
+- [ ] Rich `--help` for each
+
+### Task 4.4: Wire into CLI surface
 
 **File(s):** `teleclaude/cli/telec.py`
 
-- [ ] Remove `CLAUDE`, `GEMINI`, `CODEX`, `LIST` from `TelecCommand` enum
-- [ ] Remove their entries from `CLI_SURFACE`
-- [ ] Remove dispatch cases in `_handle_cli_command()`
-- [ ] Remove `_quick_start()` and `_quick_start_via_api()` (verify not used elsewhere)
+- [ ] Add new `CommandDef` entries to `CLI_SURFACE` for sessions subcommands
+- [ ] Add `CommandDef` entries for new todo subcommands (extend existing)
+- [ ] Add `CommandDef` entries for computers, projects, deploy
+- [ ] Add `CommandDef` for agents group
+- [ ] Add `CommandDef` for channels group
+- [ ] Add dispatch cases in `_handle_cli_command()`
+- [ ] Update completions
+
+### Task 4.5: Remove legacy aliases
+
+**File(s):** `teleclaude/cli/telec.py`
+
+- [ ] Remove `CLAUDE`, `GEMINI`, `CODEX`, `LIST` from `TelecCommand`
+- [ ] Remove their `CLI_SURFACE` entries and dispatch cases
+- [ ] Remove `_quick_start()` and related functions
 - [ ] Remove `_complete_agent()` completion handler
-- [ ] Remove `_handle_list()` handler (`telec sessions list` replaces it)
 
 ---
 
-## Phase 4: Telec-CLI Spec Doc + Validation
+## Phase 5: Spec Doc + Validation
 
-### Task 4.1: Update telec-cli spec doc with @exec directives
+### Task 5.1: Update telec-cli spec doc
 
 **File(s):** `docs/global/general/spec/tools/telec-cli.md`
 
-Add `@exec` directive sections for each baseline tool:
-
-```markdown
-## CLI surface
-
-<!-- @exec: telec -h -->
-
-## Baseline tools
-
-### `telec docs`
-
-<!-- @exec: telec docs -h -->
-
-### `telec sessions list`
-
-<!-- @exec: telec sessions list -h -->
-
-### `telec sessions start`
-
-<!-- @exec: telec sessions start -h -->
-
-### `telec sessions send`
-
-<!-- @exec: telec sessions send -h -->
-
-### `telec sessions run`
-
-<!-- @exec: telec sessions run -h -->
-
-### `telec sessions tail`
-
-<!-- @exec: telec sessions tail -h -->
-
-### `telec infra deploy`
-
-<!-- @exec: telec infra deploy -h -->
-```
-
-- [ ] Update telec-cli spec doc with baseline tool `@exec` directives
+- [ ] Add `@exec` directives for baseline tools
 - [ ] Run `telec sync` to verify expansion
-- [ ] Verify expanded output in AGENTS.md includes rich help with examples
+- [ ] Verify expanded output includes rich help with examples
 
-### Task 4.2: Functional tests
+### Task 5.2: Functional tests
 
-Test tool subcommands against a running daemon:
+- [ ] Test each new CLI subcommand returns valid JSON
+- [ ] Test role enforcement returns 403 for worker calling `sessions start`
+- [ ] Test role enforcement returns 401 for missing session_id
+- [ ] Test daemon down → graceful error
 
-- [ ] Test `telec sessions list` returns valid JSON
-- [ ] Test `telec sessions start` with required params
-- [ ] Test `telec workflow prepare --slug test-slug`
-- [ ] Test `telec infra computers` returns computer list
-- [ ] Test `telec channels list` returns JSON
-- [ ] Test `telec docs` returns snippet index (no IDs)
-- [ ] Test `telec docs id1,id2` returns full snippet content (with IDs)
-- [ ] Test `telec infra help` returns capabilities text
+### Task 5.3: Regression tests
 
-### Task 4.3: Help text quality verification
-
-- [ ] Verify every subcommand `--help` includes Examples section
-- [ ] Verify every parameter appears in at least one example
-- [ ] Verify behavioral guidance from MCP descriptions is present
-- [ ] Verify complex tools (render_widget) have multiple examples
-      covering different input shapes
-
-### Task 4.4: Regression tests
-
-- [ ] Run `make lint`
-- [ ] Run `make test`
-- [ ] Verify `telec sync`, `telec init`, `telec docs`, `telec todo`, `telec config` unchanged
-- [ ] Verify `telec list` is removed (replaced by `telec sessions list`)
-- [ ] Verify `telec sessions list` returns session data
-- [ ] Verify `telec --help` shows new subcommand groups (no legacy aliases)
-- [ ] Verify TUI still works (existing REST endpoints unaffected)
+- [ ] Run `make lint` and `make test`
+- [ ] Verify existing commands unaffected
+- [ ] Verify TUI still works
+- [ ] Verify `telec --help` shows correct structure
 
 ---
 
 ## File Summary
 
-| File                              | Action  | Purpose                                                  |
-| --------------------------------- | ------- | -------------------------------------------------------- |
-| `teleclaude/api/` route modules   | **new** | 12 REST endpoints across resource groups                 |
-| `teleclaude/cli/tool_client.py`   | **new** | Sync HTTP client for CLI calls                           |
-| `teleclaude/cli/tool_commands.py` | **new** | Subcommand group handlers with rich help                 |
-| `teleclaude/api_server.py`        | modify  | Mount new routers                                        |
-| `teleclaude/cli/telec.py`         | modify  | New enum values, CLI_SURFACE, dispatch, enrich docs help |
-| `docs/.../telec-cli.md`           | modify  | Add @exec directives for baseline tools                  |
+| File                              | Action  | Purpose                                       |
+| --------------------------------- | ------- | --------------------------------------------- |
+| `teleclaude/api/auth.py`          | **new** | Role enforcement dependency                   |
+| `teleclaude/api/todo_routes.py`   | **new** | Todo/workflow REST endpoints                  |
+| `teleclaude/cli/tool_client.py`   | **new** | Sync HTTP client for CLI                      |
+| `teleclaude/cli/tool_commands.py` | **new** | CLI subcommand handlers                       |
+| `teleclaude/api_server.py`        | modify  | New session + deploy endpoints, mount routers |
+| `teleclaude/cli/telec.py`         | modify  | CLI surface, dispatch, completions            |
+| `docs/.../telec-cli.md`           | modify  | Add @exec directives                          |
 
 ## Scope Note
 
-This is 3 new files + 3 modifications. The new code is mechanical (wiring
-existing backend functions through REST → CLI), but there are 22 subcommands
-and 12 new endpoints — total volume is significant. If a builder runs into
-context pressure, the natural split point is: Phase 1-2 (API + client) as
-one session, Phase 3-4 (CLI + help + validation) as a second.
+4 new files + 3 modifications. Natural split if context pressure:
+Phase 1-3 (auth + API + client) as one session, Phase 4-5 (CLI + help +
+validation) as a second.

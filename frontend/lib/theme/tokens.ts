@@ -1,10 +1,12 @@
 /**
  * Design tokens for the TeleClaude color system.
  *
- * Replaces curses color pair IDs with semantic hex colors. All agent palettes,
- * animation palettes, z-layer backgrounds, and dark/light mode variants live here.
+ * NOTE: lib/theme/tokens.css is the visual source of truth for the frontend.
+ * Edit that file to get color pickers and auto-completion.
  *
- * No side effects on import.
+ * This file provides the logic-level access to hex values for non-CSS contexts:
+ *   - Canvas animations (blending, interpolation)
+ *   - CLI / Terminal rendering (Ink)
  */
 
 // ---------------------------------------------------------------------------
@@ -64,17 +66,9 @@ export interface ThemeTokens {
 }
 
 // ---------------------------------------------------------------------------
-// Agent color palettes
+// Agent color palettes (Synced with tokens.css)
 // ---------------------------------------------------------------------------
 
-/**
- * Agent colors in dark mode.
- *
- * Xterm-256 origins (documented for traceability):
- *   Claude:  subtle=94, muted=137, normal=180, highlight=231, haze=#af875f
- *   Gemini:  subtle=103, muted=141, normal=183, highlight=231, haze=#af87ff
- *   Codex:   subtle=67, muted=110, normal=153, highlight=231, haze=#87afaf
- */
 const AGENT_COLORS_DARK = {
   claude: {
     subtle: '#875f00',
@@ -99,14 +93,6 @@ const AGENT_COLORS_DARK = {
   },
 } as const satisfies Record<AgentType, AgentPalette>
 
-/**
- * Agent colors in light mode.
- *
- * Xterm-256 origins:
- *   Claude:  subtle=180, muted=137, normal=94, highlight=16, haze=#af875f
- *   Gemini:  subtle=177, muted=135, normal=90, highlight=16, haze=#af5fff
- *   Codex:   subtle=110, muted=67, normal=24, highlight=16, haze=#5f8787
- */
 const AGENT_COLORS_LIGHT = {
   claude: {
     subtle: '#d7af87',
@@ -149,18 +135,19 @@ export function safeAgent(agent: string): AgentType {
 }
 
 // ---------------------------------------------------------------------------
+// User colors
+// ---------------------------------------------------------------------------
+
+export const USER_COLORS = {
+  bubbleBg: '#e07030',
+  bubbleText: '#ffffff',
+} as const
+
+// ---------------------------------------------------------------------------
 // Animation palettes
 // ---------------------------------------------------------------------------
 
-/**
- * Named color arrays for animations.
- *
- * The spectrum palette replaces curses pairs 30-36 (Red, Yellow, Green, Cyan,
- * Blue, Magenta, White). Themed palettes provide smooth gradients with 8+
- * colors generated via HSL interpolation.
- */
 export const ANIMATION_PALETTES = {
-  /** Full rainbow HSL cycle (replaces curses SpectrumPalette pairs 30-36). */
   spectrum: [
     '#ff0000', // Red
     '#ffff00', // Yellow
@@ -170,8 +157,6 @@ export const ANIMATION_PALETTES = {
     '#ff00ff', // Magenta
     '#ffffff', // White
   ],
-
-  /** Reds, oranges, yellows -- warm combustion gradient. */
   fire: [
     '#330000',
     '#661100',
@@ -184,8 +169,6 @@ export const ANIMATION_PALETTES = {
     '#ffee66',
     '#ffffaa',
   ],
-
-  /** Blues, teals, cyans -- deep ocean to surf. */
   ocean: [
     '#001133',
     '#002255',
@@ -198,8 +181,6 @@ export const ANIMATION_PALETTES = {
     '#66eeee',
     '#aaffff',
   ],
-
-  /** Greens, browns -- forest floor to canopy. */
   forest: [
     '#1a0f00',
     '#332200',
@@ -212,8 +193,6 @@ export const ANIMATION_PALETTES = {
     '#bbdd88',
     '#ddeebb',
   ],
-
-  /** Oranges, pinks, purples -- warm to cool horizon. */
   sunset: [
     '#ff6633',
     '#ff5544',
@@ -226,122 +205,96 @@ export const ANIMATION_PALETTES = {
     '#5555ff',
     '#4477ff',
   ],
-
-  /** Section palette: Telegram (Blue, White). */
   telegram: ['#0000ff', '#ffffff'],
-
-  /** Section palette: WhatsApp (Green, White). */
   whatsapp: ['#00ff00', '#ffffff'],
-
-  /** Section palette: Discord (Blue, Magenta, White). */
   discord: ['#0000ff', '#ff00ff', '#ffffff'],
-
-  /** Section palette: AI Keys (Green, Yellow). */
   aiKeys: ['#00ff00', '#ffff00'],
-
-  /** Section palette: People (White). */
   people: ['#ffffff'],
-
-  /** Section palette: Notifications (Yellow, White). */
   notifications: ['#ffff00', '#ffffff'],
-
-  /** Section palette: Environment (Green, Cyan). */
   environment: ['#00ff00', '#00ffff'],
-
-  /** Section palette: Validate (Green, Red). */
   validate: ['#00ff00', '#ff0000'],
 } as const
 
 export type AnimationPaletteName = keyof typeof ANIMATION_PALETTES
 
 // ---------------------------------------------------------------------------
-// Theme mode tokens
+// Theme mode tokens (Synced with tokens.css)
 // ---------------------------------------------------------------------------
 
-/**
- * Dark mode token set.
- *
- * Z-layer backgrounds use terminal default (transparent) in curses. In the
- * TypeScript port we provide explicit dark tones for non-terminal contexts
- * while keeping `base` as close to terminal default as possible.
- */
 const DARK_TOKENS: ThemeTokens = {
   bg: {
     base: '#000000',
-    surface: '#262626',    // panel surface (matches TUI theme.py)
-    elevated: '#303030',   // slightly lighter panel (matches TUI theme.py)
+    surface: '#262626',
+    elevated: '#303030',
     overlay: 'rgba(0, 0, 0, 0.6)',
   },
   text: {
-    primary: '#d0d0d0',    // soft light gray (matches TUI foreground)
-    secondary: '#bcbcbc',  // xterm 250
-    muted: '#808080',      // xterm 244
+    primary: '#d0d0d0',
+    secondary: '#bcbcbc',
+    muted: '#808080',
   },
   border: {
-    default: '#585858',    // xterm 240
-    subtle: '#3a3a3a',     // xterm 237
-    modal: '#bcbcbc',      // xterm 250 -- crisp line
-    input: '#8a8a8a',      // xterm 245
+    default: '#585858',
+    subtle: '#3a3a3a',
+    modal: '#bcbcbc',
+    input: '#8a8a8a',
   },
   selection: {
-    base: '#444444',       // xterm 238
-    surface: '#4e4e4e',    // xterm 239
-    elevated: '#585858',   // xterm 240
+    base: '#444444',
+    surface: '#4e4e4e',
+    elevated: '#585858',
   },
   status: {
-    active: '#5faf5f',     // xterm 71
-    idle: '#585858',       // xterm 240
-    error: '#ff5f5f',      // xterm 203
-    ready: '#5faf5f',      // xterm 71
-    warning: '#d7af00',    // xterm 178
+    active: '#5faf5f',
+    idle: '#585858',
+    error: '#ff5f5f',
+    ready: '#5faf5f',
+    warning: '#d7af00',
   },
-  banner: '#585858',       // xterm 240
-  tabLine: '#585858',      // xterm 240
+  banner: '#585858',
+  tabLine: '#585858',
   peaceful: {
-    normal: '#bcbcbc',     // xterm 250 -- 70% gray
-    muted: '#585858',      // xterm 240 -- 40% gray
+    normal: '#bcbcbc',
+    muted: '#585858',
   },
   statusBarFg: '#727578',
 }
 
-/**
- * Light mode token set.
- */
 const LIGHT_TOKENS: ThemeTokens = {
   bg: {
-    base: '#fdf6e3',       // warm paper (matches TUI _LIGHT_MODE_PAPER_BG)
-    surface: '#f0ead8',    // slightly darker paper (matches TUI theme.py)
-    elevated: '#e8e0cc',   // panel surface (matches TUI theme.py)
+    base: '#fdf6e3',
+    surface: '#f0ead8',
+    elevated: '#e8e0cc',
     overlay: 'rgba(255, 255, 255, 0.6)',
   },
   text: {
-    primary: '#303030',    // near-black (matches TUI foreground)
-    secondary: '#444444',  // xterm 238
-    muted: '#808080',      // xterm 244
+    primary: '#303030',
+    secondary: '#444444',
+    muted: '#808080',
   },
   border: {
-    default: '#a8a8a8',    // xterm 248
-    subtle: '#c6c6c6',     // xterm 251
-    modal: '#303030',      // xterm 236 -- crisp line
-    input: '#585858',      // xterm 240
+    default: '#a8a8a8',
+    subtle: '#c6c6c6',
+    modal: '#303030',
+    input: '#585858',
   },
   selection: {
-    base: '#d0d0d0',       // xterm 252
-    surface: '#c6c6c6',    // xterm 251
-    elevated: '#bcbcbc',   // xterm 250
+    base: '#d0d0d0',
+    surface: '#c6c6c6',
+    elevated: '#bcbcbc',
   },
   status: {
-    active: '#008700',     // xterm 28
-    idle: '#a8a8a8',       // xterm 248
-    error: '#d70000',      // xterm 160
-    ready: '#008700',      // xterm 28
-    warning: '#af8700',    // xterm 136
+    active: '#008700',
+    idle: '#a8a8a8',
+    error: '#d70000',
+    ready: '#008700',
+    warning: '#af8700',
   },
-  banner: '#808080',       // xterm 244
-  tabLine: '#808080',      // xterm 244
+  banner: '#808080',
+  tabLine: '#808080',
   peaceful: {
-    normal: '#444444',     // xterm 238 -- 30% gray
-    muted: '#808080',      // xterm 244 -- 60% gray
+    normal: '#444444',
+    muted: '#808080',
   },
   statusBarFg: '#727578',
 }
@@ -356,7 +309,6 @@ export const THEME_TOKENS: Record<ThemeMode, ThemeTokens> = {
 // Haze / blend configuration
 // ---------------------------------------------------------------------------
 
-/** Haze blend percentages for tmux pane background theming. */
 export const HAZE_CONFIG = {
   paneInactive: 0.18,
   paneTreeSelected: 0.08,
@@ -371,32 +323,17 @@ export const HAZE_CONFIG = {
 // Theme detection
 // ---------------------------------------------------------------------------
 
-/**
- * Detect the current theme mode at runtime.
- *
- * Precedence:
- *   1. APPEARANCE_MODE env var (terminal context)
- *   2. `prefers-color-scheme` media query (browser context)
- *   3. Dark mode default
- *
- * This function has no side effects and is safe to call repeatedly.
- */
 export function detectThemeMode(): ThemeMode {
-  // Terminal context: check env var.
   if (typeof process !== 'undefined' && process.env?.APPEARANCE_MODE) {
     const env = process.env.APPEARANCE_MODE.trim().toLowerCase()
     if (env === 'light') return 'light'
     if (env === 'dark') return 'dark'
   }
-
-  // Browser context: check media query.
   if (typeof window !== 'undefined' && window.matchMedia) {
     if (window.matchMedia('(prefers-color-scheme: light)').matches) {
       return 'light'
     }
   }
-
-  // Default to dark.
   return 'dark'
 }
 
@@ -404,7 +341,6 @@ export function detectThemeMode(): ThemeMode {
 // Color utilities
 // ---------------------------------------------------------------------------
 
-/** Convert hex (#RRGGBB) to [r, g, b] tuple (0-255). */
 export function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace('#', '')
   return [
@@ -414,17 +350,11 @@ export function hexToRgb(hex: string): [number, number, number] {
   ]
 }
 
-/** Convert [r, g, b] tuple (0-255) to #RRGGBB string. */
 export function rgbToHex(r: number, g: number, b: number): string {
   const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)))
   return `#${clamp(r).toString(16).padStart(2, '0')}${clamp(g).toString(16).padStart(2, '0')}${clamp(b).toString(16).padStart(2, '0')}`
 }
 
-/**
- * Blend two hex colors by a percentage.
- *
- * Formula: result = base * (1 - pct) + overlay * pct
- */
 export function blendColors(base: string, overlay: string, pct: number): string {
   const [br, bg, bb] = hexToRgb(base)
   const [or, og, ob] = hexToRgb(overlay)

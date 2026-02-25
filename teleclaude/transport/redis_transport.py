@@ -1098,6 +1098,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 channel_metadata=parsed.channel_metadata,
                 launch_intent=parsed.launch_intent,
                 origin=parsed.origin,
+                initiator=parsed.initiator,
             )
             command.request_id = message_id
 
@@ -1148,14 +1149,21 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
             target_session_id = args[0]
             source_computer = args[1]
-            title_b64 = args[2] if len(args) > 2 else None
+            title_b64 = args[2] if len(args) > 2 and args[2] != "-" else None
+            output_b64 = args[3] if len(args) > 3 else None
             resolved_title = None
+            linked_output = None
 
             if title_b64:
                 try:
                     resolved_title = base64.b64decode(title_b64).decode()
                 except Exception as e:
                     logger.warning("Failed to decode stop_notification title: %s", e)
+            if output_b64:
+                try:
+                    linked_output = base64.b64decode(output_b64).decode()
+                except Exception as e:
+                    logger.warning("Failed to decode stop_notification linked output: %s", e)
 
             event_data: dict[str, object] = {
                 "session_id": target_session_id,
@@ -1163,6 +1171,8 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             }
             if resolved_title:
                 event_data["title"] = resolved_title
+            if linked_output:
+                event_data["linked_output"] = linked_output
 
             context = AgentEventContext(
                 session_id=target_session_id,

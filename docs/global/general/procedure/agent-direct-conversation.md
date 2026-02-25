@@ -82,6 +82,7 @@ Rules:
 2. **Absorption is the default.** When peer input arrives, absorb it. You are not required to respond. The anchor is your dominant intent.
 3. **If you choose to respond, set a new anchor first.** Before saying anything to another agent, plant the flag: "I'm coming back to my work after this."
 4. **The anchor always wins.** When it fires, return to work. No exceptions.
+5. **Intent invalidation.** When a Note To Self fires, check whether user intervention has occurred since the note was set. If the user has changed direction, spoken to a worker, or provided new context, the note's encoded intent is stale — discard it, re-evaluate from the current state, and set a fresh note if needed. Never follow through on instructions from a note that was set before a context change.
 
 > **Note To Self:** The heartbeat is just a pinch. Am I on track? Yes — continue. No — adjust. That's it. Don't overthink it.
 

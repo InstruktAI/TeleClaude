@@ -41,7 +41,7 @@ class TestCreateBugSkeleton:
         assert "## Fix Applied" in content
 
     def test_create_bug_skeleton_creates_state_yaml_at_build_phase(self, tmp_path: Path):
-        """Verify state.yaml has phase: in_progress, build: pending, review: pending."""
+        """Verify state.yaml has build: started, review: pending."""
         project_root = tmp_path
         slug = "fix-test-bug"
 
@@ -55,8 +55,7 @@ class TestCreateBugSkeleton:
         assert state_yaml.exists()
 
         state = yaml.safe_load(state_yaml.read_text())
-        assert state["phase"] == "in_progress"
-        assert state["build"] == "pending"
+        assert state["build"] == "started"
         assert state["review"] == "pending"
         assert state["dor"] is None
 

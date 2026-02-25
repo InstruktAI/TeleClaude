@@ -1,0 +1,269 @@
+#!/usr/bin/env bash
+# Git wrapper for TeleClaude agent sessions.
+# Blocks destructive git operations and non-canonical pushes to origin/main.
+# Installed via `telec init` into ~/.teleclaude/bin/git.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CANONICAL_ROOT="{{CANONICAL_ROOT}}"
+MARKER="TELECLAUDE_GIT_PUSH_MAIN_GUARD_BLOCK"
+LOG_FILE="${HOME}/.teleclaude/logs/guardrails.log"
+
+_real_git() {
+    IFS=: read -ra path_parts <<< "$PATH"
+    for dir in "${path_parts[@]}"; do
+        [ "$dir" = "$SCRIPT_DIR" ] && continue
+        if [ -x "$dir/git" ]; then
+            "$dir/git" "$@"
+            return $?
+        fi
+    done
+    echo "ERROR: real git binary not found in PATH" >&2
+    exit 1
+}
+
+_read_session_id() {
+    if [ -n "${TELECLAUDE_SESSION_ID:-}" ]; then
+        printf '%s' "$TELECLAUDE_SESSION_ID"
+        return
+    fi
+    local sid_file="${TMPDIR:-}/teleclaude_session_id"
+    if [ -f "$sid_file" ]; then
+        tr -d '\n' < "$sid_file"
+        return
+    fi
+    printf 'unknown'
+}
+
+_log_block() {
+    local branch="$1"
+    local local_ref="$2"
+    local command="$3"
+    local repo_root="$4"
+    local common_root="$5"
+    local session_id="$6"
+    local ts
+    ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+    mkdir -p "$(dirname "$LOG_FILE")"
+    printf '%s marker=%s cwd=%q branch=%q local_ref=%q target=%q command=%q session=%q repo_root=%q canonical_root=%q common_root=%q\n' \
+        "$ts" "$MARKER" "$PWD" "$branch" "$local_ref" "refs/heads/main" "$command" "$session_id" "$repo_root" "$CANONICAL_ROOT" "$common_root" \
+        >> "$LOG_FILE"
+}
+
+# Find the actual git subcommand by skipping global flags.
+_subcmd=""
+_subcmd_index=0
+_skip_next=0
+_index=0
+for _arg in "$@"; do
+    _index=$((_index + 1))
+    if [ "$_skip_next" -eq 1 ]; then
+        _skip_next=0
+        continue
+    fi
+    case "$_arg" in
+        -C|-c|--git-dir|--work-tree|--namespace)
+            _skip_next=1
+            ;;
+        --git-dir=*|--work-tree=*|--namespace=*|-c*)
+            ;;
+        --bare|--no-pager|--paginate|--no-replace-objects|--literal-pathspecs|--glob-pathspecs|--no-optional-locks)
+            ;;
+        -*)
+            ;;
+        *)
+            _subcmd="$_arg"
+            _subcmd_index=$_index
+            break
+            ;;
+    esac
+done
+
+# Blocked subcommands (version-control-safety policy)
+case "$_subcmd" in
+    stash)
+        echo "ERROR: 'git stash' is prohibited in agent sessions. Use commits instead." >&2
+        exit 1
+        ;;
+    checkout)
+        echo "ERROR: 'git checkout' is prohibited in agent sessions. Use 'git switch' for branches or commits for file changes." >&2
+        exit 1
+        ;;
+    restore)
+        echo "ERROR: 'git restore' is prohibited in agent sessions. Commit or discard intentionally." >&2
+        exit 1
+        ;;
+    clean)
+        echo "ERROR: 'git clean' is prohibited in agent sessions. Do not delete untracked files." >&2
+        exit 1
+        ;;
+esac
+
+# Block reset with destructive flags
+if [ "$_subcmd" = "reset" ]; then
+    for arg in "$@"; do
+        case "$arg" in
+            --hard|--merge|--keep)
+                echo "ERROR: 'git reset $arg' is prohibited in agent sessions. Do not discard commits." >&2
+                exit 1
+                ;;
+        esac
+    done
+fi
+
+# Guard push-to-main from non-canonical contexts (including --no-verify bypass attempts)
+if [ "$_subcmd" = "push" ]; then
+    # Scope this guard to the TeleClaude canonical repo only.
+    common_root="$(cd "$(_real_git rev-parse --git-common-dir)/.." && pwd -P 2>/dev/null || true)"
+    if [ "$common_root" = "$CANONICAL_ROOT" ]; then
+        repo_root="$(_real_git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
+        branch="$(_real_git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+        git_dir="$(_real_git rev-parse --git-dir 2>/dev/null || echo .git)"
+        git_common_dir="$(_real_git rev-parse --git-common-dir 2>/dev/null || echo .git)"
+        session_id="$(_read_session_id)"
+
+        push_args=()
+        if [ "$_subcmd_index" -gt 0 ]; then
+            start=$((_subcmd_index + 1))
+            if [ "$start" -le "$#" ]; then
+                while [ "$start" -le "$#" ]; do
+                    eval "arg=\${$start}"
+                    push_args+=("$arg")
+                    start=$((start + 1))
+                done
+            fi
+        fi
+
+        target_main=0
+        local_ref=""
+        remote_seen=0
+        remote_name=""
+        expect_value=0
+        refspecs=()
+
+        for arg in "${push_args[@]}"; do
+            if [ "$expect_value" -eq 1 ]; then
+                expect_value=0
+                continue
+            fi
+            case "$arg" in
+                --repo|--receive-pack|--exec|-o|--push-option)
+                    expect_value=1
+                    continue
+                    ;;
+                --repo=*|--receive-pack=*|--exec=*|--push-option=*|--force-with-lease=*)
+                    continue
+                    ;;
+                --all|--mirror)
+                    if _real_git show-ref --verify --quiet refs/heads/main; then
+                        target_main=1
+                        local_ref="refs/heads/main"
+                    fi
+                    ;;
+                --*)
+                    continue
+                    ;;
+                -*)
+                    continue
+                    ;;
+                *)
+                    if [ "$remote_seen" -eq 0 ]; then
+                        remote_seen=1
+                        remote_name="$arg"
+                        continue
+                    fi
+                    refspecs+=("$arg")
+                    ;;
+            esac
+        done
+
+        if [ "${#refspecs[@]}" -eq 0 ]; then
+            if [ "$branch" = "main" ]; then
+                target_main=1
+                local_ref="refs/heads/main"
+            fi
+            if [ "$target_main" -eq 0 ]; then
+                push_default="$(_real_git config --get push.default 2>/dev/null || true)"
+                [ -z "$push_default" ] && push_default="simple"
+
+                upstream_ref="$(_real_git rev-parse --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+                upstream_remote=""
+                upstream_branch=""
+                if [[ "$upstream_ref" == refs/remotes/*/* ]]; then
+                    upstream_path="${upstream_ref#refs/remotes/}"
+                    upstream_remote="${upstream_path%%/*}"
+                    upstream_branch="${upstream_path#*/}"
+                fi
+
+                case "$push_default" in
+                    upstream)
+                        if [ "$upstream_branch" = "main" ]; then
+                            if [ -z "$remote_name" ] || [ -z "$upstream_remote" ] || [ "$remote_name" = "$upstream_remote" ]; then
+                                target_main=1
+                                local_ref="refs/heads/$branch"
+                            fi
+                        fi
+                        ;;
+                    current)
+                        if [ "$branch" = "main" ]; then
+                            target_main=1
+                            local_ref="refs/heads/main"
+                        fi
+                        ;;
+                    matching)
+                        if _real_git show-ref --verify --quiet refs/heads/main; then
+                            target_main=1
+                            local_ref="refs/heads/main"
+                        fi
+                        ;;
+                esac
+            fi
+        else
+            for refspec in "${refspecs[@]}"; do
+                src="$refspec"
+                dst="$refspec"
+                if [[ "$refspec" == *:* ]]; then
+                    src="${refspec%%:*}"
+                    dst="${refspec#*:}"
+                fi
+                [ -z "$dst" ] && continue
+                if [ "$dst" = "main" ] || [ "$dst" = "refs/heads/main" ]; then
+                    target_main=1
+                    if [ "$src" = "main" ] || [ "$src" = "refs/heads/main" ]; then
+                        local_ref="refs/heads/main"
+                    elif [ -n "$src" ] && [ "$src" != "$refspec" ]; then
+                        local_ref="$src"
+                    else
+                        local_ref="refs/heads/$src"
+                    fi
+                    break
+                fi
+            done
+        fi
+
+        if [ "$target_main" -eq 1 ]; then
+            canonical_context=0
+            if [ "$repo_root" = "$CANONICAL_ROOT" ] \
+                && [ "$branch" = "main" ] \
+                && [ "$local_ref" = "refs/heads/main" ] \
+                && [ "$git_dir" = "$git_common_dir" ]; then
+                canonical_context=1
+            fi
+
+            if [ "$canonical_context" -ne 1 ]; then
+                _log_block "$branch" "$local_ref" "git $*" "$repo_root" "$common_root" "$session_id"
+                echo "GUARDRAIL_MARKER: ${MARKER}" >&2
+                cat >&2 <<'MSG'
+ERROR: MAIN_GUARDRAIL_BLOCKED
+Main-targeting operations are allowed only from the canonical repository root on branch main.
+Stop now and report FINALIZE_READY to the orchestrator so finalize-apply can run in canonical context.
+MSG
+                exit 1
+            fi
+        fi
+    fi
+fi
+
+_real_git "$@"

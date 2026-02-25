@@ -220,6 +220,14 @@ Usage:
         metadata = self._metadata()
         metadata.channel_metadata = metadata.channel_metadata or {}
         metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
+        metadata.channel_metadata["user_id"] = str(update.effective_user.id)
+        display_name = (
+            update.effective_user.username
+            or update.effective_user.full_name
+            or update.effective_user.first_name
+            or f"telegram-{update.effective_user.id}"
+        )
+        metadata.channel_metadata["user_name"] = str(display_name)
 
         cmd = CommandMapper.map_telegram_input(
             event="message",
@@ -315,6 +323,13 @@ Usage:
                     message_id=str(message.message_id),
                     message_thread_id=message.message_thread_id,
                     origin=self._metadata().origin,
+                    actor_id=f"telegram:{update.effective_user.id}",
+                    actor_name=(
+                        update.effective_user.username
+                        or update.effective_user.full_name
+                        or update.effective_user.first_name
+                        or f"telegram:{update.effective_user.id}"
+                    ),
                 )
             )
         except Exception as e:

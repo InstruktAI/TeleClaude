@@ -1,0 +1,25 @@
+{
+  "slug": "bidirectional-agent-links",
+  "title": "Bidirectional Agent Links",
+  "version": "0.1.0",
+  "delivered_date": "2026-02-24",
+  "merge_commit": "7e8184c3692c5913522a5d1c80992fdbcc3bda99",
+  "metrics": {
+    "commits": 6,
+    "files_changed": 44,
+    "files_created": 11,
+    "insertions": 2022,
+    "deletions": 1697,
+    "test_files_added": 1,
+    "review_rounds": 4,
+    "critical_findings": 1,
+    "important_findings": 2,
+    "suggestions": 3
+  },
+  "acts": {
+    "challenge": "Replace the legacy direct relay with a shared conversation-link primitive while preserving worker notification behavior and enabling both 2-party and 3+ member coordination.",
+    "build": "The delivery added normalized link/membership persistence, direct handshake and close-link semantics, sender-excluded fan-out, linked stop-output routing, cross-computer forwarding support, and session-end cleanup while removing session_relay runtime paths.",
+    "gauntlet": "Review identified one critical and two important issues; targeted fixes added per-peer exception isolation and strict scoped close-link behavior, with regression coverage and passing lint/tests before finalize apply.",
+    "next": "Run a live two-computer manual trace to validate end-to-end linked-output UX under real cross-computer conditions and keep gathering workflows aligned to the shared link contract."
+  }
+}

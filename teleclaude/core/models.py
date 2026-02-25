@@ -381,6 +381,9 @@ class MessageMetadata:
     launch_intent: Optional["SessionLaunchIntent"] = None
     is_transcription: bool = False
     cleanup_trigger: Optional[str] = None
+    reflection_actor_id: Optional[str] = None
+    reflection_actor_name: Optional[str] = None
+    reflection_actor_avatar_url: Optional[str] = None
 
 
 @dataclass
@@ -843,6 +846,7 @@ class SessionSnapshot:
     subdir: Optional[str] = None
     created_at: Optional[str] = None
     last_activity: Optional[str] = None
+    closed_at: Optional[str] = None
     last_input: Optional[str] = None
     last_input_at: Optional[str] = None
     last_output_summary: Optional[str] = None
@@ -869,6 +873,7 @@ class SessionSnapshot:
             "status": self.status,
             "created_at": self.created_at,
             "last_activity": self.last_activity,
+            "closed_at": self.closed_at,
             "last_input": self.last_input,
             "last_input_at": self.last_input_at,
             "last_output_summary": self.last_output_summary,

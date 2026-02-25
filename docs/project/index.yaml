@@ -107,6 +107,14 @@ snippets:
   path: docs/project/design/architecture/help-desk-platform.md
   role: member
   source_project: TeleClaude
+- id: project/design/architecture/hook-service
+  description: Contract-based pub/sub webhook service for event routing, inbound webhook
+    reception, and durable external delivery.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/hook-service.md
+  role: member
+  source_project: TeleClaude
 - id: project/design/architecture/jobs-runner
   description: 'Scheduled job runner: architecture, job contract, and configuration
     surface.'
@@ -251,6 +259,13 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/web-api-facade.md
+  role: member
+  source_project: TeleClaude
+- id: project/design/architecture/web-interface
+  description: High-level architecture of the TeleClaude Next.js web interface.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/web-interface.md
   role: member
   source_project: TeleClaude
 - id: project/design/ux/session-highlight
@@ -559,6 +574,14 @@ snippets:
   path: docs/project/spec/hook-normalized-events.md
   role: member
   source_project: TeleClaude
+- id: project/spec/identity-and-auth
+  description: Authoritative surface for system-wide identity, authentication, and
+    person management.
+  type: spec
+  scope: project
+  path: docs/project/spec/identity-and-auth.md
+  role: member
+  source_project: TeleClaude
 - id: project/spec/jobs/log-bug-hunter
   description: Hourly agent job that scans daemon logs for errors, fixes inline or
     dispatches to bug pipeline.
@@ -629,7 +652,8 @@ snippets:
   role: member
   source_project: TeleClaude
 - id: project/spec/session-output-routing
-  description: Routing rules for session output across UI adapters (Telegram, Discord).
+  description: Canonical routing contract for session messages across origin UX and
+    admin lanes.
   type: spec
   scope: project
   path: docs/project/spec/session-output-routing.md

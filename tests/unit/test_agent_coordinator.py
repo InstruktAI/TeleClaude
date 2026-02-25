@@ -13,6 +13,8 @@ from teleclaude.core.agent_coordinator import (
 from teleclaude.core.agents import AgentName
 from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload, UserPromptSubmitPayload
 from teleclaude.core.models import Session
+from teleclaude.core.origins import InputOrigin
+from teleclaude.types.commands import ProcessMessageCommand
 
 
 @pytest.fixture(autouse=True)
@@ -257,6 +259,88 @@ async def test_user_prompt_submit_persists_non_checkpoint_codex_synthetic_prompt
 
         mock_db.set_notification_flag.assert_called_once_with("sess-1", False)
         assert mock_db.update_session.await_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_user_prompt_submit_broadcasts_hook_input_for_non_headless_sessions(coordinator, mock_client):
+    session = Session(
+        session_id="sess-1",
+        computer_name="macbook",
+        tmux_session_name="tmux-1",
+        title="Active test",
+        active_agent="claude",
+        lifecycle_status="active",
+    )
+    payload = UserPromptSubmitPayload(prompt="please continue", session_id="sess-1")
+    context = AgentEventContext(
+        event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+        session_id="sess-1",
+        data=payload,
+    )
+
+    mock_client.broadcast_user_input = AsyncMock()
+    with patch("teleclaude.core.agent_coordinator.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.set_notification_flag = AsyncMock()
+        mock_db.update_session = AsyncMock()
+        with patch.object(coordinator, "_emit_activity_event") as mock_emit:
+            await coordinator.handle_user_prompt_submit(context)
+            mock_emit.assert_called_once_with("sess-1", AgentHookEvents.USER_PROMPT_SUBMIT)
+
+    mock_client.broadcast_user_input.assert_awaited_once()
+    broadcast_call = mock_client.broadcast_user_input.await_args
+    assert broadcast_call.args == (session, "please continue", InputOrigin.HOOK.value)
+    assert isinstance(broadcast_call.kwargs.get("actor_id"), str)
+    assert broadcast_call.kwargs["actor_id"].endswith(":sess-1")
+    assert isinstance(broadcast_call.kwargs.get("actor_name"), str)
+    assert broadcast_call.kwargs["actor_name"]
+
+
+@pytest.mark.asyncio
+async def test_user_prompt_submit_broadcasts_hook_input_for_headless_sessions(coordinator, mock_client):
+    session = Session(
+        session_id="sess-2",
+        computer_name="macbook",
+        tmux_session_name="tmux-2",
+        title="Headless test",
+        active_agent="claude",
+        lifecycle_status="headless",
+    )
+    payload = UserPromptSubmitPayload(prompt="please continue", session_id="sess-2")
+    context = AgentEventContext(
+        event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+        session_id="sess-2",
+        data=payload,
+    )
+
+    mock_client.broadcast_user_input = AsyncMock()
+    process_message = AsyncMock()
+    command_service = MagicMock()
+    command_service.process_message = process_message
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db") as mock_db,
+        patch("teleclaude.core.command_registry.get_command_service", return_value=command_service),
+        patch.object(coordinator, "_emit_activity_event") as mock_emit,
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.set_notification_flag = AsyncMock()
+        mock_db.update_session = AsyncMock()
+        await coordinator.handle_user_prompt_submit(context)
+        mock_emit.assert_called_once_with("sess-2", AgentHookEvents.USER_PROMPT_SUBMIT)
+
+    # In headless mode, coordinator delegates reflection to process_message path.
+    mock_client.broadcast_user_input.assert_not_awaited()
+    process_message.assert_awaited_once()
+    command = process_message.await_args.args[0]
+    assert isinstance(command, ProcessMessageCommand)
+    assert command.session_id == "sess-2"
+    assert command.text == "please continue"
+    assert command.origin == InputOrigin.HOOK.value
+    assert isinstance(command.actor_id, str)
+    assert command.actor_id.endswith(":sess-2")
+    assert isinstance(command.actor_name, str)
+    assert command.actor_name
 
 
 @pytest.mark.asyncio

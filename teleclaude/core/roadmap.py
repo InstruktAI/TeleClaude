@@ -88,7 +88,12 @@ def assemble_roadmap(
         findings_count = 0
         phase_status = "pending"
 
-        state_path = todo_dir / "state.yaml"
+        slug = todo_dir.name
+        project_root = Path(project_path)
+
+        # Worktree state takes precedence over main (active work reflects live progress)
+        worktree_state = project_root / "trees" / slug / "todos" / slug / "state.yaml"
+        state_path = worktree_state if worktree_state.exists() else todo_dir / "state.yaml"
         # Backward compat: fall back to state.json
         if not state_path.exists():
             legacy_path = todo_dir / "state.json"
@@ -98,22 +103,11 @@ def assemble_roadmap(
         if state_path.exists():
             try:
                 state = yaml.safe_load(state_path.read_text())
-                # Derive status from phase field
-                raw_phase = state.get("phase")
-                if raw_phase == "ready":
-                    # Migration: normalize persisted "ready" to "pending"
-                    phase_status = "pending"
-                elif isinstance(raw_phase, str) and raw_phase in ("pending", "in_progress", "done"):
-                    phase_status = raw_phase
-                else:
-                    # Migration: derive phase from existing fields
-                    build_val = state.get("build")
-                    if isinstance(build_val, str) and build_val != "pending":
-                        phase_status = "in_progress"
 
-                build_status = state.get("build") if isinstance(state.get("build"), str) else None
-                review_status = state.get("review") if isinstance(state.get("review"), str) else None
+                build_status = state.get("build") if isinstance(state.get("build"), str) else "pending"
+                review_status = state.get("review") if isinstance(state.get("review"), str) else "pending"
                 dor = state.get("dor")
+                dor_score = 0
                 if isinstance(dor, dict):
                     raw_score = dor.get("score")
                     if isinstance(raw_score, int):
@@ -125,13 +119,16 @@ def assemble_roadmap(
                 if isinstance(unresolved, list):
                     findings_count = len(unresolved)
 
-                # Build past pending means work has started
-                if phase_status == "pending" and build_status and build_status != "pending":
+                # Derive display status:
+                # - build != pending -> in_progress
+                # - build == pending + dor_score >= 8 -> ready
+                # - build == pending + dor_score < 8 -> pending
+                if build_status != "pending":
                     phase_status = "in_progress"
-
-                # Derive display status: pending + dor_score >= 8 shows as "ready"
-                if phase_status == "pending" and isinstance(dor_score, int) and dor_score >= 8:
+                elif dor_score >= 8:
                     phase_status = "ready"
+                else:
+                    phase_status = "pending"
             except (yaml.YAMLError, OSError):
                 pass
 

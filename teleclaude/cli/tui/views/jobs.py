@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from rich.text import Text
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
@@ -50,12 +51,18 @@ class JobsView(Widget, can_focus=True):
     """
 
     BINDINGS = [
-        ("up", "cursor_up", "Previous"),
-        ("down", "cursor_down", "Next"),
-        ("enter", "run_job", "Run job"),
+        Binding("up", "cursor_up", "Up", key_display="↑", group=Binding.Group("Nav", compact=True), show=False),
+        Binding("down", "cursor_down", "Down", key_display="↓", group=Binding.Group("Nav", compact=True), show=False),
+        Binding("enter", "run_job", "[b]Run[/b]", key_display="[b]↵[/b]"),
     ]
 
     cursor_index = reactive(0)
+
+    def watch_cursor_index(self, value: int) -> None:
+        """Update cursor highlight and refresh footer bindings on move."""
+        self._update_cursor_highlight()
+        if self.is_attached:
+            self.app.refresh_bindings()
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)

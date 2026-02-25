@@ -27,3 +27,7 @@
 @docs/third-party/gemini-cli/skills.md
 @docs/third-party/gemini-cli/sub-agents.md
 @docs/third-party/whatsapp/cloud-api.md
+@docs/third-party/whatsapp/media-api.md
+@docs/third-party/whatsapp/messages-api.md
+@docs/third-party/whatsapp/rate-limits-errors.md
+@docs/third-party/whatsapp/webhooks.md

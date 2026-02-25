@@ -2,21 +2,36 @@
 
 ## Overview
 
-- Summarize the approach and why it is appropriate.
+Small, focused change: expose version at runtime and add a CLI command. CI and
+release pipelines already exist and require no changes.
+
+---
 
 ## Phase 1: Core Changes
 
-### Task 1.1:
+### Task 1.1: Bump pyproject.toml version
 
-**File(s):** ``
+**File(s):** `pyproject.toml`
 
-- [ ] Complete this task
+- [ ] Change `version = "0.1.0"` to `version = "1.0.0"`
 
-### Task 1.2:
+### Task 1.2: Expose `__version__` at runtime
 
-**File(s):** ``
+**File(s):** `teleclaude/__init__.py`
 
-- [ ] Complete this task
+- [ ] Add `__version__` using `importlib.metadata.version("teleclaude")`
+- [ ] Add fallback: if `PackageNotFoundError`, parse version from pyproject.toml
+- [ ] Export `__version__` in `__all__` if one exists
+
+### Task 1.3: Add `telec version` command
+
+**File(s):** `teleclaude/cli/telec.py`
+
+- [ ] Add `VERSION = "version"` to `TelecCommand` enum
+- [ ] Add `"version": CommandDef(desc="Print version, channel, and commit")` to `CLI_SURFACE`
+- [ ] Add handler function that prints: `TeleClaude v{version} (channel: alpha, commit: {short_hash})`
+- [ ] Get commit hash via `git rev-parse --short HEAD` (subprocess, graceful fail)
+- [ ] Channel defaults to "alpha" (hardcoded until deployment-channels ships)
 
 ---
 
@@ -24,7 +39,8 @@
 
 ### Task 2.1: Tests
 
-- [ ] Add or update tests for the changed behavior
+- [ ] Unit test: `from teleclaude import __version__` returns a semver string
+- [ ] Unit test: `telec version` CLI output matches expected format
 - [ ] Run `make test`
 
 ### Task 2.2: Quality Checks

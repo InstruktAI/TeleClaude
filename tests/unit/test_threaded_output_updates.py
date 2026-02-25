@@ -49,7 +49,7 @@ def coordinator(mock_client, mock_tts_manager, mock_headless_snapshot_service):
 
 @pytest.mark.asyncio
 async def test_threaded_output_initial_send_stores_id_and_skips_cursor_update(coordinator, mock_client):
-    """Verify first output sends new message, stores ID, and does NOT update cursor."""
+    """Verify first incremental send stores ID and does NOT update cursor."""
     session_id = "session-123"
     payload = AgentOutputPayload(
         session_id="native-123",
@@ -57,8 +57,6 @@ async def test_threaded_output_initial_send_stores_id_and_skips_cursor_update(co
         source_computer="macbook",
         raw={"agent_name": "gemini"},
     )
-    context = AgentEventContext(event_type=AgentHookEvents.TOOL_DONE, session_id=session_id, data=payload)
-
     session = Session(
         session_id=session_id,
         computer_name="macbook",
@@ -84,7 +82,7 @@ async def test_threaded_output_initial_send_stores_id_and_skips_cursor_update(co
 
         mock_client.send_message.return_value = "msg_123"
 
-        await coordinator.handle_tool_done(context)
+        await coordinator._maybe_send_incremental_output(session_id, payload)
 
         # 1. Should call send_threaded_output
         mock_client.send_threaded_output.assert_called_once_with(session, "Message 1", multi_message=False)
@@ -98,7 +96,7 @@ async def test_threaded_output_initial_send_stores_id_and_skips_cursor_update(co
 
 @pytest.mark.asyncio
 async def test_threaded_output_subsequent_update_edits_message(coordinator, mock_client):
-    """Verify subsequent output edits existing message and skips cursor update."""
+    """Verify subsequent incremental output edits existing message and skips cursor update."""
     session_id = "session-123"
     payload = AgentOutputPayload(
         session_id="native-123",
@@ -106,8 +104,6 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
         source_computer="macbook",
         raw={"agent_name": "gemini"},
     )
-    context = AgentEventContext(event_type=AgentHookEvents.TOOL_DONE, session_id=session_id, data=payload)
-
     # Session with existing message ID in adapter metadata
     session = Session(
         session_id=session_id,
@@ -131,7 +127,7 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
         mock_get_messages.return_value = [{"role": "assistant", "content": []}]
         mock_render.return_value = ("Message 1 + 2", "timestamp_2")
 
-        await coordinator.handle_tool_done(context)
+        await coordinator._maybe_send_incremental_output(session_id, payload)
 
         # 1. Should call send_threaded_output to edit the existing message
         mock_client.send_threaded_output.assert_called_once_with(session, "Message 1 + 2", multi_message=True)
@@ -207,8 +203,6 @@ async def test_threaded_output_prefers_payload_agent_over_session_agent(coordina
         source_computer="macbook",
         raw={"agent_name": "claude"},
     )
-    context = AgentEventContext(event_type=AgentHookEvents.TOOL_DONE, session_id=session_id, data=payload)
-
     # Session metadata is stale (gemini), payload identity is claude.
     session = Session(
         session_id=session_id,
@@ -228,9 +222,116 @@ async def test_threaded_output_prefers_payload_agent_over_session_agent(coordina
         mock_get_session.return_value = session
         mock_enabled.side_effect = lambda agent: agent == "gemini"
 
-        await coordinator.handle_tool_done(context)
+        await coordinator._maybe_send_incremental_output(session_id, payload)
 
         # Claimed agent from payload should be used, disabling threaded output path.
         mock_enabled.assert_called_once_with("claude")
         mock_get_messages.assert_not_called()
         mock_client.send_threaded_output.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_trigger_incremental_output_fires_for_threaded_session(coordinator):
+    session_id = "session-123"
+    session = Session(
+        session_id=session_id,
+        computer_name="macbook",
+        tmux_session_name="tmux-123",
+        title="Test Session",
+        active_agent="gemini",
+        native_log_file="/path/to/transcript.jsonl",
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=True),
+        patch.object(
+            coordinator, "_maybe_send_incremental_output", new=AsyncMock(return_value=True)
+        ) as mock_maybe_send,
+    ):
+        mock_get_session.return_value = session
+        result = await coordinator.trigger_incremental_output(session_id)
+
+    assert result is True
+    mock_get_session.assert_awaited_once_with(session_id)
+    mock_maybe_send.assert_awaited_once()
+    payload = mock_maybe_send.await_args.args[1]
+    assert payload.session_id == session_id
+    assert payload.transcript_path == "/path/to/transcript.jsonl"
+
+
+@pytest.mark.asyncio
+async def test_trigger_incremental_output_skips_non_threaded_session(coordinator):
+    session_id = "session-124"
+    session = Session(
+        session_id=session_id,
+        computer_name="macbook",
+        tmux_session_name="tmux-124",
+        title="Test Session",
+        active_agent="claude",
+        native_log_file="/path/to/transcript.jsonl",
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=False),
+        patch.object(
+            coordinator, "_maybe_send_incremental_output", new=AsyncMock(return_value=False)
+        ) as mock_maybe_send,
+    ):
+        mock_get_session.return_value = session
+        result = await coordinator.trigger_incremental_output(session_id)
+
+    assert result is False
+    mock_get_session.assert_awaited_once_with(session_id)
+    mock_maybe_send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_tool_use_does_not_trigger_direct_incremental_output(coordinator):
+    """tool_use hooks stay control-plane and do not fan out output directly."""
+    session_id = "session-tool-use"
+    payload = AgentOutputPayload(
+        session_id="native-tool-use",
+        transcript_path="/path/to/transcript.jsonl",
+        source_computer="macbook",
+        raw={"tool_name": "Read"},
+    )
+    context = AgentEventContext(event_type=AgentHookEvents.TOOL_USE, session_id=session_id, data=payload)
+
+    session = Session(
+        session_id=session_id,
+        computer_name="macbook",
+        tmux_session_name="tmux-123",
+        title="Test Session",
+        active_agent="gemini",
+        native_log_file="/path/to/transcript.jsonl",
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch("teleclaude.core.agent_coordinator.db.update_session", new_callable=AsyncMock),
+        patch.object(coordinator, "_maybe_send_incremental_output", new=AsyncMock()) as mock_incremental,
+    ):
+        mock_get_session.return_value = session
+        await coordinator.handle_tool_use(context)
+
+    mock_incremental.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_tool_done_does_not_trigger_direct_incremental_output(coordinator):
+    """tool_done hooks stay control-plane and do not fan out output directly."""
+    session_id = "session-tool-done"
+    payload = AgentOutputPayload(
+        session_id="native-tool-done",
+        transcript_path="/path/to/transcript.jsonl",
+        source_computer="macbook",
+        raw={"agent_name": "gemini"},
+    )
+    context = AgentEventContext(event_type=AgentHookEvents.TOOL_DONE, session_id=session_id, data=payload)
+
+    with patch.object(coordinator, "_maybe_send_incremental_output", new=AsyncMock()) as mock_incremental:
+        await coordinator.handle_tool_done(context)
+
+    mock_incremental.assert_not_awaited()

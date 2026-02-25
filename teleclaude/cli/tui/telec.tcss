@@ -117,17 +117,15 @@ ConfigView {
 }
 
 /* ── Footer ────────────────────────────────────────────── */
-#footer {
+#footer-area {
     dock: bottom;
-    height: 4;
-}
-
-ActionBar {
     height: 3;
 }
 
-StatusBar {
-    height: 1;
+TelecFooter {
+    height: 3;
+    background: $panel;
+    color: $foreground;
 }
 
 /* ── Session tree rows ─────────────────────────────────── */

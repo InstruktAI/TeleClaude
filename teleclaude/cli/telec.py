@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time as _t
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
@@ -94,7 +95,7 @@ _PROJECT_ROOT_LONG = Flag("--project-root", desc="Project root (default: cwd)", 
 CLI_SURFACE: dict[str, CommandDef] = {
     "list": CommandDef(
         desc="List sessions (default: spawned by current, --all for all)",
-        flags=[_H, Flag("--all", desc="Show all sessions")],
+        flags=[_H, Flag("--all", desc="Show all sessions"), Flag("--closed", desc="Show closed sessions only")],
     ),
     "claude": CommandDef(
         desc="Start interactive Claude Code session",
@@ -161,15 +162,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=["If slug is omitted, all active todos are checked."],
             ),
             "demo": CommandDef(
-                desc="Run, validate, create, or list demo artifacts",
+                desc="Manage demo artifacts",
                 args="[validate|run|create] [slug]",
                 flags=[_PROJECT_ROOT_LONG],
                 notes=[
-                    "No args: list demos.",
-                    "run <slug>: execute demo blocks.",
-                    "validate <slug>: structural check that executable bash blocks exist.",
-                    "create <slug>: copy todos/{slug}/demo.md to demos/{slug}/demo.md.",
-                    "Backward compatible: passing only <slug> behaves as run <slug>.",
+                    "No args: list all demos.",
+                    "validate <slug>: structural check (blocks exist?).",
+                    "run <slug>: execute bash blocks.",
+                    "create <slug>: promote demo.md to demos/.",
+                    "<slug> (no subcommand): backward-compat alias for 'run'.",
                 ],
             ),
             "remove": CommandDef(
@@ -742,8 +743,9 @@ def _handle_cli_command(argv: list[str]) -> None:
 
     if cmd_enum is TelecCommand.LIST:
         show_all = "--all" in args
+        show_closed = "--closed" in args
         api = TelecAPIClient()
-        asyncio.run(_list_sessions(api, show_all=show_all))
+        asyncio.run(_list_sessions(api, show_all=show_all or show_closed, show_closed=show_closed))
     elif cmd_enum in (TelecCommand.CLAUDE, TelecCommand.GEMINI, TelecCommand.CODEX):
         mode = args[0] if args else "slow"
         prompt = " ".join(args[1:]) if len(args) > 1 else None
@@ -847,21 +849,51 @@ def _get_caller_session_id() -> str | None:
         return None
 
 
-async def _list_sessions(api: TelecAPIClient, *, show_all: bool = False) -> None:
+def _relative_time(iso_str: str | None) -> str:
+    """Format an ISO timestamp as a human-readable relative time (e.g., '5m ago')."""
+    if not iso_str:
+        return "?"
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        delta = datetime.now(timezone.utc) - dt
+        secs = int(delta.total_seconds())
+        if secs < 0:
+            return "now"
+        if secs < 60:
+            return f"{secs}s ago"
+        mins = secs // 60
+        if mins < 60:
+            return f"{mins}m ago"
+        hours = mins // 60
+        if hours < 24:
+            return f"{hours}h ago"
+        days = hours // 24
+        return f"{days}d ago"
+    except (ValueError, TypeError):
+        return "?"
+
+
+async def _list_sessions(api: TelecAPIClient, *, show_all: bool = False, show_closed: bool = False) -> None:
     """List sessions to stdout.
 
     Default: show only sessions spawned by the calling session (via initiator_session_id).
     With --all: show all sessions.
+    With --closed: show closed sessions only.
 
     Args:
         api: API client
         show_all: If True, list all sessions regardless of initiator
+        show_closed: If True, show only closed sessions
     """
     caller_id = None if show_all else _get_caller_session_id()
 
     await api.connect()
     try:
-        sessions = await api.list_sessions()
+        sessions = await api.list_sessions(include_closed=show_closed)
+        if show_closed:
+            sessions = [s for s in sessions if s.status == "closed"]
         if caller_id:
             sessions = [s for s in sessions if s.initiator_session_id == caller_id]
         for session in sessions:
@@ -870,7 +902,12 @@ async def _list_sessions(api: TelecAPIClient, *, show_all: bool = False) -> None
             agent = session.active_agent or "?"
             mode = session.thinking_mode or "?"
             title = session.title
-            print(f"{sid} {computer}: {agent}/{mode} - {title}")
+            age = _relative_time(session.last_activity)
+            if show_closed and session.closed_at:
+                closed = _relative_time(session.closed_at)
+                print(f"{sid} {computer}: {agent}/{mode} ({age}, closed {closed}) - {title}")
+            else:
+                print(f"{sid} {computer}: {agent}/{mode} ({age}) - {title}")
         if not sessions and caller_id:
             print("No child sessions. Use --all to list all sessions.")
     finally:
@@ -1231,102 +1268,36 @@ def _extract_demo_blocks(content: str) -> list[tuple[int, str, bool, str]]:
     return blocks
 
 
-def _handle_todo_demo(args: list[str]) -> None:
-    """Handle telec todo demo - run, validate, create, or list demo artifacts."""
-    import json
+def _find_demo_md(slug: str, project_root: Path) -> Path | None:
+    """Find demo.md for a slug. Searches todos/ first, then demos/."""
+    for candidate in [
+        project_root / "todos" / slug / "demo.md",
+        project_root / "demos" / slug / "demo.md",
+    ]:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _check_no_demo_marker(content: str) -> str | None:
+    """Check for <!-- no-demo: reason --> marker in first 10 lines.
+
+    Returns reason string if found, None otherwise.
+    """
     import re
-    import shutil
 
-    mode = "run"
-    mode_set = False
-    slug: str | None = None
-    project_root = Path.cwd()
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "demo"))
-            raise SystemExit(1)
-        else:
-            if not mode_set and arg in {"validate", "run", "create"}:
-                mode = arg
-                mode_set = True
-                i += 1
-                continue
-            if slug is not None:
-                print("Only one slug is allowed.")
-                print(_usage("todo", "demo"))
-                raise SystemExit(1)
-            slug = arg
-            i += 1
-
-    def _find_demo_md_path(current_slug: str) -> Path | None:
-        for candidate in [
-            project_root / "todos" / current_slug / "demo.md",
-            project_root / "demos" / current_slug / "demo.md",
-        ]:
-            if candidate.exists():
-                return candidate
-        return None
-
-    if mode == "create":
-        if not slug:
-            print("Missing required slug.")
-            print(_usage("todo", "demo"))
-            raise SystemExit(1)
-
-        source = project_root / "todos" / slug / "demo.md"
-        if not source.exists():
-            print(f"Error: Missing source demo at {source}")
-            raise SystemExit(1)
-
-        destination = project_root / "demos" / slug / "demo.md"
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
-        print(f"Created demo artifact: {destination.relative_to(project_root)}")
-        raise SystemExit(0)
-
-    if mode == "validate":
-        if not slug:
-            print("Missing required slug for validation.")
-            print(_usage("todo", "demo"))
-            raise SystemExit(1)
-
-        demo_md_path = _find_demo_md_path(slug)
-        if demo_md_path is None:
-            print(f"Error: Demo '{slug}' not found")
-            raise SystemExit(1)
-
-        content = demo_md_path.read_text(encoding="utf-8")
-        blocks = _extract_demo_blocks(content)
-        executable = [(ln, blk, reason) for ln, blk, skipped, reason in blocks if not skipped]
-
-        print(f"Validating demo structure: {slug}")
-        print(f"Source: {demo_md_path.relative_to(project_root)}")
-        if not executable:
-            print("Demo validation failed: no executable bash blocks found.")
-            raise SystemExit(1)
-
-        print(f"Demo validation passed: {len(executable)} executable block(s) found.")
-        raise SystemExit(0)
-
-    # Read project version from pyproject.toml
-    pyproject_path = project_root / "pyproject.toml"
-    current_version = "0.0.0"
-    if pyproject_path.exists():
-        pyproject_content = pyproject_path.read_text()
-        match = re.search(r'version\s*=\s*"([^"]+)"', pyproject_content)
+    pattern = re.compile(r"<!--\s*no-demo:\s*(.+?)\s*-->")
+    for line in content.split("\n")[:10]:
+        match = pattern.search(line)
         if match:
-            current_version = match.group(1)
+            return match.group(1)
+    return None
 
-    current_major = int(current_version.split(".")[0])
 
-    # Scan for available demos
+def _demo_list(project_root: Path) -> None:
+    """List available demos from demos/ directory."""
+    import json
+
     demos_dir = project_root / "demos"
     if not demos_dir.exists():
         print("No demos available")
@@ -1348,33 +1319,69 @@ def _handle_todo_demo(args: list[str]) -> None:
         print("No demos available")
         raise SystemExit(0)
 
-    # No slug: list all demos (unchanged — reads snapshot.json for metadata)
-    if slug is None:
-        print(f"Available demos ({len(demo_entries)}):\n")
-        print(f"{'Slug':<30} {'Title':<50} {'Version':<10} {'Delivered'}")
-        print("-" * 110)
-        for demo_slug, snapshot in demo_entries:
-            title = snapshot.get("title", "")
-            version = snapshot.get("version", "")
-            delivered = snapshot.get("delivered_date", snapshot.get("delivered", ""))
-            print(f"{demo_slug:<30} {title:<50} {version:<10} {delivered}")
+    print(f"Available demos ({len(demo_entries)}):\n")
+    print(f"{'Slug':<30} {'Title':<50} {'Version':<10} {'Delivered'}")
+    print("-" * 110)
+    for demo_slug, snapshot in demo_entries:
+        title = snapshot.get("title", "")
+        version = snapshot.get("version", "")
+        delivered = snapshot.get("delivered_date", snapshot.get("delivered", ""))
+        print(f"{demo_slug:<30} {title:<50} {version:<10} {delivered}")
+    raise SystemExit(0)
+
+
+def _demo_validate(slug: str, project_root: Path) -> None:
+    """Structural validation of demo.md — checks blocks exist, no execution."""
+    demo_md_path = _find_demo_md(slug, project_root)
+    if demo_md_path is None:
+        print(f"Error: No demo.md found for '{slug}'")
+        raise SystemExit(1)
+
+    print(f"Validating demo: {slug}")
+    print(f"Source: {demo_md_path.relative_to(project_root)}\n")
+
+    content = demo_md_path.read_text(encoding="utf-8")
+
+    # Check for no-demo escape hatch
+    no_demo_reason = _check_no_demo_marker(content)
+    if no_demo_reason is not None:
+        print(f"No-demo marker found: {no_demo_reason}")
         raise SystemExit(0)
 
-    # With slug: find demo.md or fall back to snapshot.json demo field
-    # Search order: todos/{slug}/demo.md (during build), demos/{slug}/demo.md (after delivery)
-    demo_md_path = _find_demo_md_path(slug)
+    blocks = _extract_demo_blocks(content)
+    executable = [b for b in blocks if not b[2]]
 
-    # If demo.md found, run code block extraction
+    if not executable:
+        print("Validation failed: no executable bash blocks found")
+        raise SystemExit(1)
+
+    print(f"Validation passed: {len(executable)} executable block(s) found")
+    if len(blocks) > len(executable):
+        print(f"Skipped: {len(blocks) - len(executable)} block(s)")
+    raise SystemExit(0)
+
+
+def _demo_run(slug: str, project_root: Path) -> None:
+    """Execute bash blocks from demo.md."""
+    demo_md_path = _find_demo_md(slug, project_root)
+
     if demo_md_path is not None:
-        print(f"Running demo validation: {slug}\n")
+        print(f"Running demo: {slug}\n")
         print(f"Source: {demo_md_path.relative_to(project_root)}\n")
 
         content = demo_md_path.read_text(encoding="utf-8")
+
+        # Check for no-demo escape hatch
+        no_demo_reason = _check_no_demo_marker(content)
+        if no_demo_reason is not None:
+            print(f"No-demo marker found: {no_demo_reason}")
+            raise SystemExit(0)
+
         blocks = _extract_demo_blocks(content)
 
         if not blocks:
-            print("Demo has guided steps only (no executable blocks)")
-            raise SystemExit(0)
+            print("Error: no executable blocks found in demo.md")
+            raise SystemExit(1)
 
         executable = [(ln, blk, reason) for ln, blk, skipped, reason in blocks if not skipped]
         skipped = [(ln, blk, reason) for ln, blk, skipped, reason in blocks if skipped]
@@ -1385,8 +1392,8 @@ def _handle_todo_demo(args: list[str]) -> None:
             print()
 
         if not executable:
-            print("All code blocks skipped. Demo has guided steps only.")
-            raise SystemExit(0)
+            print("Error: all code blocks skipped, no executable blocks")
+            raise SystemExit(1)
 
         # Prepend project venv to PATH so demo blocks use the correct Python
         env = os.environ.copy()
@@ -1406,12 +1413,25 @@ def _handle_todo_demo(args: list[str]) -> None:
             print(f"  PASS  block at line {ln}")
             passed += 1
 
-        print(f"\nDemo validation passed: {passed}/{len(executable)} blocks")
+        print(f"\nDemo passed: {passed}/{len(executable)} blocks")
         if skipped:
             print(f"Skipped: {len(skipped)} blocks")
         raise SystemExit(0)
 
     # Fallback: snapshot.json demo field (backward compatibility)
+    import json
+    import re
+
+    pyproject_path = project_root / "pyproject.toml"
+    current_version = "0.0.0"
+    if pyproject_path.exists():
+        pyproject_content = pyproject_path.read_text()
+        match = re.search(r'version\s*=\s*"([^"]+)"', pyproject_content)
+        if match:
+            current_version = match.group(1)
+    current_major = int(current_version.split(".")[0])
+
+    demos_dir = project_root / "demos"
     demo_path = demos_dir / slug
     snapshot_path = demo_path / "snapshot.json"
 
@@ -1425,7 +1445,6 @@ def _handle_todo_demo(args: list[str]) -> None:
         print(f"Error reading snapshot for '{slug}': {exc}")
         raise SystemExit(1) from exc
 
-    # Semver gate: compare major versions
     demo_version = snapshot.get("version", "0.0.0")
     demo_major = int(demo_version.split(".")[0])
 
@@ -1444,6 +1463,108 @@ def _handle_todo_demo(args: list[str]) -> None:
     print(f"Running demo: {slug} (v{demo_version})\n")
     result = subprocess.run(demo_command, shell=True, cwd=demo_path)
     raise SystemExit(result.returncode)
+
+
+def _demo_create(slug: str, project_root: Path) -> None:
+    """Promote demo.md to demos/{slug}/ with minimal snapshot.json."""
+    import json
+    import re
+
+    source = _find_demo_md(slug, project_root)
+    if source is None:
+        print(f"Error: No demo.md found for '{slug}'")
+        raise SystemExit(1)
+
+    # Read title from demo.md H1
+    content = source.read_text(encoding="utf-8")
+    title = slug
+    for line in content.split("\n"):
+        line = line.strip()
+        if line.startswith("# "):
+            title = line[2:].strip()
+            # Strip "Demo: " prefix if present
+            if title.lower().startswith("demo:"):
+                title = title[5:].strip()
+            break
+
+    # Read version from pyproject.toml
+    pyproject_path = project_root / "pyproject.toml"
+    version = "0.0.0"
+    if pyproject_path.exists():
+        pyproject_content = pyproject_path.read_text()
+        match = re.search(r'version\s*=\s*"([^"]+)"', pyproject_content)
+        if match:
+            version = match.group(1)
+
+    # Create demos/{slug}/ and copy demo.md
+    demos_dir = project_root / "demos" / slug
+    demos_dir.mkdir(parents=True, exist_ok=True)
+    import shutil
+
+    shutil.copy2(source, demos_dir / "demo.md")
+
+    # Generate minimal snapshot.json
+    snapshot = {"slug": slug, "title": title, "version": version}
+    (demos_dir / "snapshot.json").write_text(json.dumps(snapshot, indent=2) + "\n")
+
+    print(f"Demo promoted: {source.relative_to(project_root)} -> demos/{slug}/")
+    print(f"Snapshot: {json.dumps(snapshot)}")
+    raise SystemExit(0)
+
+
+def _handle_todo_demo(args: list[str]) -> None:
+    """Handle telec todo demo subcommands: validate, run, create, or list."""
+    _DEMO_SUBCOMMANDS = {"validate", "run", "create"}
+    subcommand: str | None = None
+    remaining_args = args
+
+    if args and args[0] in _DEMO_SUBCOMMANDS:
+        subcommand = args[0]
+        remaining_args = args[1:]
+
+    slug: str | None = None
+    project_root = Path.cwd()
+
+    i = 0
+    while i < len(remaining_args):
+        arg = remaining_args[i]
+        if arg == "--project-root" and i + 1 < len(remaining_args):
+            project_root = Path(remaining_args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "demo"))
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                print(_usage("todo", "demo"))
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    # No subcommand and no slug: list demos
+    if subcommand is None and slug is None:
+        _demo_list(project_root)
+        return
+
+    # No subcommand but has slug: backward compat → run with deprecation
+    if subcommand is None and slug is not None:
+        print(f"Note: 'telec todo demo {slug}' is deprecated. Use 'telec todo demo run {slug}' instead.\n")
+        subcommand = "run"
+
+    # Subcommand requires slug
+    if slug is None:
+        print(f"Missing required slug for 'demo {subcommand}'.")
+        print(_usage("todo", "demo"))
+        raise SystemExit(1)
+
+    if subcommand == "validate":
+        _demo_validate(slug, project_root)
+    elif subcommand == "run":
+        _demo_run(slug, project_root)
+    elif subcommand == "create":
+        _demo_create(slug, project_root)
 
 
 def _handle_todo_create(args: list[str]) -> None:
@@ -2202,21 +2323,19 @@ def _handle_bugs_list(args: list[str]) -> None:
         if state_yaml.exists():
             try:
                 state = yaml.safe_load(state_yaml.read_text())
-                phase = state.get("phase", "unknown")
-                build = state.get("build", "unknown")
-                review = state.get("review", "unknown")
+                build = state.get("build", "pending")
+                review = state.get("review", "pending")
 
-                if phase == "in_progress":
-                    if review == "approved":
-                        status = "approved"
-                    elif review == "changes_requested":
-                        status = "fixing"
-                    elif build == "complete":
-                        status = "reviewing"
-                    elif build in ("started", "complete"):
-                        status = "building"
-                    else:
-                        status = "pending"
+                if review == "approved":
+                    status = "approved"
+                elif review == "changes_requested":
+                    status = "fixing"
+                elif build == "complete":
+                    status = "reviewing"
+                elif build in ("started", "complete"):
+                    status = "building"
+                else:
+                    status = "pending"
             except (yaml.YAMLError, OSError):
                 pass
 

@@ -3,7 +3,8 @@
 ## Validation
 
 <!-- Bash code blocks that prove the feature works. -->
-<!-- Each block is run by `telec todo demo {slug}` as a build gate — all must exit 0. -->
+<!-- Blocks are validated by `telec todo demo validate {slug}` (structural check) during build. -->
+<!-- Execution (`telec todo demo run {slug}`) happens on main after merge. -->
 
 ## Guided Presentation
 

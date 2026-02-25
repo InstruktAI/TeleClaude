@@ -6,9 +6,11 @@ import time as _t
 
 from instrukt_ai_logging import get_logger
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
+from textual.widgets import Footer
 
 from teleclaude.cli.models import AgentAvailabilityInfo, ProjectWithTodosInfo
 from teleclaude.cli.tui.messages import (
@@ -47,19 +49,19 @@ class PreparationView(Widget, can_focus=True):
     """
 
     BINDINGS = [
-        ("up", "cursor_up", "Previous"),
-        ("down", "cursor_down", "Next"),
-        ("left", "collapse", "Collapse"),
-        ("right", "expand", "Expand"),
-        ("enter", "activate", "Activate"),
-        ("space", "preview_file", "Preview"),
-        ("equals_sign", "expand_all", "Expand all"),
-        ("minus", "collapse_all", "Collapse all"),
-        ("n", "new_todo", "New todo"),
-        ("b", "new_bug", "New bug"),
-        ("p", "prepare", "Prepare"),
-        ("s", "start_work", "Start work"),
-        ("R", "remove_todo", "Remove"),
+        Binding("up", "cursor_up", "Up", key_display="↑", group=Binding.Group("Nav", compact=True), show=False),
+        Binding("down", "cursor_down", "Down", key_display="↓", group=Binding.Group("Nav", compact=True), show=False),
+        Binding("left", "collapse", "Collapse", key_display="←", group=Binding.Group("Fold", compact=True), show=False),
+        Binding("right", "expand", "Expand", key_display="→", group=Binding.Group("Fold", compact=True), show=False),
+        Binding("enter", "activate", "Toggle/Edit"),
+        Binding("space", "preview_file", "View"),
+        Binding("equals_sign", "expand_all", "All", key_display="+", group=Binding.Group("Fold", compact=True)),
+        Binding("minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True)),
+        Binding("n", "new_todo", "Todo"),
+        Binding("b", "new_bug", "Bug"),
+        Binding("p", "prepare", "Prep"),
+        Binding("s", "start_work", "Start"),
+        Binding("R", "remove_todo", "Remove"),
     ]
 
     cursor_index = reactive(0)
@@ -80,21 +82,41 @@ class PreparationView(Widget, can_focus=True):
 
     _logger = get_logger(__name__)
 
+    @staticmethod
+    def _todo_fingerprint(projects: list[ProjectWithTodosInfo]) -> tuple[tuple[str, ...], ...]:
+        """Build a lightweight fingerprint of all todo data for change detection."""
+        return tuple(
+            (
+                t.slug,
+                t.status,
+                str(t.dor_score),
+                t.build_status or "",
+                t.review_status or "",
+                t.deferrals_status or "",
+                str(t.findings_count),
+                ",".join(t.files),
+                ",".join(t.after),
+                t.group or "",
+            )
+            for p in projects
+            for t in (p.todos or [])
+        )
+
     def update_data(
         self,
         projects_with_todos: list[ProjectWithTodosInfo],
         availability: dict[str, AgentAvailabilityInfo] | None = None,
     ) -> None:
-        """Update view with fresh API data. Only rebuild if structure changed."""
+        """Update view with fresh API data. Only rebuild if data changed."""
         self._logger.trace(
             "[PERF] PrepView.update_data called items=%d t=%.3f", len(projects_with_todos), _t.monotonic()
         )
         if availability is not None:
             self._availability = availability
-        old_slugs = {t.slug for p in self._projects_with_todos for t in (p.todos or [])}
-        new_slugs = {t.slug for p in projects_with_todos for t in (p.todos or [])}
+        old_fp = self._todo_fingerprint(self._projects_with_todos)
+        new_fp = self._todo_fingerprint(projects_with_todos)
         self._projects_with_todos = projects_with_todos
-        if old_slugs != new_slugs or not self._nav_items:
+        if old_fp != new_fp or not self._nav_items:
             self._rebuild()
 
     def load_persisted_state(self, expanded_todos: set[str]) -> None:
@@ -325,6 +347,10 @@ class PreparationView(Widget, can_focus=True):
         item = self._current_item()
         return item if isinstance(item, TodoFileRow) else None
 
+    def _current_project_header(self) -> ProjectHeader | None:
+        item = self._current_item()
+        return item if isinstance(item, ProjectHeader) else None
+
     def _editor_command(self, filepath: str, *, view: bool = False) -> str:
         """Build an editor command with absolute path for tmux pane."""
         flags = []
@@ -347,12 +373,8 @@ class PreparationView(Widget, can_focus=True):
                 return item
         return None
 
-    def _open_session_modal(self, slug: str, default_message: str) -> None:
-        """Open StartSessionModal for a todo with a pre-filled prompt."""
-        computer = self._slug_to_computer.get(slug, "local")
-        project_path = self._slug_to_project_path.get(slug, "")
-        if not project_path:
-            return
+    def _open_session_modal(self, *, computer: str, project_path: str, default_message: str) -> None:
+        """Open StartSessionModal with a pre-filled prompt."""
         modal = StartSessionModal(
             computer=computer,
             project_path=project_path,
@@ -365,6 +387,69 @@ class PreparationView(Widget, can_focus=True):
         """Handle result from StartSessionModal."""
         if result:
             self.post_message(result)
+
+    def _resolve_project_header_for_index(self, index: int) -> ProjectHeader | None:
+        """Find nearest project header above a nav item index."""
+        for i in range(index, -1, -1):
+            item = self._nav_items[i]
+            if isinstance(item, ProjectHeader):
+                return item
+        return None
+
+    def _resolve_cursor_context(self) -> tuple[str, str, str | None] | None:
+        """Resolve computer, project path, and optional slug from cursor."""
+        item = self._current_item()
+        if item is None:
+            return None
+
+        if isinstance(item, ProjectHeader):
+            return (item.project.computer or "local", item.project.path, None)
+
+        if isinstance(item, TodoRow):
+            slug = item.slug
+            project_path = self._slug_to_project_path.get(slug, "")
+            computer = self._slug_to_computer.get(slug, "local")
+            if project_path:
+                return (computer, project_path, slug)
+            try:
+                idx = self._nav_items.index(item)
+            except ValueError:
+                return None
+            header = self._resolve_project_header_for_index(idx)
+            if header:
+                return (header.project.computer or "local", header.project.path, slug)
+            return None
+
+        if isinstance(item, TodoFileRow) and item.slug:
+            slug = item.slug
+            project_path = self._slug_to_project_path.get(slug, "")
+            computer = self._slug_to_computer.get(slug, "local")
+            if project_path:
+                return (computer, project_path, slug)
+            try:
+                idx = self._nav_items.index(item)
+            except ValueError:
+                return None
+            header = self._resolve_project_header_for_index(idx)
+            if header:
+                return (header.project.computer or "local", header.project.path, slug)
+        return None
+
+    def _resolve_todo_for_cursor(self) -> TodoRow | None:
+        """Resolve selected todo row from todo/file cursor items."""
+        todo_row = self._current_todo_row()
+        if todo_row:
+            return todo_row
+
+        file_row = self._current_file_row()
+        if file_row:
+            return self._find_parent_todo(file_row)
+        return None
+
+    @staticmethod
+    def _next_command(base: str, slug: str | None) -> str:
+        """Build /next-* command with optional slug."""
+        return f"/{base} {slug}" if slug else f"/{base}"
 
     # --- Keyboard actions ---
 
@@ -381,6 +466,60 @@ class PreparationView(Widget, can_focus=True):
             self._update_cursor_highlight()
             if 0 <= self.cursor_index < len(self._nav_items):
                 self._nav_items[self.cursor_index].scroll_visible()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Enable/hide actions based on current tree node type."""
+        del parameters
+        item = self._current_item()
+
+        if isinstance(item, ProjectHeader):
+            if action in {"remove_todo", "activate", "preview_file"}:
+                return False
+            return True
+
+        if isinstance(item, TodoRow):
+            if action == "preview_file":
+                return False
+            return True
+
+        if isinstance(item, TodoFileRow):
+            if action in {"new_todo", "new_bug"}:
+                return False
+            return True
+
+        return True
+
+    def watch_cursor_index(self, _index: int) -> None:
+        """Refresh key bindings when node context changes."""
+        if self.is_attached:
+            self.app.refresh_bindings()
+            self.call_after_refresh(self._sync_default_footer_action)
+
+    def _default_footer_action(self) -> str | None:
+        """Return the primary action for the selected node."""
+        item = self._current_item()
+        if isinstance(item, ProjectHeader):
+            return "new_todo"
+        if isinstance(item, (TodoRow, TodoFileRow)):
+            return "activate"
+        return None
+
+    def _sync_default_footer_action(self) -> None:
+        """Mark the active default action in Footer."""
+        if not self.is_attached:
+            return
+        try:
+            footer = self.app.query_one(Footer)
+        except Exception:
+            return
+        default_action = self._default_footer_action()
+        for key_widget in footer.query("FooterKey"):
+            key_widget.set_class(getattr(key_widget, "action", None) == default_action, "default-action")
+
+    def on_focus(self) -> None:
+        """Sync default footer styling when the view receives focus."""
+        self.app.refresh_bindings()
+        self.call_after_refresh(self._sync_default_footer_action)
 
     def action_expand(self) -> None:
         """Right: expand todo to show files."""
@@ -547,43 +686,41 @@ class PreparationView(Widget, can_focus=True):
         )
 
     def action_prepare(self) -> None:
-        """p: directly start a prepare session with defaults."""
-        row = self._current_todo_row()
-        slug = row.slug if row else None
-        if not slug:
-            file_row = self._current_file_row()
-            if file_row:
-                slug = file_row.slug
-        if not slug:
+        """p: open session modal prefilled with /next-prepare [slug]."""
+        context = self._resolve_cursor_context()
+        if not context:
             return
-        computer = self._slug_to_computer.get(slug, "local")
-        project_path = self._slug_to_project_path.get(slug, "")
-        if not project_path:
-            return
-        self.post_message(
-            CreateSessionRequest(
-                computer=computer,
-                project_path=project_path,
-                agent="claude",
-                thinking_mode="slow",
-                title=f"Prepare {slug}",
-                message=f"/next-prepare {slug}",
-            )
+        computer, project_path, slug = context
+        self._open_session_modal(
+            computer=computer,
+            project_path=project_path,
+            default_message=self._next_command("next-prepare", slug),
         )
 
     def action_start_work(self) -> None:
-        """s: open agent session modal with /next-work prompt.
+        """s: open session modal prefilled with /next-work [slug].
 
-        Gated on DOR readiness - todo must meet DOR_READY_THRESHOLD.
+        Gated on DOR readiness when a specific todo is selected.
         """
-        row = self._current_todo_row()
-        if not row:
+        context = self._resolve_cursor_context()
+        if not context:
             return
-        dor = row.todo.dor_score
-        if dor is None or dor < DOR_READY_THRESHOLD:
-            self.app.notify(f"DOR score too low ({dor or 0}/{DOR_READY_THRESHOLD})", severity="warning")
-            return
-        self._open_session_modal(row.slug, f"/next-work {row.slug}")
+        computer, project_path, slug = context
+
+        if slug:
+            todo_row = self._resolve_todo_for_cursor()
+            if not todo_row:
+                return
+            dor = todo_row.todo.dor_score
+            if dor is None or dor < DOR_READY_THRESHOLD:
+                self.app.notify(f"DOR score too low ({dor or 0}/{DOR_READY_THRESHOLD})", severity="warning")
+                return
+
+        self._open_session_modal(
+            computer=computer,
+            project_path=project_path,
+            default_message=self._next_command("next-work", slug),
+        )
 
     # --- Click handlers ---
 

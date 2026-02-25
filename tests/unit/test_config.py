@@ -73,8 +73,8 @@ class TestParseTrustedDirs:
 class TestGetAllTrustedDirs:
     """Tests for ComputerConfig.get_all_trusted_dirs() method."""
 
-    def test_includes_default_working_dir_first(self):
-        """Test that default_working_dir is always included first."""
+    def test_returns_configured_trusted_dirs(self):
+        """Test that only explicitly configured trusted_dirs are returned."""
         config = ComputerConfig(
             name="test",
             user="testuser",
@@ -91,10 +91,9 @@ class TestGetAllTrustedDirs:
 
         result = config.get_all_trusted_dirs()
 
-        assert len(result) == 2
-        assert result[0].name == "teleclaude"
-        assert result[0].desc == "TeleClaude folder"
-        assert result[0].path == "/home/teleclaude"
+        assert len(result) == 1
+        assert result[0].name == "projects"
+        assert result[0].path == "/home/projects"
 
     def test_deduplicates_by_path(self):
         """Test that duplicate paths are removed."""
@@ -107,18 +106,16 @@ class TestGetAllTrustedDirs:
             help_desk_dir="/home/teleclaude/help",
             is_master=False,
             trusted_dirs=[
-                TrustedDir(name="teleclaude_dup", desc="duplicate", path="/home/teleclaude"),
-                TrustedDir(name="projects", desc="my projects", path="/home/projects"),
+                TrustedDir(name="first", desc="first entry", path="/home/projects"),
+                TrustedDir(name="duplicate", desc="same path", path="/home/projects"),
             ],
             host=None,
         )
 
         result = config.get_all_trusted_dirs()
 
-        # Should only have 2 items (default_working_dir + projects, duplicate removed)
-        assert len(result) == 2
-        assert result[0].path == "/home/teleclaude"
-        assert result[1].path == "/home/projects"
+        assert len(result) == 1
+        assert result[0].name == "first"
 
     def test_empty_trusted_dirs(self):
         """Test with empty trusted_dirs list."""
@@ -136,13 +133,10 @@ class TestGetAllTrustedDirs:
 
         result = config.get_all_trusted_dirs()
 
-        assert len(result) == 1
-        assert result[0].name == "teleclaude"
-        assert result[0].desc == "TeleClaude folder"
-        assert result[0].path == "/home/teleclaude"
+        assert len(result) == 0
 
     def test_preserves_order(self):
-        """Test that order is preserved (default_working_dir first, then trusted_dirs)."""
+        """Test that config order is preserved."""
         config = ComputerConfig(
             name="test",
             user="testuser",
@@ -161,8 +155,7 @@ class TestGetAllTrustedDirs:
 
         result = config.get_all_trusted_dirs()
 
-        assert len(result) == 4
-        assert result[0].path == "/home/teleclaude"
-        assert result[1].path == "/a"
-        assert result[2].path == "/b"
-        assert result[3].path == "/c"
+        assert len(result) == 3
+        assert result[0].path == "/a"
+        assert result[1].path == "/b"
+        assert result[2].path == "/c"

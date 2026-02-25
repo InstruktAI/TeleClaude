@@ -91,8 +91,8 @@ def _make_session(last_input_origin: str) -> Session:
 
 
 @pytest.mark.asyncio
-async def test_terminal_origin_send_message_broadcasts_to_ui():
-    """API origin is not a UI adapter — broadcasts to all registered UI adapters."""
+async def test_terminal_origin_send_message_skips_ui_notice_delivery():
+    """API origin is non-UI, so notice delivery is skipped."""
     client = AdapterClient()
     adapter = DummyUiAdapter(client)
     client.register_adapter("telegram", adapter)
@@ -104,8 +104,8 @@ async def test_terminal_origin_send_message_broadcasts_to_ui():
     with patch("teleclaude.core.adapter_client.db", mock_db):
         message_id = await client.send_message(session, "hello")
 
-    assert message_id == "msg-1"
-    assert adapter.sent_messages == [("sess-1", "hello")]
+    assert message_id is None
+    assert adapter.sent_messages == []
 
 
 @pytest.mark.asyncio

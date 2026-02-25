@@ -40,7 +40,14 @@ from teleclaude.core.next_machine.core import (
     sync_main_planning_to_all_worktrees,
 )
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.session_listeners import register_listener, unregister_listener
+from teleclaude.core.session_listeners import (
+    close_link_for_member,
+    create_or_reuse_direct_link,
+    get_peer_members,
+    register_listener,
+    resolve_link_for_sender_target,
+    unregister_listener,
+)
 from teleclaude.mcp.types import (
     ComputerInfo,
     DeployComputerResult,
@@ -532,33 +539,159 @@ class MCPHandlersMixin:
         message: str,
         caller_session_id: str | None = None,
         direct: bool = False,
+        close_link: bool = False,
     ) -> AsyncIterator[str]:
         """Send message to an AI agent session."""
         try:
+            if close_link:
+                if not caller_session_id:
+                    yield "[Error: close_link requires caller_session_id]"
+                    return
+                closed_link_id = await close_link_for_member(
+                    caller_session_id=caller_session_id,
+                    target_session_id=session_id,
+                )
+                if not closed_link_id:
+                    yield f"No active link found for caller {caller_session_id[:8]}."
+                    return
+                yield f"Closed shared link {closed_link_id[:8]} for caller {caller_session_id[:8]}."
+                return
+
             if not direct:
                 await self._register_listener_if_present(session_id, caller_session_id)
+
             origin = await self._resolve_origin(caller_session_id)
+            actor_id, actor_name, actor_role, actor_agent, actor_computer = await self._resolve_mcp_actor(
+                caller_session_id
+            )
 
-            if self._is_local_computer(computer):
-                cmd = ProcessMessageCommand(session_id=session_id, text=message, origin=origin)
-                await get_command_service().process_message(cmd)
-            else:
-                await self.client.send_request(
-                    computer_name=computer,
-                    command=f"message {message}",
-                    session_id=session_id,
-                    metadata=MessageMetadata(origin=origin),
+            if direct and caller_session_id:
+                caller = await db.get_session(caller_session_id)
+                target = await db.get_session(session_id)
+                caller_label = caller.title if caller and caller.title else caller_session_id[:8]
+                target_label = target.title if target and target.title else session_id[:8]
+                caller_computer = caller.computer_name if caller else self.computer_name
+                target_computer = self.computer_name if self._is_local_computer(computer) else computer
+                link_ctx = await resolve_link_for_sender_target(
+                    sender_session_id=caller_session_id,
+                    target_session_id=session_id,
                 )
+                created = False
+                if not link_ctx:
+                    link, created = await create_or_reuse_direct_link(
+                        caller_session_id=caller_session_id,
+                        target_session_id=session_id,
+                        caller_name=caller_label,
+                        target_name=target_label,
+                        caller_computer=caller_computer,
+                        target_computer=target_computer,
+                    )
+                    link_ctx = await resolve_link_for_sender_target(
+                        sender_session_id=caller_session_id,
+                        target_session_id=session_id,
+                    )
+                    if not link_ctx:
+                        raise RuntimeError("Direct link was created but could not be resolved")
+                else:
+                    link = link_ctx[0]
 
-            # Start bidirectional relay for direct peer-to-peer conversations
-            relay_msg = ""
-            if direct and caller_session_id and self._is_local_computer(computer):
-                relay_msg = await self._start_direct_relay(caller_session_id, session_id)
+                _, members = link_ctx
+                peers = await get_peer_members(link_id=link.link_id, sender_session_id=caller_session_id)
+                if peers:
+                    for peer in peers:
+                        target_computer_name = (
+                            peer.computer_name
+                            if peer.computer_name and not self._is_local_computer(peer.computer_name)
+                            else self.computer_name
+                        )
+                        await self._send_message_to_target(
+                            computer=target_computer_name,
+                            session_id=peer.session_id,
+                            message=message,
+                            origin=origin,
+                            actor_id=actor_id,
+                            actor_name=actor_name,
+                            actor_role=actor_role,
+                            actor_agent=actor_agent,
+                            actor_computer=actor_computer,
+                        )
+                else:
+                    # Fallback to explicit target delivery if no other peers are active.
+                    await self._send_message_to_target(
+                        computer=computer,
+                        session_id=session_id,
+                        message=message,
+                        origin=origin,
+                        actor_id=actor_id,
+                        actor_name=actor_name,
+                        actor_role=actor_role,
+                        actor_agent=actor_agent,
+                        actor_computer=actor_computer,
+                    )
 
-            yield f"Message sent to session {session_id[:8]} on {computer}.{relay_msg} Use teleclaude__get_session_data to check status."
+                link_state = "created" if created else "reused"
+                peer_count = max(len(members) - 1, 1)
+                yield (
+                    f"Message sent to direct link {link.link_id[:8]} ({link_state}). "
+                    f"Delivered to {peer_count} peer(s). Use teleclaude__get_session_data to check status."
+                )
+                return
+
+            await self._send_message_to_target(
+                computer=computer,
+                session_id=session_id,
+                message=message,
+                origin=origin,
+                actor_id=actor_id,
+                actor_name=actor_name,
+                actor_role=actor_role,
+                actor_agent=actor_agent,
+                actor_computer=actor_computer,
+            )
+            yield f"Message sent to session {session_id[:8]} on {computer}. Use teleclaude__get_session_data to check status."
         except Exception as e:
             logger.error("Failed to send message to session %s: %s", session_id[:8], e)
             yield f"[Error: Failed to send message: {str(e)}]"
+
+    async def _send_message_to_target(
+        self,
+        *,
+        computer: str,
+        session_id: str,
+        message: str,
+        origin: str,
+        actor_id: str,
+        actor_name: str,
+        actor_role: str,
+        actor_agent: str,
+        actor_computer: str,
+    ) -> None:
+        if self._is_local_computer(computer):
+            cmd = ProcessMessageCommand(
+                session_id=session_id,
+                text=message,
+                origin=origin,
+                actor_id=actor_id,
+                actor_name=actor_name,
+            )
+            await get_command_service().process_message(cmd)
+            return
+
+        await self.client.send_request(
+            computer_name=computer,
+            command=f"message {shlex.quote(message)}",
+            session_id=session_id,
+            metadata=MessageMetadata(
+                origin=origin,
+                channel_metadata={
+                    "actor_id": actor_id,
+                    "actor_name": actor_name,
+                    "actor_role": actor_role,
+                    "actor_agent": actor_agent,
+                    "actor_computer": actor_computer,
+                },
+            ),
+        )
 
     async def teleclaude__run_agent_command(
         self,
@@ -604,61 +737,32 @@ class MCPHandlersMixin:
             computer, project, title, auto_command, caller_session_id, normalized_subfolder, working_slug
         )
 
-    async def _start_direct_relay(self, caller_session_id: str, target_session_id: str) -> str:
-        """Start a bidirectional session relay between caller and target.
-
-        Looks up both sessions from DB to get tmux names and titles,
-        then creates a relay. Returns a status suffix for the response.
-        """
-        from teleclaude.core.session_relay import (
-            RelayParticipant,
-            create_relay,
-            get_relay_for_session,
-        )
-
-        # Don't create duplicate relays
-        existing_caller = await get_relay_for_session(caller_session_id)
-        existing_target = await get_relay_for_session(target_session_id)
-        if existing_caller or existing_target:
-            return " Relay already active."
-
-        caller = await db.get_session(caller_session_id)
-        target = await db.get_session(target_session_id)
-        if not caller or not target:
-            logger.warning(
-                "Cannot start relay: missing session (caller=%s, target=%s)",
-                bool(caller),
-                bool(target),
-            )
-            return ""
-        if not caller.tmux_session_name or not target.tmux_session_name:
-            logger.warning("Cannot start relay: missing tmux session name")
-            return ""
-
-        participants = [
-            RelayParticipant(
-                session_id=caller_session_id,
-                tmux_session_name=caller.tmux_session_name,
-                name=caller.title or caller_session_id[:8],
-                number=1,
-            ),
-            RelayParticipant(
-                session_id=target_session_id,
-                tmux_session_name=target.tmux_session_name,
-                name=target.title or target_session_id[:8],
-                number=2,
-            ),
-        ]
-        relay_id = await create_relay(participants)
-        logger.info(
-            "Direct relay %s started between %s and %s", relay_id[:8], caller_session_id[:8], target_session_id[:8]
-        )
-        return " Bidirectional relay started."
-
     async def _resolve_origin(self, caller_session_id: str | None) -> str:
         """Resolve origin for MCP requests."""
         _ = caller_session_id
         return InputOrigin.MCP.value
+
+    async def _resolve_mcp_actor(self, caller_session_id: str | None) -> tuple[str, str, str, str, str]:
+        """Resolve stable AI actor identity for MCP-origin messages."""
+        if caller_session_id:
+            caller = await db.get_session(caller_session_id)
+            if caller:
+                computer = (caller.computer_name or config.computer.name).strip() or config.computer.name
+                human_email = (caller.human_email or "").strip()
+                if human_email:
+                    local_part = human_email.split("@", 1)[0] or human_email
+                    actor_id = f"human:{human_email}"
+                    actor_name = f"{local_part}@{computer}"
+                    return (actor_id, actor_name, "human", "human", computer)
+
+                actor_id = f"system:{computer}:{caller_session_id}"
+                actor_name = f"system@{computer}"
+                return (actor_id, actor_name, "system", "system", computer)
+
+        computer = config.computer.name
+        actor_id = f"system:{computer}:{caller_session_id or 'mcp'}"
+        actor_name = f"system@{computer}"
+        return (actor_id, actor_name, "system", "system", computer)
 
     async def _start_local_session_with_auto_command(
         self,
@@ -890,6 +994,7 @@ class MCPHandlersMixin:
 
     async def teleclaude__end_session(self, computer: str, session_id: str) -> EndSessionResult:
         """End a session gracefully (kill tmux, delete session, clean up resources)."""
+        logger.info("teleclaude__end_session via MCP for session %s", session_id[:8])
         if self._is_local_computer(computer):
             cmd = CloseSessionCommand(session_id=session_id)
             return await command_handlers.end_session(cmd, self.client)

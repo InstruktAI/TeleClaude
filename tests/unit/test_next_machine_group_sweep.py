@@ -36,7 +36,7 @@ def test_sweep_delivers_group_when_all_children_delivered():
             tmpdir,
             "my-group",
             {
-                "phase": "pending",
+                "build": "pending",
                 "breakdown": {"assessed": True, "todos": ["child-1", "child-2", "child-3"]},
             },
         )
@@ -61,7 +61,7 @@ def test_sweep_skips_group_with_undelivered_children():
             tmpdir,
             "my-group",
             {
-                "phase": "pending",
+                "build": "pending",
                 "breakdown": {"assessed": True, "todos": ["child-1", "child-2"]},
             },
         )
@@ -81,7 +81,6 @@ def test_sweep_skips_non_group_todos():
             tmpdir,
             "regular-item",
             {
-                "phase": "pending",
                 "build": "pending",
                 "breakdown": {"assessed": False, "todos": []},
             },
@@ -101,7 +100,7 @@ def test_sweep_removes_group_from_roadmap():
             tmpdir,
             "roadmap-group",
             {
-                "phase": "pending",
+                "build": "pending",
                 "breakdown": {"assessed": True, "todos": ["c1", "c2"]},
             },
         )
@@ -136,7 +135,7 @@ def test_sweep_handles_group_not_in_roadmap():
             tmpdir,
             "orphan-group",
             {
-                "phase": "pending",
+                "build": "pending",
                 "breakdown": {"assessed": True, "todos": ["x1"]},
             },
         )

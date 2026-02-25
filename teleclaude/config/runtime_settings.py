@@ -126,17 +126,12 @@ class RuntimeSettings:
         return SettingsPatch(tts=tts_patch)
 
     def _schedule_flush(self) -> None:
-        if self._flush_task and not self._flush_task.done():
-            self._flush_task.cancel()
-
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            # patch() can be invoked from sync contexts (unit tests/CLI).
-            # In that case, persist immediately instead of scheduling on a missing loop.
-            asyncio.run(self._flush_to_disk())
-            return
-
+            return  # No running event loop — skip deferred flush (sync context)
+        if self._flush_task and not self._flush_task.done():
+            self._flush_task.cancel()
         self._flush_task = loop.create_task(self._debounced_flush())
 
     async def _debounced_flush(self) -> None:
