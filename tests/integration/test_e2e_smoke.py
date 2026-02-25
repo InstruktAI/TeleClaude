@@ -459,6 +459,7 @@ async def test_local_session_lifecycle_to_websocket(
 
     # Re-register event handlers on global event bus
     from teleclaude.core.event_bus import event_bus
+    from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 
     event_bus.clear()
     event_bus.subscribe("session_started", api_server._handle_session_started_event)
@@ -474,7 +475,8 @@ async def test_local_session_lifecycle_to_websocket(
     api_server._update_cache_interest()
     assert cache.has_interest("sessions", "test-computer")
 
-    # Create session in database (triggers local lifecycle event)
+    # Create session in database (SESSION_STARTED is emitted by callers of db.create_session
+    # in production; emit it explicitly here to exercise the event handler chain).
     session = await db_instance.create_session(
         computer_name="test-computer",
         tmux_session_name="test-tmux-session",
@@ -482,8 +484,9 @@ async def test_local_session_lifecycle_to_websocket(
         title="Local Lifecycle Test Session",
         project_path="/tmp",
     )
+    event_bus.emit(TeleClaudeEvents.SESSION_STARTED, SessionLifecycleContext(session_id=session.session_id))
 
-    # Wait for async event propagation: DB → Client → API server → Cache → WS
+    # Wait for async event propagation: DB → event_bus → API server → Cache → WS
     await wait_for_call(mock_ws.send_json, timeout=2.0)
 
     # Verify WebSocket received the session_started event
