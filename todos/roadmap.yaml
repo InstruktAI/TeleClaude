@@ -1,11 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: ucap-ingress-provisioning-harmonization
-  group: unified-client-adapter-pipeline
-  after:
-  - ucap-canonical-contract
-  description: 'Phase 5: Standardize ingress semantics and centralize channel/provisioning
-    orchestration for client adapters.'
 - slug: ucap-cutover-parity-validation
   group: unified-client-adapter-pipeline
   after:

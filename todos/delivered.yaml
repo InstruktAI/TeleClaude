@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: ucap-ingress-provisioning-harmonization
+  date: '2026-02-25'
+  title: 'Phase 5: Standardize ingress semantics and centralize channel/provisioning
+    orchestration for client adapters.'
+  commit: 51d9d25707a8f65ff1742fde08771e042deb42b1
+  description: 'Phase 5: Standardize ingress semantics and centralize channel/provisioning
+    orchestration for client adapters.'
 - slug: ucap-tui-adapter-alignment
   date: '2026-02-25'
   title: 'Phase 4: Align TUI realtime delivery to adapter-driven contract and remove
