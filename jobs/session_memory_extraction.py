@@ -79,7 +79,7 @@ class SessionMemoryExtractionJob(Job):
                 await self._process_session(session)
                 processed += 1
             except Exception as e:
-                sid = session.session_id[:8] if hasattr(session, "session_id") else "unknown"
+                sid = session.session_id if hasattr(session, "session_id") else "unknown"
                 errors.append(f"session {sid}: {e}")
 
         success = len(errors) == 0
@@ -224,18 +224,16 @@ class SessionMemoryExtractionJob(Job):
         Business memories capture product feedback, feature requests, common
         pain points, and domain knowledge shared by users.
         """
-        # TODO: Use AI agent to analyse transcript and extract business memories.
-        # Save via MemoryStore WITHOUT identity_key (project-scoped):
-        #
-        #   from teleclaude.memory.store import MemoryStore
-        #   from teleclaude.memory.types import ObservationInput, ObservationType
-        #   store = MemoryStore()
-        #   await store.save_observation(ObservationInput(
-        #       text=memory_text,
-        #       title=memory_title,
-        #       project=project_name,
-        #       type=ObservationType.DISCOVERY,
-        #   ))
+        # TODO: Use AI agent to analyse transcript and extract
+        # store = MemoryStore()
+        # await store.save_observation(
+        #     ObservationInput(
+        #         text=memory_text,
+        #         title=memory_title,
+        #         project=project_name,
+        #         type=ObservationType.DISCOVERY,
+        #     )
+        # )
         _ = transcript, session
 
     async def _extract_and_publish_actionable_items(
@@ -250,18 +248,18 @@ class SessionMemoryExtractionJob(Job):
         internal channel for downstream routing.
         """
         # TODO: Use AI agent to identify actionable items from transcript.
-        # For each item, publish to the channels subsystem:
-        #
-        #   from teleclaude.channels.publisher import channel_key, publish
-        #   from teleclaude.config import config
-        #   redis = get_redis()
-        #   key = channel_key(project, "actionable-items")
-        #   await publish(redis, key, {
-        #       "type": item_type,  # e.g. "bug", "feature-request", "follow-up"
-        #       "summary": item_summary,
-        #       "session_id": session.session_id,
-        #       "identity_key": identity_key,
-        #   })
+        # redis = get_redis()
+        # key = channel_key(project, "actionable-items")
+        # await publish(
+        #     redis,
+        #     key,
+        #     {
+        #         "type": item_type,  # e.g. "bug", "feature-request", "follow-up"
+        #         "summary": item_summary,
+        #         "session_id": session.session_id,
+        #         "identity_key": identity_key,
+        #     },
+        # )
         _ = transcript, session
 
     async def _update_bookkeeping(self, session_id: str, now: datetime) -> None:
