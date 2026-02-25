@@ -13,6 +13,7 @@ import os
 import shlex
 import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal
 
@@ -80,6 +81,7 @@ from teleclaude.core.models import (
     TodoInfo,
 )
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
@@ -265,14 +267,21 @@ class APIServer:
             return
         self.cache.remove_session(context.session_id)
 
-        # Broadcast canonical closed status (R2) to WS clients
-        from datetime import datetime, timezone
-
+        # Broadcast canonical closed status (R2) to WS clients — validated via contract
+        timestamp = datetime.now(timezone.utc).isoformat()
+        canonical = serialize_status_event(
+            session_id=context.session_id,
+            status="closed",
+            reason="session_closed",
+            timestamp=timestamp,
+        )
+        if canonical is None:
+            return
         dto = SessionLifecycleStatusEventDTO(
             session_id=context.session_id,
             status="closed",
             reason="session_closed",
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=timestamp,
         )
         self._broadcast_payload("session_status", dto.model_dump(exclude_none=True))
 
