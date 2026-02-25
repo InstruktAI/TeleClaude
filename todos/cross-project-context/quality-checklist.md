@@ -21,8 +21,8 @@ Ownership:
 
 Manual verification notes:
 
-- Executed `telec todo demo validate cross-project-context` after creating `todos/cross-project-context/demo.md`; validation passed with one executable block.
-- Demo script verified observable behavior: phase 0 project catalog output, phase 1 cross-project ID rewriting, and non-admin visibility filtering (`public` visible, `internal` hidden).
+- Executed `telec todo demo validate cross-project-context`; validation passed with 1 executable block.
+- Confirmed behavior through automated tests covering cross-project snippet ID handling and role-based visibility fallbacks.
 
 ## Review Gates (Reviewer)
 

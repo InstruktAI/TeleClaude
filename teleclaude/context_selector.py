@@ -478,7 +478,7 @@ def build_context_output(
     domains: list[str] | None = None,
     list_projects: bool = False,
     projects: list[str] | None = None,
-    caller_role: str = "admin",
+    caller_role: str | None = None,
     human_role: str | None = None,
     test_agent: str | None = None,
     test_mode: str | None = None,

@@ -2,48 +2,52 @@
 
 ## Critical
 
-- Phase 2 cross-project retrieval fails unless `projects=[...]` is redundantly passed again.
-  - Location: `teleclaude/context_selector.py:619`
-  - Behavior: a request like `snippet_ids=["teleclaude/design/architecture"]` without `projects` is loaded in phase 2, then filtered out by project-path domain gating and emitted as `access: denied`.
-  - Expected: requirement success criterion says `get_context(snippet_ids=["teleclaude/design/architecture/checkpoint-system"])` should resolve and return content in phase 2.
-  - Evidence: reproduced with concrete values via `.venv/bin/python` harness; output returned denial block instead of snippet body.
-  - Fix direction: in `_include_snippet`, allow cross-project snippets that were explicitly requested in phase 2 (or apply domain/path gating only to phase 1 listing, not phase 2 explicit IDs).
+- None.
 
 ## Important
 
-- MCP project-root detection is too broad and rejects non-project snippet IDs.
-  - Location: `teleclaude/mcp/handlers.py:1179`
-  - Behavior: any `snippet_id` containing `/` except `general/` and `third-party/` triggers `teleclaude.yml` root walk. This includes baseline/domain IDs (e.g. `baseline/...`, `software-development/...`) that are not project-prefixed.
-  - Risk: callers outside a TeleClaude project root get `ERROR: NO_PROJECT_ROOT` for valid non-project lookups.
-  - Evidence: reproduced with `.venv/bin/python` harness and `snippet_ids=["software-development/policy/commits"]` from `cwd="/tmp"`.
-  - Fix direction: align this guard with cross-project/project detection logic (exclude baseline/domain/global IDs, or only enforce root for IDs that truly require project-root resolution).
+- Cross-project `snippet_ids` are still blocked by local project-root gating.
+  - Location: `teleclaude/mcp/handlers.py:85`, `teleclaude/mcp/handlers.py:1197`
+  - Behavior: `teleclaude__get_context(snippet_ids=["teleclaude/design/architecture"], cwd="/")` returns `ERROR: NO_PROJECT_ROOT` before selector execution.
+  - Expected: cross-project IDs should resolve via `~/.teleclaude/projects.yaml` without requiring the caller's cwd to contain `teleclaude.yml`.
+  - Evidence: reproduced with `.venv/bin/python` async harness by patching `load_manifest` to include `teleclaude`; `build_context_output` was not called.
+  - Fix direction: require local root only for `project/...` IDs; do not root-gate manifest-prefixed cross-project IDs.
+
+- `caller_role` is not authoritative; `human_role` can downgrade admin visibility.
+  - Location: `teleclaude/context_selector.py:609`
+  - Behavior: `build_context_output(caller_role="admin", human_role="member")` hides `visibility: internal` snippets.
+  - Expected: role filtering should follow the resolved `user_role` (`caller_role`) per requirement; admin must always see internal snippets.
+  - Evidence: reproduced with `.venv/bin/python` harness; identical data returns internal snippets for `caller_role="admin"` but not when `human_role="member"` is also passed.
+  - Risk: migrated sessions defaulted to `user_role=admin` but retaining `human_role=member` become unintentionally restricted.
+  - Fix direction: treat `caller_role` as authoritative whenever provided; use `human_role` only as fallback when no `caller_role` is available.
 
 ## Suggestions
 
-- Add regression tests for both failure paths:
-  - `build_context_output(snippet_ids=["{project}/..."], projects=None)` should return content in phase 2.
-  - `teleclaude__get_context(snippet_ids=["software-development/..."], cwd=<no teleclaude.yml>)` should not fail early with `NO_PROJECT_ROOT`.
+- Add regression tests for:
+  - `teleclaude__get_context(snippet_ids=["teleclaude/design/..."], cwd=<no teleclaude.yml>)` should not fail with `NO_PROJECT_ROOT`.
+  - `build_context_output(caller_role="admin", human_role="member")` should still include internal snippets.
 
 ## Paradigm-Fit Assessment
 
-- Data flow: implementation mostly follows existing selector/handler boundaries, but phase-2 filtering still reuses phase-1 path-gating assumptions, creating a boundary mismatch.
-- Component reuse: no major duplication concerns found.
-- Pattern consistency: error reporting shape is consistent, but the current `access: denied` emission for a domain-gating failure is semantically misleading.
+- Data flow: cross-project selector flow is largely aligned, but handler pre-gating still imposes local-root coupling on manifest-resolved IDs.
+- Component reuse: implementation reuses existing selector/handler seams effectively; no copy-paste duplication concerns observed.
+- Pattern consistency: visibility model introduces `user_role` correctly, but fallback to `human_role` mixes old/new authorization paradigms.
 
 ## Manual Verification Evidence
 
-- Ran targeted unit suites for touched modules:
+- Ran targeted tests:
   - `pytest -q tests/unit/test_context_selector.py tests/unit/test_mcp_get_context.py tests/unit/test_project_manifest.py tests/unit/test_telec_sync.py tests/unit/test_docs_index.py tests/unit/test_help_desk_features.py tests/unit/test_command_handlers.py tests/unit/test_db.py`
-  - Result: `152 passed`.
-- Performed focused runtime reproductions with concrete values using `.venv/bin/python` harnesses for both findings above.
-
-Verdict: REQUEST CHANGES
+  - Result: `155 passed`.
+- Ran two focused `.venv/bin/python` harness reproductions for the Important findings above.
 
 ## Fixes Applied
 
-- Critical: Phase 2 cross-project retrieval failed without repeating `projects=[...]`.
-  - Fix: Allowed explicitly requested cross-project phase-2 snippet IDs through `_include_snippet` while keeping visibility checks and existing domain gating for non-explicit items.
-  - Commit: `ed00a153`
-- Important: MCP project-root detection rejected valid non-project snippet IDs.
-  - Fix: Replaced broad slash-prefix guard with project-root gating limited to `project/...` and manifest project prefixes.
-  - Commit: `d8860b6a`
+- Issue: Cross-project `snippet_ids` were blocked by local project-root gating.
+  - Fix: Updated `_snippet_ids_require_project_root` to gate only `project/...` IDs and added regression coverage for `teleclaude/design/architecture` without local `teleclaude.yml`.
+  - Commit: `633521be`
+
+- Issue: `caller_role` was not authoritative and could be downgraded by `human_role`.
+  - Fix: Updated visibility resolution to use `human_role` only when `caller_role` is absent and added regression coverage for `caller_role="admin", human_role="member"`.
+  - Commit: `a395bf5f`
+
+Verdict: REQUEST CHANGES
