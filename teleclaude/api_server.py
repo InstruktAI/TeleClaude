@@ -1090,7 +1090,8 @@ class APIServer:
                     ephemeral=False,
                 )
             except Exception as e:
-                logger.warning("render_widget send failed: %s", e)
+                logger.error("render_widget send failed: %s", e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to send widget: {e}") from e
 
             return {"status": "success", "summary": text_summary}
 

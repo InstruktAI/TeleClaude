@@ -425,6 +425,34 @@ def test_run_session_worker_command_requires_slug(test_client, mock_command_serv
     mock_command_service.create_session.assert_not_called()
 
 
+def test_render_widget_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """sessions/widget should return success when adapter delivery succeeds."""
+    mock_adapter_client.send_message = AsyncMock(return_value=123)
+    with patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock, return_value=MagicMock()):
+        response = test_client.post(
+            "/sessions/sess-123/widget",
+            json={"data": {"title": "Build", "sections": [{"type": "text", "content": "Done"}]}},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "success"
+    assert "Build" in payload["summary"]
+
+
+def test_render_widget_send_failure_returns_500(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """sessions/widget should fail when adapter delivery fails."""
+    mock_adapter_client.send_message = AsyncMock(side_effect=RuntimeError("delivery failed"))
+    with patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock, return_value=MagicMock()):
+        response = test_client.post(
+            "/sessions/sess-123/widget",
+            json={"data": {"sections": [{"type": "text", "content": "Done"}]}},
+        )
+
+    assert response.status_code == 500
+    assert "Failed to send widget: delivery failed" in response.json()["detail"]
+
+
 def test_create_session_populates_tmux_session_name(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     """Test that create_session populates tmux_session_name in response."""
     mock_command_service.create_session.return_value = {
