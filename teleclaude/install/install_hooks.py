@@ -496,8 +496,8 @@ def _remove_codex_mcp_config(content: str) -> str:
     """Remove TeleClaude MCP server section from Codex TOML config."""
     section_name = "mcp_servers.teleclaude"
     section_pattern = re.compile(
-        rf"(?ms)^\s*(?:#\s*TeleClaude MCP Server\s*\n)?\[{re.escape(section_name)}\]\n"
-        r"(?:^(?!\[).*$\n?)*"
+        rf"(?ms)^(?:\s*#\s*TeleClaude MCP Server\s*\n)?\s*\[{re.escape(section_name)}\]\n"
+        r"(?:^(?!\s*\[).*$\n?)*"
     )
     content = section_pattern.sub("", content)
     return content.rstrip() + "\n" if content.strip() else ""
@@ -519,8 +519,8 @@ def ensure_codex_mcp_config(content: str, repo_root: Path) -> str:
 
     section_name = "mcp_servers.teleclaude"
     section_pattern = re.compile(
-        rf"(?ms)^(?:# TeleClaude MCP Server\n)?\[{re.escape(section_name)}\]\n"
-        r"(?:^(?!\[).*$\n?)*"
+        rf"(?ms)^(?:\s*#\s*TeleClaude MCP Server\s*\n)?\s*\[{re.escape(section_name)}\]\n"
+        r"(?:^(?!\s*\[).*$\n?)*"
     )
     content = section_pattern.sub("", content)
     content = content.rstrip() + "\n\n" + desired_block
