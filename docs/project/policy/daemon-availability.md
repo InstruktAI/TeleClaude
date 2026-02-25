@@ -12,7 +12,7 @@ description: 'The TeleClaude daemon must stay up; restarts must be brief and ver
 - The daemon is a 24/7 service; downtime is not acceptable outside controlled restarts.
 - After any change needing a restart, call `make restart` and observe success, or verify with `make status`.
 - During instability, keep SIGTERM/socket monitoring enabled and retain logs under `/var/log/instrukt-ai/teleclaude/monitoring`.
-- Verify key services after restart (MCP socket, API port, adapters).
+- Verify key services after restart (API socket, API health/read endpoints, adapters).
 
 ## Rationale
 

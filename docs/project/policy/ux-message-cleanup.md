@@ -54,7 +54,7 @@ Does NOT apply to:
 
 - Transport adapters (Redis - no UI messages)
 - API adapter (no persistent message history)
-- MCP adapter (stdio-based, no message concepts)
+- Tool-call interfaces (no persistent message concepts)
 
 ## Enforcement
 
