@@ -16,7 +16,7 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
 ## Phase 1 — Config Contract and Validation
 
 - [x] Require explicit `agents` section in effective config load path.
-- [ ] Validate allowed keys and reject unknown agent keys.
+- [x] Validate allowed keys and reject unknown agent keys.
 - [ ] Enforce at least one enabled agent.
 - [ ] Return precise, actionable validation errors referencing `config.yml` paths.
 - [ ] Update config spec docs to match enforced contract.

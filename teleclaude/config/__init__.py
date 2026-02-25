@@ -457,6 +457,20 @@ def _require_agents_section(raw_config: dict[str, object]) -> dict[str, object]:
     return agents_raw
 
 
+def _validate_known_agent_keys(
+    agents_raw: dict[str, object],  # guard: loose-dict
+    known_agents: tuple[str, ...],
+) -> None:
+    """Reject unknown agent keys under config.yml:agents."""
+    unknown = sorted(str(name) for name in agents_raw.keys() if str(name) not in known_agents)
+    if unknown:
+        raise ValueError(
+            "config.yml key `agents` contains unknown agent keys: "
+            f"{', '.join(unknown)}. "
+            f"Allowed keys: {', '.join(known_agents)}."
+        )
+
+
 def _parse_categories(raw: object) -> dict[str, int] | None:
     """Parse Discord categories dict from config (name -> channel ID)."""
     if not isinstance(raw, dict):
@@ -616,6 +630,9 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
 
     # Import AGENT_PROTOCOL from constants
     from teleclaude.constants import AGENT_PROTOCOL
+
+    known_agents = tuple(AGENT_PROTOCOL.keys())
+    _validate_known_agent_keys(agents_raw, known_agents)
 
     agents_registry: Dict[str, AgentConfig] = {}
     for name, protocol in AGENT_PROTOCOL.items():
