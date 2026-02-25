@@ -1,0 +1,17 @@
+{
+  "slug": "ucap-web-adapter-alignment",
+  "title": "Requirements - ucap-web-adapter-alignment",
+  "version": "0.1.0",
+  "delivered_date": "2026-02-25",
+  "merge_commit": "79624a871b89d629bb82e68aa06c561875c7b1b7",
+  "metrics": {
+    "plan_checklist_items": 10,
+    "plan_checklist_completed": 0
+  },
+  "acts": {
+    "challenge": "",
+    "build": "",
+    "gauntlet": "",
+    "next": ""
+  }
+}
