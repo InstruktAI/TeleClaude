@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: mcp-migration-agent-config
+  date: '2026-02-25'
+  title: 'Phase 2: Remove MCP from agent session configs, validate all agent types
+    and workflows'
+  commit: d23e3e820f14164696f0e1751b3b354770b7dae4
+  description: 'Phase 2: Remove MCP from agent session configs, validate all agent
+    types and workflows'
 - slug: mcp-migration-telec-commands
   date: '2026-02-25'
   title: 'Phase 1: Add telec subcommands for all 24 tools with rich --help, extend

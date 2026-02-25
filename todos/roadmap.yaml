@@ -1,11 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: mcp-migration-agent-config
-  group: mcp-to-tool-specs
-  after:
-  - mcp-migration-telec-commands
-  description: 'Phase 2: Remove MCP from agent session configs, validate all agent
-    types and workflows'
 - slug: mcp-migration-delete-mcp
   group: mcp-to-tool-specs
   after:
