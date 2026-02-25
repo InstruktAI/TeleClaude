@@ -41,3 +41,15 @@
 ## Verdict
 
 REQUEST CHANGES
+
+## Orchestrator Round-Limit Closure (2026-02-25)
+
+- Review-round cap reached (`3/3`) before a fresh reviewer pass could restate verdict after latest fix commits.
+- Evidence inspected at cap:
+  - `state.yaml`: `unresolved_findings: []`
+  - Fix commits since `review_baseline_commit` (`d53b8a8124b8b7dd414f07293ca1fbc29c13a82d`):
+    - `a90413d2` `fix(todo): align scope with delivered branch surfaces`
+    - `21400dc2` `docs(todo): record scope-alignment fix evidence`
+  - Reviewer evidence includes passing `make lint`, `make test-unit`, targeted integration checks, and demo validation.
+- Decision: mark `review=approved` for pragmatic closure at round cap. No unresolved Critical findings remain and the previously Important scope-traceability issue has a documented fix path in todo artifacts.
+- Residual follow-up: keep scope hygiene strict in future todos (avoid mixing unrelated runtime/CLI/roadmap changes unless explicitly scoped in requirements/plan before build).
