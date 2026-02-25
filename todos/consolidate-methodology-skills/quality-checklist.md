@@ -10,19 +10,15 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [x] Requirements implemented according to scope
-- [x] Implementation-plan task checkboxes all `[x]`
-- [x] Tests pass (`make test`)
-- [x] Lint passes (`make lint`)
-- [x] No silent deferrals in implementation plan
-- [x] Code committed
-- [x] Demo is runnable and verified
-- [x] Working tree clean
-- [x] Comments/docstrings updated where behavior changed
-- Manual verification:
-  Executed `make test` twice; both runs passed with unit + integration suites green.
-  Executed `telec todo demo validate consolidate-methodology-skills` and confirmed 3 executable blocks discovered.
-  Confirmed distribution spot-checks for all six skills across `~/.claude/skills`, `~/.codex/skills`, and `~/.gemini/skills`.
+- [ ] Requirements implemented according to scope
+- [ ] Implementation-plan task checkboxes all `[x]`
+- [ ] Tests pass (`make test`)
+- [ ] Lint passes (`make lint`)
+- [ ] No silent deferrals in implementation plan
+- [ ] Code committed
+- [ ] Demo is runnable and verified
+- [ ] Working tree clean
+- [ ] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 
