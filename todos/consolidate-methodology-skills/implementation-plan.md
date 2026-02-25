@@ -55,7 +55,7 @@
 
 ---
 
-### Task 4: brainstorming
+### [x] Task 4: brainstorming
 
 **File(s):** `agents/skills/brainstorming/SKILL.md`
 
