@@ -19,8 +19,8 @@ Migrate Web realtime behavior onto canonical adapter output without changing unr
 
 ## Phase 1 - Wire Web Lane to Canonical Contract
 
-- [ ] [R1] Route Web lane output subscription through canonical contract serializer path.
-- [ ] [R1] Verify required metadata fields are present for Web consumers.
+- [x] [R1] Route Web lane output subscription through canonical contract serializer path.
+- [x] [R1] Verify required metadata fields are present for Web consumers.
 
 ### Files (expected)
 
@@ -30,9 +30,9 @@ Migrate Web realtime behavior onto canonical adapter output without changing unr
 
 ## Phase 2 - Remove Web Bypass and Preserve Edge Translation
 
-- [ ] [R2] Remove direct Web bypass path for core output progression.
-- [ ] [R3] Keep SSE/UI message framing isolated at Web adapter edge.
-- [ ] [R2, R3] Confirm snapshot/history endpoints remain read-only helpers, not realtime bypass producers.
+- [x] [R2] Remove direct Web bypass path for core output progression.
+- [x] [R3] Keep SSE/UI message framing isolated at Web adapter edge.
+- [x] [R2, R3] Confirm snapshot/history endpoints remain read-only helpers, not realtime bypass producers.
 
 ### Files (expected)
 
@@ -41,8 +41,8 @@ Migrate Web realtime behavior onto canonical adapter output without changing unr
 
 ## Phase 3 - Web Validation and Observability
 
-- [ ] [R4] Add tests for canonical contract path in Web lane.
-- [ ] [R4] Add/verify Web lane observability fields (lane, event type, session).
+- [x] [R4] Add tests for canonical contract path in Web lane.
+- [x] [R4] Add/verify Web lane observability fields (lane, event type, session).
 
 ### Files (expected)
 
@@ -56,9 +56,9 @@ Migrate Web realtime behavior onto canonical adapter output without changing unr
 
 ## Definition of Done
 
-- [ ] Web lane uses canonical outbound contract.
-- [ ] Web bypass path is removed for core output progression.
-- [ ] Web edge translation boundaries remain intact.
+- [x] Web lane uses canonical outbound contract.
+- [x] Web bypass path is removed for core output progression.
+- [x] Web edge translation boundaries remain intact.
 
 ## Research References
 

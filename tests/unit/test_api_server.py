@@ -1046,3 +1046,127 @@ def test_create_session_invalid_thinking_mode_rejected(test_client):  # type: ig
         },
     )
     assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Web lane canonical contract tests (ucap-web-adapter-alignment)
+# ---------------------------------------------------------------------------
+
+
+def test_map_lifecycle_to_sse_status_active_returns_streaming() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """Active session lifecycle_status maps to 'streaming' SSE status."""
+    from teleclaude.api.streaming import _map_lifecycle_to_sse_status
+
+    assert _map_lifecycle_to_sse_status("active") == "streaming"
+
+
+def test_map_lifecycle_to_sse_status_none_returns_streaming() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """None lifecycle_status maps to 'streaming' SSE status (safe default)."""
+    from teleclaude.api.streaming import _map_lifecycle_to_sse_status
+
+    assert _map_lifecycle_to_sse_status(None) == "streaming"
+
+
+def test_map_lifecycle_to_sse_status_closed_returns_closed() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """Canonical 'closed' lifecycle_status maps to 'closed' SSE status."""
+    from teleclaude.api.streaming import _map_lifecycle_to_sse_status
+
+    assert _map_lifecycle_to_sse_status("closed") == "closed"
+
+
+def test_map_lifecycle_to_sse_status_error_returns_error() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """Canonical 'error' lifecycle_status maps to 'error' SSE status."""
+    from teleclaude.api.streaming import _map_lifecycle_to_sse_status
+
+    assert _map_lifecycle_to_sse_status("error") == "error"
+
+
+def test_map_lifecycle_to_sse_status_completed_returns_completed() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """Canonical 'completed' lifecycle_status maps to 'completed' SSE status."""
+    from teleclaude.api.streaming import _map_lifecycle_to_sse_status
+
+    assert _map_lifecycle_to_sse_status("completed") == "completed"
+
+
+def test_map_lifecycle_to_sse_status_initializing_returns_streaming() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """'initializing' lifecycle_status maps to 'streaming' (session not yet closed)."""
+    from teleclaude.api.streaming import _map_lifecycle_to_sse_status
+
+    assert _map_lifecycle_to_sse_status("initializing") == "streaming"
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_uses_canonical_lifecycle_status(mock_adapter_client) -> None:  # type: ignore[explicit-any, unused-ignore]
+    """Web SSE stream emits canonical lifecycle_status, not hardcoded 'streaming'."""
+    import json
+
+    from teleclaude.api.streaming import _stream_sse
+    from teleclaude.core.db_models import Session
+
+    session = Session(
+        session_id="test-session-id-1234",
+        lifecycle_status="active",
+        computer_name="local",
+    )
+
+    events: list[str] = []
+    async for event in _stream_sse(
+        session=session,
+        session_id="test-session-id-1234",
+        since_timestamp=None,
+        user_message=None,
+    ):
+        events.append(event)
+
+    # Parse SSE events
+    data_events = [e for e in events if e.startswith("data: ")]
+    parsed = []
+    for e in data_events:
+        payload = e[len("data: ") :].strip()
+        if payload != "[DONE]":
+            parsed.append(json.loads(payload))
+
+    # Canonical status event must be present and use canonical mapping (active → streaming)
+    status_events = [p for p in parsed if p.get("type") == "data-session-status"]
+    assert status_events, "Expected at least one data-session-status event"
+    assert status_events[0]["status"] == "streaming", (
+        f"Expected 'streaming' for lifecycle_status='active', got {status_events[0]['status']!r}"
+    )
+    assert status_events[0]["sessionId"] == "test-session-id-1234"
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_closed_session_emits_closed_status() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """Web SSE stream emits 'closed' status when session lifecycle_status is 'closed'."""
+    import json
+
+    from teleclaude.api.streaming import _stream_sse
+    from teleclaude.core.db_models import Session
+
+    session = Session(
+        session_id="closed-session-id-5678",
+        lifecycle_status="closed",
+        computer_name="local",
+    )
+
+    events: list[str] = []
+    async for event in _stream_sse(
+        session=session,
+        session_id="closed-session-id-5678",
+        since_timestamp=None,
+        user_message=None,
+    ):
+        events.append(event)
+
+    data_events = [e for e in events if e.startswith("data: ")]
+    parsed = []
+    for e in data_events:
+        payload = e[len("data: ") :].strip()
+        if payload != "[DONE]":
+            parsed.append(json.loads(payload))
+
+    status_events = [p for p in parsed if p.get("type") == "data-session-status"]
+    assert status_events, "Expected at least one data-session-status event"
+    assert status_events[0]["status"] == "closed", (
+        f"Expected 'closed' for lifecycle_status='closed', got {status_events[0]['status']!r}"
+    )
