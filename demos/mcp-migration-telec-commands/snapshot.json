@@ -1,0 +1,19 @@
+{
+  "slug": "mcp-migration-telec-commands",
+  "title": "mcp-migration-telec-commands",
+  "version": "0.1.0",
+  "delivered_date": "2026-02-25",
+  "merge_commit": "fff5b10e3d64e2eb3f66db993df6916eaa0f8341",
+  "metrics": {
+    "implementation_plan_tasks_total": 67,
+    "implementation_plan_tasks_checked": 67,
+    "review_items_documented": 0
+  },
+  "five_acts": {
+    "act1_prepare": "Add `telec` subcommands for the 22 agent tools that don't yet have CLI equivalents, calling the existing daemon REST API over the Unix socket. (`telec docs` already covers `get_context` and `help` — see note below.)",
+    "act2_build": "Add 8 new REST API endpoints and 22 telec CLI subcommands. Add daemon-side role enforcement. Enrich `telec docs` help text. Write rich `--help` for all new subcommands. Update telec-cli spec doc with `@exec` directives.",
+    "act3_review": "Review/fix loop completed with documented findings and follow-up closure.",
+    "act4_finalize": "Finalize prepare integrated origin/main and emitted FINALIZE_READY.",
+    "act5_demo": "Demo markdown was produced for post-merge presentation."
+  }
+}
