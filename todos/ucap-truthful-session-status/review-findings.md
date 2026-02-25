@@ -1,15 +1,15 @@
 # Review Findings: ucap-truthful-session-status
 
-**Reviewer:** Claude (automated)
-**Review round:** 2
-**Baseline commit:** 3162c65f
+**Reviewer:** Claude Opus 4.6 (independent review)
+**Review round:** 3
+**Baseline commit:** 5a5aa1e7
 **Verdict:** APPROVE
 
 ---
 
-## Round 1 Fix Verification
+## Round 1 Fix Verification (confirmed in round 2, re-verified round 3)
 
-All 7 findings from round 1 have been verified as correctly resolved:
+All 7 findings from round 1 are correctly resolved. Each fix is present in the codebase with a dedicated commit.
 
 | Finding                                 | Fix                                                                                        | Commit   | Verified |
 | --------------------------------------- | ------------------------------------------------------------------------------------------ | -------- | -------- |
@@ -23,7 +23,7 @@ All 7 findings from round 1 have been verified as correctly resolved:
 
 ---
 
-## Round 2 New Findings
+## Round 3 New Findings
 
 ### None Critical
 
@@ -31,7 +31,7 @@ All 7 findings from round 1 have been verified as correctly resolved:
 
 ---
 
-## Suggestions
+## Suggestions (carried forward)
 
 ### S1. Closed status DTO omits routing metadata
 
@@ -39,55 +39,69 @@ All 7 findings from round 1 have been verified as correctly resolved:
 
 `_handle_session_closed_event` constructs the DTO without `message_intent`/`delivery_scope`, while `_handle_session_status_event` passes them from the `SessionStatusContext`. The `canonical` result from `serialize_status_event()` carries these fields but they're not forwarded to the DTO. Minor inconsistency — `closed` is terminal and unlikely to affect routing decisions in practice.
 
-### S2. `next()` without default in test assertions (carried from round 1)
+### S2. `next()` without default in test assertions
 
 **File:** `tests/unit/test_agent_activity_events.py:217,258,292,372`
 
 Four `next(c[0][1] for c in ... if ...)` calls without a default. `StopIteration` instead of descriptive assertion failure on mismatch. Low risk since tests pass.
 
-### S3. Inconsistent assertion style in `test_handle_tool_done` (carried from round 1)
+### S3. Inconsistent assertion style in `test_handle_tool_done`
 
 **File:** `tests/unit/test_agent_activity_events.py:139`
 
 Uses `assert_called_once()` while sibling tests filter by event type. Correct but fragile if `tool_done` later emits status events.
 
+### S4. Implementation plan task checkboxes remain unchecked
+
+**File:** `todos/ucap-truthful-session-status/implementation-plan.md`
+
+All Phase 1-4 task items show `[ ]` despite the code being fully implemented and the quality checklist confirming completion. Clerical inconsistency only — the implementation is verified present.
+
 ---
 
 ## Paradigm-Fit Assessment
 
-1. **Data flow:** Core-owned status transitions route through `status_contract.serialize_status_event()` for validation, emit via `event_bus`, and fan out to adapters. The close/error paths now properly cancel stall tasks and emit canonical status events (C1/C2 fixes). The closed status in `api_server` uses contract validation as a gate. **Pass.**
+1. **Data flow:** Core-owned status transitions route through `status_contract.serialize_status_event()` for validation, emit via `event_bus`, and fan out to adapters via subscription. Close/error paths cancel stall tasks and emit canonical status events. The closed status in `api_server` uses contract validation as a gate. No adapter invents status independently. **Pass.**
 
-2. **Component reuse:** `_format_lifecycle_status` defined once in `UiAdapter` base, inherited by Discord/Telegram. `_handle_session_status` is a no-op base with per-adapter overrides. No copy-paste duplication. **Pass.**
+2. **Component reuse:** `_format_lifecycle_status` defined once as a `@staticmethod` on `UiAdapter` base, reused by Discord and Telegram. `_handle_session_status` is a no-op base with per-adapter overrides. `_emit_status_event` in coordinator parallels the existing `_emit_activity_event` pattern. No copy-paste duplication found. **Pass.**
 
-3. **Pattern consistency:** `SessionStatusContext` follows frozen-dataclass event context pattern. DTO follows existing Pydantic model pattern. Stall watcher follows async task pattern with proper exception handling (I4 fix). Event subscription follows `event_bus.subscribe` pattern. **Pass.**
+3. **Pattern consistency:** `SessionStatusContext` follows the frozen-dataclass event context pattern used by all other event contexts. `SessionLifecycleStatusEventDTO` follows the existing Pydantic DTO pattern. Stall watcher uses `asyncio.Task` with cancellation — consistent with `_background_tasks` pattern. Event subscription follows `event_bus.subscribe` pattern. `_stall_tasks` dict follows the same lifecycle tracking pattern as `_background_tasks`. **Pass.**
 
 ---
 
 ## Requirements Traceability
 
-| Req                                    | Status | Evidence                                                                                                       |
-| -------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------- |
-| R1. Core-owned status truth            | Pass   | Core computes all status transitions; close/error paths now use coordinator (C1/C2 fixes)                      |
-| R2. Canonical status contract          | Pass   | `status_contract.py` defines vocabulary, validation, required fields; all paths validated                      |
-| R3. Capability-aware adapter rendering | Pass   | Discord send/edit/fallback, Telegram footer, WS broadcast; tested (I2 fix); deserialization fixed (C3)         |
-| R4. Truthful inactivity behavior       | Pass   | Stall detection transitions tested (I3); tasks cancelled on close/error (C1/C2); exception handling added (I4) |
-| R5. Observability and validation       | Pass   | Contract tests (test_status_contract.py), adapter tests, coordinator tests; debug logging at transitions       |
+| Req                                    | Status | Evidence                                                                                                                |
+| -------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
+| R1. Core-owned status truth            | Pass   | `agent_coordinator._emit_status_event` is the sole producer; close/error paths in `daemon.py` use coordinator methods   |
+| R2. Canonical status contract          | Pass   | `status_contract.py` defines vocabulary, validation, `CanonicalStatusEvent`, timing thresholds; all paths validated     |
+| R3. Capability-aware adapter rendering | Pass   | Discord: send/edit/fallback status message; Telegram: footer line; WS: broadcast DTO; TUI: notification for stall/error |
+| R4. Truthful inactivity behavior       | Pass   | `_schedule_stall_detection`: accepted→awaiting_output→stalled; cancelled on tool_use, agent_stop, close, error          |
+| R5. Observability and validation       | Pass   | 12 contract tests, 6 adapter tests, 5 coordinator tests; debug logging at all transitions with session/status/reason    |
+
+---
+
+## Why No New Issues
+
+1. **Paradigm-fit verified:** Traced data flow from core through event_bus to all adapters. Confirmed no adapter invents status — all consume `SessionStatusContext` from event_bus subscription. Checked `_format_lifecycle_status` reuse across Discord/Telegram (single staticmethod, no duplication).
+2. **Requirements validated:** Each R1-R5 requirement traced to specific code paths. R4 stall detection verified by reading `_schedule_stall_detection` with `_cancel_stall_task` calls at all exit points (tool_use, agent_stop, session_closed, agent_error).
+3. **Copy-paste duplication checked:** No duplicated logic across adapters. Discord and Telegram each have distinct rendering strategies (status message vs footer) while sharing the formatting utility. The `_emit_status_event` pattern mirrors `_emit_activity_event` but is not a copy — it uses the status contract serializer instead of the activity contract.
 
 ---
 
 ## Summary
 
-All 3 critical and 4 important findings from round 1 have been correctly resolved with minimal, targeted fixes. Each fix has a dedicated commit with clear intent. The test suite passes (2107 passed, 106 skipped) and lint is clean.
+Independent round 3 review confirms the implementation is sound. All 7 round 1 findings remain correctly resolved. No new critical or important issues found.
 
-The implementation now satisfies all five requirements:
+The implementation satisfies all five requirements:
 
 - Core is the single source of truth for lifecycle status semantics (R1)
-- Canonical contract validates all outbound status events (R2)
-- Adapters render truthfully from the canonical stream with tests covering key paths (R3)
-- Stall detection transitions correctly and cleans up on session close/error (R4)
-- Contract, adapter, and coordinator tests cover vocabulary, transitions, and rendering behavior (R5)
+- Canonical contract validates all outbound status events with explicit vocabulary and required fields (R2)
+- Adapters render truthfully from the canonical stream — Discord edit-in-place, Telegram footer, WS broadcast, TUI notification (R3)
+- Stall detection transitions correctly (accepted → awaiting_output → stalled) and cleans up at all exit points (R4)
+- 23 new tests cover contract, adapter, and coordinator behavior; debug logging at all transitions (R5)
 
-Three suggestions remain (routing metadata gap in closed DTO, `next()` without default in tests, assertion style inconsistency). None block approval.
+Four suggestions remain (routing metadata gap in closed DTO, test assertion style, implementation plan checkboxes). None block approval.
 
 **Tests:** 2107 passed, 106 skipped
-**Lint:** PASSING
+**Lint:** ruff + pyright clean
