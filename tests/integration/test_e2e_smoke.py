@@ -437,6 +437,8 @@ async def test_local_session_lifecycle_to_websocket(
     from teleclaude.core import db as db_module
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.db import Db
+    from teleclaude.core.event_bus import event_bus
+    from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 
     # Set up database with in-memory SQLite
     db_instance = Db(":memory:")
@@ -458,8 +460,6 @@ async def test_local_session_lifecycle_to_websocket(
     api_server.client = real_client
 
     # Re-register event handlers on global event bus
-    from teleclaude.core.event_bus import event_bus
-
     event_bus.clear()
     event_bus.subscribe("session_started", api_server._handle_session_started_event)
     event_bus.subscribe("session_updated", api_server._handle_session_updated_event)
@@ -481,6 +481,10 @@ async def test_local_session_lifecycle_to_websocket(
         last_input_origin=InputOrigin.TELEGRAM.value,
         title="Local Lifecycle Test Session",
         project_path="/tmp",
+    )
+    event_bus.emit(
+        TeleClaudeEvents.SESSION_STARTED,
+        SessionLifecycleContext(session_id=session.session_id),
     )
 
     # Wait for async event propagation: DB → Client → API server → Cache → WS

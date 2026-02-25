@@ -172,7 +172,8 @@ async def send_invite_email(
     links: dict[str, str | None],
     org_name: str = "InstruktAI",
     sender_name: str = "Your Admin",
-) -> None:
+    suppress_stdout_fallback: bool = False,
+) -> bool:
     """Send invite email with platform links.
 
     Args:
@@ -183,20 +184,26 @@ async def send_invite_email(
         sender_name: Sign-off name
 
     Note:
-        If BREVO_SMTP_USER is not set, prints invite links to stdout instead of sending email.
+        If BREVO_SMTP_USER is not set, optionally prints invite links to stdout
+        instead of sending email.
 
     Raises:
         RuntimeError: If email sending fails
+
+    Returns:
+        True if an email was sent via SMTP, False if SMTP credentials were not
+        configured and fallback behavior was used.
     """
     # Check for SMTP credentials
     if not os.getenv("BREVO_SMTP_USER"):
         logger.warning("BREVO_SMTP_USER not set — printing invite links instead of sending email")
-        print(f"\n=== Invite Links for {name} ({email}) ===")
-        for platform, link in links.items():
-            if link:
-                print(f"{platform.capitalize()}: {link}")
-        print("=" * 50)
-        return
+        if not suppress_stdout_fallback:
+            print(f"\n=== Invite Links for {name} ({email}) ===")
+            for platform, link in links.items():
+                if link:
+                    print(f"{platform.capitalize()}: {link}")
+            print("=" * 50)
+        return False
 
     # Load templates
     html_template_path = _TEMPLATES_DIR / "member-invite.html"
@@ -252,3 +259,4 @@ async def send_invite_email(
     subject = f"Welcome to {org_name} — Your Personal AI Assistant"
     await send_email(email, subject, html_body, text_body)
     logger.info("Invite email sent to %s for %s", email, name)
+    return True

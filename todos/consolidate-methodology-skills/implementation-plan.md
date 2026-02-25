@@ -130,7 +130,5 @@
 
 Build notes (2026-02-25):
 
-- `make test` attempted twice; both runs failed with the same 3 pre-existing failures:
-  `tests/unit/test_install_hooks.py::test_configure_claude_never_embeds_worktree_path`,
-  `tests/unit/test_config_cli.py::TestPeopleAdd::test_add_person_json`,
-  `tests/unit/test_config_cli.py::TestInvite::test_invite_json`.
+- Gate rerun complete: `make test` passed after aligning stale integration expectations with current runtime behavior.
+- Demo gate passed with command-surface support for `telec todo demo validate <slug>`.

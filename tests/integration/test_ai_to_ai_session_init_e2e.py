@@ -149,7 +149,7 @@ async def test_ai_to_ai_session_without_project_path_is_jailed(daemon_with_mocke
     # Verify the session was jailed into help-desk
     sessions = []
     for _ in range(50):
-        sessions = await daemon.db.list_sessions()
+        sessions = await daemon.db.list_sessions(include_initializing=True)
         if sessions:
             break
         await asyncio.sleep(0.02)

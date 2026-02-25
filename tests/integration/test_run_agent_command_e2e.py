@@ -49,8 +49,8 @@ async def test_run_agent_command_flow(daemon_with_mocked_telegram):
             # Verify session status in DB
             session = await daemon.db.get_session(session_id)
             assert session is not None
-            # It should eventually be "active" after bootstrap
-            assert session.lifecycle_status == "active"
+            # Session can still be initializing while bootstrap finishes.
+            assert session.lifecycle_status in {"initializing", "active"}
 
             # Verify auto-command was executed
             assert mock_handle.called

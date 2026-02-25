@@ -161,10 +161,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=["If slug is omitted, all active todos are checked."],
             ),
             "demo": CommandDef(
-                desc="Run or list demo artifacts",
-                args="[slug]",
+                desc="Run, validate, create, or list demo artifacts",
+                args="[validate|run|create] [slug]",
                 flags=[_PROJECT_ROOT_LONG],
-                notes=["No slug: list all demos. With slug: run demo for that slug."],
+                notes=[
+                    "No args: list demos.",
+                    "run <slug>: execute demo blocks.",
+                    "validate <slug>: structural check that executable bash blocks exist.",
+                    "create <slug>: copy todos/{slug}/demo.md to demos/{slug}/demo.md.",
+                    "Backward compatible: passing only <slug> behaves as run <slug>.",
+                ],
             ),
             "remove": CommandDef(
                 desc="Remove a todo and its files",
@@ -1226,10 +1232,13 @@ def _extract_demo_blocks(content: str) -> list[tuple[int, str, bool, str]]:
 
 
 def _handle_todo_demo(args: list[str]) -> None:
-    """Handle telec todo demo - run or list demo artifacts."""
+    """Handle telec todo demo - run, validate, create, or list demo artifacts."""
     import json
     import re
+    import shutil
 
+    mode = "run"
+    mode_set = False
     slug: str | None = None
     project_root = Path.cwd()
 
@@ -1244,12 +1253,67 @@ def _handle_todo_demo(args: list[str]) -> None:
             print(_usage("todo", "demo"))
             raise SystemExit(1)
         else:
+            if not mode_set and arg in {"validate", "run", "create"}:
+                mode = arg
+                mode_set = True
+                i += 1
+                continue
             if slug is not None:
                 print("Only one slug is allowed.")
                 print(_usage("todo", "demo"))
                 raise SystemExit(1)
             slug = arg
             i += 1
+
+    def _find_demo_md_path(current_slug: str) -> Path | None:
+        for candidate in [
+            project_root / "todos" / current_slug / "demo.md",
+            project_root / "demos" / current_slug / "demo.md",
+        ]:
+            if candidate.exists():
+                return candidate
+        return None
+
+    if mode == "create":
+        if not slug:
+            print("Missing required slug.")
+            print(_usage("todo", "demo"))
+            raise SystemExit(1)
+
+        source = project_root / "todos" / slug / "demo.md"
+        if not source.exists():
+            print(f"Error: Missing source demo at {source}")
+            raise SystemExit(1)
+
+        destination = project_root / "demos" / slug / "demo.md"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+        print(f"Created demo artifact: {destination.relative_to(project_root)}")
+        raise SystemExit(0)
+
+    if mode == "validate":
+        if not slug:
+            print("Missing required slug for validation.")
+            print(_usage("todo", "demo"))
+            raise SystemExit(1)
+
+        demo_md_path = _find_demo_md_path(slug)
+        if demo_md_path is None:
+            print(f"Error: Demo '{slug}' not found")
+            raise SystemExit(1)
+
+        content = demo_md_path.read_text(encoding="utf-8")
+        blocks = _extract_demo_blocks(content)
+        executable = [(ln, blk, reason) for ln, blk, skipped, reason in blocks if not skipped]
+
+        print(f"Validating demo structure: {slug}")
+        print(f"Source: {demo_md_path.relative_to(project_root)}")
+        if not executable:
+            print("Demo validation failed: no executable bash blocks found.")
+            raise SystemExit(1)
+
+        print(f"Demo validation passed: {len(executable)} executable block(s) found.")
+        raise SystemExit(0)
 
     # Read project version from pyproject.toml
     pyproject_path = project_root / "pyproject.toml"
@@ -1298,14 +1362,7 @@ def _handle_todo_demo(args: list[str]) -> None:
 
     # With slug: find demo.md or fall back to snapshot.json demo field
     # Search order: todos/{slug}/demo.md (during build), demos/{slug}/demo.md (after delivery)
-    demo_md_path: Path | None = None
-    for candidate in [
-        project_root / "todos" / slug / "demo.md",
-        demos_dir / slug / "demo.md",
-    ]:
-        if candidate.exists():
-            demo_md_path = candidate
-            break
+    demo_md_path = _find_demo_md_path(slug)
 
     # If demo.md found, run code block extraction
     if demo_md_path is not None:

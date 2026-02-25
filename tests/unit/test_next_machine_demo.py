@@ -208,6 +208,36 @@ def test_cli_demo_run_nonexistent_slug(tmp_path: Path, capsys):
     assert "not found" in captured.out.lower()
 
 
+def test_cli_demo_validate_subcommand_passes_with_executable_blocks(tmp_path: Path, capsys):
+    """`telec todo demo validate <slug>` passes when bash blocks exist."""
+    todos_dir = tmp_path / "todos" / "test-slug"
+    todos_dir.mkdir(parents=True)
+    (todos_dir / "demo.md").write_text('# Demo\n\n```bash\necho "ok"\n```\n')
+
+    with patch("teleclaude.cli.telec.Path.cwd", return_value=tmp_path):
+        try:
+            _handle_todo_demo(["validate", "test-slug"])
+        except SystemExit as e:
+            assert e.code == 0
+    captured = capsys.readouterr()
+    assert "validation passed" in captured.out.lower()
+
+
+def test_cli_demo_validate_subcommand_fails_without_executable_blocks(tmp_path: Path, capsys):
+    """`telec todo demo validate <slug>` fails when no executable bash blocks exist."""
+    todos_dir = tmp_path / "todos" / "test-slug"
+    todos_dir.mkdir(parents=True)
+    (todos_dir / "demo.md").write_text("# Demo\n\nGuided only.\n")
+
+    with patch("teleclaude.cli.telec.Path.cwd", return_value=tmp_path):
+        try:
+            _handle_todo_demo(["validate", "test-slug"])
+        except SystemExit as e:
+            assert e.code == 1
+    captured = capsys.readouterr()
+    assert "no executable bash blocks" in captured.out.lower()
+
+
 def test_cli_demo_run_missing_demo_field(tmp_path: Path, capsys):
     """CLI runner warns and exits cleanly when demo field is missing."""
     demos_dir = tmp_path / "demos" / "test-slug"

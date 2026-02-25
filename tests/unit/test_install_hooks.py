@@ -57,6 +57,7 @@ def test_configure_claude_never_embeds_worktree_path(tmp_path, monkeypatch):
     """Hook commands always point to main repo receiver, never a worktree."""
     monkeypatch.setenv("HOME", str(tmp_path))
     real_repo = Path(__file__).resolve().parents[2]
+    main_repo = install_hooks.resolve_main_repo_root(real_repo)
 
     install_hooks.configure_claude(real_repo)
 
@@ -65,7 +66,7 @@ def test_configure_claude_never_embeds_worktree_path(tmp_path, monkeypatch):
     hook_cmd = data["hooks"]["SessionStart"][0]["hooks"][0]["command"]
 
     assert "trees/" not in hook_cmd
-    assert str(real_repo / "teleclaude" / "hooks" / "receiver.py") in hook_cmd
+    assert str(main_repo / "teleclaude" / "hooks" / "receiver.py") in hook_cmd
 
 
 def test_merge_hooks_replaces_existing_hook_definition():

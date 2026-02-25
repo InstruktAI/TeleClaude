@@ -115,6 +115,23 @@ subcommands:
           --commit: 'Commit hash.'
           --title: 'Delivery title.'
           --project-root: 'Project root (default: cwd).'
+  bugs:
+    description: 'Create, list, and report bug-fix work items.'
+    subcommands:
+      create:
+        args:
+          - slug: 'string'
+        flags:
+          --project-root: 'Project root (default: cwd).'
+      report:
+        args:
+          - description: 'string'
+        flags:
+          --slug: 'Optional explicit slug.'
+          --project-root: 'Project root (default: cwd).'
+      list:
+        flags:
+          --project-root: 'Project root (default: cwd).'
   config:
     description: 'Interactive configuration (or get/patch/validate subcommands).'
     subcommands:
