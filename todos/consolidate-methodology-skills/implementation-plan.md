@@ -29,7 +29,7 @@
 
 ---
 
-### Task 2: test-driven-development
+### [x] Task 2: test-driven-development
 
 **File(s):** `agents/skills/test-driven-development/SKILL.md`
 
