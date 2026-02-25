@@ -851,7 +851,6 @@ async def test_broadcast_user_input_source_adapter_not_echoed(tmp_path):
                 adapter_client = AdapterClient()
                 telegram = MockTelegramAdapter(adapter_client)
                 discord = MockTelegramAdapter(adapter_client)
-                discord.ADAPTER_KEY = "discord"
                 adapter_client.adapters = {
                     "telegram": telegram,
                     "discord": discord,

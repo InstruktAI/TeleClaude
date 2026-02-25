@@ -136,7 +136,10 @@ def test_map_redis_mcp_message_actor_synthesis():
     assert isinstance(cmd, ProcessMessageCommand)
     assert cmd.origin == InputOrigin.MCP.value
     assert cmd.actor_id is not None
-    assert "workstation" in cmd.actor_id
+    # Contract: system:{computer}:{session_id} — assert structural prefix not just substring
+    assert cmd.actor_id.startswith("system:workstation:"), (
+        f"actor_id must follow 'system:{{computer}}:{{session_id}}' format, got: {cmd.actor_id!r}"
+    )
     assert cmd.actor_name is not None
     assert "workstation" in cmd.actor_name
 

@@ -24,6 +24,7 @@ from teleclaude.types.commands import (
     HandleFileCommand,
     HandleVoiceCommand,
     KeysCommand,
+    ProcessMessageCommand,
     RestartAgentCommand,
     ResumeAgentCommand,
     StartAgentCommand,
@@ -1767,8 +1768,6 @@ async def test_process_message_updates_last_input_origin_before_broadcast():
         mock_tmux_io.wrap_bracketed_paste.return_value = "hello"
         mock_tmux_io.process_text = AsyncMock(return_value=True)
 
-        from teleclaude.types.commands import ProcessMessageCommand
-
         cmd = ProcessMessageCommand(
             session_id="sess-prov-order",
             text="hello",
@@ -1798,6 +1797,10 @@ async def test_handle_voice_updates_last_input_origin_before_feedback():
 
     R2: handle_voice() updates provenance before sending transcription status
     so that feedback routing uses the correct adapter lane.
+
+    The voice handler sends a status message (e.g. "Transcribing...") via the
+    send_message callback before returning the transcription. This test verifies
+    that provenance is written BEFORE that status send fires.
     """
     call_order: list[str] = []
 
@@ -1829,10 +1832,13 @@ async def test_handle_voice_updates_last_input_origin_before_feedback():
         patch.object(command_handlers, "voice_message_handler") as mock_voice,
         patch.object(command_handlers, "process_message", new=AsyncMock()),
     ):
-        # voice handler returns None → stops early after provenance update
-        mock_voice.handle_voice = AsyncMock(return_value=None)
+        # Simulate voice handler sending a status (e.g. "Transcribing...") via the
+        # send_message callback before returning the transcription — mirrors real behavior.
+        async def fake_handle_voice(session_id, audio_path, context, send_message, delete_message):
+            await send_message(session_id, "Transcribing...", MagicMock())
+            return "hello world"
 
-        from teleclaude.types.commands import HandleVoiceCommand
+        mock_voice.handle_voice = fake_handle_voice
 
         cmd = HandleVoiceCommand(
             session_id="sess-voice-prov",
@@ -1841,11 +1847,23 @@ async def test_handle_voice_updates_last_input_origin_before_feedback():
         )
         await command_handlers.handle_voice(cmd, mock_client, AsyncMock())
 
-    # Provenance update must happen (even when transcription returns None)
-    update_found = any("last_input_origin" in e for e in call_order)
-    assert update_found, f"handle_voice must update last_input_origin; call_order={call_order}"
+    # Provenance update must appear before the feedback send
+    update_idx = next(
+        (i for i, e in enumerate(call_order) if "last_input_origin" in e),
+        None,
+    )
+    send_idx = next(
+        (i for i, e in enumerate(call_order) if e == "send_message"),
+        None,
+    )
+    assert update_idx is not None, f"handle_voice must update last_input_origin; call_order={call_order}"
+    assert send_idx is not None, f"send_message (feedback) not found; call_order={call_order}"
+    assert update_idx < send_idx, (
+        f"Provenance must be updated before feedback send: "
+        f"update_idx={update_idx}, send_idx={send_idx}, call_order={call_order}"
+    )
 
-    # Verify origin is correct
+    # Verify the correct origin was written
     origin_update = next(e for e in call_order if "last_input_origin" in e)
     assert InputOrigin.TELEGRAM.value in origin_update
 
