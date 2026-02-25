@@ -15,6 +15,19 @@ from instrukt_ai_logging import get_logger  # noqa: E402
 
 from teleclaude.cli.api_client import APIError, TelecAPIClient  # noqa: E402
 from teleclaude.cli.models import CreateSessionResult  # noqa: E402
+from teleclaude.cli.tool_commands import (  # noqa: E402
+    handle_agents,
+    handle_channels,
+    handle_computers,
+    handle_deploy,
+    handle_projects,
+    handle_sessions,
+    handle_todo_maintain,
+    handle_todo_mark_phase,
+    handle_todo_prepare,
+    handle_todo_set_deps,
+    handle_todo_work,
+)
 from teleclaude.config import config  # noqa: E402
 from teleclaude.constants import ENV_ENABLE, MAIN_MODULE  # noqa: E402
 from teleclaude.logging_config import setup_logging  # noqa: E402
@@ -29,10 +42,12 @@ TUI_SESSION_NAME = "tc_tui"
 class TelecCommand(str, Enum):
     """Supported telec CLI commands."""
 
-    LIST = "list"
-    CLAUDE = "claude"
-    GEMINI = "gemini"
-    CODEX = "codex"
+    SESSIONS = "sessions"
+    COMPUTERS = "computers"
+    PROJECTS = "projects"
+    DEPLOY = "deploy"
+    AGENTS = "agents"
+    CHANNELS = "channels"
     REVIVE = "revive"
     INIT = "init"
     SYNC = "sync"
@@ -91,23 +106,144 @@ _PROJECT_ROOT = Flag("--project-root", "-p", "Project root (default: cwd)", hidd
 _PROJECT_ROOT_LONG = Flag("--project-root", desc="Project root (default: cwd)", hidden=True)
 
 CLI_SURFACE: dict[str, CommandDef] = {
-    "list": CommandDef(
-        desc="List sessions (default: spawned by current, --all for all)",
-        flags=[_H, Flag("--all", desc="Show all sessions")],
+    "sessions": CommandDef(
+        desc="Manage agent sessions",
+        subcommands={
+            "list": CommandDef(
+                desc="List sessions (default: spawned by current, --all for all)",
+                flags=[
+                    _H,
+                    Flag("--all", desc="Show all sessions"),
+                    Flag("--closed", desc="Include closed sessions"),
+                ],
+            ),
+            "start": CommandDef(
+                desc="Start a new agent session",
+                flags=[
+                    _H,
+                    Flag("--computer", desc="Target computer (default: local)"),
+                    Flag("--project", desc="Project directory path"),
+                    Flag("--agent", desc="Agent: claude, gemini, codex"),
+                    Flag("--mode", desc="Thinking mode: fast, med, slow"),
+                    Flag("--message", desc="Initial message to send"),
+                    Flag("--title", desc="Session title"),
+                ],
+            ),
+            "send": CommandDef(
+                desc="Send a message to a running session",
+                args="<session_id> <message>",
+                flags=[_H, Flag("--session", "-s", "Session ID")],
+            ),
+            "tail": CommandDef(
+                desc="Get recent messages from a session's transcript",
+                args="<session_id>",
+                flags=[
+                    _H,
+                    Flag("--session", "-s", "Session ID"),
+                    Flag("--since", desc="ISO8601 timestamp filter"),
+                    Flag("--tools", desc="Include tool use entries"),
+                    Flag("--thinking", desc="Include thinking blocks"),
+                ],
+            ),
+            "run": CommandDef(
+                desc="Run a slash command on a new agent session",
+                flags=[
+                    _H,
+                    Flag("--command", desc="Slash command (e.g. /next-build)"),
+                    Flag("--project", desc="Project directory path"),
+                    Flag("--args", desc="Command arguments"),
+                    Flag("--agent", desc="Agent: claude, gemini, codex"),
+                    Flag("--mode", desc="Thinking mode: fast, med, slow"),
+                    Flag("--computer", desc="Target computer (default: local)"),
+                    Flag("--subfolder", desc="Subdirectory within the project"),
+                ],
+            ),
+            "end": CommandDef(
+                desc="End (terminate) a session",
+                args="<session_id>",
+                flags=[_H, Flag("--session", "-s", "Session ID"), Flag("--computer", desc="Target computer")],
+            ),
+            "unsubscribe": CommandDef(
+                desc="Stop receiving notifications from a session",
+                args="<session_id>",
+                flags=[_H],
+            ),
+            "result": CommandDef(
+                desc="Send a formatted result to the session's user",
+                args="<session_id> <content>",
+                flags=[_H, Flag("--format", desc="Output format: markdown, html")],
+            ),
+            "file": CommandDef(
+                desc="Send a file to a session",
+                args="<session_id>",
+                flags=[
+                    _H,
+                    Flag("--path", desc="File path on the daemon host"),
+                    Flag("--filename", desc="Display filename"),
+                    Flag("--caption", desc="Optional caption"),
+                ],
+            ),
+            "widget": CommandDef(
+                desc="Render a rich widget to the session's user",
+                args="<session_id>",
+                flags=[_H, Flag("--data", desc="Widget expression as JSON")],
+            ),
+            "escalate": CommandDef(
+                desc="Escalate a customer session to an admin via Discord",
+                args="<session_id>",
+                flags=[
+                    _H,
+                    Flag("--customer", desc="Customer name"),
+                    Flag("--reason", desc="Reason for escalation"),
+                    Flag("--summary", desc="Context summary for the admin"),
+                ],
+            ),
+        },
     ),
-    "claude": CommandDef(
-        desc="Start interactive Claude Code session",
-        args="[mode] [prompt]",
-        notes=["Modes: fast (cheapest), med (balanced), slow (most capable)"],
+    "computers": CommandDef(
+        desc="List available computers (local + cached remote)",
+        flags=[_H],
     ),
-    "gemini": CommandDef(
-        desc="Start interactive Gemini session",
-        args="[mode] [prompt]",
+    "projects": CommandDef(
+        desc="List projects on local and remote computers",
+        flags=[_H, Flag("--computer", desc="Filter to a specific computer")],
     ),
-    "codex": CommandDef(
-        desc="Start interactive Codex session",
-        args="[mode] [prompt]",
-        notes=["Modes: fast, med, slow, deep"],
+    "deploy": CommandDef(
+        desc="Deploy latest code to remote computers",
+        args="[<computer> ...]",
+        flags=[_H],
+        notes=["If no computers given, deploys to all online remotes."],
+    ),
+    "agents": CommandDef(
+        desc="Manage agent dispatch status and availability",
+        subcommands={
+            "availability": CommandDef(desc="Get current availability for all agents"),
+            "status": CommandDef(
+                desc="Set dispatch status for a specific agent",
+                args="<agent>",
+                flags=[
+                    _H,
+                    Flag("--status", desc="Status: available, unavailable, degraded"),
+                    Flag("--reason", desc="Reason for status change"),
+                    Flag("--until", desc="ISO8601 UTC expiry for unavailable"),
+                    Flag("--clear", desc="Reset to available immediately"),
+                ],
+            ),
+        },
+    ),
+    "channels": CommandDef(
+        desc="Manage internal Redis Stream channels",
+        subcommands={
+            "list": CommandDef(
+                desc="List active channels",
+                flags=[_H, Flag("--project", desc="Filter by project name")],
+            ),
+            "publish": CommandDef(
+                desc="Publish a message to a channel",
+                args="<channel>",
+                flags=[_H, Flag("--data", desc="JSON payload to publish")],
+            ),
+        },
     ),
     "revive": CommandDef(
         desc="Revive session by TeleClaude session ID",
@@ -160,10 +296,53 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=["If slug is omitted, all active todos are checked."],
             ),
             "demo": CommandDef(
-                desc="Run or list demo artifacts",
-                args="[slug]",
+                desc="Manage and run demo artifacts",
+                args="[validate|run|create] [slug]",
                 flags=[_PROJECT_ROOT_LONG],
-                notes=["No slug: list all demos. With slug: run demo for that slug."],
+                notes=[
+                    "No args: list all available demos.",
+                    "validate <slug>: check todos/{slug}/demo.md has executable bash blocks.",
+                    "run <slug>: execute bash blocks from demos/{slug}/demo.md.",
+                    "create <slug>: promote todos/{slug}/demo.md to demos/{slug}/demo.md.",
+                    "With slug only: run demo from demos/{slug}/snapshot.json.",
+                ],
+            ),
+            "prepare": CommandDef(
+                desc="Run the Phase A (prepare) state machine",
+                args="[<slug>]",
+                flags=[
+                    _H,
+                    Flag("--cwd", desc="Project root directory"),
+                    Flag("--no-hitl", desc="Disable human-in-the-loop gate"),
+                ],
+            ),
+            "work": CommandDef(
+                desc="Run the Phase B (work) state machine",
+                args="[<slug>]",
+                flags=[_H, Flag("--cwd", desc="Project root directory (required)")],
+            ),
+            "maintain": CommandDef(
+                desc="Run the Phase D (maintain) state machine",
+                flags=[_H, Flag("--cwd", desc="Project root directory (required)")],
+            ),
+            "mark-phase": CommandDef(
+                desc="Mark a work phase as complete/approved in state.yaml",
+                args="<slug>",
+                flags=[
+                    _H,
+                    Flag("--phase", desc="Phase: build or review"),
+                    Flag("--status", desc="Status: pending, started, complete, approved, changes_requested"),
+                    Flag("--cwd", desc="Project root directory (required)"),
+                ],
+            ),
+            "set-deps": CommandDef(
+                desc="Set dependencies for a work item in the roadmap",
+                args="<slug>",
+                flags=[
+                    _H,
+                    Flag("--after", desc="Dependency slug (repeatable)"),
+                    Flag("--cwd", desc="Project root directory (required)"),
+                ],
             ),
         },
     ),
@@ -267,11 +446,6 @@ _COMMANDS = [name for name, cmd in CLI_SURFACE.items() if not cmd.hidden]
 _COMMAND_DESCRIPTIONS = {name: cmd.desc for name, cmd in CLI_SURFACE.items() if not cmd.hidden}
 
 # Value completions for specific flags
-_AGENT_MODES = [
-    ("fast", "Cheapest, quickest"),
-    ("med", "Balanced"),
-    ("slow", "Most capable"),
-]
 _TAXONOMY_TYPES = [
     ("principle", "Core principles"),
     ("concept", "Key concepts"),
@@ -466,11 +640,10 @@ def _handle_completion() -> None:
     # Command-specific completions
     if cmd == "docs":
         _complete_docs(rest, current, is_partial)
-    elif cmd in ("sync", "watch", "revive", "list"):
-        _complete_flags(CLI_SURFACE[cmd].flag_tuples, rest, current, is_partial)
-    elif cmd in ("claude", "gemini", "codex"):
-        _complete_agent(rest, current, is_partial)
-    elif cmd in ("todo", "roadmap", "config"):
+    elif cmd in ("sync", "watch", "revive", "computers", "projects", "deploy"):
+        if cmd in CLI_SURFACE:
+            _complete_flags(CLI_SURFACE[cmd].flag_tuples, rest, current, is_partial)
+    elif cmd in ("todo", "roadmap", "config", "sessions", "agents", "channels"):
         _complete_subcmd(cmd, rest, current, is_partial)
     # init has no further completions
 
@@ -537,19 +710,6 @@ def _complete_flags(flags: list[tuple[str | None, str, str]], rest: list[str], c
         for flag in flags:
             if not _flag_used(flag, used_flags):
                 _print_flag(flag)
-
-
-def _complete_agent(rest: list[str], current: str, is_partial: bool) -> None:
-    """Complete agent commands (claude/gemini/codex)."""
-    # First arg is mode
-    if not rest:
-        for mode_value, mode_desc in _AGENT_MODES:
-            if not is_partial or mode_value.startswith(current):
-                _print_completion(mode_value, mode_desc)
-    elif len(rest) == 1 and is_partial:
-        for mode_value, mode_desc in _AGENT_MODES:
-            if mode_value.startswith(current):
-                _print_completion(mode_value, mode_desc)
 
 
 def _complete_subcmd(cmd_name: str, rest: list[str], current: str, is_partial: bool) -> None:
@@ -701,14 +861,18 @@ def _handle_cli_command(argv: list[str]) -> None:
     except ValueError:
         cmd_enum = None
 
-    if cmd_enum is TelecCommand.LIST:
-        show_all = "--all" in args
-        api = TelecAPIClient()
-        asyncio.run(_list_sessions(api, show_all=show_all))
-    elif cmd_enum in (TelecCommand.CLAUDE, TelecCommand.GEMINI, TelecCommand.CODEX):
-        mode = args[0] if args else "slow"
-        prompt = " ".join(args[1:]) if len(args) > 1 else None
-        _quick_start(cmd_enum.value, mode, prompt)
+    if cmd_enum is TelecCommand.SESSIONS:
+        handle_sessions(args)
+    elif cmd_enum is TelecCommand.COMPUTERS:
+        handle_computers(args)
+    elif cmd_enum is TelecCommand.PROJECTS:
+        handle_projects(args)
+    elif cmd_enum is TelecCommand.DEPLOY:
+        handle_deploy(args)
+    elif cmd_enum is TelecCommand.AGENTS:
+        handle_agents(args)
+    elif cmd_enum is TelecCommand.CHANNELS:
+        handle_channels(args)
     elif cmd_enum is TelecCommand.REVIVE:
         _handle_revive(args)
     elif cmd_enum is TelecCommand.INIT:
@@ -796,74 +960,6 @@ def _ensure_tmux_status_hidden_for_tui() -> None:
         return
 
 
-def _get_caller_session_id() -> str | None:
-    """Read the calling session's ID from $TMPDIR/teleclaude_session_id."""
-    tmpdir = os.environ.get("TMPDIR", "")
-    if not tmpdir:
-        return None
-    id_file = Path(tmpdir) / "teleclaude_session_id"
-    try:
-        return id_file.read_text(encoding="utf-8").strip() or None
-    except OSError:
-        return None
-
-
-async def _list_sessions(api: TelecAPIClient, *, show_all: bool = False) -> None:
-    """List sessions to stdout.
-
-    Default: show only sessions spawned by the calling session (via initiator_session_id).
-    With --all: show all sessions.
-
-    Args:
-        api: API client
-        show_all: If True, list all sessions regardless of initiator
-    """
-    caller_id = None if show_all else _get_caller_session_id()
-
-    await api.connect()
-    try:
-        sessions = await api.list_sessions()
-        if caller_id:
-            sessions = [s for s in sessions if s.initiator_session_id == caller_id]
-        for session in sessions:
-            sid = session.session_id
-            computer = session.computer or "?"
-            agent = session.active_agent or "?"
-            mode = session.thinking_mode or "?"
-            title = session.title
-            print(f"{sid} {computer}: {agent}/{mode} - {title}")
-        if not sessions and caller_id:
-            print("No child sessions. Use --all to list all sessions.")
-    finally:
-        await api.close()
-
-
-def _quick_start(agent: str, mode: str, prompt: str | None) -> None:
-    """Quick start a session via the daemon (ensures proper tmux env).
-
-    Args:
-        agent: Agent name (claude, gemini, codex)
-        mode: Thinking mode (fast, med, slow)
-        prompt: Initial prompt (optional - if None, starts interactive session)
-    """
-    try:
-        result = asyncio.run(_quick_start_via_api(agent, mode, prompt))
-    except APIError as e:
-        print(f"Error: {e}")
-        return
-
-    tmux_session_name = result.tmux_session_name or ""
-    if not tmux_session_name:
-        session_id = result.session_id
-        if session_id:
-            print(f"Session {session_id[:8]} created, but no tmux session name returned.")
-        else:
-            print("Session created, but no tmux session name returned.")
-        return
-
-    _attach_tmux_session(tmux_session_name)
-
-
 def _handle_revive(args: list[str]) -> None:
     """Handle telec revive command."""
     if not args:
@@ -939,22 +1035,6 @@ async def _send_revive_enter_via_api(session_id: str) -> bool:
             computer=config.computer.name,
             key="enter",
             count=1,
-        )
-    finally:
-        await api.close()
-
-
-async def _quick_start_via_api(agent: str, mode: str, prompt: str | None) -> CreateSessionResult:
-    """Create a session via API and return the response."""
-    api = TelecAPIClient()
-    await api.connect()
-    try:
-        return await api.create_session(
-            computer=config.computer.name,
-            project_path=os.getcwd(),
-            agent=agent,
-            thinking_mode=mode,
-            message=prompt,
         )
     finally:
         await api.close()
@@ -1086,6 +1166,16 @@ def _handle_todo(args: list[str]) -> None:
         _handle_todo_validate(args[1:])
     elif subcommand == "demo":
         _handle_todo_demo(args[1:])
+    elif subcommand == "prepare":
+        handle_todo_prepare(args[1:])
+    elif subcommand == "work":
+        handle_todo_work(args[1:])
+    elif subcommand == "maintain":
+        handle_todo_maintain(args[1:])
+    elif subcommand == "mark-phase":
+        handle_todo_mark_phase(args[1:])
+    elif subcommand == "set-deps":
+        handle_todo_set_deps(args[1:])
     else:
         print(f"Unknown todo subcommand: {subcommand}")
         print(_usage("todo"))
@@ -1136,12 +1226,124 @@ def _handle_todo_validate(args: list[str]) -> None:
         print("✓ All active todos are valid")
 
 
+def _handle_todo_demo_validate(slug: str | None, project_root: Path) -> None:
+    """Validate that todos/{slug}/demo.md has executable bash blocks."""
+    import re
+
+    if not slug:
+        print("Error: slug is required for validate")
+        raise SystemExit(1)
+
+    demo_md = project_root / "todos" / slug / "demo.md"
+    if not demo_md.exists():
+        print(f"Error: {demo_md} not found")
+        raise SystemExit(1)
+
+    content = demo_md.read_text(encoding="utf-8")
+    bash_blocks = re.findall(r"```bash\n[\s\S]*?```", content)
+    # Filter out blocks marked with skip-validation
+    executable_blocks = [b for b in bash_blocks if "skip-validation" not in b]
+
+    if not executable_blocks:
+        print(f"FAIL: {demo_md} has no executable bash blocks")
+        raise SystemExit(1)
+
+    print(f"OK: {demo_md} has {len(executable_blocks)} executable bash block(s)")
+
+
+def _handle_todo_demo_run(slug: str | None, project_root: Path) -> None:
+    """Execute bash blocks from demos/{slug}/demo.md sequentially."""
+    if not slug:
+        print("Error: slug is required for run")
+        raise SystemExit(1)
+
+    demo_md = project_root / "demos" / slug / "demo.md"
+    if not demo_md.exists():
+        print(f"Error: {demo_md} not found")
+        raise SystemExit(1)
+
+    content = demo_md.read_text(encoding="utf-8")
+    # Find bash blocks; skip those annotated with skip-validation comment above them
+    lines = content.split("\n")
+    blocks: list[str] = []
+    i = 0
+    while i < len(lines):
+        # Check for skip-validation annotation on preceding comment line
+        skip = False
+        if lines[i].strip().startswith("<!--") and "skip-validation" in lines[i]:
+            skip = True
+            i += 1
+            continue
+        if lines[i].startswith("```bash"):
+            block_lines: list[str] = []
+            i += 1
+            while i < len(lines) and not lines[i].startswith("```"):
+                block_lines.append(lines[i])
+                i += 1
+            if not skip:
+                blocks.append("\n".join(block_lines))
+        i += 1
+
+    if not blocks:
+        print(f"Error: no executable bash blocks found in {demo_md}")
+        raise SystemExit(1)
+
+    print(f"Running {len(blocks)} bash block(s) from {demo_md}\n")
+    for idx, block in enumerate(blocks, start=1):
+        print(f"--- Block {idx} ---")
+        print(block)
+        result = subprocess.run(block, shell=True, cwd=project_root)
+        if result.returncode != 0:
+            print(f"\nBlock {idx} failed with exit code {result.returncode}")
+            raise SystemExit(result.returncode)
+    print("\nAll blocks passed.")
+
+
+def _handle_todo_demo_create(slug: str | None, project_root: Path) -> None:
+    """Promote todos/{slug}/demo.md to demos/{slug}/demo.md."""
+    import shutil
+
+    if not slug:
+        print("Error: slug is required for create")
+        raise SystemExit(1)
+
+    src = project_root / "todos" / slug / "demo.md"
+    if not src.exists():
+        print(f"Error: {src} not found")
+        raise SystemExit(1)
+
+    dest_dir = project_root / "demos" / slug
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / "demo.md"
+    shutil.copy2(src, dest)
+    print(f"Created {dest}")
+
+
 def _handle_todo_demo(args: list[str]) -> None:
-    """Handle telec todo demo - run or list demo artifacts."""
+    """Handle telec todo demo - run, validate, create or list demo artifacts."""
     import json
     import re
 
-    slug: str | None = None
+    # Dispatch subcommands: validate, run, create
+    if args and args[0] in ("validate", "run", "create"):
+        subcommand = args[0]
+        rest = args[1:]
+        slug: str | None = None
+        project_root = Path.cwd()
+        for i, arg in enumerate(rest):
+            if arg == "--project-root" and i + 1 < len(rest):
+                project_root = Path(rest[i + 1]).expanduser().resolve()
+            elif not arg.startswith("-") and slug is None:
+                slug = arg
+        if subcommand == "validate":
+            _handle_todo_demo_validate(slug, project_root)
+        elif subcommand == "run":
+            _handle_todo_demo_run(slug, project_root)
+        elif subcommand == "create":
+            _handle_todo_demo_create(slug, project_root)
+        return
+
+    slug = None
     project_root = Path.cwd()
 
     i = 0

@@ -271,8 +271,8 @@ Add handlers for: list, start, send, tail, run, end, unsubscribe, result, file, 
 Each handler parses flags, calls `tool_api_call()`, prints JSON to stdout.
 Rich `--help` with behavioral guidance from MCP tool descriptions.
 
-- [ ] Implement sessions subcommand handlers (11 subcommands)
-- [ ] Rich `--help` for each with examples
+- [x] Implement sessions subcommand handlers (11 subcommands)
+- [x] Rich `--help` for each with examples
 
 ### Task 4.2: Extend todo subcommands
 
@@ -281,8 +281,8 @@ Rich `--help` with behavioral guidance from MCP tool descriptions.
 Add handlers for: prepare, work, maintain, mark-phase, set-deps
 (extends existing `telec todo` group)
 
-- [ ] Implement todo workflow subcommand handlers (5 subcommands)
-- [ ] Rich `--help` for each
+- [x] Implement todo workflow subcommand handlers (5 subcommands)
+- [x] Rich `--help` for each
 
 ### Task 4.3: Add top-level and new group commands
 
@@ -290,31 +290,31 @@ Add handlers for: prepare, work, maintain, mark-phase, set-deps
 
 Add: computers, projects, deploy, agents (status + availability), channels (list + publish)
 
-- [ ] Implement top-level command handlers (computers, projects, deploy)
-- [ ] Implement agents group handlers (status, availability)
-- [ ] Implement channels group handlers (list, publish)
-- [ ] Rich `--help` for each
+- [x] Implement top-level command handlers (computers, projects, deploy)
+- [x] Implement agents group handlers (status, availability)
+- [x] Implement channels group handlers (list, publish)
+- [x] Rich `--help` for each
 
 ### Task 4.4: Wire into CLI surface
 
 **File(s):** `teleclaude/cli/telec.py`
 
-- [ ] Add new `CommandDef` entries to `CLI_SURFACE` for sessions subcommands
-- [ ] Add `CommandDef` entries for new todo subcommands (extend existing)
-- [ ] Add `CommandDef` entries for computers, projects, deploy
-- [ ] Add `CommandDef` for agents group
-- [ ] Add `CommandDef` for channels group
-- [ ] Add dispatch cases in `_handle_cli_command()`
-- [ ] Update completions
+- [x] Add new `CommandDef` entries to `CLI_SURFACE` for sessions subcommands
+- [x] Add `CommandDef` entries for new todo subcommands (extend existing)
+- [x] Add `CommandDef` entries for computers, projects, deploy
+- [x] Add `CommandDef` for agents group
+- [x] Add `CommandDef` for channels group
+- [x] Add dispatch cases in `_handle_cli_command()`
+- [x] Update completions
 
 ### Task 4.5: Remove legacy aliases
 
 **File(s):** `teleclaude/cli/telec.py`
 
-- [ ] Remove `CLAUDE`, `GEMINI`, `CODEX`, `LIST` from `TelecCommand`
-- [ ] Remove their `CLI_SURFACE` entries and dispatch cases
-- [ ] Remove `_quick_start()` and related functions
-- [ ] Remove `_complete_agent()` completion handler
+- [x] Remove `CLAUDE`, `GEMINI`, `CODEX`, `LIST` from `TelecCommand`
+- [x] Remove their `CLI_SURFACE` entries and dispatch cases
+- [x] Remove `_quick_start()` and related functions
+- [x] Remove `_complete_agent()` completion handler
 
 ---
 
