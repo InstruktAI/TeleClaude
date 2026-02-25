@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
 from teleclaude.cli.telec import _extract_demo_blocks, _handle_todo_demo
 
 # =============================================================================
@@ -236,6 +238,66 @@ def test_cli_demo_validate_subcommand_fails_without_executable_blocks(tmp_path: 
             assert e.code == 1
     captured = capsys.readouterr()
     assert "no executable bash blocks" in captured.out.lower()
+
+
+def test_cli_demo_create_subcommand_copies_demo_md(tmp_path: Path, capsys):
+    """`telec todo demo create <slug>` copies todos/{slug}/demo.md to demos/{slug}/demo.md."""
+    todos_dir = tmp_path / "todos" / "test-slug"
+    todos_dir.mkdir(parents=True)
+    source_demo = todos_dir / "demo.md"
+    source_demo.write_text('# Demo\n\n```bash\necho "from todo"\n```\n')
+
+    try:
+        _handle_todo_demo(["--project-root", str(tmp_path), "create", "test-slug"])
+    except SystemExit as e:
+        assert e.code == 0
+
+    destination = tmp_path / "demos" / "test-slug" / "demo.md"
+    assert destination.exists()
+    assert destination.read_text() == source_demo.read_text()
+
+    captured = capsys.readouterr()
+    assert "created demo artifact" in captured.out.lower()
+
+
+def test_cli_demo_create_subcommand_fails_when_source_missing(tmp_path: Path, capsys):
+    """`telec todo demo create <slug>` fails when todos/{slug}/demo.md does not exist."""
+    with pytest.raises(SystemExit) as exc_info:
+        _handle_todo_demo(["--project-root", str(tmp_path), "create", "missing-slug"])
+
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "missing source demo" in captured.out.lower()
+
+
+def test_cli_demo_validate_parses_project_root_before_mode(tmp_path: Path, capsys):
+    """Parser accepts --project-root before mode keyword and slug."""
+    todos_dir = tmp_path / "todos" / "test-slug"
+    todos_dir.mkdir(parents=True)
+    (todos_dir / "demo.md").write_text('# Demo\n\n```bash\necho "ok"\n```\n')
+
+    try:
+        _handle_todo_demo(["--project-root", str(tmp_path), "validate", "test-slug"])
+    except SystemExit as e:
+        assert e.code == 0
+
+    captured = capsys.readouterr()
+    assert "validation passed" in captured.out.lower()
+
+
+def test_cli_demo_validate_parses_project_root_after_mode_and_slug(tmp_path: Path, capsys):
+    """Parser accepts --project-root after mode keyword and slug."""
+    todos_dir = tmp_path / "todos" / "test-slug"
+    todos_dir.mkdir(parents=True)
+    (todos_dir / "demo.md").write_text('# Demo\n\n```bash\necho "ok"\n```\n')
+
+    try:
+        _handle_todo_demo(["validate", "test-slug", "--project-root", str(tmp_path)])
+    except SystemExit as e:
+        assert e.code == 0
+
+    captured = capsys.readouterr()
+    assert "validation passed" in captured.out.lower()
 
 
 def test_cli_demo_run_missing_demo_field(tmp_path: Path, capsys):
