@@ -188,8 +188,8 @@ def _parse_kv_args(args: list[str]) -> dict[str, str]:
 
 def _people_add(args: list[str], use_json: bool) -> None:
     _check_customer_guard()
-    opts = _parse_kv_args(args)
-    no_invite = "no-invite" in opts
+    no_invite = "--no-invite" in args or use_json
+    opts = _parse_kv_args([arg for arg in args if arg != "--no-invite"])
     name = opts.get("name")
     if not name:
         print("Error: --name required")
@@ -259,7 +259,7 @@ def _people_add(args: list[str], use_json: bool) -> None:
                 links = generate_invite_links(token, telegram_username, discord_bot_id, whatsapp_number)
 
                 # Send email
-                await send_invite_email(name, email, links)
+                await send_invite_email(name, email, links, print_links_if_missing_smtp=not use_json)
                 return True
             except Exception as e:
                 logger.warning("Auto-invite failed for %s: %s", name, e)
@@ -584,7 +584,7 @@ def _handle_invite(args: list[str]) -> None:
 
         # Send email
         try:
-            await send_invite_email(name, person.email, links)
+            await send_invite_email(name, person.email, links, print_links_if_missing_smtp=not use_json)
             email_sent = True
         except Exception as e:
             logger.warning("Failed to send invite email: %s", e)

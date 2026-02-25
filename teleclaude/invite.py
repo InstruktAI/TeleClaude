@@ -172,6 +172,7 @@ async def send_invite_email(
     links: dict[str, str | None],
     org_name: str = "InstruktAI",
     sender_name: str = "Your Admin",
+    print_links_if_missing_smtp: bool = True,
 ) -> None:
     """Send invite email with platform links.
 
@@ -181,9 +182,12 @@ async def send_invite_email(
         links: Dict with keys telegram, discord, whatsapp (values are URLs or None)
         org_name: Organization name for email greeting
         sender_name: Sign-off name
+        print_links_if_missing_smtp: If True (default), print links to stdout when SMTP
+            is not configured. Set to False in JSON output modes to keep stdout machine-parseable.
 
     Note:
-        If BREVO_SMTP_USER is not set, prints invite links to stdout instead of sending email.
+        If BREVO_SMTP_USER is not set, prints invite links to stdout instead of sending email
+        (unless print_links_if_missing_smtp=False).
 
     Raises:
         RuntimeError: If email sending fails
@@ -191,11 +195,12 @@ async def send_invite_email(
     # Check for SMTP credentials
     if not os.getenv("BREVO_SMTP_USER"):
         logger.warning("BREVO_SMTP_USER not set — printing invite links instead of sending email")
-        print(f"\n=== Invite Links for {name} ({email}) ===")
-        for platform, link in links.items():
-            if link:
-                print(f"{platform.capitalize()}: {link}")
-        print("=" * 50)
+        if print_links_if_missing_smtp:
+            print(f"\n=== Invite Links for {name} ({email}) ===")
+            for platform, link in links.items():
+                if link:
+                    print(f"{platform.capitalize()}: {link}")
+            print("=" * 50)
         return
 
     # Load templates

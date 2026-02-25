@@ -16,23 +16,51 @@ The `telec` command-line tool is the primary interface for human operators. This
 ```yaml
 tool: telec
 subcommands:
-  list:
-    description: 'List active TeleClaude sessions across all computers.'
-  claude:
-    description: 'Start interactive Claude Code session.'
-    args:
-      - mode: 'fast|med|slow'
-      - prompt: 'string (optional)'
-  gemini:
-    description: 'Start interactive Gemini session.'
-    args:
-      - mode: 'fast|med|slow'
-      - prompt: 'string (optional)'
-  codex:
-    description: 'Start interactive Codex session.'
-    args:
-      - mode: 'fast|med|slow|deep'
-      - prompt: 'string (optional)'
+  sessions:
+    description: 'Manage agent sessions (list, start, send, tail, run, end, etc.).'
+    subcommands:
+      list:
+        description: 'List active sessions.'
+      start:
+        description: 'Start a new agent session.'
+      send:
+        description: 'Send a message to a running session.'
+      tail:
+        description: 'Retrieve session messages.'
+      run:
+        description: 'Run an agent command in a new session.'
+      end:
+        description: 'End a session.'
+      unsubscribe:
+        description: 'Stop notifications from a session.'
+      result:
+        description: 'Send a formatted result to the session user.'
+      file:
+        description: 'Send a file to the session user.'
+      widget:
+        description: 'Render a rich widget expression.'
+      escalate:
+        description: 'Escalate a customer session.'
+  computers:
+    description: 'List available computers in the network.'
+  projects:
+    description: 'List available project directories.'
+  deploy:
+    description: 'Deploy latest code to remote computers.'
+  agents:
+    description: 'Manage agent dispatch status and availability.'
+    subcommands:
+      availability:
+        description: 'Get availability for all agents.'
+      status:
+        description: 'Set dispatch status for a specific agent.'
+  channels:
+    description: 'Manage internal Redis stream channels.'
+    subcommands:
+      list:
+        description: 'List active channels.'
+      publish:
+        description: 'Publish a message to a channel.'
   revive:
     description: 'Revive session by TeleClaude session ID.'
     args:
@@ -115,6 +143,15 @@ subcommands:
           --commit: 'Commit hash.'
           --title: 'Delivery title.'
           --project-root: 'Project root (default: cwd).'
+  bugs:
+    description: 'Manage bug reports and fixes.'
+    subcommands:
+      report:
+        description: 'Report a bug, scaffold, and dispatch fix.'
+      create:
+        description: 'Scaffold bug files for a slug.'
+      list:
+        description: 'List in-flight bug fixes with status.'
   config:
     description: 'Interactive configuration (or get/patch/validate subcommands).'
     subcommands:
@@ -133,8 +170,6 @@ subcommands:
       validate:
         flags:
           -p, --project-root: 'Project root (default: cwd).'
-  onboard:
-    description: 'Guided onboarding wizard for first-run setup.'
 ```
 
 ## Constraints
