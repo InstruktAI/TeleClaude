@@ -94,7 +94,7 @@
 
 ---
 
-### Task 7: Validate and Distribute
+### [x] Task 7: Validate and Distribute
 
 **File(s):** All 6 skills
 
@@ -110,20 +110,20 @@
 
 ### Task 2.1: Quality Checks
 
-- [ ] `telec sync --validate-only` passes with no errors
-- [ ] All 6 skills distributed to all 3 runtime directories
-- [ ] No Claude-specific tool references in any skill content
-- [ ] Each skill follows the artifact schema (frontmatter + required sections)
+- [x] `telec sync --validate-only` passes with no errors
+- [x] All 6 skills distributed to all 3 runtime directories
+- [x] No Claude-specific tool references in any skill content
+- [x] Each skill follows the artifact schema (frontmatter + required sections)
 
 ### Task 2.2: Content Verification
 
-- [ ] Each skill preserves the core methodology discipline from its source
-- [ ] No verbatim copy — content is adapted to our schema
+- [x] Each skill preserves the core methodology discipline from its source
+- [x] No verbatim copy — content is adapted to our schema
 
 ---
 
 ## Phase 3: Review Readiness
 
-- [ ] Requirements reflected in created files
-- [ ] Implementation tasks all marked `[x]`
-- [ ] Deferrals documented if applicable
+- [x] Requirements reflected in created files
+- [x] Implementation tasks all marked `[x]`
+- [x] Deferrals documented if applicable (no deferrals needed)
