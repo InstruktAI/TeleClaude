@@ -10,15 +10,19 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo is runnable and verified
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [ ] Tests pass (`make test`) — blocked by 3 pre-existing failing tests after two retries
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo is runnable and verified
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+- Manual verification:
+  Executed `telec todo demo consolidate-methodology-skills` (3/3 executable blocks passed),
+  confirmed `telec sync --validate-only` exited 0 inside demo run, and verified all six skills
+  in `~/.claude/skills`, `~/.codex/skills`, and `~/.gemini/skills`.
 
 ## Review Gates (Reviewer)
 
