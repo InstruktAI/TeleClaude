@@ -26,6 +26,7 @@ from teleclaude.constants import (
     CHECKPOINT_PREFIX,
     LOCAL_COMPUTER,
 )
+from teleclaude.core.activity_contract import serialize_activity_event
 from teleclaude.core.agents import AgentName
 from teleclaude.core.checkpoint_dispatch import inject_checkpoint_if_needed
 from teleclaude.core.command_registry import get_command_service
@@ -351,6 +352,10 @@ class AgentCoordinator:
     ) -> None:
         """Emit agent activity event with error handling.
 
+        Routes through the canonical contract (activity_contract.py) to produce
+        canonical_type and routing metadata alongside the hook-level event_type.
+        The hook event_type is always preserved for consumer compatibility.
+
         Args:
             session_id: Session identifier
             event_type: AgentHookEventType value
@@ -359,6 +364,15 @@ class AgentCoordinator:
             summary: Optional output summary (agent_stop only)
         """
         try:
+            timestamp = datetime.now(timezone.utc).isoformat()
+            canonical = serialize_activity_event(
+                session_id=session_id,
+                hook_event_type=event_type,
+                timestamp=timestamp,
+                tool_name=tool_name,
+                tool_preview=tool_preview,
+                summary=summary,
+            )
             event_bus.emit(
                 TeleClaudeEvents.AGENT_ACTIVITY,
                 AgentActivityEvent(
@@ -367,7 +381,10 @@ class AgentCoordinator:
                     tool_name=tool_name,
                     tool_preview=tool_preview,
                     summary=summary,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    timestamp=timestamp,
+                    canonical_type=canonical.canonical_type if canonical else None,
+                    message_intent=canonical.message_intent if canonical else None,
+                    delivery_scope=canonical.delivery_scope if canonical else None,
                 ),
             )
         except Exception as exc:

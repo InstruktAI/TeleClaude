@@ -54,9 +54,9 @@ semantics per adapter.
 
 ## Phase 3 - Producer Boundary Adoption (R3, R4)
 
-- [ ] Route poller/coordinator outbound activity emission through the shared canonical utility layer.
-- [ ] Remove ad-hoc producer-side payload shaping where canonical utility now applies.
-- [ ] Preserve existing output cadence and threaded/non-threaded behavior.
+- [x] Route poller/coordinator outbound activity emission through the shared canonical utility layer.
+- [x] Remove ad-hoc producer-side payload shaping where canonical utility now applies.
+- [x] Preserve existing output cadence and threaded/non-threaded behavior.
 
 ### Files (expected)
 
@@ -67,10 +67,10 @@ semantics per adapter.
 
 ## Phase 4 - Compatibility Bridge (R5)
 
-- [ ] Implement translation from canonical contract to current legacy consumer payloads
+- [x] Implement translation from canonical contract to current legacy consumer payloads
       where needed.
-- [ ] Keep compatibility mapping centralized so legacy shape is derived from canonical events.
-- [ ] Verify no direct adapter-specific legacy shaping is reintroduced in core logic.
+- [x] Keep compatibility mapping centralized so legacy shape is derived from canonical events.
+- [x] Verify no direct adapter-specific legacy shaping is reintroduced in core logic.
 
 ### Files (expected)
 

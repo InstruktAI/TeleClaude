@@ -267,7 +267,12 @@ class APIServer:
         _event: str,
         context: AgentActivityEvent,
     ) -> None:
-        """Broadcast agent activity events to WS clients (no cache, no DB re-read)."""
+        """Broadcast agent activity events to WS clients (no cache, no DB re-read).
+
+        The DTO preserves hook event type in 'type' for consumer compatibility and
+        also carries canonical contract fields (canonical_type, message_intent,
+        delivery_scope) when produced via the canonical contract module.
+        """
         dto = AgentActivityEventDTO(
             session_id=context.session_id,
             type=context.event_type,
@@ -275,6 +280,9 @@ class APIServer:
             tool_preview=context.tool_preview,
             summary=context.summary,
             timestamp=context.timestamp,
+            canonical_type=context.canonical_type,
+            message_intent=context.message_intent,
+            delivery_scope=context.delivery_scope,
         )
         self._broadcast_payload("agent_activity", dto.model_dump(exclude_none=True))
 
