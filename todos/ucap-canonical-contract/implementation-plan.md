@@ -23,14 +23,14 @@ semantics per adapter.
 
 ## Phase 1 - Contract Definition and Baseline Inventory (R1, R2)
 
-- [ ] Inventory current outbound activity payload producers and consumers.
-- [ ] Define canonical event vocabulary and schema fields for:
+- [x] Inventory current outbound activity payload producers and consumers.
+- [x] Define canonical event vocabulary and schema fields for:
   - `user_prompt_submit`
   - `agent_output_update`
   - `agent_output_stop`
-- [ ] Define canonical routing metadata expectations (`message_intent`, `delivery_scope`)
+- [x] Define canonical routing metadata expectations (`message_intent`, `delivery_scope`)
       aligned with session output routing spec.
-- [ ] Record compatibility behavior for legacy consumers during migration.
+- [x] Record compatibility behavior for legacy consumers during migration.
 
 ### Files (expected)
 

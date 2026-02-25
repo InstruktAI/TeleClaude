@@ -45,14 +45,15 @@ Core decides who should receive a message. Adapters decide how to present it (th
 
 ### Message intent to scope mapping
 
-| Message intent                       | Scope         | Notes                                                              |
-| ------------------------------------ | ------------- | ------------------------------------------------------------------ |
-| `feedback_notice_error_status`       | `ORIGIN_ONLY` | Includes notices, feedback prompts, and user-facing errors.        |
-| `last_output_summary`                | `ORIGIN_ONLY` | Origin UX only, non-threaded/in-edit presentation only.            |
-| `output_stream_chunk_final_threaded` | `DUAL`        | Includes incremental chunks, final output, and threaded blocks.    |
-| `input_reflection_text`              | `DUAL`        | Implemented via reflection lane fan-out (all non-source adapters). |
-| `input_reflection_voice`             | `DUAL`        | Same reflection lane policy as text input.                         |
-| `input_reflection_mcp`               | `DUAL`        | Same reflection lane policy as text/voice input.                   |
+| Message intent                       | Scope         | Notes                                                                                 |
+| ------------------------------------ | ------------- | ------------------------------------------------------------------------------------- |
+| `feedback_notice_error_status`       | `ORIGIN_ONLY` | Includes notices, feedback prompts, and user-facing errors.                           |
+| `last_output_summary`                | `ORIGIN_ONLY` | Origin UX only, non-threaded/in-edit presentation only.                               |
+| `output_stream_chunk_final_threaded` | `DUAL`        | Includes incremental chunks, final output, and threaded blocks.                       |
+| `input_reflection_text`              | `DUAL`        | Implemented via reflection lane fan-out (all non-source adapters).                    |
+| `input_reflection_voice`             | `DUAL`        | Same reflection lane policy as text input.                                            |
+| `input_reflection_mcp`               | `DUAL`        | Same reflection lane policy as text/voice input.                                      |
+| `ctrl_activity`                      | `CTRL`        | Activity control signals: turn start/end, tool events. Internal only; not UI content. |
 
 ## Reflection lane contract
 
@@ -93,7 +94,7 @@ Channel provisioning still determines whether an adapter can receive delivery. R
 
 - `delivery_scope`: `ORIGIN_ONLY`, `DUAL`, `CTRL`
 - `cleanup_trigger`: `next_notice`, `next_turn`
-- `message_intent`: `feedback_notice_error_status`, `last_output_summary`, `output_stream_chunk_final_threaded`, `input_reflection_text`, `input_reflection_voice`, `input_reflection_mcp`
+- `message_intent`: `feedback_notice_error_status`, `last_output_summary`, `output_stream_chunk_final_threaded`, `input_reflection_text`, `input_reflection_voice`, `input_reflection_mcp`, `ctrl_activity`
 
 ## Known caveats
 

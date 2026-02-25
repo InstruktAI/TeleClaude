@@ -61,11 +61,15 @@ session updates -> DaemonCache -> API websocket -> UI state views
 
 ### 2. Event contract
 
-Canonical outbound activity events:
+Canonical outbound activity events (defined in `teleclaude/core/activity_contract.py`):
 
-- `user_prompt_submit`
-- `agent_output_update`
-- `agent_output_stop`
+- `user_prompt_submit` — user turn start signal
+- `agent_output_update` — agent working (tool initiated or completed)
+- `agent_output_stop` — agent turn complete
+
+These map from agent hook events via `HOOK_TO_CANONICAL` in the contract module.
+All canonical events carry `message_intent: ctrl_activity` and `delivery_scope: CTRL`.
+The hook-level event type is preserved in `hook_event_type` for consumer compatibility.
 
 Session/cache updates remain separate (`session_updated`) and are not used as the high-frequency output stream.
 
