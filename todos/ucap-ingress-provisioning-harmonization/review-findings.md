@@ -68,3 +68,65 @@ The test short-circuits at `mock_voice.handle_voice = AsyncMock(return_value=Non
 ### 6. Cosmetic `ADAPTER_KEY` mutation in integration test
 
 `test_broadcast_user_input_source_adapter_not_echoed` sets `discord.ADAPTER_KEY = "discord"` on a `MockTelegramAdapter` instance. Routing uses the dict key, not `ADAPTER_KEY`. The mutation is irrelevant and suggests a misunderstanding of the routing mechanism. Harmless but misleading.
+
+---
+
+## Fixes Applied
+
+### Fix 1 — R5 observability test (Important #1)
+
+**Issue:** No test verifying that ERROR log from `_run_ui_lane` includes adapter key and session ID.
+
+**Fix:** Added `test_ui_lane_error_log_identifies_adapter_and_session` with `caplog` in `tests/unit/test_adapter_client_handlers.py`. Creates a `FailingAdapter` where `send_message` raises; `recover_lane_error` re-raises by default (UiAdapter contract), triggering the ERROR log. Asserts both `"telegram"` and `session.session_id[:8]` appear in the error message.
+
+**Commit:** `9d5ee7fe`
+
+---
+
+### Fix 2 — Hardcoded `/tmp` paths (Important #2)
+
+**Issue:** `test_ensure_channel_called_per_adapter_on_output` and `test_broadcast_user_input_source_adapter_not_echoed` used hardcoded `/tmp/*.db` paths, risking xdist collisions.
+
+**Fix:** Added `tmp_path` fixture parameter to both tests; removed manual `Path.unlink` cleanup calls.
+
+**Commit:** `9d5ee7fe`
+
+---
+
+### Fix 3 — Handle voice ordering test (Suggestion #3)
+
+**Issue:** Test short-circuited with `return_value=None` so `_send_status` was never called — ordering claim not verified.
+
+**Fix:** Replaced mock with `fake_handle_voice` coroutine that calls `send_message` callback (simulating "Transcribing..." status) before returning a transcription. Test now asserts `update_session` index precedes `send_message` index in `call_order`.
+
+**Commit:** `fb67cbac`
+
+---
+
+### Fix 4 — MCP actor synthesis assertion (Suggestion #4)
+
+**Issue:** `"workstation" in cmd.actor_id` would pass a format change like `mcp-agent@workstation`.
+
+**Fix:** Changed to `cmd.actor_id.startswith("system:workstation:")` — asserts the full structural prefix.
+
+**Commit:** `fb67cbac`
+
+---
+
+### Fix 5 — Inline imports removed (Suggestion #5)
+
+**Issue:** `ProcessMessageCommand` and `HandleVoiceCommand` imported inline inside test bodies.
+
+**Fix:** Added `ProcessMessageCommand` to module-level import block; removed both inline imports.
+
+**Commit:** `fb67cbac`
+
+---
+
+### Fix 6 — Cosmetic ADAPTER_KEY mutation removed (Suggestion #6)
+
+**Issue:** `discord.ADAPTER_KEY = "discord"` on a `MockTelegramAdapter` instance was misleading — routing uses dict key, not `ADAPTER_KEY`.
+
+**Fix:** Removed the mutation.
+
+**Commit:** `fb67cbac`
