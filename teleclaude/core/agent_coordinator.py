@@ -494,6 +494,13 @@ class AgentCoordinator:
                 )
             except asyncio.CancelledError:
                 pass  # Cancelled by output arrival — normal flow
+            except Exception as exc:
+                logger.error(
+                    "Stall watcher failed for session %s: %s",
+                    session_id[:8],
+                    exc,
+                    exc_info=True,
+                )
 
         task = asyncio.create_task(_stall_watcher())
         self._stall_tasks[session_id] = task
