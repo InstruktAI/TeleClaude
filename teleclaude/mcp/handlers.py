@@ -371,9 +371,30 @@ class MCPHandlersMixin:
         logger.info("Local session created: %s", session_id[:8])
         if not direct:
             await self._register_listener_if_present(session_id, caller_session_id)
+        elif direct and caller_session_id:
+            caller = await db.get_session(caller_session_id)
+            caller_label = caller.title if caller and caller.title else caller_session_id
+            caller_computer = caller.computer_name if caller else self.computer_name
+            await create_or_reuse_direct_link(
+                caller_session_id=caller_session_id,
+                target_session_id=session_id,
+                caller_name=caller_label,
+                target_name=title,
+                caller_computer=caller_computer,
+                target_computer=self.computer_name,
+            )
 
         # Start agent in background if message provided (None = skip agent start entirely)
         if message is not None:
+            if direct and caller_session_id:
+                announcement = (
+                    f"[TeleClaude Link Established] - Another agent has established a direct link for conversation.\n"
+                    f"Both your outputs will be shared automatically. You do not need to use send_message.\n"
+                    f'To close the link: `teleclaude__send_message(computer="local", '
+                    f'session_id="{caller_session_id}", message="<goodbye>", close_link=True)`\n'
+                    f"A human may be observing silently — address the peer agent, not the user.\n\n"
+                )
+                message = announcement + message
             agent_args: list[str] = [message] if message else []
             thinking_mode = self._normalize_thinking_mode(thinking_mode)
 
