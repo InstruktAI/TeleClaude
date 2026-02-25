@@ -55,9 +55,9 @@ implementation work is executed under this parent slug.
 
 ## Phase 4 - Program Readiness Reporting
 
-- [ ] Keep parent `dor-report.md` synchronized with current child readiness and dependency state.
-- [ ] Keep parent demo commands focused on orchestration verification rather than runtime tests.
-- [ ] Re-run parent gate whenever parent artifacts or UCAP dependency structure changes.
+- [x] Keep parent `dor-report.md` synchronized with current child readiness and dependency state.
+- [x] Keep parent demo commands focused on orchestration verification rather than runtime tests.
+- [x] Re-run parent gate whenever parent artifacts or UCAP dependency structure changes.
 
 ### Files (expected)
 
