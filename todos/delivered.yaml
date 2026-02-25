@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: ucap-tui-adapter-alignment
+  date: '2026-02-25'
+  title: 'Phase 4: Align TUI realtime delivery to adapter-driven contract and remove
+    direct TUI bypass paths.'
+  commit: 5f64c003acf720b66ecc372e44c080a2dfac2ce7
+  description: 'Phase 4: Align TUI realtime delivery to adapter-driven contract and
+    remove direct TUI bypass paths.'
 - slug: ucap-web-adapter-alignment
   date: '2026-02-25'
   title: 'Phase 3: Align Web realtime delivery to adapter-driven contract and remove
