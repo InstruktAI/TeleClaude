@@ -5,11 +5,10 @@ deferrals_processed: false
 breakdown:
   assessed: false
   todos: []
-review_round: 2
+review_round: 3
 max_review_rounds: 3
-review_baseline_commit: 32303f51ff936d9486582ba4ebb6c1a389b5a653
-unresolved_findings:
-  - documentation-state-regression
+review_baseline_commit: 21b373f9fd2a4324b52233992549186c00dd179c
+unresolved_findings: []
 resolved_findings: []
 dor:
   last_assessed_at: '2026-02-25T12:00:00Z'

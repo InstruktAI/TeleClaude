@@ -192,3 +192,15 @@ The audit notes in particular are valuable documentation — they record the evi
 ## Suggestions (Round 2)
 
 None. Code quality of the fixes is good.
+
+---
+
+## Fixes Applied (Round 2)
+
+### Fix 7 — Documentation state regression (Important #7)
+
+**Issue:** `implementation-plan.md` and `quality-checklist.md` reverted to unchecked state by commit `9d5ee7fe`, losing all `[x]` checkboxes and Phase 0 audit notes. Contradicted `state.yaml` `build: complete`.
+
+**Fix:** Restored `implementation-plan.md` with all `[x]` checkboxes and Phase 0 audit notes from commit `30e22226`. Restored `quality-checklist.md` Build Gates to fully-checked state with annotations.
+
+**Commit:** TBD
