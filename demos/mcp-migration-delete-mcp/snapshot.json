@@ -1,0 +1,19 @@
+{
+  "slug": "mcp-migration-delete-mcp",
+  "title": "mcp-migration-delete-mcp",
+  "version": "0.1.0",
+  "delivered_date": "2026-02-25",
+  "merge_commit": "ca23644eed6e6145e9569b608e32a09b60e399cb",
+  "metrics": {
+    "implementation_plan_tasks_total": 67,
+    "implementation_plan_tasks_checked": 67,
+    "review_items_documented": 10
+  },
+  "five_acts": {
+    "act1_prepare": "Delete all MCP server code, wrapper, handlers, tool definitions, and related infrastructure. Update architecture and policy docs that reference MCP. This is the point of no return — only executed after mcp-migration-agent-config",
+    "act2_build": "Surgical deletion of all MCP server infrastructure (~3,400 lines) and documentation cleanup. The work splits into two atomic commits: code deletion + reference cleanup, then documentation updates. No behavioral changes — by the time this runs, Phases 1",
+    "act3_review": "Review/fix loop completed with issues resolved and approval granted.",
+    "act4_finalize": "Finalize prepare integrated origin/main and emitted FINALIZE_READY.",
+    "act5_demo": "Demo markdown was produced for post-merge presentation."
+  }
+}
