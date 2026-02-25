@@ -67,16 +67,20 @@ so adapter differences remain edge concerns only.
 
 **File(s):** `teleclaude/core/command_mapper.py`, `teleclaude/api_server.py`
 
-- [ ] Ensure interactive entry points produce consistent `origin` and actor attribution values.
-- [ ] Keep adapter-specific extraction at mapper edges, not in downstream core branches.
+- [x] Ensure interactive entry points produce consistent `origin` and actor attribution values.
+- [x] Keep adapter-specific extraction at mapper edges, not in downstream core branches.
+
+**Notes:** All mapper paths (`map_telegram_input`, `map_redis_input`, `map_api_input`) already produce consistent `origin` and actor fields. Adapter-specific extraction (Telegram `telegram_user_id`, Discord `discord_user_id`) is confined to `_extract_actor_from_channel_metadata`. No downstream core branching on adapter type. Tests added in Task 3.1.
 
 ### Task 1.2: Normalize provenance write timing
 
 **File(s):** `teleclaude/core/command_handlers.py`, `teleclaude/adapters/ui_adapter.py`
 
-- [ ] Ensure `last_input_origin` updates occur before feedback/fanout operations that depend on it.
-- [ ] Remove or reconcile duplicated provenance mutation points where they can drift.
-- [ ] Preserve current behavior for headless/session-adoption flows.
+- [x] Ensure `last_input_origin` updates occur before feedback/fanout operations that depend on it.
+- [x] Remove or reconcile duplicated provenance mutation points where they can drift.
+- [x] Preserve current behavior for headless/session-adoption flows.
+
+**Notes:** `process_message()` updates provenance before broadcast; `handle_voice()` updates provenance before feedback. No duplicated mutations. Tests added in Task 3.1.
 
 ---
 
@@ -86,16 +90,20 @@ so adapter differences remain edge concerns only.
 
 **File(s):** `teleclaude/core/adapter_client.py`
 
-- [ ] Verify UI delivery paths depend on `ensure_ui_channels()` and per-session provisioning lock behavior.
-- [ ] Tighten call-site behavior where provisioning can be skipped incorrectly or repeated unnecessarily.
+- [x] Verify UI delivery paths depend on `ensure_ui_channels()` and per-session provisioning lock behavior.
+- [x] Tighten call-site behavior where provisioning can be skipped incorrectly or repeated unnecessarily.
+
+**Notes:** All output paths go through `_route_to_ui()` which calls `ensure_ui_channels()` first. Lock prevents concurrent provisioning races. `delete_channel()` intentionally bypasses provisioning. No tightening needed. Tests added in Task 3.1.
 
 ### Task 2.2: Align adapter ensure-channel implementations with orchestration contract
 
 **File(s):** `teleclaude/adapters/telegram_adapter.py`, `teleclaude/adapters/discord_adapter.py`, `teleclaude/adapters/ui_adapter.py`
 
-- [ ] Keep adapter-specific channel rules explicit and minimal.
-- [ ] Ensure channel ID persistence and recovery logic remain compatible with shared orchestration.
-- [ ] Avoid introducing new adapter-to-core coupling.
+- [x] Keep adapter-specific channel rules explicit and minimal.
+- [x] Ensure channel ID persistence and recovery logic remain compatible with shared orchestration.
+- [x] Avoid introducing new adapter-to-core coupling.
+
+**Notes:** `UiAdapter.ensure_channel()` is a clean no-op base. Subclass overrides stay adapter-specific. No new coupling introduced. Tests added in Task 3.1.
 
 ---
 
@@ -105,8 +113,8 @@ so adapter differences remain edge concerns only.
 
 **File(s):** `tests/unit/test_command_mapper.py`, `tests/unit/test_command_handlers.py`, `tests/unit/test_adapter_client.py`, `tests/unit/test_adapter_client_handlers.py`, `tests/unit/test_telegram_adapter.py`, `tests/unit/test_discord_adapter.py`, `tests/integration/test_multi_adapter_broadcasting.py`
 
-- [ ] Add/update tests for command mapping parity, provenance updates, and provisioning orchestration paths.
-- [ ] Verify adapter-specific exceptions remain intentional and covered.
+- [x] Add/update tests for command mapping parity, provenance updates, and provisioning orchestration paths.
+- [x] Verify adapter-specific exceptions remain intentional and covered.
 
 ### Task 3.2: Validation commands
 

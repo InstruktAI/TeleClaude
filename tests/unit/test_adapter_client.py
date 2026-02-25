@@ -1014,3 +1014,108 @@ async def test_broadcast_user_input_reflects_mcp_input():
     assert len(slack.sent_messages) == 1
     assert "MCP" in telegram.sent_messages[0]
     assert "mcp input" in telegram.sent_messages[0]
+
+
+# --- R3: Single provisioning funnel tests ---
+
+
+@pytest.mark.asyncio
+async def test_ensure_ui_channels_called_before_send_message():
+    """ensure_ui_channels() must be called before any message delivery (R3)."""
+    client = AdapterClient()
+    telegram = DummyTelegramAdapter(client, send_message_return="msg-1")
+    client.register_adapter("telegram", telegram)
+
+    session = Session(
+        session_id="session-ensure-prov",
+        computer_name="test",
+        tmux_session_name="tc_ensure_prov",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+        adapter_metadata=SessionAdapterMetadata(),
+    )
+
+    ensure_calls: list[str] = []
+
+    async def record_ensure(s: Session) -> Session:
+        ensure_calls.append(s.session_id)
+        return s
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    mock_db.get_pending_deletions = AsyncMock(return_value=[])
+    with (
+        patch("teleclaude.core.adapter_client.db", mock_db),
+        patch.object(client, "ensure_ui_channels", side_effect=record_ensure),
+    ):
+        await client.send_message(session, "hello", ephemeral=False)
+
+    assert len(ensure_calls) == 1, "ensure_ui_channels must be called exactly once per delivery"
+
+
+@pytest.mark.asyncio
+async def test_ensure_ui_channels_called_before_send_output_update():
+    """ensure_ui_channels() called for output updates (R3)."""
+    client = AdapterClient()
+    telegram = DummyTelegramAdapter(client)
+    telegram.send_output_update = AsyncMock(return_value="out-1")  # type: ignore[assignment]
+    client.register_adapter("telegram", telegram)
+
+    session = Session(
+        session_id="session-ensure-out",
+        computer_name="test",
+        tmux_session_name="tc_ensure_out",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+        adapter_metadata=SessionAdapterMetadata(),
+    )
+
+    ensure_calls: list[str] = []
+
+    async def record_ensure(s: Session) -> Session:
+        ensure_calls.append(s.session_id)
+        return s
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    mock_db.get_pending_deletions = AsyncMock(return_value=[])
+    with (
+        patch("teleclaude.core.adapter_client.db", mock_db),
+        patch.object(client, "ensure_ui_channels", side_effect=record_ensure),
+    ):
+        await client.send_output_update(session, "output", 0.0, 0.0)
+
+    assert len(ensure_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_channel_bypasses_provisioning():
+    """delete_channel() must NOT call ensure_ui_channels() — avoid creating during teardown (R3)."""
+    client = AdapterClient()
+    telegram = DummyTelegramAdapter(client)
+    client.register_adapter("telegram", telegram)
+
+    session = Session(
+        session_id="session-del-ch",
+        computer_name="test",
+        tmux_session_name="tc_del_ch",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+        adapter_metadata=SessionAdapterMetadata(),
+    )
+
+    ensure_calls: list[str] = []
+
+    async def record_ensure(s: Session) -> Session:
+        ensure_calls.append(s.session_id)
+        return s
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    with (
+        patch("teleclaude.core.adapter_client.db", mock_db),
+        patch.object(client, "ensure_ui_channels", side_effect=record_ensure),
+    ):
+        await client.delete_channel(session)
+
+    assert len(ensure_calls) == 0, "delete_channel must not call ensure_ui_channels"

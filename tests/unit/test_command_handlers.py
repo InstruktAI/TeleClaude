@@ -1721,5 +1721,134 @@ async def test_handle_file_invokes_file_handler() -> None:
     assert context.filename == "file.txt"
 
 
+# --- R2: Provenance write timing tests ---
+
+
+@pytest.mark.asyncio
+async def test_process_message_updates_last_input_origin_before_broadcast():
+    """last_input_origin must be persisted to DB before broadcast_user_input is called.
+
+    R2: provenance write timing — ensures routing-dependent operations (broadcast)
+    see the updated origin, not a stale one.
+    """
+    call_order: list[str] = []
+
+    mock_session = MagicMock()
+    mock_session.session_id = "sess-prov-order"
+    mock_session.lifecycle_status = "active"
+    mock_session.tmux_session_name = "tc_prov"
+    mock_session.active_agent = None
+    mock_session.project_path = "/tmp"
+    mock_session.subdir = None
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=mock_session)
+
+    async def record_update_session(session_id, **kwargs):
+        if "last_input_origin" in kwargs:
+            call_order.append(f"update_session:last_input_origin={kwargs['last_input_origin']}")
+
+    mock_db.update_session = AsyncMock(side_effect=record_update_session)
+    mock_db.update_last_activity = AsyncMock()
+
+    mock_client = AsyncMock()
+
+    async def record_broadcast(*args, **kwargs):
+        call_order.append("broadcast_user_input")
+
+    mock_client.broadcast_user_input = AsyncMock(side_effect=record_broadcast)
+    mock_client.pre_handle_command = AsyncMock()
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(command_handlers, "tmux_io") as mock_tmux_io,
+        patch.object(command_handlers, "polling_coordinator"),
+    ):
+        mock_tmux_io.wrap_bracketed_paste.return_value = "hello"
+        mock_tmux_io.process_text = AsyncMock(return_value=True)
+
+        from teleclaude.types.commands import ProcessMessageCommand
+
+        cmd = ProcessMessageCommand(
+            session_id="sess-prov-order",
+            text="hello",
+            origin=InputOrigin.TELEGRAM.value,
+        )
+        await command_handlers.process_message(cmd, mock_client, AsyncMock())
+
+    # Provenance update must appear before broadcast
+    update_idx = next(
+        (i for i, e in enumerate(call_order) if "last_input_origin" in e),
+        None,
+    )
+    broadcast_idx = next(
+        (i for i, e in enumerate(call_order) if e == "broadcast_user_input"),
+        None,
+    )
+    assert update_idx is not None, "last_input_origin update not found"
+    assert broadcast_idx is not None, "broadcast_user_input not found"
+    assert update_idx < broadcast_idx, (
+        f"Provenance must be updated before broadcast: update_idx={update_idx}, broadcast_idx={broadcast_idx}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_updates_last_input_origin_before_feedback():
+    """last_input_origin must be persisted before any feedback/status messages.
+
+    R2: handle_voice() updates provenance before sending transcription status
+    so that feedback routing uses the correct adapter lane.
+    """
+    call_order: list[str] = []
+
+    mock_session = MagicMock()
+    mock_session.session_id = "sess-voice-prov"
+    mock_session.initiator_session_id = None
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=mock_session)
+
+    async def record_update_session(session_id, **kwargs):
+        if "last_input_origin" in kwargs:
+            call_order.append(f"update_session:last_input_origin={kwargs['last_input_origin']}")
+
+    mock_db.update_session = AsyncMock(side_effect=record_update_session)
+
+    async def fake_send_message(*args, **kwargs):
+        call_order.append("send_message")
+        return "msg-1"
+
+    mock_client = AsyncMock()
+    mock_client.send_message = AsyncMock(side_effect=fake_send_message)
+    mock_client.pre_handle_command = AsyncMock()
+    mock_client.break_threaded_turn = AsyncMock()
+    mock_client.delete_message = AsyncMock()
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(command_handlers, "voice_message_handler") as mock_voice,
+        patch.object(command_handlers, "process_message", new=AsyncMock()),
+    ):
+        # voice handler returns None → stops early after provenance update
+        mock_voice.handle_voice = AsyncMock(return_value=None)
+
+        from teleclaude.types.commands import HandleVoiceCommand
+
+        cmd = HandleVoiceCommand(
+            session_id="sess-voice-prov",
+            file_path="/tmp/audio.ogg",
+            origin=InputOrigin.TELEGRAM.value,
+        )
+        await command_handlers.handle_voice(cmd, mock_client, AsyncMock())
+
+    # Provenance update must happen (even when transcription returns None)
+    update_found = any("last_input_origin" in e for e in call_order)
+    assert update_found, f"handle_voice must update last_input_origin; call_order={call_order}"
+
+    # Verify origin is correct
+    origin_update = next(e for e in call_order if "last_input_origin" in e)
+    assert InputOrigin.TELEGRAM.value in origin_update
+
+
 class ExecuteKwargs(TypedDict, total=False):
     """Typed kwargs payload for mock execute calls."""

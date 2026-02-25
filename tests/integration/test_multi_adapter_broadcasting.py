@@ -760,5 +760,121 @@ async def test_discover_peers_respects_redis_enabled_flag():
         Path(db_path).unlink(missing_ok=True)
 
 
+@pytest.mark.integration
+async def test_ensure_channel_called_per_adapter_on_output():
+    """ensure_channel() called for each UI adapter before output delivery (R3).
+
+    Provisioning is adapter-specific but orchestrated through the shared
+    ensure_ui_channels() funnel. Both adapters must be provisioned before
+    any message is delivered.
+    """
+    db_path = "/tmp/test_ensure_channel_parity.db"
+    Path(db_path).unlink(missing_ok=True)
+
+    test_db = Db(db_path)
+    await test_db.initialize()
+
+    ensure_channel_calls: list[str] = []
+
+    class ProvisionTrackingAdapter(MockTelegramAdapter):
+        """Tracks ensure_channel calls."""
+
+        ADAPTER_KEY = "discord"
+
+        async def ensure_channel(self, session: Session) -> Session:
+            ensure_channel_calls.append(self.ADAPTER_KEY)
+            return session
+
+    class TelegramTrackingAdapter(MockTelegramAdapter):
+        ADAPTER_KEY = "telegram"
+
+        async def ensure_channel(self, session: Session) -> Session:
+            ensure_channel_calls.append(self.ADAPTER_KEY)
+            return session
+
+    try:
+        with patch("teleclaude.core.db.db", test_db):
+            with (
+                patch("teleclaude.core.adapter_client.db", test_db),
+                patch("teleclaude.adapters.ui_adapter.db", test_db),
+            ):
+                session = await test_db.create_session(
+                    computer_name="TestPC",
+                    tmux_session_name="test-prov-parity",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
+                    title="Provisioning Parity Test",
+                )
+
+                adapter_client = AdapterClient()
+                telegram = TelegramTrackingAdapter(adapter_client)
+                discord = ProvisionTrackingAdapter(adapter_client)
+                adapter_client.adapters = {"telegram": telegram, "discord": discord}
+
+                await adapter_client.send_message(
+                    session,
+                    "Test output",
+                    cleanup_trigger=CleanupTrigger.NEXT_TURN,
+                )
+
+                # Both adapters provisioned before delivery
+                assert "telegram" in ensure_channel_calls
+                assert "discord" in ensure_channel_calls
+
+    finally:
+        await test_db.close()
+        Path(db_path).unlink(missing_ok=True)
+
+
+@pytest.mark.integration
+async def test_broadcast_user_input_source_adapter_not_echoed():
+    """Source adapter is excluded from broadcast_user_input reflection (R2).
+
+    When a Telegram user sends a message, the reflection must NOT be sent
+    back to Telegram. Only other UI adapters receive the echo.
+    """
+    db_path = "/tmp/test_broadcast_no_echo.db"
+    Path(db_path).unlink(missing_ok=True)
+
+    test_db = Db(db_path)
+    await test_db.initialize()
+
+    try:
+        with patch("teleclaude.core.db.db", test_db):
+            with (
+                patch("teleclaude.core.adapter_client.db", test_db),
+                patch("teleclaude.adapters.ui_adapter.db", test_db),
+            ):
+                session = await test_db.create_session(
+                    computer_name="TestPC",
+                    tmux_session_name="test-no-echo",
+                    last_input_origin=InputOrigin.TELEGRAM.value,
+                    title="No Echo Test",
+                )
+
+                adapter_client = AdapterClient()
+                telegram = MockTelegramAdapter(adapter_client)
+                discord = MockTelegramAdapter(adapter_client)
+                discord.ADAPTER_KEY = "discord"
+                adapter_client.adapters = {
+                    "telegram": telegram,
+                    "discord": discord,
+                }
+
+                await adapter_client.broadcast_user_input(
+                    session,
+                    "Hello from Telegram user",
+                    InputOrigin.TELEGRAM.value,
+                )
+
+                # Telegram (source) must NOT receive its own reflection
+                assert len(telegram.send_message_calls) == 0
+                # Discord (observer) must receive it
+                assert len(discord.send_message_calls) == 1
+
+    finally:
+        await test_db.close()
+        Path(db_path).unlink(missing_ok=True)
+
+
 if __name__ == MAIN_MODULE:
     pytest.main([__file__, "-v", "-s"])
