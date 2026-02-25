@@ -5,7 +5,7 @@ All tests use tmp_path fixtures to isolate from real config.
 """
 
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -313,6 +313,30 @@ class TestInvite:
 
             with pytest.raises(SystemExit):
                 handle_config_cli(["invite", "Nobody", "--json"])
+
+    def test_invite_non_json_prints_fallback_links_once(self, tmp_path, capsys):
+        p1, p2 = _setup_config(tmp_path)
+        with (
+            p1,
+            p2,
+            patch("teleclaude.invite.resolve_telegram_bot_username", new=AsyncMock(return_value="teleclaude_bot")),
+            patch("teleclaude.invite.resolve_discord_bot_user_id", new=AsyncMock(return_value="123456789")),
+            patch(
+                "teleclaude.invite.generate_invite_links",
+                return_value={
+                    "telegram": "https://t.me/teleclaude_bot?start=tok123",
+                    "discord": None,
+                    "whatsapp": None,
+                },
+            ),
+            patch("teleclaude.invite.send_invite_email", new=AsyncMock(return_value=False)),
+        ):
+            from teleclaude.cli.config_cli import handle_config_cli
+
+            handle_config_cli(["invite", "Alice"])
+
+        out = capsys.readouterr().out
+        assert out.count("https://t.me/teleclaude_bot?start=tok123") == 1
 
 
 class TestRouting:

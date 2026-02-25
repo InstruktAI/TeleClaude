@@ -584,7 +584,8 @@ def _handle_invite(args: list[str]) -> None:
 
         # Send email
         try:
-            email_sent = await send_invite_email(name, person.email, links, suppress_stdout_fallback=use_json)
+            # Keep non-JSON fallback link output owned by this command to avoid duplicate prints.
+            email_sent = await send_invite_email(name, person.email, links, suppress_stdout_fallback=True)
         except Exception as e:
             logger.warning("Failed to send invite email: %s", e)
             email_sent = False
