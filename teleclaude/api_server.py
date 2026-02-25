@@ -17,16 +17,29 @@ from typing import TYPE_CHECKING, Callable, Literal
 
 import fastapi
 import uvicorn
-from fastapi import Body, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api.auth import (
+    CLEARANCE_AGENTS_STATUS,
+    CLEARANCE_DEPLOY,
+    CLEARANCE_SESSIONS_ESCALATE,
+    CLEARANCE_SESSIONS_RESULT,
+    CLEARANCE_SESSIONS_RUN,
+    CLEARANCE_SESSIONS_UNSUBSCRIBE,
+    CLEARANCE_SESSIONS_WIDGET,
+    CallerIdentity,
+)
 from teleclaude.api_models import (
     AgentActivityEventDTO,
     AgentAvailabilityDTO,
+    AgentStatusRequest,
     ComputerDTO,
     CreateSessionRequest,
     CreateSessionResponseDTO,
+    DeployRequest,
+    EscalateRequest,
     FileUploadRequest,
     JobDTO,
     KeysRequest,
@@ -38,7 +51,10 @@ from teleclaude.api_models import (
     ProjectWithTodosDTO,
     RefreshDataDTO,
     RefreshEventDTO,
+    RenderWidgetRequest,
+    RunSessionRequest,
     SendMessageRequest,
+    SendResultRequest,
     SessionClosedDataDTO,
     SessionClosedEventDTO,
     SessionDTO,
@@ -164,6 +180,10 @@ class APIServer:
         from teleclaude.api.data_routes import router as data_router
 
         self.app.include_router(data_router)
+
+        from teleclaude.api.todo_routes import router as todo_router
+
+        self.app.include_router(todo_router)
         self.socket_path = socket_path or API_SOCKET_PATH
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task[object] | None = None
@@ -826,6 +846,249 @@ class APIServer:
                 logger.error("get_session_messages failed (session=%s): %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to get messages: {e}") from e
 
+        # =====================================================================
+        # Tool CLI endpoints (require dual-factor auth via verify_caller)
+        # =====================================================================
+
+        @self.app.post("/sessions/run")
+        async def run_session(  # pyright: ignore
+            request: RunSessionRequest,
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_RUN),  # noqa: ARG001
+        ) -> CreateSessionResponseDTO:
+            """Run a slash command on a new agent session.
+
+            Creates a new session with an auto_command derived from the given
+            slash command, arguments, project, agent, and thinking mode.
+            Requires dual-factor caller identity (X-Caller-Session-Id + X-Tmux-Session).
+            """
+            if not request.command.startswith("/"):
+                raise HTTPException(status_code=400, detail="command must start with '/'")
+            if not request.project:
+                raise HTTPException(status_code=400, detail="project required")
+
+            normalized_cmd = request.command.lstrip("/")
+            normalized_args = request.args.strip()
+            full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
+            quoted_command = shlex.quote(full_command)
+            auto_command = f"agent_then_message {request.agent} {request.thinking_mode} {quoted_command}"
+
+            metadata = self._metadata(
+                title=full_command,
+                project_path=request.project,
+                subdir=request.subfolder or None,
+            )
+            metadata.auto_command = auto_command
+
+            cmd = CommandMapper.map_api_input("new_session", {}, metadata)
+            try:
+                data = await get_command_service().create_session(cmd)
+                session_id = data.get("session_id")
+                tmux_session_name = data.get("tmux_session_name")
+                if not session_id or not tmux_session_name:
+                    raise HTTPException(status_code=500, detail="Failed to create session")
+                return CreateSessionResponseDTO(
+                    status="success",
+                    session_id=str(session_id),
+                    tmux_session_name=str(tmux_session_name),
+                    agent=request.agent,
+                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error("run_session failed: %s", e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to run session: {e}") from e
+
+        @self.app.post("/sessions/{session_id}/unsubscribe")
+        async def unsubscribe_session(  # pyright: ignore
+            session_id: str,
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_UNSUBSCRIBE),
+        ) -> dict[str, object]:  # guard: loose-dict - API boundary
+            """Stop receiving notifications from a session without ending it.
+
+            Unregisters the caller's listener for the target session. The session
+            continues running but the caller no longer receives events from it.
+            Requires dual-factor caller identity.
+            """
+            from teleclaude.core.session_listeners import unregister_listener
+
+            success = await unregister_listener(target_session_id=session_id, caller_session_id=identity.session_id)
+            if success:
+                return {"status": "success", "message": f"Stopped notifications from session {session_id[:8]}"}
+            return {"status": "error", "message": f"No listener found for session {session_id[:8]}"}
+
+        @self.app.post("/sessions/{session_id}/result")
+        async def send_result_endpoint(  # pyright: ignore
+            session_id: str,
+            request: SendResultRequest,
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_RESULT),  # noqa: ARG001
+        ) -> dict[str, object]:  # guard: loose-dict - API boundary
+            """Send a formatted result to the session's user as a separate message.
+
+            Sends the content through the session's adapter (Telegram, Discord, etc.)
+            as a persistent (non-ephemeral) message. Supports markdown and HTML formats.
+            Requires dual-factor caller identity.
+            """
+            from teleclaude.utils.markdown import telegramify_markdown
+
+            session = await db.get_session(session_id)
+            if not session:
+                raise HTTPException(status_code=404, detail="Session not found")
+
+            if request.output_format == "html":
+                formatted_content = request.content
+                parse_mode = "HTML"
+            else:
+                formatted_content = telegramify_markdown(request.content)
+                parse_mode = "MarkdownV2"
+
+            if len(formatted_content) > 4096:
+                formatted_content = formatted_content[:4090] + "\n..."
+
+            meta = MessageMetadata(parse_mode=parse_mode)
+            try:
+                message_id = await self.client.send_message(
+                    session=session, text=formatted_content, metadata=meta, ephemeral=False
+                )
+                return {"status": "success", "message_id": message_id}
+            except Exception as e:
+                logger.warning("send_result formatted send failed, retrying as plain text: %s", e)
+                try:
+                    message_id = await self.client.send_message(
+                        session=session,
+                        text=request.content[:4096],
+                        metadata=MessageMetadata(),
+                        ephemeral=False,
+                    )
+                    return {
+                        "status": "success",
+                        "message_id": message_id,
+                        "warning": "Sent as plain text due to formatting error",
+                    }
+                except Exception as fallback_error:
+                    raise HTTPException(
+                        status_code=500, detail=f"Failed to send result: {fallback_error}"
+                    ) from fallback_error
+
+        @self.app.post("/sessions/{session_id}/widget")
+        async def render_widget_endpoint(  # pyright: ignore
+            session_id: str,
+            request: RenderWidgetRequest,
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_WIDGET),  # noqa: ARG001
+        ) -> dict[str, object]:  # guard: loose-dict - API boundary
+            """Render a rich widget expression and send text summary to the session's user.
+
+            Generates a text summary from the widget sections, sends it through the
+            session's adapter, and stores named widgets for retrieval. Requires
+            dual-factor caller identity.
+            """
+            from teleclaude.utils.markdown import telegramify_markdown
+
+            session = await db.get_session(session_id)
+            if not session:
+                raise HTTPException(status_code=404, detail="Session not found")
+
+            data = request.data
+            title = str(data.get("title", ""))
+            sections = data.get("sections", [])
+            footer = str(data.get("footer", ""))
+
+            if not isinstance(sections, list):
+                raise HTTPException(status_code=400, detail="sections must be an array")
+
+            # Build text summary from sections
+            summary_parts: list[str] = []
+            if title:
+                summary_parts.append(f"**{title}**\n")
+            for section in sections:
+                if not isinstance(section, dict):
+                    continue
+                section_type = str(section.get("type", ""))
+                label = section.get("label")
+                if label:
+                    summary_parts.append(f"_{label}_")
+                if section_type == "text":
+                    content = str(section.get("content", ""))
+                    if content:
+                        summary_parts.append(content)
+                elif section_type == "table":
+                    headers = section.get("headers", [])
+                    rows = section.get("rows", [])
+                    if isinstance(headers, list) and isinstance(rows, list):
+                        summary_parts.append(f"Table: {len(headers)} columns, {len(rows)} rows")
+                elif section_type == "code":
+                    lang = str(section.get("language", ""))
+                    content = str(section.get("content", ""))
+                    lang_label = f" ({lang})" if lang else ""
+                    preview = content[:100] + "..." if len(content) > 100 else content
+                    summary_parts.append(f"Code{lang_label}:\n```\n{preview}\n```")
+                elif section_type == "divider":
+                    summary_parts.append("---")
+            if footer:
+                summary_parts.append(f"\n{footer}")
+
+            text_summary = "\n".join(summary_parts)
+            meta = MessageMetadata(parse_mode="MarkdownV2")
+            try:
+                await self.client.send_message(
+                    session=session,
+                    text=telegramify_markdown(text_summary),
+                    metadata=meta,
+                    ephemeral=False,
+                )
+            except Exception as e:
+                logger.warning("render_widget send failed: %s", e)
+
+            return {"status": "success", "summary": text_summary}
+
+        @self.app.post("/sessions/{session_id}/escalate")
+        async def escalate_session(  # pyright: ignore
+            session_id: str,
+            request: EscalateRequest,
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_ESCALATE),  # noqa: ARG001
+        ) -> dict[str, object]:  # guard: loose-dict - API boundary
+            """Escalate a customer session to an admin via Discord.
+
+            Creates a Discord thread in the escalation forum, notifies admins,
+            and activates relay mode on the session. Only available for customer
+            sessions. Requires dual-factor caller identity.
+            """
+            from datetime import datetime, timezone
+
+            from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+            session = await db.get_session(session_id)
+            if not session:
+                raise HTTPException(status_code=404, detail="Session not found")
+            if session.human_role != "customer":
+                raise HTTPException(status_code=403, detail="Escalation is only available in customer sessions")
+
+            discord_adapter: DiscordAdapter | None = None
+            for adapter in self.client.adapters.values():
+                if isinstance(adapter, DiscordAdapter):
+                    discord_adapter = adapter
+                    break
+            if not discord_adapter:
+                raise HTTPException(status_code=503, detail="Discord adapter not available")
+
+            try:
+                thread_id = await discord_adapter.create_escalation_thread(
+                    customer_name=request.customer_name,
+                    reason=request.reason,
+                    context_summary=request.context_summary,
+                    session_id=session_id,
+                )
+                now = datetime.now(timezone.utc)
+                await db.update_session(
+                    session_id,
+                    relay_status="active",
+                    relay_discord_channel_id=str(thread_id),
+                    relay_started_at=now.isoformat(),
+                )
+                return {"status": "success", "thread_id": thread_id}
+            except Exception as e:
+                logger.error("escalate_session failed: %s", e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Escalation failed: {e}") from e
+
         @self.app.get("/computers")
         async def list_computers() -> list[ComputerDTO]:  # pyright: ignore
             """List available computers (local + cached remote computers)."""
@@ -995,6 +1258,99 @@ class APIServer:
                     )
 
             return result
+
+        @self.app.post("/agents/{agent}/status")
+        async def set_agent_status(  # pyright: ignore
+            agent: str,
+            request: AgentStatusRequest,
+            identity: "CallerIdentity" = Depends(CLEARANCE_AGENTS_STATUS),  # noqa: ARG001
+        ) -> dict[str, object]:  # guard: loose-dict - API boundary
+            """Set agent dispatch status (available/unavailable/degraded).
+
+            Marks an agent as available, unavailable (with optional expiry), or degraded.
+            Use clear=true to reset to available. Requires admin clearance.
+            """
+            from teleclaude.core.agents import normalize_agent_name
+
+            agent_name = normalize_agent_name(agent)
+            if request.clear:
+                await db.mark_agent_available(agent_name)
+                return {"status": "success", "message": f"{agent_name} marked available"}
+
+            normalized_status = (request.status or "unavailable").strip().lower()
+            if normalized_status not in {"available", "unavailable", "degraded"}:
+                raise HTTPException(status_code=400, detail="status must be one of: available, unavailable, degraded")
+            if normalized_status == "available":
+                await db.mark_agent_available(agent_name)
+                return {"status": "success", "message": f"{agent_name} marked available"}
+            if normalized_status == "degraded":
+                await db.mark_agent_degraded(agent_name, reason=request.reason or "degraded")
+                return {"status": "success", "message": f"{agent_name} marked degraded"}
+            # unavailable
+            if not request.reason:
+                raise HTTPException(status_code=400, detail="reason required when marking unavailable")
+            from datetime import datetime, timedelta, timezone
+
+            expiry = request.unavailable_until or (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
+            await db.mark_agent_unavailable(agent_name, unavailable_until=expiry, reason=request.reason)
+            return {"status": "success", "message": f"{agent_name} marked unavailable until {expiry}"}
+
+        @self.app.post("/deploy")
+        async def deploy_endpoint(  # pyright: ignore
+            request: DeployRequest,
+            identity: "CallerIdentity" = Depends(CLEARANCE_DEPLOY),  # noqa: ARG001
+        ) -> dict[str, object]:  # guard: loose-dict - API boundary
+            """Deploy latest code to remote computers via Redis.
+
+            Sends a deploy command to the specified computers (or all remotes if none
+            specified) and waits for completion. Requires admin clearance.
+            """
+            from teleclaude.transport.redis_transport import RedisTransport
+
+            redis_transport: RedisTransport | None = None
+            for adapter in self.client.adapters.values():
+                if isinstance(adapter, RedisTransport):
+                    redis_transport = adapter
+                    break
+            if not redis_transport:
+                raise HTTPException(status_code=503, detail="Redis transport not available")
+
+            all_peers = await redis_transport.discover_peers()
+            computer_name = config.computer.name
+            available = [peer.name for peer in all_peers if peer.name != computer_name]
+            available_set = set(available)
+
+            requested = [str(c) for c in (request.computers or [])]
+            targets = list(available) if not requested else [name for name in requested if name in available_set]
+
+            results: dict[str, object] = {}  # guard: loose-dict - deploy status per computer
+            if requested:
+                for name in requested:
+                    if name == computer_name:
+                        results[name] = {"status": "skipped", "message": "Skipping self deployment"}
+                    elif name not in available_set:
+                        results[name] = {"status": "error", "message": "Unknown or offline computer"}
+
+            if not targets:
+                return {"_message": {"status": "success", "message": "No remote computers to deploy to"}}
+
+            logger.info("deploy_endpoint: deploying to computers: %s", targets)
+            for computer in targets:
+                await redis_transport.send_system_command(
+                    computer_name=computer, command="deploy", args={"verify_health": True}
+                )
+            for computer in targets:
+                for _ in range(60):
+                    status = await redis_transport.get_system_command_status(computer_name=computer, command="deploy")
+                    status_str = str(status.get("status", "unknown"))
+                    if status_str in ("deployed", "error"):
+                        results[computer] = status
+                        break
+                    await asyncio.sleep(1)
+                else:
+                    results[computer] = {"status": "timeout", "message": "Deployment timed out after 60 seconds"}
+
+            return results
 
         @self.app.get("/api/people")
         async def list_people() -> list[PersonDTO]:  # pyright: ignore

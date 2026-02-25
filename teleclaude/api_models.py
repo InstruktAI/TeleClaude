@@ -422,3 +422,63 @@ class JobDTO(BaseModel):  # type: ignore[explicit-any]
     schedule: str | None = None
     last_run: str | None = None
     status: str
+
+
+class RunSessionRequest(BaseModel):  # type: ignore[explicit-any]
+    """Request to run an agent command in a new session (POST /sessions/run)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    computer: str = Field(default="local")
+    command: str = Field(..., min_length=1, description="Slash command (e.g. '/next-build')")
+    args: str = Field(default="", description="Command arguments")
+    project: str = Field(..., min_length=1, description="Project path")
+    agent: Literal["claude", "gemini", "codex"] = "claude"
+    subfolder: str = ""
+    thinking_mode: Literal["fast", "med", "slow"] = "slow"
+
+
+class SendResultRequest(BaseModel):  # type: ignore[explicit-any]
+    """Request to send a formatted result to the session's user (POST /sessions/{id}/result)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    content: str = Field(..., min_length=1)
+    output_format: Literal["markdown", "html"] = "markdown"
+
+
+class RenderWidgetRequest(BaseModel):  # type: ignore[explicit-any]
+    """Request to render a rich widget expression (POST /sessions/{id}/widget)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    data: dict[str, object]  # guard: loose-dict - widget expression blob
+
+
+class EscalateRequest(BaseModel):  # type: ignore[explicit-any]
+    """Request to escalate a customer session to Discord (POST /sessions/{id}/escalate)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    customer_name: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=1)
+    context_summary: str | None = None
+
+
+class DeployRequest(BaseModel):  # type: ignore[explicit-any]
+    """Request to deploy to remote computers (POST /deploy)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    computers: list[str] | None = None
+
+
+class AgentStatusRequest(BaseModel):  # type: ignore[explicit-any]
+    """Request to set agent dispatch status (POST /agents/{agent}/status)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["available", "unavailable", "degraded"] | None = None
+    reason: str | None = None
+    unavailable_until: str | None = None
+    clear: bool = False

@@ -23,7 +23,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 
 from teleclaude.core.db import db
 from teleclaude.mcp.role_tools import get_excluded_tools
@@ -127,11 +127,11 @@ def require_clearance(tool_name: str):
         tool_name: MCP tool name (e.g. "teleclaude__start_session")
 
     Returns:
-        A dependency function that returns CallerIdentity on success or raises
-        HTTPException(403) on clearance failure.
+        A FastAPI dependency function that returns CallerIdentity on success or
+        raises HTTPException(403) on clearance failure.
     """
 
-    async def _check(identity: CallerIdentity) -> CallerIdentity:
+    async def _check(identity: CallerIdentity = Depends(verify_caller)) -> CallerIdentity:
         if _is_tool_denied(tool_name, identity):
             role_desc = identity.system_role or identity.human_role or "unauthorized"
             raise HTTPException(
