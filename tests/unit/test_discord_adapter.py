@@ -11,8 +11,9 @@ import pytest
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.adapter_client import AdapterClient
+from teleclaude.core.events import SessionStatusContext
 from teleclaude.core.identity import IdentityContext
-from teleclaude.core.models import ChannelMetadata, Session, SessionAdapterMetadata
+from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, Session, SessionAdapterMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import ProcessMessageCommand
 
@@ -1162,3 +1163,145 @@ async def test_create_session_project_forum_defaults_member_when_unresolved() ->
 
     create_cmd = fake_command_service.create_session.await_args.args[0]
     assert create_cmd.channel_metadata["human_role"] == "member"
+
+
+# ---------------------------------------------------------------------------
+# Discord _handle_session_status (I2)
+# ---------------------------------------------------------------------------
+
+
+def _build_session_with_discord_thread(thread_id: int = 555, status_message_id: str | None = None) -> Session:
+    meta = SessionAdapterMetadata()
+    discord_meta = meta.get_ui().get_discord()
+    discord_meta.thread_id = thread_id
+    discord_meta.status_message_id = status_message_id
+    return Session(
+        session_id="sess-status-discord",
+        computer_name="local",
+        tmux_session_name="tc_status",
+        last_input_origin=InputOrigin.DISCORD.value,
+        title="Discord: Status Test",
+        adapter_metadata=meta,
+    )
+
+
+def _make_status_context(session_id: str = "sess-status-discord") -> SessionStatusContext:
+    return SessionStatusContext(
+        session_id=session_id,
+        status="active_output",
+        reason="output_observed",
+        timestamp="2026-01-01T00:00:00+00:00",
+    )
+
+
+@pytest.mark.asyncio
+async def test_discord_handle_session_status_sends_new_message_when_no_existing() -> None:
+    """Sends a new status message and persists the returned message ID."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        adapter = DiscordAdapter(AdapterClient())
+
+    session = _build_session_with_discord_thread(thread_id=555, status_message_id=None)
+    context = _make_status_context()
+
+    fake_db = MagicMock()
+    fake_db.get_session = AsyncMock(return_value=session)
+    fake_db.update_session = AsyncMock()
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch.object(adapter, "send_message", new_callable=AsyncMock, return_value="9001") as mock_send,
+        patch.object(adapter, "edit_message", new_callable=AsyncMock) as mock_edit,
+    ):
+        await adapter._handle_session_status("SESSION_STATUS", context)
+
+    mock_send.assert_awaited_once()
+    mock_edit.assert_not_awaited()
+    assert session.get_metadata().get_ui().get_discord().status_message_id == "9001"
+    fake_db.update_session.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_discord_handle_session_status_edits_existing_message() -> None:
+    """Edits the existing status message in-place when status_message_id is set."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        adapter = DiscordAdapter(AdapterClient())
+
+    session = _build_session_with_discord_thread(thread_id=555, status_message_id="7777")
+    context = _make_status_context()
+
+    fake_db = MagicMock()
+    fake_db.get_session = AsyncMock(return_value=session)
+    fake_db.update_session = AsyncMock()
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch.object(adapter, "send_message", new_callable=AsyncMock) as mock_send,
+        patch.object(adapter, "edit_message", new_callable=AsyncMock, return_value=True) as mock_edit,
+    ):
+        await adapter._handle_session_status("SESSION_STATUS", context)
+
+    mock_edit.assert_awaited_once()
+    mock_send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_discord_handle_session_status_falls_back_to_send_when_edit_fails() -> None:
+    """Falls back to send when edit returns False, clears old ID, persists new one."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        adapter = DiscordAdapter(AdapterClient())
+
+    session = _build_session_with_discord_thread(thread_id=555, status_message_id="old-id")
+    context = _make_status_context()
+
+    fake_db = MagicMock()
+    fake_db.get_session = AsyncMock(return_value=session)
+    fake_db.update_session = AsyncMock()
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch.object(adapter, "send_message", new_callable=AsyncMock, return_value="new-id") as mock_send,
+        patch.object(adapter, "edit_message", new_callable=AsyncMock, return_value=False) as mock_edit,
+    ):
+        await adapter._handle_session_status("SESSION_STATUS", context)
+
+    mock_edit.assert_awaited_once()
+    mock_send.assert_awaited_once()
+    assert session.get_metadata().get_ui().get_discord().status_message_id == "new-id"
+
+
+@pytest.mark.asyncio
+async def test_discord_handle_session_status_skips_when_no_thread() -> None:
+    """Does nothing when the session has no Discord thread_id."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        adapter = DiscordAdapter(AdapterClient())
+
+    # Session with no thread_id set
+    session = _build_session()
+    context = _make_status_context(session_id=session.session_id)
+
+    fake_db = MagicMock()
+    fake_db.get_session = AsyncMock(return_value=session)
+    fake_db.update_session = AsyncMock()
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch.object(adapter, "send_message", new_callable=AsyncMock) as mock_send,
+        patch.object(adapter, "edit_message", new_callable=AsyncMock) as mock_edit,
+    ):
+        await adapter._handle_session_status("SESSION_STATUS", context)
+
+    mock_send.assert_not_awaited()
+    mock_edit.assert_not_awaited()
+    fake_db.update_session.assert_not_awaited()
