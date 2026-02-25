@@ -22,3 +22,27 @@ There are many of course, but this section is now intended to reveal the full su
 ### `telec docs`
 
 <!-- @exec: telec docs -h -->
+
+### `telec sessions`
+
+<!-- @exec: telec sessions -h -->
+
+### `telec computers`
+
+<!-- @exec: telec computers -h -->
+
+### `telec projects`
+
+<!-- @exec: telec projects -h -->
+
+### `telec deploy`
+
+<!-- @exec: telec deploy -h -->
+
+### `telec agents`
+
+<!-- @exec: telec agents -h -->
+
+### `telec channels`
+
+<!-- @exec: telec channels -h -->

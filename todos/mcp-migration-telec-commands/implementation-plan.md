@@ -140,14 +140,14 @@ Enforcement order:
 5. Insufficient human_role → 403
 6. All clear → proceed
 
-- [ ] Create `teleclaude/api/auth.py` with `verify_caller` dependency
-- [ ] Create `CallerIdentity` dataclass (session_id, system_role, human_role)
-- [ ] Implement `require_clearance` dependency with permission matrix
-- [ ] Return 403 on identity mismatch with "session identity mismatch" message
-- [ ] Return 403 on insufficient clearance with specific role/command in message
-- [ ] Return 401 on missing or unknown session_id
-- [ ] Store system_role on session records (extend DB schema if needed)
-- [ ] Write unit tests for:
+- [x] Create `teleclaude/api/auth.py` with `verify_caller` dependency
+- [x] Create `CallerIdentity` dataclass (session_id, system_role, human_role)
+- [x] Implement `require_clearance` dependency with permission matrix
+- [x] Return 403 on identity mismatch with "session identity mismatch" message
+- [x] Return 403 on insufficient clearance with specific role/command in message
+- [x] Return 401 on missing or unknown session_id
+- [x] Store system_role on session records (extend DB schema if needed)
+- [x] Write unit tests for:
   - Permission matrix (all cells in the matrix from parent requirements)
   - Tmux cross-check pass (matching tmux session name)
   - Tmux cross-check fail (mismatched tmux session name → 403)
@@ -163,38 +163,38 @@ Enforcement order:
 
 **File(s):** `teleclaude/api_server.py` (extend existing session routes)
 
-- [ ] Add `POST /sessions/run` (run-agent-command)
-- [ ] Add `POST /sessions/{id}/unsubscribe` (stop-notifications)
-- [ ] Add `POST /sessions/{id}/result` (send-result)
-- [ ] Add `POST /sessions/{id}/widget` (render-widget)
-- [ ] Add `POST /sessions/{id}/escalate` (escalate)
-- [ ] Apply role enforcement dependency to all session endpoints
+- [x] Add `POST /sessions/run` (run-agent-command)
+- [x] Add `POST /sessions/{id}/unsubscribe` (stop-notifications)
+- [x] Add `POST /sessions/{id}/result` (send-result)
+- [x] Add `POST /sessions/{id}/widget` (render-widget)
+- [x] Add `POST /sessions/{id}/escalate` (escalate)
+- [x] Apply role enforcement dependency to all session endpoints
 
 ### Task 2.2: Todo/workflow endpoints
 
 **File(s):** `teleclaude/api/todo_routes.py` (new router)
 
-- [ ] Add `POST /todos/prepare` (next-prepare state machine)
-- [ ] Add `POST /todos/work` (next-work state machine)
-- [ ] Add `POST /todos/maintain` (next-maintain)
-- [ ] Add `POST /todos/mark-phase` (mark phase completion)
-- [ ] Add `POST /todos/set-deps` (set dependencies)
-- [ ] Mount router in `api_server.py`
-- [ ] Apply role enforcement
+- [x] Add `POST /todos/prepare` (next-prepare state machine)
+- [x] Add `POST /todos/work` (next-work state machine)
+- [x] Add `POST /todos/maintain` (next-maintain)
+- [x] Add `POST /todos/mark-phase` (mark phase completion)
+- [x] Add `POST /todos/set-deps` (set dependencies)
+- [x] Mount router in `api_server.py`
+- [x] Apply role enforcement
 
 ### Task 2.3: Deploy endpoint
 
 **File(s):** `teleclaude/api_server.py` (add top-level route)
 
-- [ ] Add `POST /deploy` (trigger deployment to remote computers)
-- [ ] Apply role enforcement (admin-only)
+- [x] Add `POST /deploy` (trigger deployment to remote computers)
+- [x] Apply role enforcement (admin-only)
 
 ### Task 2.4: Apply role enforcement to existing endpoints
 
-- [ ] Add enforcement dependency to existing session endpoints
-- [ ] Add enforcement dependency to existing computer/project endpoints
-- [ ] Add enforcement dependency to existing agent endpoints
-- [ ] Add enforcement dependency to existing channel endpoints
+- [x] Add enforcement dependency to existing session endpoints
+- [x] Add enforcement dependency to existing computer/project endpoints
+- [x] Add enforcement dependency to existing agent endpoints
+- [x] Add enforcement dependency to existing channel endpoints
 
 ---
 
@@ -247,16 +247,16 @@ def _read_tmux_session_name() -> str | None:
     return None
 ```
 
-- [ ] Create `teleclaude/cli/tool_client.py`
-- [ ] Implement `tool_api_call()` with sync httpx + Unix socket transport
-- [ ] Implement `_read_caller_session_id()` from `$TMPDIR`
-- [ ] Implement `_read_tmux_session_name()` via tmux server query
-- [ ] Send both `X-Caller-Session-Id` and `X-Tmux-Session` headers
-- [ ] Handle daemon unavailable (socket missing → stderr + exit 1)
-- [ ] Handle 401 (missing/unknown session → stderr + exit 1)
-- [ ] Handle 403 (identity mismatch or role denied → stderr + exit 1)
-- [ ] Handle other HTTP errors (4xx/5xx → stderr + exit 1)
-- [ ] Graceful when not inside tmux (omit header, daemon skips cross-check)
+- [x] Create `teleclaude/cli/tool_client.py`
+- [x] Implement `tool_api_call()` with sync httpx + Unix socket transport
+- [x] Implement `_read_caller_session_id()` from `$TMPDIR`
+- [x] Implement `_read_tmux_session_name()` via tmux server query
+- [x] Send both `X-Caller-Session-Id` and `X-Tmux-Session` headers
+- [x] Handle daemon unavailable (socket missing → stderr + exit 1)
+- [x] Handle 401 (missing/unknown session → stderr + exit 1)
+- [x] Handle 403 (identity mismatch or role denied → stderr + exit 1)
+- [x] Handle other HTTP errors (4xx/5xx → stderr + exit 1)
+- [x] Graceful when not inside tmux (omit header, daemon skips cross-check)
 
 ---
 
@@ -324,22 +324,22 @@ Add: computers, projects, deploy, agents (status + availability), channels (list
 
 **File(s):** `docs/global/general/spec/tools/telec-cli.md`
 
-- [ ] Add `@exec` directives for baseline tools
-- [ ] Run `telec sync` to verify expansion
-- [ ] Verify expanded output includes rich help with examples
+- [x] Add `@exec` directives for baseline tools
+- [x] Run `telec sync` to verify expansion
+- [x] Verify expanded output includes rich help with examples
 
 ### Task 5.2: Functional tests
 
-- [ ] Test each new CLI subcommand returns valid JSON
-- [ ] Test role enforcement returns 403 for worker calling `sessions start`
-- [ ] Test role enforcement returns 401 for missing session_id
-- [ ] Test daemon down → graceful error
+- [x] Test each new CLI subcommand returns valid JSON
+- [x] Test role enforcement returns 403 for worker calling `sessions start`
+- [x] Test role enforcement returns 401 for missing session_id
+- [x] Test daemon down → graceful error
 
 ### Task 5.3: Regression tests
 
-- [ ] Run `make lint` and `make test`
-- [ ] Verify existing commands unaffected
-- [ ] Verify TUI still works
+- [x] Run `make lint` and `make test`
+- [x] Verify existing commands unaffected
+- [x] Verify TUI still works
 - [ ] Verify `telec --help` shows correct structure
 
 ---
