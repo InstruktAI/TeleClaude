@@ -136,7 +136,7 @@ class SnippetPayload(TypedDict):
     type: str
     scope: str
     path: str
-    role: str
+    visibility: str
 
 
 def _write(path: Path, content: str) -> None:
@@ -158,7 +158,7 @@ def _write_index(
 
 
 class TestRoleFiltering:
-    """Tests for role-based snippet filtering in build_context_output."""
+    """Tests for visibility-based snippet filtering in build_context_output."""
 
     def _setup_snippets(self, tmp_path: Path) -> tuple[Path, Path]:
         """Create a project with admin-only, member, and public role snippets."""
@@ -173,17 +173,17 @@ class TestRoleFiltering:
         _write(
             admin_path,
             "---\nid: project/policy/admin-only\ntype: policy\nscope: project\n"
-            "description: Admin only\nrole: admin\n---\n\nSecret admin content.\n",
+            "description: Admin only\nvisibility: internal\n---\n\nSecret admin content.\n",
         )
         _write(
             public_path,
             "---\nid: project/policy/public-faq\ntype: policy\nscope: project\n"
-            "description: Public FAQ\nrole: public\n---\n\nPublic content.\n",
+            "description: Public FAQ\nvisibility: public\n---\n\nPublic content.\n",
         )
         _write(
             member_path,
             "---\nid: project/policy/member-guide\ntype: policy\nscope: project\n"
-            "description: Member guide\nrole: member\n---\n\nMember content.\n",
+            "description: Member guide\nvisibility: internal\n---\n\nMember content.\n",
         )
 
         _write_index(
@@ -196,7 +196,7 @@ class TestRoleFiltering:
                     "type": "policy",
                     "scope": "project",
                     "path": "docs/project/policy/admin-only.md",
-                    "role": "admin",
+                    "visibility": "internal",
                 },
                 {
                     "id": "project/policy/public-faq",
@@ -204,7 +204,7 @@ class TestRoleFiltering:
                     "type": "policy",
                     "scope": "project",
                     "path": "docs/project/policy/public-faq.md",
-                    "role": "public",
+                    "visibility": "public",
                 },
                 {
                     "id": "project/policy/member-guide",
@@ -212,7 +212,7 @@ class TestRoleFiltering:
                     "type": "policy",
                     "scope": "project",
                     "path": "docs/project/policy/member-guide.md",
-                    "role": "member",
+                    "visibility": "internal",
                 },
             ],
         )
@@ -235,8 +235,8 @@ class TestRoleFiltering:
         assert "admin-only" not in result
         assert "member-guide" not in result
 
-    def test_member_sees_public_and_member(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Member role sees member and public snippets but NOT admin-only."""
+    def test_member_sees_only_public(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Member role is non-admin and sees only public snippets."""
         project_root, global_snippets_root = self._setup_snippets(tmp_path)
         monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
 
@@ -247,7 +247,7 @@ class TestRoleFiltering:
         )
 
         assert "public-faq" in result
-        assert "member-guide" in result
+        assert "member-guide" not in result
         assert "admin-only" not in result
 
     def test_admin_sees_everything(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

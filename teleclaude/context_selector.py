@@ -10,8 +10,10 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_project_config
-from teleclaude.docs_index import ROLE_RANK, extract_required_reads
+from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL
+from teleclaude.docs_index import extract_required_reads, get_project_name
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
+from teleclaude.project_manifest import load_manifest
 from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.utils import resolve_project_config_path
 
@@ -27,7 +29,9 @@ class SnippetMeta:
     snippet_type: str
     scope: str
     path: Path
-    role: str = "admin"
+    source_project: str = ""
+    project_root: Path | None = None
+    visibility: str = SNIPPET_VISIBILITY_INTERNAL
 
 
 @dataclass(frozen=True)
@@ -49,6 +53,7 @@ def _scope_rank(scope: str | None) -> int:
 _INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
 
 _TEST_ENABLED_ENV = "TELECLAUDE_GET_CONTEXT_TESTING"
+_index_cache: dict[str, tuple[float, list[SnippetMeta]]] = {}
 
 
 def _write_test_output(
@@ -138,6 +143,11 @@ def _domain_for_snippet(snippet: SnippetMeta, *, project_domains: dict[str, Path
     for domain, root in project_domains.items():
         if root in snippet.path.parents or root == snippet.path.parent:
             return domain
+    if snippet.source_project:
+        prefix = f"{snippet.source_project.lower()}/"
+        if snippet_id.lower().startswith(prefix):
+            remainder = snippet_id[len(prefix) :]
+            return remainder.split("/", 1)[0] if remainder else snippet.source_project.lower()
     return snippet_id.split("/", 1)[0] if "/" in snippet_id else snippet_id
 
 
@@ -174,6 +184,34 @@ def _output_scope(snippet: SnippetMeta, *, global_snippets_root: Path) -> str:
     return "project"
 
 
+def _load_manifest_by_name() -> dict[str, tuple[Path, Path, str]]:
+    """Map lowercase project name to (index_path, project_root, canonical_name)."""
+    projects: dict[str, tuple[Path, Path, str]] = {}
+    for entry in load_manifest():
+        key = entry.name.strip().lower()
+        if not key:
+            continue
+        projects[key] = (
+            Path(entry.index_path).expanduser().resolve(),
+            Path(entry.project_root).expanduser().resolve(),
+            entry.name,
+        )
+    return projects
+
+
+def _is_cross_project_snippet_id(snippet_id: str, *, domain_prefixes: set[str]) -> bool:
+    if "/" not in snippet_id:
+        return False
+    prefix = snippet_id.split("/", 1)[0].strip().lower()
+    if not prefix:
+        return False
+    if prefix in {"project", "general", "third-party", "baseline"}:
+        return False
+    if prefix in domain_prefixes:
+        return False
+    return True
+
+
 def _resolve_inline_refs(content: str, *, snippet_path: Path, root_path: Path) -> str:
     """Expand @<path>.md references to absolute paths for tool consumption."""
     head, body = _split_frontmatter(content)
@@ -195,56 +233,97 @@ def _resolve_inline_refs(content: str, *, snippet_path: Path, root_path: Path) -
     return f"{head}{_INLINE_REF_RE.sub(_expand, body)}"
 
 
-def _load_index(index_path: Path) -> list[SnippetMeta]:
-    if not index_path.exists():
-        logger.warning("snippet_index_missing", path=str(index_path))
+def _load_index(
+    index_path: Path,
+    *,
+    source_project: str = "",
+    rewrite_project_prefix: bool = False,
+    project_root: Path | None = None,
+) -> list[SnippetMeta]:
+    resolved_index = index_path.expanduser().resolve()
+    if not resolved_index.exists():
+        logger.warning("snippet_index_missing", path=str(resolved_index))
         return []
 
     try:
-        payload = yaml.safe_load(index_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        logger.exception("snippet_index_load_failed", path=str(index_path), error=str(exc))
+        mtime = resolved_index.stat().st_mtime
+    except OSError:
+        logger.warning("snippet_index_stat_failed", path=str(resolved_index))
         return []
 
-    if not isinstance(payload, dict):
-        return []
+    cache_key = str(resolved_index)
+    cached = _index_cache.get(cache_key)
+    if cached and cached[0] == mtime:
+        base_entries = cached[1]
+    else:
+        try:
+            payload = yaml.safe_load(resolved_index.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.exception("snippet_index_load_failed", path=str(resolved_index), error=str(exc))
+            return []
 
-    project_root = payload.get("project_root")
-    snippets = payload.get("snippets")
-    if not isinstance(project_root, str) or not isinstance(snippets, list):
-        return []
+        if not isinstance(payload, dict):
+            return []
 
-    root_path = Path(project_root).expanduser().resolve()
+        payload_root = payload.get("project_root")
+        snippets = payload.get("snippets")
+        if not isinstance(payload_root, str) or not isinstance(snippets, list):
+            return []
+
+        root_path = Path(payload_root).expanduser().resolve()
+        loaded_entries: list[SnippetMeta] = []
+        for item in snippets:
+            if not isinstance(item, dict):
+                continue
+            snippet_id = item.get("id")
+            description = item.get("description")
+            snippet_type = item.get("type")
+            scope = item.get("scope")
+            raw_path = item.get("path")
+            if (
+                not isinstance(snippet_id, str)
+                or not isinstance(description, str)
+                or not isinstance(snippet_type, str)
+                or not isinstance(scope, str)
+                or not isinstance(raw_path, str)
+            ):
+                continue
+            path = Path(raw_path).expanduser()
+            if not path.is_absolute():
+                path = (root_path / path).resolve()
+            raw_visibility = item.get("visibility")
+            visibility = raw_visibility if isinstance(raw_visibility, str) else SNIPPET_VISIBILITY_INTERNAL
+            raw_source_project = item.get("source_project")
+            loaded_entries.append(
+                SnippetMeta(
+                    snippet_id=snippet_id,
+                    description=description,
+                    snippet_type=snippet_type,
+                    scope=scope,
+                    path=path,
+                    source_project=raw_source_project if isinstance(raw_source_project, str) else "",
+                    project_root=root_path,
+                    visibility=visibility,
+                )
+            )
+        _index_cache[cache_key] = (mtime, loaded_entries)
+        base_entries = loaded_entries
+
     entries: list[SnippetMeta] = []
-    for item in snippets:
-        if not isinstance(item, dict):
-            continue
-        snippet_id = item.get("id")
-        description = item.get("description")
-        snippet_type = item.get("type")
-        scope = item.get("scope")
-        raw_path = item.get("path")
-        if (
-            not isinstance(snippet_id, str)
-            or not isinstance(description, str)
-            or not isinstance(snippet_type, str)
-            or not isinstance(scope, str)
-            or not isinstance(raw_path, str)
-        ):
-            continue
-        path = Path(raw_path).expanduser()
-        if not path.is_absolute():
-            path = (root_path / path).resolve()
-        raw_role = item.get("role")
-        role = raw_role if isinstance(raw_role, str) else "admin"
+    for snippet in base_entries:
+        snippet_id = snippet.snippet_id
+        if rewrite_project_prefix and snippet_id.startswith("project/"):
+            snippet_id = f"{source_project.lower()}/{snippet_id[len('project/') :]}"
         entries.append(
             SnippetMeta(
                 snippet_id=snippet_id,
-                description=description,
-                snippet_type=snippet_type,
-                scope=scope,
-                path=path,
-                role=role,
+                description=snippet.description,
+                snippet_type=snippet.snippet_type,
+                scope=snippet.scope,
+                path=snippet.path,
+                source_project=source_project or snippet.source_project,
+                project_root=project_root or snippet.project_root,
+                visibility=snippet.visibility or SNIPPET_VISIBILITY_INTERNAL,
             )
         )
 
@@ -375,7 +454,12 @@ def _resolve_requires(
             req_snippet = snippets_by_path.get(str(ref_resolved))
             if not req_snippet and not Path(ref).is_absolute():
                 req_snippet = snippets_by_path.get(str((current.path.parent / ref).resolve()))
-            if req_snippet and str(req_snippet.path) not in seen:
+            if not req_snippet or str(req_snippet.path) in seen:
+                continue
+            same_project = req_snippet.source_project == current.source_project
+            if not same_project and req_snippet.scope != "global":
+                continue
+            if req_snippet:
                 stack.append(req_snippet)
 
     resolved.sort(
@@ -392,25 +476,85 @@ def build_context_output(
     baseline_only: bool = False,
     include_third_party: bool = False,
     domains: list[str] | None = None,
+    list_projects: bool = False,
+    projects: list[str] | None = None,
+    caller_role: str = "admin",
     human_role: str | None = None,
     test_agent: str | None = None,
     test_mode: str | None = None,
     test_request: str | None = None,
     test_csv_path: str | None = None,
 ) -> str:
+    if list_projects:
+        manifest_entries = sorted(load_manifest(), key=lambda entry: entry.name.lower())
+        parts = [
+            "# PHASE 0: Project Catalog",
+            "# Available projects registered in ~/.teleclaude/projects.yaml",
+            "",
+        ]
+        if not manifest_entries:
+            parts.append("No registered projects found.")
+        else:
+            for entry in manifest_entries:
+                description = entry.description or "(no description)"
+                parts.append(f"{entry.name.lower()}: {description}")
+        parts.extend(
+            [
+                "",
+                "# ⚠️  IMPORTANT: Call teleclaude__get_context again with projects=[...] to browse snippet indexes.",
+            ]
+        )
+        return "\n".join(parts)
+
     project_index = project_root / "docs" / "project" / "index.yaml"
     global_index = GLOBAL_SNIPPETS_DIR / "index.yaml"
     global_root = GLOBAL_SNIPPETS_DIR.parent.parent
     global_snippets_root = GLOBAL_SNIPPETS_DIR
+    current_project_name = get_project_name(project_root)
+    manifest_projects = _load_manifest_by_name() if (projects or snippet_ids) else {}
 
     # Third-party indexes (separate from taxonomy)
     project_third_party_index = project_root / "docs" / "third-party" / "index.yaml"
     global_third_party_index = GLOBAL_SNIPPETS_DIR / "third-party" / "index.yaml"
 
-    # Load global snippets first, then project snippets.
+    # Load global snippets first, then selected project snippets.
     snippets: list[SnippetMeta] = []
-    snippets.extend(_load_index(global_index))
-    snippets.extend(_load_index(project_index))
+    snippets.extend(
+        _load_index(
+            global_index,
+            source_project="global",
+            rewrite_project_prefix=False,
+            project_root=global_root,
+        )
+    )
+    if projects:
+        seen_projects: set[str] = set()
+        for project_name in projects:
+            project_key = project_name.strip().lower()
+            if not project_key or project_key in seen_projects:
+                continue
+            seen_projects.add(project_key)
+            manifest_entry = manifest_projects.get(project_key)
+            if not manifest_entry:
+                continue
+            index_path, manifest_root, canonical_name = manifest_entry
+            snippets.extend(
+                _load_index(
+                    index_path,
+                    source_project=canonical_name,
+                    rewrite_project_prefix=True,
+                    project_root=manifest_root,
+                )
+            )
+    else:
+        snippets.extend(
+            _load_index(
+                project_index,
+                source_project=current_project_name,
+                rewrite_project_prefix=False,
+                project_root=project_root,
+            )
+        )
 
     # Build path-to-snippet mapping for baseline resolution
     snippets_by_path = {str(s.path): s for s in snippets}
@@ -434,22 +578,46 @@ def build_context_output(
     if not project_domain_roots:
         project_domain_roots = {d: project_root / "docs" for d in domain_config.keys()}
 
-    # Role filtering: caller's role rank must be >= snippet's required role rank.
-    # No role → public (least privilege). Admin access must be explicit.
-    _caller_role = human_role or "public"
-    if _caller_role in ("customer",):
-        _caller_role = "public"
-    _role_rank = ROLE_RANK.get(_caller_role, 0)
+    # Phase 2 cross-project retrieval: load requested project indexes on demand.
+    if snippet_ids:
+        domain_prefixes = {name.lower() for name in domain_config.keys()}
+        prefixes_to_load: set[str] = set()
+        for sid in snippet_ids:
+            if _is_cross_project_snippet_id(sid, domain_prefixes=domain_prefixes):
+                prefixes_to_load.add(sid.split("/", 1)[0].strip().lower())
+        already_loaded = {snippet.source_project.lower() for snippet in snippets if snippet.source_project}
+        for project_key in prefixes_to_load:
+            if project_key in already_loaded:
+                continue
+            manifest_entry = manifest_projects.get(project_key)
+            if not manifest_entry:
+                continue
+            index_path, manifest_root, canonical_name = manifest_entry
+            loaded = _load_index(
+                index_path,
+                source_project=canonical_name,
+                rewrite_project_prefix=True,
+                project_root=manifest_root,
+            )
+            snippets.extend(loaded)
+            for snippet in loaded:
+                snippets_by_path[str(snippet.path)] = snippet
 
     def _include_snippet(snippet: SnippetMeta) -> bool:
-        snippet_rank = ROLE_RANK.get(snippet.role)
-        if snippet_rank is not None and _role_rank < snippet_rank:
+        resolved_role = (caller_role or "").strip().lower()
+        if human_role and (not resolved_role or resolved_role == "admin"):
+            resolved_role = human_role.strip().lower()
+        if not resolved_role:
+            resolved_role = "admin"
+        if resolved_role != "admin" and snippet.visibility != "public":
             return False
         if global_snippets_root in snippet.path.parents:
             if snippet.snippet_id.startswith("general/"):
                 return True
             return any(snippet.snippet_id.startswith(f"{domain}/") for domain in domain_config)
         if snippet.scope == "project":
+            if projects and snippet.source_project and snippet.source_project.lower() != current_project_name.lower():
+                return True
             return any(
                 root in snippet.path.parents or root == snippet.path.parent for root in project_domain_roots.values()
             )
@@ -566,7 +734,7 @@ def build_context_output(
     for snippet in resolved:
         try:
             raw = snippet.path.read_text(encoding="utf-8")
-            root_path = project_root
+            root_path = snippet.project_root or project_root
             if global_snippets_root in snippet.path.parents:
                 root_path = global_root
             content = _resolve_inline_refs(raw, snippet_path=snippet.path, root_path=root_path)

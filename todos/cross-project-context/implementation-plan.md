@@ -71,58 +71,58 @@ Extend `get_context` to serve documentation across all TeleClaude-aware projects
 
 **File(s):** `teleclaude/context_selector.py`
 
-- [ ] Add `source_project: str = ""` field to `SnippetMeta`
-- [ ] Add `project_root: Path | None = None` field to `SnippetMeta`
-- [ ] Add `visibility: str = "internal"` field to `SnippetMeta`
-- [ ] Update `_load_index` to populate these from the index YAML
+- [x] Add `source_project: str = ""` field to `SnippetMeta`
+- [x] Add `project_root: Path | None = None` field to `SnippetMeta`
+- [x] Add `visibility: str = "internal"` field to `SnippetMeta`
+- [x] Update `_load_index` to populate these from the index YAML
 
 ### Task 3.2: Cross-project ID rewriting
 
 **File(s):** `teleclaude/context_selector.py`
 
-- [ ] In `_load_index`, when loading a non-current-project index, replace the `project/` prefix in snippet IDs with `{source_project.lower()}/`
-- [ ] Single-project mode (current project) keeps `project/` prefix unchanged for backward compatibility
+- [x] In `_load_index`, when loading a non-current-project index, replace the `project/` prefix in snippet IDs with `{source_project.lower()}/`
+- [x] Single-project mode (current project) keeps `project/` prefix unchanged for backward compatibility
 
 ### Task 3.3: Phase 0 — project catalog
 
 **File(s):** `teleclaude/context_selector.py`
 
-- [ ] Add `list_projects: bool = False` parameter to `build_context_output`
-- [ ] When `list_projects=True`, load manifest, return formatted project catalog (name, description)
-- [ ] Skip entries whose index file doesn't exist
+- [x] Add `list_projects: bool = False` parameter to `build_context_output`
+- [x] When `list_projects=True`, load manifest, return formatted project catalog (name, description)
+- [x] Skip entries whose index file doesn't exist
 
 ### Task 3.4: Phase 1 — multi-project index loading
 
 **File(s):** `teleclaude/context_selector.py`
 
-- [ ] Add `projects: list[str] | None = None` parameter to `build_context_output`
-- [ ] When `projects` is set, load manifest, find matching projects by name (case-insensitive)
-- [ ] Load each project's `index.yaml` via `_load_index`, apply ID rewriting
-- [ ] Merge into the existing snippet list alongside global snippets
-- [ ] When `projects` is not set, behavior is identical to today (current project only)
+- [x] Add `projects: list[str] | None = None` parameter to `build_context_output`
+- [x] When `projects` is set, load manifest, find matching projects by name (case-insensitive)
+- [x] Load each project's `index.yaml` via `_load_index`, apply ID rewriting
+- [x] Merge into the existing snippet list alongside global snippets
+- [x] When `projects` is not set, behavior is identical to today (current project only)
 
 ### Task 3.5: Phase 2 — cross-project retrieval
 
 **File(s):** `teleclaude/context_selector.py`
 
-- [ ] When resolving `snippet_ids`, detect cross-project IDs by prefix (not matching `project/`, `general/`, or domain prefixes). Load those projects' indexes from the manifest on demand.
-- [ ] Use `SnippetMeta.project_root` for path resolution (already absolute from `_load_index`)
-- [ ] Cross-project `_resolve_requires` stays within the same project's snippets (no cross-project dependency chains)
+- [x] When resolving `snippet_ids`, detect cross-project IDs by prefix (not matching `project/`, `general/`, or domain prefixes). Load those projects' indexes from the manifest on demand.
+- [x] Use `SnippetMeta.project_root` for path resolution (already absolute from `_load_index`)
+- [x] Cross-project `_resolve_requires` stays within the same project's snippets (no cross-project dependency chains)
 
 ### Task 3.6: Visibility filtering
 
 **File(s):** `teleclaude/context_selector.py`
 
-- [ ] Add `caller_role: str = "admin"` parameter to `build_context_output`
-- [ ] When `caller_role` is not `admin`, filter out snippets where `visibility != "public"` from both phase 1 index and phase 2 content
-- [ ] Admin callers see all snippets (no filtering)
+- [x] Add `caller_role: str = "admin"` parameter to `build_context_output`
+- [x] When `caller_role` is not `admin`, filter out snippets where `visibility != "public"` from both phase 1 index and phase 2 content
+- [x] Admin callers see all snippets (no filtering)
 
 ### Task 3.7: In-memory cache
 
 **File(s):** `teleclaude/context_selector.py`
 
-- [ ] Module-level cache dict: `_index_cache: dict[str, tuple[float, list[SnippetMeta]]]` keyed by index path, value is `(mtime, snippets)`
-- [ ] Before loading an index file, check cache: if path exists in cache and mtime matches, return cached. Otherwise load and update cache.
+- [x] Module-level cache dict: `_index_cache: dict[str, tuple[float, list[SnippetMeta]]]` keyed by index path, value is `(mtime, snippets)`
+- [x] Before loading an index file, check cache: if path exists in cache and mtime matches, return cached. Otherwise load and update cache.
 
 ---
 
