@@ -407,6 +407,22 @@ def test_run_session_sets_initiator_session_id(test_client, mock_command_service
     cmd = call_args.args[0]
     assert cmd.channel_metadata is not None
     assert cmd.channel_metadata.get("initiator_session_id") == "test-session"
+    assert cmd.channel_metadata.get("working_slug") == "my-slug"
+
+
+def test_run_session_worker_command_requires_slug(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """sessions/run should reject worker commands that do not include a slug."""
+    response = test_client.post(
+        "/sessions/run",
+        json={
+            "command": "/next-build",
+            "project": "/tmp/project",
+            "args": "",
+        },
+    )
+    assert response.status_code == 400
+    assert "/next-build requires a slug argument" in response.json()["detail"]
+    mock_command_service.create_session.assert_not_called()
 
 
 def test_create_session_populates_tmux_session_name(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]

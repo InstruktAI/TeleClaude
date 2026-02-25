@@ -125,6 +125,7 @@ API_WATCH_INTERVAL_S = float(os.getenv("API_WATCH_INTERVAL_S", "5"))
 API_WATCH_LAG_THRESHOLD_MS = float(os.getenv("API_WATCH_LAG_THRESHOLD_MS", "250"))
 API_WATCH_INFLIGHT_THRESHOLD_S = float(os.getenv("API_WATCH_INFLIGHT_THRESHOLD_S", "1"))
 API_WATCH_DUMP_COOLDOWN_S = float(os.getenv("API_WATCH_DUMP_COOLDOWN_S", "30"))
+WORKER_LIFECYCLE_COMMANDS = {"next-build", "next-review", "next-fix-review", "next-finalize"}
 
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 PatchBodyScalar = str | int | float | bool | None
@@ -911,9 +912,18 @@ class APIServer:
             quoted_command = shlex.quote(full_command)
             auto_command = f"agent_then_message {request.agent} {request.thinking_mode} {quoted_command}"
 
+            working_slug: str | None = None
+            if normalized_cmd in WORKER_LIFECYCLE_COMMANDS:
+                if not normalized_args:
+                    raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
+                working_slug = normalized_args.split()[0]
+
             channel_metadata: dict[str, str] | None = None
             if identity.session_id and not identity.session_id.startswith("web:"):
                 channel_metadata = {"initiator_session_id": identity.session_id}
+            if working_slug:
+                channel_metadata = channel_metadata or {}
+                channel_metadata["working_slug"] = working_slug
 
             metadata = self._metadata(
                 title=full_command,
