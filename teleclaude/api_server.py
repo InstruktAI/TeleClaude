@@ -378,6 +378,7 @@ class APIServer:
         async def list_sessions(  # pyright: ignore
             request: "Request",
             computer: str | None = None,
+            all_sessions: bool = Query(False, alias="all"),
             identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_LIST),  # noqa: ARG001
         ) -> list[SessionDTO]:
             """List sessions from local storage and remote cache.
@@ -416,6 +417,11 @@ class APIServer:
                     for s in cached_sessions:
                         by_id.setdefault(s.session_id, s)
                     merged = list(by_id.values())
+
+                # Telec tool default: show sessions spawned by current caller only.
+                caller_session_id = request.headers.get("x-caller-session-id")
+                if caller_session_id and not all_sessions:
+                    merged = [s for s in merged if s.initiator_session_id == caller_session_id]
 
                 # Role-based visibility filtering (only when identity headers present)
                 merged = _filter_sessions_by_role(request, merged)

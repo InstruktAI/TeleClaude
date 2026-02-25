@@ -171,6 +171,73 @@ def test_list_sessions_with_computer_filter(test_client, mock_cache):  # type: i
         assert mock_cache.get_sessions.call_args == (("local",), {})
 
 
+def test_list_sessions_defaults_to_caller_spawned_only(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
+    """Without ?all=true, caller headers should scope results to spawned sessions."""
+    with patch("teleclaude.api_server.command_handlers.list_sessions", new_callable=AsyncMock) as mock_handler:
+        mock_handler.return_value = [
+            SessionSnapshot(
+                session_id="sess-1",
+                title="Caller session",
+                initiator_session_id="caller-1",
+                last_input_origin=InputOrigin.TELEGRAM.value,
+                project_path="~",
+                thinking_mode="slow",
+                active_agent=None,
+                status="active",
+            ),
+            SessionSnapshot(
+                session_id="sess-2",
+                title="Other session",
+                initiator_session_id="caller-2",
+                last_input_origin=InputOrigin.TELEGRAM.value,
+                project_path="~",
+                thinking_mode="slow",
+                active_agent=None,
+                status="active",
+            ),
+        ]
+        mock_cache.get_sessions.return_value = []
+
+        response = test_client.get("/sessions", headers={"x-caller-session-id": "caller-1"})
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["session_id"] == "sess-1"
+
+
+def test_list_sessions_all_flag_disables_caller_filter(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
+    """?all=true should return all visible sessions even with caller headers present."""
+    with patch("teleclaude.api_server.command_handlers.list_sessions", new_callable=AsyncMock) as mock_handler:
+        mock_handler.return_value = [
+            SessionSnapshot(
+                session_id="sess-1",
+                title="Caller session",
+                initiator_session_id="caller-1",
+                last_input_origin=InputOrigin.TELEGRAM.value,
+                project_path="~",
+                thinking_mode="slow",
+                active_agent=None,
+                status="active",
+            ),
+            SessionSnapshot(
+                session_id="sess-2",
+                title="Other session",
+                initiator_session_id="caller-2",
+                last_input_origin=InputOrigin.TELEGRAM.value,
+                project_path="~",
+                thinking_mode="slow",
+                active_agent=None,
+                status="active",
+            ),
+        ]
+        mock_cache.get_sessions.return_value = []
+
+        response = test_client.get("/sessions?all=true", headers={"x-caller-session-id": "caller-1"})
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+
+
 def test_list_sessions_without_cache(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_sessions works without cache (local-only mode)."""
     adapter = APIServer(client=mock_adapter_client, cache=None)
