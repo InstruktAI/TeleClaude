@@ -22,12 +22,12 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior — R1-R5 traced, partial gaps in R1/R3/R4 (see findings)
+- [x] Deferrals justified and not hiding required scope — WhatsApp skip justified (no adapter in codebase)
+- [x] Findings written in `review-findings.md`
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES
+- [ ] Critical issues resolved or explicitly blocked — 3 critical findings open (C1, C2, C3)
+- [x] Test coverage and regression risk assessed — significant gaps in adapter and coordinator tests (I2, I3)
 
 ## Finalize Gates (Finalizer)
 
