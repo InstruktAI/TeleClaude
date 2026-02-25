@@ -584,9 +584,8 @@ def _handle_invite(args: list[str]) -> None:
 
         # Send email
         try:
-            email_sent = bool(
-                await send_invite_email(name, person.email, links, print_links_if_missing_smtp=not use_json)
-            )
+            await send_invite_email(name, person.email, links, print_links_if_missing_smtp=not use_json)
+            email_sent = True
         except Exception as e:
             logger.warning("Failed to send invite email: %s", e)
             email_sent = False

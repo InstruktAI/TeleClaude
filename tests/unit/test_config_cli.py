@@ -305,6 +305,7 @@ class TestInvite:
         assert out["ok"] is True
         assert out["name"] == "Alice"
         assert "links" in out
+        assert out["email_sent"] is True
 
     def test_invite_nonexistent_person(self, tmp_path):
         p1, p2 = _setup_config(tmp_path)
@@ -329,7 +330,7 @@ class TestInvite:
                     "whatsapp": None,
                 },
             ),
-            patch("teleclaude.invite.send_invite_email", new=AsyncMock(return_value=False)),
+            patch("teleclaude.invite.send_invite_email", new=AsyncMock(side_effect=RuntimeError("smtp down"))),
         ):
             from teleclaude.cli.config_cli import handle_config_cli
 

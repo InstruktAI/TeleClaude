@@ -2,9 +2,9 @@
 
 ## Paradigm-Fit Assessment
 
-- Data flow: uses the established TUI-local persistence boundary (`state_store` + widget messages) and does not bypass core layers.
-- Component reuse: extends existing `SessionsView`, `PreparationView`, and footer patterns instead of introducing duplicate flows.
-- Pattern consistency: event-driven `StateChanged` persistence matches adjacent Textual message patterns.
+- Data flow: TUI persistence remains adapter-local (`StateChanged` messages + `state_store`) without leaking transport concerns into domain/core layers.
+- Component reuse: existing `SessionsView`, `PreparationView`, and footer components were extended via `Persistable` rather than copy-pasted replacements.
+- Pattern consistency: widget-driven state export/import follows existing Textual message and view update patterns.
 
 ## Critical
 
@@ -12,27 +12,22 @@
 
 ## Important
 
-1. Default pane-theming mode regresses to `off` when no persisted state exists, instead of honoring the configured default (`full`/`agent_plus`).
+1. Invite delivery status is now always reported as failed in `telec config invite`.
    - Evidence:
-     - Empty state returns `status_bar: {}` on missing file: `teleclaude/cli/tui/state_store.py:80` and `teleclaude/cli/tui/state_store.py:108`.
-     - Footer default is `pane_theming_mode = "off"`: `teleclaude/cli/tui/widgets/telec_footer.py:35`.
-     - Mount applies that value directly: `teleclaude/cli/tui/app.py:246`.
-     - Config default remains `pane_theming_mode: full`: `teleclaude/config/__init__.py:179`.
-   - Impact: first-run users (or users after deleting `~/.teleclaude/tui_state.json`) start with less theming than configured before this change.
-   - Suggested fix: seed missing `status_bar.pane_theming_mode` from config/canonical default (`agent_plus`) before applying theme override.
+     - `_handle_invite` converts the return value of `send_invite_email()` to bool: `teleclaude/cli/config_cli.py:587`.
+     - `send_invite_email()` returns `None` on success (no explicit return): `teleclaude/invite.py:170`.
+   - Impact: user-facing output and JSON payloads report `email_sent: false` even when the email send path succeeds.
+   - Suggested fix: treat a non-exception path as success (`await ...; email_sent = True`), or change `send_invite_email()` to return an explicit boolean and update all call sites consistently.
 
 ## Suggestions
 
-1. Manual verification gap for interactive behavior remains in this review environment.
-   - Not directly exercised here: SIGUSR2 persistence flows and live TUI metadata refresh behavior.
-   - Automated evidence gathered: targeted unit/integration tests for touched files passed, and `make lint` passed.
+1. Manual verification gap remains for interactive TUI behavior.
+   - Not directly exercised in this environment: live SIGUSR2 reload behavior and 2-second UI metadata refresh observation.
+   - Automated evidence collected:
+     - `pytest -q tests/unit/test_tui_state_store.py tests/unit/test_tui_footer_migration.py`
+     - `pytest -q tests/integration/test_e2e_smoke.py tests/integration/test_multi_adapter_broadcasting.py`
+     - `make lint` (passes; existing documentation validator warnings are pre-existing and non-blocking for this change set)
 
 ## Verdict
 
 REQUEST CHANGES
-
-## Fixes Applied
-
-1. Important: Default pane-theming mode regressed to `off` when persisted state was missing.
-   - Fix: `state_store` now seeds/normalizes `status_bar` defaults using canonical config-backed pane theming mode, and regression tests cover missing-file and missing-key paths.
-   - Commit: `8d06852f79c3463a908bfc3c386d0ce0c2345351`
