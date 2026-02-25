@@ -311,8 +311,16 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "session_dir": "~/.claude/sessions",
         "log_pattern": "*.jsonl",
         "profiles": {
-            "default": '--dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\'',
-            "restricted": '--settings \'{"forceLoginMethod": "claudeai"}\' --add-dir ~/.teleclaude/docs',
+            "default": (
+                "--dangerously-skip-permissions"
+                " --strict-mcp-config"
+                ' --settings \'{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": []}\''
+            ),
+            "restricted": (
+                "--strict-mcp-config"
+                ' --settings \'{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": []}\''
+                " --add-dir ~/.teleclaude/docs"
+            ),
         },
         "model_flags": {
             "fast": "--model haiku",
@@ -329,8 +337,8 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "session_dir": "~/.gemini/tmp",
         "log_pattern": "**/chats/*.json",
         "profiles": {
-            "default": "--yolo",
-            "restricted": "--sandbox --include-directories ~/.teleclaude/docs",
+            "default": "--yolo --allowed-mcp-server-names _none_",
+            "restricted": "--sandbox --include-directories ~/.teleclaude/docs --allowed-mcp-server-names _none_",
         },
         "model_flags": {
             "fast": "-m gemini-2.5-flash-lite",

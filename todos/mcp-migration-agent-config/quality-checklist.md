@@ -10,14 +10,23 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+Build verification notes (2026-02-25):
+
+- `make test` passed (2186 passed, 106 skipped).
+- `make lint` passed.
+- `telec todo demo validate mcp-migration-agent-config` passed.
+- Semi-automated session/role validation completed via focused tests for:
+  MCP-disabled flags, worker 403 enforcement, tmux identity mismatch handling,
+  context visibility filtering, job execution path, and per-session TMPDIR marker behavior.
 
 ## Review Gates (Reviewer)
 

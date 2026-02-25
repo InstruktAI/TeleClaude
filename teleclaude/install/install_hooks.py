@@ -448,7 +448,10 @@ def configure_codex(repo_root: Path) -> None:
         notify_line = f"{NOTIFY_KEY} = {json.dumps(notify_value)}"
         content = f"# Codex CLI configuration\n\n{notify_line}\n"
 
-    content = ensure_codex_mcp_config(content, repo_root)
+    # Phase 2 (mcp-migration-agent-config): stop injecting MCP server config
+    # and scrub any legacy TeleClaude MCP section from existing Codex config.
+    content = _remove_codex_mcp_config(content)
+    # Keep ensure_codex_mcp_config() defined for Phase 3 cleanup.
     content = _apply_codex_settings_overrides(content)
     config_path.write_text(content)
     print(f"Codex hooks and settings configured in {config_path}")
@@ -489,7 +492,20 @@ def _apply_codex_settings_overrides(content: str) -> str:
     return content
 
 
+def _remove_codex_mcp_config(content: str) -> str:
+    """Remove TeleClaude MCP server section from Codex TOML config."""
+    section_name = "mcp_servers.teleclaude"
+    section_pattern = re.compile(
+        rf"(?ms)^\s*(?:#\s*TeleClaude MCP Server\s*\n)?\[{re.escape(section_name)}\]\n"
+        r"(?:^(?!\[).*$\n?)*"
+    )
+    content = section_pattern.sub("", content)
+    return content.rstrip() + "\n" if content.strip() else ""
+
+
 def ensure_codex_mcp_config(content: str, repo_root: Path) -> str:
+    # Deprecated in Phase 2 (mcp-migration-agent-config).
+    # Retained temporarily for Phase 3 MCP code deletion.
     """Ensure Codex MCP server config points at the repo root wrapper command."""
     wrapper_path = repo_root / "bin" / "mcp-wrapper.py"
 

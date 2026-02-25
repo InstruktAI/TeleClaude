@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from teleclaude.config import AgentConfig
+from teleclaude.constants import AGENT_PROTOCOL
 from teleclaude.helpers import agent_cli
 from teleclaude.helpers.agent_types import AgentName
 
@@ -200,3 +201,26 @@ def test_pick_agent_preferred_config_disabled(monkeypatch: pytest.MonkeyPatch, t
 
     with pytest.raises(SystemExit, match="disabled in config.yml"):
         agent_cli._pick_agent(AgentName.CLAUDE)
+
+
+def test_agent_protocol_blocks_mcp_for_interactive_profiles() -> None:
+    claude_profiles = AGENT_PROTOCOL["claude"]["profiles"]
+    assert isinstance(claude_profiles, dict)
+    assert "--strict-mcp-config" in claude_profiles["default"]
+    assert "--strict-mcp-config" in claude_profiles["restricted"]
+    assert '"enabledMcpjsonServers": []' in claude_profiles["default"]
+    assert '"enabledMcpjsonServers": []' in claude_profiles["restricted"]
+
+    gemini_profiles = AGENT_PROTOCOL["gemini"]["profiles"]
+    assert isinstance(gemini_profiles, dict)
+    assert "--allowed-mcp-server-names _none_" in gemini_profiles["default"]
+    assert "--allowed-mcp-server-names _none_" in gemini_profiles["restricted"]
+
+
+def test_job_spec_blocks_mcp_for_agent_jobs() -> None:
+    claude_flags = str(agent_cli._JOB_SPEC["claude"]["flags"])
+    assert "--strict-mcp-config" in claude_flags
+    assert '"enabledMcpjsonServers": []' in claude_flags
+
+    gemini_flags = str(agent_cli._JOB_SPEC["gemini"]["flags"])
+    assert "--allowed-mcp-server-names _none_" in gemini_flags

@@ -386,24 +386,26 @@ def _run_agent(
 
 
 # ---------------------------------------------------------------------------
-# Job invocation — full interactive subprocess with tools and MCP enabled.
-# Unlike run_once (lobotomized JSON), run_job gives the agent full access.
+# Job invocation — full interactive subprocess with tools enabled and MCP blocked.
+# Unlike run_once (schema-constrained JSON), run_job gives the agent full tool access.
 # ---------------------------------------------------------------------------
 
 _JOB_SPEC: dict[str, dict[str, str | dict[str, str]]] = {
     "claude": {
         "flags": (
             "--dangerously-skip-permissions --no-session-persistence --no-chrome"
+            " --strict-mcp-config"
             " --disable-slash-commands --setting-sources user"
-            ' --settings \'{"forceLoginMethod": "claudeai", "disableAllHooks": true}\''
+            ' --settings \'{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": [], "disableAllHooks": true}\''
         ),
         "model_flags": _AGENT_MODEL_FLAGS["claude"],
     },
     "gemini": {
-        "flags": "--yolo",
+        "flags": "--yolo --allowed-mcp-server-names _none_",
         "model_flags": _AGENT_MODEL_FLAGS["gemini"],
     },
     "codex": {
+        # Codex exec has no per-session MCP allow/deny flag; MCP is blocked by config absence.
         "flags": "--dangerously-bypass-approvals-and-sandbox",
         "model_flags": _AGENT_MODEL_FLAGS["codex"],
         "exec_subcommand": "exec",
@@ -422,8 +424,8 @@ def run_job(
 ) -> int:
     """Spawn a full interactive agent subprocess for a cron job.
 
-    Unlike run_once, the agent has full tool access (bash, read, write, etc.)
-    and MCP access when the daemon is running. Returns the subprocess exit code.
+    Unlike run_once, the agent has full tool access (bash, read, write, etc.).
+    MCP is disabled via agent-specific CLI/config guards. Returns subprocess exit code.
 
     This function blocks until the subprocess completes. Job metadata is passed
     via environment variables so the agent process can register itself with the

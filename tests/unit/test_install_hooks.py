@@ -234,8 +234,7 @@ def test_configure_codex_writes_notify_hook(tmp_path, monkeypatch):
     assert notify[0].endswith("/teleclaude/hooks/receiver.py")
     assert notify[1] == install_hooks.AGENT_FLAG
     assert notify[2] == install_hooks.CODEX_AGENT
-    assert data["mcp_servers"]["teleclaude"]["type"] == "stdio"
-    assert "mcp-wrapper.py" in data["mcp_servers"]["teleclaude"]["args"][-1]
+    assert "teleclaude" not in data.get("mcp_servers", {})
 
 
 def test_configure_codex_preserves_existing_config(tmp_path, monkeypatch):
@@ -260,8 +259,7 @@ def test_configure_codex_preserves_existing_config(tmp_path, monkeypatch):
     # New notify hook added
     assert "notify" in data
     assert data["notify"][0].endswith("/teleclaude/hooks/receiver.py")
-    assert data["mcp_servers"]["teleclaude"]["type"] == "stdio"
-    assert "mcp-wrapper.py" in data["mcp_servers"]["teleclaude"]["args"][-1]
+    assert "teleclaude" not in data.get("mcp_servers", {})
 
 
 def test_configure_codex_is_idempotent(tmp_path, monkeypatch):
@@ -292,8 +290,7 @@ def test_configure_codex_is_idempotent(tmp_path, monkeypatch):
     assert data_after_second["mcp_servers"]["test"]["type"] == "stdio"
     assert "notify" in data_after_second
     assert len(data_after_second["notify"]) == 3
-    assert data_after_second["mcp_servers"]["teleclaude"]["type"] == "stdio"
-    assert "mcp-wrapper.py" in data_after_second["mcp_servers"]["teleclaude"]["args"][-1]
+    assert "teleclaude" not in data_after_second.get("mcp_servers", {})
 
 
 def test_configure_codex_updates_our_hook_when_paths_change(tmp_path, monkeypatch):
@@ -318,8 +315,7 @@ def test_configure_codex_updates_our_hook_when_paths_change(tmp_path, monkeypatc
     # Old paths gone
     assert "/old/venv/python" not in str(data["notify"])
     assert "/old/path/" not in str(data["notify"])
-    assert data["mcp_servers"]["teleclaude"]["type"] == "stdio"
-    assert "mcp-wrapper.py" in data["mcp_servers"]["teleclaude"]["args"][-1]
+    assert "teleclaude" not in data.get("mcp_servers", {})
 
 
 def test_configure_codex_skips_foreign_notify_hook(tmp_path, monkeypatch, capsys):
@@ -337,20 +333,17 @@ def test_configure_codex_skips_foreign_notify_hook(tmp_path, monkeypatch, capsys
 
     data = tomllib.loads(codex_config.read_text())
     assert data["notify"] == ["/usr/bin/python", "/their/custom/script.py", "--some", "args"]
-    assert data["mcp_servers"]["teleclaude"]["type"] == "stdio"
-    assert "mcp-wrapper.py" in data["mcp_servers"]["teleclaude"]["args"][-1]
+    assert "teleclaude" not in data.get("mcp_servers", {})
 
     # Warning should be printed
     captured = capsys.readouterr()
     assert "not ours" in captured.out
 
 
-def test_configure_codex_replaces_existing_mcp_block(tmp_path, monkeypatch):
-    """Existing MCP block is replaced with the repo venv config."""
+def test_configure_codex_removes_existing_mcp_block(tmp_path, monkeypatch):
+    """Existing TeleClaude MCP block is removed during migration."""
     monkeypatch.setenv("HOME", str(tmp_path))
     repo_root = Path(__file__).resolve().parents[2]
-    main_repo = install_hooks.resolve_main_repo_root(repo_root)
-
     codex_dir = tmp_path / ".codex"
     codex_dir.mkdir(parents=True)
     codex_config = codex_dir / "config.toml"
@@ -365,16 +358,7 @@ def test_configure_codex_replaces_existing_mcp_block(tmp_path, monkeypatch):
     install_hooks.configure_codex(repo_root)
 
     data = tomllib.loads(codex_config.read_text())
-    assert data["mcp_servers"]["teleclaude"]["type"] == "stdio"
-    assert data["mcp_servers"]["teleclaude"]["command"] == "uv"
-    assert data["mcp_servers"]["teleclaude"]["args"] == [
-        "run",
-        "--quiet",
-        "--project",
-        str(main_repo),
-        str(main_repo / "bin" / "mcp-wrapper.py"),
-    ]
-    assert str(main_repo / "bin" / "mcp-wrapper.py") in data["mcp_servers"]["teleclaude"]["args"][-1]
+    assert "teleclaude" not in data.get("mcp_servers", {})
 
 
 def test_install_agent_wrapper_renders_canonical_root(tmp_path, monkeypatch):
