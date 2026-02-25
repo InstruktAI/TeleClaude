@@ -907,7 +907,14 @@ class MCPHandlersMixin:
         caller_session_id: Optional[str] = None,
     ) -> SessionDataResult:
         """Get session data from local or remote computer."""
-        await self._register_listener_if_present(session_id, caller_session_id)
+        # Only register a listener if there is no active direct link between caller and target.
+        # Direct links use the fanout relay; registering a listener would duplicate stop notifications.
+        link_exists = caller_session_id and await resolve_link_for_sender_target(
+            sender_session_id=caller_session_id,
+            target_session_id=session_id,
+        )
+        if not link_exists:
+            await self._register_listener_if_present(session_id, caller_session_id)
 
         requested_tail_chars = tail_chars
         if tail_chars <= 0 or tail_chars > MCP_SESSION_DATA_MAX_CHARS:
