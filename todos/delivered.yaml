@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: mcp-migration-telec-commands
+  date: '2026-02-25'
+  title: 'Phase 1: Add telec subcommands for all 24 tools with rich --help, extend
+    REST API, update telec-cli spec doc with @exec directives'
+  commit: fff5b10e3d64e2eb3f66db993df6916eaa0f8341
+  description: 'Phase 1: Add telec subcommands for all 24 tools with rich --help,
+    extend REST API, update telec-cli spec doc with @exec directives'
 - slug: ucap-cutover-parity-validation
   date: '2026-02-25'
   title: 'Phase 6: Execute shadow/cutover, parity metrics validation, rollback criteria,

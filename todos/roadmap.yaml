@@ -1,9 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: mcp-migration-telec-commands
-  group: mcp-to-tool-specs
-  description: 'Phase 1: Add telec subcommands for all 24 tools with rich --help,
-    extend REST API, update telec-cli spec doc with @exec directives'
 - slug: mcp-migration-agent-config
   group: mcp-to-tool-specs
   after:
