@@ -11,53 +11,42 @@ Identity verification flow:
 4. Insufficient clearance → 403
 5. All clear → proceed
 
-The system_role (worker) is read from the per-session role marker file written
-by the MCP wrapper. The human_role comes from the DB session record.
+The system_role is derived from daemon-owned session state in the database.
+The human_role comes from the DB session record.
 """
 
 from __future__ import annotations
 
-import hashlib
-import os
-import re
 from dataclasses import dataclass
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import Depends, Header, HTTPException, Request
 
+from teleclaude.constants import ROLE_ORCHESTRATOR, ROLE_WORKER
 from teleclaude.core.db import db
 from teleclaude.mcp.role_tools import get_excluded_tools
 
-_SESSION_TMPDIR_BASE_OVERRIDE = "TELECLAUDE_SESSION_TMPDIR_BASE"
+if TYPE_CHECKING:
+    from teleclaude.core.models import Session
 
 
-def _get_session_tmp_basedir() -> Path:
-    override = os.environ.get(_SESSION_TMPDIR_BASE_OVERRIDE)
-    if override:
-        return Path(override).expanduser()
-    return Path(os.path.expanduser("~/.teleclaude/tmp/sessions"))
+def _derive_session_system_role(session: "Session") -> str | None:
+    """Derive system role from daemon-owned session state.
 
-
-def _safe_path_component(value: str) -> str:
-    if re.fullmatch(r"[A-Za-z0-9._-]{1,128}", value):
-        return value
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
-
-
-def _read_session_system_role(session_id: str) -> str | None:
-    """Read system role from per-session role marker file.
-
-    The MCP wrapper writes the role to ~/.teleclaude/tmp/sessions/{id}/teleclaude_role.
-    Returns None when no role marker exists (non-worker session or unknown).
+    Priority:
+    1. Explicit `session_metadata.system_role` if present and valid.
+    2. Worker heuristic: sessions with a `working_slug` are worker sessions.
+    3. Otherwise unknown (treated as non-worker for system-role restrictions).
     """
-    safe_id = _safe_path_component(session_id)
-    base_dir = _get_session_tmp_basedir()
-    marker = base_dir / safe_id / "teleclaude_role"
-    try:
-        value = marker.read_text(encoding="utf-8").strip()
-        return value or None
-    except OSError:
-        return None
+    metadata = session.session_metadata
+    if isinstance(metadata, dict):
+        raw_role = metadata.get("system_role")
+        if isinstance(raw_role, str):
+            normalized = raw_role.strip().lower()
+            if normalized in {ROLE_WORKER, ROLE_ORCHESTRATOR}:
+                return normalized
+
+    return ROLE_WORKER if session.working_slug else None
 
 
 @dataclass(frozen=True)
@@ -113,7 +102,7 @@ async def verify_caller(
         if x_tmux_session != session.tmux_session_name:
             raise HTTPException(status_code=403, detail="session identity mismatch")
 
-    system_role = _read_session_system_role(x_caller_session_id)
+    system_role = _derive_session_system_role(session)
 
     return CallerIdentity(
         session_id=x_caller_session_id,
