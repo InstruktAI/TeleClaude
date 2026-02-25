@@ -68,7 +68,7 @@
 
 ---
 
-### Task 5: receiving-code-review
+### [x] Task 5: receiving-code-review
 
 **File(s):** `agents/skills/receiving-code-review/SKILL.md`
 
