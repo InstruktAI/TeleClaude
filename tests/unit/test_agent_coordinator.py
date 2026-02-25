@@ -11,7 +11,14 @@ from teleclaude.core.agent_coordinator import (
     _is_codex_synthetic_prompt_event,
 )
 from teleclaude.core.agents import AgentName
-from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload, UserPromptSubmitPayload
+from teleclaude.core.events import (
+    AgentEventContext,
+    AgentHookEvents,
+    AgentOutputPayload,
+    AgentStopPayload,
+    TeleClaudeEvents,
+    UserPromptSubmitPayload,
+)
 from teleclaude.core.models import Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import ProcessMessageCommand
@@ -688,3 +695,208 @@ async def test_codex_checkpoint_injection_skips_when_no_payload(coordinator):
             include_elapsed_since_turn_start=True,
             default_agent=AgentName.CLAUDE,
         )
+
+
+# ---------------------------------------------------------------------------
+# Status emission and stall detection (I3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_handle_user_prompt_submit_emits_accepted_status(coordinator):
+    """handle_user_prompt_submit emits 'accepted' status and schedules stall detection."""
+    session = Session(
+        session_id="sess-status-1",
+        computer_name="local",
+        tmux_session_name="tmux-status-1",
+        title="Status test",
+        active_agent="claude",
+        lifecycle_status="active",
+    )
+    payload = UserPromptSubmitPayload(prompt="Hello agent", session_id="sess-status-1")
+    context = AgentEventContext(
+        event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+        session_id="sess-status-1",
+        data=payload,
+    )
+
+    emitted: list[tuple[str, object]] = []
+
+    def capture_emit(event: str, ctx: object) -> None:
+        emitted.append((event, ctx))
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db") as mock_db,
+        patch("teleclaude.core.agent_coordinator.event_bus") as mock_bus,
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=False),
+        patch("teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock),
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.set_notification_flag = AsyncMock()
+        mock_db.update_session = AsyncMock()
+        mock_bus.emit.side_effect = capture_emit
+
+        await coordinator.handle_user_prompt_submit(context)
+
+    status_events = [ctx for event, ctx in emitted if event == TeleClaudeEvents.SESSION_STATUS]
+    assert len(status_events) == 1
+    assert status_events[0].status == "accepted"  # type: ignore[union-attr]
+    assert status_events[0].reason == "user_prompt_accepted"  # type: ignore[union-attr]
+
+    # Stall task must be scheduled
+    assert "sess-status-1" in coordinator._stall_tasks
+    coordinator._cancel_stall_task("sess-status-1")
+
+
+@pytest.mark.asyncio
+async def test_handle_tool_use_emits_active_output_and_cancels_stall(coordinator):
+    """handle_tool_use emits 'active_output' and cancels any pending stall task."""
+    session_id = "sess-status-2"
+    session = Session(
+        session_id=session_id,
+        computer_name="local",
+        tmux_session_name="tmux-status-2",
+        title="Tool use test",
+        active_agent="claude",
+    )
+    payload = AgentOutputPayload(session_id=session_id, raw={"tool": "bash", "input": {}})
+    context = AgentEventContext(
+        event_type=AgentHookEvents.TOOL_USE,
+        session_id=session_id,
+        data=payload,
+    )
+
+    # Pre-plant a stall task to verify it gets cancelled
+    import asyncio
+
+    dummy_task = asyncio.create_task(asyncio.sleep(999))
+    coordinator._stall_tasks[session_id] = dummy_task
+
+    emitted: list[tuple[str, object]] = []
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db") as mock_db,
+        patch("teleclaude.core.agent_coordinator.event_bus") as mock_bus,
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_session = AsyncMock()
+        mock_bus.emit.side_effect = lambda event, ctx: emitted.append((event, ctx))
+
+        await coordinator.handle_tool_use(context)
+
+    # Yield control so the cancelled task can process its CancelledError
+    import asyncio as _asyncio
+
+    await _asyncio.sleep(0)
+
+    assert dummy_task.cancelled()
+    assert session_id not in coordinator._stall_tasks
+
+    status_events = [ctx for event, ctx in emitted if event == TeleClaudeEvents.SESSION_STATUS]
+    assert any(ctx.status == "active_output" for ctx in status_events)  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_handle_agent_stop_emits_completed_and_cancels_stall(coordinator, mock_client):
+    """handle_agent_stop emits 'completed' status and cancels any pending stall task."""
+    session_id = "sess-status-3"
+    payload = AgentStopPayload(
+        session_id="native-123",
+        transcript_path="/path/to/transcript.jsonl",
+        source_computer="local",
+        raw={"agent_name": "claude"},
+    )
+    context = AgentEventContext(
+        event_type=AgentHookEvents.AGENT_STOP,
+        session_id=session_id,
+        data=payload,
+    )
+    session = Session(
+        session_id=session_id,
+        computer_name="local",
+        tmux_session_name="tmux-status-3",
+        title="Stop test",
+        active_agent="claude",
+        native_log_file="/path/to/transcript.jsonl",
+    )
+
+    import asyncio
+
+    dummy_task = asyncio.create_task(asyncio.sleep(999))
+    coordinator._stall_tasks[session_id] = dummy_task
+
+    emitted: list[tuple[str, object]] = []
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock, return_value=session),
+        patch("teleclaude.core.agent_coordinator.db.update_session", new_callable=AsyncMock),
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=False),
+        patch(
+            "teleclaude.core.agent_coordinator.summarize_agent_output", new_callable=AsyncMock, return_value=("T", "S")
+        ),
+        patch("teleclaude.core.agent_coordinator.extract_last_agent_message", return_value="msg"),
+        patch("teleclaude.core.agent_coordinator.event_bus") as mock_bus,
+    ):
+        mock_bus.emit.side_effect = lambda event, ctx: emitted.append((event, ctx))
+
+        await coordinator.handle_agent_stop(context)
+
+    # Yield control so the cancelled task can process its CancelledError
+    import asyncio as _asyncio
+
+    await _asyncio.sleep(0)
+
+    assert dummy_task.cancelled()
+    assert session_id not in coordinator._stall_tasks
+
+    status_events = [ctx for event, ctx in emitted if event == TeleClaudeEvents.SESSION_STATUS]
+    assert any(ctx.status == "completed" for ctx in status_events)  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_stall_detection_transitions_to_awaiting_then_stalled(coordinator):
+    """_schedule_stall_detection transitions accepted → awaiting_output → stalled on timeout."""
+    import asyncio
+
+    session_id = "sess-stall-1"
+    emitted: list[tuple[str, object]] = []
+
+    with patch("teleclaude.core.agent_coordinator.event_bus") as mock_bus:
+        mock_bus.emit.side_effect = lambda event, ctx: emitted.append((event, ctx))
+
+        with (
+            patch("teleclaude.core.agent_coordinator.AWAITING_OUTPUT_THRESHOLD_SECONDS", 0.01),
+            patch("teleclaude.core.agent_coordinator.STALL_THRESHOLD_SECONDS", 0.02),
+        ):
+            coordinator._schedule_stall_detection(session_id, last_activity_at="2026-01-01T00:00:00+00:00")
+            await asyncio.sleep(0.05)
+
+    statuses = [ctx.status for event, ctx in emitted if event == TeleClaudeEvents.SESSION_STATUS]  # type: ignore[union-attr]
+    assert "awaiting_output" in statuses
+    assert "stalled" in statuses
+    assert statuses.index("awaiting_output") < statuses.index("stalled")
+
+
+@pytest.mark.asyncio
+async def test_stall_cancellation_prevents_stale_transitions(coordinator):
+    """Cancelling the stall task before timeout prevents awaiting_output and stalled events."""
+    import asyncio
+
+    session_id = "sess-stall-2"
+    emitted: list[tuple[str, object]] = []
+
+    with patch("teleclaude.core.agent_coordinator.event_bus") as mock_bus:
+        mock_bus.emit.side_effect = lambda event, ctx: emitted.append((event, ctx))
+
+        with (
+            patch("teleclaude.core.agent_coordinator.AWAITING_OUTPUT_THRESHOLD_SECONDS", 0.05),
+            patch("teleclaude.core.agent_coordinator.STALL_THRESHOLD_SECONDS", 0.10),
+        ):
+            coordinator._schedule_stall_detection(session_id, last_activity_at="2026-01-01T00:00:00+00:00")
+            await asyncio.sleep(0.01)
+            coordinator._cancel_stall_task(session_id)
+            await asyncio.sleep(0.15)
+
+    statuses = [ctx.status for event, ctx in emitted if event == TeleClaudeEvents.SESSION_STATUS]  # type: ignore[union-attr]
+    assert "awaiting_output" not in statuses
+    assert "stalled" not in statuses
