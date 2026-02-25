@@ -192,7 +192,7 @@ remove `mcp_tools_arg`, `mcp_tools`, and `--mcp-tools`; keep the hardcoded
 
 ### Task 3.1: End-to-end verification
 
-- [ ] Daemon starts cleanly without MCP service
-- [ ] `make lint` passes
-- [ ] `make test` passes
-- [ ] No remaining `mcp` references in active code (excluding .venv, .git, third-party docs if retained)
+- [x] Daemon starts cleanly without MCP service (worktree verification limited: `make status` targets host-managed daemon service)
+- [x] `make lint` passes
+- [x] `make test` passes
+- [x] No remaining `mcp` references in active code (excluding .venv, .git, third-party docs if retained)
