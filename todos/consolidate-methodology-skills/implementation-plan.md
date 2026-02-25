@@ -131,5 +131,5 @@
 Build notes (2026-02-25):
 
 - Gate rerun complete: `make test` passed with unit and integration suites green.
-- Stabilized xdist execution path in `tools/test.sh` with `--max-worker-restart=2` to tolerate transient worker spawn/read failures.
+- Stabilized gate runner under xdist worker instability by capping workers in `tools/test.sh` (`TELECLAUDE_PYTEST_WORKERS`, default `4`) and retaining `--max-worker-restart=2`.
 - Demo gate passed with `telec todo demo validate consolidate-methodology-skills` (3 executable blocks).

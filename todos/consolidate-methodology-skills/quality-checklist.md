@@ -20,7 +20,7 @@ Ownership:
 - [x] Working tree clean
 - [x] Comments/docstrings updated where behavior changed
 - Manual verification:
-  Executed `make test` and confirmed both suites passed (1836 unit + 88 integration tests).
+  Executed `make test` twice; both runs passed with unit + integration suites green.
   Executed `telec todo demo validate consolidate-methodology-skills` and confirmed 3 executable blocks discovered.
   Confirmed distribution spot-checks for all six skills across `~/.claude/skills`, `~/.codex/skills`, and `~/.gemini/skills`.
 
