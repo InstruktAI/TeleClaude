@@ -118,14 +118,14 @@ so adapter differences remain edge concerns only.
 
 ### Task 3.2: Validation commands
 
-- [ ] Run targeted test commands listed in `demo.md`.
-- [ ] Run `make lint`.
-- [ ] Verify no unchecked implementation tasks remain.
+- [x] Run targeted test commands listed in `demo.md`.
+- [x] Run `make lint`.
+- [x] Verify no unchecked implementation tasks remain.
 
 ---
 
 ## Phase 4: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)
