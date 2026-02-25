@@ -42,7 +42,7 @@
 
 ---
 
-### Task 3: verification-before-completion
+### [x] Task 3: verification-before-completion
 
 **File(s):** `agents/skills/verification-before-completion/SKILL.md`
 
