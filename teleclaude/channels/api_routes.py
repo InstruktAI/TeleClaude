@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from teleclaude.api.auth import CLEARANCE_CHANNELS_LIST, CLEARANCE_CHANNELS_PUBLISH, CallerIdentity
 from teleclaude.channels.publisher import list_channels, publish
 from teleclaude.channels.types import ChannelInfo
 from teleclaude.transport.redis_transport import RedisTransport
@@ -47,7 +48,11 @@ class PublishResponse(BaseModel):
 
 
 @router.post("/{name}/publish")
-async def publish_to_channel(name: str, req: PublishRequest) -> PublishResponse:
+async def publish_to_channel(
+    name: str,
+    req: PublishRequest,
+    identity: CallerIdentity = Depends(CLEARANCE_CHANNELS_PUBLISH),  # noqa: ARG001
+) -> PublishResponse:
     """Publish a message to a named channel."""
     transport = _get_transport()
     redis_client = await transport._get_redis()
@@ -56,7 +61,10 @@ async def publish_to_channel(name: str, req: PublishRequest) -> PublishResponse:
 
 
 @router.get("/")
-async def list_all_channels(project: str | None = None) -> list[ChannelInfo]:
+async def list_all_channels(
+    project: str | None = None,
+    identity: CallerIdentity = Depends(CLEARANCE_CHANNELS_LIST),  # noqa: ARG001
+) -> list[ChannelInfo]:
     """List active channels, optionally filtered by project."""
     transport = _get_transport()
     redis_client = await transport._get_redis()

@@ -22,11 +22,19 @@ from fastapi.responses import JSONResponse
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import (
+    CLEARANCE_AGENTS_AVAILABILITY,
     CLEARANCE_AGENTS_STATUS,
+    CLEARANCE_COMPUTERS_LIST,
     CLEARANCE_DEPLOY,
+    CLEARANCE_PROJECTS_LIST,
+    CLEARANCE_SESSIONS_END,
     CLEARANCE_SESSIONS_ESCALATE,
+    CLEARANCE_SESSIONS_FILE,
+    CLEARANCE_SESSIONS_LIST,
     CLEARANCE_SESSIONS_RESULT,
     CLEARANCE_SESSIONS_RUN,
+    CLEARANCE_SESSIONS_SEND,
+    CLEARANCE_SESSIONS_START,
     CLEARANCE_SESSIONS_UNSUBSCRIBE,
     CLEARANCE_SESSIONS_WIDGET,
     CallerIdentity,
@@ -370,6 +378,7 @@ class APIServer:
         async def list_sessions(  # pyright: ignore
             request: "Request",
             computer: str | None = None,
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_LIST),  # noqa: ARG001
         ) -> list[SessionDTO]:
             """List sessions from local storage and remote cache.
 
@@ -419,6 +428,7 @@ class APIServer:
         @self.app.post("/sessions")
         async def create_session(  # pyright: ignore
             request: CreateSessionRequest,
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_START),
         ) -> CreateSessionResponseDTO:
             """Create new local session.
 
@@ -441,6 +451,9 @@ class APIServer:
                     channel_metadata["human_email"] = request.human_email
                 if request.human_role:
                     channel_metadata["human_role"] = request.human_role
+            if identity.session_id and not identity.session_id.startswith("web:"):
+                channel_metadata = channel_metadata or {}
+                channel_metadata["initiator_session_id"] = identity.session_id
 
             metadata = self._metadata(
                 title=request.title or "Untitled",
@@ -570,6 +583,7 @@ class APIServer:
             request: "Request",
             session_id: str,
             computer: str = Query(...),  # noqa: ARG001 - For API consistency, only local sessions supported
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_END),  # noqa: ARG001
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """End session - local sessions only (remote session management via MCP tools)."""
             from teleclaude.api.session_access import check_session_access
@@ -594,6 +608,7 @@ class APIServer:
             session_id: str,
             request: SendMessageRequest,
             computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_SEND),  # noqa: ARG001
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send message to session."""
             from teleclaude.api.session_access import check_session_access
@@ -675,6 +690,7 @@ class APIServer:
             session_id: str,
             request: FileUploadRequest,
             computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_FILE),  # noqa: ARG001
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send file input to session."""
             from teleclaude.api.session_access import check_session_access
@@ -1090,7 +1106,9 @@ class APIServer:
                 raise HTTPException(status_code=500, detail=f"Escalation failed: {e}") from e
 
         @self.app.get("/computers")
-        async def list_computers() -> list[ComputerDTO]:  # pyright: ignore
+        async def list_computers(  # pyright: ignore[reportUnusedFunction]
+            identity: "CallerIdentity" = Depends(CLEARANCE_COMPUTERS_LIST),  # noqa: ARG001
+        ) -> list[ComputerDTO]:
             """List available computers (local + cached remote computers)."""
             try:
                 # Local computer
@@ -1128,6 +1146,7 @@ class APIServer:
         @self.app.get("/projects")
         async def list_projects(  # pyright: ignore
             computer: str | None = None,
+            identity: "CallerIdentity" = Depends(CLEARANCE_PROJECTS_LIST),  # noqa: ARG001
         ) -> list[ProjectDTO]:
             """List projects (local + cached remote projects).
 
@@ -1208,7 +1227,9 @@ class APIServer:
                 raise HTTPException(status_code=500, detail=f"Failed to list projects: {e}") from e
 
         @self.app.get("/agents/availability")
-        async def get_agent_availability() -> dict[str, AgentAvailabilityDTO]:  # pyright: ignore
+        async def get_agent_availability(  # pyright: ignore[reportUnusedFunction]
+            identity: "CallerIdentity" = Depends(CLEARANCE_AGENTS_AVAILABILITY),  # noqa: ARG001
+        ) -> dict[str, AgentAvailabilityDTO]:
             """Get agent availability."""
             from teleclaude.core.db import db
 

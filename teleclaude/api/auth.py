@@ -23,7 +23,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 
 from teleclaude.core.db import db
 from teleclaude.mcp.role_tools import get_excluded_tools
@@ -71,6 +71,7 @@ class CallerIdentity:
 
 
 async def verify_caller(
+    request: Request,
     x_caller_session_id: str | None = Header(None),
     x_tmux_session: str | None = Header(None),
 ) -> CallerIdentity:
@@ -89,6 +90,17 @@ async def verify_caller(
         HTTPException(403): Tmux cross-check mismatch (session_id forgery attempt).
     """
     if not x_caller_session_id:
+        # Web/TUI bridge requests may carry identity via trusted web headers.
+        web_email = request.headers.get("x-web-user-email")
+        web_role = request.headers.get("x-web-user-role")
+        if web_email:
+            normalized_role = web_role.strip().lower() if isinstance(web_role, str) and web_role.strip() else None
+            return CallerIdentity(
+                session_id=f"web:{web_email}",
+                system_role=None,
+                human_role=normalized_role,
+                tmux_session_name=None,
+            )
         raise HTTPException(status_code=401, detail="session identity required")
 
     session = await db.get_session(x_caller_session_id)
@@ -147,6 +159,7 @@ def require_clearance(tool_name: str):
 # Maps endpoint → MCP tool name for permission matrix lookup
 
 CLEARANCE_SESSIONS_START = require_clearance("teleclaude__start_session")
+CLEARANCE_SESSIONS_LIST = require_clearance("teleclaude__list_sessions")
 CLEARANCE_SESSIONS_RUN = require_clearance("teleclaude__run_agent_command")
 CLEARANCE_SESSIONS_SEND = require_clearance("teleclaude__send_message")
 CLEARANCE_SESSIONS_UNSUBSCRIBE = require_clearance("teleclaude__stop_notifications")
@@ -162,3 +175,8 @@ CLEARANCE_TODOS_MARK_PHASE = require_clearance("teleclaude__mark_phase")
 CLEARANCE_TODOS_SET_DEPS = require_clearance("teleclaude__set_dependencies")
 CLEARANCE_DEPLOY = require_clearance("teleclaude__deploy")
 CLEARANCE_AGENTS_STATUS = require_clearance("teleclaude__mark_agent_status")
+CLEARANCE_AGENTS_AVAILABILITY = require_clearance("teleclaude__agents_availability")
+CLEARANCE_COMPUTERS_LIST = require_clearance("teleclaude__list_computers")
+CLEARANCE_PROJECTS_LIST = require_clearance("teleclaude__list_projects")
+CLEARANCE_CHANNELS_LIST = require_clearance("teleclaude__channels_list")
+CLEARANCE_CHANNELS_PUBLISH = require_clearance("teleclaude__publish")

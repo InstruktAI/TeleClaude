@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from typing_extensions import TypedDict
 
+from teleclaude.api.auth import CallerIdentity, verify_caller
 from teleclaude.api_server import APIServer
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot, TodoInfo
 from teleclaude.core.origins import InputOrigin
@@ -15,6 +16,20 @@ from teleclaude.transport.redis_transport import RedisTransport
 
 class CacheUpdateEvent(TypedDict):
     computer: str | None
+
+
+def _install_admin_auth_override(client: TestClient) -> None:
+    """Bypass route auth for API-server unit tests that focus on handler behavior."""
+
+    async def _fake_verify_caller() -> CallerIdentity:
+        return CallerIdentity(
+            session_id="test-session",
+            system_role=None,
+            human_role="admin",
+            tmux_session_name="tc_test",
+        )
+
+    client.app.dependency_overrides[verify_caller] = _fake_verify_caller
 
 
 @pytest.fixture
@@ -63,6 +78,7 @@ def api_server(mock_adapter_client, mock_cache, mock_command_service):  # type: 
 def test_client(api_server):  # type: ignore[explicit-any, unused-ignore]
     """Create TestClient for API server."""
     client = TestClient(api_server.app)
+    _install_admin_auth_override(client)
     assert client.app is api_server.app
     return client
 
@@ -159,6 +175,7 @@ def test_list_sessions_without_cache(mock_adapter_client):  # type: ignore[expli
     """Test list_sessions works without cache (local-only mode)."""
     adapter = APIServer(client=mock_adapter_client, cache=None)
     client = TestClient(adapter.app)
+    _install_admin_auth_override(client)
 
     with patch("teleclaude.api_server.command_handlers.list_sessions", new_callable=AsyncMock) as mock_handler:
         mock_handler.return_value = [
@@ -426,6 +443,7 @@ def test_list_computers_without_cache(mock_adapter_client):  # type: ignore[expl
     """Test list_computers works without cache (local-only mode)."""
     adapter = APIServer(client=mock_adapter_client, cache=None)
     client = TestClient(adapter.app)
+    _install_admin_auth_override(client)
 
     with patch("teleclaude.api_server.command_handlers.get_computer_info", new_callable=AsyncMock) as mock_handler:
         mock_handler.return_value = ComputerInfo(
@@ -488,6 +506,7 @@ def test_list_projects_without_cache(mock_adapter_client):  # type: ignore[expli
     """Test list_projects works without cache (local-only mode)."""
     adapter = APIServer(client=mock_adapter_client, cache=None)
     client = TestClient(adapter.app)
+    _install_admin_auth_override(client)
 
     with patch("teleclaude.api_server.command_handlers.list_projects", new_callable=AsyncMock) as mock_handler:
         mock_handler.return_value = [ProjectInfo(name="project1", path="/path1", description="Local", computer="local")]
@@ -629,6 +648,7 @@ def test_list_todos_without_cache_falls_back_to_local(test_client):  # type: ign
     """Test list_todos falls back to local handler without cache."""
     adapter = APIServer(client=MagicMock(), cache=None)
     client = TestClient(adapter.app)
+    _install_admin_auth_override(client)
 
     with patch("teleclaude.api_server.command_handlers.list_todos", new_callable=AsyncMock) as mock_todos:
         mock_todos.return_value = [TodoInfo(slug="local-1", status="pending")]
