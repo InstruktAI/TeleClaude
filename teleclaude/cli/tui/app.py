@@ -543,6 +543,7 @@ class TelecApp(App[str | None]):
                 "tui lane: AgentActivity missing canonical_type lane=tui hook_type=%s session=%s",
                 message.activity_type,
                 message.session_id[:8] if message.session_id else "",
+                extra={"lane": "tui", "canonical_type": None, "session_id": message.session_id},
             )
             return
         if canonical == "user_prompt_submit":

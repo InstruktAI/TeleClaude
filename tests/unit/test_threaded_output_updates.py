@@ -2,6 +2,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.cli.tui.app import TelecApp
+from teleclaude.cli.tui.messages import AgentActivity
 from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentOutputPayload, AgentStopPayload
 from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
@@ -457,3 +459,125 @@ def test_canonical_event_carries_observability_fields_for_tui_lane() -> None:
     assert event.timestamp == "2025-01-01T00:00:00Z"
     assert event.message_intent == "ctrl_activity"
     assert event.delivery_scope == "CTRL"
+
+
+# ---------------------------------------------------------------------------
+# TUI lane: on_agent_activity handler dispatch (R1, R4)
+# ---------------------------------------------------------------------------
+
+
+def _make_handler_context() -> tuple[MagicMock, MagicMock]:
+    """Return (mock_app, mock_sessions_view) for on_agent_activity dispatch tests."""
+    mock_sessions_view = MagicMock()
+    mock_app = MagicMock()
+    mock_app.query_one.return_value = mock_sessions_view
+    mock_app._activity_trigger = None
+    return mock_app, mock_sessions_view
+
+
+def test_handler_canonical_none_returns_early_no_sessions_view_calls() -> None:
+    """canonical is None → early return; no sessions_view methods called."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(session_id="s1", activity_type="tool_use", canonical_type=None)
+    TelecApp.on_agent_activity(mock_app, msg)
+    mock_sv.clear_active_tool.assert_not_called()
+    mock_sv.set_input_highlight.assert_not_called()
+    mock_sv.set_output_highlight.assert_not_called()
+    mock_sv.set_active_tool.assert_not_called()
+
+
+def test_handler_user_prompt_submit_clears_tool_and_sets_input_highlight() -> None:
+    """canonical == user_prompt_submit → clear_active_tool + set_input_highlight."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(session_id="s2", activity_type="user_prompt_submit", canonical_type="user_prompt_submit")
+    TelecApp.on_agent_activity(mock_app, msg)
+    mock_sv.clear_active_tool.assert_called_once_with("s2")
+    mock_sv.set_input_highlight.assert_called_once_with("s2")
+    mock_sv.set_output_highlight.assert_not_called()
+
+
+def test_handler_agent_output_stop_clears_tool_and_sets_output_highlight() -> None:
+    """canonical == agent_output_stop → clear_active_tool + set_output_highlight with summary."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(
+        session_id="s3",
+        activity_type="agent_stop",
+        canonical_type="agent_output_stop",
+        summary="Done.",
+    )
+    TelecApp.on_agent_activity(mock_app, msg)
+    mock_sv.clear_active_tool.assert_called_once_with("s3")
+    mock_sv.set_output_highlight.assert_called_once_with("s3", "Done.")
+
+
+def test_handler_agent_output_stop_uses_empty_string_when_summary_is_none() -> None:
+    """canonical == agent_output_stop with no summary → set_output_highlight('', ...)."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(session_id="s4", activity_type="agent_stop", canonical_type="agent_output_stop")
+    TelecApp.on_agent_activity(mock_app, msg)
+    mock_sv.set_output_highlight.assert_called_once_with("s4", "")
+
+
+def test_handler_agent_output_update_with_tool_name_no_prefix_sets_active_tool() -> None:
+    """canonical == agent_output_update with tool_preview not starting with tool_name → full info."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(
+        session_id="s5",
+        activity_type="tool_use",
+        canonical_type="agent_output_update",
+        tool_name="Read",
+        tool_preview="/tmp/file.py",
+    )
+    TelecApp.on_agent_activity(mock_app, msg)
+    mock_sv.set_active_tool.assert_called_once_with("s5", "Read: /tmp/file.py")
+    mock_sv.clear_active_tool.assert_not_called()
+
+
+def test_handler_agent_output_update_tool_preview_prefix_stripped() -> None:
+    """Preview starting with tool_name (space-separated) has prefix stripped before display."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(
+        session_id="s6",
+        activity_type="tool_use",
+        canonical_type="agent_output_update",
+        tool_name="Bash",
+        tool_preview="Bash ls -la",
+    )
+    TelecApp.on_agent_activity(mock_app, msg)
+    # "Bash ls -la" → strip "Bash" → " ls -la" → lstrip() → "ls -la" → "Bash: ls -la"
+    mock_sv.set_active_tool.assert_called_once_with("s6", "Bash: ls -la")
+
+
+def test_handler_agent_output_update_tool_preview_equals_tool_name_uses_tool_name_only() -> None:
+    """Preview exactly equal to tool_name → empty remainder → display tool_name only."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(
+        session_id="s7",
+        activity_type="tool_use",
+        canonical_type="agent_output_update",
+        tool_name="Write",
+        tool_preview="Write",
+    )
+    TelecApp.on_agent_activity(mock_app, msg)
+    # After stripping "Write" from "Write", remainder is ""; tool_info == tool_name
+    mock_sv.set_active_tool.assert_called_once_with("s7", "Write")
+
+
+def test_handler_agent_output_update_without_tool_name_clears_active_tool() -> None:
+    """canonical == agent_output_update with no tool_name → clear_active_tool."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(session_id="s8", activity_type="tool_done", canonical_type="agent_output_update")
+    TelecApp.on_agent_activity(mock_app, msg)
+    mock_sv.clear_active_tool.assert_called_once_with("s8")
+    mock_sv.set_active_tool.assert_not_called()
+
+
+def test_handler_unknown_canonical_falls_through_silently() -> None:
+    """Unknown canonical_type → no sessions_view dispatch calls."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(session_id="s9", activity_type="unknown", canonical_type="some_future_type")
+    TelecApp.on_agent_activity(mock_app, msg)
+    mock_sv.clear_active_tool.assert_not_called()
+    mock_sv.set_active_tool.assert_not_called()
+    mock_sv.set_input_highlight.assert_not_called()
+    mock_sv.set_output_highlight.assert_not_called()
