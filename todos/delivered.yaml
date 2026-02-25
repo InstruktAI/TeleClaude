@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: mcp-migration-delete-mcp
+  date: '2026-02-25'
+  title: 'Phase 3: Delete all MCP server code (~3,400 lines), update architecture
+    and policy docs'
+  commit: ca23644eed6e6145e9569b608e32a09b60e399cb
+  description: 'Phase 3: Delete all MCP server code (~3,400 lines), update architecture
+    and policy docs'
 - slug: mcp-migration-agent-config
   date: '2026-02-25'
   title: 'Phase 2: Remove MCP from agent session configs, validate all agent types

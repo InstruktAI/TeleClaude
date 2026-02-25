@@ -1,11 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: mcp-migration-delete-mcp
-  group: mcp-to-tool-specs
-  after:
-  - mcp-migration-agent-config
-  description: 'Phase 3: Delete all MCP server code (~3,400 lines), update architecture
-    and policy docs'
 - slug: rolling-session-titles
   description: Re-summarize session titles based on the last 3 user inputs instead
     of only the first. Use a dedicated rolling prompt that captures session direction.
