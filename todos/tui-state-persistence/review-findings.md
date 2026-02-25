@@ -31,3 +31,9 @@
 ## Verdict
 
 REQUEST CHANGES
+
+## Fixes Applied
+
+1. Important: Invite delivery status was always reported as failed in `telec config invite`.
+   - Fix: Updated `_handle_invite` to treat a non-exceptional `send_invite_email()` call as success (`email_sent = True`) and only mark failure on exceptions. Added tests to assert JSON `email_sent: true` on success and to verify fallback link output still occurs when email sending raises.
+   - Commit: `3e80e3e6118e4305f7aad9c1e3f7de15b00de555`
