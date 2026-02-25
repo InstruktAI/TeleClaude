@@ -148,6 +148,7 @@ class AgentActivity(Message):
         self,
         session_id: str,
         activity_type: str,
+        canonical_type: str | None = None,
         tool_name: str | None = None,
         tool_preview: str | None = None,
         summary: str | None = None,
@@ -156,6 +157,7 @@ class AgentActivity(Message):
         super().__init__()
         self.session_id = session_id
         self.activity_type = activity_type
+        self.canonical_type = canonical_type
         self.tool_name = tool_name
         self.tool_preview = tool_preview
         self.summary = summary

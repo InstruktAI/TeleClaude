@@ -335,3 +335,125 @@ async def test_tool_done_does_not_trigger_direct_incremental_output(coordinator)
         await coordinator.handle_tool_done(context)
 
     mock_incremental.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# TUI lane: canonical contract path (R1, R4)
+# ---------------------------------------------------------------------------
+
+
+def test_agent_activity_message_carries_canonical_type() -> None:
+    """AgentActivity message correctly stores canonical_type from contract."""
+    from teleclaude.cli.tui.messages import AgentActivity
+
+    msg = AgentActivity(
+        session_id="sess-1",
+        activity_type="agent_stop",
+        canonical_type="agent_output_stop",
+        summary="Done",
+    )
+    assert msg.canonical_type == "agent_output_stop"
+    assert msg.activity_type == "agent_stop"
+
+
+def test_agent_activity_canonical_type_defaults_to_none() -> None:
+    """canonical_type defaults to None for backward compatibility."""
+    from teleclaude.cli.tui.messages import AgentActivity
+
+    msg = AgentActivity(
+        session_id="sess-1",
+        activity_type="tool_use",
+    )
+    assert msg.canonical_type is None
+
+
+def test_agent_activity_output_update_carries_tool_metadata() -> None:
+    """AgentActivity for agent_output_update carries tool name and preview."""
+    from teleclaude.cli.tui.messages import AgentActivity
+
+    msg = AgentActivity(
+        session_id="sess-2",
+        activity_type="tool_use",
+        canonical_type="agent_output_update",
+        tool_name="Read",
+        tool_preview="Read: /tmp/file.py",
+    )
+    assert msg.canonical_type == "agent_output_update"
+    assert msg.tool_name == "Read"
+    assert msg.tool_preview == "Read: /tmp/file.py"
+
+
+def test_agent_activity_user_prompt_submit_canonical_type() -> None:
+    """AgentActivity for user_prompt_submit carries correct canonical_type."""
+    from teleclaude.cli.tui.messages import AgentActivity
+
+    msg = AgentActivity(
+        session_id="sess-3",
+        activity_type="user_prompt_submit",
+        canonical_type="user_prompt_submit",
+    )
+    assert msg.canonical_type == "user_prompt_submit"
+
+
+def test_serialize_agent_stop_produces_output_stop_for_tui() -> None:
+    """agent_stop hook event serializes to agent_output_stop canonical type."""
+    from teleclaude.core.activity_contract import serialize_activity_event
+
+    event = serialize_activity_event(
+        session_id="sess-abc",
+        hook_event_type="agent_stop",
+        timestamp="2025-01-01T00:00:00Z",
+        summary="Output complete",
+    )
+    assert event is not None
+    assert event.canonical_type == "agent_output_stop"
+    assert event.hook_event_type == "agent_stop"
+
+
+def test_serialize_tool_use_produces_output_update_for_tui() -> None:
+    """tool_use hook event serializes to agent_output_update canonical type."""
+    from teleclaude.core.activity_contract import serialize_activity_event
+
+    event = serialize_activity_event(
+        session_id="sess-abc",
+        hook_event_type="tool_use",
+        timestamp="2025-01-01T00:00:00Z",
+        tool_name="Read",
+        tool_preview="Read: /tmp/file.py",
+    )
+    assert event is not None
+    assert event.canonical_type == "agent_output_update"
+    assert event.tool_name == "Read"
+
+
+def test_serialize_tool_done_produces_output_update_for_tui() -> None:
+    """tool_done hook event serializes to agent_output_update canonical type (no tool_name)."""
+    from teleclaude.core.activity_contract import serialize_activity_event
+
+    event = serialize_activity_event(
+        session_id="sess-abc",
+        hook_event_type="tool_done",
+        timestamp="2025-01-01T00:00:00Z",
+    )
+    assert event is not None
+    assert event.canonical_type == "agent_output_update"
+    assert event.tool_name is None
+
+
+def test_canonical_event_carries_observability_fields_for_tui_lane() -> None:
+    """Canonical event carries all required observability fields (R4: lane, event type, session)."""
+    from teleclaude.core.activity_contract import serialize_activity_event
+
+    event = serialize_activity_event(
+        session_id="sess-obs",
+        hook_event_type="tool_use",
+        timestamp="2025-01-01T00:00:00Z",
+        tool_name="Bash",
+    )
+    assert event is not None
+    assert event.session_id == "sess-obs"
+    assert event.canonical_type == "agent_output_update"
+    assert event.hook_event_type == "tool_use"
+    assert event.timestamp == "2025-01-01T00:00:00Z"
+    assert event.message_intent == "ctrl_activity"
+    assert event.delivery_scope == "CTRL"

@@ -478,6 +478,7 @@ class TelecApp(App[str | None]):
                 AgentActivity(
                     session_id=event.session_id,
                     activity_type=event.type,
+                    canonical_type=event.canonical_type,
                     tool_name=event.tool_name,
                     tool_preview=event.tool_preview,
                     summary=event.summary,
@@ -530,18 +531,35 @@ class TelecApp(App[str | None]):
 
     def on_agent_activity(self, message: AgentActivity) -> None:
         sessions_view = self.query_one("#sessions-view", SessionsView)
-        if message.activity_type == "agent_input":
+        canonical = message.canonical_type
+        logger.debug(
+            "tui lane: on_agent_activity lane=tui canonical_type=%s session=%s",
+            canonical,
+            message.session_id[:8] if message.session_id else "",
+            extra={"lane": "tui", "canonical_type": canonical, "session_id": message.session_id},
+        )
+        if canonical is None:
+            logger.warning(
+                "tui lane: AgentActivity missing canonical_type lane=tui hook_type=%s session=%s",
+                message.activity_type,
+                message.session_id[:8] if message.session_id else "",
+            )
+            return
+        if canonical == "user_prompt_submit":
             sessions_view.clear_active_tool(message.session_id)
             sessions_view.set_input_highlight(message.session_id)
-        elif message.activity_type == "agent_stop":
+        elif canonical == "agent_output_stop":
             sessions_view.clear_active_tool(message.session_id)
             sessions_view.set_output_highlight(message.session_id, message.summary or "")
-        elif message.activity_type == "tool_use" and message.tool_name:
-            preview = message.tool_preview or ""
-            if preview.startswith(message.tool_name):
-                preview = preview[len(message.tool_name) :].lstrip()
-            tool_info = f"{message.tool_name}: {preview}" if preview else message.tool_name
-            sessions_view.set_active_tool(message.session_id, tool_info)
+        elif canonical == "agent_output_update":
+            if message.tool_name:
+                preview = message.tool_preview or ""
+                if preview.startswith(message.tool_name):
+                    preview = preview[len(message.tool_name) :].lstrip()
+                tool_info = f"{message.tool_name}: {preview}" if preview else message.tool_name
+                sessions_view.set_active_tool(message.session_id, tool_info)
+            else:
+                sessions_view.clear_active_tool(message.session_id)
 
         # Feed agent activity to animation trigger (both banner and logo targets)
         if self._activity_trigger is not None:

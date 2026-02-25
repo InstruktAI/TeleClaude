@@ -13,8 +13,8 @@ Migrate TUI realtime behavior onto canonical adapter output while preserving TUI
 
 ## Phase 1 - Wire TUI Lane to Canonical Contract
 
-- [ ] Route TUI output update path through canonical contract serializer path.
-- [ ] Verify required metadata fields are preserved for TUI consumers.
+- [x] Route TUI output update path through canonical contract serializer path.
+- [x] Verify required metadata fields are preserved for TUI consumers.
 
 ### Files (expected)
 
@@ -23,9 +23,9 @@ Migrate TUI realtime behavior onto canonical adapter output while preserving TUI
 
 ## Phase 2 - Remove TUI Bypass and Preserve Presentation Boundaries
 
-- [ ] Remove direct TUI bypass path for core output progression.
-- [ ] Keep TUI presentation logic in TUI components only.
-- [ ] Ensure canonical contract remains source-of-truth payload.
+- [x] Remove direct TUI bypass path for core output progression.
+- [x] Keep TUI presentation logic in TUI components only.
+- [x] Ensure canonical contract remains source-of-truth payload.
 
 ### Files (expected)
 
