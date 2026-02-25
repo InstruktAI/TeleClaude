@@ -19,7 +19,7 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
 - [x] Validate allowed keys and reject unknown agent keys.
 - [x] Enforce at least one enabled agent.
 - [x] Return precise, actionable validation errors referencing `config.yml` paths.
-- [ ] Update config spec docs to match enforced contract.
+- [x] Update config spec docs to match enforced contract.
 
 ### Files (expected)
 

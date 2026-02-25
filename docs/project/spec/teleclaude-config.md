@@ -55,6 +55,10 @@ environment_variables:
 
 ## Constraints
 
+- `config.yml:agents` is required; startup fails if it is missing.
+- `config.yml:agents` must only contain known agent keys (`claude`, `gemini`, `codex`).
+- At least one configured agent must have `enabled: true`; all-disabled configs fail startup.
+- Validation errors must reference concrete `config.yml` paths to fix (for example `config.yml:agents.codex.enabled`).
 - Changing a configuration key from optional to required is a breaking change (Minor bump).
 - Removing or renaming a configuration key is a breaking change.
 - Adding a new optional key or environment variable is a patch.
