@@ -30,3 +30,9 @@
 ## Verdict
 
 REQUEST CHANGES
+
+## Fixes Applied
+
+1. Important: Default pane-theming mode regressed to `off` when persisted state was missing.
+   - Fix: `state_store` now seeds/normalizes `status_bar` defaults using canonical config-backed pane theming mode, and regression tests cover missing-file and missing-key paths.
+   - Commit: `8d06852f79c3463a908bfc3c386d0ce0c2345351`
