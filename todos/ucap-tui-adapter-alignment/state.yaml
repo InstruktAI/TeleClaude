@@ -1,14 +1,16 @@
 phase: in_progress
-build: started
-review: pending
+build: complete
+review: changes_requested
 deferrals_processed: false
 breakdown:
   assessed: false
   todos: []
-review_round: 0
+review_round: 1
 max_review_rounds: 3
 review_baseline_commit: ''
-unresolved_findings: []
+unresolved_findings:
+  - 'warning log missing structured extra fields (R4)'
+  - 'on_agent_activity handler dispatch logic untested'
 resolved_findings: []
 dor:
   last_assessed_at: '2026-02-24T17:21:50Z'

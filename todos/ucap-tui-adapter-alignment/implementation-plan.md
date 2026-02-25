@@ -13,8 +13,8 @@ Migrate TUI realtime behavior onto canonical adapter output while preserving TUI
 
 ## Phase 1 - Wire TUI Lane to Canonical Contract
 
-- [x] Route TUI output update path through canonical contract serializer path.
-- [x] Verify required metadata fields are preserved for TUI consumers.
+- [ ] Route TUI output update path through canonical contract serializer path.
+- [ ] Verify required metadata fields are preserved for TUI consumers.
 
 ### Files (expected)
 
@@ -23,9 +23,9 @@ Migrate TUI realtime behavior onto canonical adapter output while preserving TUI
 
 ## Phase 2 - Remove TUI Bypass and Preserve Presentation Boundaries
 
-- [x] Remove direct TUI bypass path for core output progression.
-- [x] Keep TUI presentation logic in TUI components only.
-- [x] Ensure canonical contract remains source-of-truth payload.
+- [ ] Remove direct TUI bypass path for core output progression.
+- [ ] Keep TUI presentation logic in TUI components only.
+- [ ] Ensure canonical contract remains source-of-truth payload.
 
 ### Files (expected)
 
@@ -34,8 +34,8 @@ Migrate TUI realtime behavior onto canonical adapter output while preserving TUI
 
 ## Phase 3 - TUI Validation and Observability
 
-- [x] Add tests for canonical contract path in TUI lane.
-- [x] Add/verify TUI lane observability fields (lane, event type, session).
+- [ ] Add tests for canonical contract path in TUI lane.
+- [ ] Add/verify TUI lane observability fields (lane, event type, session).
 
 ### Files (expected)
 
@@ -44,6 +44,6 @@ Migrate TUI realtime behavior onto canonical adapter output while preserving TUI
 
 ## Definition of Done
 
-- [x] TUI lane uses canonical outbound contract.
-- [x] TUI bypass path is removed for core output progression.
-- [x] TUI presentation boundary remains intact.
+- [ ] TUI lane uses canonical outbound contract.
+- [ ] TUI bypass path is removed for core output progression.
+- [ ] TUI presentation boundary remains intact.
