@@ -67,6 +67,6 @@ implementation work is executed under this parent slug.
 
 ## Definition of Done
 
-- [ ] Parent artifacts are umbrella-only and aligned with roadmap decomposition.
-- [ ] Child ownership and dependency order are explicit and consistent.
-- [ ] Parent DOR can be evaluated without parent runtime implementation tasks.
+- [x] Parent artifacts are umbrella-only and aligned with roadmap decomposition.
+- [x] Child ownership and dependency order are explicit and consistent.
+- [x] Parent DOR can be evaluated without parent runtime implementation tasks.
