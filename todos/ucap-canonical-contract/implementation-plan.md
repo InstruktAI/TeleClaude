@@ -42,9 +42,9 @@ semantics per adapter.
 
 ## Phase 2 - Shared Serializer/Validation Utilities (R2, R3)
 
-- [ ] Add a shared canonical contract utility module for serialization and validation.
-- [ ] Define explicit validation failure behavior (error reporting + non-crashing fallback).
-- [ ] Ensure utility APIs are adapter-agnostic and reusable by multiple producer paths.
+- [x] Add a shared canonical contract utility module for serialization and validation.
+- [x] Define explicit validation failure behavior (error reporting + non-crashing fallback).
+- [x] Ensure utility APIs are adapter-agnostic and reusable by multiple producer paths.
 
 ### Files (expected)
 

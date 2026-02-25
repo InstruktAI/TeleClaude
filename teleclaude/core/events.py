@@ -482,6 +482,12 @@ class AgentActivityEvent:
 
     Direct event from coordinator to consumers (TUI/Web) without DB mediation.
     Carries typed activity events (tool_use, tool_done, agent_stop) with optional metadata.
+
+    Canonical contract fields (ucap-canonical-contract):
+      canonical_type: stable outbound vocabulary type (user_prompt_submit,
+                      agent_output_update, agent_output_stop).
+      message_intent: routing intent for this event (ctrl_activity).
+      delivery_scope:  routing scope (CTRL for all activity events).
     """
 
     session_id: str
@@ -490,6 +496,10 @@ class AgentActivityEvent:
     tool_preview: str | None = None
     summary: str | None = None
     timestamp: str | None = None
+    # Canonical contract fields (preserved as optional for backward compatibility)
+    canonical_type: str | None = None
+    message_intent: str | None = None
+    delivery_scope: str | None = None
 
 
 @dataclass(frozen=True)

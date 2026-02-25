@@ -355,17 +355,28 @@ class ErrorEventDTO(BaseModel):  # type: ignore[explicit-any]
 
 
 class AgentActivityEventDTO(BaseModel):  # type: ignore[explicit-any]
-    """WebSocket event for agent activity (tool_use, tool_done, agent_stop)."""
+    """WebSocket event for agent activity (tool_use, tool_done, agent_stop).
+
+    Canonical contract fields (ucap-canonical-contract):
+      canonical_type: stable outbound vocabulary type (user_prompt_submit,
+                      agent_output_update, agent_output_stop).
+      message_intent: routing intent (ctrl_activity).
+      delivery_scope:  routing scope (CTRL).
+    """
 
     model_config = ConfigDict(frozen=True)
 
     event: Literal["agent_activity"] = "agent_activity"
     session_id: str
-    type: str
+    type: str  # hook event type (preserved for consumer compatibility)
     tool_name: str | None = None
     tool_preview: str | None = None
     summary: str | None = None
     timestamp: str | None = None
+    # Canonical contract fields (optional; present when produced via activity_contract)
+    canonical_type: str | None = None
+    message_intent: str | None = None
+    delivery_scope: str | None = None
 
 
 class TTSSettingsDTO(BaseModel):  # type: ignore[explicit-any]
