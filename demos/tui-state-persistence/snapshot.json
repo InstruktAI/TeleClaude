@@ -1,0 +1,25 @@
+{
+  "slug": "tui-state-persistence",
+  "title": "TUI State Persistence",
+  "version": "0.1.0",
+  "delivered_date": "2026-02-25",
+  "merge_commit": "d644465a70e773c19960384867a90ea57082730f",
+  "metrics": {
+    "commits": 5,
+    "files_changed": 17,
+    "files_created": 3,
+    "insertions": 700,
+    "deletions": 264,
+    "test_files_added": 0,
+    "review_rounds": 2,
+    "critical_findings": 0,
+    "important_findings": 1,
+    "suggestions": 1
+  },
+  "acts": {
+    "challenge": "Make TUI state fully survive SIGUSR2 reloads and process restarts by introducing a generalized `Persistable` protocol with debounced auto-save, replacing the current surgical per-field persistence approach.",
+    "build": "Replace the surgical per-field TUI state persistence with a generalized `Persistable` protocol. Widgets declare their own persistable state; the app auto-discovers and collects it with debounced auto-save. Also fix the todo metadata refresh bug.",
+    "gauntlet": "Work advanced through iterative review/fix loops with 2 review round(s), resolving pane-theming default regression and invite-status reporting correctness before final approval.",
+    "next": "Manual verification gap remains for interactive TUI behavior."
+  }
+}
