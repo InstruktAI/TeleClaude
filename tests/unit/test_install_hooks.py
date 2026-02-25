@@ -361,6 +361,30 @@ def test_configure_codex_removes_existing_mcp_block(tmp_path, monkeypatch):
     assert "teleclaude" not in data.get("mcp_servers", {})
 
 
+def test_configure_codex_preserves_indented_section_after_mcp_block(tmp_path, monkeypatch):
+    """Removing TeleClaude MCP block must preserve following indented table sections."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    repo_root = Path(__file__).resolve().parents[2]
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir(parents=True)
+    codex_config = codex_dir / "config.toml"
+    codex_config.write_text(
+        'model = "gpt-4"\n\n'
+        "[mcp_servers.teleclaude]\n"
+        'type = "stdio"\n'
+        'command = "python3"\n'
+        'args = ["/old/path/mcp-wrapper.py"]\n\n'
+        "  [other]\n"
+        "key = 1\n"
+    )
+
+    install_hooks.configure_codex(repo_root)
+
+    data = tomllib.loads(codex_config.read_text())
+    assert "teleclaude" not in data.get("mcp_servers", {})
+    assert data["other"]["key"] == 1
+
+
 def test_install_agent_wrapper_renders_canonical_root(tmp_path, monkeypatch):
     """Wrapper templates should render canonical root and install executable binaries."""
     monkeypatch.setenv("HOME", str(tmp_path))
