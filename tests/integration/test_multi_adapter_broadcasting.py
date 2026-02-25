@@ -371,8 +371,8 @@ async def test_ui_observer_receives_broadcasts():
                 # Verify telegram (origin) called
                 assert len(telegram_adapter.send_message_calls) == 1
 
-                # No broadcast for feedback messages
-                assert len(slack_adapter.send_message_calls) == 0
+                # Output now fanouts to all UI adapters; observer receives it.
+                assert len(slack_adapter.send_message_calls) == 1
 
     finally:
         await test_db.close()
@@ -496,8 +496,8 @@ async def test_observer_failure_does_not_affect_origin():
                 assert len(telegram_adapter.send_message_calls) == 1
                 assert result == "msg-123"
 
-                # No broadcast for feedback messages
-                assert len(slack_adapter.send_message_calls) == 0
+                # Output now fanouts to all UI adapters; observer lane attempted once.
+                assert len(slack_adapter.send_message_calls) == 1
 
     finally:
         await test_db.close()
