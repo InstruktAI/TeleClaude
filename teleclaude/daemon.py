@@ -1272,6 +1272,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
         polling_coordinator._cleanup_codex_input_state(ctx.session_id)
+        self.agent_coordinator._cancel_stall_task(ctx.session_id)
 
         logger.info("Handling session_closed for %s", ctx.session_id[:8])
         await session_cleanup.terminate_session(
