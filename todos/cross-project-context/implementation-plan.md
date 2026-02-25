@@ -10,31 +10,31 @@ Extend `get_context` to serve documentation across all TeleClaude-aware projects
 
 **File(s):** `teleclaude/config/schema.py`
 
-- [ ] Add `description: Optional[str] = None` field to `ProjectConfig`
+- [x] Add `description: Optional[str] = None` field to `ProjectConfig`
 
 ### Task 1.2: Create manifest writer
 
 **File(s):** `teleclaude/project_manifest.py` (new)
 
-- [ ] Define `ProjectManifestEntry` dataclass: `name` (str), `description` (str), `index_path` (str), `project_root` (str)
-- [ ] `load_manifest(path: Path) -> list[ProjectManifestEntry]`: Read `~/.teleclaude/projects.yaml`, return entries. Skip entries whose `index_path` no longer exists (stale cleanup).
-- [ ] `register_project(path: Path, project_root: Path, project_name: str, description: str, index_path: Path)`: Read manifest, upsert entry for this project (match by `project_root`), write back. Create file if missing.
-- [ ] Manifest path constant: `MANIFEST_PATH = Path("~/.teleclaude/projects.yaml")`
+- [x] Define `ProjectManifestEntry` dataclass: `name` (str), `description` (str), `index_path` (str), `project_root` (str)
+- [x] `load_manifest(path: Path) -> list[ProjectManifestEntry]`: Read `~/.teleclaude/projects.yaml`, return entries. Skip entries whose `index_path` no longer exists (stale cleanup).
+- [x] `register_project(path: Path, project_root: Path, project_name: str, description: str, index_path: Path)`: Read manifest, upsert entry for this project (match by `project_root`), write back. Create file if missing.
+- [x] Manifest path constant: `MANIFEST_PATH = Path("~/.teleclaude/projects.yaml")`
 
 ### Task 1.3: Wire `telec sync` to register in manifest
 
 **File(s):** `teleclaude/sync.py`
 
-- [ ] After building project index, call `register_project()` with project name, description (from `teleclaude.yml`), and the project index path.
-- [ ] Only register if a `teleclaude.yml` exists (skip bare repos).
+- [x] After building project index, call `register_project()` with project name, description (from `teleclaude.yml`), and the project index path.
+- [x] Only register if a `teleclaude.yml` exists (skip bare repos).
 
 ### Task 1.4: Delete dead code
 
 **File(s):** `teleclaude/project_registry.py`, `tests/unit/test_project_registry.py`
 
-- [ ] Delete `project_registry.py`
-- [ ] Delete `test_project_registry.py`
-- [ ] Remove any imports referencing `project_registry` (grep for usage)
+- [x] Delete `project_registry.py`
+- [x] Delete `test_project_registry.py`
+- [x] Remove any imports referencing `project_registry` (grep for usage)
 
 ---
 

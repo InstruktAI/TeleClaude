@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import yaml
 
 from teleclaude.sync import sync
 
@@ -50,3 +51,29 @@ class TestSync:
         with patch("teleclaude.sync._run_distribute", new=record_distribute):
             sync(tmp_path)
         assert len(calls) == 1
+
+    def test_sync_registers_project_manifest_when_config_exists(self, tmp_path: Path) -> None:
+        config = {
+            "project_name": "teleclaude",
+            "description": "Project docs",
+            "business": {"domains": {"software-development": "docs"}},
+        }
+        (tmp_path / "teleclaude.yml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+        _write_snippet(tmp_path / "docs" / "project" / "test.md", id="project/spec/x")
+        with (
+            patch("teleclaude.sync._run_distribute"),
+            patch("teleclaude.sync.register_project") as mock_register,
+        ):
+            ok = sync(tmp_path)
+        assert ok is True
+        mock_register.assert_called_once()
+
+    def test_sync_skips_manifest_registration_for_bare_repo(self, tmp_path: Path) -> None:
+        _write_snippet(tmp_path / "docs" / "project" / "test.md", id="project/spec/x")
+        with (
+            patch("teleclaude.sync._run_distribute"),
+            patch("teleclaude.sync.register_project") as mock_register,
+        ):
+            ok = sync(tmp_path)
+        assert ok is True
+        mock_register.assert_not_called()

@@ -11,8 +11,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from teleclaude.config.loader import load_project_config
 from teleclaude.docs_index import build_all_indexes
 from teleclaude.paths import REPO_ROOT
+from teleclaude.project_manifest import MANIFEST_PATH, register_project
 from teleclaude.resource_validation import (
     clear_warnings,
     get_warnings,
@@ -59,10 +61,13 @@ def sync(
         return len(errors) == 0
 
     # Phase 2: Build indexes
+    had_project_config = (project_root / "teleclaude.yml").exists()
     written = build_all_indexes(project_root)
     for path in written:
         if path.exists():
             print(f"Index: {path}")
+    if had_project_config:
+        _register_project_manifest(project_root)
     _repair_broken_docs_links(project_root)
 
     # Phase 3: Build and deploy artifacts
@@ -168,3 +173,24 @@ def _print_warnings(warnings: list[dict[str, str]], *, quiet: bool) -> None:
             print(f"{code}/{reason}:")
             for path in paths:
                 print(f"- {path}")
+
+
+def _register_project_manifest(project_root: Path) -> None:
+    config_path = project_root / "teleclaude.yml"
+    if not config_path.exists():
+        return
+    try:
+        project_config = load_project_config(config_path)
+    except Exception:
+        return
+    project_name = (project_config.project_name or project_root.name).strip()
+    if not project_name:
+        project_name = project_root.name
+    description = (project_config.description or "").strip()
+    register_project(
+        path=MANIFEST_PATH,
+        project_root=project_root,
+        project_name=project_name,
+        description=description,
+        index_path=project_root / "docs" / "project" / "index.yaml",
+    )

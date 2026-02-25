@@ -204,6 +204,7 @@ class HooksConfig(BaseModel):
 class ProjectConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
     project_name: Optional[str] = None
+    description: Optional[str] = None
     business: BusinessConfig = BusinessConfig()
     hooks: HooksConfig = HooksConfig()
     jobs: Dict[str, JobScheduleConfig] = {}
