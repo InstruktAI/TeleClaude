@@ -31,6 +31,36 @@ from teleclaude.utils.transcript import _iter_claude_entries, _iter_codex_entrie
 
 logger = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# Canonical lifecycle status mapping
+# ---------------------------------------------------------------------------
+
+_CLOSED_STATUSES = frozenset({"closed"})
+_ERROR_STATUSES = frozenset({"error"})
+_COMPLETED_STATUSES = frozenset({"completed"})
+
+
+def _map_lifecycle_to_sse_status(lifecycle_status: str | None) -> str:
+    """Map canonical session lifecycle_status to Web SSE status value.
+
+    Derives SSE status from the canonical lifecycle_status field established
+    by ucap-truthful-session-status. Prevents hardcoded bypass strings.
+
+    Args:
+        lifecycle_status: Canonical lifecycle status from session DB field.
+
+    Returns:
+        SSE status string for ``data-session-status`` event.
+    """
+    if lifecycle_status in _CLOSED_STATUSES:
+        return "closed"
+    if lifecycle_status in _ERROR_STATUSES:
+        return "error"
+    if lifecycle_status in _COMPLETED_STATUSES:
+        return "completed"
+    return "streaming"
+
+
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 LIVE_POLL_INTERVAL_S = 1.0
@@ -120,13 +150,25 @@ async def _stream_sse(
     """Generate SSE events: history replay then live tail.
 
     Yields SSE-formatted strings conforming to AI SDK v5 UIMessage Stream.
+    Derives session status from canonical lifecycle_status (no hardcoded bypass).
     """
     agent_name = _get_agent_name(session)
     chain = _get_transcript_chain(session)
 
     message_id = f"msg-{session_id[:8]}"
     yield message_start(message_id)
-    yield convert_session_status("streaming", session_id)
+
+    # R1/R2: Derive initial status from canonical lifecycle_status — no hardcoded bypass.
+    initial_status = _map_lifecycle_to_sse_status(session.lifecycle_status)
+    logger.info(
+        "Web lane stream start",
+        lane="web",
+        session_id=session_id[:8],
+        event_type="data-session-status",
+        status=initial_status,
+        lifecycle_status=session.lifecycle_status,
+    )
+    yield convert_session_status(initial_status, session_id)
 
     # --- Task 5: Message ingestion ---
     if user_message:
@@ -141,13 +183,20 @@ async def _stream_sse(
             )
             if not success:
                 logger.warning(
-                    "Failed to deliver message to tmux session %s for session %s",
-                    session.tmux_session_name,
-                    session_id,
+                    "Web lane message delivery failed",
+                    lane="web",
+                    session_id=session_id[:8],
+                    event_type="data-session-status",
+                    tmux_session=session.tmux_session_name,
                 )
                 yield convert_session_status("error", session_id)
         else:
-            logger.warning("Cannot deliver message: session %s has no tmux_session_name", session_id)
+            logger.warning(
+                "Web lane cannot deliver message: no tmux_session_name",
+                lane="web",
+                session_id=session_id[:8],
+                event_type="data-session-status",
+            )
             yield convert_session_status("error", session_id)
 
     # --- History replay ---
@@ -183,9 +232,17 @@ async def _stream_sse(
     while idle_elapsed < LIVE_IDLE_TIMEOUT_S:
         await asyncio.sleep(LIVE_POLL_INTERVAL_S)
 
-        # Check if session is still active
+        # R2: Use canonical lifecycle_status for closure detection (not closed_at bypass).
         refreshed = await db.get_session(session_id)
-        if not refreshed or refreshed.closed_at:
+        if not refreshed or refreshed.lifecycle_status in _CLOSED_STATUSES:
+            close_reason = "not_found" if not refreshed else refreshed.lifecycle_status
+            logger.info(
+                "Web lane stream closed",
+                lane="web",
+                session_id=session_id[:8],
+                event_type="data-session-status",
+                reason=close_reason,
+            )
             yield convert_session_status("closed", session_id)
             break
 
@@ -220,7 +277,14 @@ async def _stream_sse(
                     for sse_event in convert_entry(entry):
                         yield sse_event
         except OSError as exc:
-            logger.warning("Error reading live transcript %s: %s", live_file, exc)
+            logger.warning(
+                "Web lane error reading live transcript",
+                lane="web",
+                session_id=session_id[:8],
+                event_type="data-session-status",
+                file=live_file,
+                error=str(exc),
+            )
             break
 
         # Check if transcript file rotated (new native_log_file)

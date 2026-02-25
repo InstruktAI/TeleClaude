@@ -50,6 +50,9 @@ from teleclaude.api_models import (
     SessionDTO as SessionInfo,
 )
 from teleclaude.api_models import (
+    SessionLifecycleStatusEventDTO as SessionLifecycleStatusEvent,
+)
+from teleclaude.api_models import (
     SessionsInitialDataDTO as SessionsInitialData,
 )
 from teleclaude.api_models import (
@@ -76,6 +79,7 @@ from teleclaude.api_models import (
 
 __all__ = [
     "AgentActivityEvent",
+    "SessionLifecycleStatusEvent",
     "AgentAvailabilityInfo",
     "ComputerInfo",
     "CreateSessionResult",
@@ -117,6 +121,7 @@ WsEvent: TypeAlias = Union[
     SessionStartedEvent,
     SessionUpdatedEvent,
     SessionClosedEvent,
+    SessionLifecycleStatusEvent,
     RefreshEvent,
     ErrorEvent,
     AgentActivityEvent,

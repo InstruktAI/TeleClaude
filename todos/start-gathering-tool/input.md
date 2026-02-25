@@ -2,7 +2,7 @@
 
 Daemon-side implementation of the `start_gathering` MCP tool that orchestrates gathering ceremonies. The tool spawns peer sessions, distributes seed messages with identity and breath structure, and runs the ceremony: talking piece, thought heartbeats, phase management, harvester hand-off.
 
-**Depends on `session-relay`** — the relay primitive handles output monitoring and fan-out between participant sessions. This todo layers ceremony orchestration on top.
+**Depends on `bidirectional-agent-links`** — the shared listener/link primitive handles participant membership and sender-excluded fan-out between participant sessions. This todo layers ceremony orchestration on top.
 
 ## Conceptual Foundation
 
@@ -10,16 +10,16 @@ The gathering is governed by `docs/global/general/procedure/gathering.md` and in
 
 ## Communication Model
 
-Once the gathering is seeded, **`send_message` is never called again**. The tool call is the handshake. After that, the session relay handles all communication:
+Once the gathering is seeded, **`send_message` is never called again**. The tool call is the handshake. After that, the shared listener link handles all communication:
 
-- The relay monitors the speaking agent's session output
-- When the speaking agent produces output, the relay delivers it to all other sessions with attribution
+- The listener tracks the speaking agent's session output
+- When the speaking agent produces output, the listener delivers it to all other sessions with attribution
 - From each agent's perspective, peer contributions appear as injected messages
 - A human observing any single session sees the full conversation unfold naturally
 
-**Everything is turn-based.** All communication flows through the talking piece. No parallel messages, no side conversations. The talking piece IS the communication mechanism. The gathering orchestrator controls which participant's monitor is active (only the current speaker), layering turn enforcement on top of the relay's fan-out.
+**Everything is turn-based.** All communication flows through the talking piece. No parallel messages, no side conversations. The talking piece IS the communication mechanism. The gathering orchestrator controls which participant is currently allowed to fan out, layering turn enforcement on top of shared-listener fan-out.
 
-This model also requires an update to the **Agent Direct Conversation procedure** (`agent-direct-conversation.md`): step 3 ("Converse") currently instructs agents to exchange messages via `teleclaude__send_message(direct=true)` for every exchange. That must be rewritten to match the relay reality — the tool is the ignition, not the engine.
+This model also requires an update to the **Agent Direct Conversation procedure** (`agent-direct-conversation.md`): step 3 ("Converse") currently instructs agents to exchange messages via `teleclaude__send_message(direct=true)` for every exchange. That must be rewritten to match shared-link reality — the tool is the ignition, not the engine.
 
 ## Identity and the Seed
 
@@ -77,12 +77,12 @@ Each agent gets a time window when holding the talking piece, divided into heart
 
 ## HITL (Human In The Loop)
 
-The human participates as a named member of the circle with a number. Same attribution format, same mechanics, same delivery channel via the relay.
+The human participates as a named member of the circle with a number. Same attribution format, same mechanics, same delivery channel via the shared listener link.
 
 ## Dependencies
 
-- `session-relay` todo (the relay primitive — must be delivered first)
-- `direct=true` flag on `send_message` / `start_session` (delivered: 6157a769)
+- `bidirectional-agent-links` todo (shared listener/link primitive — must be delivered first)
+- `direct=true` handshake semantics on `send_message` / `start_session`
 - Gathering procedure doc (delivered: c12738c3)
 - Rhythm sub-procedures (gathering-rhythm-subprocedures todo — soft dependency)
 - Agent Direct Conversation procedure update (separate doc-only todo)

@@ -94,6 +94,7 @@ class SessionDTO(BaseModel):  # type: ignore[explicit-any]
     status: str
     created_at: str | None = None
     last_activity: str | None = None
+    closed_at: str | None = None
     last_input: str | None = None
     last_input_at: str | None = None
     last_output_summary: str | None = None
@@ -105,6 +106,7 @@ class SessionDTO(BaseModel):  # type: ignore[explicit-any]
     computer: str | None = None
     human_email: str | None = None
     human_role: str | None = None
+    user_role: str = "admin"
     visibility: str = "private"
     session_metadata: dict[str, object] | None = None  # guard: loose-dict
 
@@ -122,6 +124,7 @@ class SessionDTO(BaseModel):  # type: ignore[explicit-any]
             status=session.status,
             created_at=session.created_at,
             last_activity=session.last_activity,
+            closed_at=session.closed_at,
             last_input=session.last_input,
             last_input_at=session.last_input_at,
             last_output_summary=session.last_output_summary,
@@ -133,6 +136,7 @@ class SessionDTO(BaseModel):  # type: ignore[explicit-any]
             computer=computer,
             human_email=session.human_email,
             human_role=session.human_role,
+            user_role=session.user_role or "admin",
             visibility=session.visibility or "private",
             session_metadata=session.session_metadata,
         )
@@ -200,6 +204,7 @@ class ProjectWithTodosDTO(ProjectDTO):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True)
 
     todos: list[TodoDTO] = Field(default_factory=list)
+    has_roadmap: bool = False
 
 
 class AgentAvailabilityDTO(BaseModel):  # type: ignore[explicit-any]
@@ -211,8 +216,19 @@ class AgentAvailabilityDTO(BaseModel):  # type: ignore[explicit-any]
     available: bool | None
     status: Literal["available", "unavailable", "degraded"] | None = None
     unavailable_until: str | None = None
+    degraded_until: str | None = None
     reason: str | None = None
     error: str | None = None
+
+
+class SetAgentStatusRequest(BaseModel):  # type: ignore[explicit-any]
+    """Request to set agent status."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["available", "degraded", "unavailable"]
+    reason: str | None = None
+    duration_minutes: int | None = None
 
 
 # WebSocket Event DTOs
@@ -338,18 +354,53 @@ class ErrorEventDTO(BaseModel):  # type: ignore[explicit-any]
     data: ErrorEventDataDTO
 
 
+class SessionLifecycleStatusEventDTO(BaseModel):  # type: ignore[explicit-any]
+    """WebSocket event for canonical session lifecycle status transitions.
+
+    Canonical contract fields (ucap-truthful-session-status):
+      status: Lifecycle status vocabulary value (accepted, awaiting_output,
+              active_output, stalled, completed, error, closed).
+      reason: Reason code for the transition.
+      last_activity_at: ISO 8601 UTC timestamp of last observed activity (optional).
+      message_intent: Routing intent (ctrl_status).
+      delivery_scope: Routing scope (CTRL).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    event: Literal["session_status"] = "session_status"
+    session_id: str
+    status: str  # canonical status vocabulary value
+    reason: str
+    timestamp: str
+    last_activity_at: str | None = None
+    message_intent: str | None = None
+    delivery_scope: str | None = None
+
+
 class AgentActivityEventDTO(BaseModel):  # type: ignore[explicit-any]
-    """WebSocket event for agent activity (tool_use, tool_done, agent_stop)."""
+    """WebSocket event for agent activity (tool_use, tool_done, agent_stop).
+
+    Canonical contract fields (ucap-canonical-contract):
+      canonical_type: stable outbound vocabulary type (user_prompt_submit,
+                      agent_output_update, agent_output_stop).
+      message_intent: routing intent (ctrl_activity).
+      delivery_scope:  routing scope (CTRL).
+    """
 
     model_config = ConfigDict(frozen=True)
 
     event: Literal["agent_activity"] = "agent_activity"
     session_id: str
-    type: str
+    type: str  # hook event type (preserved for consumer compatibility)
     tool_name: str | None = None
     tool_preview: str | None = None
     summary: str | None = None
     timestamp: str | None = None
+    # Canonical contract fields (optional; present when produced via activity_contract)
+    canonical_type: str | None = None
+    message_intent: str | None = None
+    delivery_scope: str | None = None
 
 
 class TTSSettingsDTO(BaseModel):  # type: ignore[explicit-any]
@@ -360,16 +411,12 @@ class TTSSettingsDTO(BaseModel):  # type: ignore[explicit-any]
     enabled: bool = False
 
 
-PaneThemingMode = Literal["off", "highlight", "highlight2", "agent", "agent_plus", "full", "semi"]
-
-
 class SettingsDTO(BaseModel):  # type: ignore[explicit-any]
     """Runtime settings response."""
 
     model_config = ConfigDict(frozen=True)
 
     tts: TTSSettingsDTO
-    pane_theming_mode: PaneThemingMode = "full"
 
 
 class TTSSettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
@@ -386,7 +433,6 @@ class SettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     tts: TTSSettingsPatchDTO | None = None
-    pane_theming_mode: PaneThemingMode | None = None
 
 
 class MessageDTO(BaseModel):  # type: ignore[explicit-any]

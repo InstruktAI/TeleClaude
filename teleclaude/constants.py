@@ -47,6 +47,9 @@ HUMAN_ROLE_CUSTOMER = "customer"
 HUMAN_ROLES = (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER, HUMAN_ROLE_CUSTOMER)
 
 ROLE_VALUES = ("public", "member", "admin")
+SNIPPET_VISIBILITY_PUBLIC = "public"
+SNIPPET_VISIBILITY_INTERNAL = "internal"
+SNIPPET_VISIBILITY_VALUES = (SNIPPET_VISIBILITY_PUBLIC, SNIPPET_VISIBILITY_INTERNAL)
 
 
 class ResultStatus(str, Enum):
@@ -348,9 +351,9 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "restricted": "--full-auto --search",
         },
         "model_flags": {
-            "fast": "-m gpt-5.3-codex-spark --config model_reasoning_effort='medium'",
-            "med": "-m gpt-5.3-codex-spark --config model_reasoning_effort='high'",
-            "slow": "-m gpt-5.3-codex-spark --config model_reasoning_effort='xhigh'",
+            "fast": "-m gpt-5.3-codex --config model_reasoning_effort='medium'",
+            "med": "-m gpt-5.3-codex --config model_reasoning_effort='high'",
+            "slow": "-m gpt-5.3-codex --config model_reasoning_effort='xhigh'",
         },
         "exec_subcommand": "exec",
         "interactive_flag": "",

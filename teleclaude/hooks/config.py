@@ -94,8 +94,11 @@ async def load_hooks_config(
         inbound = hooks_config.get("inbound", {})
         for source_name, source_config in inbound.items():
             try:
-                path = source_config.get("path", f"/hooks/{source_name}")
-                normalizer_key = source_config.get("normalizer", source_name)
+                path = source_config.get("path")
+                if not path:
+                    path = f"/hooks/inbound/{source_name}"
+                    logger.info("Inbound path derived from source name: %s -> %s", source_name, path)
+                normalizer_key = source_config.get("normalizer") or source_name
                 verify_config = {}
                 if "verify_token" in source_config:
                     verify_config["verify_token"] = source_config["verify_token"]

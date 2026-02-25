@@ -3,6 +3,7 @@ description: 'Five AI pitfalls to guard against. Trust code over comments, verif
 id: 'software-development/principle/failure-modes'
 scope: 'domain'
 type: 'principle'
+visibility: 'public'
 ---
 
 # Failure Modes — Principle

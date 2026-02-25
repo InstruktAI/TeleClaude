@@ -15,6 +15,7 @@ def test_init_project_runs_agent_hook_installer(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr(init_flow, "install_agent_hooks", lambda: calls.append("agent_hooks"))
     monkeypatch.setattr(init_flow, "ensure_git_repo", lambda _path: calls.append("ensure_git_repo"))
+    monkeypatch.setattr(init_flow, "ensure_hooks_path", lambda _path: calls.append("hooks_path"))
     monkeypatch.setattr(init_flow, "setup_git_filters", lambda _path: calls.append("git_filters"))
     monkeypatch.setattr(init_flow, "update_gitattributes", lambda _path: calls.append("gitattributes"))
     monkeypatch.setattr(init_flow, "install_precommit_hook", lambda _path: calls.append("precommit"))
@@ -27,6 +28,7 @@ def test_init_project_runs_agent_hook_installer(monkeypatch: pytest.MonkeyPatch)
     assert calls == [
         "agent_hooks",
         "ensure_git_repo",
+        "hooks_path",
         "git_filters",
         "gitattributes",
         "precommit",

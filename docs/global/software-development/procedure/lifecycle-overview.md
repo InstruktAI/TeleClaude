@@ -58,10 +58,10 @@ Merge approved work, update delivered log, remove todo folder, clean up worktree
 
 ### 6. Demo
 
-**Output:** `demos/{NNN}-{slug}/` with `snapshot.json` and `demo.sh`
-**Responsibility:** Orchestrator
+**Output:** `demos/{slug}/` with `snapshot.json` and `demo.md`
+**Responsibility:** Builder (creation), Orchestrator (presentation)
 
-Triggered automatically after finalize, before cleanup. Captures delivery metrics and narrative into a durable demo artifact, presents a visual celebration via widget, and commits the result. Render scripts are gated by semver — breaking major version bumps disable stale demos automatically.
+Demo validation happens during build: `telec todo demo validate {slug}` confirms executable blocks exist in `demo.md` (structural check — the worktree cannot execute demos against main). Demo execution (`telec todo demo run {slug}`) happens after merge on main. Demo presentation happens after delivery via `/next-demo` — the AI reads `demo.md`, walks through all steps, and celebrates with the five acts narrative. Demos are gated by semver — breaking major version bumps disable stale demos automatically.
 
 ### 7. Maintenance
 

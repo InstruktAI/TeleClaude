@@ -416,6 +416,7 @@ export function reduce(state: TuiState, intent: Intent): TuiState {
       case "SYNC_TODOS": {
         const todoIdSet = new Set(intent.todoIds);
         setIntersect(draft.preparation.expandedTodos, todoIdSet);
+        draft.preparation.todosRefreshTrigger += 1;
         return;
       }
 

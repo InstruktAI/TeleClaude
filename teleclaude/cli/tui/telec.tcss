@@ -17,8 +17,8 @@ Screen {
     background: $background;
 }
 
-/* ── Global hover/focus suppression ───────────────────── */
-/* Kill Textual default hover/focus backgrounds on tree widgets.
+/* ── Global hover/focus/active suppression ────────────── */
+/* Kill Textual default interaction backgrounds on tree widgets.
    Modal form elements (#modal-box inputs/buttons) keep focus. */
 Widget:hover {
     background: transparent;
@@ -27,6 +27,7 @@ Widget:hover {
 Widget:focus {
     background: transparent;
 }
+
 
 /* Suppress focus-within propagation on structural containers.
    Focus flows inward (views get focused) — parent containers should not
@@ -116,17 +117,15 @@ ConfigView {
 }
 
 /* ── Footer ────────────────────────────────────────────── */
-#footer {
+#footer-area {
     dock: bottom;
-    height: 4;
-}
-
-ActionBar {
     height: 3;
 }
 
-StatusBar {
-    height: 1;
+TelecFooter {
+    height: 3;
+    background: $panel;
+    color: $foreground;
 }
 
 /* ── Session tree rows ─────────────────────────────────── */

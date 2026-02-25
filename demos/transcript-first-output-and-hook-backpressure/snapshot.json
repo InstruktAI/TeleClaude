@@ -1,0 +1,25 @@
+{
+  "slug": "transcript-first-output-and-hook-backpressure",
+  "title": "Transcript-First Output and Hook Backpressure",
+  "version": "0.1.0",
+  "delivered_date": "2026-02-24",
+  "merge_commit": "5405aa004baf50d40fea56006f056a6aee8dc81c",
+  "metrics": {
+    "commits": 22,
+    "files_changed": 101,
+    "files_created": 11,
+    "insertions": 2424,
+    "deletions": 3551,
+    "test_files_added": 0,
+    "review_rounds": 2,
+    "critical_findings": 0,
+    "important_findings": 2,
+    "suggestions": 2
+  },
+  "acts": {
+    "challenge": "Output delivery was split across hook-triggered fanout and transcript polling, creating duplicate updates, noisy logs, and backlog risk under bursty tool-event sessions.",
+    "build": "The delivery unified output progression to transcript/polling cadence, kept hooks as control-plane signals, and added bounded queue/coalescing behavior with updated runtime tests and architecture docs.",
+    "gauntlet": "Build gates initially failed and were reworked to green, then finalize-prepare required resolving main integration conflicts before orchestrator apply and merge completion.",
+    "next": "Track follow-up hardening for critical-only queue saturation and lag percentile validation over multi-sample burst processing so R3/R5 guarantees stay auditable."
+  }
+}

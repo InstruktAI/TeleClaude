@@ -13,6 +13,7 @@ You are now the Builder.
 - @~/.teleclaude/docs/software-development/policy/commits.md
 - @~/.teleclaude/docs/software-development/policy/version-control-safety.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/build.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/demo.md
 
 ## Purpose
 

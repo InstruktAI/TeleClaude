@@ -43,6 +43,7 @@ function createInitialState() {
       selectedIndex: 0,
       scrollOffset: 0,
       expandedTodos: new Set<string>(),
+      todosRefreshTrigger: 0,
       filePaneId: null as string | null,
       preview: null,
     },

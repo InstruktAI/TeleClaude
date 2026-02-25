@@ -176,3 +176,59 @@ def test_tui_user_prompt_submit_sets_input_highlight():
     assert session_id in state.sessions.input_highlights
     assert session_id not in state.sessions.output_highlights
     assert session_id not in state.sessions.temp_output_highlights
+
+
+# --- Canonical contract field broadcast regression ---
+
+
+@pytest.mark.asyncio
+async def test_api_server_broadcasts_canonical_fields_when_present() -> None:
+    """Canonical fields should appear in broadcast payload when event carries them."""
+    from teleclaude.api_server import APIServer
+
+    handler = APIServer.__new__(APIServer)
+    handler._broadcast_payload = MagicMock()
+
+    event = AgentActivityEvent(
+        session_id="sess-canonical",
+        event_type="tool_use",
+        tool_name="Read",
+        timestamp="2024-01-01T00:00:00+00:00",
+        canonical_type="agent_output_update",
+        message_intent="ctrl_activity",
+        delivery_scope="CTRL",
+    )
+
+    await handler._handle_agent_activity_event("agent_activity", event)
+
+    payload = handler._broadcast_payload.call_args[0][1]
+    # hook type still present for compatibility
+    assert payload["type"] == "tool_use"
+    # canonical contract fields in broadcast
+    assert payload["canonical_type"] == "agent_output_update"
+    assert payload["message_intent"] == "ctrl_activity"
+    assert payload["delivery_scope"] == "CTRL"
+
+
+@pytest.mark.asyncio
+async def test_api_server_excludes_canonical_fields_when_absent() -> None:
+    """When canonical fields are None (legacy event), exclude_none should omit them."""
+    from teleclaude.api_server import APIServer
+
+    handler = APIServer.__new__(APIServer)
+    handler._broadcast_payload = MagicMock()
+
+    # Minimal event with no canonical fields (backward compat path)
+    event = AgentActivityEvent(
+        session_id="sess-legacy",
+        event_type="tool_done",
+    )
+
+    await handler._handle_agent_activity_event("agent_activity", event)
+
+    payload = handler._broadcast_payload.call_args[0][1]
+    assert payload["type"] == "tool_done"
+    # canonical fields absent (None excluded)
+    assert "canonical_type" not in payload
+    assert "message_intent" not in payload
+    assert "delivery_scope" not in payload

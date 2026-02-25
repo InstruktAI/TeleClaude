@@ -103,6 +103,8 @@ class TmuxPaneManager:
     └─────────────┴────────────────────┘
     """
 
+    TUI_SESSION_PREFIX = "tc_tui"
+
     def __init__(self, *, is_reload: bool = False) -> None:
         """Initialize pane manager.
 
@@ -127,6 +129,7 @@ class TmuxPaneManager:
         self._tui_pane_id: str | None = None
         if self._in_tmux:
             self._tui_pane_id = self._get_current_pane_id()
+            self._validate_tui_pane()
             self._init_panes(is_reload)
             # Ensure the tmux server knows tmux-256color clients support
             # truecolor.  Without this, RGB escape sequences from CLIs are
@@ -472,6 +475,33 @@ class TmuxPaneManager:
             return pane_id
         output = self._run_tmux("display-message", "-p", "#{pane_id}")
         return output if output else None
+
+    def _validate_tui_pane(self) -> None:
+        """Verify _tui_pane_id belongs to the TUI tmux session.
+
+        If telec is started from inside an agent pane (e.g., tc_38ace093),
+        TMUX_PANE points at the agent pane, not the TUI pane. split-window
+        would then create panes inside the agent's tmux window — a hard-to-
+        diagnose orphan pane bug.  Disable pane management when detected.
+        """
+        if not self._tui_pane_id:
+            return
+        session_name = self._run_tmux(
+            "display-message",
+            "-t",
+            self._tui_pane_id,
+            "-p",
+            "#{session_name}",
+        )
+        if session_name and not session_name.startswith(self.TUI_SESSION_PREFIX):
+            logger.error(
+                "TUI pane %s belongs to session '%s', not '%s' — disabling pane management to prevent orphan splits",
+                self._tui_pane_id,
+                session_name,
+                self.TUI_SESSION_PREFIX,
+            )
+            self._tui_pane_id = None
+            self._in_tmux = False
 
     def get_active_pane_id(self) -> str | None:
         """Return the active pane id for the current tmux client."""

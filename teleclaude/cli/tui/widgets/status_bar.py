@@ -10,7 +10,7 @@ from textual.widget import Widget
 
 from teleclaude.cli.models import AgentAvailabilityInfo
 from teleclaude.cli.tui.base import TelecMixin
-from teleclaude.cli.tui.messages import SettingsChanged
+from teleclaude.cli.tui.messages import SettingsChanged, StateChanged
 from teleclaude.cli.tui.theme import get_agent_color, get_agent_style
 from teleclaude.cli.tui.utils.formatters import format_countdown
 
@@ -34,6 +34,7 @@ class StatusBar(TelecMixin, Widget):
     tts_enabled = reactive(False)
     animation_mode = reactive("periodic")
     pane_theming_mode = reactive("off")
+    persistence_key = "status_bar"
 
     def __init__(
         self,
@@ -47,6 +48,8 @@ class StatusBar(TelecMixin, Widget):
         self._tts_start_x: int = 0
         self._tts_end_x: int = 0
         self._anim_start_x: int = 0
+        # Track agent pill positions: (start_x, end_x, agent_name)
+        self._agent_regions: list[tuple[int, int, str]] = []
 
     def update_availability(self, availability: dict[str, AgentAvailabilityInfo]) -> None:
         self._agent_availability = availability
@@ -121,12 +124,16 @@ class StatusBar(TelecMixin, Widget):
 
     def render(self) -> Text:
         line = Text()
+        self._agent_regions = []
 
         # Left: agent availability pills
         for i, agent in enumerate(("claude", "gemini", "codex")):
             if i > 0:
                 line.append("  ")
+            start_x = line.cell_len
             line.append_text(self._build_agent_pill(agent))
+            end_x = line.cell_len
+            self._agent_regions.append((start_x, end_x, agent))
 
         # Right: toggles (pane theming, TTS, animation)
         toggles = Text()
@@ -166,8 +173,16 @@ class StatusBar(TelecMixin, Widget):
         return line
 
     def on_click(self, event: Click) -> None:
-        """Handle clicks on toggle regions."""
+        """Handle clicks on agent pills and toggle regions."""
         x = event.x
+
+        # Check agent pill clicks first
+        for start_x, end_x, agent in self._agent_regions:
+            if start_x <= x < end_x:
+                self.post_message(SettingsChanged("agent_status", {"agent": agent}))
+                return
+
+        # Check toggle clicks
         if x >= self._anim_start_x:
             cycle = ["off", "periodic", "party"]
             idx = cycle.index(self.animation_mode) if self.animation_mode in cycle else 0
@@ -183,6 +198,30 @@ class StatusBar(TelecMixin, Widget):
 
     def watch_animation_mode(self, _value: str) -> None:
         self.refresh()
+        if self.is_mounted:
+            self.post_message(StateChanged())
 
     def watch_pane_theming_mode(self, _value: str) -> None:
         self.refresh()
+        if self.is_mounted:
+            self.post_message(StateChanged())
+
+    def get_persisted_state(self) -> dict[str, object]:  # guard: loose-dict - widget state payload
+        return {
+            "animation_mode": self.animation_mode,
+            "pane_theming_mode": self.pane_theming_mode,
+        }
+
+    def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict - widget state payload
+        animation_mode = data.get("animation_mode")
+        if isinstance(animation_mode, str) and animation_mode in {"off", "periodic", "party"}:
+            self.animation_mode = animation_mode
+
+        pane_theming_mode = data.get("pane_theming_mode")
+        if isinstance(pane_theming_mode, str) and pane_theming_mode:
+            from teleclaude.cli.tui.theme import normalize_pane_theming_mode
+
+            try:
+                self.pane_theming_mode = normalize_pane_theming_mode(pane_theming_mode)
+            except ValueError:
+                pass

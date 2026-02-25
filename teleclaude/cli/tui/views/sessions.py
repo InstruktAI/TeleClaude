@@ -7,17 +7,20 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger as _get_logger
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
+from textual.widgets import Footer
 
 from teleclaude.cli.models import ComputerInfo, ProjectInfo, SessionInfo
 from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
-    CursorContextChanged,
     KillSessionRequest,
     PreviewChanged,
+    RestartSessionsRequest,
     ReviveSessionRequest,
+    StateChanged,
     StickyChanged,
 )
 from teleclaude.cli.tui.tree import (
@@ -67,21 +70,23 @@ class SessionsView(Widget, can_focus=True):
     """
 
     BINDINGS = [
-        ("up", "cursor_up", "Previous"),
-        ("down", "cursor_down", "Next"),
-        ("space", "toggle_preview", "Preview/Sticky"),
-        ("enter", "focus_pane", "Focus pane"),
-        ("left", "collapse", "Collapse"),
-        ("right", "expand", "Expand"),
-        ("plus", "expand_all", "Expand all"),
-        ("minus", "collapse_all", "Collapse all"),
-        ("n", "new_session", "New session"),
-        ("k", "kill_session", "Kill session"),
-        ("R", "restart_session", "Restart session"),
+        Binding("up", "cursor_up", "Up", key_display="↑", group=Binding.Group("Nav", compact=True), show=False),
+        Binding("down", "cursor_down", "Down", key_display="↓", group=Binding.Group("Nav", compact=True), show=False),
+        Binding("space", "toggle_preview", "Preview/Sticky"),
+        Binding("enter", "focus_pane", "Focus"),
+        Binding("left", "collapse", "Collapse", key_display="←", group=Binding.Group("Fold", compact=True), show=False),
+        Binding("right", "expand", "Expand", key_display="→", group=Binding.Group("Fold", compact=True), show=False),
+        Binding("equals_sign", "expand_all", "All", key_display="+", group=Binding.Group("Fold", compact=True)),
+        Binding("minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True)),
+        Binding("n", "new_session", "New"),
+        Binding("k", "kill_session", "Kill"),
+        Binding("R", "restart_session", "Restart"),
+        Binding("R", "restart_all", "Restart All"),
     ]
 
     preview_session_id = reactive[str | None](None)
     cursor_index = reactive(0)
+    persistence_key = "sessions"
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
@@ -139,6 +144,18 @@ class SessionsView(Widget, can_focus=True):
         if availability is not None:
             self._availability = availability
 
+        # Prune stale session IDs from sticky/preview state
+        state_changed = False
+        stale_sticky = [sid for sid in self._sticky_session_ids if sid not in new_ids]
+        if stale_sticky:
+            self._logger.info("Pruning %d stale sticky IDs: %s", len(stale_sticky), [s[:8] for s in stale_sticky])
+            self._sticky_session_ids = [sid for sid in self._sticky_session_ids if sid in new_ids]
+            state_changed = True
+        if self.preview_session_id and self.preview_session_id not in new_ids:
+            self._logger.info("Pruning stale preview ID: %s", self.preview_session_id[:8])
+            self.preview_session_id = None
+            state_changed = True
+
         if old_ids != new_ids or not self._nav_items:
             # Session list changed — full rebuild (includes _apply_pending_selection)
             self._rebuild_tree()
@@ -151,23 +168,48 @@ class SessionsView(Widget, can_focus=True):
             # Session data updated — pending session may now have a tmux pane
             self._apply_pending_selection()
 
-    def load_persisted_state(
-        self,
-        sticky_ids: list[str],
-        input_highlights: set[str],
-        output_highlights: set[str],
-        last_output_summary: dict[str, dict[str, object]],  # guard: loose-dict
-        collapsed_sessions: set[str],
-        preview_session_id: str | None,
-    ) -> None:
+        if state_changed:
+            self._notify_state_changed()
+
+    def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict
         """Restore persisted state from state_store."""
-        self._sticky_session_ids = sticky_ids
-        self._input_highlights = input_highlights
-        self._output_highlights = output_highlights
-        self._last_output_summary = last_output_summary
-        self._collapsed_sessions = collapsed_sessions
-        if preview_session_id:
-            self.preview_session_id = preview_session_id
+        sticky_data = data.get("sticky_sessions", [])
+        if isinstance(sticky_data, list):
+            self._sticky_session_ids = [
+                str(item.get("session_id", ""))
+                for item in sticky_data
+                if isinstance(item, dict) and item.get("session_id")
+            ]
+
+        input_highlights = data.get("input_highlights", [])
+        if isinstance(input_highlights, list):
+            self._input_highlights = {str(item) for item in input_highlights}
+
+        output_highlights = data.get("output_highlights", [])
+        if isinstance(output_highlights, list):
+            self._output_highlights = {str(item) for item in output_highlights}
+
+        last_output_summary = data.get("last_output_summary", {})
+        if isinstance(last_output_summary, dict):
+            parsed: dict[str, dict[str, object]] = {}  # guard: loose-dict - persisted activity summaries
+            for session_id, value in last_output_summary.items():
+                if not isinstance(session_id, str):
+                    continue
+                if isinstance(value, dict) and "text" in value:
+                    parsed[session_id] = value
+                elif isinstance(value, str):
+                    parsed[session_id] = {"text": value, "ts": 0.0}
+            self._last_output_summary = parsed
+
+        collapsed_sessions = data.get("collapsed_sessions", [])
+        if isinstance(collapsed_sessions, list):
+            self._collapsed_sessions = {str(item) for item in collapsed_sessions}
+
+        preview_data = data.get("preview")
+        if isinstance(preview_data, dict):
+            preview_id = preview_data.get("session_id")
+            if isinstance(preview_id, str) and preview_id:
+                self.preview_session_id = preview_id
 
     def request_select_session(self, session_id: str) -> None:
         """Request auto-selection of a session once it appears in the tree.
@@ -202,6 +244,7 @@ class SessionsView(Widget, can_focus=True):
                 self.preview_session_id = target_id
                 self._clear_session_highlights(target_id)
                 self.post_message(PreviewChanged(target_id, request_focus=False))
+                self._notify_state_changed()
                 return
 
         # Not in tree yet — keep pending
@@ -332,7 +375,6 @@ class SessionsView(Widget, can_focus=True):
 
         Selection visuals are handled in each widget's render() method (not CSS),
         so we must explicitly refresh widgets when their selected state changes.
-        Also posts CursorContextChanged so ActionBar shows relevant hints.
         """
         for i, widget in enumerate(self._nav_items):
             was_selected = widget.has_class("selected")
@@ -340,15 +382,6 @@ class SessionsView(Widget, can_focus=True):
             widget.set_class(is_selected, "selected")
             if was_selected != is_selected:
                 widget.refresh()
-        # Notify ActionBar of cursor item type
-        if self._nav_items and 0 <= self.cursor_index < len(self._nav_items):
-            item = self._nav_items[self.cursor_index]
-            if isinstance(item, SessionRow):
-                self.post_message(CursorContextChanged("session"))
-            elif isinstance(item, ComputerHeader):
-                self.post_message(CursorContextChanged("computer"))
-            elif isinstance(item, ProjectHeader):
-                self.post_message(CursorContextChanged("project"))
 
     def _current_session_row(self) -> SessionRow | None:
         """Get the SessionRow at the current cursor position, if any."""
@@ -356,6 +389,15 @@ class SessionsView(Widget, can_focus=True):
             return None
         item = self._nav_items[self.cursor_index]
         return item if isinstance(item, SessionRow) else None
+
+    def _current_item(self) -> Widget | None:
+        """Get current cursor item."""
+        if not self._nav_items or self.cursor_index >= len(self._nav_items):
+            return None
+        return self._nav_items[self.cursor_index]
+
+    def _notify_state_changed(self) -> None:
+        self.post_message(StateChanged())
 
     # --- Helpers ---
 
@@ -406,14 +448,21 @@ class SessionsView(Widget, can_focus=True):
 
     def _clear_session_highlights(self, session_id: str) -> None:
         """Clear input/output highlights and active tool for a session."""
+        had_input = session_id in self._input_highlights
+        had_output = session_id in self._output_highlights
         self._cancel_highlight_timer(session_id)
         self._input_highlights.discard(session_id)
         self._output_highlights.discard(session_id)
+        changed = had_input or had_output
         for widget in self._nav_items:
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
+                if widget.active_tool:
+                    changed = True
                 widget.highlight_type = ""
                 widget.active_tool = ""
                 break
+        if changed:
+            self._notify_state_changed()
 
     def _cancel_highlight_timer(self, session_id: str) -> None:
         """Cancel any pending highlight auto-clear timer for a session."""
@@ -432,13 +481,20 @@ class SessionsView(Widget, can_focus=True):
     def _auto_clear_highlight(self, session_id: str) -> None:
         """Auto-clear callback — remove highlights and active tool."""
         self._highlight_timers.pop(session_id, None)
+        had_input = session_id in self._input_highlights
+        had_output = session_id in self._output_highlights
         self._input_highlights.discard(session_id)
         self._output_highlights.discard(session_id)
+        changed = had_input or had_output
         for widget in self._nav_items:
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
+                if widget.active_tool:
+                    changed = True
                 widget.highlight_type = ""
                 widget.active_tool = ""
                 break
+        if changed:
+            self._notify_state_changed()
 
     # --- Mouse click handling (widget-level Pressed messages) ---
 
@@ -447,6 +503,7 @@ class SessionsView(Widget, can_focus=True):
 
         Single click: move cursor + preview with focus.
         Double click: toggle sticky.
+        Shift+click: behave like Space (preview/sticky without focus).
         """
         row = message.session_row
         idx = self._find_nav_index(row)
@@ -456,6 +513,11 @@ class SessionsView(Widget, can_focus=True):
         self.cursor_index = idx
         self._update_cursor_highlight()
         self._scroll_to_cursor()
+
+        if message.shift:
+            self.action_toggle_preview()
+            self.focus()
+            return
 
         session_id = row.session_id
         now = time.monotonic()
@@ -480,6 +542,7 @@ class SessionsView(Widget, can_focus=True):
         self.preview_session_id = session_id
         self._clear_session_highlights(session_id)
         self.post_message(PreviewChanged(session_id, request_focus=True))
+        self._notify_state_changed()
         self.focus()
 
     def on_computer_header_pressed(self, message: ComputerHeader.Pressed) -> None:
@@ -557,18 +620,21 @@ class SessionsView(Widget, can_focus=True):
                 self.preview_session_id = session_id
                 self._clear_session_highlights(session_id)
                 self.post_message(PreviewChanged(session_id, request_focus=False))
+            self._notify_state_changed()
 
         elif decision.action == TreeInteractionAction.TOGGLE_STICKY:
             self._toggle_sticky(session_id)
             if decision.clear_preview:
                 self.preview_session_id = None
                 self.post_message(PreviewChanged(None, request_focus=False))
+                self._notify_state_changed()
             self._interaction.mark_double_press_guard(session_id, now)
 
         elif decision.action == TreeInteractionAction.CLEAR_STICKY_PREVIEW:
             self.preview_session_id = None
             self._clear_session_highlights(session_id)
             self.post_message(PreviewChanged(None, request_focus=False))
+            self._notify_state_changed()
 
     def _toggle_sticky(self, session_id: str) -> None:
         """Toggle sticky status for a session."""
@@ -585,17 +651,22 @@ class SessionsView(Widget, can_focus=True):
                 widget.is_sticky = widget.session_id in self._sticky_session_ids
 
         self.post_message(StickyChanged(self._sticky_session_ids.copy()))
+        self._notify_state_changed()
 
     def action_focus_pane(self) -> None:
         """Enter: on a session — preview AND focus the tmux pane.
 
-        On a project/computer header — open new session modal.
+        On a project header — open new session modal.
+        On a computer header — restart all sessions on that computer.
         If session is headless, revive it first.
         """
         row = self._current_session_row()
         if not row:
-            # On a project or computer header — open new session modal
-            self.action_new_session()
+            item = self._current_item()
+            if isinstance(item, ComputerHeader):
+                self.action_restart_all()
+            else:
+                self.action_new_session()
             return
 
         # Headless sessions: revive instead of focus
@@ -613,6 +684,7 @@ class SessionsView(Widget, can_focus=True):
 
         # Post with request_focus=True — pane shows AND cursor transfers to it
         self.post_message(PreviewChanged(session_id, request_focus=True))
+        self._notify_state_changed()
 
     def action_collapse(self) -> None:
         """Left: collapse selected session row."""
@@ -620,6 +692,7 @@ class SessionsView(Widget, can_focus=True):
         if row and not row.collapsed:
             row.collapsed = True
             self._collapsed_sessions.discard(row.session_id)
+            self._notify_state_changed()
 
     def action_expand(self) -> None:
         """Right: expand selected session row."""
@@ -627,6 +700,7 @@ class SessionsView(Widget, can_focus=True):
         if row and row.collapsed:
             row.collapsed = False
             self._collapsed_sessions.add(row.session_id)
+            self._notify_state_changed()
 
     def action_expand_all(self) -> None:
         """+ : expand all session rows."""
@@ -634,6 +708,7 @@ class SessionsView(Widget, can_focus=True):
             if isinstance(widget, SessionRow):
                 widget.collapsed = False
                 self._collapsed_sessions.add(widget.session_id)
+        self._notify_state_changed()
 
     def action_collapse_all(self) -> None:
         """- : collapse all session rows."""
@@ -641,6 +716,7 @@ class SessionsView(Widget, can_focus=True):
             if isinstance(widget, SessionRow):
                 widget.collapsed = True
         self._collapsed_sessions.clear()
+        self._notify_state_changed()
 
     def _resolve_context_for_cursor(self) -> tuple[str, str] | None:
         """Resolve computer + project_path from the current cursor position.
@@ -735,6 +811,78 @@ class SessionsView(Widget, can_focus=True):
 
         self.post_message(RestartSessionRequest(row.session_id, row.session.computer or "local"))
 
+    def action_restart_all(self) -> None:
+        """R on computer header: restart all sessions on that computer."""
+        item = self._current_item()
+        if not isinstance(item, ComputerHeader):
+            return
+
+        computer = item.data.computer.name
+        session_ids = sorted({s.session_id for s in self._sessions if (s.computer or "local") == computer})
+        if not session_ids:
+            self.app.notify(f"No sessions to restart on {computer}", severity="warning")
+            return
+
+        modal = ConfirmModal(
+            title="Restart All Sessions",
+            message=f"Restart {len(session_ids)} sessions on '{computer}'?",
+        )
+
+        def on_confirm(confirmed: bool | None) -> None:
+            if confirmed:
+                self.post_message(RestartSessionsRequest(computer=computer, session_ids=session_ids))
+
+        self.app.push_screen(modal, on_confirm)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Enable/hide actions based on current tree node type."""
+        del parameters
+        item = self._current_item()
+
+        if action == "new_session":
+            return isinstance(item, ProjectHeader)
+        if action == "focus_pane":
+            return isinstance(item, (ProjectHeader, ComputerHeader, SessionRow))
+        if action in {"kill_session", "restart_session", "toggle_preview"}:
+            return isinstance(item, SessionRow)
+        if action == "restart_all":
+            return isinstance(item, ComputerHeader)
+        return True
+
+    def _default_footer_action(self) -> str | None:
+        """Return the primary action for the selected node."""
+        item = self._current_item()
+        if isinstance(item, ComputerHeader):
+            return "restart_all"
+        if isinstance(item, ProjectHeader):
+            return "new_session"
+        if isinstance(item, SessionRow):
+            return "focus_pane"
+        return None
+
+    def _sync_default_footer_action(self) -> None:
+        """Mark the active default action in Footer."""
+        if not self.is_attached:
+            return
+        try:
+            footer = self.app.query_one(Footer)
+        except Exception:
+            return
+        default_action = self._default_footer_action()
+        for key_widget in footer.query("FooterKey"):
+            key_widget.set_class(getattr(key_widget, "action", None) == default_action, "default-action")
+
+    def watch_cursor_index(self, _index: int) -> None:
+        """Refresh key bindings when node context changes."""
+        if self.is_attached:
+            self.app.refresh_bindings()
+            self.call_after_refresh(self._sync_default_footer_action)
+
+    def on_focus(self) -> None:
+        """Sync default footer styling when the view receives focus."""
+        self.app.refresh_bindings()
+        self.call_after_refresh(self._sync_default_footer_action)
+
     # --- Reactive watchers ---
 
     def watch_preview_session_id(self, old_session_id: str | None, new_session_id: str | None) -> None:
@@ -765,6 +913,7 @@ class SessionsView(Widget, can_focus=True):
         self._update_row_highlight(session_id, "input")
         if session_id == self.preview_session_id:
             self._schedule_highlight_clear(session_id)
+        self._notify_state_changed()
 
     def set_output_highlight(self, session_id: str, summary: str = "") -> None:
         """Mark session as having new output.
@@ -786,12 +935,14 @@ class SessionsView(Widget, can_focus=True):
         self._update_row_highlight(session_id, "output")
         if session_id == self.preview_session_id:
             self._schedule_highlight_clear(session_id)
+        self._notify_state_changed()
 
     def clear_highlight(self, session_id: str) -> None:
         """Clear highlight for a session."""
         self._input_highlights.discard(session_id)
         self._output_highlights.discard(session_id)
         self._update_row_highlight(session_id, "")
+        self._notify_state_changed()
 
     def _update_row_highlight(self, session_id: str, highlight_type: str) -> None:
         """Update highlight type on a session row."""
@@ -825,13 +976,18 @@ class SessionsView(Widget, can_focus=True):
                 break
         if session_id == self.preview_session_id:
             self._schedule_highlight_clear(session_id)
+        self._notify_state_changed()
 
     def clear_active_tool(self, session_id: str) -> None:
         """Clear active tool display for a session."""
+        changed = False
         for widget in self._nav_items:
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
+                changed = bool(widget.active_tool)
                 widget.active_tool = ""
                 break
+        if changed:
+            self._notify_state_changed()
 
     # --- State export for persistence ---
 

@@ -1,0 +1,106 @@
+/**
+ * TeleClaude theme overrides — edit values, refresh browser. No rebuild needed.
+ *
+ * Uncomment and modify any variable to customize colors without touching the codebase.
+ * This file is loaded after the main stylesheet, so CSS cascade rules apply.
+ *
+ * Workflow:
+ *   1. Uncomment a variable below
+ *   2. Change the hex value
+ *   3. Refresh your browser
+ *   4. No rebuild, no restart
+ *
+ * All changes are local. This file is gitignored after initial commit.
+ */
+
+:root {
+  /* -------------------------------------------------------------------------
+   * User colors (mode-independent)
+   * ------------------------------------------------------------------------- */
+  /* --user-bubble-bg: #e07030; */
+  /* --user-bubble-text: #ffffff; */
+
+  /* -------------------------------------------------------------------------
+   * Agent colors — Claude (warm browns/golds)
+   * ------------------------------------------------------------------------- */
+  /* --agent-claude-subtle: varies by mode; */
+  /* --agent-claude-muted: varies by mode; */
+  /* --agent-claude-normal: varies by mode; */
+  /* --agent-claude-highlight: varies by mode; */
+  /* --agent-claude-haze: #af875f; */
+
+  /* -------------------------------------------------------------------------
+   * Agent colors — Gemini (purples)
+   * ------------------------------------------------------------------------- */
+  /* --agent-gemini-subtle: varies by mode; */
+  /* --agent-gemini-muted: varies by mode; */
+  /* --agent-gemini-normal: varies by mode; */
+  /* --agent-gemini-highlight: varies by mode; */
+  /* --agent-gemini-haze: #af87ff (dark) / #af5fff (light); */
+
+  /* -------------------------------------------------------------------------
+   * Agent colors — Codex (blues)
+   * ------------------------------------------------------------------------- */
+  /* --agent-codex-subtle: varies by mode; */
+  /* --agent-codex-muted: varies by mode; */
+  /* --agent-codex-normal: varies by mode; */
+  /* --agent-codex-highlight: varies by mode; */
+  /* --agent-codex-haze: #87afaf (dark) / #5f8787 (light); */
+
+  /* -------------------------------------------------------------------------
+   * Background layers
+   * ------------------------------------------------------------------------- */
+  /* --bg-base: #000000 (dark) / #fdf6e3 (light); */
+  /* --bg-surface: #000000 (dark) / #fdf6e3 (light); */
+  /* --bg-elevated: #000000 (dark) / #fdf6e3 (light); */
+  /* --bg-overlay: rgba(0, 0, 0, 0.6) (dark) / rgba(255, 255, 255, 0.6) (light); */
+
+  /* -------------------------------------------------------------------------
+   * Text colors
+   * ------------------------------------------------------------------------- */
+  /* --text-primary: #e4e4e4 (dark) / #1c1c1c (light); */
+  /* --text-secondary: #bcbcbc (dark) / #444444 (light); */
+  /* --text-muted: #808080; */
+
+  /* -------------------------------------------------------------------------
+   * Border colors
+   * ------------------------------------------------------------------------- */
+  /* --border-default: #585858 (dark) / #a8a8a8 (light); */
+  /* --border-subtle: #3a3a3a (dark) / #c6c6c6 (light); */
+  /* --border-modal: #bcbcbc (dark) / #303030 (light); */
+  /* --border-input: #8a8a8a (dark) / #585858 (light); */
+
+  /* -------------------------------------------------------------------------
+   * Selection colors
+   * ------------------------------------------------------------------------- */
+  /* --selection-base: #444444 (dark) / #d0d0d0 (light); */
+  /* --selection-surface: #4e4e4e (dark) / #c6c6c6 (light); */
+  /* --selection-elevated: #585858 (dark) / #bcbcbc (light); */
+
+  /* -------------------------------------------------------------------------
+   * Status colors
+   * ------------------------------------------------------------------------- */
+  /* --status-active: #5faf5f (dark) / #008700 (light); */
+  /* --status-idle: #585858 (dark) / #a8a8a8 (light); */
+  /* --status-error: #ff5f5f (dark) / #d70000 (light); */
+  /* --status-ready: #5faf5f (dark) / #008700 (light); */
+  /* --status-warning: #d7af00 (dark) / #af8700 (light); */
+
+  /* -------------------------------------------------------------------------
+   * Peaceful mode colors (neutral alternatives when theming is off)
+   * ------------------------------------------------------------------------- */
+  /* --peaceful-normal: #bcbcbc (dark) / #444444 (light); */
+  /* --peaceful-muted: #585858 (dark) / #808080 (light); */
+
+  /* -------------------------------------------------------------------------
+   * Misc
+   * ------------------------------------------------------------------------- */
+  /* --banner: #585858 (dark) / #808080 (light); */
+  /* --tab-line: #585858 (dark) / #808080 (light); */
+  /* --status-bar-fg: #727578; */
+}
+
+/* Dark mode overrides (optional) */
+/* .dark { */
+  /* Add dark-mode-specific overrides here if needed */
+/* } */

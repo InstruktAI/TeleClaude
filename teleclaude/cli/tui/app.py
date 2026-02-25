@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from textual import work
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import TabbedContent, TabPane
 
@@ -22,6 +23,7 @@ from teleclaude.cli.models import (
     ProjectsInitialEvent,
     ProjectWithTodosInfo,
     SessionClosedEvent,
+    SessionLifecycleStatusEvent,
     SessionsInitialEvent,
     SessionStartedEvent,
     SessionUpdatedEvent,
@@ -30,7 +32,6 @@ from teleclaude.cli.models import (
 from teleclaude.cli.tui.messages import (
     AgentActivity,
     CreateSessionRequest,
-    CursorContextChanged,
     DataRefreshed,
     DocEditRequest,
     DocPreviewRequest,
@@ -38,14 +39,17 @@ from teleclaude.cli.tui.messages import (
     KillSessionRequest,
     PreviewChanged,
     RestartSessionRequest,
+    RestartSessionsRequest,
     ReviveSessionRequest,
     SessionClosed,
     SessionStarted,
     SessionUpdated,
     SettingsChanged,
+    StateChanged,
     StickyChanged,
 )
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
+from teleclaude.cli.tui.persistence import Persistable, get_persistence_key
 from teleclaude.cli.tui.state_store import load_state, save_state
 from teleclaude.cli.tui.theme import (
     _TELECLAUDE_DARK_AGENT_THEME,
@@ -60,10 +64,9 @@ from teleclaude.cli.tui.views.config import ConfigView
 from teleclaude.cli.tui.views.jobs import JobsView
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
-from teleclaude.cli.tui.widgets.action_bar import ActionBar
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
-from teleclaude.cli.tui.widgets.status_bar import StatusBar
+from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 
 if TYPE_CHECKING:
     from teleclaude.cli.api_client import TelecAPIClient
@@ -88,13 +91,41 @@ class TelecApp(App[str | None]):
     TITLE = "TeleClaude"
 
     BINDINGS = [
-        ("q", "quit", "Quit"),
-        ("1", "switch_tab('sessions')", "Sessions"),
-        ("2", "switch_tab('preparation')", "Preparation"),
-        ("3", "switch_tab('jobs')", "Jobs"),
-        ("4", "switch_tab('config')", "Config"),
-        ("r", "refresh", "Refresh"),
-        ("t", "cycle_pane_theming", "Cycle pane theme"),
+        Binding("q", "quit", "Quit", key_display="⏻"),
+        Binding(
+            "1",
+            "switch_tab('sessions')",
+            "Sessions",
+            key_display="①",
+            group=Binding.Group("Views", compact=True),
+            show=False,
+        ),
+        Binding(
+            "2",
+            "switch_tab('preparation')",
+            "Prep",
+            key_display="②",
+            group=Binding.Group("Views", compact=True),
+            show=False,
+        ),
+        Binding(
+            "3",
+            "switch_tab('jobs')",
+            "Jobs",
+            key_display="③",
+            group=Binding.Group("Views", compact=True),
+            show=False,
+        ),
+        Binding(
+            "4",
+            "switch_tab('config')",
+            "Config",
+            key_display="④",
+            group=Binding.Group("Views", compact=True),
+            show=False,
+        ),
+        Binding("r", "refresh", "Refresh", key_display="↻"),
+        Binding("t", "cycle_pane_theming", "Cycle Theme", key_display="◑"),
     ]
 
     def __init__(
@@ -108,16 +139,23 @@ class TelecApp(App[str | None]):
         self.register_theme(_TELECLAUDE_LIGHT_THEME)
         self.register_theme(_TELECLAUDE_DARK_AGENT_THEME)
         self.register_theme(_TELECLAUDE_LIGHT_AGENT_THEME)
+        from teleclaude.cli.tui import theme
         from teleclaude.cli.tui.theme import is_dark_mode
 
-        # Initial theme selection: respect persisted pane theming mode
-        # We don't have settings loaded yet (async), but we can default based on env/system
-        # However, theme.get_pane_theming_mode() reads from config (which might not be synced yet?)
-        # Actually config is a global singleton loaded at module level, so it might be available.
-        # But for robustness, we start with peaceful/dark and update on data refresh.
-        # Wait, config.ui.pane_theming_mode is available if config is loaded.
+        self._persisted = load_state()
+        persisted_status = self._persisted.get("status_bar", {})
+        persisted_mode = persisted_status.get("pane_theming_mode")
+        if isinstance(persisted_mode, str) and persisted_mode:
+            try:
+                theme.set_pane_theming_mode(persisted_mode)
+            except ValueError:
+                persisted_mode = None
+
         is_dark = is_dark_mode()
-        level = get_pane_theming_mode_level()
+        try:
+            level = get_pane_theming_mode_level(persisted_mode if isinstance(persisted_mode, str) else None)
+        except ValueError:
+            level = get_pane_theming_mode_level()
         is_agent = level in (1, 3, 4)
 
         if is_dark:
@@ -127,7 +165,7 @@ class TelecApp(App[str | None]):
 
         self.api = api
         self._start_view = start_view
-        self._persisted = load_state()
+        self._state_save_timer: object | None = None
         self._computers: list[ComputerInfo] = []
         self._session_status_cache: dict[str, str] = {}
         self._session_agents: dict[str, str] = {}
@@ -180,9 +218,8 @@ class TelecApp(App[str | None]):
                 yield JobsView(id="jobs-view")
             with TabPane("Config", id="config"):
                 yield ConfigView(id="config-view")
-        with Vertical(id="footer"):
-            yield ActionBar(id="action-bar")
-            yield StatusBar(id="status-bar")
+        with Vertical(id="footer-area"):
+            yield TelecFooter(id="telec-footer")
         yield PaneManagerBridge(is_reload=self._is_reload, id="pane-bridge")
         logger.trace("[PERF] compose END t=%.3f", _t.monotonic())
 
@@ -193,29 +230,38 @@ class TelecApp(App[str | None]):
         # Restore persisted state to views
         sessions_view = self.query_one("#sessions-view", SessionsView)
         prep_view = self.query_one("#preparation-view", PreparationView)
-        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
 
-        sessions_view.load_persisted_state(
-            sticky_ids=self._persisted.sticky_session_ids,
-            input_highlights=self._persisted.input_highlights,
-            output_highlights=self._persisted.output_highlights,
-            last_output_summary=self._persisted.last_output_summary,
-            collapsed_sessions=self._persisted.collapsed_sessions,
-            preview_session_id=self._persisted.preview_session_id,
-        )
-        prep_view.load_persisted_state(
-            expanded_todos=self._persisted.expanded_todos,
-        )
-        status_bar.animation_mode = self._persisted.animation_mode
+        sessions_state = self._persisted.get("sessions", {})
+        sessions_view.load_persisted_state(sessions_state)
+
+        preparation_state = self._persisted.get("preparation", {})
+        prep_view.load_persisted_state(preparation_state)
+
+        status_bar_state = self._persisted.get("status_bar", {})
+        status_bar.load_persisted_state(status_bar_state)
+
+        # Apply persisted pane theming to the in-memory theme override
+        from teleclaude.cli.tui import theme
+
+        theme.set_pane_theming_mode(status_bar.pane_theming_mode)
+        self._apply_app_theme_for_mode(status_bar.pane_theming_mode)
 
         # Wire animation engine to banner
         banner = self.query_one(Banner)
         banner.animation_engine = self._animation_engine
-        self._start_animation_mode(self._persisted.animation_mode)
+        self._start_animation_mode(status_bar.animation_mode)
 
         # Switch to starting tab
         tab_ids = {1: "sessions", 2: "preparation", 3: "jobs", 4: "config"}
-        start_tab = tab_ids.get(self._start_view, "sessions")
+        persisted_app_state = self._persisted.get("app", {})
+        persisted_tab = persisted_app_state.get("active_tab")
+        if self._start_view != 1:
+            start_tab = tab_ids.get(self._start_view, "sessions")
+        elif isinstance(persisted_tab, str) and persisted_tab in tab_ids.values():
+            start_tab = persisted_tab
+        else:
+            start_tab = "sessions"
         tabs = self.query_one("#main-tabs", TabbedContent)
         tabs.active = start_tab
         box_tabs = self.query_one("#box-tab-bar", BoxTabBar)
@@ -292,11 +338,9 @@ class TelecApp(App[str | None]):
             ]
 
             try:
-                tts_enabled = bool(getattr(settings, "tts_enabled", False))
-                pane_theming_mode = getattr(settings, "pane_theming_mode", "off") or "off"
+                tts_enabled = settings.tts.enabled if settings else False
             except Exception:
                 tts_enabled = False
-                pane_theming_mode = "off"
 
             self.post_message(
                 DataRefreshed(
@@ -307,7 +351,6 @@ class TelecApp(App[str | None]):
                     availability=availability,
                     jobs=jobs,
                     tts_enabled=tts_enabled,
-                    pane_theming_mode=pane_theming_mode,
                 )
             )
         except Exception:
@@ -320,7 +363,7 @@ class TelecApp(App[str | None]):
         sessions_view = self.query_one("#sessions-view", SessionsView)
         prep_view = self.query_one("#preparation-view", PreparationView)
         jobs_view = self.query_one("#jobs-view", JobsView)
-        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
 
         sessions_view.update_data(
             computers=message.computers,
@@ -332,7 +375,6 @@ class TelecApp(App[str | None]):
         jobs_view.update_data(message.jobs)
         status_bar.update_availability(message.availability)
         status_bar.tts_enabled = message.tts_enabled
-        status_bar.pane_theming_mode = message.pane_theming_mode
 
         logger.trace("[PERF] on_data_refreshed views updated dt=%.3f", _t.monotonic() - _d0)
 
@@ -368,13 +410,14 @@ class TelecApp(App[str | None]):
     def on_preview_changed(self, message: PreviewChanged) -> None:
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_preview_changed(message)
-        self._save_state()
 
     def on_sticky_changed(self, message: StickyChanged) -> None:
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_sticky_changed(message)
         self._update_banner_compactness(len(message.session_ids))
-        self._save_state()
+
+    def on_state_changed(self, _message: StateChanged) -> None:
+        self._schedule_state_save()
 
     def on_focus_pane_request(self, message: FocusPaneRequest) -> None:
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
@@ -387,10 +430,6 @@ class TelecApp(App[str | None]):
     def on_doc_edit_request(self, message: DocEditRequest) -> None:
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_doc_edit_request(message)
-
-    def on_cursor_context_changed(self, message: CursorContextChanged) -> None:
-        action_bar = self.query_one("#action-bar", ActionBar)
-        action_bar.cursor_item_type = message.item_type
 
     # --- WebSocket event handling ---
 
@@ -439,6 +478,7 @@ class TelecApp(App[str | None]):
                 AgentActivity(
                     session_id=event.session_id,
                     activity_type=event.type,
+                    canonical_type=event.canonical_type,
                     tool_name=event.tool_name,
                     tool_preview=event.tool_preview,
                     summary=event.summary,
@@ -449,6 +489,11 @@ class TelecApp(App[str | None]):
         elif isinstance(event, SessionClosedEvent):
             self.post_message(SessionClosed(event.data.session_id))
             self._session_status_cache.pop(event.data.session_id, None)
+
+        elif isinstance(event, SessionLifecycleStatusEvent):
+            # Surface stall and error transitions as TUI notifications.
+            if event.status in ("stalled", "error"):
+                self.notify(f"Session {event.session_id[:8]}: {event.status}", severity="warning")
 
         elif isinstance(event, ErrorEvent):
             self.notify(event.data.message, severity="error")
@@ -470,7 +515,6 @@ class TelecApp(App[str | None]):
             sessions_view.request_select_session(session.session_id)
         # Trigger full data refresh so tree rebuilds
         self._refresh_data()
-        self._save_state()
 
     def on_session_updated(self, message: SessionUpdated) -> None:
         session = message.session
@@ -484,25 +528,39 @@ class TelecApp(App[str | None]):
     def on_session_closed(self, message: SessionClosed) -> None:
         self._session_agents.pop(message.session_id, None)
         self._refresh_data()
-        self._save_state()
 
     def on_agent_activity(self, message: AgentActivity) -> None:
         sessions_view = self.query_one("#sessions-view", SessionsView)
-        if message.activity_type == "agent_input":
+        canonical = message.canonical_type
+        logger.debug(
+            "tui lane: on_agent_activity lane=tui canonical_type=%s session=%s",
+            canonical,
+            message.session_id[:8] if message.session_id else "",
+            extra={"lane": "tui", "canonical_type": canonical, "session_id": message.session_id},
+        )
+        if canonical is None:
+            logger.warning(
+                "tui lane: AgentActivity missing canonical_type lane=tui hook_type=%s session=%s",
+                message.activity_type,
+                message.session_id[:8] if message.session_id else "",
+                extra={"lane": "tui", "canonical_type": None, "session_id": message.session_id},
+            )
+            return
+        if canonical == "user_prompt_submit":
             sessions_view.clear_active_tool(message.session_id)
             sessions_view.set_input_highlight(message.session_id)
-            self._save_state()
-        elif message.activity_type == "agent_stop":
+        elif canonical == "agent_output_stop":
             sessions_view.clear_active_tool(message.session_id)
             sessions_view.set_output_highlight(message.session_id, message.summary or "")
-            self._save_state()
-        elif message.activity_type == "tool_use" and message.tool_name:
-            preview = message.tool_preview or ""
-            if preview.startswith(message.tool_name):
-                preview = preview[len(message.tool_name) :].lstrip()
-            tool_info = f"{message.tool_name}: {preview}" if preview else message.tool_name
-            sessions_view.set_active_tool(message.session_id, tool_info)
-            self._save_state()
+        elif canonical == "agent_output_update":
+            if message.tool_name:
+                preview = message.tool_preview or ""
+                if preview.startswith(message.tool_name):
+                    preview = preview[len(message.tool_name) :].lstrip()
+                tool_info = f"{message.tool_name}: {preview}" if preview else message.tool_name
+                sessions_view.set_active_tool(message.session_id, tool_info)
+            else:
+                sessions_view.clear_active_tool(message.session_id)
 
         # Feed agent activity to animation trigger (both banner and logo targets)
         if self._activity_trigger is not None:
@@ -570,6 +628,24 @@ class TelecApp(App[str | None]):
         except Exception as e:
             self.notify(f"Failed to restart session: {e}", severity="error")
 
+    @work(exclusive=True, group="session-action")
+    async def on_restart_sessions_request(self, message: RestartSessionsRequest) -> None:
+        failures = 0
+        for session_id in message.session_ids:
+            try:
+                await self.api.agent_restart(session_id)
+            except Exception:
+                failures += 1
+                logger.exception("Failed to restart session %s", session_id)
+
+        if failures:
+            self.notify(
+                f"Restarted {len(message.session_ids) - failures}/{len(message.session_ids)} sessions",
+                severity="warning",
+            )
+        else:
+            self.notify(f"Restarted {len(message.session_ids)} sessions on {message.computer}")
+
     async def on_settings_changed(self, message: SettingsChanged) -> None:
         key = message.key
         if key == "pane_theming_mode":
@@ -578,6 +654,33 @@ class TelecApp(App[str | None]):
             self._toggle_tts()
         elif key == "animation_mode":
             self._cycle_animation(str(message.value))
+        elif key == "agent_status":
+            # Handle agent pill clicks: cycle available → degraded → unavailable → available
+            if isinstance(message.value, dict):
+                agent = str(message.value.get("agent", ""))
+                status_bar = self.query_one("#telec-footer", TelecFooter)
+                current_info = status_bar._agent_availability.get(agent)
+
+                # Determine next status
+                if current_info:
+                    current_status = current_info.status or "available"
+                    if current_status == "available":
+                        next_status = "degraded"
+                    elif current_status == "degraded":
+                        next_status = "unavailable"
+                    else:
+                        next_status = "available"
+                else:
+                    next_status = "degraded"
+
+                try:
+                    updated_info = await self.api.set_agent_status(
+                        agent, next_status, reason="manual", duration_minutes=60
+                    )
+                    status_bar._agent_availability[agent] = updated_info
+                    status_bar.refresh()
+                except Exception as e:
+                    self.notify(f"Failed to set agent status: {e}", severity="error")
         elif key.startswith("run_job:"):
             job_name = key.split(":", 1)[1]
             try:
@@ -592,12 +695,13 @@ class TelecApp(App[str | None]):
         _sw0 = _t.monotonic()
         logger.trace("[PERF] action_switch_tab(%s) START t=%.3f", tab_id, _sw0)
         tabs = self.query_one("#main-tabs", TabbedContent)
+        old_tab = tabs.active
         tabs.active = tab_id
         box_tabs = self.query_one("#box-tab-bar", BoxTabBar)
         box_tabs.active_tab = tab_id
-        action_bar = self.query_one("#action-bar", ActionBar)
-        action_bar.active_view = tab_id
         self._focus_active_view(tab_id)
+        if old_tab != tab_id:
+            self.post_message(StateChanged())
         self.call_after_refresh(
             lambda: logger.trace("[PERF] action_switch_tab(%s) PAINTED dt=%.3f", tab_id, _t.monotonic() - _sw0)
         )
@@ -607,9 +711,8 @@ class TelecApp(App[str | None]):
         logger.trace("[PERF] tab_activated(%s) t=%.3f", tab_id, _t.monotonic())
         box_tabs = self.query_one("#box-tab-bar", BoxTabBar)
         box_tabs.active_tab = tab_id
-        action_bar = self.query_one("#action-bar", ActionBar)
-        action_bar.active_view = tab_id
         self._focus_active_view(tab_id)
+        self.post_message(StateChanged())
 
     def on_box_tab_bar_tab_clicked(self, message: BoxTabBar.TabClicked) -> None:
         """Handle click on custom tab bar."""
@@ -631,6 +734,20 @@ class TelecApp(App[str | None]):
             except Exception:
                 pass
 
+    def _apply_app_theme_for_mode(self, pane_theming_mode: str) -> None:
+        from teleclaude.cli.tui import theme
+
+        try:
+            level = get_pane_theming_mode_level(pane_theming_mode)
+        except ValueError:
+            level = get_pane_theming_mode_level()
+        is_agent = level in (1, 3, 4)
+        is_dark = theme.is_dark_mode()
+        if is_dark:
+            self.theme = "teleclaude-dark-agent" if is_agent else "teleclaude-dark"
+        else:
+            self.theme = "teleclaude-light-agent" if is_agent else "teleclaude-light"
+
     # --- Pane theming ---
 
     def action_cycle_pane_theming(self) -> None:
@@ -644,14 +761,9 @@ class TelecApp(App[str | None]):
         theme.set_pane_theming_mode(mode)
 
         # Switch app theme based on new level (Peaceful=0/2 -> Neutral, Agent=1/3/4 -> Warm)
-        is_agent = next_level in (1, 3, 4)
-        is_dark = theme.is_dark_mode()
-        if is_dark:
-            self.theme = "teleclaude-dark-agent" if is_agent else "teleclaude-dark"
-        else:
-            self.theme = "teleclaude-light-agent" if is_agent else "teleclaude-light"
+        self._apply_app_theme_for_mode(mode)
 
-        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
         status_bar.pane_theming_mode = mode
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.reapply_colors()
@@ -668,10 +780,10 @@ class TelecApp(App[str | None]):
         """Toggle TTS on/off via API."""
         from teleclaude.cli.models import SettingsPatchInfo, TTSSettingsPatchInfo
 
-        new_val = not self.query_one("#status-bar", StatusBar).tts_enabled
+        new_val = not self.query_one("#telec-footer", TelecFooter).tts_enabled
         try:
             await self.api.patch_settings(SettingsPatchInfo(tts=TTSSettingsPatchInfo(enabled=new_val)))
-            status_bar = self.query_one("#status-bar", StatusBar)
+            status_bar = self.query_one("#telec-footer", TelecFooter)
             status_bar.tts_enabled = new_val
         except Exception as e:
             self.notify(f"Failed to toggle TTS: {e}", severity="error")
@@ -751,9 +863,8 @@ class TelecApp(App[str | None]):
     def _cycle_animation(self, new_mode: str) -> None:
         """Set animation mode, reconfigure engine, and update status bar."""
         self._start_animation_mode(new_mode)
-        status_bar = self.query_one("#status-bar", StatusBar)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
         status_bar.animation_mode = new_mode
-        self._save_state()
 
     # --- Refresh ---
 
@@ -762,15 +873,35 @@ class TelecApp(App[str | None]):
 
     # --- State persistence ---
 
-    def _save_state(self) -> None:
-        sessions_view = self.query_one("#sessions-view", SessionsView)
-        prep_view = self.query_one("#preparation-view", PreparationView)
-        status_bar = self.query_one("#status-bar", StatusBar)
-        save_state(
-            sessions_state=sessions_view.get_persisted_state(),
-            preparation_state=prep_view.get_persisted_state(),
-            animation_mode=status_bar.animation_mode,
-        )
+    def _schedule_state_save(self) -> None:
+        timer = self._state_save_timer
+        if timer is not None and hasattr(timer, "stop"):
+            timer.stop()  # type: ignore[union-attr]
+        self._state_save_timer = self.set_timer(0.5, self._flush_state_save)
+
+    def _cancel_state_save_timer(self) -> None:
+        timer = self._state_save_timer
+        if timer is not None and hasattr(timer, "stop"):
+            timer.stop()  # type: ignore[union-attr]
+        self._state_save_timer = None
+
+    def _flush_state_save(self) -> None:
+        self._state_save_timer = None
+        self._save_state_sync()
+
+    def _collect_persisted_state(self) -> dict[str, object]:  # guard: loose-dict - namespaced widget payloads
+        state: dict[str, object] = {}  # guard: loose-dict - namespaced widget payloads
+        for widget in self.query("*"):
+            if not isinstance(widget, Persistable):
+                continue
+            state[get_persistence_key(widget)] = widget.get_persisted_state()
+
+        tabs = self.query_one("#main-tabs", TabbedContent)
+        state["app"] = {"active_tab": tabs.active or "sessions"}
+        return state
+
+    def _save_state_sync(self) -> None:
+        save_state(self._collect_persisted_state())
 
     # --- Signal handlers ---
 
@@ -816,14 +947,16 @@ class TelecApp(App[str | None]):
         doesn't pick up code changes. The outer _run_tui() loop detects
         RELOAD_EXIT and re-execs the process.
         """
-        self._save_state()
+        self._cancel_state_save_timer()
+        self._save_state_sync()
         self.exit(result=RELOAD_EXIT)
 
     # --- Lifecycle ---
 
     async def action_quit(self) -> None:
         self._stop_animation()
-        self._save_state()
+        self._cancel_state_save_timer()
+        self._save_state_sync()
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.cleanup()
         await self.api.close()

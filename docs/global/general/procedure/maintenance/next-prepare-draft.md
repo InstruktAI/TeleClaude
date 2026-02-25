@@ -13,6 +13,7 @@ Produce strong draft preparation artifacts for active todos:
 
 - `requirements.md`
 - `implementation-plan.md`
+- `demo.md` (draft demonstration plan)
 - `dor-report.md` (draft analysis)
 
 This phase is creative and constructive. It improves quality but does not make final readiness decisions.
@@ -20,7 +21,7 @@ This phase is creative and constructive. It improves quality but does not make f
 ## Preconditions
 
 1. Job was launched as `next-prepare-draft`.
-2. `todos/roadmap.yaml`, `todos/icebox.md`, and `todos/delivered.md` are readable.
+2. `todos/roadmap.yaml`, `todos/icebox.md`, and `todos/delivered.yaml` are readable.
 3. Slug is active only if not listed in icebox or delivered.
 
 ## Steps
@@ -35,11 +36,14 @@ This phase is creative and constructive. It improves quality but does not make f
    - State D: both present but weak/stale;
    - State E: neither present.
 3. Apply draft generation/refinement:
-   - State A: derive requirements, then derive plan;
-   - State B: derive plan from requirements (+ `input.md` if present);
+   - State A: derive requirements, then derive plan, then draft demo;
+   - State B: derive plan from requirements (+ `input.md` if present), then draft demo;
    - State C: reconstruct requirements from plan/context, then reconcile plan;
    - State D: tighten requirements first, then tighten plan;
    - State E: create minimal placeholders and capture blockers.
+     For `demo.md` drafting: define what medium the delivery is shown in (CLI, TUI, web, API),
+     what the user observes, and what commands validate it works. The draft doesn't need to be
+     perfect — the builder refines it with real implementation knowledge.
 4. Enforce uncertainty boundary:
    - improve structure and clarity;
    - do not invent unsupported behavior;

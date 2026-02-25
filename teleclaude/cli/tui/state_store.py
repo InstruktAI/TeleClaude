@@ -1,14 +1,10 @@
-"""Persistence helpers for TUI state.
-
-Adapted for Textual reactive model: loads/saves from distributed view state
-instead of a centralized TuiState object.
-"""
+"""Persistence helpers for Textual TUI state."""
 
 from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, field
+from typing import Any
 
 from instrukt_ai_logging import get_logger
 
@@ -16,143 +12,170 @@ from teleclaude.paths import TUI_STATE_PATH
 
 logger = get_logger(__name__)
 
-
-@dataclass
-class PersistedState:
-    """Flat container for state loaded from disk."""
-
-    sticky_session_ids: list[str] = field(default_factory=list)
-    expanded_todos: set[str] = field(default_factory=set)
-    input_highlights: set[str] = field(default_factory=set)
-    output_highlights: set[str] = field(default_factory=set)
-    # session_id → {"text": str, "ts": float (monotonic epoch)}
-    last_output_summary: dict[str, dict[str, object]] = field(default_factory=dict)  # guard: loose-dict
-    collapsed_sessions: set[str] = field(default_factory=set)
-    preview_session_id: str | None = None
-    animation_mode: str = "periodic"
+_REQUIRED_NAMESPACES = ("sessions", "preparation", "status_bar", "app")
+_FLAT_FORMAT_KEYS = (
+    "sticky_sessions",
+    "expanded_todos",
+    "input_highlights",
+    "output_highlights",
+    "last_output_summary",
+    "collapsed_sessions",
+    "preview",
+    "animation_mode",
+    "pane_theming_mode",
+)
 
 
-def load_state() -> PersistedState:
-    """Load persisted TUI state from ~/.teleclaude/tui_state.json."""
-    state = PersistedState()
+def _normalize_animation_mode(value: object) -> str:
+    if isinstance(value, str) and value in {"off", "periodic", "party"}:
+        return value
+    return "periodic"
 
-    if not TUI_STATE_PATH.exists():
-        logger.debug("No TUI state file found, starting fresh")
-        return state
 
+def _normalize_pane_theming_mode(value: object) -> str:
+    from teleclaude.cli.tui.theme import normalize_pane_theming_mode
+
+    if not isinstance(value, str):
+        return _default_pane_theming_mode()
     try:
-        with open(TUI_STATE_PATH, encoding="utf-8") as f:
-            data = json.load(f)
+        return normalize_pane_theming_mode(value)
+    except ValueError:
+        return _default_pane_theming_mode()
 
-        sticky_data = data.get("sticky_sessions", [])
-        state.sticky_session_ids = [item["session_id"] for item in sticky_data if isinstance(item, dict)]
 
-        expanded_todos = data.get("expanded_todos", [])
-        if isinstance(expanded_todos, list):
-            state.expanded_todos = set(str(item) for item in expanded_todos)
+def _default_pane_theming_mode() -> str:
+    from teleclaude.cli.tui.theme import get_pane_theming_mode
 
-        input_highlights = data.get("input_highlights", [])
-        if isinstance(input_highlights, list):
-            state.input_highlights = set(str(item) for item in input_highlights)
+    return get_pane_theming_mode()
 
-        output_highlights = data.get("output_highlights", [])
-        if isinstance(output_highlights, list):
-            state.output_highlights = set(str(item) for item in output_highlights)
 
-        last_output_summary = data.get("last_output_summary", {})
-        if isinstance(last_output_summary, dict):
-            parsed: dict[str, dict[str, object]] = {}  # guard: loose-dict
-            for k, v in last_output_summary.items():
-                if not isinstance(k, str):
-                    continue
-                if isinstance(v, dict) and "text" in v:
-                    parsed[k] = v
-                elif isinstance(v, str):
-                    # Backward compat: old format was just a string
-                    parsed[k] = {"text": v, "ts": 0.0}
-            state.last_output_summary = parsed
+def _is_flat_state(data: dict[str, object]) -> bool:  # guard: loose-dict - persisted JSON payload
+    return "sticky_sessions" in data or any(key in data for key in _FLAT_FORMAT_KEYS)
 
-        collapsed_sessions = data.get("collapsed_sessions", [])
-        if isinstance(collapsed_sessions, list):
-            state.collapsed_sessions = set(str(item) for item in collapsed_sessions)
 
-        preview_data = data.get("preview")
-        if isinstance(preview_data, dict) and preview_data.get("session_id"):
-            state.preview_session_id = preview_data["session_id"]
+def _migrate_flat_state(data: dict[str, object]) -> dict[str, dict[str, object]]:  # guard: loose-dict
+    sessions: dict[str, object] = {}  # guard: loose-dict - dynamic session state payload
+    for key in (
+        "sticky_sessions",
+        "input_highlights",
+        "output_highlights",
+        "last_output_summary",
+        "collapsed_sessions",
+        "preview",
+    ):
+        if key in data:
+            sessions[key] = data[key]
 
-        anim_mode = data.get("animation_mode", "periodic")
-        if anim_mode in ("off", "periodic", "party"):
-            state.animation_mode = anim_mode
+    preparation: dict[str, object] = {}  # guard: loose-dict - dynamic preparation state payload
+    if "expanded_todos" in data:
+        preparation["expanded_todos"] = data["expanded_todos"]
 
-        logger.info(
-            "Loaded TUI state: %d sticky, %d in_hl, %d out_hl, preview=%s, anim=%s",
-            len(state.sticky_session_ids),
-            len(state.input_highlights),
-            len(state.output_highlights),
-            state.preview_session_id[:8] if state.preview_session_id else None,
-            state.animation_mode,
-        )
-    except (json.JSONDecodeError, KeyError, TypeError, OSError) as e:
-        logger.warning("Failed to load TUI state from %s: %s", TUI_STATE_PATH, e)
+    status_bar: dict[str, object] = {  # guard: loose-dict - dynamic footer state payload
+        "animation_mode": _normalize_animation_mode(data.get("animation_mode")),
+        "pane_theming_mode": _normalize_pane_theming_mode(data.get("pane_theming_mode")),
+    }
 
+    return {
+        "sessions": sessions,
+        "preparation": preparation,
+        "status_bar": status_bar,
+        "app": {},
+    }
+
+
+def _empty_state() -> dict[str, dict[str, object]]:  # guard: loose-dict - namespaced state payload
+    return {
+        "sessions": {},
+        "preparation": {},
+        "status_bar": {
+            "animation_mode": _normalize_animation_mode(None),
+            "pane_theming_mode": _normalize_pane_theming_mode(None),
+        },
+        "app": {},
+    }
+
+
+def _normalize_namespaced_state(data: dict[str, object]) -> dict[str, dict[str, object]]:  # guard: loose-dict
+    state: dict[str, dict[str, object]] = {}  # guard: loose-dict - namespaced state payload
+    for key, value in data.items():
+        if isinstance(value, dict):
+            state[key] = value
+    for key in _REQUIRED_NAMESPACES:
+        state.setdefault(key, {})
+
+    status_bar = state["status_bar"]
+    status_bar["animation_mode"] = _normalize_animation_mode(status_bar.get("animation_mode"))
+    status_bar["pane_theming_mode"] = _normalize_pane_theming_mode(status_bar.get("pane_theming_mode"))
     return state
 
 
-def save_state(
-    *,
-    sessions_state: dict[str, object] | None = None,  # guard: loose-dict
-    preparation_state: dict[str, object] | None = None,  # guard: loose-dict
-    animation_mode: str = "periodic",
-) -> None:
-    """Save TUI state to ~/.teleclaude/tui_state.json.
+def _jsonify(value: object) -> object:
+    if isinstance(value, dict):
+        return {str(k): _jsonify(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonify(item) for item in value]
+    if isinstance(value, set):
+        return [_jsonify(item) for item in sorted(value, key=str)]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
 
-    Accepts state dicts from each view's get_persisted_state() method.
-    """
-    sessions = sessions_state or {}
-    prep = preparation_state or {}
 
-    state_data = {
-        "sticky_sessions": sessions.get("sticky_sessions", []),
-        "expanded_todos": prep.get("expanded_todos", []),
-        "input_highlights": sessions.get("input_highlights", []),
-        "output_highlights": sessions.get("output_highlights", []),
-        "last_output_summary": sessions.get("last_output_summary", {}),
-        "collapsed_sessions": sessions.get("collapsed_sessions", []),
-        "preview": sessions.get("preview"),
-        "animation_mode": animation_mode,
-    }
+def load_state() -> dict[str, dict[str, object]]:  # guard: loose-dict - namespaced state payload
+    """Load persisted TUI state from ~/.teleclaude/tui_state.json."""
+    if not TUI_STATE_PATH.exists():
+        logger.debug("No TUI state file found, starting fresh")
+        return _empty_state()
+
+    try:
+        with open(TUI_STATE_PATH, encoding="utf-8") as file:
+            loaded: Any = json.load(file)
+        if not isinstance(loaded, dict):
+            logger.warning("TUI state at %s is not an object; ignoring", TUI_STATE_PATH)
+            return _empty_state()
+
+        raw = dict(loaded)
+        if _is_flat_state(raw):
+            state = _migrate_flat_state(raw)
+            logger.info("Migrated flat TUI state to namespaced format")
+            return state
+        return _normalize_namespaced_state(raw)
+    except (json.JSONDecodeError, OSError, TypeError) as exc:
+        logger.warning("Failed to load TUI state from %s: %s", TUI_STATE_PATH, exc)
+        return _empty_state()
+
+
+def save_state(state: dict[str, object]) -> None:  # guard: loose-dict - namespaced state payload
+    """Save namespaced TUI state to ~/.teleclaude/tui_state.json."""
+    payload: dict[str, object] = {}  # guard: loose-dict - namespaced state payload
+    for key, value in state.items():
+        if isinstance(value, dict):
+            payload[key] = _jsonify(value)
+    for key in _REQUIRED_NAMESPACES:
+        payload.setdefault(key, {})
 
     try:
         TUI_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-
         lock_path = TUI_STATE_PATH.with_suffix(".lock")
-        try:
-            with open(lock_path, "w", encoding="utf-8") as lock_file:
-                try:
-                    import fcntl
+        with open(lock_path, "w", encoding="utf-8") as lock_file:
+            try:
+                import fcntl
 
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-                except (ImportError, OSError):
-                    pass
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            except (ImportError, OSError):
+                pass
 
-                tmp_path = TUI_STATE_PATH.with_suffix(".tmp")
-                with open(tmp_path, "w", encoding="utf-8") as f:
-                    json.dump(state_data, f, indent=2)
-                    f.flush()
-                    os.fsync(f.fileno())
-
-                os.replace(tmp_path, TUI_STATE_PATH)
-
-        except (OSError, IOError) as e:
-            logger.error("Failed to atomic save TUI state: %s", e)
-            return
-
+            tmp_path = TUI_STATE_PATH.with_suffix(".tmp")
+            with open(tmp_path, "w", encoding="utf-8") as file:
+                json.dump(payload, file, indent=2)
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(tmp_path, TUI_STATE_PATH)
         logger.debug("Saved TUI state to %s", TUI_STATE_PATH)
-    except (OSError, IOError) as e:
-        logger.error("Failed to save TUI state to %s: %s", TUI_STATE_PATH, e)
+    except OSError as exc:
+        logger.error("Failed to save TUI state to %s: %s", TUI_STATE_PATH, exc)
 
 
 # --- Legacy compatibility stub (old controller.py still imports this) ---
-# Delete when Phase 4 cleanup removes old curses code.
 def save_sticky_state(_state: object) -> None:
     pass

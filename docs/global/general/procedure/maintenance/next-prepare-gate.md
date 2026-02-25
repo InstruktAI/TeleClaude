@@ -32,7 +32,8 @@ This phase is critical and evidence-driven. It is not a drafting phase.
    - scope atomicity,
    - verification path,
    - dependency correctness,
-   - uncertainty and assumptions made explicit.
+   - uncertainty and assumptions made explicit,
+   - **plan-to-requirement fidelity**: every implementation plan task must trace to a requirement, and no task may contradict a requirement. If a requirement says "reuse X," the plan must not prescribe "copy X." If a requirement says "use the data layer," the plan must not prescribe inline filesystem access. Contradictions between plan and requirements are blockers (`needs_work`).
 3. Tighten artifacts with minimal edits when factual gaps exist.
 4. Assign final gate result in `state.yaml.dor`:
    - `score` (`1..10`)

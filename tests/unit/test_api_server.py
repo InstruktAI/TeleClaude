@@ -1007,6 +1007,100 @@ def test_get_agent_availability_db_exception(test_client):  # type: ignore[expli
         assert "Database connection failed" in data["claude"]["error"]
 
 
+def test_set_agent_status_available(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test setting agent to available status."""
+    with (
+        patch("teleclaude.core.db.db.mark_agent_available", new_callable=AsyncMock) as mock_mark,
+        patch("teleclaude.core.db.db.get_agent_availability", new_callable=AsyncMock) as mock_get,
+    ):
+        mock_get.return_value = {
+            "available": True,
+            "unavailable_until": None,
+            "degraded_until": None,
+            "reason": None,
+            "status": "available",
+        }
+
+        response = test_client.post("/agents/claude/status", json={"status": "available"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["agent"] == "claude"
+        assert data["status"] == "available"
+        assert data["available"] is True
+        mock_mark.assert_called_once_with("claude")
+
+
+def test_set_agent_status_degraded(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test setting agent to degraded status with custom duration."""
+    with (
+        patch("teleclaude.core.db.db.mark_agent_degraded", new_callable=AsyncMock) as mock_mark,
+        patch("teleclaude.core.db.db.get_agent_availability", new_callable=AsyncMock) as mock_get,
+    ):
+        mock_get.return_value = {
+            "available": True,
+            "unavailable_until": None,
+            "degraded_until": "2026-02-11T12:00:00+00:00",
+            "reason": "degraded_manual",
+            "status": "degraded",
+        }
+
+        response = test_client.post(
+            "/agents/gemini/status",
+            json={"status": "degraded", "duration_minutes": 120, "reason": "manual"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["agent"] == "gemini"
+        assert data["status"] == "degraded"
+        assert data["degraded_until"] is not None
+        # Verify duration computation happened (exact timestamp varies)
+        assert mock_mark.call_count == 1
+        call_args = mock_mark.call_args
+        assert call_args[0][0] == "gemini"  # agent
+        assert call_args[0][1] == "manual"  # reason
+        assert "degraded_until" in call_args[1]
+
+
+def test_set_agent_status_unavailable(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test setting agent to unavailable status."""
+    with (
+        patch("teleclaude.core.db.db.mark_agent_unavailable", new_callable=AsyncMock) as mock_mark,
+        patch("teleclaude.core.db.db.get_agent_availability", new_callable=AsyncMock) as mock_get,
+    ):
+        mock_get.return_value = {
+            "available": False,
+            "unavailable_until": "2026-02-11T13:00:00+00:00",
+            "degraded_until": None,
+            "reason": "manual",
+            "status": "unavailable",
+        }
+
+        response = test_client.post(
+            "/agents/codex/status",
+            json={"status": "unavailable", "duration_minutes": 60, "reason": "manual"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["agent"] == "codex"
+        assert data["status"] == "unavailable"
+        assert data["available"] is False
+        # Verify duration computation happened
+        assert mock_mark.call_count == 1
+        call_args = mock_mark.call_args
+        assert call_args[0][0] == "codex"  # agent
+        assert call_args[0][2] == "manual"  # reason
+
+
+def test_set_agent_status_exception(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test set_agent_status returns 500 on DB exception."""
+    with patch("teleclaude.core.db.db.mark_agent_available", new_callable=AsyncMock) as mock_mark:
+        mock_mark.side_effect = Exception("Database write failed")
+
+        response = test_client.post("/agents/claude/status", json={"status": "available"})
+        assert response.status_code == 500
+        assert "Failed to set agent status" in response.json()["detail"]
+
+
 # ==================== Validation Tests ====================
 
 
@@ -1106,3 +1200,127 @@ def test_create_session_invalid_thinking_mode_rejected(test_client):  # type: ig
         },
     )
     assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Web lane canonical contract tests (ucap-web-adapter-alignment)
+# ---------------------------------------------------------------------------
+
+
+def test_map_lifecycle_to_sse_status_active_returns_streaming() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """Active session lifecycle_status maps to 'streaming' SSE status."""
+    from teleclaude.api.streaming import _map_lifecycle_to_sse_status
+
+    assert _map_lifecycle_to_sse_status("active") == "streaming"
+
+
+def test_map_lifecycle_to_sse_status_none_returns_streaming() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """None lifecycle_status maps to 'streaming' SSE status (safe default)."""
+    from teleclaude.api.streaming import _map_lifecycle_to_sse_status
+
+    assert _map_lifecycle_to_sse_status(None) == "streaming"
+
+
+def test_map_lifecycle_to_sse_status_closed_returns_closed() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """Canonical 'closed' lifecycle_status maps to 'closed' SSE status."""
+    from teleclaude.api.streaming import _map_lifecycle_to_sse_status
+
+    assert _map_lifecycle_to_sse_status("closed") == "closed"
+
+
+def test_map_lifecycle_to_sse_status_error_returns_error() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """Canonical 'error' lifecycle_status maps to 'error' SSE status."""
+    from teleclaude.api.streaming import _map_lifecycle_to_sse_status
+
+    assert _map_lifecycle_to_sse_status("error") == "error"
+
+
+def test_map_lifecycle_to_sse_status_completed_returns_completed() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """Canonical 'completed' lifecycle_status maps to 'completed' SSE status."""
+    from teleclaude.api.streaming import _map_lifecycle_to_sse_status
+
+    assert _map_lifecycle_to_sse_status("completed") == "completed"
+
+
+def test_map_lifecycle_to_sse_status_initializing_returns_streaming() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """'initializing' lifecycle_status maps to 'streaming' (session not yet closed)."""
+    from teleclaude.api.streaming import _map_lifecycle_to_sse_status
+
+    assert _map_lifecycle_to_sse_status("initializing") == "streaming"
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_uses_canonical_lifecycle_status(mock_adapter_client) -> None:  # type: ignore[explicit-any, unused-ignore]
+    """Web SSE stream emits canonical lifecycle_status, not hardcoded 'streaming'."""
+    import json
+
+    from teleclaude.api.streaming import _stream_sse
+    from teleclaude.core.db_models import Session
+
+    session = Session(
+        session_id="test-session-id-1234",
+        lifecycle_status="active",
+        computer_name="local",
+    )
+
+    events: list[str] = []
+    async for event in _stream_sse(
+        session=session,
+        session_id="test-session-id-1234",
+        since_timestamp=None,
+        user_message=None,
+    ):
+        events.append(event)
+
+    # Parse SSE events
+    data_events = [e for e in events if e.startswith("data: ")]
+    parsed = []
+    for e in data_events:
+        payload = e[len("data: ") :].strip()
+        if payload != "[DONE]":
+            parsed.append(json.loads(payload))
+
+    # Canonical status event must be present and use canonical mapping (active → streaming)
+    status_events = [p for p in parsed if p.get("type") == "data-session-status"]
+    assert status_events, "Expected at least one data-session-status event"
+    assert status_events[0]["status"] == "streaming", (
+        f"Expected 'streaming' for lifecycle_status='active', got {status_events[0]['status']!r}"
+    )
+    assert status_events[0]["sessionId"] == "test-session-id-1234"
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_closed_session_emits_closed_status() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """Web SSE stream emits 'closed' status when session lifecycle_status is 'closed'."""
+    import json
+
+    from teleclaude.api.streaming import _stream_sse
+    from teleclaude.core.db_models import Session
+
+    session = Session(
+        session_id="closed-session-id-5678",
+        lifecycle_status="closed",
+        computer_name="local",
+    )
+
+    events: list[str] = []
+    async for event in _stream_sse(
+        session=session,
+        session_id="closed-session-id-5678",
+        since_timestamp=None,
+        user_message=None,
+    ):
+        events.append(event)
+
+    data_events = [e for e in events if e.startswith("data: ")]
+    parsed = []
+    for e in data_events:
+        payload = e[len("data: ") :].strip()
+        if payload != "[DONE]":
+            parsed.append(json.loads(payload))
+
+    status_events = [p for p in parsed if p.get("type") == "data-session-status"]
+    assert status_events, "Expected at least one data-session-status event"
+    assert status_events[0]["status"] == "closed", (
+        f"Expected 'closed' for lifecycle_status='closed', got {status_events[0]['status']!r}"
+    )

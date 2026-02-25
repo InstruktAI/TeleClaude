@@ -77,3 +77,115 @@ def test_map_rest_message():
     assert cmd.session_id == "sess_789"
     assert cmd.text == "REST message"
     assert cmd.origin == InputOrigin.API.value
+
+
+# --- R1/R2: Actor attribution parity across adapters ---
+
+
+def test_map_telegram_message_actor_from_channel_metadata():
+    """Telegram actor fields extracted from channel_metadata via telegram_user_id fallback."""
+    metadata = MessageMetadata(
+        origin=InputOrigin.TELEGRAM.value,
+        channel_metadata={"telegram_user_id": "42", "user_name": "alice"},
+    )
+    cmd = CommandMapper.map_telegram_input("message", ["hi"], metadata, session_id="s1")
+    assert isinstance(cmd, ProcessMessageCommand)
+    assert cmd.origin == InputOrigin.TELEGRAM.value
+    assert cmd.actor_id == "telegram:42"
+    assert cmd.actor_name == "alice"
+
+
+def test_map_telegram_message_actor_explicit_fields_take_precedence():
+    """Explicit actor_id/actor_name in channel_metadata win over derived fallbacks."""
+    metadata = MessageMetadata(
+        origin=InputOrigin.TELEGRAM.value,
+        channel_metadata={
+            "actor_id": "custom_id",
+            "actor_name": "Custom Name",
+            "telegram_user_id": "99",
+        },
+    )
+    cmd = CommandMapper.map_telegram_input("message", ["hi"], metadata, session_id="s2")
+    assert isinstance(cmd, ProcessMessageCommand)
+    assert cmd.actor_id == "custom_id"
+    assert cmd.actor_name == "Custom Name"
+
+
+def test_map_discord_message_actor_from_channel_metadata():
+    """Discord actor_id derived from discord_user_id when no explicit actor fields."""
+    cmd = CommandMapper.map_redis_input(
+        "message hi there",
+        origin=InputOrigin.DISCORD.value,
+        session_id="s3",
+        channel_metadata={"discord_user_id": "777", "display_name": "bob"},
+    )
+    assert isinstance(cmd, ProcessMessageCommand)
+    assert cmd.origin == InputOrigin.DISCORD.value
+    assert cmd.actor_id == "discord:777"
+    assert cmd.actor_name == "bob"
+
+
+def test_map_redis_mcp_message_actor_synthesis():
+    """MCP-origin messages get a synthetic system actor_id from computer/session."""
+    cmd = CommandMapper.map_redis_input(
+        "message some prompt",
+        origin=InputOrigin.MCP.value,
+        session_id="sess_mcp",
+        initiator="workstation",
+    )
+    assert isinstance(cmd, ProcessMessageCommand)
+    assert cmd.origin == InputOrigin.MCP.value
+    assert cmd.actor_id is not None
+    # Contract: system:{computer}:{session_id} — assert structural prefix not just substring
+    assert cmd.actor_id.startswith("system:workstation:"), (
+        f"actor_id must follow 'system:{{computer}}:{{session_id}}' format, got: {cmd.actor_id!r}"
+    )
+    assert cmd.actor_name is not None
+    assert "workstation" in cmd.actor_name
+
+
+def test_map_api_message_actor_from_payload():
+    """API message uses actor fields from payload directly."""
+    payload = {
+        "session_id": "s4",
+        "text": "hello",
+        "actor_id": "web:user_123",
+        "actor_name": "Web User",
+        "actor_avatar_url": "https://example.com/avatar.png",
+    }
+    metadata = MessageMetadata(origin=InputOrigin.API.value)
+    cmd = CommandMapper.map_api_input("message", payload, metadata)
+    assert isinstance(cmd, ProcessMessageCommand)
+    assert cmd.origin == InputOrigin.API.value
+    assert cmd.actor_id == "web:user_123"
+    assert cmd.actor_name == "Web User"
+    assert cmd.actor_avatar_url == "https://example.com/avatar.png"
+
+
+def test_all_interactive_adapters_produce_process_message_with_origin():
+    """Parity check: all adapter paths produce ProcessMessageCommand with a non-empty origin."""
+    telegram_cmd = CommandMapper.map_telegram_input(
+        "message",
+        ["hi"],
+        MessageMetadata(origin=InputOrigin.TELEGRAM.value),
+        session_id="s",
+    )
+    redis_cmd = CommandMapper.map_redis_input(
+        "message hi",
+        origin=InputOrigin.REDIS.value,
+        session_id="s",
+    )
+    api_cmd = CommandMapper.map_api_input(
+        "message",
+        {"session_id": "s", "text": "hi"},
+        MessageMetadata(origin=InputOrigin.API.value),
+    )
+    discord_cmd = CommandMapper.map_redis_input(
+        "message hi",
+        origin=InputOrigin.DISCORD.value,
+        session_id="s",
+    )
+
+    for cmd in (telegram_cmd, redis_cmd, api_cmd, discord_cmd):
+        assert isinstance(cmd, ProcessMessageCommand)
+        assert cmd.origin, f"origin must be set for {type(cmd)}"

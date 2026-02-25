@@ -335,18 +335,28 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         self.dismiss(request)
 
 
-class CreateTodoModal(ModalScreen[str | None]):
-    """Todo creation modal — single input for slug name."""
+class CreateSlugModal(ModalScreen[str | None]):
+    """Slug creation modal — parameterized for todo or bug."""
 
     BINDINGS = [
         ("escape", "dismiss_modal", "Cancel"),
     ]
 
+    def __init__(
+        self,
+        title: str = "New Todo",
+        placeholder: str = "my-new-todo",
+        **kwargs: object,
+    ) -> None:
+        super().__init__(**kwargs)
+        self._title = title
+        self._placeholder = placeholder
+
     def compose(self) -> ComposeResult:
         with Vertical(id="modal-box") as box:
-            box.border_title = "New Todo"
+            box.border_title = self._title
             yield Label("Enter a slug (lowercase, hyphens, numbers):", id="slug-label")
-            yield Input(placeholder="my-new-todo", id="slug-input")
+            yield Input(placeholder=self._placeholder, id="slug-input")
             yield Label("", id="slug-error")
             with Horizontal(id="modal-actions"):
                 yield Button("[Enter] Create", variant="primary", id="create-btn")

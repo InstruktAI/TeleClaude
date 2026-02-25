@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time as _t
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
@@ -84,6 +85,7 @@ class CommandDef:
     subcommands: dict[str, "CommandDef"] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)  # extra lines for subcommand help
     hidden: bool = False  # hide from help output and completion
+    standalone: bool = False  # bare invocation has behavior (not just help text)
 
     @property
     def visible_flags(self) -> list[Flag]:
@@ -359,6 +361,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
     ),
     "roadmap": CommandDef(
         desc="View and manage the work item roadmap",
+        standalone=True,
         flags=[
             Flag("--include-icebox", "-i", "Include icebox items"),
             Flag("--icebox-only", "-o", "Show only icebox items"),
@@ -426,6 +429,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _PROJECT_ROOT_LONG,
                 ],
             ),
+            "create": CommandDef(
+                desc="Scaffold bug files for a slug",
+                args="<slug>",
+                flags=[_PROJECT_ROOT_LONG],
+            ),
             "list": CommandDef(
                 desc="List in-flight bug fixes with status",
                 flags=[_PROJECT_ROOT_LONG],
@@ -434,6 +442,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
     ),
     "config": CommandDef(
         desc="Interactive configuration (or subcommands)",
+        standalone=True,
         flags=[_H, _PROJECT_ROOT, Flag("--format", "-f", "Output format (yaml or json)")],
         subcommands={
             "get": CommandDef(desc="Get config values", args="[paths...]"),
@@ -521,8 +530,9 @@ def _usage_main() -> str:
         args_str = f" {cmd.args}" if cmd.args else ""
 
         if cmd.subcommands:
-            entry = f"telec {name}"
-            lines.append(f"  {entry:<{col}}# {cmd.desc}")
+            if cmd.standalone:
+                entry = f"telec {name}"
+                lines.append(f"  {entry:<{col}}# {cmd.desc}")
             for sub_name, sub_cmd in cmd.subcommands.items():
                 sub_args = f" {sub_cmd.args}" if sub_cmd.args else ""
                 sub_flag_str = " [options]" if sub_cmd.visible_flags else ""
@@ -680,8 +690,9 @@ def _usage_subcmd(cmd_name: str) -> str:
     lines = ["Usage:"]
 
     if cmd.subcommands:
-        entry = f"telec {cmd_name}"
-        lines.append(f"  {entry:<{col}}# {cmd.desc}")
+        if cmd.standalone:
+            entry = f"telec {cmd_name}"
+            lines.append(f"  {entry:<{col}}# {cmd.desc}")
 
         for sub_name, sub_cmd in cmd.subcommands.items():
             args_str = f" {sub_cmd.args}" if sub_cmd.args else ""
@@ -812,7 +823,6 @@ def _handle_completion() -> None:
             _complete_flags(CLI_SURFACE[cmd].flag_tuples, rest, current, is_partial)
     elif cmd in ("todo", "roadmap", "config", "sessions", "agents", "channels"):
         _complete_subcmd(cmd, rest, current, is_partial)
-    # init has no further completions
 
 
 def _flag_used(flag_tuple: tuple[str | None, str, str], used: set[str]) -> bool:
@@ -866,17 +876,27 @@ def _complete_docs(rest: list[str], current: str, is_partial: bool) -> None:
             _print_flag(flag)
 
 
-def _complete_flags(flags: list[tuple[str | None, str, str]], rest: list[str], current: str, is_partial: bool) -> None:
-    """Complete simple flag-only commands."""
+def _complete_flags(
+    flags: list[tuple[str | None, str, str]], rest: list[str], current: str, is_partial: bool, args: str = ""
+) -> None:
+    """Complete commands with flags and optional positional arg hints."""
     used_flags = set(rest)
     if is_partial and current.startswith("-"):
         for flag in flags:
             if _flag_matches(flag, current) and not _flag_used(flag, used_flags):
                 _print_flag(flag)
-    else:
-        for flag in flags:
-            if not _flag_used(flag, used_flags):
-                _print_flag(flag)
+        return
+
+    # Show positional arg hints for args not yet provided
+    if args:
+        positional_rest = [a for a in rest if not a.startswith("-")]
+        for i, arg_hint in enumerate(args.split()):
+            if i >= len(positional_rest):
+                _print_completion(arg_hint, "required" if arg_hint.startswith("<") else "optional")
+
+    for flag in flags:
+        if not _flag_used(flag, used_flags):
+            _print_flag(flag)
 
 
 def _complete_subcmd(cmd_name: str, rest: list[str], current: str, is_partial: bool) -> None:
@@ -890,10 +910,14 @@ def _complete_subcmd(cmd_name: str, rest: list[str], current: str, is_partial: b
                 _print_completion(subcommand, desc)
         return
 
-    # Flag completion: use subcommand-specific flags if available, else parent flags
+    # Subcommand-level completion: positional args + flags
     subcmd = rest[0]
     sub_def = cmd_def.subcommands.get(subcmd)
     flags = sub_def.flag_tuples if sub_def and sub_def.flags else cmd_def.flag_tuples
+
+    # Count non-flag args provided after the subcommand
+    positional_rest = [a for a in rest[1:] if not a.startswith("-")]
+    expected_positionals = sub_def.args.split() if sub_def and sub_def.args else []
 
     used = set(rest[1:])
     if is_partial and current.startswith("-"):
@@ -901,6 +925,11 @@ def _complete_subcmd(cmd_name: str, rest: list[str], current: str, is_partial: b
             if _flag_matches(flag, current) and not _flag_used(flag, used):
                 _print_flag(flag)
         return
+
+    # Show positional arg hints for args not yet provided
+    for i, arg_hint in enumerate(expected_positionals):
+        if i >= len(positional_rest):
+            _print_completion(arg_hint, "required" if arg_hint.startswith("<") else "optional")
 
     for flag in flags:
         if not _flag_used(flag, used):
@@ -1513,36 +1542,79 @@ def _handle_todo_demo(args: list[str]) -> None:
     slug = None
     project_root = Path.cwd()
 
+    lines = content.split("\n")
     i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "demo"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                print(_usage("todo", "demo"))
-                raise SystemExit(1)
-            slug = arg
+    while i < len(lines):
+        line = lines[i]
+
+        # Check for skip-validation comment
+        skip_match = skip_pattern.search(line)
+        if skip_match:
+            skip_reason = skip_match.group(1)
+            # Look for the next bash fence
+            j = i + 1
+            while j < len(lines) and lines[j].strip() == "":
+                j += 1
+            if j < len(lines) and lines[j].strip().startswith("```bash"):
+                block_start = j + 1
+                block_lines = []
+                k = block_start
+                while k < len(lines) and lines[k].strip() != "```":
+                    block_lines.append(lines[k])
+                    k += 1
+                blocks.append((j + 1, "\n".join(block_lines), True, skip_reason))
+                i = k + 1
+                continue
             i += 1
+            continue
 
-    # Read project version from pyproject.toml
-    pyproject_path = project_root / "pyproject.toml"
-    current_version = "0.0.0"
-    if pyproject_path.exists():
-        pyproject_content = pyproject_path.read_text()
-        match = re.search(r'version\s*=\s*"([^"]+)"', pyproject_content)
+        # Check for bash fence
+        if line.strip().startswith("```bash"):
+            block_start = i + 1
+            block_lines = []
+            k = block_start
+            while k < len(lines) and lines[k].strip() != "```":
+                block_lines.append(lines[k])
+                k += 1
+            blocks.append((i + 1, "\n".join(block_lines), False, ""))
+            i = k + 1
+            continue
+
+        i += 1
+
+    return blocks
+
+
+def _find_demo_md(slug: str, project_root: Path) -> Path | None:
+    """Find demo.md for a slug. Searches todos/ first, then demos/."""
+    for candidate in [
+        project_root / "todos" / slug / "demo.md",
+        project_root / "demos" / slug / "demo.md",
+    ]:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _check_no_demo_marker(content: str) -> str | None:
+    """Check for <!-- no-demo: reason --> marker in first 10 lines.
+
+    Returns reason string if found, None otherwise.
+    """
+    import re
+
+    pattern = re.compile(r"<!--\s*no-demo:\s*(.+?)\s*-->")
+    for line in content.split("\n")[:10]:
+        match = pattern.search(line)
         if match:
-            current_version = match.group(1)
+            return match.group(1)
+    return None
 
-    current_major = int(current_version.split(".")[0])
 
-    # Scan for available demos
+def _demo_list(project_root: Path) -> None:
+    """List available demos from demos/ directory."""
+    import json
+
     demos_dir = project_root / "demos"
     if not demos_dir.exists():
         print("No demos available")
@@ -1564,20 +1636,119 @@ def _handle_todo_demo(args: list[str]) -> None:
         print("No demos available")
         raise SystemExit(0)
 
-    # No slug: list all demos
-    if slug is None:
-        print(f"Available demos ({len(demo_entries)}):\n")
-        print(f"{'Slug':<30} {'Title':<50} {'Version':<10} {'Delivered'}")
-        print("-" * 110)
-        for demo_slug, snapshot in demo_entries:
-            title = snapshot.get("title", "")
-            version = snapshot.get("version", "")
-            # Use delivered_date with fallback to delivered for forward compatibility
-            delivered = snapshot.get("delivered_date", snapshot.get("delivered", ""))
-            print(f"{demo_slug:<30} {title:<50} {version:<10} {delivered}")
+    print(f"Available demos ({len(demo_entries)}):\n")
+    print(f"{'Slug':<30} {'Title':<50} {'Version':<10} {'Delivered'}")
+    print("-" * 110)
+    for demo_slug, snapshot in demo_entries:
+        title = snapshot.get("title", "")
+        version = snapshot.get("version", "")
+        delivered = snapshot.get("delivered_date", snapshot.get("delivered", ""))
+        print(f"{demo_slug:<30} {title:<50} {version:<10} {delivered}")
+    raise SystemExit(0)
+
+
+def _demo_validate(slug: str, project_root: Path) -> None:
+    """Structural validation of demo.md — checks blocks exist, no execution."""
+    demo_md_path = _find_demo_md(slug, project_root)
+    if demo_md_path is None:
+        print(f"Error: No demo.md found for '{slug}'")
+        raise SystemExit(1)
+
+    print(f"Validating demo: {slug}")
+    print(f"Source: {demo_md_path.relative_to(project_root)}\n")
+
+    content = demo_md_path.read_text(encoding="utf-8")
+
+    # Check for no-demo escape hatch
+    no_demo_reason = _check_no_demo_marker(content)
+    if no_demo_reason is not None:
+        print(f"No-demo marker found: {no_demo_reason}")
         raise SystemExit(0)
 
-    # With slug: find and run the demo
+    blocks = _extract_demo_blocks(content)
+    executable = [b for b in blocks if not b[2]]
+
+    if not executable:
+        print("Validation failed: no executable bash blocks found")
+        raise SystemExit(1)
+
+    print(f"Validation passed: {len(executable)} executable block(s) found")
+    if len(blocks) > len(executable):
+        print(f"Skipped: {len(blocks) - len(executable)} block(s)")
+    raise SystemExit(0)
+
+
+def _demo_run(slug: str, project_root: Path) -> None:
+    """Execute bash blocks from demo.md."""
+    demo_md_path = _find_demo_md(slug, project_root)
+
+    if demo_md_path is not None:
+        print(f"Running demo: {slug}\n")
+        print(f"Source: {demo_md_path.relative_to(project_root)}\n")
+
+        content = demo_md_path.read_text(encoding="utf-8")
+
+        # Check for no-demo escape hatch
+        no_demo_reason = _check_no_demo_marker(content)
+        if no_demo_reason is not None:
+            print(f"No-demo marker found: {no_demo_reason}")
+            raise SystemExit(0)
+
+        blocks = _extract_demo_blocks(content)
+
+        if not blocks:
+            print("Error: no executable blocks found in demo.md")
+            raise SystemExit(1)
+
+        executable = [(ln, blk, reason) for ln, blk, skipped, reason in blocks if not skipped]
+        skipped = [(ln, blk, reason) for ln, blk, skipped, reason in blocks if skipped]
+
+        if skipped:
+            for ln, _blk, reason in skipped:
+                print(f"  SKIP  block at line {ln}: {reason}")
+            print()
+
+        if not executable:
+            print("Error: all code blocks skipped, no executable blocks")
+            raise SystemExit(1)
+
+        # Prepend project venv to PATH so demo blocks use the correct Python
+        env = os.environ.copy()
+        venv_bin = project_root / ".venv" / "bin"
+        if venv_bin.is_dir():
+            env["PATH"] = str(venv_bin) + os.pathsep + env.get("PATH", "")
+            env["VIRTUAL_ENV"] = str(project_root / ".venv")
+
+        passed = 0
+        for ln, block, _reason in executable:
+            preview = block.strip().split("\n")[0][:60]
+            print(f"  RUN   block at line {ln}: {preview}")
+            result = subprocess.run(block, shell=True, cwd=project_root, env=env)
+            if result.returncode != 0:
+                print(f"  FAIL  block at line {ln} exited with {result.returncode}")
+                raise SystemExit(1)
+            print(f"  PASS  block at line {ln}")
+            passed += 1
+
+        print(f"\nDemo passed: {passed}/{len(executable)} blocks")
+        if skipped:
+            print(f"Skipped: {len(skipped)} blocks")
+        raise SystemExit(0)
+
+    # Fallback: snapshot.json demo field (backward compatibility)
+    import json
+    import re
+
+    pyproject_path = project_root / "pyproject.toml"
+    current_version = "0.0.0"
+    if pyproject_path.exists():
+        pyproject_content = pyproject_path.read_text()
+        match = re.search(r'version\s*=\s*"([^"]+)"', pyproject_content)
+        if match:
+            current_version = match.group(1)
+    current_major = int(current_version.split(".")[0])
+
+    demos_dir = project_root / "demos"
     demo_path = demos_dir / slug
     snapshot_path = demo_path / "snapshot.json"
 
@@ -1591,7 +1762,6 @@ def _handle_todo_demo(args: list[str]) -> None:
         print(f"Error reading snapshot for '{slug}': {exc}")
         raise SystemExit(1) from exc
 
-    # Semver gate: compare major versions
     demo_version = snapshot.get("version", "0.0.0")
     demo_major = int(demo_version.split(".")[0])
 
@@ -1602,16 +1772,116 @@ def _handle_todo_demo(args: list[str]) -> None:
         )
         raise SystemExit(0)
 
-    # Check for demo field
     demo_command = snapshot.get("demo")
     if not demo_command:
-        print(f"Warning: Demo '{slug}' has no 'demo' field. Skipping execution.")
+        print(f"Warning: Demo '{slug}' has no demo.md or 'demo' field. Skipping execution.")
         raise SystemExit(0)
 
-    # Execute the demo command
     print(f"Running demo: {slug} (v{demo_version})\n")
     result = subprocess.run(demo_command, shell=True, cwd=demo_path)
     raise SystemExit(result.returncode)
+
+
+def _demo_create(slug: str, project_root: Path) -> None:
+    """Promote demo.md to demos/{slug}/ with minimal snapshot.json."""
+    import json
+    import re
+
+    source = _find_demo_md(slug, project_root)
+    if source is None:
+        print(f"Error: No demo.md found for '{slug}'")
+        raise SystemExit(1)
+
+    # Read title from demo.md H1
+    content = source.read_text(encoding="utf-8")
+    title = slug
+    for line in content.split("\n"):
+        line = line.strip()
+        if line.startswith("# "):
+            title = line[2:].strip()
+            # Strip "Demo: " prefix if present
+            if title.lower().startswith("demo:"):
+                title = title[5:].strip()
+            break
+
+    # Read version from pyproject.toml
+    pyproject_path = project_root / "pyproject.toml"
+    version = "0.0.0"
+    if pyproject_path.exists():
+        pyproject_content = pyproject_path.read_text()
+        match = re.search(r'version\s*=\s*"([^"]+)"', pyproject_content)
+        if match:
+            version = match.group(1)
+
+    # Create demos/{slug}/ and copy demo.md
+    demos_dir = project_root / "demos" / slug
+    demos_dir.mkdir(parents=True, exist_ok=True)
+    import shutil
+
+    shutil.copy2(source, demos_dir / "demo.md")
+
+    # Generate minimal snapshot.json
+    snapshot = {"slug": slug, "title": title, "version": version}
+    (demos_dir / "snapshot.json").write_text(json.dumps(snapshot, indent=2) + "\n")
+
+    print(f"Demo promoted: {source.relative_to(project_root)} -> demos/{slug}/")
+    print(f"Snapshot: {json.dumps(snapshot)}")
+    raise SystemExit(0)
+
+
+def _handle_todo_demo(args: list[str]) -> None:
+    """Handle telec todo demo subcommands: validate, run, create, or list."""
+    _DEMO_SUBCOMMANDS = {"validate", "run", "create"}
+    subcommand: str | None = None
+    remaining_args = args
+
+    if args and args[0] in _DEMO_SUBCOMMANDS:
+        subcommand = args[0]
+        remaining_args = args[1:]
+
+    slug: str | None = None
+    project_root = Path.cwd()
+
+    i = 0
+    while i < len(remaining_args):
+        arg = remaining_args[i]
+        if arg == "--project-root" and i + 1 < len(remaining_args):
+            project_root = Path(remaining_args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "demo"))
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                print(_usage("todo", "demo"))
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    # No subcommand and no slug: list demos
+    if subcommand is None and slug is None:
+        _demo_list(project_root)
+        return
+
+    # No subcommand but has slug: backward compat → run with deprecation
+    if subcommand is None and slug is not None:
+        print(f"Note: 'telec todo demo {slug}' is deprecated. Use 'telec todo demo run {slug}' instead.\n")
+        subcommand = "run"
+
+    # Subcommand requires slug
+    if slug is None:
+        print(f"Missing required slug for 'demo {subcommand}'.")
+        print(_usage("todo", "demo"))
+        raise SystemExit(1)
+
+    if subcommand == "validate":
+        _demo_validate(slug, project_root)
+    elif subcommand == "run":
+        _demo_run(slug, project_root)
+    elif subcommand == "create":
+        _demo_create(slug, project_root)
 
 
 def _handle_todo_create(args: list[str]) -> None:
@@ -1659,6 +1929,49 @@ def _handle_todo_create(args: list[str]) -> None:
     print(f"Created todo skeleton: {todo_dir}")
     if after:
         print(f"Updated dependencies for {slug}: {', '.join(after)}")
+
+
+def _handle_todo_remove(args: list[str]) -> None:
+    """Handle telec todo remove."""
+    from teleclaude.todo_scaffold import remove_todo
+
+    if not args:
+        print(_usage("todo", "remove"))
+        return
+
+    slug: str | None = None
+    project_root = Path.cwd()
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "remove"))
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                print(_usage("todo", "remove"))
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if not slug:
+        print("Missing required slug.")
+        print(_usage("todo", "remove"))
+        raise SystemExit(1)
+
+    try:
+        remove_todo(project_root, slug)
+    except (ValueError, RuntimeError, FileNotFoundError) as exc:
+        print(f"Error: {exc}")
+        raise SystemExit(1) from exc
+
+    print(f"Removed todo: {slug}")
 
 
 def _handle_roadmap(args: list[str]) -> None:
@@ -2093,11 +2406,60 @@ def _handle_bugs(args: list[str]) -> None:
     subcommand = args[0]
     if subcommand == "report":
         _handle_bugs_report(args[1:])
+    elif subcommand == "create":
+        _handle_bugs_create(args[1:])
     elif subcommand == "list":
         _handle_bugs_list(args[1:])
     else:
         print(f"Unknown bugs subcommand: {subcommand}")
         print(_usage("bugs"))
+        raise SystemExit(1)
+
+
+def _handle_bugs_create(args: list[str]) -> None:
+    """Handle telec bugs create <slug> [--project-root PATH]."""
+    if not args:
+        print("Usage: telec bugs create <slug> [--project-root PATH]")
+        raise SystemExit(1)
+
+    slug: str | None = None
+    project_root = Path.cwd()
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--project-root" and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print("Usage: telec bugs create <slug> [--project-root PATH]")
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                print("Usage: telec bugs create <slug> [--project-root PATH]")
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if slug is None:
+        print("Error: slug is required")
+        print("Usage: telec bugs create <slug> [--project-root PATH]")
+        raise SystemExit(1)
+
+    try:
+        bug_dir = create_bug_skeleton(
+            project_root=project_root,
+            slug=slug,
+            description="",
+        )
+        print(f"Created bug skeleton: {bug_dir}")
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        raise SystemExit(1)
+    except FileExistsError as exc:
+        print(f"Error: {exc}")
         raise SystemExit(1)
 
 
@@ -2205,18 +2567,24 @@ def _handle_bugs_report(args: list[str]) -> None:
         raise SystemExit(1) from exc
 
     # Dispatch orchestrator
-    api = TelecAPIClient()
-    try:
-        result = asyncio.run(
-            api.create_session(
+    async def _dispatch_bug_fix() -> "CreateSessionResult":
+        api = TelecAPIClient()
+        await api.connect()
+        try:
+            return await api.create_session(
                 computer="local",
-                project_path=str(worktree_path),
+                project_path=str(project_root),
+                subdir=f"trees/{slug}",
                 agent="claude",
                 thinking_mode="slow",
                 title=f"Bug fix: {slug}",
                 message=f'Run teleclaude__next_work(slug="{slug}") and follow output verbatim until done.',
             )
-        )
+        finally:
+            await api.close()
+
+    try:
+        result = asyncio.run(_dispatch_bug_fix())
         print(f"Created bug todo: {todo_dir}")
         print(f"Bug slug: {slug}")
         print(f"Branch: {slug}")
@@ -2272,21 +2640,19 @@ def _handle_bugs_list(args: list[str]) -> None:
         if state_yaml.exists():
             try:
                 state = yaml.safe_load(state_yaml.read_text())
-                phase = state.get("phase", "unknown")
-                build = state.get("build", "unknown")
-                review = state.get("review", "unknown")
+                build = state.get("build", "pending")
+                review = state.get("review", "pending")
 
-                if phase == "in_progress":
-                    if review == "approved":
-                        status = "approved"
-                    elif review == "changes_requested":
-                        status = "fixing"
-                    elif build == "complete":
-                        status = "reviewing"
-                    elif build in ("started", "complete"):
-                        status = "building"
-                    else:
-                        status = "pending"
+                if review == "approved":
+                    status = "approved"
+                elif review == "changes_requested":
+                    status = "fixing"
+                elif build == "complete":
+                    status = "reviewing"
+                elif build in ("started", "complete"):
+                    status = "building"
+                else:
+                    status = "pending"
             except (yaml.YAMLError, OSError):
                 pass
 

@@ -75,12 +75,12 @@ lint:
 
 test-unit:
 	@echo "Running unit tests..."
-	@. .venv/bin/activate && pytest tests/unit/ -v --timeout=1
+	@. .venv/bin/activate && pytest tests/unit/ -v
 	@echo "✓ Unit tests passed"
 
 test-e2e:
 	@echo "Running integration/e2e tests..."
-	@. .venv/bin/activate && pytest tests/integration/ -v --timeout=5 -m "not expensive"
+	@. .venv/bin/activate && pytest tests/integration/ -v -m "not expensive"
 	@echo "✓ Integration tests passed"
 
 test-agents:

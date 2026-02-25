@@ -24,6 +24,7 @@ from teleclaude.types.commands import (
     HandleFileCommand,
     HandleVoiceCommand,
     KeysCommand,
+    ProcessMessageCommand,
     RestartAgentCommand,
     ResumeAgentCommand,
     StartAgentCommand,
@@ -209,6 +210,81 @@ async def test_create_session_inherits_parent_origin(mock_initialized_db):
     stored = await mock_initialized_db.get_session(result["session_id"])
     assert stored is not None
     assert stored.last_input_origin == "telegram"
+
+
+@pytest.mark.asyncio
+async def test_create_session_stores_resolved_user_role(mock_initialized_db):
+    mock_client = MagicMock()
+    mock_client.create_channel = AsyncMock()
+    mock_client.send_message = AsyncMock()
+
+    resolver = MagicMock()
+    resolver.resolve.return_value = IdentityContext(
+        person_name="Member User",
+        person_role="member",
+        platform="telegram",
+        platform_user_id="321",
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with (
+            patch.object(command_handlers, "config") as mock_config,
+            patch.object(command_handlers, "db") as mock_db,
+            patch.object(command_handlers, "get_identity_resolver", return_value=resolver),
+        ):
+            mock_config.computer.name = "TestComputer"
+            mock_config.computer.default_working_dir = tmpdir
+            mock_db.create_session = mock_initialized_db.create_session
+            mock_db.get_session = mock_initialized_db.get_session
+            mock_db.update_session = mock_initialized_db.update_session
+
+            cmd = CreateSessionCommand(project_path=tmpdir, title="Role Session", origin=InputOrigin.TELEGRAM.value)
+            result = await command_handlers.create_session(cmd, mock_client)
+
+    stored = await mock_initialized_db.get_session(result["session_id"])
+    assert stored is not None
+    assert stored.user_role == "member"
+
+
+@pytest.mark.asyncio
+async def test_create_session_inherits_parent_user_role(mock_initialized_db):
+    mock_client = MagicMock()
+    mock_client.create_channel = AsyncMock()
+    mock_client.send_message = AsyncMock()
+
+    resolver = MagicMock()
+    resolver.resolve.return_value = None
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with (
+            patch.object(command_handlers, "config") as mock_config,
+            patch.object(command_handlers, "db") as mock_db,
+            patch.object(command_handlers, "get_identity_resolver", return_value=resolver),
+        ):
+            mock_config.computer.name = "TestComputer"
+            mock_config.computer.default_working_dir = tmpdir
+            mock_db.create_session = mock_initialized_db.create_session
+            mock_db.get_session = mock_initialized_db.get_session
+
+            parent = await mock_initialized_db.create_session(
+                computer_name="TestComputer",
+                tmux_session_name="tmux-parent",
+                last_input_origin=InputOrigin.TELEGRAM.value,
+                title="Parent Session",
+                user_role="member",
+            )
+
+            cmd = CreateSessionCommand(
+                project_path=tmpdir,
+                title="Child Session",
+                origin=InputOrigin.TELEGRAM.value,
+                initiator_session_id=parent.session_id,
+            )
+            result = await command_handlers.create_session(cmd, mock_client)
+
+    stored = await mock_initialized_db.get_session(result["session_id"])
+    assert stored is not None
+    assert stored.user_role == "member"
 
 
 @pytest.mark.asyncio
@@ -679,6 +755,37 @@ async def test_handle_get_session_data_codex_falls_back_to_tmux_when_no_transcri
     assert result["status"] == "success"
     assert result["messages"] == "123456"
     assert result.get("transcript") is None
+
+
+@pytest.mark.asyncio
+async def test_handle_get_session_data_tmux_fallback_strips_ansi_before_tail():
+    """Tmux fallback should strip ANSI codes before applying tail chars."""
+    mock_session = MagicMock()
+    mock_session.session_id = "codex-session-tmux-ansi"
+    mock_session.title = "Codex Session"
+    mock_session.project_path = "/home/user"
+    mock_session.subdir = None
+    mock_session.created_at = datetime.now()
+    mock_session.last_activity = datetime.now()
+    mock_session.native_log_file = None
+    mock_session.native_session_id = None
+    mock_session.active_agent = "codex"
+    mock_session.tmux_session_name = "tc_codex_ansi"
+
+    cmd = GetSessionDataCommand(session_id="codex-session-tmux-ansi", tail_chars=4)
+    pane_output = "abc\x1b[38;2;181;107;145mX\x1b[0mdef"
+
+    with (
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers.tmux_bridge, "capture_pane", new=AsyncMock(return_value=pane_output)),
+    ):
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        result = await command_handlers.get_session_data(cmd)
+
+    assert result["status"] == "success"
+    assert result["messages"] == "Xdef"
+    assert "\x1b" not in result["messages"]
 
 
 @pytest.mark.asyncio
@@ -1318,6 +1425,7 @@ async def test_handle_agent_restart_resumes_with_native_session_id(mock_initiali
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(3.0)
 async def test_handle_agent_restart_aborts_when_shell_not_ready(mock_initialized_db):
     """Restart should abort if the foreground process does not exit."""
 
@@ -1612,6 +1720,152 @@ async def test_handle_file_invokes_file_handler() -> None:
     assert context.session_id == "sess-456"
     assert context.file_path == "/tmp/file.txt"
     assert context.filename == "file.txt"
+
+
+# --- R2: Provenance write timing tests ---
+
+
+@pytest.mark.asyncio
+async def test_process_message_updates_last_input_origin_before_broadcast():
+    """last_input_origin must be persisted to DB before broadcast_user_input is called.
+
+    R2: provenance write timing — ensures routing-dependent operations (broadcast)
+    see the updated origin, not a stale one.
+    """
+    call_order: list[str] = []
+
+    mock_session = MagicMock()
+    mock_session.session_id = "sess-prov-order"
+    mock_session.lifecycle_status = "active"
+    mock_session.tmux_session_name = "tc_prov"
+    mock_session.active_agent = None
+    mock_session.project_path = "/tmp"
+    mock_session.subdir = None
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=mock_session)
+
+    async def record_update_session(session_id, **kwargs):
+        if "last_input_origin" in kwargs:
+            call_order.append(f"update_session:last_input_origin={kwargs['last_input_origin']}")
+
+    mock_db.update_session = AsyncMock(side_effect=record_update_session)
+    mock_db.update_last_activity = AsyncMock()
+
+    mock_client = AsyncMock()
+
+    async def record_broadcast(*args, **kwargs):
+        call_order.append("broadcast_user_input")
+
+    mock_client.broadcast_user_input = AsyncMock(side_effect=record_broadcast)
+    mock_client.pre_handle_command = AsyncMock()
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(command_handlers, "tmux_io") as mock_tmux_io,
+        patch.object(command_handlers, "polling_coordinator"),
+    ):
+        mock_tmux_io.wrap_bracketed_paste.return_value = "hello"
+        mock_tmux_io.process_text = AsyncMock(return_value=True)
+
+        cmd = ProcessMessageCommand(
+            session_id="sess-prov-order",
+            text="hello",
+            origin=InputOrigin.TELEGRAM.value,
+        )
+        await command_handlers.process_message(cmd, mock_client, AsyncMock())
+
+    # Provenance update must appear before broadcast
+    update_idx = next(
+        (i for i, e in enumerate(call_order) if "last_input_origin" in e),
+        None,
+    )
+    broadcast_idx = next(
+        (i for i, e in enumerate(call_order) if e == "broadcast_user_input"),
+        None,
+    )
+    assert update_idx is not None, "last_input_origin update not found"
+    assert broadcast_idx is not None, "broadcast_user_input not found"
+    assert update_idx < broadcast_idx, (
+        f"Provenance must be updated before broadcast: update_idx={update_idx}, broadcast_idx={broadcast_idx}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_updates_last_input_origin_before_feedback():
+    """last_input_origin must be persisted before any feedback/status messages.
+
+    R2: handle_voice() updates provenance before sending transcription status
+    so that feedback routing uses the correct adapter lane.
+
+    The voice handler sends a status message (e.g. "Transcribing...") via the
+    send_message callback before returning the transcription. This test verifies
+    that provenance is written BEFORE that status send fires.
+    """
+    call_order: list[str] = []
+
+    mock_session = MagicMock()
+    mock_session.session_id = "sess-voice-prov"
+    mock_session.initiator_session_id = None
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=mock_session)
+
+    async def record_update_session(session_id, **kwargs):
+        if "last_input_origin" in kwargs:
+            call_order.append(f"update_session:last_input_origin={kwargs['last_input_origin']}")
+
+    mock_db.update_session = AsyncMock(side_effect=record_update_session)
+
+    async def fake_send_message(*args, **kwargs):
+        call_order.append("send_message")
+        return "msg-1"
+
+    mock_client = AsyncMock()
+    mock_client.send_message = AsyncMock(side_effect=fake_send_message)
+    mock_client.pre_handle_command = AsyncMock()
+    mock_client.break_threaded_turn = AsyncMock()
+    mock_client.delete_message = AsyncMock()
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(command_handlers, "voice_message_handler") as mock_voice,
+        patch.object(command_handlers, "process_message", new=AsyncMock()),
+    ):
+        # Simulate voice handler sending a status (e.g. "Transcribing...") via the
+        # send_message callback before returning the transcription — mirrors real behavior.
+        async def fake_handle_voice(session_id, audio_path, context, send_message, delete_message):
+            await send_message(session_id, "Transcribing...", MagicMock())
+            return "hello world"
+
+        mock_voice.handle_voice = fake_handle_voice
+
+        cmd = HandleVoiceCommand(
+            session_id="sess-voice-prov",
+            file_path="/tmp/audio.ogg",
+            origin=InputOrigin.TELEGRAM.value,
+        )
+        await command_handlers.handle_voice(cmd, mock_client, AsyncMock())
+
+    # Provenance update must appear before the feedback send
+    update_idx = next(
+        (i for i, e in enumerate(call_order) if "last_input_origin" in e),
+        None,
+    )
+    send_idx = next(
+        (i for i, e in enumerate(call_order) if e == "send_message"),
+        None,
+    )
+    assert update_idx is not None, f"handle_voice must update last_input_origin; call_order={call_order}"
+    assert send_idx is not None, f"send_message (feedback) not found; call_order={call_order}"
+    assert update_idx < send_idx, (
+        f"Provenance must be updated before feedback send: "
+        f"update_idx={update_idx}, send_idx={send_idx}, call_order={call_order}"
+    )
+
+    # Verify the correct origin was written
+    origin_update = next(e for e in call_order if "last_input_origin" in e)
+    assert InputOrigin.TELEGRAM.value in origin_update
 
 
 class ExecuteKwargs(TypedDict, total=False):

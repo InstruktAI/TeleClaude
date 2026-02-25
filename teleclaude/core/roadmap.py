@@ -11,7 +11,7 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.models import TodoInfo
-from teleclaude.core.next_machine.core import load_icebox_slugs, load_roadmap
+from teleclaude.core.next_machine.core import load_icebox, load_roadmap
 
 logger = get_logger(__name__)
 
@@ -47,20 +47,19 @@ def assemble_roadmap(
         """Normalize a todo title heading into a filesystem-style slug."""
         return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
-    def parse_icebox_slugs() -> set[str]:
-        """Collect todo slugs currently parked in icebox.yaml (or legacy icebox.md)."""
-        icebox_yaml = todos_root / "icebox.yaml"
-        if icebox_yaml.exists():
-            return set(load_icebox_slugs(str(todos_root.parent)))
+    # Load icebox data — full entries when yaml exists, slugs-only for legacy
+    icebox_entries = []
+    icebox_slugs: set[str] = set()
+    icebox_groups: set[str] = set()
 
-        # Legacy fallback: parse icebox.md
-        icebox_slugs: set[str] = set()
-        if not icebox_path.exists():
-            return icebox_slugs
-
+    icebox_yaml_path = todos_root / "icebox.yaml"
+    if icebox_yaml_path.exists():
+        icebox_entries = load_icebox(str(todos_root.parent))
+        icebox_slugs = {e.slug for e in icebox_entries}
+        icebox_groups = {e.group for e in icebox_entries if e.group}
+    elif icebox_path.exists():
         heading_pattern = re.compile(r"^\s*#+\s+(.*)\s*$")
         table_pattern = re.compile(r"\|\s*([a-z0-9-]+)\s*\|")
-
         try:
             for line in icebox_path.read_text(encoding="utf-8").splitlines():
                 heading_match = heading_pattern.match(line)
@@ -69,18 +68,13 @@ def assemble_roadmap(
                     if heading and heading.lower() != "icebox":
                         icebox_slugs.add(slugify_heading(heading))
                     continue
-
                 table_match = table_pattern.search(line)
                 if table_match:
                     slug = table_match.group(1)
                     if slug != "slug":
                         icebox_slugs.add(slug)
         except OSError:
-            return set()
-
-        return icebox_slugs
-
-    icebox_slugs = parse_icebox_slugs()
+            pass
 
     def read_todo_metadata(
         todo_dir: Path,
@@ -94,7 +88,12 @@ def assemble_roadmap(
         findings_count = 0
         phase_status = "pending"
 
-        state_path = todo_dir / "state.yaml"
+        slug = todo_dir.name
+        project_root = Path(project_path)
+
+        # Worktree state takes precedence over main (active work reflects live progress)
+        worktree_state = project_root / "trees" / slug / "todos" / slug / "state.yaml"
+        state_path = worktree_state if worktree_state.exists() else todo_dir / "state.yaml"
         # Backward compat: fall back to state.json
         if not state_path.exists():
             legacy_path = todo_dir / "state.json"
@@ -104,22 +103,11 @@ def assemble_roadmap(
         if state_path.exists():
             try:
                 state = yaml.safe_load(state_path.read_text())
-                # Derive status from phase field
-                raw_phase = state.get("phase")
-                if raw_phase == "ready":
-                    # Migration: normalize persisted "ready" to "pending"
-                    phase_status = "pending"
-                elif isinstance(raw_phase, str) and raw_phase in ("pending", "in_progress", "done"):
-                    phase_status = raw_phase
-                else:
-                    # Migration: derive phase from existing fields
-                    build_val = state.get("build")
-                    if isinstance(build_val, str) and build_val != "pending":
-                        phase_status = "in_progress"
 
-                build_status = state.get("build") if isinstance(state.get("build"), str) else None
-                review_status = state.get("review") if isinstance(state.get("review"), str) else None
+                build_status = state.get("build") if isinstance(state.get("build"), str) else "pending"
+                review_status = state.get("review") if isinstance(state.get("review"), str) else "pending"
                 dor = state.get("dor")
+                dor_score = 0
                 if isinstance(dor, dict):
                     raw_score = dor.get("score")
                     if isinstance(raw_score, int):
@@ -131,13 +119,16 @@ def assemble_roadmap(
                 if isinstance(unresolved, list):
                     findings_count = len(unresolved)
 
-                # Build past pending means work has started
-                if phase_status == "pending" and build_status and build_status != "pending":
+                # Derive display status:
+                # - build != pending -> in_progress
+                # - build == pending + dor_score >= 8 -> ready
+                # - build == pending + dor_score < 8 -> pending
+                if build_status != "pending":
                     phase_status = "in_progress"
-
-                # Derive display status: pending + dor_score >= 8 shows as "ready"
-                if phase_status == "pending" and isinstance(dor_score, int) and dor_score >= 8:
+                elif dor_score >= 8:
                     phase_status = "ready"
+                else:
+                    phase_status = "pending"
             except (yaml.YAMLError, OSError):
                 pass
 
@@ -225,7 +216,15 @@ def assemble_roadmap(
             seen_slugs.add(slug)
             append_todo(slug, description=entry.description, after=entry.after, group=entry.group)
 
-    # 2. Scan for remaining directories (orphans or icebox items)
+    # 2. Load icebox entries with their real metadata (group, after, description)
+    if include_icebox:
+        for entry in icebox_entries:
+            if entry.slug in seen_slugs:
+                continue
+            seen_slugs.add(entry.slug)
+            append_todo(entry.slug, description=entry.description, after=entry.after, group=entry.group)
+
+    # 3. Scan for remaining directories (orphans or untracked icebox containers)
     for todo_dir in sorted(todos_root.iterdir(), key=lambda p: p.name):
         if not todo_dir.is_dir():
             continue
@@ -234,25 +233,27 @@ def assemble_roadmap(
         if todo_dir.name in seen_slugs:
             continue
 
-        is_icebox = todo_dir.name in icebox_slugs
+        is_icebox = todo_dir.name in icebox_slugs or todo_dir.name in icebox_groups
 
-        # Skip if it's an icebox item and we're not including icebox
         if is_icebox and not include_icebox:
             continue
-
-        # Skip if we're ONLY showing icebox and this IS NOT an icebox item
-        # (This catches orphans when icebox_only=True)
         if icebox_only and not is_icebox:
             continue
 
         seen_slugs.add(todo_dir.name)
+        # Icebox group containers get their group name; stray icebox slugs get "Icebox"
+        orphan_group: str | None = None
+        if todo_dir.name in icebox_groups:
+            orphan_group = todo_dir.name
+        elif todo_dir.name in icebox_slugs:
+            orphan_group = "Icebox"
         append_todo(
             todo_dir.name,
             description=infer_input_description(todo_dir),
-            group="Icebox" if is_icebox else None,
+            group=orphan_group,
         )
 
-    # 3. Inject container→child relationships from breakdown.todos in state.yaml.
+    # 4. Inject container→child relationships from breakdown.todos in state.yaml.
     # This makes container todos appear as tree parents of their sub-items.
     # The reordering loop below is safe because it rebuilds slug_to_idx after each mutation,
     # ensuring that hierarchical containers (no circular deps) are correctly repositioned

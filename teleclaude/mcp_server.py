@@ -443,14 +443,17 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
             async def _handle_send_message() -> list[TextContent]:
                 direct_raw = arguments.get("direct", False) if arguments else False
                 direct = bool(direct_raw) if direct_raw is not None else False
+                close_link_raw = arguments.get("close_link", False) if arguments else False
+                close_link = bool(close_link_raw) if close_link_raw is not None else False
                 chunks = [
                     chunk
                     async for chunk in self.teleclaude__send_message(
-                        self._str_arg(arguments, "computer"),
-                        self._str_arg(arguments, "session_id"),
-                        self._str_arg(arguments, "message"),
-                        caller_session_id,
-                        direct,
+                        computer=self._str_arg(arguments, "computer"),
+                        session_id=self._str_arg(arguments, "session_id"),
+                        message=self._str_arg(arguments, "message"),
+                        caller_session_id=caller_session_id,
+                        direct=direct,
+                        close_link=close_link,
                     )
                 ]
                 return [TextContent(type="text", text="".join(chunks))]
@@ -526,7 +529,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                 slug = self._str_arg(arguments, "slug") or None
                 cwd = self._str_arg(arguments, "cwd") or None
                 logger.debug("next_work request", slug=slug, cwd=cwd)
-                return [TextContent(type="text", text=await self.teleclaude__next_work(slug, cwd))]
+                return [TextContent(type="text", text=await self.teleclaude__next_work(slug, cwd, caller_session_id))]
 
             async def _handle_next_maintain() -> list[TextContent]:
                 cwd = self._str_arg(arguments, "cwd") or None

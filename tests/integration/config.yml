@@ -1,61 +1,53 @@
 computer:
-    name: TestComputer
-    default_shell: /bin/sh
-    default_working_dir: /tmp
-    trustedDirs:
-        - /tmp
-
+  name: TestComputer
+  default_shell: /bin/sh
+  default_working_dir: /tmp
+  trustedDirs:
+  - /tmp
 database:
-    path: /tmp/teleclaude-test.db
-
+  path: /tmp/teleclaude-test.db
 terminal:
-    default_size: 80x24
-    sizes:
-        small: 60x24
-        medium: 100x30
-        large: 120x40
-    strip_prompts: true
-    strip_ansi: true
-
+  default_size: 80x24
+  sizes:
+    small: 60x24
+    medium: 100x30
+    large: 120x40
+  strip_prompts: true
+  strip_ansi: true
 recording:
-    enabled: false
-    rolling_window_minutes: 20
-    rotation_interval_seconds: 60
-    storage_path: /tmp/recordings
-
+  enabled: false
+  rolling_window_minutes: 20
+  rotation_interval_seconds: 60
+  storage_path: /tmp/recordings
 output:
-    max_lines_before_truncate: 1000
-    max_size_before_truncate: 102400
-    truncate_keep_last_lines: 100
-    spam_detection_lines_per_sec: 1000
-    stream_interval_seconds: 1.5
-    hybrid_mode_threshold_seconds: 5
-
+  max_lines_before_truncate: 1000
+  max_size_before_truncate: 102400
+  truncate_keep_last_lines: 100
+  spam_detection_lines_per_sec: 1000
+  stream_interval_seconds: 1.5
+  hybrid_mode_threshold_seconds: 5
 sessions:
-    max_total: 100
-    warn_at: 50
-    title_generation_after_commands: 5
-
+  max_total: 100
+  warn_at: 50
+  title_generation_after_commands: 5
 uploads:
-    directory: /tmp/uploads
-    max_file_size_mb: 50
-    append_timestamp_on_duplicate: true
-
+  directory: /tmp/uploads
+  max_file_size_mb: 50
+  append_timestamp_on_duplicate: true
 logging:
-    file: /tmp/teleclaude-test.log
-    max_size_mb: 10
-    level: DEBUG
-
+  file: /tmp/teleclaude-test.log
+  max_size_mb: 10
+  level: DEBUG
 agents:
   claude:
     enabled: true
-    strengths: "General purpose, planning."
-    avoid: ""
+    strengths: General purpose, planning.
+    avoid: ''
   gemini:
     enabled: true
-    strengths: "Creative writing."
-    avoid: ""
+    strengths: Creative writing.
+    avoid: ''
   codex:
     enabled: false
-    strengths: "Code completion."
-    avoid: ""
+    strengths: Code completion.
+    avoid: ''

@@ -1,9 +1,8 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from teleclaude.config import AgentConfig, _build_config
-from teleclaude.constants import AGENT_PROTOCOL
+from teleclaude.config import _build_config
 
 
 @pytest.fixture

@@ -91,8 +91,9 @@ async def test_next_prepare_hitl_both_exist():
         patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
         patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
         patch("teleclaude.core.next_machine.core.read_breakdown_state", return_value=None),
-        patch("teleclaude.core.next_machine.core.get_item_phase", return_value="pending"),
-        patch("teleclaude.core.next_machine.core.read_phase_state", return_value={"dor": {"score": 8}}),
+        patch(
+            "teleclaude.core.next_machine.core.read_phase_state", return_value={"build": "pending", "dor": {"score": 8}}
+        ),
         patch("teleclaude.core.next_machine.core.sync_main_to_worktree"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
@@ -376,8 +377,8 @@ def test_sync_slug_todo_from_worktree_to_main_includes_review_findings():
         assert "APPROVE" in main_review.read_text(encoding="utf-8")
 
 
-def test_sync_slug_todo_from_main_to_worktree_does_not_overwrite_existing_state():
-    """Main bootstrap sync must not clobber worktree state transitions."""
+def test_sync_slug_todo_from_main_to_worktree_preserves_worktree_state():
+    """Worktree owns build/review progress — main sync must not clobber existing state.yaml."""
     with tempfile.TemporaryDirectory() as tmpdir:
         slug = "test-slug"
         main_todo = Path(tmpdir) / "todos" / slug
@@ -392,6 +393,42 @@ def test_sync_slug_todo_from_main_to_worktree_does_not_overwrite_existing_state(
 
         final_state = (worktree_todo / "state.yaml").read_text(encoding="utf-8")
         assert '"build":"complete"' in final_state
+
+
+def test_sync_slug_todo_from_main_to_worktree_seeds_state_when_missing():
+    """state.yaml should be copied from main when worktree has no state yet."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        slug = "test-slug"
+        main_todo = Path(tmpdir) / "todos" / slug
+        worktree_root = Path(tmpdir) / "trees" / slug
+        main_todo.mkdir(parents=True, exist_ok=True)
+        worktree_root.mkdir(parents=True, exist_ok=True)
+
+        (main_todo / "state.yaml").write_text('{"build":"pending"}', encoding="utf-8")
+
+        sync_slug_todo_from_main_to_worktree(tmpdir, slug)
+
+        worktree_state = worktree_root / "todos" / slug / "state.yaml"
+        assert worktree_state.exists()
+        assert '"build":"pending"' in worktree_state.read_text(encoding="utf-8")
+
+
+def test_sync_slug_todo_from_main_to_worktree_overwrites_planning_files():
+    """Planning artifacts should always sync from main, even when worktree has them."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        slug = "test-slug"
+        main_todo = Path(tmpdir) / "todos" / slug
+        worktree_todo = Path(tmpdir) / "trees" / slug / "todos" / slug
+        main_todo.mkdir(parents=True, exist_ok=True)
+        worktree_todo.mkdir(parents=True, exist_ok=True)
+
+        (main_todo / "requirements.md").write_text("# Updated requirements\n", encoding="utf-8")
+        (worktree_todo / "requirements.md").write_text("# Stale requirements\n", encoding="utf-8")
+
+        sync_slug_todo_from_main_to_worktree(tmpdir, slug)
+
+        final = (worktree_todo / "requirements.md").read_text(encoding="utf-8")
+        assert "Updated" in final
 
 
 def test_mark_phase_review_approved_clears_unresolved_findings():
@@ -521,3 +558,202 @@ def test_format_tool_call_next_call_with_args():
     )
     assert 'Call teleclaude__next_work(slug="test-slug")' in result
     assert 'Call teleclaude__next_work(slug="test-slug")()' not in result
+
+
+# =============================================================================
+# Build Gate Tests
+# =============================================================================
+
+from unittest.mock import AsyncMock
+
+from teleclaude.core.next_machine import next_work
+from teleclaude.core.next_machine.core import (
+    POST_COMPLETION,
+    format_build_gate_failure,
+)
+
+
+def _write_roadmap_yaml(tmpdir: str, slugs: list[str]) -> None:
+    """Helper to write a roadmap.yaml with given slugs."""
+    import yaml as _yaml
+
+    roadmap_path = Path(tmpdir) / "todos" / "roadmap.yaml"
+    roadmap_path.parent.mkdir(parents=True, exist_ok=True)
+    entries = [{"slug": s} for s in slugs]
+    roadmap_path.write_text(_yaml.dump(entries, default_flow_style=False))
+
+
+@pytest.mark.asyncio
+async def test_next_work_runs_gates_when_build_complete():
+    """next_work runs build gates when build is complete, passing gates lead to review."""
+    db = MagicMock(spec=Db)
+    slug = "gate-test"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Req")
+        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "pending"}')
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "GATE PASSED: all")),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="guidance"),
+            ),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+        assert "next-review" in result
+
+
+@pytest.mark.asyncio
+async def test_next_work_gate_failure_resets_build():
+    """Failing gates reset build to started and return gate-failure instruction."""
+    db = MagicMock(spec=Db)
+    slug = "gate-fail"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Req")
+        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "pending"}')
+
+        gate_output = "GATE FAILED: make test (exit 1)\nTest output..."
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(False, gate_output)),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+        # Verify gate failure response
+        assert "BUILD GATES FAILED" in result
+        assert "GATE FAILED" in result
+        assert "Test output" in result
+
+        # Verify build was reset to started
+        state = yaml.safe_load((state_dir / "state.yaml").read_text())
+        assert state["build"] == "started"
+
+
+@pytest.mark.asyncio
+async def test_next_work_gate_failure_includes_output():
+    """Gate failure response includes failure output for the builder."""
+    db = MagicMock(spec=Db)
+    slug = "gate-output"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Req")
+        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "pending"}')
+
+        gate_output = "GATE FAILED: demo validate (exit 1)\nno executable bash blocks"
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(False, gate_output)),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+        assert "demo validate" in result
+        assert "no executable bash blocks" in result
+        assert "Send" in result  # instructs orchestrator to send to builder
+
+
+@pytest.mark.asyncio
+async def test_next_work_lazy_marking_no_state_mutation():
+    """next_work does NOT mutate build state when returning a new build dispatch."""
+    db = MagicMock(spec=Db)
+    slug = "lazy-mark"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Req")
+        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "phase": "pending"}')
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="guidance"),
+            ),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+        # Should dispatch build
+        assert "next-build" in result
+
+        # Build state should NOT have been mutated to "started"
+        state = yaml.safe_load((state_dir / "state.yaml").read_text())
+        assert state["build"] == "pending"
+
+        # Output should contain marking instructions
+        assert "mark_phase" in result
+        assert "BEFORE DISPATCHING" in result
+
+
+def test_post_completion_finalize_includes_make_restart():
+    """POST_COMPLETION for next-finalize includes make restart step."""
+    assert "make restart" in POST_COMPLETION["next-finalize"]
+
+
+def test_post_completion_finalize_requires_ready_and_apply():
+    """Finalize post-completion must require FINALIZE_READY and run canonical apply."""
+    instructions = POST_COMPLETION["next-finalize"]
+    assert "FINALIZE_READY: {args}" in instructions
+    assert "todos/.finalize-lock" in instructions
+    assert "TELECLAUDE_SESSION_ID" in instructions
+    assert "<session_id>" in instructions
+    assert 'git -C "$MAIN_REPO" merge {args} --no-edit' in instructions
+    assert "telec roadmap deliver {args}" in instructions
+    assert 'git -C "$MAIN_REPO" push origin main' in instructions
+
+
+def test_format_build_gate_failure_structure():
+    """format_build_gate_failure produces correct instruction structure."""
+    result = format_build_gate_failure("test-slug", "GATE FAILED: make test", "teleclaude__next_work()")
+    assert "BUILD GATES FAILED: test-slug" in result
+    assert "GATE FAILED: make test" in result
+    assert "Send" in result
+    assert "Do NOT end" in result
+    assert "mark_phase" in result

@@ -101,6 +101,16 @@ subcommands:
           - slug: 'string (optional)'
         flags:
           --project-root: 'Project root (default: cwd).'
+      demo:
+        args:
+          - slug: 'string (optional)'
+        flags:
+          --project-root: 'Project root (default: cwd).'
+      remove:
+        args:
+          - slug: 'string'
+        flags:
+          --project-root: 'Project root (default: cwd).'
   roadmap:
     description: 'View and manage the work item roadmap.'
     subcommands:

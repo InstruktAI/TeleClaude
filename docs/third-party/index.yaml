@@ -116,3 +116,19 @@ snippets:
   description: WhatsApp Business Cloud API
   scope: project
   path: whatsapp/cloud-api.md
+- id: third-party/whatsapp/media-api
+  description: WhatsApp Media API
+  scope: project
+  path: whatsapp/media-api.md
+- id: third-party/whatsapp/messages-api
+  description: WhatsApp Messages API
+  scope: project
+  path: whatsapp/messages-api.md
+- id: third-party/whatsapp/rate-limits-errors
+  description: WhatsApp Rate Limits & Error Codes
+  scope: project
+  path: whatsapp/rate-limits-errors.md
+- id: third-party/whatsapp/webhooks
+  description: WhatsApp Webhooks
+  scope: project
+  path: whatsapp/webhooks.md

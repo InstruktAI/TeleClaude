@@ -21,6 +21,7 @@ from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.config import TrustedDir
 from teleclaude.core.agents import AgentName
+from teleclaude.core.events import SessionStatusContext
 from teleclaude.core.models import MessageMetadata, Session, SessionAdapterMetadata, TelegramAdapterMetadata
 from teleclaude.types.commands import KeysCommand
 from teleclaude.utils.markdown import telegramify_markdown
@@ -69,10 +70,7 @@ def telegram_adapter(mock_full_config, mock_env, mock_adapter_client):
         mock_config.computer.name = mock_full_config["computer"]["name"]
         mock_config.computer.default_working_dir = mock_full_config["computer"]["default_working_dir"]
         mock_config.computer.trusted_dirs = mock_full_config["computer"]["trusted_dirs"]
-        # Mock get_all_trusted_dirs to return teleclaude folder + trusted_dirs
-        mock_config.computer.get_all_trusted_dirs.return_value = [
-            TrustedDir(name="teleclaude", desc="TeleClaude folder", path="/teleclaude")
-        ] + mock_full_config["computer"]["trusted_dirs"]
+        mock_config.computer.get_all_trusted_dirs.return_value = mock_full_config["computer"]["trusted_dirs"]
         mock_config.telegram.enabled = mock_full_config["telegram"]["enabled"]
         return TelegramAdapter(mock_adapter_client)
 
@@ -994,3 +992,94 @@ class TestMessageNotModified:
         # Should return False (message was deleted)
         assert result is False
         assert len(calls) == 1  # No retry for BadRequest
+
+
+# ---------------------------------------------------------------------------
+# Telegram _handle_session_status (I2)
+# ---------------------------------------------------------------------------
+
+
+def _build_telegram_session(topic_id: int = 888) -> Session:
+    meta = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=topic_id))
+    return Session(
+        session_id="sess-tg-status",
+        computer_name="local",
+        tmux_session_name="tc_tg_status",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Telegram: Status Test",
+        adapter_metadata=meta,
+    )
+
+
+def _make_tg_status_context(session_id: str = "sess-tg-status") -> SessionStatusContext:
+    return SessionStatusContext(
+        session_id=session_id,
+        status="completed",
+        reason="agent_turn_complete",
+        timestamp="2026-01-01T00:00:00+00:00",
+    )
+
+
+@pytest.mark.asyncio
+async def test_telegram_handle_session_status_updates_footer(mock_full_config, mock_env, mock_adapter_client):
+    """_handle_session_status calls _send_footer with the formatted lifecycle status."""
+    with patch.object(config_module, "config") as mock_config:
+        mock_config.computer.name = mock_full_config["computer"]["name"]
+        mock_config.computer.default_working_dir = mock_full_config["computer"]["default_working_dir"]
+        mock_config.computer.trusted_dirs = mock_full_config["computer"]["trusted_dirs"]
+        mock_config.computer.get_all_trusted_dirs.return_value = mock_full_config["computer"]["trusted_dirs"]
+        mock_config.telegram.enabled = mock_full_config["telegram"]["enabled"]
+        adapter = TelegramAdapter(mock_adapter_client)
+
+    session = _build_telegram_session(topic_id=888)
+    context = _make_tg_status_context()
+
+    fake_db = MagicMock()
+    fake_db.get_session = AsyncMock(return_value=session)
+    fake_db.update_session = AsyncMock()
+
+    with (
+        patch("teleclaude.adapters.telegram_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch.object(adapter, "_send_footer", new_callable=AsyncMock) as mock_footer,
+    ):
+        await adapter._handle_session_status("SESSION_STATUS", context)
+
+    mock_footer.assert_awaited_once()
+    _args, kwargs = mock_footer.await_args
+    assert "status_line" in kwargs
+    assert "✅" in kwargs["status_line"]  # completed emoji from _format_lifecycle_status
+
+
+@pytest.mark.asyncio
+async def test_telegram_handle_session_status_skips_when_no_topic(mock_full_config, mock_env, mock_adapter_client):
+    """_handle_session_status does nothing when the session has no Telegram topic_id."""
+    with patch.object(config_module, "config") as mock_config:
+        mock_config.computer.name = mock_full_config["computer"]["name"]
+        mock_config.computer.default_working_dir = mock_full_config["computer"]["default_working_dir"]
+        mock_config.computer.trusted_dirs = mock_full_config["computer"]["trusted_dirs"]
+        mock_config.computer.get_all_trusted_dirs.return_value = mock_full_config["computer"]["trusted_dirs"]
+        mock_config.telegram.enabled = mock_full_config["telegram"]["enabled"]
+        adapter = TelegramAdapter(mock_adapter_client)
+
+    session = Session(
+        session_id="sess-tg-no-topic",
+        computer_name="local",
+        tmux_session_name="tc_no_topic",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="No topic",
+        adapter_metadata=SessionAdapterMetadata(),
+    )
+    context = _make_tg_status_context(session_id=session.session_id)
+
+    fake_db = MagicMock()
+    fake_db.get_session = AsyncMock(return_value=session)
+
+    with (
+        patch("teleclaude.adapters.telegram_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch.object(adapter, "_send_footer", new_callable=AsyncMock) as mock_footer,
+    ):
+        await adapter._handle_session_status("SESSION_STATUS", context)
+
+    mock_footer.assert_not_awaited()

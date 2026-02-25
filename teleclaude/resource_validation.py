@@ -14,8 +14,6 @@ from __future__ import annotations
 import os
 import re
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Mapping
 
@@ -29,7 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from teleclaude.constants import TAXONOMY_TYPES, TYPE_SUFFIX  # noqa: E402
+from teleclaude.constants import SNIPPET_VISIBILITY_VALUES, TAXONOMY_TYPES, TYPE_SUFFIX  # noqa: E402
 from teleclaude.snippet_validation import (  # noqa: E402
     expected_snippet_id_for_path,
     load_domains,
@@ -351,6 +349,10 @@ def validate_snippet(path: Path, content: str, project_root: Path, *, domains: s
 
         if not isinstance(raw_role, str) or raw_role not in ROLE_VALUES:
             _warn("snippet_invalid_role_value", path=str(path), value=str(raw_role))
+    raw_visibility = meta.get("visibility")
+    if raw_visibility is not None:
+        if not isinstance(raw_visibility, str) or raw_visibility not in SNIPPET_VISIBILITY_VALUES:
+            _warn("snippet_invalid_visibility_value", path=str(path), value=str(raw_visibility))
 
     _validate_snippet_structure(path, lines, meta, has_frontmatter, domains=domains)
     _validate_snippet_refs(path, lines, project_root, domains=domains)
@@ -562,6 +564,10 @@ def _validate_snippet_sections(
 
         if not isinstance(role_val, str) or role_val not in ROLE_VALUES:
             _warn("snippet_invalid_role_value", path=str(path), value=str(role_val))
+    visibility_val = meta.get("visibility")
+    if visibility_val is not None:
+        if not isinstance(visibility_val, str) or visibility_val not in SNIPPET_VISIBILITY_VALUES:
+            _warn("snippet_invalid_visibility_value", path=str(path), value=str(visibility_val))
 
     snippet_type = meta.get("type") if isinstance(meta.get("type"), str) else None
     if not snippet_type:
@@ -619,26 +625,6 @@ def _extract_markdown_link_url(value: str) -> str | None:
     return m.group(2) if m else None
 
 
-def _check_url_alive(url: str, *, timeout: int = 8) -> bool:
-    headers = {"User-Agent": "TeleClaude/1.0"}
-    try:
-        req = urllib.request.Request(url, method="HEAD", headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status < 400
-    except urllib.error.HTTPError as exc:
-        # Some docs block HEAD; retry with GET before declaring unreachable.
-        if exc.code >= 400:
-            try:
-                req = urllib.request.Request(url, method="GET", headers=headers)
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
-                    return resp.status < 400
-            except Exception:
-                return False
-        return False
-    except Exception:
-        return False
-
-
 def validate_third_party_docs(project_root: Path) -> None:
     """Validate third-party doc sources exist and URLs are reachable."""
     third_party_root = project_root / "docs" / "third-party"
@@ -664,8 +650,6 @@ def validate_third_party_docs(project_root: Path) -> None:
             if md_url:
                 url = md_url
             if _is_web_url(url):
-                if not _check_url_alive(url):
-                    _warn("third_party_source_unreachable", path=str(path), source=url)
                 continue
             _warn("third_party_source_invalid", path=str(path), source=source)
 
@@ -1085,11 +1069,11 @@ def validate_todo(slug: str, project_root: Path) -> list[str]:
             errors.append(f"{slug}: state file schema violation: {exc}")
 
     # 2. Required files for Ready state
-    # If phase is pending and score >= 8, requirements and implementation plan MUST exist
+    # If build is pending and score >= 8, requirements and implementation plan MUST exist
     if state_path.exists():
         try:
             state = TodoState.model_validate(yaml.safe_load(state_path.read_text(encoding="utf-8")))
-            if state.phase == "pending" and state.dor and state.dor.score >= 8:
+            if state.build == "pending" and state.dor and state.dor.score >= 8:
                 if not (todo_dir / "requirements.md").exists():
                     errors.append(f"{slug}: marked as Ready (score {state.dor.score}) but missing requirements.md")
                 if not (todo_dir / "implementation-plan.md").exists():

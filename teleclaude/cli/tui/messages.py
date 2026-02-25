@@ -28,7 +28,6 @@ class DataRefreshed(Message):
         availability: dict[str, AgentAvailabilityInfo],
         jobs: list[JobInfo],
         tts_enabled: bool,
-        pane_theming_mode: str,
     ) -> None:
         super().__init__()
         self.computers = computers
@@ -38,7 +37,6 @@ class DataRefreshed(Message):
         self.availability = availability
         self.jobs = jobs
         self.tts_enabled = tts_enabled
-        self.pane_theming_mode = pane_theming_mode
 
 
 # --- Session interaction messages ---
@@ -101,6 +99,15 @@ class RestartSessionRequest(Message):
         self.computer = computer
 
 
+class RestartSessionsRequest(Message):
+    """Request to restart multiple sessions on a computer."""
+
+    def __init__(self, computer: str, session_ids: list[str]) -> None:
+        super().__init__()
+        self.computer = computer
+        self.session_ids = session_ids
+
+
 class ReviveSessionRequest(Message):
     """Request to revive a headless session (create its tmux pane)."""
 
@@ -141,6 +148,7 @@ class AgentActivity(Message):
         self,
         session_id: str,
         activity_type: str,
+        canonical_type: str | None = None,
         tool_name: str | None = None,
         tool_preview: str | None = None,
         summary: str | None = None,
@@ -149,6 +157,7 @@ class AgentActivity(Message):
         super().__init__()
         self.session_id = session_id
         self.activity_type = activity_type
+        self.canonical_type = canonical_type
         self.tool_name = tool_name
         self.tool_preview = tool_preview
         self.summary = summary
@@ -210,18 +219,11 @@ class DocEditRequest(Message):
         self.title = title
 
 
-# --- Cursor context messages ---
-
-
-class CursorContextChanged(Message):
-    """Cursor moved to a different item type — ActionBar should update hints."""
-
-    def __init__(self, item_type: str) -> None:
-        super().__init__()
-        self.item_type = item_type  # "session" | "computer" | "project"
-
-
 # --- Settings messages ---
+
+
+class StateChanged(Message):
+    """State changed and should be persisted to disk."""
 
 
 class SettingsChanged(Message):

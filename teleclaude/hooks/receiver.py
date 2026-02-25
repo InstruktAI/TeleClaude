@@ -562,7 +562,12 @@ def _resolve_or_refresh_session_id(
     *,
     agent: str,
 ) -> str | None:
-    """Validate cached session id against current DB state for headless routing."""
+    """Validate cached session id against current DB state.
+
+    Checks only that the session exists and is not closed.  If the DB has a
+    stale native_session_id (e.g. after a Claude Code restart), update it to
+    the incoming value so future DB lookups also resolve correctly.
+    """
     if not candidate_session_id or not raw_native_session_id:
         return candidate_session_id
 
@@ -571,6 +576,35 @@ def _resolve_or_refresh_session_id(
     try:
         with SqlSession(_create_sync_engine()) as session:
             row = session.get(db_models.Session, candidate_session_id)
+            if not row:
+                logger.debug(
+                    "Invalidating cached session mapping: session row not found",
+                    agent=agent,
+                    session_id=candidate_session_id[:8],
+                    native_session_id=raw_native_session_id[:8],
+                )
+                return None
+
+            if row.closed_at:
+                logger.debug(
+                    "Invalidating cached session mapping: session closed",
+                    agent=agent,
+                    session_id=candidate_session_id[:8],
+                    native_session_id=raw_native_session_id[:8],
+                )
+                return None
+
+            if row.native_session_id and row.native_session_id != raw_native_session_id:
+                row.native_session_id = raw_native_session_id
+                session.add(row)
+                session.commit()
+                logger.info(
+                    "Updated stale native_session_id in DB",
+                    agent=agent,
+                    session_id=candidate_session_id[:8],
+                    new_native_session_id=raw_native_session_id[:8],
+                )
+
     except Exception as exc:  # noqa: BLE001 - fail-open to preserve hook delivery on partial DB fixtures
         logger.debug(
             "Session refresh lookup skipped (db unavailable)",
@@ -578,43 +612,6 @@ def _resolve_or_refresh_session_id(
             session_id=candidate_session_id[:8],
             error=str(exc),
         )
-        return candidate_session_id
-    if not row:
-        logger.debug(
-            "Invalidating cached session mapping: session row not found",
-            agent=agent,
-            session_id=candidate_session_id[:8],
-            native_session_id=raw_native_session_id[:8],
-        )
-        return None
-
-    if row.closed_at:
-        logger.debug(
-            "Invalidating cached session mapping: session closed",
-            agent=agent,
-            session_id=candidate_session_id[:8],
-            native_session_id=raw_native_session_id[:8],
-        )
-        return None
-    if row.lifecycle_status != "headless":
-        logger.debug(
-            "Invalidating cached session mapping: non-headless lifecycle",
-            agent=agent,
-            session_id=candidate_session_id[:8],
-            native_session_id=raw_native_session_id[:8],
-            lifecycle_status=row.lifecycle_status,
-        )
-        return None
-
-    if row.native_session_id and row.native_session_id != raw_native_session_id:
-        logger.debug(
-            "Invalidating cached session mapping: native session mismatch",
-            agent=agent,
-            session_id=candidate_session_id[:8],
-            cached_native_session_id=(row.native_session_id or "")[:8],
-            incoming_native_session_id=raw_native_session_id[:8],
-        )
-        return None
 
     return candidate_session_id
 

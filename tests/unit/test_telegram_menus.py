@@ -47,9 +47,7 @@ def telegram_adapter(mock_full_config, mock_env, mock_adapter_client):
         mock_config.computer.name = mock_full_config["computer"]["name"]
         mock_config.computer.default_working_dir = mock_full_config["computer"]["default_working_dir"]
         mock_config.computer.trusted_dirs = mock_full_config["computer"]["trusted_dirs"]
-        mock_config.computer.get_all_trusted_dirs.return_value = [
-            TrustedDir(name="teleclaude", desc="TeleClaude folder", path="/teleclaude")
-        ] + mock_full_config["computer"]["trusted_dirs"]
+        mock_config.computer.get_all_trusted_dirs.return_value = mock_full_config["computer"]["trusted_dirs"]
         mock_config.telegram.enabled = mock_full_config["telegram"]["enabled"]
         return TelegramAdapter(mock_adapter_client)
 

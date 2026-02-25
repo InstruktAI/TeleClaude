@@ -292,7 +292,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-timeout = 3
+timeout = 1
 addopts = [
   "-v",
   "--strict-markers",

@@ -148,7 +148,7 @@ sequenceDiagram
 | Build    | Builder      | `/next-build` in worktree                                                                |
 | Review   | Reviewer     | `/next-review` - evaluate against requirements                                           |
 | Fix      | Fixer        | `/next-fix-review` - address findings                                                    |
-| Finalize | Finalizer    | `/next-finalize` - merge and log                                                         |
+| Finalize | Finalizer    | `/next-finalize` - prepare and emit FINALIZE_READY (apply is orchestrator-owned)         |
 
 ## Failure modes
 

@@ -8,6 +8,8 @@ import { Sidebar } from "@/components/sidebar/Sidebar";
 import { useSidebar } from "@/components/sidebar/SidebarProvider";
 import { NewSessionDialog } from "@/components/sidebar/NewSessionDialog";
 import { SessionHeader } from "@/components/sidebar/SessionHeader";
+import { ThemingToggle } from "@/components/parts/ThemingToggle";
+import { DarkModeToggle } from "@/components/parts/DarkModeToggle";
 
 const Chat = dynamic(() => import("@/components/assistant/Chat"), {
   ssr: false,
@@ -42,6 +44,10 @@ function ChatPageInner() {
           ) : (
             <h1 className="text-lg font-semibold">TeleClaude</h1>
           )}
+          <div className="ml-auto flex items-center gap-1">
+            <DarkModeToggle />
+            <ThemingToggle />
+          </div>
         </header>
 
         {/* Chat area */}

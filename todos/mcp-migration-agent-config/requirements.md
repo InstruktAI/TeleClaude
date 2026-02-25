@@ -9,14 +9,20 @@ agents can perform all existing operations using `telec` subcommands instead of 
 
 ### In scope
 
-- Remove `enabledMcpjsonServers` MCP config from agent session bootstrap
-- Remove MCP wrapper PATH setup from tmux session environment
-- Ensure `telec` is on PATH in all agent sessions
+- Add MCP-disabling flags to AGENT*PROTOCOL profiles in `constants.py`
+  (Claude: `--strict-mcp-config` + empty `enabledMcpjsonServers`;
+  Gemini: `--allowed-mcp-server-names \_none*`; Codex: equivalent or config removal)
+- Update `agent_cli.py` `_JOB_SPEC` to disable MCP for agent jobs
+- Remove MCP server injection from `bin/init/setup_mcp_config.sh`
+- Remove Codex MCP config injection from `install_hooks.py`
 - Ensure `$TMPDIR/teleclaude_session_id` continues to be written
-- Update `agent_cli.py` to remove MCP-related flags
 - End-to-end validation with Claude, Gemini, and Codex agents
 - Validate orchestrator workflow: prepare → build → review → finalize
-- Validate worker isolation
+- Validate worker isolation: daemon-side role enforcement returns 403 when
+  worker agents attempt orchestration commands (sessions start, todo work, etc.)
+- Validate tmux cross-check blocks forged session_ids (agent in tmux session A
+  claiming session B → 403 identity mismatch)
+- Validate context-selection hides orchestration tool docs from worker agents
 
 ### Out of scope
 

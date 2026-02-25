@@ -78,8 +78,6 @@ Threshold constants:
 - Target quality: `8`
 - Decision required: `< 7`
 
-Phase transition: when `requirements.md` and `implementation-plan.md` exist, item phase is `pending`, and `dor.status == "pass"`, transition phase to `ready`. Only `next-prepare-gate` may authorize this.
-
 ## Recovery
 
 1. If phase routing is ambiguous, default to draft and record ambiguity in `dor-report.md`.

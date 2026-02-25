@@ -565,7 +565,7 @@ snippets:
   role: member
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/demo
-  description: Create runnable demo artifacts during build and present them to celebrate
+  description: Create demo.md artifacts during build and present them to celebrate
     delivery.
   type: procedure
   scope: project
@@ -587,7 +587,7 @@ snippets:
   role: member
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/finalize
-  description: Finalize phase. Verify approval, merge to main, log delivery, and cleanup.
+  description: 'Finalize phase. Two-stage finalize: worker prepare, orchestrator apply.'
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/finalize.md

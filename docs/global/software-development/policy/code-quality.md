@@ -3,6 +3,7 @@ description: 'Architecture, typing, contracts, state management, error handling.
 id: 'software-development/policy/code-quality'
 scope: 'domain'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Code Quality — Policy

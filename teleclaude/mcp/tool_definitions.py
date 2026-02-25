@@ -246,6 +246,18 @@ def get_tool_definitions() -> list[Tool]:
                             "always included regardless of this filter."
                         ),
                     },
+                    "list_projects": {
+                        "type": "boolean",
+                        "description": "Phase 0 only: Return the project catalog instead of snippet index.",
+                    },
+                    "projects": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Phase 1 only: Filter snippet index to these project names "
+                            "(case-insensitive). Omit for current project only."
+                        ),
+                    },
                     "project_root": {
                         "type": "string",
                         "description": (
@@ -386,7 +398,10 @@ def get_tool_definitions() -> list[Tool]:
                         "default": False,
                         "description": (
                             "When true, skip automatic notification subscription. "
-                            "Use for peer-to-peer agent communication where neither agent supervises the other."
+                            "Use for peer-to-peer agent communication where neither agent supervises the other. "
+                            "Note: this does NOT establish an output relay — to set up ongoing output forwarding "
+                            "between sessions, follow up with teleclaude__send_message(direct=true) after the "
+                            "session is started."
                         ),
                     },
                 },
@@ -423,8 +438,21 @@ def get_tool_definitions() -> list[Tool]:
                         "type": "boolean",
                         "default": False,
                         "description": (
-                            "When true, skip automatic notification subscription. "
-                            "Use for peer-to-peer agent communication where neither agent supervises the other."
+                            "When true, create/reuse a persistent shared link and deliver this message to all peers "
+                            "(excluding the sender). WARNING: this establishes an ongoing relay — ALL text output "
+                            "this session produces after each turn is automatically forwarded to linked peers. "
+                            "CRITICAL: once direct=true is used, you are addressing the peer agent, NOT the user — "
+                            "the user observes silently and must not be addressed in subsequent responses. "
+                            "Use close_link=true to terminate the relay. "
+                            "Worker stop-notification listeners are not registered."
+                        ),
+                    },
+                    "close_link": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "When true, sever the caller's shared link in one action. "
+                            "Either member can close; removal applies to all members."
                         ),
                     },
                 },

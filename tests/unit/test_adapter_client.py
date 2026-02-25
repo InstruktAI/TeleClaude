@@ -2,7 +2,7 @@
 
 import os
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -277,8 +277,8 @@ async def test_adapter_client_discover_peers_multiple_adapters():
 
 
 @pytest.mark.asyncio
-async def test_non_ui_origin_broadcasts_to_all_ui():
-    """Non-UI origin broadcasts to all registered UI adapters."""
+async def test_non_ui_origin_notice_skips_ui_delivery():
+    """Non-UI origin notice is skipped (origin-only notice routing)."""
     client = AdapterClient()
     ok_adapter = DummyTelegramAdapter(client, send_message_return="123")
     failing_adapter = DummyFailingAdapter(client, error=TimeoutError("Timed out"))
@@ -300,7 +300,8 @@ async def test_non_ui_origin_broadcasts_to_all_ui():
     with patch("teleclaude.core.adapter_client.db", mock_db):
         result = await client.send_message(session, "hello", ephemeral=False)
 
-    assert result == "123"
+    assert result is None
+    assert ok_adapter.sent_messages == []
 
 
 @pytest.mark.asyncio
@@ -727,8 +728,8 @@ async def test_send_message_persistent_not_tracked():
 
 
 @pytest.mark.asyncio
-async def test_send_message_notice_broadcasts_when_missing_origin():
-    """Notices with no origin broadcast to all UI adapters."""
+async def test_send_message_notice_skips_when_missing_origin():
+    """Notices with no UI origin are skipped (origin-only routing)."""
     client = AdapterClient()
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-feedback")
@@ -749,13 +750,14 @@ async def test_send_message_notice_broadcasts_when_missing_origin():
     with patch("teleclaude.core.adapter_client.db", mock_db):
         result = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
-    # Broadcasts to all UI adapters; first successful result returned
-    assert result is not None
+    assert result is None
+    assert telegram_adapter.sent_messages == []
+    assert slack_adapter.sent_messages == []
 
 
 @pytest.mark.asyncio
-async def test_send_message_notice_fans_out_to_all_ui_adapters():
-    """Notices fan out to all UI adapters (unconditional fan-out)."""
+async def test_send_message_notice_routes_to_origin_ui_adapter():
+    """Notices route only to the origin UI adapter."""
     client = AdapterClient()
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-feedback")
@@ -777,13 +779,13 @@ async def test_send_message_notice_fans_out_to_all_ui_adapters():
         message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
     assert message_id == "slack-feedback"
-    assert telegram_adapter.sent_messages == ["hello"]  # All adapters receive
+    assert telegram_adapter.sent_messages == []
     assert slack_adapter.sent_messages == ["hello"]
 
 
 @pytest.mark.asyncio
-async def test_send_message_notice_api_origin_broadcasts():
-    """Notices with API origin broadcast to all UI adapters."""
+async def test_send_message_notice_api_origin_skips_ui_delivery():
+    """Notices with non-UI origin do not fan out to UI adapters."""
     client = AdapterClient()
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-feedback")
@@ -802,7 +804,8 @@ async def test_send_message_notice_api_origin_broadcasts():
     with patch("teleclaude.core.adapter_client.db", mock_db):
         result = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
-    assert result == "tg-feedback"
+    assert result is None
+    assert telegram_adapter.sent_messages == []
 
 
 @pytest.mark.asyncio
@@ -917,8 +920,8 @@ async def test_send_threaded_output_broadcasts_to_observers():
 
 
 @pytest.mark.asyncio
-async def test_broadcast_user_input_sends_to_observers_not_origin():
-    """broadcast_user_input should send formatted text to non-origin UI adapters."""
+async def test_broadcast_user_input_reflects_other_adapters_only():
+    """User input is mirrored to all adapters except the source adapter."""
     client = AdapterClient()
 
     telegram = DummyTelegramAdapter(client, send_message_return="tg-broadcast")
@@ -937,21 +940,21 @@ async def test_broadcast_user_input_sends_to_observers_not_origin():
     mock_db = AsyncMock()
     mock_db.get_session = AsyncMock(return_value=session)
     with patch("teleclaude.core.adapter_client.db", mock_db):
-        await client.broadcast_user_input(session, "Hello from user", "telegram")
+        await client.broadcast_user_input(session, "Hello from user", InputOrigin.TELEGRAM.value)
 
-    # Origin (telegram) should NOT receive the broadcast
     assert telegram.sent_messages == []
-    # Observer (slack) should receive formatted user input
     assert len(slack.sent_messages) == 1
     assert "Hello from user" in slack.sent_messages[0]
 
 
 @pytest.mark.asyncio
 async def test_broadcast_user_input_includes_origin_attribution():
-    """broadcast_user_input formats with origin + computer name."""
+    """Hook/API input reflection is mirrored to all adapters with TUI attribution."""
     client = AdapterClient()
 
+    telegram = DummyTelegramAdapter(client, send_message_return="tg-msg")
     slack = DummyTelegramAdapter(client, send_message_return="slack-msg")
+    client.register_adapter("telegram", telegram)
     client.register_adapter("slack", slack)
 
     session = Session(
@@ -962,13 +965,157 @@ async def test_broadcast_user_input_includes_origin_attribution():
         title="Test Session",
     )
 
+    fresh_session = Session(
+        session_id="session-attribution",
+        computer_name="test",
+        tmux_session_name="tc_attribution",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+    )
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=fresh_session)
+    with patch("teleclaude.core.adapter_client.db", mock_db):
+        await client.broadcast_user_input(session, "test input", InputOrigin.HOOK.value)
+
+    assert len(telegram.sent_messages) == 1
+    assert len(slack.sent_messages) == 1
+    msg = telegram.sent_messages[0]
+    other_msg = slack.sent_messages[0]
+    assert "TUI" in msg
+    assert "TUI" in other_msg
+    assert "test input" in msg
+    assert "test input" in other_msg
+
+
+@pytest.mark.asyncio
+async def test_broadcast_user_input_reflects_mcp_input():
+    """MCP-origin prompts are reflected like other inputs."""
+    client = AdapterClient()
+
+    telegram = DummyTelegramAdapter(client, send_message_return="tg-msg")
+    slack = DummyTelegramAdapter(client, send_message_return="slack-msg")
+    client.register_adapter("telegram", telegram)
+    client.register_adapter("slack", slack)
+
+    session = Session(
+        session_id="session-mcp",
+        computer_name="test",
+        tmux_session_name="tc_mcp",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+    )
+
     mock_db = AsyncMock()
     mock_db.get_session = AsyncMock(return_value=session)
     with patch("teleclaude.core.adapter_client.db", mock_db):
-        await client.broadcast_user_input(session, "test input", "api")
+        await client.broadcast_user_input(session, "mcp input", InputOrigin.MCP.value)
 
+    assert len(telegram.sent_messages) == 1
     assert len(slack.sent_messages) == 1
-    msg = slack.sent_messages[0]
-    # "api" origin should display as "TUI"
-    assert "TUI" in msg
-    assert "test input" in msg
+    assert "MCP" in telegram.sent_messages[0]
+    assert "mcp input" in telegram.sent_messages[0]
+
+
+# --- R3: Single provisioning funnel tests ---
+
+
+@pytest.mark.asyncio
+async def test_ensure_ui_channels_called_before_send_message():
+    """ensure_ui_channels() must be called before any message delivery (R3)."""
+    client = AdapterClient()
+    telegram = DummyTelegramAdapter(client, send_message_return="msg-1")
+    client.register_adapter("telegram", telegram)
+
+    session = Session(
+        session_id="session-ensure-prov",
+        computer_name="test",
+        tmux_session_name="tc_ensure_prov",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+        adapter_metadata=SessionAdapterMetadata(),
+    )
+
+    ensure_calls: list[str] = []
+
+    async def record_ensure(s: Session) -> Session:
+        ensure_calls.append(s.session_id)
+        return s
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    mock_db.get_pending_deletions = AsyncMock(return_value=[])
+    with (
+        patch("teleclaude.core.adapter_client.db", mock_db),
+        patch.object(client, "ensure_ui_channels", side_effect=record_ensure),
+    ):
+        await client.send_message(session, "hello", ephemeral=False)
+
+    assert len(ensure_calls) == 1, "ensure_ui_channels must be called exactly once per delivery"
+
+
+@pytest.mark.asyncio
+async def test_ensure_ui_channels_called_before_send_output_update():
+    """ensure_ui_channels() called for output updates (R3)."""
+    client = AdapterClient()
+    telegram = DummyTelegramAdapter(client)
+    telegram.send_output_update = AsyncMock(return_value="out-1")  # type: ignore[assignment]
+    client.register_adapter("telegram", telegram)
+
+    session = Session(
+        session_id="session-ensure-out",
+        computer_name="test",
+        tmux_session_name="tc_ensure_out",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+        adapter_metadata=SessionAdapterMetadata(),
+    )
+
+    ensure_calls: list[str] = []
+
+    async def record_ensure(s: Session) -> Session:
+        ensure_calls.append(s.session_id)
+        return s
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    mock_db.get_pending_deletions = AsyncMock(return_value=[])
+    with (
+        patch("teleclaude.core.adapter_client.db", mock_db),
+        patch.object(client, "ensure_ui_channels", side_effect=record_ensure),
+    ):
+        await client.send_output_update(session, "output", 0.0, 0.0)
+
+    assert len(ensure_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_channel_bypasses_provisioning():
+    """delete_channel() must NOT call ensure_ui_channels() — avoid creating during teardown (R3)."""
+    client = AdapterClient()
+    telegram = DummyTelegramAdapter(client)
+    client.register_adapter("telegram", telegram)
+
+    session = Session(
+        session_id="session-del-ch",
+        computer_name="test",
+        tmux_session_name="tc_del_ch",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+        adapter_metadata=SessionAdapterMetadata(),
+    )
+
+    ensure_calls: list[str] = []
+
+    async def record_ensure(s: Session) -> Session:
+        ensure_calls.append(s.session_id)
+        return s
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    with (
+        patch("teleclaude.core.adapter_client.db", mock_db),
+        patch.object(client, "ensure_ui_channels", side_effect=record_ensure),
+    ):
+        await client.delete_channel(session)
+
+    assert len(ensure_calls) == 0, "delete_channel must not call ensure_ui_channels"

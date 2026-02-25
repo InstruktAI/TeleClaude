@@ -79,16 +79,13 @@ def test_extract_state_machines_regression() -> None:
     tree = ast.parse(source, filename=str(module.CORE_PATH))
 
     phase_statuses = module.parse_enum_members(tree, "PhaseStatus")
-    roadmap_markers = module.parse_enum_members(tree, "ItemPhase")
     defaults = module.parse_default_phase_state(tree)
     post_completion = module.parse_post_completion_text(tree)
 
-    roadmap_transitions = module.parse_roadmap_transitions(source)
     phase_transitions = module.parse_phase_transitions(defaults, post_completion)
 
-    mermaid = module.generate_mermaid(phase_statuses, roadmap_markers, roadmap_transitions, phase_transitions)
+    mermaid = module.generate_mermaid(phase_statuses, phase_transitions)
 
-    assert "r_PENDING --> r_IN_PROGRESS: set_item_phase" in mermaid
     assert "p_PENDING --> p_COMPLETE: next-build" in mermaid
     assert "p_PENDING --> p_APPROVED: next-review" in mermaid
     assert "p_APPROVED --> p_PENDING: next-fix-review" in mermaid

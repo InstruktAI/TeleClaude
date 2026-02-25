@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from teleclaude.todo_scaffold import SLUG_PATTERN
 
 

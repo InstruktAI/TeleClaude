@@ -2,6 +2,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.cli.tui.app import TelecApp
+from teleclaude.cli.tui.messages import AgentActivity
 from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentOutputPayload, AgentStopPayload
 from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
@@ -49,7 +51,7 @@ def coordinator(mock_client, mock_tts_manager, mock_headless_snapshot_service):
 
 @pytest.mark.asyncio
 async def test_threaded_output_initial_send_stores_id_and_skips_cursor_update(coordinator, mock_client):
-    """Verify first output sends new message, stores ID, and does NOT update cursor."""
+    """Verify first incremental send stores ID and does NOT update cursor."""
     session_id = "session-123"
     payload = AgentOutputPayload(
         session_id="native-123",
@@ -57,8 +59,6 @@ async def test_threaded_output_initial_send_stores_id_and_skips_cursor_update(co
         source_computer="macbook",
         raw={"agent_name": "gemini"},
     )
-    context = AgentEventContext(event_type=AgentHookEvents.TOOL_DONE, session_id=session_id, data=payload)
-
     session = Session(
         session_id=session_id,
         computer_name="macbook",
@@ -84,7 +84,7 @@ async def test_threaded_output_initial_send_stores_id_and_skips_cursor_update(co
 
         mock_client.send_message.return_value = "msg_123"
 
-        await coordinator.handle_tool_done(context)
+        await coordinator._maybe_send_incremental_output(session_id, payload)
 
         # 1. Should call send_threaded_output
         mock_client.send_threaded_output.assert_called_once_with(session, "Message 1", multi_message=False)
@@ -98,7 +98,7 @@ async def test_threaded_output_initial_send_stores_id_and_skips_cursor_update(co
 
 @pytest.mark.asyncio
 async def test_threaded_output_subsequent_update_edits_message(coordinator, mock_client):
-    """Verify subsequent output edits existing message and skips cursor update."""
+    """Verify subsequent incremental output edits existing message and skips cursor update."""
     session_id = "session-123"
     payload = AgentOutputPayload(
         session_id="native-123",
@@ -106,8 +106,6 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
         source_computer="macbook",
         raw={"agent_name": "gemini"},
     )
-    context = AgentEventContext(event_type=AgentHookEvents.TOOL_DONE, session_id=session_id, data=payload)
-
     # Session with existing message ID in adapter metadata
     session = Session(
         session_id=session_id,
@@ -131,7 +129,7 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
         mock_get_messages.return_value = [{"role": "assistant", "content": []}]
         mock_render.return_value = ("Message 1 + 2", "timestamp_2")
 
-        await coordinator.handle_tool_done(context)
+        await coordinator._maybe_send_incremental_output(session_id, payload)
 
         # 1. Should call send_threaded_output to edit the existing message
         mock_client.send_threaded_output.assert_called_once_with(session, "Message 1 + 2", multi_message=True)
@@ -207,8 +205,6 @@ async def test_threaded_output_prefers_payload_agent_over_session_agent(coordina
         source_computer="macbook",
         raw={"agent_name": "claude"},
     )
-    context = AgentEventContext(event_type=AgentHookEvents.TOOL_DONE, session_id=session_id, data=payload)
-
     # Session metadata is stale (gemini), payload identity is claude.
     session = Session(
         session_id=session_id,
@@ -228,9 +224,360 @@ async def test_threaded_output_prefers_payload_agent_over_session_agent(coordina
         mock_get_session.return_value = session
         mock_enabled.side_effect = lambda agent: agent == "gemini"
 
-        await coordinator.handle_tool_done(context)
+        await coordinator._maybe_send_incremental_output(session_id, payload)
 
         # Claimed agent from payload should be used, disabling threaded output path.
         mock_enabled.assert_called_once_with("claude")
         mock_get_messages.assert_not_called()
         mock_client.send_threaded_output.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_trigger_incremental_output_fires_for_threaded_session(coordinator):
+    session_id = "session-123"
+    session = Session(
+        session_id=session_id,
+        computer_name="macbook",
+        tmux_session_name="tmux-123",
+        title="Test Session",
+        active_agent="gemini",
+        native_log_file="/path/to/transcript.jsonl",
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=True),
+        patch.object(
+            coordinator, "_maybe_send_incremental_output", new=AsyncMock(return_value=True)
+        ) as mock_maybe_send,
+    ):
+        mock_get_session.return_value = session
+        result = await coordinator.trigger_incremental_output(session_id)
+
+    assert result is True
+    mock_get_session.assert_awaited_once_with(session_id)
+    mock_maybe_send.assert_awaited_once()
+    payload = mock_maybe_send.await_args.args[1]
+    assert payload.session_id == session_id
+    assert payload.transcript_path == "/path/to/transcript.jsonl"
+
+
+@pytest.mark.asyncio
+async def test_trigger_incremental_output_skips_non_threaded_session(coordinator):
+    session_id = "session-124"
+    session = Session(
+        session_id=session_id,
+        computer_name="macbook",
+        tmux_session_name="tmux-124",
+        title="Test Session",
+        active_agent="claude",
+        native_log_file="/path/to/transcript.jsonl",
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=False),
+        patch.object(
+            coordinator, "_maybe_send_incremental_output", new=AsyncMock(return_value=False)
+        ) as mock_maybe_send,
+    ):
+        mock_get_session.return_value = session
+        result = await coordinator.trigger_incremental_output(session_id)
+
+    assert result is False
+    mock_get_session.assert_awaited_once_with(session_id)
+    mock_maybe_send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_tool_use_does_not_trigger_direct_incremental_output(coordinator):
+    """tool_use hooks stay control-plane and do not fan out output directly."""
+    session_id = "session-tool-use"
+    payload = AgentOutputPayload(
+        session_id="native-tool-use",
+        transcript_path="/path/to/transcript.jsonl",
+        source_computer="macbook",
+        raw={"tool_name": "Read"},
+    )
+    context = AgentEventContext(event_type=AgentHookEvents.TOOL_USE, session_id=session_id, data=payload)
+
+    session = Session(
+        session_id=session_id,
+        computer_name="macbook",
+        tmux_session_name="tmux-123",
+        title="Test Session",
+        active_agent="gemini",
+        native_log_file="/path/to/transcript.jsonl",
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch("teleclaude.core.agent_coordinator.db.update_session", new_callable=AsyncMock),
+        patch.object(coordinator, "_maybe_send_incremental_output", new=AsyncMock()) as mock_incremental,
+    ):
+        mock_get_session.return_value = session
+        await coordinator.handle_tool_use(context)
+
+    mock_incremental.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_tool_done_does_not_trigger_direct_incremental_output(coordinator):
+    """tool_done hooks stay control-plane and do not fan out output directly."""
+    session_id = "session-tool-done"
+    payload = AgentOutputPayload(
+        session_id="native-tool-done",
+        transcript_path="/path/to/transcript.jsonl",
+        source_computer="macbook",
+        raw={"agent_name": "gemini"},
+    )
+    context = AgentEventContext(event_type=AgentHookEvents.TOOL_DONE, session_id=session_id, data=payload)
+
+    with patch.object(coordinator, "_maybe_send_incremental_output", new=AsyncMock()) as mock_incremental:
+        await coordinator.handle_tool_done(context)
+
+    mock_incremental.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# TUI lane: canonical contract path (R1, R4)
+# ---------------------------------------------------------------------------
+
+
+def test_agent_activity_message_carries_canonical_type() -> None:
+    """AgentActivity message correctly stores canonical_type from contract."""
+    from teleclaude.cli.tui.messages import AgentActivity
+
+    msg = AgentActivity(
+        session_id="sess-1",
+        activity_type="agent_stop",
+        canonical_type="agent_output_stop",
+        summary="Done",
+    )
+    assert msg.canonical_type == "agent_output_stop"
+    assert msg.activity_type == "agent_stop"
+
+
+def test_agent_activity_canonical_type_defaults_to_none() -> None:
+    """canonical_type defaults to None for backward compatibility."""
+    from teleclaude.cli.tui.messages import AgentActivity
+
+    msg = AgentActivity(
+        session_id="sess-1",
+        activity_type="tool_use",
+    )
+    assert msg.canonical_type is None
+
+
+def test_agent_activity_output_update_carries_tool_metadata() -> None:
+    """AgentActivity for agent_output_update carries tool name and preview."""
+    from teleclaude.cli.tui.messages import AgentActivity
+
+    msg = AgentActivity(
+        session_id="sess-2",
+        activity_type="tool_use",
+        canonical_type="agent_output_update",
+        tool_name="Read",
+        tool_preview="Read: /tmp/file.py",
+    )
+    assert msg.canonical_type == "agent_output_update"
+    assert msg.tool_name == "Read"
+    assert msg.tool_preview == "Read: /tmp/file.py"
+
+
+def test_agent_activity_user_prompt_submit_canonical_type() -> None:
+    """AgentActivity for user_prompt_submit carries correct canonical_type."""
+    from teleclaude.cli.tui.messages import AgentActivity
+
+    msg = AgentActivity(
+        session_id="sess-3",
+        activity_type="user_prompt_submit",
+        canonical_type="user_prompt_submit",
+    )
+    assert msg.canonical_type == "user_prompt_submit"
+
+
+def test_serialize_agent_stop_produces_output_stop_for_tui() -> None:
+    """agent_stop hook event serializes to agent_output_stop canonical type."""
+    from teleclaude.core.activity_contract import serialize_activity_event
+
+    event = serialize_activity_event(
+        session_id="sess-abc",
+        hook_event_type="agent_stop",
+        timestamp="2025-01-01T00:00:00Z",
+        summary="Output complete",
+    )
+    assert event is not None
+    assert event.canonical_type == "agent_output_stop"
+    assert event.hook_event_type == "agent_stop"
+
+
+def test_serialize_tool_use_produces_output_update_for_tui() -> None:
+    """tool_use hook event serializes to agent_output_update canonical type."""
+    from teleclaude.core.activity_contract import serialize_activity_event
+
+    event = serialize_activity_event(
+        session_id="sess-abc",
+        hook_event_type="tool_use",
+        timestamp="2025-01-01T00:00:00Z",
+        tool_name="Read",
+        tool_preview="Read: /tmp/file.py",
+    )
+    assert event is not None
+    assert event.canonical_type == "agent_output_update"
+    assert event.tool_name == "Read"
+
+
+def test_serialize_tool_done_produces_output_update_for_tui() -> None:
+    """tool_done hook event serializes to agent_output_update canonical type (no tool_name)."""
+    from teleclaude.core.activity_contract import serialize_activity_event
+
+    event = serialize_activity_event(
+        session_id="sess-abc",
+        hook_event_type="tool_done",
+        timestamp="2025-01-01T00:00:00Z",
+    )
+    assert event is not None
+    assert event.canonical_type == "agent_output_update"
+    assert event.tool_name is None
+
+
+def test_canonical_event_carries_observability_fields_for_tui_lane() -> None:
+    """Canonical event carries all required observability fields (R4: lane, event type, session)."""
+    from teleclaude.core.activity_contract import serialize_activity_event
+
+    event = serialize_activity_event(
+        session_id="sess-obs",
+        hook_event_type="tool_use",
+        timestamp="2025-01-01T00:00:00Z",
+        tool_name="Bash",
+    )
+    assert event is not None
+    assert event.session_id == "sess-obs"
+    assert event.canonical_type == "agent_output_update"
+    assert event.hook_event_type == "tool_use"
+    assert event.timestamp == "2025-01-01T00:00:00Z"
+    assert event.message_intent == "ctrl_activity"
+    assert event.delivery_scope == "CTRL"
+
+
+# ---------------------------------------------------------------------------
+# TUI lane: on_agent_activity handler dispatch (R1, R4)
+# ---------------------------------------------------------------------------
+
+
+def _make_handler_context() -> tuple[MagicMock, MagicMock]:
+    """Return (mock_app, mock_sessions_view) for on_agent_activity dispatch tests."""
+    mock_sessions_view = MagicMock()
+    mock_app = MagicMock()
+    mock_app.query_one.return_value = mock_sessions_view
+    mock_app._activity_trigger = None
+    return mock_app, mock_sessions_view
+
+
+def test_handler_canonical_none_returns_early_no_sessions_view_calls() -> None:
+    """canonical is None → early return; no sessions_view methods called."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(session_id="s1", activity_type="tool_use", canonical_type=None)
+    TelecApp.on_agent_activity(mock_app, msg)
+    mock_sv.clear_active_tool.assert_not_called()
+    mock_sv.set_input_highlight.assert_not_called()
+    mock_sv.set_output_highlight.assert_not_called()
+    mock_sv.set_active_tool.assert_not_called()
+
+
+def test_handler_user_prompt_submit_clears_tool_and_sets_input_highlight() -> None:
+    """canonical == user_prompt_submit → clear_active_tool + set_input_highlight."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(session_id="s2", activity_type="user_prompt_submit", canonical_type="user_prompt_submit")
+    TelecApp.on_agent_activity(mock_app, msg)
+    mock_sv.clear_active_tool.assert_called_once_with("s2")
+    mock_sv.set_input_highlight.assert_called_once_with("s2")
+    mock_sv.set_output_highlight.assert_not_called()
+
+
+def test_handler_agent_output_stop_clears_tool_and_sets_output_highlight() -> None:
+    """canonical == agent_output_stop → clear_active_tool + set_output_highlight with summary."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(
+        session_id="s3",
+        activity_type="agent_stop",
+        canonical_type="agent_output_stop",
+        summary="Done.",
+    )
+    TelecApp.on_agent_activity(mock_app, msg)
+    mock_sv.clear_active_tool.assert_called_once_with("s3")
+    mock_sv.set_output_highlight.assert_called_once_with("s3", "Done.")
+
+
+def test_handler_agent_output_stop_uses_empty_string_when_summary_is_none() -> None:
+    """canonical == agent_output_stop with no summary → set_output_highlight('', ...)."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(session_id="s4", activity_type="agent_stop", canonical_type="agent_output_stop")
+    TelecApp.on_agent_activity(mock_app, msg)
+    mock_sv.set_output_highlight.assert_called_once_with("s4", "")
+
+
+def test_handler_agent_output_update_with_tool_name_no_prefix_sets_active_tool() -> None:
+    """canonical == agent_output_update with tool_preview not starting with tool_name → full info."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(
+        session_id="s5",
+        activity_type="tool_use",
+        canonical_type="agent_output_update",
+        tool_name="Read",
+        tool_preview="/tmp/file.py",
+    )
+    TelecApp.on_agent_activity(mock_app, msg)
+    mock_sv.set_active_tool.assert_called_once_with("s5", "Read: /tmp/file.py")
+    mock_sv.clear_active_tool.assert_not_called()
+
+
+def test_handler_agent_output_update_tool_preview_prefix_stripped() -> None:
+    """Preview starting with tool_name (space-separated) has prefix stripped before display."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(
+        session_id="s6",
+        activity_type="tool_use",
+        canonical_type="agent_output_update",
+        tool_name="Bash",
+        tool_preview="Bash ls -la",
+    )
+    TelecApp.on_agent_activity(mock_app, msg)
+    # "Bash ls -la" → strip "Bash" → " ls -la" → lstrip() → "ls -la" → "Bash: ls -la"
+    mock_sv.set_active_tool.assert_called_once_with("s6", "Bash: ls -la")
+
+
+def test_handler_agent_output_update_tool_preview_equals_tool_name_uses_tool_name_only() -> None:
+    """Preview exactly equal to tool_name → empty remainder → display tool_name only."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(
+        session_id="s7",
+        activity_type="tool_use",
+        canonical_type="agent_output_update",
+        tool_name="Write",
+        tool_preview="Write",
+    )
+    TelecApp.on_agent_activity(mock_app, msg)
+    # After stripping "Write" from "Write", remainder is ""; tool_info == tool_name
+    mock_sv.set_active_tool.assert_called_once_with("s7", "Write")
+
+
+def test_handler_agent_output_update_without_tool_name_clears_active_tool() -> None:
+    """canonical == agent_output_update with no tool_name → clear_active_tool."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(session_id="s8", activity_type="tool_done", canonical_type="agent_output_update")
+    TelecApp.on_agent_activity(mock_app, msg)
+    mock_sv.clear_active_tool.assert_called_once_with("s8")
+    mock_sv.set_active_tool.assert_not_called()
+
+
+def test_handler_unknown_canonical_falls_through_silently() -> None:
+    """Unknown canonical_type → no sessions_view dispatch calls."""
+    mock_app, mock_sv = _make_handler_context()
+    msg = AgentActivity(session_id="s9", activity_type="unknown", canonical_type="some_future_type")
+    TelecApp.on_agent_activity(mock_app, msg)
+    mock_sv.clear_active_tool.assert_not_called()
+    mock_sv.set_active_tool.assert_not_called()
+    mock_sv.set_input_highlight.assert_not_called()
+    mock_sv.set_output_highlight.assert_not_called()

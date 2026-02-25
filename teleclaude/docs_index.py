@@ -18,7 +18,7 @@ from instrukt_ai_logging import get_logger
 from typing_extensions import NotRequired, TypedDict
 
 from teleclaude.config.loader import load_project_config
-from teleclaude.constants import TYPE_SUFFIX
+from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL, SNIPPET_VISIBILITY_VALUES, TYPE_SUFFIX
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.snippet_validation import load_domains  # noqa: F401 — re-exported for callers
 
@@ -109,6 +109,7 @@ class SnippetEntry(TypedDict):
     path: str
     source_project: NotRequired[str]
     role: NotRequired[str]
+    visibility: NotRequired[str]
 
 
 class IndexPayload(TypedDict):
@@ -539,6 +540,7 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
                     "type": snippet_type,
                     "scope": "global",
                     "path": relative_path,
+                    "visibility": SNIPPET_VISIBILITY_INTERNAL,
                 }
             )
             continue
@@ -576,6 +578,11 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
             entry["role"] = raw_role
         else:
             entry["role"] = DEFAULT_ROLE
+        raw_visibility = metadata.get("visibility")
+        if isinstance(raw_visibility, str) and raw_visibility in SNIPPET_VISIBILITY_VALUES:
+            entry["visibility"] = raw_visibility
+        else:
+            entry["visibility"] = SNIPPET_VISIBILITY_INTERNAL
         snippets.append(entry)
 
     snippets.sort(key=lambda e: e["id"])

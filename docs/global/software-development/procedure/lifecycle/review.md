@@ -17,6 +17,36 @@ type: 'procedure'
 
 Verify the implementation against requirements and standards, and deliver a binary verdict with structured findings.
 
+### Paradigm-Fit Assessment (Required Lane)
+
+Every review must include a paradigm-fit assessment that checks whether the implementation follows the existing codebase paradigms:
+
+1. **Data flow**: Does the implementation use the established data layer (API, models, state management), or does it bypass it with inline hacks (direct filesystem access, hardcoded paths, ad-hoc parsing)?
+2. **Component reuse**: Does the implementation reuse and parameterize existing components, or does it copy-paste them with minimal changes?
+3. **Pattern consistency**: Does the implementation follow the patterns established by adjacent code (message passing, widget composition, naming conventions)?
+
+Paradigm violations are **Important** findings at minimum. A copy-paste of an existing component that should have been parameterized is an Important finding. An inline filesystem hack that bypasses the data layer is a Critical finding.
+
+### Zero-Finding Justification
+
+If a review produces 0 Important or higher findings across all lanes, the reviewer must include a "Why No Issues" section in `review-findings.md` with:
+
+1. Specific evidence of paradigm-fit verification (which patterns were checked).
+2. Specific evidence that requirements were met (which requirements were validated and how).
+3. Explicit statement that copy-paste duplication was checked and none found (or justified).
+
+A review with 0 findings and no justification section is incomplete and will be rejected by the orchestrator.
+
+### Manual Verification Evidence
+
+For deliveries that include user-facing changes (UI, CLI output, interactive behavior), the reviewer must document verification evidence:
+
+1. What was tested manually (or what could not be tested and why).
+2. Observable behavior that confirms the requirement is met.
+3. Any UI elements that should be visible but were not checked.
+
+If manual verification is not possible in the review environment, the reviewer must explicitly note this gap as a finding.
+
 ## Preconditions
 
 - `todos/{slug}/requirements.md` exists.

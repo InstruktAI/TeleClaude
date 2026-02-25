@@ -14,6 +14,7 @@ EventType = Literal[
     "session_started",
     "session_closed",
     "session_updated",
+    "session_status",
     "agent_event",
     "agent_activity",
     "error",
@@ -75,7 +76,7 @@ class AgentHookEvents:
     # - AGENT_SESSION_START: Initialize headless session, anchor native IDs
     # - USER_PROMPT_SUBMIT: Capture last user input for session history
     # - TOOL_USE: Agent started a tool call (checkpoint timing, TUI activity)
-    # - TOOL_DONE: Tool execution completed, output available (incremental output)
+    # - TOOL_DONE: Tool execution completed (activity/control-plane signal)
     # - AGENT_STOP: Trigger turn completion, poll transcript for final model response
     # - AGENT_NOTIFICATION: Notify listeners (tmux) and initiators (remote)
     # Other events are enqueued but have no active logic in the daemon yet.
@@ -351,6 +352,7 @@ class TeleClaudeEvents:
     SESSION_STARTED: Literal["session_started"] = "session_started"
     SESSION_CLOSED: Literal["session_closed"] = "session_closed"
     SESSION_UPDATED: Literal["session_updated"] = "session_updated"  # Session fields updated in DB
+    SESSION_STATUS: Literal["session_status"] = "session_status"  # Canonical lifecycle status transition
     AGENT_EVENT: Literal["agent_event"] = "agent_event"  # Agent events (title change, etc.)
     AGENT_ACTIVITY: Literal["agent_activity"] = "agent_activity"  # Agent activity events (tool_use, tool_done, etc.)
     ERROR: Literal["error"] = "error"
@@ -477,11 +479,39 @@ class SessionUpdatedContext:
 
 
 @dataclass(frozen=True)
+class SessionStatusContext:
+    """Context for canonical session lifecycle status transition events.
+
+    Canonical contract fields (ucap-truthful-session-status):
+      status: Canonical lifecycle status value (accepted, awaiting_output,
+              active_output, stalled, completed, error, closed).
+      reason: Reason code for the transition.
+      last_activity_at: ISO 8601 UTC timestamp of last known activity (optional).
+      message_intent: Routing intent (ctrl_status).
+      delivery_scope: Routing scope (CTRL for all status events).
+    """
+
+    session_id: str
+    status: str
+    reason: str
+    timestamp: str
+    last_activity_at: str | None = None
+    message_intent: str | None = None
+    delivery_scope: str | None = None
+
+
+@dataclass(frozen=True)
 class AgentActivityEvent:
     """Agent activity event for real-time UI updates.
 
     Direct event from coordinator to consumers (TUI/Web) without DB mediation.
     Carries typed activity events (tool_use, tool_done, agent_stop) with optional metadata.
+
+    Canonical contract fields (ucap-canonical-contract):
+      canonical_type: stable outbound vocabulary type (user_prompt_submit,
+                      agent_output_update, agent_output_stop).
+      message_intent: routing intent for this event (ctrl_activity).
+      delivery_scope:  routing scope (CTRL for all activity events).
     """
 
     session_id: str
@@ -490,6 +520,10 @@ class AgentActivityEvent:
     tool_preview: str | None = None
     summary: str | None = None
     timestamp: str | None = None
+    # Canonical contract fields (preserved as optional for backward compatibility)
+    canonical_type: str | None = None
+    message_intent: str | None = None
+    delivery_scope: str | None = None
 
 
 @dataclass(frozen=True)
@@ -516,5 +550,6 @@ EventContext = (
     | AgentEventContext
     | ErrorEventContext
     | SessionUpdatedContext
+    | SessionStatusContext
     | AgentActivityEvent
 )

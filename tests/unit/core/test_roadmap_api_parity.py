@@ -36,7 +36,6 @@ def project_with_rich_state(tmp_path: Path) -> Path:
     (todos / "full-item" / "state.yaml").write_text(
         json.dumps(
             {
-                "phase": "in_progress",
                 "build": "complete",
                 "review": "changes_requested",
                 "deferrals_processed": True,
@@ -50,7 +49,9 @@ def project_with_rich_state(tmp_path: Path) -> Path:
     # Child item with minimal state
     (todos / "child-item").mkdir()
     (todos / "child-item" / "requirements.md").write_text("# Req")
-    (todos / "child-item" / "state.yaml").write_text(json.dumps({"phase": "pending", "dor": {"score": 3}}))
+    (todos / "child-item" / "state.yaml").write_text(
+        json.dumps({"build": "pending", "review": "pending", "dor": {"score": 3}})
+    )
 
     # Item with no state.yaml (only input.md)
     (todos / "bare-item").mkdir()
@@ -113,7 +114,7 @@ _MARKER_FIELDS = (
 def test_cli_and_api_produce_same_markers(project_with_rich_state: Path) -> None:
     """The CLI (to_dict) and API (TodoDTO) paths must agree on all marker fields."""
     with patch("teleclaude.core.roadmap.load_roadmap", return_value=_roadmap_entries()):
-        with patch("teleclaude.core.roadmap.load_icebox_slugs", return_value=[]):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[]):
             todos = assemble_roadmap(str(project_with_rich_state))
 
     for info in todos:
@@ -129,7 +130,7 @@ def test_cli_and_api_produce_same_markers(project_with_rich_state: Path) -> None
 def test_full_item_markers(project_with_rich_state: Path) -> None:
     """Verify the fully-populated item preserves all markers through both paths."""
     with patch("teleclaude.core.roadmap.load_roadmap", return_value=_roadmap_entries()):
-        with patch("teleclaude.core.roadmap.load_icebox_slugs", return_value=[]):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[]):
             todos = assemble_roadmap(str(project_with_rich_state))
 
     full = next(t for t in todos if t.slug == "full-item")
@@ -151,7 +152,7 @@ def test_full_item_markers(project_with_rich_state: Path) -> None:
 def test_bare_item_defaults(project_with_rich_state: Path) -> None:
     """Item without state.yaml still produces consistent defaults across paths."""
     with patch("teleclaude.core.roadmap.load_roadmap", return_value=_roadmap_entries()):
-        with patch("teleclaude.core.roadmap.load_icebox_slugs", return_value=[]):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[]):
             todos = assemble_roadmap(str(project_with_rich_state))
 
     bare = next(t for t in todos if t.slug == "bare-item")
@@ -172,7 +173,7 @@ def test_bare_item_defaults(project_with_rich_state: Path) -> None:
 def test_dependency_injection_preserved(project_with_rich_state: Path) -> None:
     """Container→child dependency injection appears in both paths."""
     with patch("teleclaude.core.roadmap.load_roadmap", return_value=_roadmap_entries()):
-        with patch("teleclaude.core.roadmap.load_icebox_slugs", return_value=[]):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[]):
             todos = assemble_roadmap(str(project_with_rich_state))
 
     child = next(t for t in todos if t.slug == "child-item")

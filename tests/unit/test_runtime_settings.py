@@ -52,7 +52,8 @@ def test_get_state_initial(settings: RuntimeSettings, tts_manager: MagicMock) ->
     assert s2.get_state().tts.enabled is False
 
 
-def test_patch_valid_key(settings: RuntimeSettings, tts_manager: MagicMock) -> None:
+@pytest.mark.asyncio
+async def test_patch_valid_key(settings: RuntimeSettings, tts_manager: MagicMock) -> None:
     """patch() updates in-memory state and TTSManager.enabled."""
     result = settings.patch(SettingsPatch(tts=TTSSettingsPatch(enabled=False)))
     assert isinstance(result, SettingsState)
@@ -61,7 +62,8 @@ def test_patch_valid_key(settings: RuntimeSettings, tts_manager: MagicMock) -> N
     assert settings.get_state().tts.enabled is False
 
 
-def test_patch_no_fields_raises(settings: RuntimeSettings) -> None:
+@pytest.mark.asyncio
+async def test_patch_no_fields_raises(settings: RuntimeSettings) -> None:
     """patch() rejects when no mutable fields are provided."""
     with pytest.raises(ValueError, match="No mutable settings"):
         settings.patch(SettingsPatch())
@@ -93,16 +95,10 @@ def test_parse_patch_rejects_non_boolean_enabled() -> None:
         RuntimeSettings.parse_patch({"tts": {"enabled": "false"}})
 
 
-def test_parse_patch_pane_theming_mode_allows_new_values() -> None:
-    """parse_patch() accepts new pane_theming_mode aliases and canonical values."""
-    result = RuntimeSettings.parse_patch({"pane_theming_mode": "highlight2"})
-    assert result.pane_theming_mode == "highlight2"
-
-
-def test_parse_patch_rejects_invalid_pane_theming_mode() -> None:
-    """parse_patch() rejects unknown pane_theming_mode values."""
-    with pytest.raises(ValueError, match="pane_theming_mode"):
-        RuntimeSettings.parse_patch({"pane_theming_mode": "invalid"})
+def test_parse_patch_rejects_pane_theming_mode() -> None:
+    """parse_patch() rejects pane_theming_mode (now TUI-only, not a daemon setting)."""
+    with pytest.raises(ValueError, match="Unknown settings keys"):
+        RuntimeSettings.parse_patch({"pane_theming_mode": "highlight2"})
 
 
 @pytest.mark.asyncio
@@ -159,28 +155,24 @@ def settings_client(api_with_settings: APIServer):
 def test_get_settings(settings_client: TestClient, mock_runtime_settings: MagicMock) -> None:
     resp = settings_client.get("/settings")
     assert resp.status_code == 200
-    assert resp.json() == {"tts": {"enabled": True}, "pane_theming_mode": "full"}
+    assert resp.json() == {"tts": {"enabled": True}}
     mock_runtime_settings.get_state.assert_called_once()
 
 
 def test_patch_settings_success(settings_client: TestClient, mock_runtime_settings: MagicMock) -> None:
     resp = settings_client.patch("/settings", json={"tts": {"enabled": False}})
     assert resp.status_code == 200
-    assert resp.json() == {"tts": {"enabled": False}, "pane_theming_mode": "full"}
+    assert resp.json() == {"tts": {"enabled": False}}
     mock_runtime_settings.patch.assert_called_once()
 
 
-def test_patch_settings_with_new_pane_theming_mode(
+def test_patch_settings_rejects_pane_theming_mode(
     settings_client: TestClient, mock_runtime_settings: MagicMock
 ) -> None:
-    """PATCH /settings accepts non-legacy pane theming modes."""
-    mock_runtime_settings.patch.return_value = SettingsState(
-        tts=TTSSettings(enabled=True),
-        pane_theming_mode="agent_plus",
-    )
+    """PATCH /settings rejects pane_theming_mode (now TUI-only)."""
     resp = settings_client.patch("/settings", json={"pane_theming_mode": "agent_plus"})
-    assert resp.status_code == 200
-    assert resp.json() == {"tts": {"enabled": True}, "pane_theming_mode": "agent_plus"}
+    assert resp.status_code == 400
+    mock_runtime_settings.patch.assert_not_called()
 
 
 def test_patch_settings_invalid_key(settings_client: TestClient, mock_runtime_settings: MagicMock) -> None:

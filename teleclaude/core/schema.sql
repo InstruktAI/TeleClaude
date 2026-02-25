@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     relay_started_at TEXT,
     human_email TEXT,
     human_role TEXT,
+    user_role TEXT DEFAULT 'admin',
     transcript_files TEXT DEFAULT '[]'  -- JSON array of transcript file paths (chain for multi-file sessions)
     -- No unique constraint on (computer_name, tmux_session_name): tmux enforces
     -- its own name uniqueness, and headless sessions have NULL tmux_session_name.
@@ -87,6 +88,7 @@ CREATE TABLE IF NOT EXISTS agent_availability (
     agent TEXT PRIMARY KEY,           -- "codex", "claude", "gemini"
     available INTEGER DEFAULT 1,      -- 0 = unavailable, 1 = available
     unavailable_until TEXT,           -- ISO timestamp, NULL if available
+    degraded_until TEXT,              -- ISO timestamp for degraded state expiry
     reason TEXT                       -- "quota_exhausted", "rate_limited", "service_outage"
 );
 
@@ -214,3 +216,33 @@ CREATE TABLE IF NOT EXISTS session_listeners (
 );
 CREATE INDEX IF NOT EXISTS idx_session_listeners_caller
     ON session_listeners(caller_session_id);
+
+-- Shared conversation links for direct peer conversations and future gathering orchestration
+CREATE TABLE IF NOT EXISTS conversation_links (
+    link_id TEXT PRIMARY KEY,
+    mode TEXT NOT NULL CHECK(mode IN ('direct_link', 'gathering_link')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'closed')),
+    created_by_session_id TEXT NOT NULL,
+    metadata_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    closed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_links_status
+    ON conversation_links(status);
+
+CREATE TABLE IF NOT EXISTS conversation_link_members (
+    link_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    participant_name TEXT,
+    participant_number INTEGER,
+    participant_role TEXT,
+    computer_name TEXT,
+    joined_at TEXT NOT NULL,
+    PRIMARY KEY (link_id, session_id),
+    FOREIGN KEY (link_id) REFERENCES conversation_links(link_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_link_members_session
+    ON conversation_link_members(session_id);

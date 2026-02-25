@@ -40,7 +40,14 @@ from teleclaude.core.next_machine.core import (
     sync_main_planning_to_all_worktrees,
 )
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.session_listeners import register_listener, unregister_listener
+from teleclaude.core.session_listeners import (
+    close_link_for_member,
+    create_or_reuse_direct_link,
+    get_peer_members,
+    register_listener,
+    resolve_link_for_sender_target,
+    unregister_listener,
+)
 from teleclaude.mcp.types import (
     ComputerInfo,
     DeployComputerResult,
@@ -72,6 +79,24 @@ logger = get_logger(__name__)
 
 # Max chars for session data response
 MCP_SESSION_DATA_MAX_CHARS = 48000
+
+
+def _snippet_ids_require_project_root(snippet_ids: list[str] | None) -> bool:
+    """Return True when snippet IDs depend on local project-root resolution."""
+    if not snippet_ids:
+        return False
+
+    for snippet_id in snippet_ids:
+        if "/" not in snippet_id:
+            continue
+        prefix = snippet_id.split("/", 1)[0].strip().lower()
+        if not prefix:
+            continue
+        # Only local project IDs require resolving a project root from cwd.
+        # Cross-project IDs (manifest prefixes) are resolved downstream.
+        if prefix == "project":
+            return True
+    return False
 
 
 class MCPHandlersMixin:
@@ -364,9 +389,30 @@ class MCPHandlersMixin:
         logger.info("Local session created: %s", session_id[:8])
         if not direct:
             await self._register_listener_if_present(session_id, caller_session_id)
+        elif direct and caller_session_id:
+            caller = await db.get_session(caller_session_id)
+            caller_label = caller.title if caller and caller.title else caller_session_id
+            caller_computer = caller.computer_name if caller else self.computer_name
+            await create_or_reuse_direct_link(
+                caller_session_id=caller_session_id,
+                target_session_id=session_id,
+                caller_name=caller_label,
+                target_name=title,
+                caller_computer=caller_computer,
+                target_computer=self.computer_name,
+            )
 
         # Start agent in background if message provided (None = skip agent start entirely)
         if message is not None:
+            if direct and caller_session_id:
+                announcement = (
+                    f"[TeleClaude Link Established] - Another agent has established a direct link for conversation.\n"
+                    f"Both your outputs will be shared automatically. You do not need to use send_message.\n"
+                    f'To close the link: `teleclaude__send_message(computer="local", '
+                    f'session_id="{caller_session_id}", message="<goodbye>", close_link=True)`\n'
+                    f"A human may be observing silently — address the peer agent, not the user.\n\n"
+                )
+                message = announcement + message
             agent_args: list[str] = [message] if message else []
             thinking_mode = self._normalize_thinking_mode(thinking_mode)
 
@@ -532,33 +578,159 @@ class MCPHandlersMixin:
         message: str,
         caller_session_id: str | None = None,
         direct: bool = False,
+        close_link: bool = False,
     ) -> AsyncIterator[str]:
         """Send message to an AI agent session."""
         try:
+            if close_link:
+                if not caller_session_id:
+                    yield "[Error: close_link requires caller_session_id]"
+                    return
+                closed_link_id = await close_link_for_member(
+                    caller_session_id=caller_session_id,
+                    target_session_id=session_id,
+                )
+                if not closed_link_id:
+                    yield f"No active link found for caller {caller_session_id}."
+                    return
+                yield f"Closed shared link {closed_link_id} for caller {caller_session_id}."
+                return
+
             if not direct:
                 await self._register_listener_if_present(session_id, caller_session_id)
+
             origin = await self._resolve_origin(caller_session_id)
+            actor_id, actor_name, actor_role, actor_agent, actor_computer = await self._resolve_mcp_actor(
+                caller_session_id
+            )
 
-            if self._is_local_computer(computer):
-                cmd = ProcessMessageCommand(session_id=session_id, text=message, origin=origin)
-                await get_command_service().process_message(cmd)
-            else:
-                await self.client.send_request(
-                    computer_name=computer,
-                    command=f"message {message}",
-                    session_id=session_id,
-                    metadata=MessageMetadata(origin=origin),
+            if direct and caller_session_id:
+                caller = await db.get_session(caller_session_id)
+                target = await db.get_session(session_id)
+                caller_label = caller.title if caller and caller.title else caller_session_id
+                target_label = target.title if target and target.title else session_id
+                caller_computer = caller.computer_name if caller else self.computer_name
+                target_computer = self.computer_name if self._is_local_computer(computer) else computer
+                link_ctx = await resolve_link_for_sender_target(
+                    sender_session_id=caller_session_id,
+                    target_session_id=session_id,
                 )
+                created = False
+                if not link_ctx:
+                    link, created = await create_or_reuse_direct_link(
+                        caller_session_id=caller_session_id,
+                        target_session_id=session_id,
+                        caller_name=caller_label,
+                        target_name=target_label,
+                        caller_computer=caller_computer,
+                        target_computer=target_computer,
+                    )
+                    link_ctx = await resolve_link_for_sender_target(
+                        sender_session_id=caller_session_id,
+                        target_session_id=session_id,
+                    )
+                    if not link_ctx:
+                        raise RuntimeError("Direct link was created but could not be resolved")
+                else:
+                    link = link_ctx[0]
 
-            # Start bidirectional relay for direct peer-to-peer conversations
-            relay_msg = ""
-            if direct and caller_session_id and self._is_local_computer(computer):
-                relay_msg = await self._start_direct_relay(caller_session_id, session_id)
+                _, members = link_ctx
+                peers = await get_peer_members(link_id=link.link_id, sender_session_id=caller_session_id)
+                if peers:
+                    for peer in peers:
+                        target_computer_name = (
+                            peer.computer_name
+                            if peer.computer_name and not self._is_local_computer(peer.computer_name)
+                            else self.computer_name
+                        )
+                        await self._send_message_to_target(
+                            computer=target_computer_name,
+                            session_id=peer.session_id,
+                            message=message,
+                            origin=origin,
+                            actor_id=actor_id,
+                            actor_name=actor_name,
+                            actor_role=actor_role,
+                            actor_agent=actor_agent,
+                            actor_computer=actor_computer,
+                        )
+                else:
+                    # Fallback to explicit target delivery if no other peers are active.
+                    await self._send_message_to_target(
+                        computer=computer,
+                        session_id=session_id,
+                        message=message,
+                        origin=origin,
+                        actor_id=actor_id,
+                        actor_name=actor_name,
+                        actor_role=actor_role,
+                        actor_agent=actor_agent,
+                        actor_computer=actor_computer,
+                    )
 
-            yield f"Message sent to session {session_id[:8]} on {computer}.{relay_msg} Use teleclaude__get_session_data to check status."
+                link_state = "created" if created else "reused"
+                peer_count = max(len(members) - 1, 1)
+                yield (
+                    f"Message sent to direct link {link.link_id} ({link_state}). "
+                    f"Delivered to {peer_count} peer(s). Use teleclaude__get_session_data to check status."
+                )
+                return
+
+            await self._send_message_to_target(
+                computer=computer,
+                session_id=session_id,
+                message=message,
+                origin=origin,
+                actor_id=actor_id,
+                actor_name=actor_name,
+                actor_role=actor_role,
+                actor_agent=actor_agent,
+                actor_computer=actor_computer,
+            )
+            yield f"Message sent to session {session_id} on {computer}. Use teleclaude__get_session_data to check status."
         except Exception as e:
             logger.error("Failed to send message to session %s: %s", session_id[:8], e)
             yield f"[Error: Failed to send message: {str(e)}]"
+
+    async def _send_message_to_target(
+        self,
+        *,
+        computer: str,
+        session_id: str,
+        message: str,
+        origin: str,
+        actor_id: str,
+        actor_name: str,
+        actor_role: str,
+        actor_agent: str,
+        actor_computer: str,
+    ) -> None:
+        if self._is_local_computer(computer):
+            cmd = ProcessMessageCommand(
+                session_id=session_id,
+                text=message,
+                origin=origin,
+                actor_id=actor_id,
+                actor_name=actor_name,
+            )
+            await get_command_service().process_message(cmd)
+            return
+
+        await self.client.send_request(
+            computer_name=computer,
+            command=f"message {shlex.quote(message)}",
+            session_id=session_id,
+            metadata=MessageMetadata(
+                origin=origin,
+                channel_metadata={
+                    "actor_id": actor_id,
+                    "actor_name": actor_name,
+                    "actor_role": actor_role,
+                    "actor_agent": actor_agent,
+                    "actor_computer": actor_computer,
+                },
+            ),
+        )
 
     async def teleclaude__run_agent_command(
         self,
@@ -604,61 +776,32 @@ class MCPHandlersMixin:
             computer, project, title, auto_command, caller_session_id, normalized_subfolder, working_slug
         )
 
-    async def _start_direct_relay(self, caller_session_id: str, target_session_id: str) -> str:
-        """Start a bidirectional session relay between caller and target.
-
-        Looks up both sessions from DB to get tmux names and titles,
-        then creates a relay. Returns a status suffix for the response.
-        """
-        from teleclaude.core.session_relay import (
-            RelayParticipant,
-            create_relay,
-            get_relay_for_session,
-        )
-
-        # Don't create duplicate relays
-        existing_caller = await get_relay_for_session(caller_session_id)
-        existing_target = await get_relay_for_session(target_session_id)
-        if existing_caller or existing_target:
-            return " Relay already active."
-
-        caller = await db.get_session(caller_session_id)
-        target = await db.get_session(target_session_id)
-        if not caller or not target:
-            logger.warning(
-                "Cannot start relay: missing session (caller=%s, target=%s)",
-                bool(caller),
-                bool(target),
-            )
-            return ""
-        if not caller.tmux_session_name or not target.tmux_session_name:
-            logger.warning("Cannot start relay: missing tmux session name")
-            return ""
-
-        participants = [
-            RelayParticipant(
-                session_id=caller_session_id,
-                tmux_session_name=caller.tmux_session_name,
-                name=caller.title or caller_session_id[:8],
-                number=1,
-            ),
-            RelayParticipant(
-                session_id=target_session_id,
-                tmux_session_name=target.tmux_session_name,
-                name=target.title or target_session_id[:8],
-                number=2,
-            ),
-        ]
-        relay_id = await create_relay(participants)
-        logger.info(
-            "Direct relay %s started between %s and %s", relay_id[:8], caller_session_id[:8], target_session_id[:8]
-        )
-        return " Bidirectional relay started."
-
     async def _resolve_origin(self, caller_session_id: str | None) -> str:
         """Resolve origin for MCP requests."""
         _ = caller_session_id
         return InputOrigin.MCP.value
+
+    async def _resolve_mcp_actor(self, caller_session_id: str | None) -> tuple[str, str, str, str, str]:
+        """Resolve stable AI actor identity for MCP-origin messages."""
+        if caller_session_id:
+            caller = await db.get_session(caller_session_id)
+            if caller:
+                computer = (caller.computer_name or config.computer.name).strip() or config.computer.name
+                human_email = (caller.human_email or "").strip()
+                if human_email:
+                    local_part = human_email.split("@", 1)[0] or human_email
+                    actor_id = f"human:{human_email}"
+                    actor_name = f"{local_part}@{computer}"
+                    return (actor_id, actor_name, "human", "human", computer)
+
+                actor_id = f"system:{computer}:{caller_session_id}"
+                actor_name = f"system@{computer}"
+                return (actor_id, actor_name, "system", "system", computer)
+
+        computer = config.computer.name
+        actor_id = f"system:{computer}:{caller_session_id or 'mcp'}"
+        actor_name = f"system@{computer}"
+        return (actor_id, actor_name, "system", "system", computer)
 
     async def _start_local_session_with_auto_command(
         self,
@@ -782,7 +925,14 @@ class MCPHandlersMixin:
         caller_session_id: Optional[str] = None,
     ) -> SessionDataResult:
         """Get session data from local or remote computer."""
-        await self._register_listener_if_present(session_id, caller_session_id)
+        # Only register a listener if there is no active direct link between caller and target.
+        # Direct links use the fanout relay; registering a listener would duplicate stop notifications.
+        link_exists = caller_session_id and await resolve_link_for_sender_target(
+            sender_session_id=caller_session_id,
+            target_session_id=session_id,
+        )
+        if not link_exists:
+            await self._register_listener_if_present(session_id, caller_session_id)
 
         requested_tail_chars = tail_chars
         if tail_chars <= 0 or tail_chars > MCP_SESSION_DATA_MAX_CHARS:
@@ -877,8 +1027,8 @@ class MCPHandlersMixin:
         if self._is_local_computer(computer):
             success = await unregister_listener(target_session_id=session_id, caller_session_id=caller_session_id)
             if success:
-                return {"status": "success", "message": f"Stopped notifications from session {session_id[:8]}"}
-            return {"status": "error", "message": f"No listener found for session {session_id[:8]}"}
+                return {"status": "success", "message": f"Stopped notifications from session {session_id}"}
+            return {"status": "error", "message": f"No listener found for session {session_id}"}
 
         try:
             envelope = await self._send_remote_request(
@@ -890,6 +1040,7 @@ class MCPHandlersMixin:
 
     async def teleclaude__end_session(self, computer: str, session_id: str) -> EndSessionResult:
         """End a session gracefully (kill tmux, delete session, clean up resources)."""
+        logger.info("teleclaude__end_session via MCP for session %s", session_id[:8])
         if self._is_local_computer(computer):
             cmd = CloseSessionCommand(session_id=session_id)
             return await command_handlers.end_session(cmd, self.client)
@@ -1026,6 +1177,8 @@ class MCPHandlersMixin:
         baseline_only: bool | None = None,
         include_third_party: bool | None = None,
         domains: list[str] | None = None,
+        list_projects: bool | None = None,
+        projects: list[str] | None = None,
         project_root: str | None = None,
         cwd: str | None = None,
         caller_session_id: str | None = None,
@@ -1041,7 +1194,7 @@ class MCPHandlersMixin:
             effective_root = str(config.computer.default_working_dir)
         if areas is None:
             areas = []
-        if snippet_ids and any(sid.startswith("project/") for sid in snippet_ids):
+        if _snippet_ids_require_project_root(snippet_ids):
             root = Path(effective_root).expanduser().resolve()
             while True:
                 if (root / "teleclaude.yml").exists():
@@ -1065,11 +1218,13 @@ class MCPHandlersMixin:
                 test_csv_path = str(
                     Path(effective_root).expanduser().resolve() / ".agents" / "tests" / "runs" / "get-context.csv"
                 )
-        # Resolve human_role for role filtering
+        # Resolve caller role for visibility filtering.
+        caller_role = "admin"
         human_role: str | None = None
         if caller_session_id:
             caller_session = await db.get_session(caller_session_id)
             if caller_session:
+                caller_role = (caller_session.user_role or "admin").strip().lower() or "admin"
                 human_role = caller_session.human_role
 
         resolved_root = Path(effective_root)
@@ -1080,6 +1235,9 @@ class MCPHandlersMixin:
             baseline_only=bool(baseline_only),
             include_third_party=bool(include_third_party),
             domains=domains,
+            list_projects=bool(list_projects),
+            projects=projects,
+            caller_role=caller_role,
             human_role=human_role,
             test_agent=test_agent,
             test_mode=test_mode,
@@ -1477,7 +1635,7 @@ class MCPHandlersMixin:
 
         session = await db.get_session(caller_session_id)
         if not session:
-            return f"Error: Session {caller_session_id[:8]} not found"
+            return f"Error: Session {caller_session_id} not found"
 
         if session.human_role != "customer":
             return "Error: Escalation is only available in customer sessions"

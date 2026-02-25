@@ -58,6 +58,45 @@ def mock_mcp_server():
 
 
 @pytest.mark.asyncio
+async def test_mcp_call_tool_next_work_forwards_caller_session_id(mock_mcp_server):
+    """MCP call_tool must forward caller_session_id to next_work handler."""
+    server = mock_mcp_server
+
+    class _StubToolServer:
+        def __init__(self) -> None:
+            self.call_tool_handler = None
+
+        def list_tools(self):
+            def decorator(func):
+                return func
+
+            return decorator
+
+        def call_tool(self):
+            def decorator(func):
+                self.call_tool_handler = func
+                return func
+
+            return decorator
+
+    stub_server = _StubToolServer()
+    server._setup_tools(stub_server)
+    server.teleclaude__next_work = AsyncMock(return_value="NEXT_WORK_OK")
+
+    response = await stub_server.call_tool_handler(
+        "teleclaude__next_work",
+        {
+            "slug": "demo-slug",
+            "cwd": "/tmp/project",
+            "caller_session_id": "caller-session-xyz",
+        },
+    )
+
+    server.teleclaude__next_work.assert_awaited_once_with("demo-slug", "/tmp/project", "caller-session-xyz")
+    assert response[0].text == "NEXT_WORK_OK"
+
+
+@pytest.mark.asyncio
 async def test_teleclaude_list_computers_returns_online_computers(mock_mcp_server):
     """Test that list_computers returns online computers from heartbeat."""
     server = mock_mcp_server

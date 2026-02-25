@@ -1,0 +1,25 @@
+{
+  "slug": "frontend-theming-tui-parity",
+  "title": "TUI-Parity Theming for Next.js Frontend",
+  "version": "0.1.0",
+  "delivered_date": "2026-02-23",
+  "merge_commit": "fd4b5ce3",
+  "metrics": {
+    "commits": 18,
+    "files_changed": 20,
+    "files_created": 7,
+    "insertions": 982,
+    "deletions": 218,
+    "test_files_added": 0,
+    "review_rounds": 2,
+    "critical_findings": 1,
+    "important_findings": 2,
+    "suggestions": 4
+  },
+  "acts": {
+    "challenge": "The Next.js frontend used generic shadcn/ui oklch colors with no connection to the TUI's warm structural palette. Agent identity was invisible in the web UI.",
+    "build": "Replaced all oklch with TeleClaude hex tokens in globals.css. Built CSS variable injection, AgentTheming context (peaceful/themed toggle), useAgentColors hook, and applied agent-aware styling to user bubbles, assistant bubbles, and sidebar. Added theme.local.css white-label override system.",
+    "gauntlet": "Round 1 found a critical issue: inline CSS variable injection defeated theme.local.css overrides via specificity. Also caught gitignore ineffectiveness and identical peaceful-mode backgrounds. All three fixed. Round 2 approved clean.",
+    "next": "Suggestions carried forward: AgentThemingProvider blocks render until API responds (S1), default agent fallback is codex not claude (S2), dual source of truth between globals.css and tokens.ts/css-variables.ts (S3)."
+  }
+}

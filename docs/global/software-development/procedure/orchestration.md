@@ -13,6 +13,22 @@ type: 'procedure'
 
 ## Goal
 
+### Dispatch Rules
+
+- **Reviewers must always be dispatched with `thinking_mode="slow"`.** Review is the last line of defense before merge. A reviewer at `med` or `fast` produces shallow analysis. This is non-negotiable.
+
+### Review Quality Gate (Orchestrator-Owned)
+
+Before accepting a review verdict, the orchestrator must verify the findings document is substantive:
+
+1. Open `review-findings.md` and check that it contains at least one substantive analysis (not just positive observations).
+2. For deliveries with 3+ tasks: if the review produces 0 Important+ findings, verify that a "Why no issues" justification section is present with specific evidence.
+3. If either check fails, reject the review and re-dispatch with `thinking_mode="slow"`.
+
+This is a document-quality check, not a code review. The orchestrator does not review code — it verifies the reviewer did.
+
+### Orchestration Loop
+
 1. Invoke the work state machine with an optional slug.
 2. Receive instruction block.
 3. Follow instructions verbatim:
@@ -26,18 +42,20 @@ type: 'procedure'
 
 ### When Notification Arrives
 
-1. Verify output matches intended outcome.
-2. Execute POST_COMPLETION steps (orchestrator responsibility):
+1. **Check for user intervention first.** If the user has sent messages, spoken to the worker directly, or changed direction since the worker was dispatched, pause and confirm with the user before proceeding. The notification's implicit instruction ("continue the loop") may be stale.
+2. Verify output matches intended outcome.
+3. Execute POST_COMPLETION steps (orchestrator responsibility):
    - Mark phase status using `teleclaude__mark_phase()` if applicable
    - **Terminate worker session: `teleclaude__end_session(computer, session_id)`** ← ORCHESTRATOR OWNS THIS
    - Execute any phase-specific cleanup from the state machine instruction
-3. Invoke the work state machine to continue.
+4. Invoke the work state machine to continue.
 
 ### When Timer Expires
 
-1. Check session output using the session inspection tool.
-2. Determine status and take action.
-3. If worker still running, reset timer and continue waiting.
+1. **Check for user intervention first.** If the user has sent messages, spoken to the worker directly, or changed direction since the timer was set, the timer's intent is stale — discard the encoded instructions and re-evaluate from the current state. Do not blindly resume the orchestration loop.
+2. Check session output using the session inspection tool.
+3. Determine status and take action.
+4. If worker still running, reset timer and continue waiting.
 
 ### When Worker Needs Help
 

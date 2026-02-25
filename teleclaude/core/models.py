@@ -150,6 +150,7 @@ class DiscordAdapterMetadata:
     thread_id: Optional[int] = None
     all_sessions_thread_id: Optional[int] = None
     output_message_id: Optional[str] = None
+    status_message_id: Optional[str] = None  # Editable status message per thread (R3)
     badge_sent: bool = False
     char_offset: int = 0
 
@@ -311,6 +312,8 @@ class SessionAdapterMetadata:
                 user_id = str(raw_user_id) if raw_user_id is not None else None
                 raw_output_msg = discord_raw.get("output_message_id")
                 discord_output_message_id = str(raw_output_msg) if raw_output_msg is not None else None
+                raw_status_msg = discord_raw.get("status_message_id")
+                discord_status_message_id = str(raw_status_msg) if raw_status_msg is not None else None
                 discord_metadata = DiscordAdapterMetadata(
                     user_id=user_id,
                     guild_id=_get_int_or_none("guild_id"),
@@ -318,6 +321,7 @@ class SessionAdapterMetadata:
                     thread_id=_get_int_or_none("thread_id"),
                     all_sessions_thread_id=_get_int_or_none("all_sessions_thread_id"),
                     output_message_id=discord_output_message_id,
+                    status_message_id=discord_status_message_id,
                     badge_sent=bool(discord_raw.get("badge_sent", False)),
                     char_offset=int(discord_raw.get("char_offset", 0)),
                 )
@@ -381,6 +385,9 @@ class MessageMetadata:
     launch_intent: Optional["SessionLaunchIntent"] = None
     is_transcription: bool = False
     cleanup_trigger: Optional[str] = None
+    reflection_actor_id: Optional[str] = None
+    reflection_actor_name: Optional[str] = None
+    reflection_actor_avatar_url: Optional[str] = None
 
 
 @dataclass
@@ -494,6 +501,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
     working_slug: Optional[str] = None
     human_email: Optional[str] = None
     human_role: Optional[str] = None
+    user_role: Optional[str] = "admin"
     lifecycle_status: str = "active"
     last_memory_extraction_at: Optional[datetime] = None
     help_desk_processed_at: Optional[datetime] = None
@@ -653,6 +661,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
             working_slug=_get_optional_str("working_slug"),
             human_email=_get_optional_str("human_email"),
             human_role=_get_optional_str("human_role"),
+            user_role=_get_optional_str("user_role") or "admin",
             lifecycle_status=str(data.get("lifecycle_status") or "active"),
             last_memory_extraction_at=parse_iso_datetime(data.get("last_memory_extraction_at"))
             if isinstance(data.get("last_memory_extraction_at"), str)
@@ -843,6 +852,7 @@ class SessionSnapshot:
     subdir: Optional[str] = None
     created_at: Optional[str] = None
     last_activity: Optional[str] = None
+    closed_at: Optional[str] = None
     last_input: Optional[str] = None
     last_input_at: Optional[str] = None
     last_output_summary: Optional[str] = None
@@ -854,6 +864,7 @@ class SessionSnapshot:
     computer: Optional[str] = None
     human_email: Optional[str] = None
     human_role: Optional[str] = None
+    user_role: Optional[str] = "admin"
     visibility: Optional[str] = "private"
     session_metadata: Optional[Dict[str, object]] = None
 
@@ -869,6 +880,7 @@ class SessionSnapshot:
             "status": self.status,
             "created_at": self.created_at,
             "last_activity": self.last_activity,
+            "closed_at": self.closed_at,
             "last_input": self.last_input,
             "last_input_at": self.last_input_at,
             "last_output_summary": self.last_output_summary,
@@ -880,6 +892,7 @@ class SessionSnapshot:
             "computer": self.computer,
             "human_email": self.human_email,
             "human_role": self.human_role,
+            "user_role": self.user_role,
             "visibility": self.visibility,
             "session_metadata": self.session_metadata,
         }
@@ -909,6 +922,7 @@ class SessionSnapshot:
             computer=computer,
             human_email=session.human_email,
             human_role=session.human_role,
+            user_role=session.user_role or "admin",
             visibility=getattr(session, "visibility", None) or "private",
             session_metadata=session.session_metadata,
         )
@@ -946,6 +960,7 @@ class SessionSnapshot:
             computer=str(data.get("computer")) if data.get("computer") else None,
             human_email=str(data.get("human_email")) if data.get("human_email") else None,
             human_role=str(data.get("human_role")) if data.get("human_role") else None,
+            user_role=str(data.get("user_role")) if data.get("user_role") else "admin",
             visibility=str(data.get("visibility")) if data.get("visibility") else "private",
             session_metadata=cast(Optional[Dict[str, object]], data.get("session_metadata")),
         )

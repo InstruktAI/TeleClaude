@@ -8,9 +8,12 @@ Handles agent lifecycle events (start, stop, notification) and routes them to:
 
 import asyncio
 import base64
+import inspect
 import random
 import re
+import shlex
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
 from typing import TYPE_CHECKING, Coroutine, cast
@@ -23,8 +26,10 @@ from teleclaude.constants import (
     CHECKPOINT_PREFIX,
     LOCAL_COMPUTER,
 )
+from teleclaude.core.activity_contract import serialize_activity_event
 from teleclaude.core.agents import AgentName
 from teleclaude.core.checkpoint_dispatch import inject_checkpoint_if_needed
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -36,13 +41,24 @@ from teleclaude.core.events import (
     AgentSessionEndPayload,
     AgentSessionStartPayload,
     AgentStopPayload,
+    SessionStatusContext,
     TeleClaudeEvents,
     UserPromptSubmitPayload,
 )
 from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.session_listeners import notify_input_request, notify_stop
+from teleclaude.core.session_listeners import (
+    get_active_links_for_session,
+    get_peer_members,
+    notify_input_request,
+    notify_stop,
+)
+from teleclaude.core.status_contract import (
+    AWAITING_OUTPUT_THRESHOLD_SECONDS,
+    STALL_THRESHOLD_SECONDS,
+    serialize_status_event,
+)
 from teleclaude.core.summarizer import summarize_agent_output, summarize_user_input_title
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
@@ -65,6 +81,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _PASTED_CONTENT_PLACEHOLDER_RE = re.compile(r"^\[Pasted Content \d+ chars\]$")
+_NOOP_LOG_INTERVAL_SECONDS = 30.0
+_MAX_FORWARDED_LINK_OUTPUT_CHARS = 12000
 
 SESSION_START_MESSAGES = [
     "Standing by with grep patterns locked and loaded. What can I find?",
@@ -88,6 +106,16 @@ SESSION_START_MESSAGES = [
     "Initialized and ready to solve problems. What's the issue?",
     "All set to help you build something great!",
 ]
+
+
+@dataclass
+class _SuppressionState:
+    """Tracks repeated no-op events so logs can be sampled."""
+
+    signature: str
+    started_at: datetime
+    last_log_at: datetime
+    suppressed: int = 0
 
 
 def _is_checkpoint_prompt(
@@ -197,6 +225,11 @@ class AgentCoordinator:
         self.tts_manager = tts_manager
         self.headless_snapshot_service = headless_snapshot_service
         self._background_tasks: set[asyncio.Task[object]] = set()
+        self._incremental_noop_state: dict[str, _SuppressionState] = {}
+        self._tool_use_skip_state: dict[str, _SuppressionState] = {}
+        self._incremental_eval_state: dict[str, tuple[str, bool]] = {}
+        # Stall detection: one pending task per session, cancelled on output arrival (R4)
+        self._stall_tasks: dict[str, asyncio.Task[object]] = {}
 
     def _queue_background_task(
         self,
@@ -229,6 +262,94 @@ class AgentCoordinator:
 
         task.add_done_callback(_on_done)
 
+    def _suppression_signature(self, *parts: object) -> str:
+        """Build a stable signature for no-op suppression contexts."""
+        raw = "|".join("" if part is None else str(part) for part in parts)
+        return sha256(raw.encode("utf-8")).hexdigest()
+
+    def _mark_incremental_noop(self, session_id: str, *, reason: str, signature: str) -> None:
+        """Record repeated incremental no-op events with sampled debug logging."""
+        now = datetime.now(timezone.utc)
+        state = self._incremental_noop_state.get(session_id)
+
+        if state and state.signature == signature:
+            state.suppressed += 1
+            elapsed_s = int((now - state.started_at).total_seconds())
+            if (now - state.last_log_at).total_seconds() >= _NOOP_LOG_INTERVAL_SECONDS:
+                logger.debug(
+                    "Incremental no-op persists for session %s (reason=%s, suppressed=%d, elapsed_s=%d)",
+                    session_id[:8],
+                    reason,
+                    state.suppressed,
+                    elapsed_s,
+                )
+                state.last_log_at = now
+                state.suppressed = 0
+            return
+
+        self._incremental_noop_state[session_id] = _SuppressionState(
+            signature=signature,
+            started_at=now,
+            last_log_at=now,
+        )
+        logger.debug("Incremental no-op entered for session %s (reason=%s)", session_id[:8], reason)
+
+    def _clear_incremental_noop(self, session_id: str, *, outcome: str) -> None:
+        """Emit a one-time resume log when exiting a no-op suppression window."""
+        now = datetime.now(timezone.utc)
+        state = self._incremental_noop_state.pop(session_id, None)
+        if not state:
+            return
+        elapsed_s = int((now - state.started_at).total_seconds())
+        logger.debug(
+            "Incremental no-op cleared for session %s (outcome=%s, suppressed=%d, elapsed_s=%d)",
+            session_id[:8],
+            outcome,
+            state.suppressed,
+            elapsed_s,
+        )
+
+    def _mark_tool_use_skip(self, session_id: str) -> None:
+        """Collapse repeated tool_use skip logs for the same session."""
+        now = datetime.now(timezone.utc)
+        state = self._tool_use_skip_state.get(session_id)
+        signature = "tool_use_already_set"
+
+        if state and state.signature == signature:
+            state.suppressed += 1
+            elapsed_s = int((now - state.started_at).total_seconds())
+            if (now - state.last_log_at).total_seconds() >= _NOOP_LOG_INTERVAL_SECONDS:
+                logger.debug(
+                    "tool_use DB write still skipped for session %s (suppressed=%d, elapsed_s=%d)",
+                    session_id[:8],
+                    state.suppressed,
+                    elapsed_s,
+                )
+                state.last_log_at = now
+                state.suppressed = 0
+            return
+
+        self._tool_use_skip_state[session_id] = _SuppressionState(
+            signature=signature,
+            started_at=now,
+            last_log_at=now,
+        )
+        logger.debug("tool_use DB write skipped (already set) for session %s", session_id[:8])
+
+    def _clear_tool_use_skip(self, session_id: str) -> None:
+        """Clear tool_use skip suppression when a new turn starts recording again."""
+        now = datetime.now(timezone.utc)
+        state = self._tool_use_skip_state.pop(session_id, None)
+        if not state or state.suppressed <= 0:
+            return
+        elapsed_s = int((now - state.started_at).total_seconds())
+        logger.debug(
+            "tool_use skip suppression cleared for session %s (suppressed=%d, elapsed_s=%d)",
+            session_id[:8],
+            state.suppressed,
+            elapsed_s,
+        )
+
     def _emit_activity_event(
         self,
         session_id: str,
@@ -239,6 +360,10 @@ class AgentCoordinator:
     ) -> None:
         """Emit agent activity event with error handling.
 
+        Routes through the canonical contract (activity_contract.py) to produce
+        canonical_type and routing metadata alongside the hook-level event_type.
+        The hook event_type is always preserved for consumer compatibility.
+
         Args:
             session_id: Session identifier
             event_type: AgentHookEventType value
@@ -247,6 +372,15 @@ class AgentCoordinator:
             summary: Optional output summary (agent_stop only)
         """
         try:
+            timestamp = datetime.now(timezone.utc).isoformat()
+            canonical = serialize_activity_event(
+                session_id=session_id,
+                hook_event_type=event_type,
+                timestamp=timestamp,
+                tool_name=tool_name,
+                tool_preview=tool_preview,
+                summary=summary,
+            )
             event_bus.emit(
                 TeleClaudeEvents.AGENT_ACTIVITY,
                 AgentActivityEvent(
@@ -255,7 +389,10 @@ class AgentCoordinator:
                     tool_name=tool_name,
                     tool_preview=tool_preview,
                     summary=summary,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    timestamp=timestamp,
+                    canonical_type=canonical.canonical_type if canonical else None,
+                    message_intent=canonical.message_intent if canonical else None,
+                    delivery_scope=canonical.delivery_scope if canonical else None,
                 ),
             )
         except Exception as exc:
@@ -265,6 +402,108 @@ class AgentCoordinator:
                 exc_info=True,
                 extra={"session_id": session_id[:8], "event_type": event_type},
             )
+
+    def _emit_status_event(
+        self,
+        session_id: str,
+        status: str,
+        reason: str,
+        *,
+        last_activity_at: str | None = None,
+    ) -> None:
+        """Emit a canonical lifecycle status transition event.
+
+        Routes through status_contract.serialize_status_event() for validation.
+        Failures are logged but never crash the event flow (parallel to _emit_activity_event).
+
+        Args:
+            session_id: Session identifier.
+            status: Target lifecycle status (must be a valid LifecycleStatus value).
+            reason: Reason code for this transition.
+            last_activity_at: ISO 8601 UTC timestamp of last known activity (optional).
+        """
+        try:
+            timestamp = datetime.now(timezone.utc).isoformat()
+            canonical = serialize_status_event(
+                session_id=session_id,
+                status=status,
+                reason=reason,
+                timestamp=timestamp,
+                last_activity_at=last_activity_at,
+            )
+            if canonical is None:
+                return
+            event_bus.emit(
+                TeleClaudeEvents.SESSION_STATUS,
+                SessionStatusContext(
+                    session_id=session_id,
+                    status=status,
+                    reason=reason,
+                    timestamp=timestamp,
+                    last_activity_at=last_activity_at,
+                    message_intent=canonical.message_intent,
+                    delivery_scope=canonical.delivery_scope,
+                ),
+            )
+            logger.debug(
+                "status transition: session=%s %s (reason=%s)",
+                session_id[:8],
+                status,
+                reason,
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to emit status event: %s",
+                exc,
+                exc_info=True,
+                extra={"session_id": session_id[:8], "status": status},
+            )
+
+    def _cancel_stall_task(self, session_id: str) -> None:
+        """Cancel any pending stall detection task for a session."""
+        task = self._stall_tasks.pop(session_id, None)
+        if task and not task.done():
+            task.cancel()
+
+    def _schedule_stall_detection(self, session_id: str, last_activity_at: str) -> None:
+        """Schedule background stall detection after user_prompt_submit (R4).
+
+        Sequence:
+          t=0                    → accepted emitted (caller)
+          t=AWAITING_THRESHOLD   → awaiting_output
+          t=STALL_THRESHOLD      → stalled
+        Cancelled automatically when output arrives (tool_use or agent_stop).
+        """
+        self._cancel_stall_task(session_id)
+
+        async def _stall_watcher() -> None:
+            try:
+                await asyncio.sleep(AWAITING_OUTPUT_THRESHOLD_SECONDS)
+                self._emit_status_event(
+                    session_id,
+                    "awaiting_output",
+                    "awaiting_output_timeout",
+                    last_activity_at=last_activity_at,
+                )
+                await asyncio.sleep(STALL_THRESHOLD_SECONDS - AWAITING_OUTPUT_THRESHOLD_SECONDS)
+                self._emit_status_event(
+                    session_id,
+                    "stalled",
+                    "stall_timeout",
+                    last_activity_at=last_activity_at,
+                )
+            except asyncio.CancelledError:
+                pass  # Cancelled by output arrival — normal flow
+            except Exception as exc:
+                logger.error(
+                    "Stall watcher failed for session %s: %s",
+                    session_id[:8],
+                    exc,
+                    exc_info=True,
+                )
+
+        task = asyncio.create_task(_stall_watcher())
+        self._stall_tasks[session_id] = task
 
     async def handle_event(self, context: AgentEventContext) -> None:
         """Handle any agent lifecycle event."""
@@ -421,9 +660,29 @@ class AgentCoordinator:
         # Synthetic Codex prompts are still real input events.
         self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
 
+        # Emit canonical lifecycle status: accepted → schedule stall detection (R2, R4)
+        now_ts = datetime.now(timezone.utc).isoformat()
+        self._emit_status_event(session_id, "accepted", "user_prompt_accepted", last_activity_at=now_ts)
+        self._schedule_stall_detection(session_id, last_activity_at=now_ts)
+
+        hook_actor_name = (
+            (getattr(session, "human_name", "") or "").strip()
+            or (getattr(session, "human_email", "") or "").strip()
+            or f"operator@{config.computer.name}"
+        )
+
         # Non-headless: DB write done above, no further routing needed
         # (the agent already received the input directly)
         if session.lifecycle_status != "headless":
+            broadcast_result = self.client.broadcast_user_input(
+                session,
+                prompt_text,
+                InputOrigin.HOOK.value,
+                actor_id=f"hook:{config.computer.name}:{session_id}",
+                actor_name=hook_actor_name,
+            )
+            if inspect.isawaitable(broadcast_result):
+                await broadcast_result
             return
 
         # Headless: route through unified process_message path
@@ -434,6 +693,8 @@ class AgentCoordinator:
             session_id=session_id,
             text=prompt_text,
             origin=InputOrigin.HOOK.value,
+            actor_id=f"hook:{config.computer.name}:{session_id}",
+            actor_name=hook_actor_name,
         )
 
         logger.debug(
@@ -517,12 +778,20 @@ class AgentCoordinator:
             self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
 
         raw_output = await self._extract_agent_output(session_id, payload)
+        forwarded_output_raw = payload.raw.get("linked_output")
+        forwarded_output = forwarded_output_raw if isinstance(forwarded_output_raw, str) else None
+        link_output = raw_output or forwarded_output
         if raw_output:
             if config.terminal.strip_ansi:
                 raw_output = strip_ansi_codes(raw_output)
             if not raw_output.strip():
                 logger.debug("Skip stop summary/TTS (agent output empty after normalization)", session=session_id[:8])
                 raw_output = None
+                link_output = None
+            else:
+                link_output = raw_output
+        if payload.prompt and _is_checkpoint_prompt(payload.prompt, raw_payload=payload.raw):
+            link_output = None
 
         summary: str | None = None
         if raw_output:
@@ -550,8 +819,15 @@ class AgentCoordinator:
         if feedback_update_kwargs:
             await db.update_session(session_id, **feedback_update_kwargs)
 
+        # Cancel stall detection — turn complete (R4)
+        self._cancel_stall_task(session_id)
+
         # Emit activity event for UI updates (summary flows to TUI via event, not DB)
         self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)
+
+        # Emit canonical lifecycle status: completed (R2)
+        now_ts = datetime.now(timezone.utc).isoformat()
+        self._emit_status_event(session_id, "completed", "agent_turn_complete", last_activity_at=now_ts)
 
         # 2. Incremental threaded output (final turn portion)
         await self._maybe_send_incremental_output(session_id, payload)
@@ -565,14 +841,20 @@ class AgentCoordinator:
         # Clear turn-specific cursor at turn completion
         await db.update_session(session_id, last_tool_done_at=None)
 
-        # 3. Notify local listeners (AI-to-AI on same computer)
-        await self._notify_session_listener(session_id, source_computer=source_computer)
+        # 3. Fan out distilled stop output across active direct/gathering links
+        if link_output and link_output.strip():
+            await self._fanout_linked_stop_output(session_id, link_output, source_computer=source_computer)
 
-        # 4. Forward to remote initiator (AI-to-AI across computers)
+        # 4. Notify local listeners (worker orchestration mode)
+        title_raw = payload.raw.get("title")
+        title = title_raw if isinstance(title_raw, str) and title_raw else None
+        await self._notify_session_listener(session_id, source_computer=source_computer, title_override=title)
+
+        # 5. Forward to remote initiator (AI-to-AI across computers)
         if not (source_computer and source_computer != config.computer.name):
-            await self._forward_stop_to_initiator(session_id)
+            await self._forward_stop_to_initiator(session_id, link_output)
 
-        # 5. Inject checkpoint into the stopped agent's tmux pane
+        # 6. Inject checkpoint into the stopped agent's tmux pane
         await self._maybe_inject_checkpoint(session_id, session)
 
     async def handle_tool_use(self, context: AgentEventContext) -> None:
@@ -596,23 +878,27 @@ class AgentCoordinator:
             tool_preview=tool_preview,
         )
 
+        # Output evidence observed → active_output; cancel any pending stall (R4)
+        self._cancel_stall_task(session_id)
+        now_ts = datetime.now(timezone.utc).isoformat()
+        self._emit_status_event(session_id, "active_output", "output_observed", last_activity_at=now_ts)
+
         # DB write is deduped: only record the FIRST tool_use per turn for checkpoint timing
         session = await db.get_session(session_id)
         if session and session.last_tool_use_at:
-            logger.debug("tool_use DB write skipped (already set) for session %s", session_id[:8])
+            self._mark_tool_use_skip(session_id)
         elif session:
+            self._clear_tool_use_skip(session_id)
             now = datetime.now(timezone.utc)
             await db.update_session(session_id, last_tool_use_at=now.isoformat())
             logger.debug("tool_use recorded for session %s", session_id[:8])
 
-        # Trigger incremental output update so the tool call (wrench) appears immediately.
-        await self._maybe_send_incremental_output(session_id, payload)
+        # Output fanout is transcript-driven from polling; hooks stay control-plane only.
+        # tool_use still emits activity + checkpoint timing metadata.
 
     async def handle_tool_done(self, context: AgentEventContext) -> None:
         """Handle tool_done event — tool execution completed, output available."""
         session_id = context.session_id
-        payload = cast(AgentOutputPayload, context.data)
-        await self._maybe_send_incremental_output(session_id, payload)
 
         # Emit activity event for UI updates
         self._emit_activity_event(session_id, AgentHookEvents.TOOL_DONE)
@@ -637,14 +923,31 @@ class AgentCoordinator:
 
         # Check if threaded output is enabled for this agent (any adapter).
         is_enabled = is_threaded_output_enabled(agent_key)
-        logger.debug("Evaluating incremental output", session=session_id[:8], agent=agent_key, is_enabled=is_enabled)
+        eval_state = (agent_key, is_enabled)
+        if self._incremental_eval_state.get(session_id) != eval_state:
+            logger.debug(
+                "Evaluating incremental output",
+                session=session_id[:8],
+                agent=agent_key,
+                is_enabled=is_enabled,
+            )
+            self._incremental_eval_state[session_id] = eval_state
 
         if not is_enabled:
+            self._mark_incremental_noop(
+                session_id,
+                reason="threaded_output_disabled",
+                signature=self._suppression_signature("disabled", agent_key),
+            )
             return False
 
         transcript_path = payload.transcript_path or session.native_log_file
         if not transcript_path:
-            logger.debug("Incremental output skipped (missing transcript path)", session=session_id[:8])
+            self._mark_incremental_noop(
+                session_id,
+                reason="missing_transcript_path",
+                signature=self._suppression_signature("missing_transcript", agent_key, session.native_log_file),
+            )
             return False
 
         try:
@@ -687,15 +990,30 @@ class AgentCoordinator:
             include_tool_results=False,
         )
 
+        analysis_signature = self._suppression_signature(
+            "analysis",
+            agent_key,
+            transcript_path,
+            len(assistant_messages),
+            renderable_block_count,
+            session.last_tool_done_at.isoformat() if session.last_tool_done_at else None,
+        )
+
+        if not assistant_messages:
+            self._mark_incremental_noop(
+                session_id,
+                reason="no_assistant_messages",
+                signature=analysis_signature,
+            )
+            return False
+
+        self._clear_incremental_noop(session_id, outcome="assistant_messages_detected")
         logger.debug(
             "Incremental output analysis: session=%s msg_count=%d block_count=%d",
             session_id[:8],
             len(assistant_messages),
             renderable_block_count,
         )
-
-        if not assistant_messages:
-            return False
 
         # 2. Decide which renderer to use based on renderable block count
         is_multi = renderable_block_count > 1
@@ -720,53 +1038,75 @@ class AgentCoordinator:
 
         if not message:
             # Activity detected but no renderable text (e.g. empty thinking blocks or hidden tool output).
+            self._mark_incremental_noop(
+                session_id,
+                reason="no_renderable_message",
+                signature=self._suppression_signature("no_render", analysis_signature),
+            )
             return False
 
-        if message:
+        try:
+            # Pass raw Markdown to adapter. The adapter handles platform-specific
+            # conversion (e.g. Telegram MarkdownV2 escaping) internally.
+            formatted_message = message
+
+            # Skip if content unchanged since last send.
+            display_digest = sha256(formatted_message.encode("utf-8")).hexdigest()
+            if session.last_output_digest == display_digest:
+                self._mark_incremental_noop(
+                    session_id,
+                    reason="unchanged_output_digest",
+                    signature=self._suppression_signature("digest", display_digest, is_multi),
+                )
+                return False
+
+            self._clear_incremental_noop(session_id, outcome="output_changed")
             logger.info(
                 "Sending incremental output: tc_session=%s len=%d multi_message=%s",
                 session_id[:8],
                 len(message),
                 is_multi,
             )
-            try:
-                # Pass raw Markdown to adapter. The adapter handles platform-specific
-                # conversion (e.g. Telegram MarkdownV2 escaping) internally.
-                formatted_message = message
+            await self.client.send_threaded_output(session, formatted_message, multi_message=is_multi)
 
-                # Skip if content unchanged since last send.
-                display_digest = sha256(formatted_message.encode("utf-8")).hexdigest()
+            # CRITICAL: Update cursor ONLY if we are NOT tracking this message for future updates.
+            # If we are tracking (is_threaded_active), we want to re-render from the start of the turn
+            # each time (accumulating content), so we do NOT update the cursor.
+            # NOTE: We fetch fresh session/metadata to check adapter output_message_id
+            fresh_session = await db.get_session(session_id)
+            is_threaded_active = fresh_session is not None and _has_active_output_message(fresh_session)
+            should_update_cursor = not is_threaded_active
 
-                # Only update main message if content actually changed
-                if session.last_output_digest != display_digest:
-                    await self.client.send_threaded_output(session, formatted_message, multi_message=is_multi)
+            # Always update session to refresh last_activity (heartbeat),
+            # but conditionally update the cursor.
+            update_kwargs = {}
+            if should_update_cursor and last_ts:
+                from teleclaude.core.models import SessionField
 
-                # CRITICAL: Update cursor ONLY if we are NOT tracking this message for future updates.
-                # If we are tracking (is_threaded_active), we want to re-render from the start of the turn
-                # each time (accumulating content), so we do NOT update the cursor.
-                # NOTE: We fetch fresh session/metadata to check adapter output_message_id
-                fresh_session = await db.get_session(session_id)
-                is_threaded_active = fresh_session is not None and _has_active_output_message(fresh_session)
-                should_update_cursor = not is_threaded_active
+                update_kwargs[SessionField.LAST_TOOL_DONE_AT.value] = last_ts.isoformat()
+                logger.debug("Updating cursor for session %s to %s", session_id[:8], last_ts.isoformat())
 
-                # Always update session to refresh last_activity (heartbeat),
-                # but conditionally update the cursor.
-                update_kwargs = {}
-                if should_update_cursor and last_ts:
-                    from teleclaude.core.models import SessionField
+            # Persist cursor timestamp (activity events are emitted separately).
+            if update_kwargs:
+                await db.update_session(session_id, **update_kwargs)
 
-                    update_kwargs[SessionField.LAST_TOOL_DONE_AT.value] = last_ts.isoformat()
-                    logger.debug("Updating cursor for session %s to %s", session_id[:8], last_ts.isoformat())
-
-                # Persist cursor timestamp (activity events are emitted separately).
-                if update_kwargs:
-                    await db.update_session(session_id, **update_kwargs)
-
-                return True
-            except Exception as exc:  # noqa: BLE001 - Message send should never crash event handling
-                logger.warning("Failed to send incremental output: %s", exc, extra={"session_id": session_id[:8]})
+            return True
+        except Exception as exc:  # noqa: BLE001 - Message send should never crash event handling
+            logger.warning("Failed to send incremental output: %s", exc, extra={"session_id": session_id[:8]})
 
         return False
+
+    async def trigger_incremental_output(self, session_id: str) -> bool:
+        """Trigger incremental threaded output refresh for a session."""
+        session = await db.get_session(session_id)
+        if not session:
+            return False
+
+        if not is_threaded_output_enabled(session.active_agent):
+            return False
+
+        payload = AgentOutputPayload(session_id=session_id, transcript_path=session.native_log_file)
+        return await self._maybe_send_incremental_output(session_id, payload)
 
     async def handle_notification(self, context: AgentEventContext) -> None:
         """Handle notification event - input request."""
@@ -908,14 +1248,15 @@ class AgentCoordinator:
         target_session_id: str,
         *,
         source_computer: str | None = None,
+        title_override: str | None = None,
     ) -> None:
         """Notify local listeners via tmux injection."""
         target_session = await db.get_session(target_session_id)
-        display_title = target_session.title if target_session else "Unknown"
+        display_title = title_override or (target_session.title if target_session else "Unknown")
         computer = source_computer or LOCAL_COMPUTER
         await notify_stop(target_session_id, computer, title=display_title)
 
-    async def _forward_stop_to_initiator(self, session_id: str) -> None:
+    async def _forward_stop_to_initiator(self, session_id: str, linked_output: str | None = None) -> None:
         """Forward stop event to remote initiator via Redis.
 
         Uses session.title from DB (stable, canonical) rather than
@@ -934,20 +1275,102 @@ class AgentCoordinator:
             return
 
         # Use stable title from session record
-        title_arg = ""
+        title_b64 = "-"
         if session.title:
             title_b64 = base64.b64encode(session.title.encode()).decode()
-            title_arg = f" {title_b64}"
+        output_arg = ""
+        if linked_output and linked_output.strip():
+            distilled = linked_output.strip()
+            if len(distilled) > _MAX_FORWARDED_LINK_OUTPUT_CHARS:
+                distilled = distilled[:_MAX_FORWARDED_LINK_OUTPUT_CHARS]
+            output_b64 = base64.b64encode(distilled.encode()).decode()
+            output_arg = f" {output_b64}"
 
         try:
             await self.client.send_request(
                 computer_name=initiator_computer,
-                command=f"/stop_notification {session_id} {config.computer.name}{title_arg}",
+                command=f"/stop_notification {session_id} {config.computer.name} {title_b64}{output_arg}",
                 metadata=MessageMetadata(),
             )
             logger.info("Forwarded stop to %s", initiator_computer)
         except Exception as e:
             logger.warning("Failed to forward stop to %s: %s", initiator_computer, e)
+
+    async def _fanout_linked_stop_output(
+        self,
+        sender_session_id: str,
+        distilled_output: str,
+        *,
+        source_computer: str | None = None,
+    ) -> int:
+        """Fan out distilled stop output to peers in active links, excluding sender."""
+        links = await get_active_links_for_session(sender_session_id)
+        if not links:
+            return 0
+
+        sender = await db.get_session(sender_session_id)
+        sender_label = sender.title if sender and sender.title else sender_session_id
+        sender_computer = source_computer or (sender.computer_name if sender else config.computer.name)
+        framed_message = (
+            f"[Linked output from {sender_label} ({sender_session_id}) on {sender_computer}]\n\n"
+            f"{distilled_output.strip()}"
+        )
+
+        delivered = 0
+        for link in links:
+            peers = await get_peer_members(link_id=link.link_id, sender_session_id=sender_session_id)
+            for peer in peers:
+                target_computer = (
+                    peer.computer_name
+                    if peer.computer_name and peer.computer_name not in {LOCAL_COMPUTER, "local"}
+                    else config.computer.name
+                )
+                actor_id = f"system:{sender_computer}:{sender_session_id}"
+                actor_name = f"system@{sender_computer}"
+
+                try:
+                    if target_computer == config.computer.name:
+                        cmd = ProcessMessageCommand(
+                            session_id=peer.session_id,
+                            text=framed_message,
+                            origin=InputOrigin.MCP.value,
+                            actor_id=actor_id,
+                            actor_name=actor_name,
+                        )
+                        await get_command_service().process_message(cmd)
+                    else:
+                        await self.client.send_request(
+                            computer_name=target_computer,
+                            command=f"message {shlex.quote(framed_message)}",
+                            session_id=peer.session_id,
+                            metadata=MessageMetadata(
+                                origin=InputOrigin.MCP.value,
+                                channel_metadata={
+                                    "actor_id": actor_id,
+                                    "actor_name": actor_name,
+                                    "actor_role": "system",
+                                    "actor_agent": "system",
+                                    "actor_computer": sender_computer,
+                                },
+                            ),
+                        )
+                    delivered += 1
+                except Exception as exc:  # noqa: BLE001 - peer delivery failures must not abort stop lifecycle
+                    logger.warning(
+                        "Linked stop output delivery failed: sender=%s peer=%s target=%s error=%s",
+                        sender_session_id[:8],
+                        peer.session_id[:8],
+                        target_computer,
+                        exc,
+                    )
+
+        if delivered:
+            logger.info(
+                "Linked stop output fan-out: sender=%s delivered=%d",
+                sender_session_id[:8],
+                delivered,
+            )
+        return delivered
 
     async def _forward_notification_to_initiator(self, session_id: str, message: str) -> None:
         """Forward notification to remote initiator."""

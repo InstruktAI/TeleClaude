@@ -6,20 +6,24 @@ import time as _t
 
 from instrukt_ai_logging import get_logger
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
+from textual.widgets import Footer
 
 from teleclaude.cli.models import AgentAvailabilityInfo, ProjectWithTodosInfo
 from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
     DocEditRequest,
     DocPreviewRequest,
+    StateChanged,
 )
+from teleclaude.cli.tui.prep_tree import build_dep_tree
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
-from teleclaude.cli.tui.widgets.modals import CreateTodoModal, StartSessionModal
+from teleclaude.cli.tui.widgets.modals import ConfirmModal, CreateSlugModal, StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
@@ -30,7 +34,7 @@ class PreparationView(Widget, can_focus=True):
     """Preparation tab view showing todo items grouped by project.
 
     Navigation: arrows, left/right expand/collapse, Enter = toggle expand,
-    +/- expand/collapse all, p = prepare, s = start work.
+    =/- expand/collapse all, p = prepare, s = start work.
     """
 
     DEFAULT_CSS = """
@@ -45,20 +49,23 @@ class PreparationView(Widget, can_focus=True):
     """
 
     BINDINGS = [
-        ("up", "cursor_up", "Previous"),
-        ("down", "cursor_down", "Next"),
-        ("left", "collapse", "Collapse"),
-        ("right", "expand", "Expand"),
-        ("enter", "activate", "Activate"),
-        ("space", "preview_file", "Preview"),
-        ("plus", "expand_all", "Expand all"),
-        ("minus", "collapse_all", "Collapse all"),
-        ("n", "new_todo", "New todo"),
-        ("p", "prepare", "Prepare"),
-        ("s", "start_work", "Start work"),
+        Binding("up", "cursor_up", "Up", key_display="↑", group=Binding.Group("Nav", compact=True), show=False),
+        Binding("down", "cursor_down", "Down", key_display="↓", group=Binding.Group("Nav", compact=True), show=False),
+        Binding("left", "collapse", "Collapse", key_display="←", group=Binding.Group("Fold", compact=True), show=False),
+        Binding("right", "expand", "Expand", key_display="→", group=Binding.Group("Fold", compact=True), show=False),
+        Binding("enter", "activate", "Toggle/Edit"),
+        Binding("space", "preview_file", "View"),
+        Binding("equals_sign", "expand_all", "All", key_display="+", group=Binding.Group("Fold", compact=True)),
+        Binding("minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True)),
+        Binding("n", "new_todo", "Todo"),
+        Binding("b", "new_bug", "Bug"),
+        Binding("p", "prepare", "Prep"),
+        Binding("s", "start_work", "Start"),
+        Binding("R", "remove_todo", "Remove"),
     ]
 
     cursor_index = reactive(0)
+    persistence_key = "preparation"
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
@@ -76,26 +83,50 @@ class PreparationView(Widget, can_focus=True):
 
     _logger = get_logger(__name__)
 
+    @staticmethod
+    def _todo_fingerprint(projects: list[ProjectWithTodosInfo]) -> tuple[tuple[str, ...], ...]:
+        """Build a lightweight fingerprint of all todo data for change detection."""
+        return tuple(
+            (
+                t.slug,
+                t.status,
+                str(t.dor_score),
+                t.build_status or "",
+                t.review_status or "",
+                t.deferrals_status or "",
+                str(t.findings_count),
+                str(t.has_requirements),
+                str(t.has_impl_plan),
+                ",".join(t.files),
+                ",".join(t.after),
+                t.group or "",
+            )
+            for p in projects
+            for t in (p.todos or [])
+        )
+
     def update_data(
         self,
         projects_with_todos: list[ProjectWithTodosInfo],
         availability: dict[str, AgentAvailabilityInfo] | None = None,
     ) -> None:
-        """Update view with fresh API data. Only rebuild if structure changed."""
+        """Update view with fresh API data. Only rebuild if data changed."""
         self._logger.trace(
             "[PERF] PrepView.update_data called items=%d t=%.3f", len(projects_with_todos), _t.monotonic()
         )
         if availability is not None:
             self._availability = availability
-        old_slugs = {t.slug for p in self._projects_with_todos for t in (p.todos or [])}
-        new_slugs = {t.slug for p in projects_with_todos for t in (p.todos or [])}
+        old_fp = self._todo_fingerprint(self._projects_with_todos)
+        new_fp = self._todo_fingerprint(projects_with_todos)
         self._projects_with_todos = projects_with_todos
-        if old_slugs != new_slugs or not self._nav_items:
+        if old_fp != new_fp or not self._nav_items:
             self._rebuild()
 
-    def load_persisted_state(self, expanded_todos: set[str]) -> None:
+    def load_persisted_state(self, data: dict[str, object]) -> None:  # guard: loose-dict
         """Restore persisted expanded state."""
-        self._expanded_todos = expanded_todos
+        expanded_todos = data.get("expanded_todos", [])
+        if isinstance(expanded_todos, list):
+            self._expanded_todos = {str(item) for item in expanded_todos}
 
     def _rebuild(self) -> None:
         """Rebuild the todo display from current data."""
@@ -138,27 +169,10 @@ class PreparationView(Widget, can_focus=True):
                 )
         slug_width = max((len(t.slug) for t in all_todo_items), default=0)
         col_widths = TodoRow.compute_col_widths(all_todo_items)
-        todo_by_slug: dict[str, TodoItem] = {t.slug: t for t in all_todo_items}
 
-        # Compute dependency depth for indentation
-        depth_map: dict[str, int] = {}
-        visible_slugs = set(todo_by_slug.keys())
-
-        def _depth(slug: str) -> int:
-            if slug in depth_map:
-                return depth_map[slug]
-            item = todo_by_slug.get(slug)
-            if not item or not item.after:
-                depth_map[slug] = 0
-                return 0
-            parent_depths = [_depth(p) for p in item.after if p in visible_slugs]
-            d = (max(parent_depths) + 1) if parent_depths else 0
-            depth_map[slug] = d
-            return d
-
-        for item in all_todo_items:
-            _depth(item.slug)
-        max_depth = max(depth_map.values(), default=0)
+        # Build dependency tree from `after` graph
+        tree_nodes = build_dep_tree(all_todo_items)
+        max_depth = max((node.depth for node in tree_nodes), default=0) if tree_nodes else 0
 
         # Collect all widgets first, then batch-mount to minimize layout reflows
         widgets_to_mount: list[Widget] = []
@@ -177,70 +191,63 @@ class PreparationView(Widget, can_focus=True):
             widgets_to_mount.append(header)
             self._nav_items.append(header)
 
-            todos_list = project.todos or []
-            depths = [depth_map.get(td.slug, 0) for td in todos_list]
-            n_todos = len(todos_list)
+            if getattr(project, "has_roadmap", False):
+                roadmap_row = TodoFileRow(
+                    filepath=f"{project.path}/todos/roadmap.yaml",
+                    filename="roadmap.yaml",
+                    slug="",
+                    is_last=False,
+                    tree_lines=[],
+                )
+                widgets_to_mount.append(roadmap_row)
+                self._nav_items.append(roadmap_row)
 
-            for idx, todo_data in enumerate(todos_list):
-                todo = todo_by_slug[todo_data.slug]
-                d = depths[idx]
+            # Filter tree nodes to this project's todos
+            project_slugs = {td.slug for td in (project.todos or [])}
+            project_nodes = [node for node in tree_nodes if node.slug in project_slugs]
 
-                # Depth-0 items always use ├─ because GroupSeparator closes the tree.
-                if d == 0:
-                    is_last_sibling = False
-                else:
-                    is_last_sibling = True
-                    for j in range(idx + 1, n_todos):
-                        if depths[j] == d:
-                            is_last_sibling = False
-                            break
-                        if depths[j] < d:
-                            break
-
-                # Ancestor continuation: for each level 0..d-1, check if a future
-                # item at that level exists before a shallower item interrupts.
-                # Level 0 is always True (GroupSeparator ┴ terminates the root line).
-                tree_lines: list[bool] = []
-                for lvl in range(d):
-                    if lvl == 0:
-                        tree_lines.append(True)
-                        continue
-                    has_cont = False
-                    for j in range(idx + 1, n_todos):
-                        if depths[j] == lvl:
-                            has_cont = True
-                            break
-                        if depths[j] < lvl:
-                            break
-                    tree_lines.append(has_cont)
+            for node in project_nodes:
+                # Depth-0 items always use ├─ because GroupSeparator closes the tree
+                is_last_sibling = False if node.depth == 0 else node.is_last
 
                 row = TodoRow(
-                    todo=todo,
+                    todo=node.todo,
                     is_last=is_last_sibling,
                     slug_width=slug_width,
                     col_widths=col_widths,
-                    tree_lines=tree_lines,
+                    tree_lines=node.tree_lines,
                     max_depth=max_depth,
                 )
                 widgets_to_mount.append(row)
                 self._nav_items.append(row)
 
                 # Collect file rows for expanded todos
-                if todo.slug in self._expanded_todos and todo.files:
+                if node.slug in self._expanded_todos and node.todo.files:
                     # File tree_lines = parent's lines + parent's own branch continuation
-                    file_tree_lines = tree_lines + [not is_last_sibling]
-                    sorted_files = sorted(todo.files)
+                    file_tree_lines = node.tree_lines + [not is_last_sibling]
+                    sorted_files = sorted(node.todo.files)
                     file_widgets: list[Widget] = []
+                    # Get project path for filepath construction
+                    proj_path = self._slug_to_project_path.get(node.slug, "")
                     for fi, filename in enumerate(sorted_files):
                         f_last = fi == len(sorted_files) - 1
+                        filepath = (
+                            f"{proj_path}/todos/{node.slug}/{filename}"
+                            if proj_path
+                            else f"todos/{node.slug}/{filename}"
+                        )
                         file_row = TodoFileRow(
-                            slug=todo.slug, filename=filename, is_last=f_last, tree_lines=file_tree_lines
+                            filepath=filepath,
+                            filename=filename,
+                            slug=node.slug,
+                            is_last=f_last,
+                            tree_lines=file_tree_lines,
                         )
                         file_widgets.append(file_row)
                         widgets_to_mount.append(file_row)
                     expanded_file_rows.append((row, file_widgets))
 
-            if todos_list:
+            if project_nodes:
                 widgets_to_mount.append(GroupSeparator(connector_col=ProjectHeader.CONNECTOR_COL))
 
         # Single batch mount - one layout reflow instead of N
@@ -266,9 +273,20 @@ class PreparationView(Widget, can_focus=True):
         row_idx = self._nav_items.index(todo_row)
         # File tree_lines = parent's lines + parent's own branch continuation
         file_tree_lines = list(todo_row._tree_lines) + [not todo_row.is_last]
+        # Get project path for filepath construction
+        proj_path = self._slug_to_project_path.get(todo_row.slug, "")
         for i, filename in enumerate(sorted_files):
             is_last = i == len(sorted_files) - 1
-            file_row = TodoFileRow(slug=todo_row.slug, filename=filename, is_last=is_last, tree_lines=file_tree_lines)
+            filepath = (
+                f"{proj_path}/todos/{todo_row.slug}/{filename}" if proj_path else f"todos/{todo_row.slug}/{filename}"
+            )
+            file_row = TodoFileRow(
+                filepath=filepath,
+                filename=filename,
+                slug=todo_row.slug,
+                is_last=is_last,
+                tree_lines=file_tree_lines,
+            )
             container.mount(file_row, after=todo_row if i == 0 else self._nav_items[row_idx + i])
             self._nav_items.insert(row_idx + 1 + i, file_row)
 
@@ -294,6 +312,7 @@ class PreparationView(Widget, can_focus=True):
         if slug in self._expanded_todos:
             return
         self._expanded_todos.add(slug)
+        self.post_message(StateChanged())
         if not todo_row.todo.files:
             return
         container = self.query_one("#preparation-scroll", VerticalScroll)
@@ -305,6 +324,7 @@ class PreparationView(Widget, can_focus=True):
         if slug not in self._expanded_todos:
             return
         self._expanded_todos.discard(slug)
+        self.post_message(StateChanged())
         self._remove_file_rows(todo_row)
         # Clamp cursor if it was on a removed file row
         if self.cursor_index >= len(self._nav_items):
@@ -332,14 +352,12 @@ class PreparationView(Widget, can_focus=True):
         item = self._current_item()
         return item if isinstance(item, TodoFileRow) else None
 
-    def _editor_command(self, slug: str, filename: str, *, view: bool = False) -> str:
-        """Build an editor command with absolute path for tmux pane."""
-        project_path = self._slug_to_project_path.get(slug, "")
-        if project_path:
-            filepath = f"{project_path}/todos/{slug}/{filename}"
-        else:
-            filepath = f"todos/{slug}/{filename}"
+    def _current_project_header(self) -> ProjectHeader | None:
+        item = self._current_item()
+        return item if isinstance(item, ProjectHeader) else None
 
+    def _editor_command(self, filepath: str, *, view: bool = False) -> str:
+        """Build an editor command with absolute path for tmux pane."""
         flags = []
         if view:
             flags.append("--view")
@@ -360,12 +378,8 @@ class PreparationView(Widget, can_focus=True):
                 return item
         return None
 
-    def _open_session_modal(self, slug: str, default_message: str) -> None:
-        """Open StartSessionModal for a todo with a pre-filled prompt."""
-        computer = self._slug_to_computer.get(slug, "local")
-        project_path = self._slug_to_project_path.get(slug, "")
-        if not project_path:
-            return
+    def _open_session_modal(self, *, computer: str, project_path: str, default_message: str) -> None:
+        """Open StartSessionModal with a pre-filled prompt."""
         modal = StartSessionModal(
             computer=computer,
             project_path=project_path,
@@ -378,6 +392,69 @@ class PreparationView(Widget, can_focus=True):
         """Handle result from StartSessionModal."""
         if result:
             self.post_message(result)
+
+    def _resolve_project_header_for_index(self, index: int) -> ProjectHeader | None:
+        """Find nearest project header above a nav item index."""
+        for i in range(index, -1, -1):
+            item = self._nav_items[i]
+            if isinstance(item, ProjectHeader):
+                return item
+        return None
+
+    def _resolve_cursor_context(self) -> tuple[str, str, str | None] | None:
+        """Resolve computer, project path, and optional slug from cursor."""
+        item = self._current_item()
+        if item is None:
+            return None
+
+        if isinstance(item, ProjectHeader):
+            return (item.project.computer or "local", item.project.path, None)
+
+        if isinstance(item, TodoRow):
+            slug = item.slug
+            project_path = self._slug_to_project_path.get(slug, "")
+            computer = self._slug_to_computer.get(slug, "local")
+            if project_path:
+                return (computer, project_path, slug)
+            try:
+                idx = self._nav_items.index(item)
+            except ValueError:
+                return None
+            header = self._resolve_project_header_for_index(idx)
+            if header:
+                return (header.project.computer or "local", header.project.path, slug)
+            return None
+
+        if isinstance(item, TodoFileRow) and item.slug:
+            slug = item.slug
+            project_path = self._slug_to_project_path.get(slug, "")
+            computer = self._slug_to_computer.get(slug, "local")
+            if project_path:
+                return (computer, project_path, slug)
+            try:
+                idx = self._nav_items.index(item)
+            except ValueError:
+                return None
+            header = self._resolve_project_header_for_index(idx)
+            if header:
+                return (header.project.computer or "local", header.project.path, slug)
+        return None
+
+    def _resolve_todo_for_cursor(self) -> TodoRow | None:
+        """Resolve selected todo row from todo/file cursor items."""
+        todo_row = self._current_todo_row()
+        if todo_row:
+            return todo_row
+
+        file_row = self._current_file_row()
+        if file_row:
+            return self._find_parent_todo(file_row)
+        return None
+
+    @staticmethod
+    def _next_command(base: str, slug: str | None) -> str:
+        """Build /next-* command with optional slug."""
+        return f"/{base} {slug}" if slug else f"/{base}"
 
     # --- Keyboard actions ---
 
@@ -394,6 +471,60 @@ class PreparationView(Widget, can_focus=True):
             self._update_cursor_highlight()
             if 0 <= self.cursor_index < len(self._nav_items):
                 self._nav_items[self.cursor_index].scroll_visible()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Enable/hide actions based on current tree node type."""
+        del parameters
+        item = self._current_item()
+
+        if isinstance(item, ProjectHeader):
+            if action in {"remove_todo", "activate", "preview_file"}:
+                return False
+            return True
+
+        if isinstance(item, TodoRow):
+            if action == "preview_file":
+                return False
+            return True
+
+        if isinstance(item, TodoFileRow):
+            if action in {"new_todo", "new_bug"}:
+                return False
+            return True
+
+        return True
+
+    def watch_cursor_index(self, _index: int) -> None:
+        """Refresh key bindings when node context changes."""
+        if self.is_attached:
+            self.app.refresh_bindings()
+            self.call_after_refresh(self._sync_default_footer_action)
+
+    def _default_footer_action(self) -> str | None:
+        """Return the primary action for the selected node."""
+        item = self._current_item()
+        if isinstance(item, ProjectHeader):
+            return "new_todo"
+        if isinstance(item, (TodoRow, TodoFileRow)):
+            return "activate"
+        return None
+
+    def _sync_default_footer_action(self) -> None:
+        """Mark the active default action in Footer."""
+        if not self.is_attached:
+            return
+        try:
+            footer = self.app.query_one(Footer)
+        except Exception:
+            return
+        default_action = self._default_footer_action()
+        for key_widget in footer.query("FooterKey"):
+            key_widget.set_class(getattr(key_widget, "action", None) == default_action, "default-action")
+
+    def on_focus(self) -> None:
+        """Sync default footer styling when the view receives focus."""
+        self.app.refresh_bindings()
+        self.call_after_refresh(self._sync_default_footer_action)
 
     def action_expand(self) -> None:
         """Right: expand todo to show files."""
@@ -432,9 +563,9 @@ class PreparationView(Widget, can_focus=True):
         if file_row:
             self.post_message(
                 DocEditRequest(
-                    doc_id=f"todo:{file_row.slug}:{file_row.filename}",
-                    command=self._editor_command(file_row.slug, file_row.filename),
-                    title=f"Editing: {file_row.slug}/{file_row.filename}",
+                    doc_id=file_row.filepath,
+                    command=self._editor_command(file_row.filepath),
+                    title=f"Editing: {file_row.filename}",
                 )
             )
 
@@ -454,31 +585,36 @@ class PreparationView(Widget, can_focus=True):
         if file_row:
             self.post_message(
                 DocPreviewRequest(
-                    doc_id=f"todo:{file_row.slug}:{file_row.filename}",
-                    command=self._editor_command(file_row.slug, file_row.filename, view=True),
-                    title=f"{file_row.slug}/{file_row.filename}",
+                    doc_id=file_row.filepath,
+                    command=self._editor_command(file_row.filepath, view=True),
+                    title=file_row.filename,
                 )
             )
 
-    def action_new_todo(self) -> None:
-        """n: create a new todo via modal."""
+    def _resolve_project_root(self) -> str:
+        """Resolve project root from known project paths or cwd."""
+        for path in self._slug_to_project_path.values():
+            return path
+        import os
 
-        def _on_modal_result(slug: str | None) -> None:
-            if not slug:
+        return os.getcwd()
+
+    def _create_item(self, slug: str, *, kind: str) -> None:
+        """Scaffold a todo or bug and open its primary file in the editor."""
+        from pathlib import Path
+
+        project_root = self._resolve_project_root()
+
+        if kind == "bug":
+            from teleclaude.todo_scaffold import create_bug_skeleton
+
+            try:
+                create_bug_skeleton(Path(project_root), slug, description="")
+            except (ValueError, FileExistsError) as exc:
+                self.app.notify(str(exc), severity="error")
                 return
-            # Find project root from first known project path, or cwd
-            project_root = None
-            for path in self._slug_to_project_path.values():
-                project_root = path
-                break
-
-            if not project_root:
-                import os
-
-                project_root = os.getcwd()
-
-            from pathlib import Path
-
+            filename = "bug.md"
+        else:
             from teleclaude.todo_scaffold import create_todo_skeleton
 
             try:
@@ -486,20 +622,42 @@ class PreparationView(Widget, can_focus=True):
             except (ValueError, FileExistsError) as exc:
                 self.app.notify(str(exc), severity="error")
                 return
+            filename = "input.md"
 
-            # Open input.md in editor
-            self.post_message(
-                DocEditRequest(
-                    doc_id=f"todo:{slug}:input.md",
-                    command=self._editor_command(slug, "input.md"),
-                    title=f"Editing: {slug}/input.md",
-                )
+        filepath = f"{project_root}/todos/{slug}/{filename}"
+        self.post_message(
+            DocEditRequest(
+                doc_id=filepath,
+                command=self._editor_command(filepath),
+                title=f"Editing: {slug}/{filename}",
             )
+        )
 
-        self.app.push_screen(CreateTodoModal(), callback=_on_modal_result)
+    def action_new_todo(self) -> None:
+        """n: create a new todo via modal."""
 
-    def action_prepare(self) -> None:
-        """p: directly start a prepare session with defaults."""
+        def _on_result(slug: str | None) -> None:
+            if slug:
+                self._create_item(slug, kind="todo")
+
+        self.app.push_screen(CreateSlugModal(title="New Todo"), callback=_on_result)
+
+    def action_new_bug(self) -> None:
+        """b: create a new bug via modal."""
+
+        def _on_result(slug: str | None) -> None:
+            if slug:
+                self._create_item(slug, kind="bug")
+
+        self.app.push_screen(CreateSlugModal(title="New Bug", placeholder="my-new-bug"), callback=_on_result)
+
+    def action_remove_todo(self) -> None:
+        """R: remove a todo and all its files."""
+        from pathlib import Path
+
+        from teleclaude.todo_scaffold import remove_todo
+
+        # Resolve slug from current row (todo or file)
         row = self._current_todo_row()
         slug = row.slug if row else None
         if not slug:
@@ -508,34 +666,66 @@ class PreparationView(Widget, can_focus=True):
                 slug = file_row.slug
         if not slug:
             return
-        computer = self._slug_to_computer.get(slug, "local")
+
+        # Resolve project root
         project_path = self._slug_to_project_path.get(slug, "")
         if not project_path:
             return
-        self.post_message(
-            CreateSessionRequest(
-                computer=computer,
-                project_path=project_path,
-                agent="claude",
-                thinking_mode="slow",
-                title=f"Prepare {slug}",
-                message=f"/next-prepare {slug}",
-            )
+        project_root = Path(project_path)
+
+        def _on_confirm(confirmed: bool | None) -> None:
+            if not confirmed:
+                return
+            try:
+                remove_todo(project_root, slug)
+                self.app.notify(f"Removed {slug}")
+            except (ValueError, RuntimeError, FileNotFoundError) as exc:
+                self.app.notify(str(exc), severity="error")
+
+        self.app.push_screen(
+            ConfirmModal(
+                title="Remove Todo",
+                message=f"Remove todo '{slug}' and all its files?\n\nThis action cannot be undone.",
+            ),
+            _on_confirm,
+        )
+
+    def action_prepare(self) -> None:
+        """p: open session modal prefilled with /next-prepare [slug]."""
+        context = self._resolve_cursor_context()
+        if not context:
+            return
+        computer, project_path, slug = context
+        self._open_session_modal(
+            computer=computer,
+            project_path=project_path,
+            default_message=self._next_command("next-prepare", slug),
         )
 
     def action_start_work(self) -> None:
-        """s: open agent session modal with /next-work prompt.
+        """s: open session modal prefilled with /next-work [slug].
 
-        Gated on DOR readiness - todo must meet DOR_READY_THRESHOLD.
+        Gated on DOR readiness when a specific todo is selected.
         """
-        row = self._current_todo_row()
-        if not row:
+        context = self._resolve_cursor_context()
+        if not context:
             return
-        dor = row.todo.dor_score
-        if dor is None or dor < DOR_READY_THRESHOLD:
-            self.app.notify(f"DOR score too low ({dor or 0}/{DOR_READY_THRESHOLD})", severity="warning")
-            return
-        self._open_session_modal(row.slug, f"/next-work {row.slug}")
+        computer, project_path, slug = context
+
+        if slug:
+            todo_row = self._resolve_todo_for_cursor()
+            if not todo_row:
+                return
+            dor = todo_row.todo.dor_score
+            if dor is None or dor < DOR_READY_THRESHOLD:
+                self.app.notify(f"DOR score too low ({dor or 0}/{DOR_READY_THRESHOLD})", severity="warning")
+                return
+
+        self._open_session_modal(
+            computer=computer,
+            project_path=project_path,
+            default_message=self._next_command("next-work", slug),
+        )
 
     # --- Click handlers ---
 

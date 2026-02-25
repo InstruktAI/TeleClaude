@@ -22,10 +22,14 @@ from pathlib import Path
 
 from jobs.base import Job, JobResult
 
+# from teleclaude.memory.store import MemoryStore
+
 # Ensure repo root is in path for imports
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+project_name = "help-desk"
 
 
 class HelpDeskIntelligenceJob(Job):
@@ -86,16 +90,15 @@ class HelpDeskIntelligenceJob(Job):
         """
         # TODO: Query MemoryStore for recent project-scoped observations.
         # Use the memory search API with appropriate filters:
-        #
-        #   from teleclaude.memory.store import MemoryStore
-        #   store = MemoryStore()
-        #   results = await store.search(
-        #       query="*",
-        #       project=project_name,
-        #       since=cutoff,
-        #       identity_key=None,  # Project-scoped only
-        #   )
-        #   return results
+
+        # store = MemoryStore()
+        # results = await store.search(
+        #     query="*",
+        #     project=project_name,
+        #     since=cutoff,
+        #     identity_key=None,  # Project-scoped only
+        # )
+        # return results
         _ = cutoff
         return []
 
@@ -159,17 +162,17 @@ class HelpDeskIntelligenceJob(Job):
         """
         if not digest:
             return
-
-        # TODO: Publish to the channels subsystem:
-        #
-        #   from teleclaude.channels.publisher import channel_key, publish
-        #   redis = get_redis()
-        #   key = channel_key(project, "intelligence")
-        #   await publish(redis, key, {
-        #       "type": "daily-digest",
-        #       "digest": digest,
-        #       "generated_at": datetime.now(timezone.utc).isoformat(),
-        #   })
+        # redis = get_redis()
+        # key = channel_key(project_name, "intelligence")
+        # await publish(
+        #     redis,
+        #     key,
+        #     {
+        #         "type": "daily-digest",
+        #         "digest": digest,
+        #         "generated_at": datetime.now(timezone.utc).isoformat(),
+        #     },
+        # )
         _ = digest
 
 

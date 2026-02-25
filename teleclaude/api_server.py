@@ -13,6 +13,8 @@ import os
 import shlex
 import tempfile
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal
 
 import fastapi
@@ -71,11 +73,13 @@ from teleclaude.api_models import (
     SessionClosedDataDTO,
     SessionClosedEventDTO,
     SessionDTO,
+    SessionLifecycleStatusEventDTO,
     SessionMessagesDTO,
     SessionsInitialDataDTO,
     SessionsInitialEventDTO,
     SessionStartedEventDTO,
     SessionUpdatedEventDTO,
+    SetAgentStatusRequest,
     SettingsDTO,
     TodoDTO,
     TTSSettingsDTO,
@@ -93,6 +97,7 @@ from teleclaude.core.events import (
     AgentActivityEvent,
     ErrorEventContext,
     SessionLifecycleContext,
+    SessionStatusContext,
     SessionUpdatedContext,
     TeleClaudeEvents,
 )
@@ -105,6 +110,7 @@ from teleclaude.core.models import (
     TodoInfo,
 )
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
@@ -225,6 +231,7 @@ class APIServer:
         event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated_event)
         event_bus.subscribe(TeleClaudeEvents.SESSION_STARTED, self._handle_session_started_event)
         event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSED, self._handle_session_closed_event)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._handle_session_status_event)
         event_bus.subscribe(TeleClaudeEvents.AGENT_ACTIVITY, self._handle_agent_activity_event)
         event_bus.subscribe(TeleClaudeEvents.ERROR, self._handle_error_event)
 
@@ -288,18 +295,63 @@ class APIServer:
         _event: str,
         context: SessionLifecycleContext,
     ) -> None:
-        """Handle local session removal by updating cache."""
+        """Handle local session removal by updating cache and broadcasting closed status."""
         if not self.cache:
             logger.warning("Cache unavailable, cannot remove session from cache")
             return
         self.cache.remove_session(context.session_id)
+
+        # Broadcast canonical closed status (R2) to WS clients — validated via contract
+        timestamp = datetime.now(timezone.utc).isoformat()
+        canonical = serialize_status_event(
+            session_id=context.session_id,
+            status="closed",
+            reason="session_closed",
+            timestamp=timestamp,
+        )
+        if canonical is None:
+            return
+        dto = SessionLifecycleStatusEventDTO(
+            session_id=context.session_id,
+            status="closed",
+            reason="session_closed",
+            timestamp=timestamp,
+        )
+        self._broadcast_payload("session_status", dto.model_dump(exclude_none=True))
+
+    async def _handle_session_status_event(
+        self,
+        _event: str,
+        context: SessionStatusContext,
+    ) -> None:
+        """Broadcast canonical lifecycle status transition events to WS clients.
+
+        Delivers the contract-defined status vocabulary (R2) directly to connected
+        clients without cache or DB re-read. Clients use this to render truthful
+        session status without adapter-local heuristics (R1, R3).
+        """
+        dto = SessionLifecycleStatusEventDTO(
+            session_id=context.session_id,
+            status=context.status,
+            reason=context.reason,
+            timestamp=context.timestamp,
+            last_activity_at=context.last_activity_at,
+            message_intent=context.message_intent,
+            delivery_scope=context.delivery_scope,
+        )
+        self._broadcast_payload("session_status", dto.model_dump(exclude_none=True))
 
     async def _handle_agent_activity_event(
         self,
         _event: str,
         context: AgentActivityEvent,
     ) -> None:
-        """Broadcast agent activity events to WS clients (no cache, no DB re-read)."""
+        """Broadcast agent activity events to WS clients (no cache, no DB re-read).
+
+        The DTO preserves hook event type in 'type' for consumer compatibility and
+        also carries canonical contract fields (canonical_type, message_intent,
+        delivery_scope) when produced via the canonical contract module.
+        """
         dto = AgentActivityEventDTO(
             session_id=context.session_id,
             type=context.event_type,
@@ -307,6 +359,9 @@ class APIServer:
             tool_preview=context.tool_preview,
             summary=context.summary,
             timestamp=context.timestamp,
+            canonical_type=context.canonical_type,
+            message_intent=context.message_intent,
+            delivery_scope=context.delivery_scope,
         )
         self._broadcast_payload("agent_activity", dto.model_dump(exclude_none=True))
 
@@ -394,12 +449,13 @@ class APIServer:
             Args:
                 request: FastAPI request (for identity headers)
                 computer: Optional filter by computer name
+                include_closed: Include closed sessions
 
             Returns:
                 List of session summaries (merged local + cached remote)
             """
             try:
-                local_sessions = await command_handlers.list_sessions()
+                local_sessions = await command_handlers.list_sessions(include_closed=include_closed)
 
                 # No cache: serve local sessions only (respect computer filter)
                 if not self.cache:
@@ -598,6 +654,15 @@ class APIServer:
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """End session - local sessions only (remote session management via MCP tools)."""
             from teleclaude.api.session_access import check_session_access
+
+            user_agent = request.headers.get("user-agent", "no-ua")
+            identity_email = request.headers.get("x-web-email", "none")
+            logger.info(
+                "DELETE /sessions/%s (ua=%s, identity=%s)",
+                session_id[:8],
+                user_agent,
+                identity_email,
+            )
 
             await check_session_access(request, session_id, require_owner=True)
             try:
@@ -1265,6 +1330,30 @@ class APIServer:
                 logger.error("list_projects failed: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list projects: {e}") from e
 
+        def _build_agent_dto(agent: str, info: dict[str, bool | str | None] | None) -> AgentAvailabilityDTO:
+            """Convert db agent availability info dict to DTO."""
+            if info:
+                unavail_until = info.get("unavailable_until")
+                degraded_until = info.get("degraded_until")
+                reason_val = info.get("reason")
+                status_val = info.get("status")
+                status_text = str(status_val) if status_val in {"available", "unavailable", "degraded"} else None
+                return AgentAvailabilityDTO(
+                    agent=agent,
+                    available=bool(info.get("available", True)),
+                    status=status_text,
+                    unavailable_until=str(unavail_until) if unavail_until and unavail_until is not True else None,
+                    degraded_until=str(degraded_until) if degraded_until and degraded_until is not True else None,
+                    reason=str(reason_val) if reason_val and reason_val is not True else None,
+                )
+            else:
+                # No record means agent is available (never marked unavailable)
+                return AgentAvailabilityDTO(
+                    agent=agent,
+                    available=True,
+                    status="available",
+                )
+
         @self.app.get("/agents/availability")
         async def get_agent_availability(  # pyright: ignore[reportUnusedFunction]
             identity: "CallerIdentity" = Depends(CLEARANCE_AGENTS_AVAILABILITY),  # noqa: ARG001
@@ -1297,25 +1386,7 @@ class APIServer:
                     )
                     continue
 
-                if info:
-                    unavail_until = info.get("unavailable_until")
-                    reason_val = info.get("reason")
-                    status_val = info.get("status")
-                    status_text = str(status_val) if status_val in {"available", "unavailable", "degraded"} else None
-                    result[agent] = AgentAvailabilityDTO(
-                        agent=agent,
-                        available=bool(info.get("available", True)),
-                        status=status_text,
-                        unavailable_until=str(unavail_until) if unavail_until and unavail_until is not True else None,
-                        reason=str(reason_val) if reason_val and reason_val is not True else None,
-                    )
-                else:
-                    # No record means agent is available (never marked unavailable)
-                    result[agent] = AgentAvailabilityDTO(
-                        agent=agent,
-                        available=True,
-                        status="available",
-                    )
+                result[agent] = _build_agent_dto(agent, info)
 
             return result
 
@@ -1432,7 +1503,6 @@ class APIServer:
             state = self.runtime_settings.get_state()
             return SettingsDTO(
                 tts=TTSSettingsDTO(enabled=state.tts.enabled),
-                pane_theming_mode=state.pane_theming_mode,
             )
 
         @self.app.patch("/settings")
@@ -1447,7 +1517,6 @@ class APIServer:
                 state = self.runtime_settings.patch(typed_patch)
                 return SettingsDTO(
                     tts=TTSSettingsDTO(enabled=state.tts.enabled),
-                    pane_theming_mode=state.pane_theming_mode,
                 )
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
@@ -1876,12 +1945,14 @@ class APIServer:
                         comp = proj.computer or ""
                         if data_type == "preparation":
                             todos = self.cache.get_todos(comp or config.computer.name, proj.path, include_stale=True)
+                            roadmap_exists = Path(f"{proj.path}/todos/roadmap.yaml").exists()
                             projects.append(
                                 ProjectWithTodosDTO(
                                     computer=comp,
                                     name=proj.name,
                                     path=proj.path,
                                     description=proj.description,
+                                    has_roadmap=roadmap_exists,
                                     todos=[
                                         TodoDTO(
                                             slug=t.slug,

@@ -18,6 +18,7 @@ from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 
 SETTINGS_DIR = Path(__file__).parent / "settings"
+WRAPPER_TEMPLATE_DIR = Path(__file__).parent / "wrappers"
 
 
 def _load_settings_overrides(agent: str) -> dict[str, object] | None:  # guard: loose-dict - JSON from disk
@@ -348,6 +349,7 @@ def _configure_json_agent_hooks(
 
 def configure_claude(repo_root: Path) -> None:
     """Configure Claude Code hooks."""
+    repo_root = resolve_main_repo_root(repo_root)
     _configure_json_agent_hooks(
         repo_root,
         "claude",
@@ -358,6 +360,7 @@ def configure_claude(repo_root: Path) -> None:
 
 def configure_gemini(repo_root: Path) -> None:
     """Configure Gemini CLI hooks."""
+    repo_root = resolve_main_repo_root(repo_root)
     _configure_json_agent_hooks(
         repo_root,
         "gemini",
@@ -375,6 +378,7 @@ def configure_codex(repo_root: Path) -> None:
     with nested hook structures, Codex only supports one hook event type:
     `agent-turn-complete` which maps to our internal "agent_stop" event.
     """
+    repo_root = resolve_main_repo_root(repo_root)
     receiver_script = repo_root / "teleclaude" / "hooks" / "receiver.py"
     if not receiver_script.exists():
         print(f"Warning: Codex receiver not found at {receiver_script}")
@@ -507,6 +511,30 @@ def ensure_codex_mcp_config(content: str, repo_root: Path) -> str:
     return content
 
 
+def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:
+    """Install an agent-session wrapper into ~/.teleclaude/bin from template."""
+    template_path = WRAPPER_TEMPLATE_DIR / wrapper_name
+    if not template_path.exists():
+        print(f"Warning: wrapper template missing: {template_path}")
+        return
+
+    bin_dir = Path.home() / ".teleclaude" / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    target_path = bin_dir / wrapper_name
+
+    template = template_path.read_text(encoding="utf-8")
+    rendered = template.replace("{{CANONICAL_ROOT}}", str(repo_root))
+    existing = target_path.read_text(encoding="utf-8") if target_path.exists() else None
+
+    if existing == rendered:
+        print(f"{wrapper_name} wrapper already configured at {target_path}")
+        return
+
+    target_path.write_text(rendered, encoding="utf-8")
+    target_path.chmod(0o755)
+    print(f"{wrapper_name} wrapper installed at {target_path}")
+
+
 def resolve_main_repo_root(start: Path | None = None) -> Path:
     """Resolve the main git repository root, even from a worktree.
 
@@ -542,6 +570,8 @@ def main() -> None:
     repo_root = resolve_main_repo_root()
     print(f"Configuring hooks from repo: {repo_root}")
 
+    install_agent_wrapper(repo_root, "git")
+    install_agent_wrapper(repo_root, "gh")
     configure_claude(repo_root)
     configure_gemini(repo_root)
     configure_codex(repo_root)

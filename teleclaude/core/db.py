@@ -35,6 +35,7 @@ class HookOutboxRow(TypedDict):
     session_id: str
     event_type: str
     payload: str
+    created_at: str | None
     attempt_count: int
 
 
@@ -137,6 +138,7 @@ class Db:
             working_slug=row.working_slug,
             human_email=row.human_email,
             human_role=row.human_role,
+            user_role=row.user_role or "admin",
             lifecycle_status=row.lifecycle_status or "active",
             last_memory_extraction_at=Db._coerce_datetime(row.last_memory_extraction_at),
             help_desk_processed_at=Db._coerce_datetime(row.help_desk_processed_at),
@@ -311,15 +313,16 @@ class Db:
         initiator_session_id: Optional[str] = None,
         human_email: Optional[str] = None,
         human_role: Optional[str] = None,
+        user_role: Optional[str] = "admin",
         lifecycle_status: str = "active",
         active_agent: Optional[str] = None,
         thinking_mode: Optional[str] = None,
+        emit_session_started: bool = True,
     ) -> Session:
         """Create a new session.
 
         All known fields must be provided at creation time so the row is
-        complete before any event is emitted.  The caller (command_handlers)
-        is responsible for emitting SESSION_STARTED after this returns.
+        complete before any event is emitted.
 
         Args:
             computer_name: Name of the computer
@@ -336,8 +339,10 @@ class Db:
             initiator_session_id: Session ID of the AI that created this session (for AI-to-AI nesting)
             human_email: Optional email of the human user
             human_role: Optional role of the human user
+            user_role: Optional caller role for visibility filtering
             active_agent: Agent name (claude, gemini, codex)
             thinking_mode: Thinking mode (fast, med, slow)
+            emit_session_started: If False, caller is responsible for emitting SESSION_STARTED.
 
         Returns:
             Created Session object
@@ -362,6 +367,7 @@ class Db:
             initiator_session_id=initiator_session_id,
             human_email=human_email,
             human_role=human_role,
+            user_role=user_role or "admin",
             lifecycle_status=lifecycle_status,
             active_agent=active_agent,
             thinking_mode=thinking_mode,
@@ -384,6 +390,7 @@ class Db:
             initiator_session_id=session.initiator_session_id,
             human_email=session.human_email,
             human_role=session.human_role,
+            user_role=session.user_role or "admin",
             lifecycle_status=session.lifecycle_status,
             active_agent=session.active_agent,
             thinking_mode=session.thinking_mode,
@@ -391,6 +398,12 @@ class Db:
         async with self._session() as db_session:
             db_session.add(db_row)
             await db_session.commit()
+
+        if emit_session_started:
+            event_bus.emit(
+                TeleClaudeEvents.SESSION_STARTED,
+                SessionLifecycleContext(session_id=session_id),
+            )
 
         return session
 
@@ -425,6 +438,7 @@ class Db:
             description=None,
             working_slug=None,
             initiator_session_id=None,
+            user_role="admin",
             lifecycle_status="headless",
             active_agent=active_agent,
             native_session_id=native_session_id,
@@ -445,6 +459,7 @@ class Db:
             description=session.description,
             working_slug=session.working_slug,
             initiator_session_id=session.initiator_session_id,
+            user_role=session.user_role or "admin",
             lifecycle_status=session.lifecycle_status,
             active_agent=session.active_agent,
             native_session_id=session.native_session_id,
@@ -545,7 +560,8 @@ class Db:
         # Lifecycle filter: by default only "active" sessions are returned.
         # include_initializing adds non-active statuses; include_headless adds "headless"
         # (standalone sessions with no tmux, used for TTS/summarization).
-        if not include_initializing:
+        # When include_closed is set, skip lifecycle filtering to allow closed sessions through.
+        if not include_initializing and not include_closed:
             allowed = [db_models.Session.lifecycle_status == "active"]
             if include_headless:
                 allowed.append(db_models.Session.lifecycle_status == "headless")
@@ -1096,7 +1112,7 @@ class Db:
             agent: Agent name (e.g., "claude", "gemini", "codex")
 
         Returns:
-            Dict with 'available', 'unavailable_until', 'reason' or None if not found
+            Dict with 'available', 'unavailable_until', 'degraded_until', 'reason', 'status' or None if not found
         """
         async with self._session() as db_session:
             row = await db_session.get(db_models.AgentAvailability, agent)
@@ -1108,15 +1124,27 @@ class Db:
                 if parsed_until and parsed_until < datetime.now(timezone.utc):
                     row.available = 1
                     row.unavailable_until = None
+                    row.degraded_until = None
                     row.reason = None
                     db_session.add(row)
                     await db_session.commit()
                     return {
                         "available": True,
                         "unavailable_until": None,
+                        "degraded_until": None,
                         "reason": None,
                         "status": "available",
                     }
+            # Check degraded_until expiry inline
+            degraded_until = row.degraded_until
+            if degraded_until is not None:
+                parsed_degraded = self._parse_iso_datetime(degraded_until)
+                if parsed_degraded and parsed_degraded < datetime.now(timezone.utc):
+                    row.degraded_until = None
+                    if row.reason and row.reason.startswith("degraded"):
+                        row.reason = None
+                    db_session.add(row)
+                    await db_session.commit()
             reason = row.reason or None
             status = "available"
             if reason and reason.startswith("degraded"):
@@ -1126,6 +1154,7 @@ class Db:
             return {
                 "available": bool(row.available) if row.available is not None else False,
                 "unavailable_until": unavailable_until,
+                "degraded_until": row.degraded_until,
                 "reason": reason,
                 "status": status,
             }
@@ -1153,11 +1182,13 @@ class Db:
                     agent=agent,
                     available=0,
                     unavailable_until=unavailable_until,
+                    degraded_until=None,
                     reason=reason,
                 )
             else:
                 row.available = 0
                 row.unavailable_until = unavailable_until
+                row.degraded_until = None
                 row.reason = reason
             db_session.add(row)
             await db_session.commit()
@@ -1176,12 +1207,13 @@ class Db:
             else:
                 row.available = 1
                 row.unavailable_until = None
+                row.degraded_until = None
                 row.reason = None
             db_session.add(row)
             await db_session.commit()
         logger.info("Marked agent %s available", agent)
 
-    async def mark_agent_degraded(self, agent: str, reason: str) -> None:
+    async def mark_agent_degraded(self, agent: str, reason: str, degraded_until: str | None = None) -> None:
         """Mark an agent as degraded (manual-only, excluded from auto-selection)."""
         async with self._session() as db_session:
             row = await db_session.get(db_models.AgentAvailability, agent)
@@ -1191,32 +1223,42 @@ class Db:
                     agent=agent,
                     available=1,
                     unavailable_until=None,
+                    degraded_until=degraded_until,
                     reason=degraded_reason,
                 )
             else:
                 row.available = 1
                 row.unavailable_until = None
+                row.degraded_until = degraded_until
                 row.reason = degraded_reason
             db_session.add(row)
             await db_session.commit()
         logger.info("Marked agent %s degraded (%s)", agent, degraded_reason)
 
     async def clear_expired_agent_availability(self) -> int:
-        """Reset agents whose unavailable_until time has passed.
+        """Reset agents whose unavailable_until or degraded_until time has passed.
 
         Returns:
             Number of agents reset to available
         """
-        from sqlalchemy import update
+        from sqlalchemy import and_, or_, update
 
         now = datetime.now(timezone.utc).isoformat()
         stmt = (
             update(db_models.AgentAvailability)
             .where(
-                db_models.AgentAvailability.unavailable_until.is_not(None),
-                db_models.AgentAvailability.unavailable_until < now,
+                or_(
+                    and_(
+                        db_models.AgentAvailability.unavailable_until.is_not(None),
+                        db_models.AgentAvailability.unavailable_until < now,
+                    ),
+                    and_(
+                        db_models.AgentAvailability.degraded_until.is_not(None),
+                        db_models.AgentAvailability.degraded_until < now,
+                    ),
+                )
             )
-            .values(available=1, unavailable_until=None, reason=None)
+            .values(available=1, unavailable_until=None, degraded_until=None, reason=None)
         )
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
@@ -1277,6 +1319,7 @@ class Db:
                     session_id=row.session_id,
                     event_type=row.event_type,
                     payload=row.payload,
+                    created_at=row.created_at,
                     attempt_count=row.attempt_count,
                 )
                 for row in rows
@@ -1765,6 +1808,192 @@ class Db:
         )
         async with self._session() as db_session:
             return list((await db_session.exec(stmt)).all())
+
+    # ── Conversation links (direct + gathering) ──────────────────────
+
+    async def create_conversation_link(
+        self,
+        *,
+        mode: Literal["direct_link", "gathering_link"],
+        created_by_session_id: str,
+        metadata_json: str | None = None,
+    ) -> db_models.ConversationLinkRow:
+        """Create a new conversation link row."""
+        now = datetime.now(timezone.utc).isoformat()
+        link = db_models.ConversationLinkRow(
+            link_id=str(uuid.uuid4()),
+            mode=mode,
+            status="active",
+            created_by_session_id=created_by_session_id,
+            metadata_json=metadata_json,
+            created_at=now,
+            updated_at=now,
+            closed_at=None,
+        )
+        async with self._session() as db_session:
+            db_session.add(link)
+            await db_session.commit()
+            await db_session.refresh(link)
+            return link
+
+    async def get_conversation_link(self, link_id: str) -> db_models.ConversationLinkRow | None:
+        """Get a link by ID."""
+        from sqlmodel import select
+
+        stmt = select(db_models.ConversationLinkRow).where(db_models.ConversationLinkRow.link_id == link_id)
+        async with self._session() as db_session:
+            return (await db_session.exec(stmt)).first()
+
+    async def list_conversation_link_members(self, link_id: str) -> list[db_models.ConversationLinkMemberRow]:
+        """List members for a link, ordered for deterministic fan-out."""
+        from sqlmodel import select
+
+        stmt = (
+            select(db_models.ConversationLinkMemberRow)
+            .where(db_models.ConversationLinkMemberRow.link_id == link_id)
+            .order_by(
+                db_models.ConversationLinkMemberRow.participant_number,
+                db_models.ConversationLinkMemberRow.joined_at,
+            )
+        )
+        async with self._session() as db_session:
+            return list((await db_session.exec(stmt)).all())
+
+    async def get_active_links_for_session(self, session_id: str) -> list[db_models.ConversationLinkRow]:
+        """Get all active links containing the given member session."""
+        from sqlmodel import select
+
+        stmt = (
+            select(db_models.ConversationLinkRow)
+            .join(
+                db_models.ConversationLinkMemberRow,
+                db_models.ConversationLinkMemberRow.link_id == db_models.ConversationLinkRow.link_id,
+            )
+            .where(db_models.ConversationLinkMemberRow.session_id == session_id)
+            .where(db_models.ConversationLinkRow.status == "active")
+        )
+        async with self._session() as db_session:
+            return list((await db_session.exec(stmt)).all())
+
+    async def get_active_links_between_sessions(
+        self,
+        session_a: str,
+        session_b: str,
+        *,
+        mode: Literal["direct_link", "gathering_link"] | None = None,
+    ) -> list[db_models.ConversationLinkRow]:
+        """Find all active links that contain both session IDs."""
+        links = await self.get_active_links_for_session(session_a)
+        matches: list[db_models.ConversationLinkRow] = []
+        for link in links:
+            if mode and link.mode != mode:
+                continue
+            members = await self.list_conversation_link_members(link.link_id)
+            member_ids = {member.session_id for member in members}
+            if session_b in member_ids:
+                matches.append(link)
+        return sorted(matches, key=lambda item: item.created_at)
+
+    async def get_active_link_between_sessions(
+        self,
+        session_a: str,
+        session_b: str,
+        *,
+        mode: Literal["direct_link", "gathering_link"] | None = None,
+    ) -> db_models.ConversationLinkRow | None:
+        """Find the first active link that contains both session IDs."""
+        links = await self.get_active_links_between_sessions(session_a, session_b, mode=mode)
+        return links[0] if links else None
+
+    async def upsert_conversation_link_member(
+        self,
+        *,
+        link_id: str,
+        session_id: str,
+        participant_name: str | None = None,
+        participant_number: int | None = None,
+        participant_role: str | None = None,
+        computer_name: str | None = None,
+    ) -> None:
+        """Create or update link membership metadata."""
+        from sqlmodel import select
+
+        now = datetime.now(timezone.utc).isoformat()
+        stmt = select(db_models.ConversationLinkMemberRow).where(
+            db_models.ConversationLinkMemberRow.link_id == link_id,
+            db_models.ConversationLinkMemberRow.session_id == session_id,
+        )
+        async with self._session() as db_session:
+            existing = (await db_session.exec(stmt)).first()
+            if existing:
+                existing.participant_name = participant_name
+                existing.participant_number = participant_number
+                existing.participant_role = participant_role
+                existing.computer_name = computer_name
+                db_session.add(existing)
+            else:
+                db_session.add(
+                    db_models.ConversationLinkMemberRow(
+                        link_id=link_id,
+                        session_id=session_id,
+                        participant_name=participant_name,
+                        participant_number=participant_number,
+                        participant_role=participant_role,
+                        computer_name=computer_name,
+                        joined_at=now,
+                    )
+                )
+            await db_session.commit()
+
+    async def remove_conversation_link_member(self, *, link_id: str, session_id: str) -> bool:
+        """Remove a member from a link."""
+        from sqlalchemy import delete
+
+        stmt = delete(db_models.ConversationLinkMemberRow).where(
+            db_models.ConversationLinkMemberRow.link_id == link_id,
+            db_models.ConversationLinkMemberRow.session_id == session_id,
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            await db_session.commit()
+            return (result.rowcount or 0) > 0  # type: ignore[union-attr]
+
+    async def set_conversation_link_status(self, *, link_id: str, status: Literal["active", "closed"]) -> bool:
+        """Update link lifecycle status."""
+        from sqlalchemy import update
+
+        now = datetime.now(timezone.utc).isoformat()
+        closed_at = now if status == "closed" else None
+        stmt = (
+            update(db_models.ConversationLinkRow)
+            .where(db_models.ConversationLinkRow.link_id == link_id)
+            .values(status=status, updated_at=now, closed_at=closed_at)
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            await db_session.commit()
+            return (result.rowcount or 0) > 0  # type: ignore[union-attr]
+
+    async def sever_conversation_link(self, link_id: str) -> bool:
+        """Close link and remove all active members."""
+        from sqlalchemy import delete
+
+        changed = await self.set_conversation_link_status(link_id=link_id, status="closed")
+        stmt = delete(db_models.ConversationLinkMemberRow).where(db_models.ConversationLinkMemberRow.link_id == link_id)
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            await db_session.commit()
+            deleted = (result.rowcount or 0) > 0  # type: ignore[union-attr]
+        return changed or deleted
+
+    async def cleanup_conversation_links_for_session(self, session_id: str) -> int:
+        """Sever all active links involving the given session."""
+        links = await self.get_active_links_for_session(session_id)
+        closed = 0
+        for link in links:
+            if await self.sever_conversation_link(link.link_id):
+                closed += 1
+        return closed
 
 
 def _fetch_session_id_sync(db_path: str, field: str, value: object) -> str | None:

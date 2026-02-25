@@ -3,87 +3,104 @@ id: 'software-development/procedure/lifecycle/demo'
 type: 'procedure'
 domain: 'software-development'
 scope: 'project'
-description: 'Create runnable demo artifacts during build and present them to celebrate delivery.'
+description: 'Create demo.md artifacts during build and present them to celebrate delivery.'
 ---
 
 # Demo — Procedure
 
 ## Goal
 
-Celebrate every delivery with a runnable demonstration of what was built. Demos are created during the build phase and presented after merge to celebrate the work. Every demo is a feast.
+Celebrate every delivery with a runnable demonstration of what was built. The demo is the ultimate functional test — if it can't be demonstrated, it's not delivered.
 
-## Creation (Builder)
+## The demo.md artifact
 
-Demos are created during the build phase as a deliverable, verified by the reviewer, and committed alongside the implementation.
+`demo.md` is a freeform markdown file with steps for the AI presenter to execute. It contains:
 
-### When to create
+- **Executable code blocks** (` ```bash `) — extracted and run by `telec todo demo` for automated validation. This is the demo validator and build gate.
+- **Guided steps** — instructions for the AI to operate the system (TUI keypresses, Playwright actions, CLI commands, API calls) and narrate to the user.
+- **Verification steps** — assertions the AI checks ("output should contain X", "user should see Y").
 
-During the build phase, after implementing the feature and before completing the build gates.
+### Testability is the default
 
-### How to create
+Almost everything should be testable via code blocks. The AI can spin up its own TUI instance (no singleton constraint), run Playwright for web UI, start sessions, call APIs. "Not automatable" should be the rare exception — annotated with `<!-- skip-validation: reason -->` on the code block — not the default.
 
-1. **Create demo folder.** `demos/{slug}/` (slug-based naming, no sequence numbers).
+Even TUI demos should have testable blocks: the AI runs its own `telec` instance, sends keys, verifies state. The guided presentation to the user is a separate concern from validation — validation proves it works, presentation shows it off.
 
-2. **Compose snapshot.json.** Capture the delivery story with:
-   - Slug, title, version (from `pyproject.toml`)
-   - Delivered date, commit hash (will be merge commit after finalize)
-   - Metrics (commits, files changed, tests, review rounds, findings, lines)
-   - Five Acts narrative (see structure below)
-   - `demo` field: shell command that demonstrates the feature
+### Non-destructive by default
 
-3. **The Five Acts structure** (captured in `acts` object):
+Demos run on real data. They must never be destructive. If the demo needs to exercise CRUD operations, it creates its own test data, demonstrates the behavior, and cleans up after itself. The builder writes the demo with this awareness: you're running on a live system.
 
-   **Act 1 — The Challenge**
-   What problem did this solve? Frame it from the user's perspective.
-   One paragraph, no jargon.
+Exception: demos may modify data they created themselves within the demo scope. The cleanup is part of the demo steps.
 
-   **Act 2 — The Build**
-   Key architectural decisions. What was created, modified, wired together.
-   Highlight the most interesting technical choice.
+### Heuristics (not prescriptive)
 
-   **Act 3 — The Gauntlet**
-   Review rounds survived. Critical findings caught and fixed.
-   Frame it as quality earned, not rework endured.
+- CLI change: run the command, verify output
+- TUI change: spin up own TUI instance and operate it
+- Web UI: drive Playwright
+- Messaging: trigger via API
+- Bug fix: reproduce the scenario that was broken, show it works now
 
-   **Act 5 — What's Next** (stored as `whats_next` field)
-   Non-blocking suggestions carried forward. Ideas sparked.
-   What this unlocks for the roadmap.
+## Creation lifecycle
 
-   Act 4 (The Numbers) is rendered from the metrics object, not written as narrative.
+### Prepare phase (Architect)
 
-4. **The demo field.** A shell command string that demonstrates the feature. Examples:
-   - `echo "Feature demo: run 'telec todo create my-slug' to see the scaffolding"`
-   - `python demos/my-feature/show_demo.py`
-   - `cat README.md | grep "New feature"`
+The architect drafts `demo.md` during preparation. The draft defines:
 
-   The command is executed with `shell=True` from the demo folder as current working directory.
+- What medium is the delivery shown in? (CLI, TUI, web, API)
+- What does the user observe?
+- What commands validate it works?
 
-5. **Write and commit.** Save `demos/{slug}/snapshot.json` and include it in a commit during the build phase.
+The draft doesn't need to be perfect — the builder refines it with real implementation knowledge.
 
-### Builder guidance
+### Build phase (Builder)
 
-The demo is part of the definition of done. Do not skip it. The demo field does not need to be elaborate — a simple command that shows the feature working is sufficient. The snapshot narrative tells the story; the demo command proves it works.
+The builder refines `demo.md` with working executable blocks. Demo validation is a build gate:
+
+1. Run `telec todo demo validate {slug}` — confirms executable blocks exist.
+   (The builder works in a worktree — only structural validation is possible here.
+   Actual execution happens on main after merge.)
+2. If validation fails, the build is not done. Fix forward.
+3. Create `demos/{slug}/` folder with `demo.md` (copy from `todos/{slug}/demo.md`).
+   (`snapshot.json` is generated by the orchestrator after merge.)
+
+### Escape hatch
+
+Individual code blocks can be annotated `<!-- skip-validation: reason -->` when they genuinely can't be run by the CLI validator (e.g., requires human visual confirmation). This should be rare.
+
+If an entire delivery can't produce any executable demo steps (pure refactors with no observable behavior change), the builder notes the exception in `demo.md` with reasoning, and the reviewer accepts or pushes back.
+
+### Bug fixes get demos too
+
+A bug fix demo is often the simplest: reproduce the scenario that was broken, show it works now. "The bug is gone" is an assertion. The demo is the proof.
+
+## snapshot.json
+
+The five acts narrative lives in `snapshot.json` — that's the delivery story:
+
+1. **The Challenge** — what problem this solved
+2. **The Build** — key architectural decisions
+3. **The Gauntlet** — review rounds survived
+4. **The Numbers** — metrics (rendered from the metrics object)
+5. **What's Next** — ideas sparked, what this unlocks
+
+See `project/spec/demo-artifact` for the full schema.
 
 ## Presentation
 
-Demos are presented to celebrate delivery, either via conversational AI or CLI.
-
 ### Conversational presentation (/next-demo)
 
-- **No slug**: AI lists available demos and asks which one to present.
-- **With slug**: AI runs `telec todo demo <slug>`, then renders a celebration widget with the snapshot data (title, acts, metrics table).
+- **No slug:** AI lists available demos and asks which to present.
+- **With slug:** AI reads `demos/{slug}/demo.md` and walks through all steps — executing code blocks, operating the system for guided steps, checking verification assertions. After a successful walkthrough, celebrates with the five acts narrative from `snapshot.json`.
 
-### CLI presentation (telec todo demo)
+### CLI commands (telec todo demo)
 
-- **No slug**: lists all available demos (table format: slug, title, version, delivered date).
-- **With slug**: executes the `demo` field command for that demo.
-
-## Schema
-
-See `project/spec/demo-artifact` for the full `snapshot.json` schema.
+- **No args:** lists all available demos (table format: slug, title, version, delivered date).
+- **`validate {slug}`:** structural check — confirms executable bash blocks exist. Used during build (worktree-safe).
+- **`run {slug}`:** executes bash blocks sequentially. All must exit 0. Used on main after merge. Falls back to `snapshot.json` `demo` field for backward compatibility.
+- **`create {slug}`:** promotes `todos/{slug}/demo.md` to `demos/{slug}/demo.md`.
 
 ## Recovery
 
 - Demos survive cleanup (they live in `demos/{slug}/`, not `todos/{slug}/`).
-- If a demo is missing the `demo` field, the runner warns and skips execution (backward compatibility).
+- If a demo is missing `demo.md`, the runner falls back to the `snapshot.json` `demo` field (backward compatibility).
 - Breaking major version bumps disable stale demos automatically via semver gate.

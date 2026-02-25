@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 
 import yaml
@@ -13,7 +14,6 @@ SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 _DEFAULT_STATE = TodoState(
-    phase="pending",
     build="pending",
     review="pending",
     deferrals_processed=False,
@@ -28,8 +28,7 @@ _DEFAULT_STATE = TodoState(
 
 
 _BUG_STATE = TodoState(
-    phase="in_progress",
-    build="pending",
+    build="started",
     review="pending",
     deferrals_processed=False,
     breakdown=BreakdownState(assessed=False, todos=[]),
@@ -68,6 +67,7 @@ def create_todo_skeleton(
     - todos/{slug}/requirements.md
     - todos/{slug}/implementation-plan.md
     - todos/{slug}/quality-checklist.md
+    - todos/{slug}/demo.md
     - todos/{slug}/state.yaml
 
     Optionally registers the slug in todos/roadmap.yaml when ``after`` is provided.
@@ -88,12 +88,14 @@ def create_todo_skeleton(
     plan = _read_template("implementation-plan.md").format(slug=slug)
     checklist = _read_template("quality-checklist.md").format(slug=slug)
     input_md = _read_template("input.md").format(slug=slug)
+    demo_md = _read_template("demo.md").format(slug=slug)
     state_content = yaml.dump(_DEFAULT_STATE, default_flow_style=False, sort_keys=False)
 
     _write_file(todo_dir / "requirements.md", req)
     _write_file(todo_dir / "implementation-plan.md", plan)
     _write_file(todo_dir / "quality-checklist.md", checklist)
     _write_file(todo_dir / "input.md", input_md)
+    _write_file(todo_dir / "demo.md", demo_md)
     _write_file(todo_dir / "state.yaml", state_content)
 
     if after is not None:
@@ -155,3 +157,61 @@ def create_bug_skeleton(
     _write_file(todo_dir / "state.yaml", state_content)
 
     return todo_dir
+
+
+def remove_todo(project_root: Path, slug: str) -> None:
+    """Remove a todo and all its references.
+
+    Removes:
+    - todos/{slug}/ directory
+    - Entry from todos/roadmap.yaml
+    - Entry from todos/icebox.yaml (if present)
+    - All `after` dependency references to this slug in roadmap and icebox
+
+    Args:
+        project_root: Project root directory
+        slug: Todo slug to remove
+
+    Raises:
+        ValueError: If slug format is invalid
+        RuntimeError: If worktree trees/{slug}/ exists
+        FileNotFoundError: If slug has no directory and no roadmap/icebox entry
+    """
+    from teleclaude.core.next_machine.core import (
+        clean_dependency_references,
+        remove_from_icebox,
+        remove_from_roadmap,
+    )
+
+    slug = slug.strip()
+    if not slug:
+        raise ValueError("Slug is required")
+    if not SLUG_PATTERN.match(slug):
+        raise ValueError("Invalid slug. Use lowercase letters, numbers, and hyphens only")
+
+    # Guard: check if worktree exists
+    worktree_path = project_root / "trees" / slug
+    if worktree_path.exists():
+        raise RuntimeError(
+            f"Cannot remove {slug}: worktree exists at {worktree_path}. "
+            "Remove the worktree first with 'git worktree remove'."
+        )
+
+    todos_root = project_root / "todos"
+    todo_dir = todos_root / slug
+
+    # Track if we found anything to remove
+    found_directory = todo_dir.exists()
+    found_in_roadmap = remove_from_roadmap(str(project_root), slug)
+    found_in_icebox = remove_from_icebox(str(project_root), slug)
+
+    # Clean up dependency references
+    clean_dependency_references(str(project_root), slug)
+
+    # Delete directory if it exists
+    if found_directory:
+        shutil.rmtree(todo_dir)
+
+    # Error if nothing was found
+    if not (found_directory or found_in_roadmap or found_in_icebox):
+        raise FileNotFoundError(f"Todo '{slug}' not found in directory, roadmap, or icebox")

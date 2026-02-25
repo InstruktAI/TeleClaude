@@ -1,7 +1,6 @@
 """Unit tests for roadmap assembly."""
 
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -20,12 +19,12 @@ def mock_project(tmp_path):
     # Roadmap items
     (todos_dir / "task-1").mkdir()
     (todos_dir / "task-1" / "state.yaml").write_text(
-        json.dumps({"phase": "in_progress", "dor": {"score": 10}, "build": "passing"})
+        json.dumps({"build": "started", "dor": {"score": 10}, "review": "pending"})
     )
 
     (todos_dir / "task-2").mkdir()
     (todos_dir / "task-2" / "state.yaml").write_text(
-        json.dumps({"phase": "pending", "breakdown": {"todos": ["task-3"]}})
+        json.dumps({"build": "pending", "review": "pending", "breakdown": {"todos": ["task-3"]}})
     )
 
     (todos_dir / "task-3").mkdir()
@@ -46,7 +45,7 @@ def test_assemble_roadmap_basic(mock_project):
     ]
 
     with patch("teleclaude.core.roadmap.load_roadmap", return_value=entries):
-        with patch("teleclaude.core.roadmap.load_icebox_slugs", return_value=["icebox-item"]):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[RoadmapEntry(slug="icebox-item")]):
             todos = assemble_roadmap(str(mock_project))
 
     # Should contain 3 roadmap items.
@@ -69,7 +68,7 @@ def test_assemble_roadmap_include_icebox(mock_project):
     entries = [RoadmapEntry(slug="task-1", description="Task 1")]
 
     with patch("teleclaude.core.roadmap.load_roadmap", return_value=entries):
-        with patch("teleclaude.core.roadmap.load_icebox_slugs", return_value=["icebox-item"]):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[RoadmapEntry(slug="icebox-item")]):
             todos = assemble_roadmap(str(mock_project), include_icebox=True)
 
     # task-1 (roadmap) + icebox-item (icebox) + task-2 (orphan) + task-3 (orphan)
@@ -81,7 +80,7 @@ def test_assemble_roadmap_include_icebox(mock_project):
     assert "task-3" in slugs
 
     icebox_todo = next(t for t in todos if t.slug == "icebox-item")
-    assert icebox_todo.group == "Icebox"
+    assert icebox_todo.group is None  # No group set on the entry
 
 
 def test_assemble_roadmap_icebox_only(mock_project):
@@ -89,7 +88,7 @@ def test_assemble_roadmap_icebox_only(mock_project):
     entries = [RoadmapEntry(slug="task-1", description="Task 1")]
 
     with patch("teleclaude.core.roadmap.load_roadmap", return_value=entries):
-        with patch("teleclaude.core.roadmap.load_icebox_slugs", return_value=["icebox-item"]):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[RoadmapEntry(slug="icebox-item")]):
             todos = assemble_roadmap(str(mock_project), icebox_only=True)
 
     # Should only show icebox items. Orphans (task-2, task-3) and roadmap (task-1) excluded.
@@ -109,7 +108,7 @@ def test_assemble_roadmap_container_reordering(mock_project):
     ]
 
     with patch("teleclaude.core.roadmap.load_roadmap", return_value=entries):
-        with patch("teleclaude.core.roadmap.load_icebox_slugs", return_value=["icebox-item"]):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[RoadmapEntry(slug="icebox-item")]):
             todos = assemble_roadmap(str(mock_project))
 
     # task-3, task-2 (roadmap) + task-1 (orphan)

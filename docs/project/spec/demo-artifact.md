@@ -2,7 +2,7 @@
 id: 'project/spec/demo-artifact'
 type: 'spec'
 scope: 'project'
-description: 'Demo artifact format: slug-based folders with snapshot.json containing a runnable demo command.'
+description: 'Demo artifact format: slug-based folders with snapshot.json and demo.md.'
 ---
 
 # Demo Artifact — Spec
@@ -17,6 +17,31 @@ Each delivery produces a demo artifact in `demos/`. Artifacts are committed to g
 
 `demos/{slug}/` — slug-based naming with no sequence numbers.
 
+### demo.md
+
+The primary demonstration artifact. Required sections:
+
+| Section                  | Content                                                   |
+| ------------------------ | --------------------------------------------------------- |
+| `# Demo: {title}`        | H1 with the delivery title.                               |
+| `## Validation`          | Executable bash code blocks that prove the feature works. |
+| `## Guided Presentation` | Sequential walkthrough steps for the AI presenter.        |
+
+#### Validation
+
+Fenced ` ```bash ` blocks are validated structurally by `telec todo demo validate {slug}` during build (confirms blocks exist — worktree cannot execute against main). Execution happens via `telec todo demo run {slug}` on main after merge.
+
+- Blocks preceded by `<!-- skip-validation: reason -->` are skipped by the validator but reported for visibility.
+- The validator prepends the project's `.venv/bin` to PATH so `python` resolves to the project environment.
+
+#### Guided Presentation
+
+A continuous sequence of steps the AI presenter walks through: what to do, what to observe, why it matters. Each step is a natural unit — operate, show, explain — not split into separate concerns. The presenter reads this top-to-bottom and executes.
+
+#### Non-destructive rule
+
+Demos run on real data. They must never be destructive. CRUD demos create their own test data, demonstrate the behavior, and clean up after themselves.
+
 ### snapshot.json schema
 
 ```json
@@ -26,7 +51,6 @@ Each delivery produces a demo artifact in `demos/`. Artifacts are committed to g
   "version": "string (semver from pyproject.toml)",
   "delivered": "string (YYYY-MM-DD)",
   "commit": "string (merge commit hash)",
-  "demo": "string (optional shell command executed from demo folder)",
   "metrics": {
     "commits": "integer",
     "files_changed": "integer",
@@ -47,9 +71,7 @@ Each delivery produces a demo artifact in `demos/`. Artifacts are committed to g
 }
 ```
 
-### Demo field
-
-The `demo` field is an optional shell command string that demonstrates the feature. The command is executed with `shell=True` from the demo folder directory as the current working directory. If absent, the runner warns and skips execution (backward compatibility).
+The `demo` field (shell command string) is deprecated. New demos use `demo.md` instead. The CLI runner falls back to the `demo` field when `demo.md` is absent (backward compatibility).
 
 ## Known caveats
 

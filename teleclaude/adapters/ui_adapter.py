@@ -23,7 +23,7 @@ from teleclaude.config import config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionUpdatedContext, TeleClaudeEvents, UiCommands
+from teleclaude.core.events import SessionStatusContext, SessionUpdatedContext, TeleClaudeEvents, UiCommands
 from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.models import (
@@ -85,6 +85,7 @@ class UiAdapter(BaseAdapter):
 
         # Register event listeners
         event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._handle_session_status)
 
     # === Adapter Metadata Helpers ===
 
@@ -92,9 +93,8 @@ class UiAdapter(BaseAdapter):
         """Clean up adapter-specific stale resources. Returns count of cleaned items."""
         return 0
 
-    async def ensure_channel(self, session: "Session", title: str) -> "Session":
+    async def ensure_channel(self, session: "Session") -> "Session":
         """Ensure adapter-specific channel exists (default no-op)."""
-        _ = title
         return session
 
     async def recover_lane_error(
@@ -696,6 +696,17 @@ class UiAdapter(BaseAdapter):
         """
         # User input messages (pending_deletions) cleaned via event handler, not here
 
+    async def send_typing_indicator(self, session: "Session") -> None:
+        """Send platform-specific typing indicator.
+
+        Override in subclasses to implement platform typing API.
+        Default implementation is a no-op.
+
+        Args:
+            session: Session object
+        """
+        # No-op default implementation
+
     async def _dispatch_command(
         self,
         session: "Session",
@@ -711,6 +722,13 @@ class UiAdapter(BaseAdapter):
 
         if message_id:
             await self.client.pre_handle_command(session, metadata.origin)
+
+        # Send typing indicator (fire-and-forget, never blocks processing)
+        if session.lifecycle_status != "headless":
+            try:
+                await self.send_typing_indicator(session)
+            except Exception:
+                logger.debug("Typing indicator failed for session %s", session.session_id[:8], exc_info=True)
 
         result = await handler()
 
@@ -825,6 +843,24 @@ class UiAdapter(BaseAdapter):
         return get_output_file(session_id)
 
     # ==================== Event Handlers ====================
+
+    async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
+        """Handle lifecycle status transitions. No-op by default; override per platform adapter."""
+
+    @staticmethod
+    def _format_lifecycle_status(status: str) -> str:
+        """Format a lifecycle status string for platform display."""
+        _EMOJI: dict[str, str] = {
+            "accepted": "⏱",
+            "awaiting_output": "🟡",
+            "active_output": "🔄",
+            "stalled": "🔴",
+            "completed": "✅",
+            "error": "❌",
+            "closed": "🔒",
+        }
+        emoji = _EMOJI.get(status, "❓")
+        return f"{emoji} {status.replace('_', ' ')}"
 
     async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
         """Handle session_updated event - update channel title when fields change.

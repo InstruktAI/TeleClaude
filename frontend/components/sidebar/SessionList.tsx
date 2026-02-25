@@ -4,15 +4,19 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Brain, Sparkles, Code2 } from "lucide-react";
 import { fetchSessions } from "@/lib/api/sessions";
+import { useAgentTheming } from "@/hooks/useAgentTheming";
+import { useAgentColors } from "@/hooks/useAgentColors";
+import { safeAgent, type AgentType } from "@/lib/theme/tokens";
 
-function agentIcon(agent: string | null | undefined) {
+function agentIcon(agent: string | null | undefined, color: string) {
+  const className = "h-3.5 w-3.5";
   switch (agent) {
     case "gemini":
-      return <Sparkles className="h-3.5 w-3.5 text-blue-500" />;
+      return <Sparkles className={className} style={{ color }} />;
     case "codex":
-      return <Code2 className="h-3.5 w-3.5 text-green-500" />;
+      return <Code2 className={className} style={{ color }} />;
     default:
-      return <Brain className="h-3.5 w-3.5 text-purple-500" />;
+      return <Brain className={className} style={{ color }} />;
   }
 }
 
@@ -36,8 +40,48 @@ function relativeTime(iso: string | null | undefined): string {
 }
 
 
-export function SessionList() {
+function SessionItem({ session, isActive }: { session: any; isActive: boolean }) {
   const router = useRouter();
+  const { isThemed } = useAgentTheming();
+  const agent: AgentType = safeAgent(session.active_agent);
+  const colors = useAgentColors(agent);
+
+  const title = session.title || session.session_id.slice(0, 8);
+
+  return (
+    <button
+      onClick={() => router.push(`/?sessionId=${session.session_id}`)}
+      className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
+        isActive
+          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+          : "hover:bg-sidebar-accent/50"
+      }`}
+    >
+      {agentIcon(session.active_agent, colors.sidebarText)}
+      <div className="min-w-0 flex-1">
+        <p
+          className="truncate font-medium text-xs"
+          style={isThemed ? { color: colors.sidebarText } : undefined}
+        >
+          {title}
+        </p>
+        {session.project_path && (
+          <p className="truncate text-[10px] text-muted-foreground">
+            {session.project_path.split("/").pop()}
+          </p>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <span className="text-[10px] text-muted-foreground">
+          {relativeTime(session.last_activity)}
+        </span>
+        {statusDot(session.status)}
+      </div>
+    </button>
+  );
+}
+
+export function SessionList() {
   const searchParams = useSearchParams();
   const activeId = searchParams?.get("sessionId");
 
@@ -86,37 +130,13 @@ export function SessionList() {
 
   return (
     <div className="flex flex-col gap-1 p-2">
-      {sorted.map((s) => {
-        const isActive = s.session_id === activeId;
-        const title = s.title || s.session_id.slice(0, 8);
-        return (
-          <button
-            key={s.session_id}
-            onClick={() => router.push(`/?sessionId=${s.session_id}`)}
-            className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
-              isActive
-                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                : "hover:bg-sidebar-accent/50"
-            }`}
-          >
-            {agentIcon(s.active_agent)}
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-medium text-xs">{title}</p>
-              {s.project_path && (
-                <p className="truncate text-[10px] text-muted-foreground">
-                  {s.project_path.split("/").pop()}
-                </p>
-              )}
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-              <span className="text-[10px] text-muted-foreground">
-                {relativeTime(s.last_activity)}
-              </span>
-              {statusDot(s.status)}
-            </div>
-          </button>
-        );
-      })}
+      {sorted.map((s) => (
+        <SessionItem
+          key={s.session_id}
+          session={s}
+          isActive={s.session_id === activeId}
+        />
+      ))}
     </div>
   );
 }

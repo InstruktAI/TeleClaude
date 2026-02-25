@@ -72,9 +72,9 @@ _AGENT_MODEL_FLAGS: dict[str, dict[str, str]] = {
         "slow": "-m gemini-3-pro-preview",
     },
     "codex": {
-        "fast": "-m gpt-5.3-codex-spark --config model_reasoning_effort='medium'",
-        "med": "-m gpt-5.3-codex-spark --config model_reasoning_effort='high'",
-        "slow": "-m gpt-5.3-codex-spark --config model_reasoning_effort='xhigh'",
+        "fast": "-m gpt-5.3-codex --config model_reasoning_effort='medium'",
+        "med": "-m gpt-5.3-codex --config model_reasoning_effort='high'",
+        "slow": "-m gpt-5.3-codex --config model_reasoning_effort='xhigh'",
     },
 }
 
