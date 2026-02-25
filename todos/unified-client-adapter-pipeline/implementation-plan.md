@@ -43,9 +43,9 @@ implementation work is executed under this parent slug.
 
 ## Phase 3 - Readiness and Dispatch Governance
 
-- [ ] Validate each child `state.yaml` has `dor` metadata (`score`, `status`, `last_assessed_at`).
-- [ ] Preserve dispatch rule: only child slugs with `dor.score >= 8` are ready candidates for build dispatch.
-- [ ] Keep parent focused on readiness governance; do not convert parent into executable build scope.
+- [x] Validate each child `state.yaml` has `dor` metadata (`score`, `status`, `last_assessed_at`).
+- [x] Preserve dispatch rule: only child slugs with `dor.score >= 8` are ready candidates for build dispatch.
+- [x] Keep parent focused on readiness governance; do not convert parent into executable build scope.
 
 ### Files (expected)
 
