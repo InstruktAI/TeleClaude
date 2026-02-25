@@ -80,11 +80,11 @@ semantics per adapter.
 
 ## Phase 5 - Verification and Documentation Completion (R1-R6)
 
-- [ ] Add/extend unit tests for canonical schema, serialization, validation failures,
+- [x] Add/extend unit tests for canonical schema, serialization, validation failures,
       and event mapping behavior.
-- [ ] Add regression tests ensuring current activity event consumers continue to pass.
-- [ ] Update docs with canonical contract examples and migration notes.
-- [ ] Update `demo.md` commands for deterministic validation execution.
+- [x] Add regression tests ensuring current activity event consumers continue to pass.
+- [x] Update docs with canonical contract examples and migration notes.
+- [x] Update `demo.md` commands for deterministic validation execution.
 
 ### Files (expected)
 
@@ -104,7 +104,7 @@ semantics per adapter.
 
 ## Definition of Done
 
-- [ ] Canonical outbound activity contract is documented and test-backed.
-- [ ] Shared serializer/validator utilities are in place and used by producer paths.
-- [ ] Compatibility bridge preserves existing consumer behavior during migration.
-- [ ] No unresolved contradiction exists between contract docs and implementation plan tasks.
+- [x] Canonical outbound activity contract is documented and test-backed.
+- [x] Shared serializer/validator utilities are in place and used by producer paths.
+- [x] Compatibility bridge preserves existing consumer behavior during migration.
+- [x] No unresolved contradiction exists between contract docs and implementation plan tasks.
