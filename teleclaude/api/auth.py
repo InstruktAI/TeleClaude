@@ -79,17 +79,6 @@ async def verify_caller(
         HTTPException(403): Tmux cross-check mismatch (session_id forgery attempt).
     """
     if not x_caller_session_id:
-        # Web/TUI bridge requests may carry identity via trusted web headers.
-        web_email = request.headers.get("x-web-user-email")
-        web_role = request.headers.get("x-web-user-role")
-        if web_email:
-            normalized_role = web_role.strip().lower() if isinstance(web_role, str) and web_role.strip() else None
-            return CallerIdentity(
-                session_id=f"web:{web_email}",
-                system_role=None,
-                human_role=normalized_role,
-                tmux_session_name=None,
-            )
         raise HTTPException(status_code=401, detail="session identity required")
 
     session = await db.get_session(x_caller_session_id)

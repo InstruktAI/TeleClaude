@@ -36,17 +36,16 @@ async def test_verify_caller_requires_identity() -> None:
 
 
 @pytest.mark.asyncio
-async def test_verify_caller_accepts_web_identity_headers() -> None:
+async def test_verify_caller_rejects_web_identity_headers_without_session_id() -> None:
     request = _request_with_headers(
         {
             "x-web-user-email": "admin@example.com",
             "x-web-user-role": "admin",
         }
     )
-    identity = await verify_caller(request=request, x_caller_session_id=None, x_tmux_session=None)
-    assert identity.session_id == "web:admin@example.com"
-    assert identity.human_role == "admin"
-    assert identity.system_role is None
+    with pytest.raises(HTTPException) as excinfo:
+        await verify_caller(request=request, x_caller_session_id=None, x_tmux_session=None)
+    assert excinfo.value.status_code == 401
 
 
 @pytest.mark.asyncio

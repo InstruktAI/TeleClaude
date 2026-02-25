@@ -79,3 +79,14 @@ def test_channels_routes_require_identity(auth_client: TestClient) -> None:
     publish_response = auth_client.post("/api/channels/test-channel/publish", json={"payload": {"k": "v"}})
     assert list_response.status_code == 401
     assert publish_response.status_code == 401
+
+
+def test_identity_headers_rejected_from_untrusted_source(auth_client: TestClient) -> None:
+    response = auth_client.get(
+        "/sessions",
+        headers={
+            "x-web-user-email": "admin@example.com",
+            "x-web-user-role": "admin",
+        },
+    )
+    assert response.status_code == 403

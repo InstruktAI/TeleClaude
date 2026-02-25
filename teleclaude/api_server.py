@@ -350,8 +350,7 @@ class APIServer:
             has_identity = any(h in _IDENTITY_HEADERS for h in request.headers)
             if has_identity:
                 client_host = request.client.host if request.client else None
-                # Unix socket connections have no client host (or show as empty)
-                is_trusted = client_host is None or client_host in _TRUSTED_HOSTS
+                is_trusted = client_host in _TRUSTED_HOSTS
                 if not is_trusted:
                     logger.warning(
                         "Rejected identity headers from untrusted source: %s",
