@@ -28,15 +28,31 @@
 
 - None.
 
+## Fixes Applied
+
+1. Issue: Build completion evidence mismatch between unchecked implementation plan and `state.yaml build: complete`.
+   Fix: Checked all parent implementation-plan phase and Definition of Done items as completed to align with the build state.
+   Commit: `70bbe0478fadddf660e0f2f4f80717e10b5afa41`
+
+2. Issue: Build-gate checklist was left unchecked despite completed verification.
+   Fix: Marked all Builder build gates complete in `quality-checklist.md` after validated demo/lint/test evidence.
+   Commit: `3e6eba9c6edb9f8b2faf6257ddafa939a0b16ff3`
+
+3. Issue: Parent DOR timestamps were inconsistent between `dor-report.md` and `state.yaml`.
+   Fix: Aligned parent DOR report `assessed_at` timestamp with `state.yaml dor.last_assessed_at`.
+   Commit: `5de8f61b893878b8044b6083aeda42b8e4cc2fae`
+
 ## Paradigm-Fit Assessment
 
 - Data flow: Artifact-only updates; no adapter/core boundary leakage or runtime-path bypass introduced.
 - Component reuse: Parent remains a coordination artifact and continues to reuse the existing child-todo decomposition model from roadmap/state artifacts.
-- Pattern consistency: Parent remains umbrella-only, but process-state artifacts are inconsistent (`build: complete` vs unchecked build/proof artifacts), so governance pattern is not fully upheld.
+- Pattern consistency: Parent remains umbrella-only and process-state artifacts are now synchronized with build/readiness evidence.
 
 ## Manual Verification Evidence
 
 - Executed `telec todo demo unified-client-adapter-pipeline` (exit `0`), which ran all four demo blocks successfully against current worktree.
+- Executed `make lint` after each fix; all runs exited `0` (with pre-existing non-fatal resource-validation warnings).
+- Executed `make test` after each fix; all runs exited `0` (`2049 passed`, `106 skipped`).
 - Re-ran child artifact and DOR-field checks across all six UCAP child slugs; all required files and `dor` metadata keys are present.
 - Re-ran parent runtime-scope guard (`rg "teleclaude/"` against parent implementation plan); no runtime-scope entries found.
 
