@@ -81,7 +81,7 @@
 
 ---
 
-### Task 6: frontend-design
+### [x] Task 6: frontend-design
 
 **File(s):** `agents/skills/frontend-design/SKILL.md`
 
