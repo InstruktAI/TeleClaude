@@ -1,6 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: cross-project-context
 - slug: unified-client-adapter-pipeline
   description: 'Umbrella: split Web/TUI adapter pipeline unification into atomic child
     todos and track dependency-gated delivery.'
