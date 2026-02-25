@@ -28,9 +28,9 @@ implementation work is executed under this parent slug.
 
 ## Phase 2 - Child Preparation Artifact Hygiene
 
-- [ ] Confirm each UCAP child slug contains `requirements.md`, `implementation-plan.md`, `dor-report.md`, and `state.yaml`.
-- [ ] Confirm each child implementation plan traces to that child's requirements.
-- [ ] Record missing/stale child artifacts as parent DOR blockers.
+- [x] Confirm each UCAP child slug contains `requirements.md`, `implementation-plan.md`, `dor-report.md`, and `state.yaml`.
+- [x] Confirm each child implementation plan traces to that child's requirements.
+- [x] Record missing/stale child artifacts as parent DOR blockers.
 
 ### Files (expected)
 
