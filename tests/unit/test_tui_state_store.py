@@ -70,6 +70,31 @@ def test_load_migrates_old_flat_state(monkeypatch, tmp_path) -> None:
     assert loaded["app"] == {}
 
 
+def test_load_missing_file_seeds_status_bar_defaults(monkeypatch, tmp_path) -> None:
+    """Missing state file should still seed canonical footer defaults."""
+    state_path = tmp_path / "tui_state.json"
+    monkeypatch.setattr(state_store, "TUI_STATE_PATH", state_path)
+    monkeypatch.setattr(state_store, "_default_pane_theming_mode", lambda: "off")
+
+    loaded = state_store.load_state()
+
+    assert loaded["status_bar"]["animation_mode"] == "periodic"
+    assert loaded["status_bar"]["pane_theming_mode"] == "off"
+
+
+def test_load_namespaced_state_fills_missing_status_bar_defaults(monkeypatch, tmp_path) -> None:
+    """Namespaced state should normalize missing footer fields."""
+    state_path = tmp_path / "tui_state.json"
+    monkeypatch.setattr(state_store, "TUI_STATE_PATH", state_path)
+    monkeypatch.setattr(state_store, "_default_pane_theming_mode", lambda: "highlight2")
+
+    state_path.write_text(json.dumps({"sessions": {}, "status_bar": {}}), encoding="utf-8")
+    loaded = state_store.load_state()
+
+    assert loaded["status_bar"]["animation_mode"] == "periodic"
+    assert loaded["status_bar"]["pane_theming_mode"] == "highlight2"
+
+
 def test_save_state_always_writes_required_namespaces(monkeypatch, tmp_path) -> None:
     """save_state() should always emit required namespaces."""
     state_path = tmp_path / "tui_state.json"

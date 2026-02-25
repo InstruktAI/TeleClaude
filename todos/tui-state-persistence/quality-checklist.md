@@ -10,21 +10,15 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [x] Requirements implemented according to scope
-- [x] Implementation-plan task checkboxes all `[x]`
-- [x] Tests pass (`make test`)
-- [x] Lint passes (`make lint`)
-- [x] No silent deferrals in implementation plan
-- [x] Code committed
-- [x] Demo validated (`telec todo demo tui-state-persistence` exits 0, or exception noted)
-- [x] Working tree clean
-- [x] Comments/docstrings updated where behavior changed
-
-Build verification notes:
-
-- Automated verification run: `pytest -q tests/unit/test_tui_state_store.py tests/unit/test_tui_footer_migration.py tests/unit/test_tui_agent_status_cycle.py tests/unit/test_runtime_settings.py`.
-- Full gates run: `make test`, `make lint`, `telec todo demo validate tui-state-persistence`.
-- Interactive TUI/SIGUSR2 manual checks were not executed directly in this non-interactive build environment; behavior is covered by state-store, widget persistence, and app lifecycle tests.
+- [ ] Requirements implemented according to scope
+- [ ] Implementation-plan task checkboxes all `[x]`
+- [ ] Tests pass (`make test`)
+- [ ] Lint passes (`make lint`)
+- [ ] No silent deferrals in implementation plan
+- [ ] Code committed
+- [ ] Demo validated (`telec todo demo tui-state-persistence` exits 0, or exception noted)
+- [ ] Working tree clean
+- [ ] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 

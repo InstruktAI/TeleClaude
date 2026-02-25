@@ -36,11 +36,17 @@ def _normalize_pane_theming_mode(value: object) -> str:
     from teleclaude.cli.tui.theme import normalize_pane_theming_mode
 
     if not isinstance(value, str):
-        return "agent_plus"
+        return _default_pane_theming_mode()
     try:
         return normalize_pane_theming_mode(value)
     except ValueError:
-        return "agent_plus"
+        return _default_pane_theming_mode()
+
+
+def _default_pane_theming_mode() -> str:
+    from teleclaude.cli.tui.theme import get_pane_theming_mode
+
+    return get_pane_theming_mode()
 
 
 def _is_flat_state(data: dict[str, object]) -> bool:  # guard: loose-dict - persisted JSON payload
@@ -78,7 +84,15 @@ def _migrate_flat_state(data: dict[str, object]) -> dict[str, dict[str, object]]
 
 
 def _empty_state() -> dict[str, dict[str, object]]:  # guard: loose-dict - namespaced state payload
-    return {key: {} for key in _REQUIRED_NAMESPACES}
+    return {
+        "sessions": {},
+        "preparation": {},
+        "status_bar": {
+            "animation_mode": _normalize_animation_mode(None),
+            "pane_theming_mode": _normalize_pane_theming_mode(None),
+        },
+        "app": {},
+    }
 
 
 def _normalize_namespaced_state(data: dict[str, object]) -> dict[str, dict[str, object]]:  # guard: loose-dict
@@ -88,6 +102,10 @@ def _normalize_namespaced_state(data: dict[str, object]) -> dict[str, dict[str, 
             state[key] = value
     for key in _REQUIRED_NAMESPACES:
         state.setdefault(key, {})
+
+    status_bar = state["status_bar"]
+    status_bar["animation_mode"] = _normalize_animation_mode(status_bar.get("animation_mode"))
+    status_bar["pane_theming_mode"] = _normalize_pane_theming_mode(status_bar.get("pane_theming_mode"))
     return state
 
 
