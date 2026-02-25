@@ -2,14 +2,23 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Create 6 methodology skills in `agents/skills/` adapted from Claude Code plugin sources, validate with `telec sync`, distribute to all runtimes, and keep branch-adjacent CLI/runtime/test surfaces consistent.
+**Goal:** Create 6 methodology skills in `agents/skills/` adapted from Claude Code plugin sources, validate with `telec sync`, distribute to all runtimes, and keep the branch's adjacent CLI/runtime/install/test/doc/roadmap behavior contract-aligned with this todo.
 
-**Approach:** Two-track execution:
+**Approach:** Two-track delivery.
 
-1. Artifact authoring for the six skills.
-2. Alignment updates for already-landed branch behavior in CLI/runtime/install/docs/tests (`teleclaude/cli/telec.py`, `teleclaude/cli/config_cli.py`, `teleclaude/config/runtime_settings.py`, `teleclaude/install/install_hooks.py`, `teleclaude/invite.py`, `tests/*`, `tools/test.sh`, `docs/project/spec/telec-cli-surface.md`, `todos/roadmap.yaml`).
+1. Artifact authoring for the six methodology skills.
+2. Explicit alignment of already-landed branch behavior in:
+   - `teleclaude/cli/telec.py`
+   - `teleclaude/cli/config_cli.py`
+   - `teleclaude/config/runtime_settings.py`
+   - `teleclaude/install/install_hooks.py`
+   - `teleclaude/invite.py`
+   - `tests/*`
+   - `tools/test.sh`
+   - `docs/project/spec/telec-cli-surface.md`
+   - `todos/roadmap.yaml`
 
-No unrelated feature work outside those paths.
+No unrelated feature work outside these surfaces.
 
 **Reference pattern:** `agents/skills/research/SKILL.md`, `agents/skills/next-code-reviewer/SKILL.md` — follow their frontmatter and section structure.
 
@@ -111,6 +120,18 @@ No unrelated feature work outside those paths.
 
 ---
 
+### Task 8: Branch Alignment Verification
+
+**File(s):** `teleclaude/cli/telec.py`, `teleclaude/cli/config_cli.py`, `teleclaude/config/runtime_settings.py`, `teleclaude/install/install_hooks.py`, `teleclaude/invite.py`, `tools/test.sh`, `docs/project/spec/telec-cli-surface.md`, `todos/roadmap.yaml`, targeted `tests/*`
+
+1. Confirm the todo requirements explicitly include these non-skill surfaces.
+2. Run targeted regression tests covering invite fallback output, install/runtime path handling, and run-agent/demo workflows exercised by this branch.
+3. Run `make lint` and ensure no new lint/type violations.
+4. If failures occur, apply minimal corrective changes in-scope and re-run checks.
+5. Keep any non-skill edits limited to contract-alignment; defer unrelated work.
+
+---
+
 ## Phase 2: Validation
 
 ### Task 2.1: Quality Checks
@@ -119,6 +140,9 @@ No unrelated feature work outside those paths.
 - [ ] All 6 skills distributed to all 3 runtime directories
 - [ ] No Claude-specific tool references in any skill content
 - [ ] Each skill follows the artifact schema (frontmatter + required sections)
+- [ ] Branch alignment surfaces are explicitly represented in requirements and this plan
+- [ ] Targeted regression tests for branch alignment surfaces pass
+- [ ] `make lint` passes with no new errors
 
 ### Task 2.2: Content Verification
 
