@@ -1002,6 +1002,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 retryable=retryable if isinstance(retryable, bool) else False,
                 code=code if isinstance(code, str) else None,
             )
+            self.agent_coordinator._cancel_stall_task(session_id)
+            self.agent_coordinator._emit_status_event(session_id, "error", "agent_error")
             event_bus.emit(TeleClaudeEvents.ERROR, context)
         else:
             context = AgentEventContext(
