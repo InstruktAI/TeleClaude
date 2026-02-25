@@ -15,7 +15,7 @@
 
 ---
 
-### Task 1: systematic-debugging
+### [x] Task 1: systematic-debugging
 
 **File(s):** `agents/skills/systematic-debugging/SKILL.md`
 

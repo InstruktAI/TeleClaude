@@ -5,20 +5,11 @@
     for cross-agent distribution
 - slug: tui-state-persistence
 - slug: cross-project-context
-- slug: transcript-first-output-and-hook-backpressure
-  group: unified-client-adapter-pipeline
-  description: Make native transcript deltas the single output data plane, keep hooks
-    control-plane only, and establish the foundation for unified client adapter pipeline
-    cutover.
 - slug: unified-client-adapter-pipeline
-  after:
-  - transcript-first-output-and-hook-backpressure
   description: 'Umbrella: split Web/TUI adapter pipeline unification into atomic child
     todos and track dependency-gated delivery.'
 - slug: ucap-canonical-contract
   group: unified-client-adapter-pipeline
-  after:
-  - transcript-first-output-and-hook-backpressure
   description: 'Phase 1: Define canonical outbound realtime contract and shared serializer/validation
     utilities across adapters.'
 - slug: ucap-truthful-session-status
@@ -100,7 +91,3 @@
   description: Add Discord Application Commands (slash commands) mirroring Telegram
     command set
 - slug: agent-config-driven-selection-contract
-- slug: assemble-todo-shared-loader
-  description: Unify todo data access behind shared roadmap/todo assembly helpers;
-    add telec todo get and migrate non-next-machine call sites off direct roadmap
-    loaders.
