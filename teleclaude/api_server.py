@@ -27,15 +27,20 @@ from teleclaude.api.auth import (
     CLEARANCE_COMPUTERS_LIST,
     CLEARANCE_DEPLOY,
     CLEARANCE_PROJECTS_LIST,
+    CLEARANCE_SESSIONS_AGENT_RESTART,
     CLEARANCE_SESSIONS_END,
     CLEARANCE_SESSIONS_ESCALATE,
     CLEARANCE_SESSIONS_FILE,
+    CLEARANCE_SESSIONS_KEYS,
     CLEARANCE_SESSIONS_LIST,
     CLEARANCE_SESSIONS_RESULT,
+    CLEARANCE_SESSIONS_REVIVE,
     CLEARANCE_SESSIONS_RUN,
     CLEARANCE_SESSIONS_SEND,
     CLEARANCE_SESSIONS_START,
+    CLEARANCE_SESSIONS_TAIL,
     CLEARANCE_SESSIONS_UNSUBSCRIBE,
+    CLEARANCE_SESSIONS_VOICE,
     CLEARANCE_SESSIONS_WIDGET,
     CallerIdentity,
 )
@@ -639,6 +644,7 @@ class APIServer:
             session_id: str,
             request: KeysRequest,
             computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_KEYS),  # noqa: ARG001
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send key command to session."""
             from teleclaude.api.session_access import check_session_access
@@ -666,6 +672,7 @@ class APIServer:
             session_id: str,
             request: VoiceInputRequest,
             computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_VOICE),  # noqa: ARG001
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send voice input to session."""
             from teleclaude.api.session_access import check_session_access
@@ -723,9 +730,14 @@ class APIServer:
 
         @self.app.post("/sessions/{session_id}/agent-restart")
         async def agent_restart(  # pyright: ignore
+            http_request: "Request",
             session_id: str,
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_AGENT_RESTART),  # noqa: ARG001
         ) -> dict[str, str]:
             """Restart agent in session (preserves conversation via --resume)."""
+            from teleclaude.api.session_access import check_session_access
+
+            await check_session_access(http_request, session_id)
             try:
                 logger.info("API agent_restart requested (session=%s, origin=api)", session_id[:8])
 
@@ -755,9 +767,14 @@ class APIServer:
 
         @self.app.post("/sessions/{session_id}/revive")
         async def revive_session(  # pyright: ignore
+            http_request: "Request",
             session_id: str,
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_REVIVE),  # noqa: ARG001
         ) -> CreateSessionResponseDTO:
             """Revive a session by TeleClaude session ID, including previously closed sessions."""
+            from teleclaude.api.session_access import check_session_access
+
+            await check_session_access(http_request, session_id)
             try:
                 session = await db.get_session(session_id)
                 if not session:
@@ -799,6 +816,7 @@ class APIServer:
             since: str | None = Query(None, description="ISO 8601 UTC timestamp; only messages after this time"),
             include_tools: bool = Query(False, description="Include tool_use/tool_result entries"),
             include_thinking: bool = Query(False, description="Include thinking/reasoning blocks"),
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_TAIL),  # noqa: ARG001
         ) -> SessionMessagesDTO:
             """Get structured messages from a session's transcript files."""
             from teleclaude.api.session_access import check_session_access
