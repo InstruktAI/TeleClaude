@@ -1159,6 +1159,8 @@ class MCPHandlersMixin:
         baseline_only: bool | None = None,
         include_third_party: bool | None = None,
         domains: list[str] | None = None,
+        list_projects: bool | None = None,
+        projects: list[str] | None = None,
         project_root: str | None = None,
         cwd: str | None = None,
         caller_session_id: str | None = None,
@@ -1174,7 +1176,7 @@ class MCPHandlersMixin:
             effective_root = str(config.computer.default_working_dir)
         if areas is None:
             areas = []
-        if snippet_ids and any(sid.startswith("project/") for sid in snippet_ids):
+        if snippet_ids and any("/" in sid and not sid.startswith(("general/", "third-party/")) for sid in snippet_ids):
             root = Path(effective_root).expanduser().resolve()
             while True:
                 if (root / "teleclaude.yml").exists():
@@ -1198,11 +1200,13 @@ class MCPHandlersMixin:
                 test_csv_path = str(
                     Path(effective_root).expanduser().resolve() / ".agents" / "tests" / "runs" / "get-context.csv"
                 )
-        # Resolve human_role for role filtering
+        # Resolve caller role for visibility filtering.
+        caller_role = "admin"
         human_role: str | None = None
         if caller_session_id:
             caller_session = await db.get_session(caller_session_id)
             if caller_session:
+                caller_role = (caller_session.user_role or "admin").strip().lower() or "admin"
                 human_role = caller_session.human_role
 
         resolved_root = Path(effective_root)
@@ -1213,6 +1217,9 @@ class MCPHandlersMixin:
             baseline_only=bool(baseline_only),
             include_third_party=bool(include_third_party),
             domains=domains,
+            list_projects=bool(list_projects),
+            projects=projects,
+            caller_role=caller_role,
             human_role=human_role,
             test_agent=test_agent,
             test_mode=test_mode,

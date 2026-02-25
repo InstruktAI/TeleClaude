@@ -106,6 +106,7 @@ class SessionDTO(BaseModel):  # type: ignore[explicit-any]
     computer: str | None = None
     human_email: str | None = None
     human_role: str | None = None
+    user_role: str = "admin"
     visibility: str = "private"
     session_metadata: dict[str, object] | None = None  # guard: loose-dict
 
@@ -135,6 +136,7 @@ class SessionDTO(BaseModel):  # type: ignore[explicit-any]
             computer=computer,
             human_email=session.human_email,
             human_role=session.human_role,
+            user_role=session.user_role or "admin",
             visibility=session.visibility or "private",
             session_metadata=session.session_metadata,
         )

@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     relay_started_at TEXT,
     human_email TEXT,
     human_role TEXT,
+    user_role TEXT DEFAULT 'admin',
     transcript_files TEXT DEFAULT '[]'  -- JSON array of transcript file paths (chain for multi-file sessions)
     -- No unique constraint on (computer_name, tmux_session_name): tmux enforces
     -- its own name uniqueness, and headless sessions have NULL tmux_session_name.

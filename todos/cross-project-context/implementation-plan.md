@@ -132,26 +132,26 @@ Extend `get_context` to serve documentation across all TeleClaude-aware projects
 
 **File(s):** `teleclaude/mcp/tool_definitions.py`
 
-- [ ] Add `list_projects` boolean parameter (description: "Return the project catalog instead of snippet index")
-- [ ] Add `projects` string array parameter (description: "Filter phase 1 to these project names (lowercase). Omit for current project only.")
+- [x] Add `list_projects` boolean parameter (description: "Return the project catalog instead of snippet index")
+- [x] Add `projects` string array parameter (description: "Filter phase 1 to these project names (lowercase). Omit for current project only.")
 
 ### Task 4.2: Wire parameters and role resolution through MCP handler
 
 **File(s):** `teleclaude/mcp/handlers.py`
 
-- [ ] Pass `list_projects` and `projects` through to `build_context_output`
-- [ ] Update the `project/` prefix detection logic (line ~975) to handle rewritten cross-project IDs
-- [ ] Resolve caller role: `caller_session_id` → `db.get_session()` → session's `user_role` field. Default to `admin` if no session found or field absent.
-- [ ] Pass resolved role as `caller_role` to `build_context_output`
+- [x] Pass `list_projects` and `projects` through to `build_context_output`
+- [x] Update the `project/` prefix detection logic (line ~975) to handle rewritten cross-project IDs
+- [x] Resolve caller role: `caller_session_id` → `db.get_session()` → session's `user_role` field. Default to `admin` if no session found or field absent.
+- [x] Pass resolved role as `caller_role` to `build_context_output`
 
 ### Task 4.3: Store `user_role` on session creation
 
 **File(s):** Session creation path (adapters + command handlers)
 
-- [ ] Add `user_role` field to session record (default: `admin`)
-- [ ] Telegram adapter: resolve user identity via `IdentityResolver` at session creation, store resolved role
-- [ ] TUI / direct sessions: default to `admin`
-- [ ] AI-spawned sessions: inherit parent session's role
+- [x] Add `user_role` field to session record (default: `admin`)
+- [x] Telegram adapter: resolve user identity via `IdentityResolver` at session creation, store resolved role
+- [x] TUI / direct sessions: default to `admin`
+- [x] AI-spawned sessions: inherit parent session's role
 
 ---
 

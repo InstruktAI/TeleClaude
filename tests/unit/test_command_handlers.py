@@ -212,6 +212,81 @@ async def test_create_session_inherits_parent_origin(mock_initialized_db):
 
 
 @pytest.mark.asyncio
+async def test_create_session_stores_resolved_user_role(mock_initialized_db):
+    mock_client = MagicMock()
+    mock_client.create_channel = AsyncMock()
+    mock_client.send_message = AsyncMock()
+
+    resolver = MagicMock()
+    resolver.resolve.return_value = IdentityContext(
+        person_name="Member User",
+        person_role="member",
+        platform="telegram",
+        platform_user_id="321",
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with (
+            patch.object(command_handlers, "config") as mock_config,
+            patch.object(command_handlers, "db") as mock_db,
+            patch.object(command_handlers, "get_identity_resolver", return_value=resolver),
+        ):
+            mock_config.computer.name = "TestComputer"
+            mock_config.computer.default_working_dir = tmpdir
+            mock_db.create_session = mock_initialized_db.create_session
+            mock_db.get_session = mock_initialized_db.get_session
+            mock_db.update_session = mock_initialized_db.update_session
+
+            cmd = CreateSessionCommand(project_path=tmpdir, title="Role Session", origin=InputOrigin.TELEGRAM.value)
+            result = await command_handlers.create_session(cmd, mock_client)
+
+    stored = await mock_initialized_db.get_session(result["session_id"])
+    assert stored is not None
+    assert stored.user_role == "member"
+
+
+@pytest.mark.asyncio
+async def test_create_session_inherits_parent_user_role(mock_initialized_db):
+    mock_client = MagicMock()
+    mock_client.create_channel = AsyncMock()
+    mock_client.send_message = AsyncMock()
+
+    resolver = MagicMock()
+    resolver.resolve.return_value = None
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with (
+            patch.object(command_handlers, "config") as mock_config,
+            patch.object(command_handlers, "db") as mock_db,
+            patch.object(command_handlers, "get_identity_resolver", return_value=resolver),
+        ):
+            mock_config.computer.name = "TestComputer"
+            mock_config.computer.default_working_dir = tmpdir
+            mock_db.create_session = mock_initialized_db.create_session
+            mock_db.get_session = mock_initialized_db.get_session
+
+            parent = await mock_initialized_db.create_session(
+                computer_name="TestComputer",
+                tmux_session_name="tmux-parent",
+                last_input_origin=InputOrigin.TELEGRAM.value,
+                title="Parent Session",
+                user_role="member",
+            )
+
+            cmd = CreateSessionCommand(
+                project_path=tmpdir,
+                title="Child Session",
+                origin=InputOrigin.TELEGRAM.value,
+                initiator_session_id=parent.session_id,
+            )
+            result = await command_handlers.create_session(cmd, mock_client)
+
+    stored = await mock_initialized_db.get_session(result["session_id"])
+    assert stored is not None
+    assert stored.user_role == "member"
+
+
+@pytest.mark.asyncio
 async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state(mock_initialized_db):
     """Tmux adapter should store terminal metadata on the session."""
 

@@ -292,17 +292,22 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     # Resolve identity
     metadata_human_email: Optional[str] = None
     metadata_human_role: Optional[str] = None
+    metadata_user_role: Optional[str] = None
     if cmd.channel_metadata:
         raw_email = cmd.channel_metadata.get("human_email")
         raw_role = cmd.channel_metadata.get("human_role")
+        raw_user_role = cmd.channel_metadata.get("user_role")
         if isinstance(raw_email, str) and raw_email.strip():
             metadata_human_email = raw_email.strip()
         if isinstance(raw_role, str) and raw_role.strip():
             metadata_human_role = raw_role.strip().lower()
+        if isinstance(raw_user_role, str) and raw_user_role.strip():
+            metadata_user_role = raw_user_role.strip().lower()
 
     identity = get_identity_resolver().resolve(origin, cmd.channel_metadata or {})
     human_email = identity.person_email if identity and identity.person_email else metadata_human_email
     human_role = identity.person_role if identity and identity.person_role else metadata_human_role
+    user_role = identity.person_role if identity and identity.person_role else metadata_user_role
 
     # Handle parent session identity inheritance
     if parent_session:
@@ -310,6 +315,10 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
             human_email = parent_session.human_email
         if not human_role and parent_session.human_role:
             human_role = parent_session.human_role
+        if not user_role:
+            user_role = parent_session.user_role or parent_session.human_role
+    if not user_role:
+        user_role = "admin"
 
     # Enforce jail only for explicit non-admin role assignments.
     # Missing role means unrestricted fallback ("god mode") for local/TUI/API flows.
@@ -382,6 +391,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         initiator_session_id=initiator_session_id,
         human_email=human_email,
         human_role=human_role,
+        user_role=user_role,
         lifecycle_status="initializing",
         session_metadata=metadata_from_cmd,
         active_agent=launch.agent if launch else None,
@@ -440,6 +450,7 @@ async def list_sessions(*, include_closed: bool = False) -> list[SessionSnapshot
                 computer=local_name,
                 human_email=s.human_email,
                 human_role=s.human_role,
+                user_role=s.user_role or "admin",
             )
         )
 

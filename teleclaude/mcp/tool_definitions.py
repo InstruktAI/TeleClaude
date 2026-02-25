@@ -246,6 +246,18 @@ def get_tool_definitions() -> list[Tool]:
                             "always included regardless of this filter."
                         ),
                     },
+                    "list_projects": {
+                        "type": "boolean",
+                        "description": "Phase 0 only: Return the project catalog instead of snippet index.",
+                    },
+                    "projects": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Phase 1 only: Filter snippet index to these project names "
+                            "(case-insensitive). Omit for current project only."
+                        ),
+                    },
                     "project_root": {
                         "type": "string",
                         "description": (
