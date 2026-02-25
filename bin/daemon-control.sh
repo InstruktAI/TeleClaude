@@ -19,6 +19,7 @@ cd "$PROJECT_ROOT"
 # Configuration
 PID_FILE="$PROJECT_ROOT/teleclaude.pid"
 LOG_FILE="/var/log/instrukt-ai/teleclaude/teleclaude.log"
+API_SOCKET="/tmp/teleclaude-api.sock"
 
 # Platform-specific config
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -63,8 +64,8 @@ wait_for_daemon() {
     while [ $attempt -le $max_attempts ]; do
         if [ "$PLATFORM" = "macos" ]; then
             # Avoid `ps`/process enumeration (can be blocked by macOS sandboxes).
-            # Consider the daemon "up" once the MCP socket exists and accepts a connection.
-            local socket_path="/tmp/teleclaude.sock"
+            # Consider the daemon "up" once the API socket exists and accepts a connection.
+            local socket_path="$API_SOCKET"
             if [ -S "$socket_path" ]; then
                 if command -v python3 >/dev/null 2>&1; then
                     # If the current environment is sandboxed and cannot connect to the socket,
@@ -251,9 +252,7 @@ status_daemon() {
         fi
     fi
 
-    # Component health checks (sockets + API reads)
-    MCP_SOCKET="/tmp/teleclaude.sock"
-    API_SOCKET="/tmp/teleclaude-api.sock"
+    # Component health checks (API socket + API reads)
     overall_ok=0
 
     check_unix_socket() {
@@ -314,22 +313,6 @@ except Exception:
 PY
     }
 
-    # MCP socket health
-    if [ -S "$MCP_SOCKET" ] && command -v python3 >/dev/null 2>&1; then
-        MCP_HEALTH=$(check_unix_socket "$MCP_SOCKET" || true)
-        if [ "$MCP_HEALTH" = "ok" ]; then
-            log_info "MCP socket: HEALTHY ($MCP_SOCKET)"
-        elif [ "$MCP_HEALTH" = "blocked" ]; then
-            log_warn "MCP socket: UNKNOWN (blocked by environment)"
-        else
-            log_warn "MCP socket: NOT responding"
-            overall_ok=1
-        fi
-    else
-        log_warn "MCP socket: MISSING ($MCP_SOCKET)"
-        overall_ok=1
-    fi
-
     # API socket health + read checks
     if [ -S "$API_SOCKET" ] && command -v python3 >/dev/null 2>&1; then
         API_SOCKET_HEALTH=$(check_unix_socket "$API_SOCKET" || true)
@@ -359,7 +342,7 @@ PY
     fi
 
     if [ $overall_ok -eq 0 ]; then
-        log_info "Daemon health: HEALTHY (all components responding)"
+        log_info "Daemon health: HEALTHY (API components responding)"
         return 0
     fi
 
@@ -411,7 +394,7 @@ restart_daemon() {
         log_info "Daemon restarted successfully (PID: ${PID:-unknown})"
         EXIT_CODE=0
     else
-        log_error "Restart failed. Try: make kill to hard kill the daemon. You may have to stop the mcp process separately."
+        log_error "Restart failed. Try: make kill to hard kill the daemon."
         EXIT_CODE=1
     fi
 
