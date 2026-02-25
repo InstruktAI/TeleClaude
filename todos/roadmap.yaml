@@ -1,11 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: ucap-web-adapter-alignment
-  group: unified-client-adapter-pipeline
-  after:
-  - ucap-truthful-session-status
-  description: 'Phase 3: Align Web realtime delivery to adapter-driven contract and
-    remove direct Web bypass paths.'
 - slug: ucap-tui-adapter-alignment
   group: unified-client-adapter-pipeline
   after:

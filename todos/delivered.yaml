@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: ucap-web-adapter-alignment
+  date: '2026-02-25'
+  title: 'Phase 3: Align Web realtime delivery to adapter-driven contract and remove
+    direct Web bypass paths.'
+  commit: 79624a871b89d629bb82e68aa06c561875c7b1b7
+  description: 'Phase 3: Align Web realtime delivery to adapter-driven contract and
+    remove direct Web bypass paths.'
 - slug: ucap-truthful-session-status
   date: '2026-02-25'
   title: 'Phase 2: Make core the source of truth for session lifecycle status and
