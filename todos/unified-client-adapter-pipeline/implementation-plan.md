@@ -15,9 +15,9 @@ implementation work is executed under this parent slug.
 
 ## Phase 1 - Parent Scope and Dependency Reconciliation
 
-- [ ] Verify parent slug remains umbrella-only in requirements, implementation plan, and demo artifacts.
-- [ ] Verify UCAP child set and dependency ordering in `todos/roadmap.yaml` match parent requirements.
-- [ ] Record parent-artifact updates whenever dependency edges or child set change.
+- [x] Verify parent slug remains umbrella-only in requirements, implementation plan, and demo artifacts.
+- [x] Verify UCAP child set and dependency ordering in `todos/roadmap.yaml` match parent requirements.
+- [x] Record parent-artifact updates whenever dependency edges or child set change.
 
 ### Files (expected)
 
