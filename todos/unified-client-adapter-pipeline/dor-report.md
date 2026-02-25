@@ -26,6 +26,18 @@
 8. **Tooling impact (if applicable)**: pass
    - No tooling/scaffolding contract changes are required.
 
+## Child Readiness Snapshot
+
+- snapshot_consistent_as_of: `2026-02-25T12:00:00Z` (max `dor.last_assessed_at` across listed child states)
+- source: `todos/<child-slug>/state.yaml`
+
+1. `ucap-canonical-contract`: `status=pass`, `score=8`, `last_assessed_at=2026-02-24T23:22:03Z`
+2. `ucap-truthful-session-status`: `status=pass`, `score=8`, `last_assessed_at=2026-02-24T17:08:48Z`
+3. `ucap-web-adapter-alignment`: `status=pass`, `score=8`, `last_assessed_at=2026-02-24T17:23:07Z`
+4. `ucap-tui-adapter-alignment`: `status=pass`, `score=8`, `last_assessed_at=2026-02-24T17:21:50Z`
+5. `ucap-ingress-provisioning-harmonization`: `status=pass`, `score=8`, `last_assessed_at=2026-02-25T12:00:00Z`
+6. `ucap-cutover-parity-validation`: `status=pass`, `score=8`, `last_assessed_at=2026-02-24T17:44:48Z`
+
 ## Plan-to-Requirement Fidelity
 
 - `implementation-plan.md` phase mapping traces cleanly to `R1`-`R5`.
@@ -38,6 +50,7 @@
 2. Replaced monolithic build phases in parent `implementation-plan.md` with orchestration/readiness governance phases.
 3. Updated parent `demo.md` to verify roadmap alignment, child artifact completeness, child DOR metadata, and parent scope boundaries.
 4. Re-ran formal DOR gate assessment after artifact updates.
+5. Regenerated child readiness snapshot with a consistency timestamp derived from current child state metadata.
 
 ## Remaining Blockers
 
