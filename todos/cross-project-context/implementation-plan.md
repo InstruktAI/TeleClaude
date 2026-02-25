@@ -159,27 +159,27 @@ Extend `get_context` to serve documentation across all TeleClaude-aware projects
 
 ### Task 5.1: Tests
 
-- [ ] Test `load_manifest` / `register_project` round-trip
-- [ ] Test `build_context_output` with `list_projects=True`
-- [ ] Test `build_context_output` with `projects=["someproject"]` loads that project's index
-- [ ] Test ID rewriting: `project/policy/foo` becomes `someproject/policy/foo`
-- [ ] Test backward compatibility: no `projects` param gives identical results to current behavior
-- [ ] Test stale manifest entry (index file deleted) is skipped gracefully
-- [ ] Test cache hit (same mtime) and cache miss (changed mtime)
-- [ ] Test visibility filtering: non-admin caller sees only `public` snippets
-- [ ] Test visibility filtering: admin caller sees all snippets
-- [ ] Test default visibility: snippet without `visibility` field treated as `internal`
-- [ ] Run `make test` — all existing tests pass
+- [x] Test `load_manifest` / `register_project` round-trip
+- [x] Test `build_context_output` with `list_projects=True`
+- [x] Test `build_context_output` with `projects=["someproject"]` loads that project's index
+- [x] Test ID rewriting: `project/policy/foo` becomes `someproject/policy/foo`
+- [x] Test backward compatibility: no `projects` param gives identical results to current behavior
+- [x] Test stale manifest entry (index file deleted) is skipped gracefully
+- [x] Test cache hit (same mtime) and cache miss (changed mtime)
+- [x] Test visibility filtering: non-admin caller sees only `public` snippets
+- [x] Test visibility filtering: admin caller sees all snippets
+- [x] Test default visibility: snippet without `visibility` field treated as `internal`
+- [x] Run `make test` — all existing tests pass
 
 ### Task 5.2: Quality Checks
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
+- [x] Run `make lint`
+- [x] Verify no unchecked implementation tasks remain
 
 ---
 
 ## Phase 6: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)
