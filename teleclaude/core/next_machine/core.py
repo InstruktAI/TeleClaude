@@ -130,32 +130,41 @@ POST_COMPLETION: dict[str, str] = {
 4. Confirm worker reported exactly `FINALIZE_READY: {args}` in session `<session_id>` transcript.
    If missing: send worker feedback to report FINALIZE_READY and stop (do NOT apply).
 5. telec sessions end <session_id>
-6. FINALIZE APPLY (orchestrator-owned, canonical root only — NEVER cd into worktree):
+6. FINALIZE APPLY SAFETY RE-CHECK (canonical main):
    a. MAIN_REPO="$(git rev-parse --git-common-dir)/.."
-   b. git -C "$MAIN_REPO" fetch origin main
-   c. git -C "$MAIN_REPO" switch main
-   d. git -C "$MAIN_REPO" pull --ff-only origin main
-   e. git -C "$MAIN_REPO" merge {args} --no-edit
-   f. MERGE_COMMIT="$(git -C "$MAIN_REPO" rev-parse HEAD)"
-   g. If "$MAIN_REPO/todos/{args}/bug.md" exists: skip delivery bookkeeping.
+   b. Ensure canonical main has no uncommitted changes except `todos/.finalize-lock`.
+      If dirty: stop and report `ERROR: FINALIZE_PRECONDITION_DIRTY_CANONICAL_MAIN`.
+      Operator action: clean canonical main, then rerun `telec todo work {args}`.
+   c. Ensure canonical main is not ahead of `{args}` (`git rev-list --count {args}..main` must be 0).
+      If ahead: stop and report `ERROR: FINALIZE_PRECONDITION_MAIN_AHEAD`.
+      Operator action: merge/rebase latest main into `{args}`, then rerun `telec todo work {args}`.
+   d. If git state cannot be inspected: stop and report `ERROR: FINALIZE_PRECONDITION_GIT_STATE_UNKNOWN`.
+      Operator action: restore git access/health, then rerun `telec todo work {args}`.
+7. FINALIZE APPLY (orchestrator-owned, canonical root only — NEVER cd into worktree):
+   a. git -C "$MAIN_REPO" fetch origin main
+   b. git -C "$MAIN_REPO" switch main
+   c. git -C "$MAIN_REPO" pull --ff-only origin main
+   d. git -C "$MAIN_REPO" merge {args} --no-edit
+   e. MERGE_COMMIT="$(git -C "$MAIN_REPO" rev-parse HEAD)"
+   f. If "$MAIN_REPO/todos/{args}/bug.md" exists: skip delivery bookkeeping.
       Else: telec roadmap deliver {args} --commit "$MERGE_COMMIT" --project-root "$MAIN_REPO"
             && git -C "$MAIN_REPO" add todos/delivered.yaml todos/roadmap.yaml
             && git -C "$MAIN_REPO" commit -m "chore({args}): record delivery"
-7. DEMO SNAPSHOT (orchestrator-owned — stamp delivery metadata while artifacts exist):
+8. DEMO SNAPSHOT (orchestrator-owned — stamp delivery metadata while artifacts exist):
    If demos/{args}/demo.md exists (builder created it during build):
    a. Read todos/{args}/requirements.md title and implementation-plan.md metrics
    b. Generate demos/{args}/snapshot.json with: slug, title, version (from pyproject.toml),
       delivered_date (today), merge_commit, metrics, and five acts narrative from the todo artifacts.
    c. git -C "$MAIN_REPO" add demos/{args}/snapshot.json && git -C "$MAIN_REPO" commit -m "chore({args}): add demo snapshot"
    If demos/{args}/demo.md does NOT exist, skip — no demo was created for this delivery.
-8. CLEANUP (orchestrator-owned, from main repo root):
+9. CLEANUP (orchestrator-owned, from main repo root):
    a. git -C "$MAIN_REPO" worktree remove trees/{args} --force
    b. git -C "$MAIN_REPO" branch -d {args}
    c. rm -rf "$MAIN_REPO/todos/{args}"
    d. git -C "$MAIN_REPO" add -A && git -C "$MAIN_REPO" commit -m "chore: cleanup {args}"
-9. git -C "$MAIN_REPO" push origin main
-10. make restart (daemon picks up merged code before next dispatch)
-11. Call {next_call}
+10. git -C "$MAIN_REPO" push origin main
+11. make restart (daemon picks up merged code before next dispatch)
+12. Call {next_call}
 """,
 }
 
@@ -2034,11 +2043,65 @@ def is_main_ahead(cwd: str, slug: str) -> bool:
     try:
         repo = Repo(worktree_path)
         ahead_count_raw = repo.git.rev_list("--count", "HEAD..main")  # type: ignore[misc]
-        ahead_count = cast(str, ahead_count_raw).strip()
+        if not isinstance(ahead_count_raw, str):
+            return False
+        ahead_count = ahead_count_raw.strip()
+        if not ahead_count.isdigit():
+            return False
         return int(ahead_count) > 0
     except (InvalidGitRepositoryError, GitCommandError, ValueError):
         logger.warning("Cannot determine main ahead status for %s", worktree_path)
         return False
+
+
+def get_finalize_canonical_dirty_paths(cwd: str) -> list[str] | None:
+    """Return canonical dirty paths, or None when git state cannot be inspected."""
+    try:
+        repo = Repo(cwd)
+        return _dirty_paths(repo)
+    except (InvalidGitRepositoryError, NoSuchPathError, GitCommandError):
+        logger.warning("Cannot inspect canonical dirty state for finalize preconditions at %s", cwd)
+        return None
+
+
+def check_finalize_preconditions(cwd: str, slug: str) -> str | None:
+    """Validate canonical main safety before finalize dispatch/apply."""
+    allowed_dirty_paths = {f"todos/{_FINALIZE_LOCK_NAME}"}
+
+    dirty_paths = get_finalize_canonical_dirty_paths(cwd)
+    if dirty_paths is None:
+        return format_error(
+            "FINALIZE_PRECONDITION_GIT_STATE_UNKNOWN",
+            "Cannot inspect canonical main git state for finalize safety preconditions.",
+            next_call=f"Restore git access/health, then call telec todo work {slug} again.",
+        )
+
+    blocked_paths: list[str] = []
+    for raw_path in dirty_paths:
+        normalized = raw_path.replace("\\", "/").lstrip("./")
+        if normalized in allowed_dirty_paths:
+            continue
+        blocked_paths.append(normalized)
+
+    if blocked_paths:
+        unique_paths = sorted(dict.fromkeys(blocked_paths))
+        preview = ", ".join(unique_paths[:5])
+        if len(unique_paths) > 5:
+            preview += ", ..."
+        return format_error(
+            "FINALIZE_PRECONDITION_DIRTY_CANONICAL_MAIN",
+            (f"Canonical main has uncommitted changes that make finalize apply unsafe: {preview}."),
+            next_call=f"Commit or clean canonical main changes, then call telec todo work {slug} again.",
+        )
+
+    if is_main_ahead(cwd, slug):
+        return format_error(
+            "FINALIZE_PRECONDITION_MAIN_AHEAD",
+            (f"Canonical main has commits not present on branch '{slug}', so deterministic finalize apply is blocked."),
+            next_call=f"Update {slug} with latest main (merge/rebase), then call telec todo work {slug} again.",
+        )
+
+    return None
 
 
 # =============================================================================
@@ -2525,6 +2588,9 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 "Call telec todo work from a wrapper-injected orchestrator session so caller_session_id is present."
             ),
         )
+    finalize_precondition_error = await asyncio.to_thread(check_finalize_preconditions, cwd, resolved_slug)
+    if finalize_precondition_error:
+        return finalize_precondition_error
     session_id = caller_session_id
     lock_error = acquire_finalize_lock(cwd, resolved_slug, session_id)
     if lock_error:

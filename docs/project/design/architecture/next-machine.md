@@ -64,6 +64,7 @@ stateDiagram-v2
 - **Phase Ordering**: Phases progress sequentially; no phase skipping.
 - **Git Requirement**: All work items must be in git for worktree accessibility.
 - **Finalize Serialization**: Only one finalize may run at a time across all orchestrators, enforced by a session-bound file lock (`todos/.finalize-lock`).
+- **Finalize Safety Gates**: Finalize dispatch/apply are blocked unless canonical `main` is clean (except lock file), git state is inspectable, and canonical `main` is not ahead of the slug branch.
 
 ## Primary flows
 
@@ -122,6 +123,16 @@ Multiple orchestrators may reach the finalize step concurrently for different sl
 - **Release (stale)**: If the lock is older than 30 minutes, `acquire_finalize_lock()` breaks it as a safety valve.
 - **Concurrency safety**: The lock file contains `session_id`; only the holding session can release it.
 
+### Finalize Safety Gate Contract
+
+Before `/next-finalize` dispatch, `next_work()` enforces canonical apply preconditions and fails fast with deterministic errors:
+
+- `FINALIZE_PRECONDITION_DIRTY_CANONICAL_MAIN`: canonical root has uncommitted changes other than `todos/.finalize-lock`.
+- `FINALIZE_PRECONDITION_MAIN_AHEAD`: canonical `main` has commits not present on the slug branch.
+- `FINALIZE_PRECONDITION_GIT_STATE_UNKNOWN`: canonical git state cannot be inspected reliably.
+
+The same preconditions are re-checked in finalize apply instructions immediately before canonical merge/push steps. This keeps dispatch/apply behavior aligned and prevents unsafe canonical apply attempts.
+
 ### 3. Dependency Resolution
 
 ```mermaid
@@ -162,3 +173,6 @@ sequenceDiagram
 - **Phase Mark Failure**: mark_phase tool fails due to uncommitted changes. Worker must commit before marking.
 - **Finalize Lock Contention**: Another orchestrator holds the finalize lock. Returns `FINALIZE_LOCKED` with holder info. Orchestrator waits and retries.
 - **Stale Finalize Lock**: Holding session died without cleanup. Lock broken after 30 minutes by the next acquire attempt.
+- **Finalize Safety Gate: Dirty Canonical Main**: Returns `FINALIZE_PRECONDITION_DIRTY_CANONICAL_MAIN` and blocks finalize until canonical root is cleaned.
+- **Finalize Safety Gate: Main Ahead**: Returns `FINALIZE_PRECONDITION_MAIN_AHEAD` and blocks finalize until slug is updated with current `main`.
+- **Finalize Safety Gate: Unknown Git State**: Returns `FINALIZE_PRECONDITION_GIT_STATE_UNKNOWN` and blocks finalize until git state inspection is restored.
