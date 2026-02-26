@@ -9,11 +9,13 @@ import os
 import tempfile
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Protocol, cast
+from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Optional, Protocol, cast
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError
+from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
+from teleclaude.adapters.qos.policy import discord_policy
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.command_registry import get_command_service
@@ -92,6 +94,10 @@ class DiscordAdapter(UiAdapter):
         self._tree: object | None = None
         self._launcher_registration_view: object | None = None
 
+        # Output QoS scheduler: coalesces stale payloads (coalesce_only mode by default).
+        qos_policy = discord_policy(config.discord.qos)
+        self._qos_scheduler: OutputQoSScheduler = OutputQoSScheduler(qos_policy)
+
     async def start(self) -> None:
         """Initialize Discord client and start gateway task."""
         if not self._token:
@@ -121,8 +127,12 @@ class DiscordAdapter(UiAdapter):
                     raise RuntimeError(f"Discord gateway failed to start: {task_exc}") from task_exc
             raise RuntimeError("Discord adapter did not become ready within 20 seconds") from exc
 
+        # Start QoS scheduler (no-op if mode == "off").
+        self._qos_scheduler.start()
+
     async def stop(self) -> None:
         """Stop Discord client and gateway task."""
+        await self._qos_scheduler.stop()
         self._tree = None
         self._launcher_registration_view = None
         if self._client is not None:
@@ -829,6 +839,69 @@ class DiscordAdapter(UiAdapter):
         if trigger_typing_fn and callable(trigger_typing_fn):
             typing_fn = self._require_async_callable(trigger_typing_fn, label="Discord thread trigger_typing")
             await typing_fn()
+
+    async def send_output_update(  # type: ignore[override]  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        session: "Session",
+        output: str,
+        started_at: float,
+        last_output_changed_at: float,
+        is_final: bool = False,
+        exit_code: Optional[int] = None,
+        render_markdown: bool = False,
+    ) -> Optional[str]:
+        """Route Discord output update through the QoS scheduler.
+
+        When QoS is off, delegates directly to the parent implementation.
+        When QoS is active, enqueues the payload for coalesced dispatch and
+        returns None immediately.
+        """
+        if self._qos_scheduler._policy.mode == "off":
+            return await UiAdapter.send_output_update(
+                self, session, output, started_at, last_output_changed_at, is_final, exit_code, render_markdown
+            )
+
+        _self = self
+        _session = session
+        _output = output
+        _started_at = started_at
+        _last_changed = last_output_changed_at
+        _is_final = is_final
+        _exit_code = exit_code
+        _render_md = render_markdown
+
+        async def _dispatch() -> Optional[str]:
+            return await UiAdapter.send_output_update(
+                _self, _session, _output, _started_at, _last_changed, _is_final, _exit_code, _render_md
+            )
+
+        self._qos_scheduler.enqueue(session.session_id, _dispatch, is_final=is_final)
+        return None  # Delivery is deferred.
+
+    async def send_threaded_output(  # type: ignore[override]
+        self,
+        session: "Session",
+        text: str,
+        multi_message: bool = False,
+    ) -> Optional[str]:
+        """Route Discord threaded output through the QoS scheduler.
+
+        Threaded output payloads are coalesced (latest-only) so only the
+        most recent accumulated text is dispatched per scheduler tick.
+        """
+        if self._qos_scheduler._policy.mode == "off":
+            return await UiAdapter.send_threaded_output(self, session, text, multi_message)
+
+        _self = self
+        _session = session
+        _text = text
+        _multi = multi_message
+
+        async def _dispatch() -> Optional[str]:
+            return await UiAdapter.send_threaded_output(_self, _session, _text, _multi)
+
+        self._qos_scheduler.enqueue(session.session_id, _dispatch, is_final=False)
+        return None  # Delivery is deferred.
 
     async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
         """Send or edit the tracked status message in the Discord thread."""
