@@ -13,7 +13,8 @@ rg -n "integration-events-model|integrator-shadow-mode|integrator-cutover|integr
 ```bash
 for s in integration-events-model integrator-shadow-mode integrator-cutover integration-blocked-flow; do
   test -f "todos/$s/dor-report.md"
-  rg -n "status: pass|score: 8" "todos/$s/state.yaml"
+  rg -n "status: pass" "todos/$s/state.yaml"
+  rg -n "score: 8" "todos/$s/state.yaml"
 done
 ```
 
