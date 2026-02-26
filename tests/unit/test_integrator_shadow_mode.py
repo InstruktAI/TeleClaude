@@ -6,18 +6,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Barrier, Lock, Thread
 
-import pytest
-
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.queue import IntegrationQueue
 from teleclaude.core.integration.readiness_projection import CandidateKey, CandidateReadiness
-from teleclaude.core.integration.runtime import (
-    IntegratorShadowRuntime,
-    MainBranchClearanceProbe,
-    SessionSnapshot,
-)
-
-pytestmark = pytest.mark.integration
+from teleclaude.core.integration.runtime import IntegratorShadowRuntime, MainBranchClearanceProbe, SessionSnapshot
 
 
 def test_lease_acquire_is_single_holder_under_concurrency(tmp_path: Path) -> None:
