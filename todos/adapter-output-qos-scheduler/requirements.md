@@ -49,10 +49,14 @@ Implement an adapter-aware output QoS system that prevents Telegram flood-contro
      - `global_tick_s = ceil_to_100ms(60 / effective_output_mpm)`
      - `target_session_tick_s = ceil_to_100ms(max(min_session_tick_s, global_tick_s * active_emitting_sessions))`
    - Apply policy caps/floors (`min_session_tick_s`, optional `max_session_tick_s`).
+   - `active_emitting_sessions` must include:
+     - sessions with pending payloads, and
+     - sessions that emitted within `active_emitter_window_s` (default `10s`).
+   - Apply light smoothing (`active_emitter_ema_alpha`) to reduce cadence oscillation during bursty output.
 
 5. **FR5: Priority behavior**
    - `is_final` payloads and completion-critical updates are priority class `high`.
-   - Priority updates must be flushed immediately or in the next available slot.
+   - High-priority payloads do not bypass ordering/locking invariants; they jump queue and dispatch in the next available scheduler slot.
 
 6. **FR6: Non-blocking shared pipeline**
    - QoS waiting must not block non-Telegram adapter lanes.
@@ -87,6 +91,8 @@ Implement an adapter-aware output QoS system that prevents Telegram flood-contro
   - `telegram.qos.output_budget_ratio` (default `0.8`)
   - `telegram.qos.reserve_mpm` (default `4`)
   - `telegram.qos.min_session_tick_s` (default `3.0`)
+  - `telegram.qos.active_emitter_window_s` (default `10.0`)
+  - `telegram.qos.active_emitter_ema_alpha` (default `0.2`)
   - `telegram.qos.rounding_ms` (default `100`)
   - `discord.qos.mode` (`off|coalesce_only|strict`)
   - `whatsapp.qos.mode` (`off` initially)

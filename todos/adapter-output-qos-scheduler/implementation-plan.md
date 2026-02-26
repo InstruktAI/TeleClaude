@@ -188,8 +188,14 @@ This keeps custom logic focused on output freshness/fairness while delegating AP
 - [ ] Start with conservative Telegram output budget and observe metrics.
 - [ ] Enable Discord coalesce-only mode only after no-regression verification.
 
-## Open Decisions (Resolve Before Coding)
+## Decision Record (Locked 2026-02-26)
 
-1. Should `is_final` bypass all queueing or only jump priority and take next slot?
-2. Should `active_emitting_sessions` include only sessions with pending payloads, or also very recent emitters (sliding window)?
-3. What default reserve is acceptable for non-output traffic (`reserve_mpm`) in Telegram supergroup operations?
+1. `is_final` handling:
+   - Use priority queue + next-slot dispatch.
+   - Do not bypass scheduler invariants or output locks.
+2. `active_emitting_sessions`:
+   - Count sessions with pending payloads plus sessions that emitted in the last `10s`.
+   - Apply light EMA smoothing to avoid cadence thrash during bursts.
+3. Telegram reserve budget:
+   - Default `reserve_mpm = 4` with `group_mpm = 20` and `output_budget_ratio = 0.8`.
+   - Effective initial output budget target is `16 mpm` (tune from metrics after rollout).
