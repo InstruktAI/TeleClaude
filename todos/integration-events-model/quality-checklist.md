@@ -10,18 +10,15 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [x] Requirements implemented according to scope
-- [x] Implementation-plan task checkboxes all `[x]`
-- [x] Tests pass (`make test`)
-- [x] Lint passes (`make lint`)
-- [x] No silent deferrals in implementation plan
-- [x] Code committed
-- [x] Demo validated (`telec todo demo validate integration-events-model` exits 0, or exception noted)
-- [x] Working tree clean
-- [x] Comments/docstrings updated where behavior changed
-
-Manual verification (Builder): Verified readiness behavior via unit/integration coverage, including transition `NOT_READY -> READY`, deterministic supersession, and replay restore from durable log.
-Cleanliness note (Builder): build-scope files are clean after commit; remaining local drift is pre-existing reviewer/planning state (`review-findings.md`, `state.yaml`) plus `.teleclaude/`.
+- [ ] Requirements implemented according to scope
+- [ ] Implementation-plan task checkboxes all `[x]`
+- [ ] Tests pass (`make test`)
+- [ ] Lint passes (`make lint`)
+- [ ] No silent deferrals in implementation plan
+- [ ] Code committed
+- [ ] Demo validated (`telec todo demo validate integration-events-model` exits 0, or exception noted)
+- [ ] Working tree clean
+- [ ] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 
