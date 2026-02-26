@@ -437,6 +437,22 @@ def test_create_session_rejects_disabled_agent_inside_auto_command(test_client, 
     mock_command_service.create_session.assert_not_called()
 
 
+def test_create_session_rejects_unknown_explicit_agent_in_auto_command(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """Unknown first token in /agent auto_command must not bypass explicit-agent validation."""
+    response = test_client.post(
+        "/sessions",
+        json={
+            "project_path": "/home/user/project",
+            "computer": "local",
+            "auto_command": "agent claud slow",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Unknown agent 'claud'" in response.json()["detail"]
+    mock_command_service.create_session.assert_not_called()
+
+
 def test_create_session_rejects_disabled_agent_resume_alias_in_auto_command(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     """Disabled resume alias should be rejected before dispatch."""
     response = test_client.post(

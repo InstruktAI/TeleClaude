@@ -761,6 +761,28 @@ async def test_execute_auto_command_supports_implicit_agent_selection() -> None:
 
 
 @pytest.mark.asyncio
+async def test_execute_auto_command_rejects_unknown_explicit_agent() -> None:
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon._execute_terminal_command = AsyncMock()
+    daemon.command_service = MagicMock()
+    daemon.command_service.start_agent = AsyncMock()
+    daemon.command_service.resume_agent = AsyncMock()
+
+    with patch("teleclaude.daemon.db") as mock_db:
+        mock_db.get_session = AsyncMock(
+            return_value=MagicMock(active_agent="codex", last_input_origin=InputOrigin.TELEGRAM.value)
+        )
+        mock_db.update_session = AsyncMock()
+
+        result = await daemon._execute_auto_command("sess-invalid", "agent claud")
+
+    assert result["status"] == "error"
+    assert "Unknown agent 'claud'" in result["message"]
+    daemon.command_service.start_agent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_agent_then_message_proceeds_after_stabilization_timeout():
     """agent_then_message should proceed even if stabilization times out."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)

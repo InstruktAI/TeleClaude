@@ -88,6 +88,7 @@ from teleclaude.api_models import (
 from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core import command_handlers
+from teleclaude.core.agent_command_parsing import split_leading_agent_token
 from teleclaude.core.agent_routing import AgentRoutingError, resolve_routable_agent
 from teleclaude.core.agents import get_known_agents
 from teleclaude.core.command_mapper import CommandMapper
@@ -552,14 +553,6 @@ class APIServer:
             known_agents = set(get_known_agents())
             resume_aliases = {f"{agent}_resume" for agent in known_agents}
 
-            def _split_explicit_agent(args: list[str]) -> tuple[str | None, list[str]]:
-                if not args:
-                    return None, []
-                first = args[0].strip().lower()
-                if first in known_agents:
-                    return first, args[1:]
-                return None, list(args)
-
             async def _resolve_request_agent(requested_agent: str | None, *, source: str) -> str:
                 try:
                     return await resolve_routable_agent(requested_agent, source=source)
@@ -589,7 +582,10 @@ class APIServer:
                         source="api.create_session.auto_command.resume_alias",
                     )
                 elif normalized_command in {"agent", "agent_then_message", "agent_resume", "agent_restart"}:
-                    explicit_agent, _agent_args = _split_explicit_agent(command_args)
+                    explicit_agent, _agent_args = split_leading_agent_token(
+                        command_args,
+                        allow_implicit_mode=normalized_command == "agent",
+                    )
                     auto_command_agent = explicit_agent or validated_request_agent
                     await _resolve_request_agent(
                         auto_command_agent,

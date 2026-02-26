@@ -103,6 +103,17 @@ def test_map_api_agent_treats_thinking_mode_as_arg_when_agent_omitted() -> None:
     assert cmd.args == ["slow"]
 
 
+def test_map_api_agent_preserves_unknown_first_token_as_explicit_agent() -> None:
+    cmd = CommandMapper.map_api_input(
+        "agent",
+        {"session_id": "sess_789", "args": ["claud"]},
+        MessageMetadata(origin=InputOrigin.API.value),
+    )
+    assert isinstance(cmd, StartAgentCommand)
+    assert cmd.agent_name == "claud"
+    assert cmd.args == []
+
+
 # --- R1/R2: Actor attribution parity across adapters ---
 
 

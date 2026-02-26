@@ -24,9 +24,10 @@ from teleclaude.config.runtime_settings import RuntimeSettings
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
+from teleclaude.core.agent_command_parsing import split_leading_agent_token
 from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.agent_routing import AgentRoutingError, resolve_routable_agent
-from teleclaude.core.agents import AgentName, get_known_agents
+from teleclaude.core.agents import AgentName
 from teleclaude.core.cache import DaemonCache
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_registry import init_command_service
@@ -1020,15 +1021,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _execute_auto_command(self, session_id: str, auto_command: str) -> dict[str, str]:
         """Execute a post-session auto_command and return status/message."""
         cmd_name, auto_args = parse_command_string(auto_command)
-        known_agents = set(get_known_agents())
-
-        def _split_explicit_agent(args: list[str]) -> tuple[str | None, list[str]]:
-            if not args:
-                return None, []
-            first = args[0].strip().lower()
-            if first in known_agents:
-                return first, args[1:]
-            return None, list(args)
 
         if cmd_name and auto_command:
             session = await db.get_session(session_id)
@@ -1051,7 +1043,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return await self._handle_agent_then_message(session_id, auto_args)
 
         if cmd_name == "agent":
-            agent_name, agent_args = _split_explicit_agent(auto_args)
+            agent_name, agent_args = split_leading_agent_token(auto_args, allow_implicit_mode=True)
             try:
                 routed_agent = await resolve_routable_agent(agent_name, source="daemon.auto_command.agent")
             except AgentRoutingError as exc:
@@ -1062,7 +1054,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return {"status": "success"}
 
         if cmd_name == "agent_resume":
-            agent_name, resume_args = _split_explicit_agent(auto_args)
+            agent_name, resume_args = split_leading_agent_token(auto_args, allow_implicit_mode=False)
             routed_agent = agent_name
             if agent_name:
                 try:

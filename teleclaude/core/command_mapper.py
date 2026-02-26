@@ -2,6 +2,7 @@
 
 from typing import Dict, List, Optional, cast
 
+from teleclaude.core.agent_command_parsing import split_leading_agent_token
 from teleclaude.core.agents import get_known_agents
 from teleclaude.core.events import parse_command_string
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent
@@ -36,18 +37,6 @@ _KEY_COMMANDS = {
     "key_right",
     "ctrl",
 }
-
-
-_KNOWN_AGENTS = set(get_known_agents())
-
-
-def _split_explicit_agent(args: List[str]) -> tuple[Optional[str], List[str]]:
-    if not args:
-        return None, []
-    first = args[0].strip().lower()
-    if first in _KNOWN_AGENTS:
-        return first, args[1:]
-    return None, list(args)
 
 
 class CommandMapper:
@@ -151,7 +140,7 @@ class CommandMapper:
             )
 
         if event == "agent":
-            agent_name, agent_args = _split_explicit_agent(args)
+            agent_name, agent_args = split_leading_agent_token(args, allow_implicit_mode=True)
             return StartAgentCommand(
                 session_id=session_id or "",
                 agent_name=agent_name,
@@ -221,7 +210,7 @@ class CommandMapper:
             )
 
         if cmd_name == "agent":
-            agent_name, agent_args = _split_explicit_agent(args)
+            agent_name, agent_args = split_leading_agent_token(args, allow_implicit_mode=True)
             return StartAgentCommand(
                 session_id=session_id or "",
                 agent_name=agent_name,
@@ -385,7 +374,7 @@ class CommandMapper:
 
         if command_name == "agent":
             args = cast(List[str], payload.get("args", []))
-            agent_name, agent_args = _split_explicit_agent(args)
+            agent_name, agent_args = split_leading_agent_token(args, allow_implicit_mode=True)
             return StartAgentCommand(
                 session_id=session_id,
                 agent_name=agent_name,
