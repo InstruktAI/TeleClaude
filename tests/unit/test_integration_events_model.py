@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+import teleclaude.core.integration as integration_model
 from teleclaude.core.integration import (
     CandidateKey,
     IntegrationEventService,
@@ -418,3 +419,8 @@ def test_service_ingest_raw_rejects_unknown_event_type(tmp_path: Path) -> None:
     assert result.status == "REJECTED"
     assert result.event is None
     assert any("unsupported event_type" in message for message in result.diagnostics)
+
+
+def test_public_api_exports_checker_type_aliases() -> None:
+    assert "ReachabilityChecker" in integration_model.__all__
+    assert "IntegratedChecker" in integration_model.__all__

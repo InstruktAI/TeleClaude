@@ -17,7 +17,9 @@ from teleclaude.core.integration.events import (
 from teleclaude.core.integration.readiness_projection import (
     CandidateKey,
     CandidateReadiness,
+    IntegratedChecker,
     ProjectionUpdate,
+    ReachabilityChecker,
     ReadinessProjection,
     ReadinessStatus,
 )
@@ -42,8 +44,10 @@ __all__ = [
     "ReviewApprovedPayload",
     "CandidateKey",
     "CandidateReadiness",
+    "IntegratedChecker",
     "build_integration_event",
     "compute_idempotency_key",
     "parse_event_type",
+    "ReachabilityChecker",
     "validate_event_payload",
 ]
