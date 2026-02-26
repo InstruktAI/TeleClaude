@@ -104,6 +104,13 @@ export function reduce(state: TuiState, intent: Intent): TuiState {
         if (existingIdx !== -1) {
           // Remove existing sticky
           draft.sessions.stickySessions.splice(existingIdx, 1);
+          // Clear preview if this session was being previewed
+          if (
+            draft.sessions.preview &&
+            draft.sessions.preview.sessionId === sessionId
+          ) {
+            draft.sessions.preview = null;
+          }
         } else {
           // Add new sticky
           if (stickyCount(draft) >= MAX_STICKY_PANES) return;
