@@ -190,6 +190,46 @@ def test_shadow_runtime_rechecks_readiness_and_never_pushes_main_in_shadow_mode(
     assert queue.get(key=block_key) and queue.get(key=block_key).status == "blocked"
 
 
+def test_shadow_runtime_would_block_sets_fallback_reason_when_readiness_reasons_empty(tmp_path: Path) -> None:
+    lease_store = IntegrationLeaseStore(state_path=tmp_path / "integration-lease.json")
+    queue = IntegrationQueue(state_path=tmp_path / "integration-queue.json")
+    key = CandidateKey(slug="block", branch="worktree/block", sha="bbb222")
+    queue.enqueue(key=key, ready_at="2026-02-26T12:02:00+00:00")
+
+    readiness = CandidateReadiness(
+        key=key,
+        ready_at="2026-02-26T12:02:00+00:00",
+        status="NOT_READY",
+        reasons=(),
+        superseded_by=None,
+    )
+
+    outcomes = []
+    runtime = IntegratorShadowRuntime(
+        lease_store=lease_store,
+        queue=queue,
+        readiness_lookup=lambda _key: readiness,
+        clearance_probe=MainBranchClearanceProbe(
+            sessions_provider=lambda: (),
+            session_tail_provider=lambda _session_id: "",
+            dirty_tracked_paths_provider=lambda: (),
+        ),
+        outcome_sink=outcomes.append,
+        checkpoint_path=tmp_path / "integration-checkpoint.json",
+        clearance_retry_seconds=0.001,
+    )
+
+    result = runtime.drain_ready_candidates(owner_session_id="integrator-1")
+    assert result.lease_acquired is True
+    assert len(result.outcomes) == 1
+    assert result.outcomes[0].outcome == "would_block"
+    assert result.outcomes[0].reasons == ("candidate failed readiness recheck",)
+    blocked = queue.get(key=key)
+    assert blocked is not None
+    assert blocked.status == "blocked"
+    assert blocked.status_reason == "candidate failed readiness recheck"
+
+
 def test_clearance_probe_excludes_orchestrator_worker_pairs_and_ignores_idle_standalone() -> None:
     sessions = (
         SessionSnapshot(session_id="orchestrator", initiator_session_id=None),

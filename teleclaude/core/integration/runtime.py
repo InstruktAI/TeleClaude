@@ -265,7 +265,8 @@ class IntegratorShadowRuntime:
         if readiness.status != "READY":
             reason = "; ".join(readiness.reasons) if readiness.reasons else "candidate failed readiness recheck"
             self._queue.mark_blocked(key=key, reason=reason, now=self._clock())
-            return ShadowOutcome(outcome="would_block", key=key, emitted_at=now_iso, reasons=readiness.reasons)
+            resolved_reasons = readiness.reasons if readiness.reasons else (reason,)
+            return ShadowOutcome(outcome="would_block", key=key, emitted_at=now_iso, reasons=resolved_reasons)
 
         if not self._shadow_mode and self._canonical_main_pusher is not None:
             self._canonical_main_pusher(readiness)
