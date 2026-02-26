@@ -24,10 +24,10 @@ only. Follows patterns from existing `teleclaude/core/migrations/runner.py`.
 
 **File(s):** `migrations/`, `migrations/README.md`, `migrations/v1.1.0/001_example.py`
 
-- [ ] Create `migrations/` directory with README documenting the contract
-- [ ] Structure: `migrations/v1.1.0/NNN_description.py`
-- [ ] Contract: `def check() -> bool`, `def migrate() -> bool`
-- [ ] Example migration as documentation (config key rename scenario)
+- [x] Create `migrations/` directory with README documenting the contract
+- [x] Structure: `migrations/v1.1.0/NNN_description.py`
+- [x] Contract: `def check() -> bool`, `def migrate() -> bool`
+- [x] Example migration as documentation (config key rename scenario)
 
 ### Task 1.3: Migration runner
 
