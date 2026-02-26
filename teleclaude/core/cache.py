@@ -570,15 +570,37 @@ class DaemonCache:
         logger.debug("Removed cache subscriber: %s", callback.__name__)
 
     def _notify(self, event: str, data: object) -> None:
-        """Notify all subscribers of a cache change.
+        """Notify all subscribers of a cache change without blocking the caller.
+
+        Dispatches each callback via call_soon so the current coroutine
+        is not held up by slow or numerous subscribers.
 
         Args:
             event: Event type (e.g., "session_updated", "computer_updated")
             data: Event data
         """
+        if not self._subscribers:
+            return
+        import asyncio
+
         logger.debug("Cache notification: event=%s, subscribers=%d", event, len(self._subscribers))
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop (e.g. during tests) — call synchronously
+            for callback in self._subscribers:
+                try:
+                    callback(event, data)
+                except Exception as e:
+                    logger.error("Cache subscriber callback failed: %s", e, exc_info=True)
+            return
+
         for callback in self._subscribers:
-            try:
-                callback(event, data)
-            except Exception as e:
-                logger.error("Cache subscriber callback failed: %s", e, exc_info=True)
+
+            def _safe_call(cb: Callable[[str, object], None] = callback) -> None:
+                try:
+                    cb(event, data)
+                except Exception as e:
+                    logger.error("Cache subscriber callback failed: %s", e, exc_info=True)
+
+            loop.call_soon(_safe_call)

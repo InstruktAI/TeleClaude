@@ -28,12 +28,14 @@ export interface UseDoublePressResult {
 // ---------------------------------------------------------------------------
 
 /**
- * @param onPreview - Called on a single press (first press or expired double-press window).
- * @param onToggle  - Called on a confirmed double press within the threshold.
+ * @param onPreview      - Called on a single press (first press or expired double-press window).
+ * @param onToggle       - Called on a confirmed double press within the threshold.
+ * @param onClearPreview - Called when pressing a sticky item to dismiss any active non-sticky preview.
  */
 export function useDoublePress(
   onPreview: (id: string) => void,
   onToggle: (id: string) => void,
+  onClearPreview?: () => void,
 ): UseDoublePressResult {
   // Persistent state machine instance across renders.
   const stateRef = useRef<TreeInteractionState>(new TreeInteractionState());
@@ -52,8 +54,8 @@ export function useDoublePress(
           break;
 
         case TreeInteractionAction.CLEAR_STICKY_PREVIEW:
-          // Item is already sticky; treat as a preview toggle-off.
-          onPreview(itemId);
+          // Item is already sticky — dismiss any active non-sticky preview.
+          onClearPreview?.();
           break;
 
         case TreeInteractionAction.NONE:
@@ -61,7 +63,7 @@ export function useDoublePress(
           break;
       }
     },
-    [onPreview, onToggle],
+    [onPreview, onToggle, onClearPreview],
   );
 
   return { handlePress };

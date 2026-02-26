@@ -52,6 +52,7 @@ def _make_hook_queue_daemon() -> TeleClaudeDaemon:
     daemon._hook_outbox_last_summary_at = 0.0
     daemon._hook_outbox_last_backlog_warn_at = {}
     daemon._hook_outbox_last_lag_warn_at = {}
+    daemon._hook_outbox_claim_paused_sessions = set()
     daemon._track_background_task = MagicMock()
     return daemon
 
@@ -362,7 +363,7 @@ async def test_hook_outbox_requeues_critical_when_capacity_full_of_critical() ->
     mock_mark_delivered.assert_not_awaited()
     mock_mark_failed.assert_awaited_once()
     assert mock_mark_failed.await_args.kwargs["row_id"] == 3
-    assert mock_mark_failed.await_args.kwargs["attempt_count"] == 0
+    assert mock_mark_failed.await_args.kwargs["attempt_count"] == 1
     assert mock_mark_failed.await_args.kwargs["error"] == "backpressure:session_queue_full"
     assert isinstance(mock_mark_failed.await_args.kwargs["next_attempt_at"], str)
 
@@ -408,6 +409,111 @@ async def test_hook_outbox_duplicate_claim_is_skipped_while_inflight() -> None:
         await asyncio.wait_for(worker, timeout=0.5)
 
     assert session_id not in daemon._session_outbox_queues
+
+
+@pytest.mark.asyncio
+async def test_hook_outbox_claim_watermark_hysteresis() -> None:
+    """Claim pauses at high watermark and resumes only after draining below low watermark."""
+    daemon = _make_hook_queue_daemon()
+    session_id = "sess-watermark"
+    worker = MagicMock()
+    worker.done.return_value = False
+    daemon._session_outbox_workers[session_id] = worker
+
+    row = {
+        "id": 1,
+        "session_id": session_id,
+        "event_type": AgentHookEvents.AGENT_STOP,
+        "payload": "{}",
+        "attempt_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    with (
+        patch("teleclaude.daemon.db.mark_hook_outbox_failed", new_callable=AsyncMock),
+        patch("teleclaude.daemon.db.mark_hook_outbox_delivered", new_callable=AsyncMock),
+    ):
+        await daemon._enqueue_session_outbox_item(session_id, row)
+
+    queue_state = daemon._session_outbox_queues[session_id]
+    async with queue_state.lock:
+        queue_state.pending.clear()
+        queue_state.claimed_row_ids = set(range(1, 25))
+
+    with (
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK", 24),
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK", 8),
+    ):
+        assert await daemon._should_pause_hook_outbox_claims(session_id) is True
+        assert session_id in daemon._hook_outbox_claim_paused_sessions
+
+        async with queue_state.lock:
+            queue_state.claimed_row_ids = set(range(1, 9))
+
+        assert await daemon._should_pause_hook_outbox_claims(session_id) is False
+        assert session_id not in daemon._hook_outbox_claim_paused_sessions
+
+
+@pytest.mark.asyncio
+async def test_hook_outbox_worker_skips_claims_for_paused_session() -> None:
+    """Outbox worker should skip DB claim attempts for sessions above claim watermark."""
+    daemon = _make_hook_queue_daemon()
+    session_id = "sess-paused-claim"
+
+    # Seed queue state for this session without starting a real worker.
+    existing_worker = MagicMock()
+    existing_worker.done.return_value = False
+    daemon._session_outbox_workers[session_id] = existing_worker
+    seed_row = {
+        "id": 1,
+        "session_id": session_id,
+        "event_type": AgentHookEvents.AGENT_STOP,
+        "payload": "{}",
+        "attempt_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with (
+        patch("teleclaude.daemon.db.mark_hook_outbox_failed", new_callable=AsyncMock),
+        patch("teleclaude.daemon.db.mark_hook_outbox_delivered", new_callable=AsyncMock),
+    ):
+        await daemon._enqueue_session_outbox_item(session_id, seed_row)
+
+    queue_state = daemon._session_outbox_queues[session_id]
+    async with queue_state.lock:
+        queue_state.pending.clear()
+        queue_state.claimed_row_ids = set(range(1, 25))
+
+    candidate_row = {
+        "id": 99,
+        "session_id": session_id,
+        "event_type": AgentHookEvents.AGENT_STOP,
+        "payload": "{}",
+        "attempt_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    fetch_calls = 0
+
+    async def _fetch(*_args: object) -> list[HookOutboxRow]:
+        nonlocal fetch_calls
+        fetch_calls += 1
+        if fetch_calls == 1:
+            daemon.shutdown_event.set()
+            return [candidate_row]
+        return []
+
+    with (
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK", 24),
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK", 8),
+        patch("teleclaude.daemon.HOOK_OUTBOX_POLL_INTERVAL_S", 0.001),
+        patch("teleclaude.daemon.db.fetch_hook_outbox_batch", new=AsyncMock(side_effect=_fetch)),
+        patch("teleclaude.daemon.db.claim_hook_outbox_batch", new_callable=AsyncMock) as mock_claim_batch,
+        patch.object(daemon, "_enqueue_session_outbox_item", new=AsyncMock()) as mock_enqueue,
+    ):
+        await daemon._hook_outbox_worker()
+
+    mock_claim_batch.assert_not_awaited()
+    mock_enqueue.assert_not_awaited()
 
 
 @pytest.mark.asyncio
