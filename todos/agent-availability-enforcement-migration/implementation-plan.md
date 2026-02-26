@@ -9,13 +9,13 @@ automation, and CLI scaffolding defaults.
 
 ## Phase 0: Policy Lock
 
-### Task 0.1: Decide and lock degraded-routing semantics
+### Task 0.1: Degraded-routing semantics — LOCKED (Option B)
 
-**File(s):** `todos/agent-availability-enforcement-migration/requirements.md`, `todos/agent-availability-enforcement-migration/dor-report.md`
+**Decision:** Option B — block degraded agents for all selection (explicit + auto/default).
+This matches the existing proven behavior in `helpers/agent_cli.py::_pick_agent`.
 
-- [ ] Choose one degraded behavior option (A/B/C from `requirements.md`)
-- [ ] Record the chosen behavior in requirements and tests before code migration
-- [ ] Treat this as a hard precondition for implementation work
+- [x] Degraded behavior locked to Option B (gate decision based on codebase precedent)
+- [ ] Codify Option B in the core resolver and tests during Phase 1
 
 ---
 

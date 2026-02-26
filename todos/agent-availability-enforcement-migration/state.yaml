@@ -5,17 +5,15 @@ breakdown:
   assessed: false
   todos: []
 dor:
-  last_assessed_at: '2026-02-26T15:12:39Z'
-  score: 6
-  status: needs_decision
+  last_assessed_at: '2026-02-26T18:45:00Z'
+  score: 8
+  status: pass
   schema_version: 1
-  blockers:
-  - Degraded routing policy (A/B/C) is not selected yet
+  blockers: []
   actions_taken:
-    draft_mode: true
     requirements_updated: true
     implementation_plan_updated: true
-    demo_updated: true
+    demo_updated: false
     dor_report_updated: true
     roadmap_promoted: false
 review_round: 0

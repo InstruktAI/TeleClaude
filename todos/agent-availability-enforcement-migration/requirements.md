@@ -109,10 +109,11 @@ Current behavior is inconsistent because most runtime paths only check
 
 ## Dependencies & Preconditions
 
-1. **Decision required:** pick degraded semantics for runtime routing:
-   - option A: block for auto/default only, allow explicit manual
-   - option B: block for all selection (explicit + auto/default)
-   - option C: treat as available
+1. **Degraded semantics — Option B (block all selection):**
+   The existing proven resolver (`helpers/agent_cli.py::_pick_agent`) already blocks
+   degraded agents for both explicit and auto-selection paths. The canonical core
+   resolver MUST adopt the same behavior. Options A and C are rejected because they
+   would create a behavioral split between CLI and daemon surfaces.
 2. Existing availability table and DB APIs (`get_agent_availability`, expiry clearing) remain authoritative.
 
 ## Risks
