@@ -1,5 +1,7 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
+- slug: api-todos-work-stability-hardening
+  description: Stabilize `/todos/work` latency by removing redundant worktree prep/sync and adding phase-level diagnostics
 - slug: help-desk-whatsapp
   description: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
 - slug: deployment-versioning

@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionSnapshot
@@ -20,6 +20,7 @@ class CreateSessionRequest(BaseModel):  # type: ignore[explicit-any]
     thinking_mode: Literal["fast", "med", "slow"] | None = None
     title: str | None = None
     message: str | None = None
+    direct: bool = False
     auto_command: str | None = None
     native_session_id: str | None = None
     subdir: str | None = None
@@ -45,7 +46,15 @@ class SendMessageRequest(BaseModel):  # type: ignore[explicit-any]
 
     model_config = ConfigDict(frozen=True)
 
-    message: str = Field(..., min_length=1)
+    message: str | None = Field(default=None, min_length=1)
+    direct: bool = False
+    close_link: bool = False
+
+    @model_validator(mode="after")
+    def _require_message_unless_close_link(self) -> "SendMessageRequest":
+        if not self.close_link and self.message is None:
+            raise ValueError("message required")
+        return self
 
 
 class KeysRequest(BaseModel):  # type: ignore[explicit-any]

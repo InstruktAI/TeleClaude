@@ -114,6 +114,7 @@ from teleclaude.core.models import (
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.transport.redis_transport import RedisTransport
+from teleclaude.types.commands import GetSessionDataCommand
 
 if TYPE_CHECKING:
     from teleclaude.config.runtime_settings import RuntimeSettings
@@ -521,6 +522,12 @@ class APIServer:
                     channel_metadata["human_email"] = request.human_email
                 if request.human_role:
                     channel_metadata["human_role"] = request.human_role
+            if request.direct and not identity.session_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="direct mode requires caller session identity",
+                )
+
             if identity.session_id and not identity.session_id.startswith("web:"):
                 channel_metadata = channel_metadata or {}
                 channel_metadata["initiator_session_id"] = identity.session_id
@@ -678,6 +685,34 @@ class APIServer:
                         detail="Failed to create session: missing session_id or tmux_session_name",
                     )
 
+                if request.direct and identity.session_id:
+                    from teleclaude.core.session_listeners import (
+                        create_or_reuse_direct_link,
+                        unregister_listener,
+                    )
+
+                    await unregister_listener(
+                        target_session_id=str(session_id),
+                        caller_session_id=identity.session_id,
+                    )
+
+                    caller_session = await db.get_session(identity.session_id)
+                    target_session = await db.get_session(str(session_id))
+                    caller_label = (
+                        caller_session.title if caller_session and caller_session.title else identity.session_id
+                    )
+                    target_label = target_session.title if target_session and target_session.title else title
+                    caller_computer = caller_session.computer_name if caller_session else config.computer.name
+                    target_computer = target_session.computer_name if target_session else config.computer.name
+                    await create_or_reuse_direct_link(
+                        caller_session_id=identity.session_id,
+                        target_session_id=str(session_id),
+                        caller_name=caller_label,
+                        target_name=target_label,
+                        caller_computer=caller_computer,
+                        target_computer=target_computer,
+                    )
+
                 return CreateSessionResponseDTO(
                     status="success",
                     session_id=str(session_id),
@@ -733,17 +768,97 @@ class APIServer:
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send message to session."""
             from teleclaude.api.session_access import check_session_access
+            from teleclaude.core.session_listeners import (
+                close_link_for_member,
+                create_or_reuse_direct_link,
+                get_peer_members,
+                resolve_link_for_sender_target,
+            )
 
             await check_session_access(http_request, session_id)
             try:
+                if request.close_link:
+                    if not identity.session_id:
+                        raise HTTPException(status_code=400, detail="close_link requires caller session identity")
+
+                    closed_link_id = await close_link_for_member(
+                        caller_session_id=identity.session_id,
+                        target_session_id=session_id,
+                    )
+                    if not closed_link_id:
+                        return {"status": "error", "message": "no active direct link found"}
+                    return {"status": "success", "mode": "direct", "action": "closed", "link_id": closed_link_id}
+
+                if not request.message:
+                    raise HTTPException(status_code=400, detail="message required")
+
+                message_text = request.message
                 metadata = self._metadata()
+                if request.direct:
+                    if not identity.session_id:
+                        raise HTTPException(status_code=400, detail="direct mode requires caller session identity")
+
+                    caller_session = await db.get_session(identity.session_id)
+                    target_session = await db.get_session(session_id)
+                    caller_label = (
+                        caller_session.title if caller_session and caller_session.title else identity.session_id
+                    )
+                    target_label = target_session.title if target_session and target_session.title else session_id
+                    caller_computer = caller_session.computer_name if caller_session else config.computer.name
+                    target_computer = target_session.computer_name if target_session else config.computer.name
+
+                    link_ctx = await resolve_link_for_sender_target(
+                        sender_session_id=identity.session_id,
+                        target_session_id=session_id,
+                    )
+                    created = False
+                    if not link_ctx:
+                        link, created = await create_or_reuse_direct_link(
+                            caller_session_id=identity.session_id,
+                            target_session_id=session_id,
+                            caller_name=caller_label,
+                            target_name=target_label,
+                            caller_computer=caller_computer,
+                            target_computer=target_computer,
+                        )
+                        link_ctx = await resolve_link_for_sender_target(
+                            sender_session_id=identity.session_id,
+                            target_session_id=session_id,
+                        )
+                        if not link_ctx:
+                            raise HTTPException(status_code=500, detail="failed to resolve direct link")
+                    else:
+                        link = link_ctx[0]
+
+                    _, members = link_ctx
+                    peers = await get_peer_members(link_id=link.link_id, sender_session_id=identity.session_id)
+                    delivery_targets = [peer.session_id for peer in peers] or [session_id]
+                    for target_id in delivery_targets:
+                        cmd = CommandMapper.map_api_input(
+                            "message",
+                            {"session_id": target_id, "text": message_text},
+                            metadata,
+                        )
+                        await get_command_service().process_message(cmd)
+
+                    return {
+                        "status": "success",
+                        "mode": "direct",
+                        "link_id": link.link_id,
+                        "link_state": "created" if created else "reused",
+                        "delivered_to": len(delivery_targets),
+                        "members": len(members),
+                    }
+
                 cmd = CommandMapper.map_api_input(
                     "message",
-                    {"session_id": session_id, "text": request.message},
+                    {"session_id": session_id, "text": message_text},
                     metadata,
                 )
                 await get_command_service().process_message(cmd)
-                return {"status": "success"}
+                return {"status": "success", "mode": "work"}
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.error("process_message failed (session=%s): %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
@@ -924,6 +1039,9 @@ class APIServer:
             request: "Request",
             session_id: str,
             since: str | None = Query(None, description="ISO 8601 UTC timestamp; only messages after this time"),
+            include_tools: bool = Query(False, description="Include tool_use/tool_result entries"),
+            include_thinking: bool = Query(False, description="Include thinking/reasoning blocks"),
+            tail_chars: int = Query(10000, description="Fallback char budget for tmux/session tail output"),
             identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_TAIL),  # noqa: ARG001
         ) -> SessionMessagesDTO:
             """Get structured messages from a session's transcript files."""
@@ -950,38 +1068,57 @@ class APIServer:
                 if session.native_log_file and session.native_log_file not in chain:
                     chain.append(session.native_log_file)
 
-                if not chain:
-                    return SessionMessagesDTO(
-                        session_id=session_id,
-                        agent=session.active_agent,
-                        messages=[],
+                messages: list[MessageDTO] = []
+                if chain:
+                    # Determine agent for parser selection
+                    try:
+                        agent_name = AgentName.from_str(session.active_agent or "claude")
+                    except ValueError:
+                        agent_name = AgentName.CLAUDE
+
+                    raw_messages = extract_messages_from_chain(
+                        chain,
+                        agent_name,
+                        since=since,
+                        include_tools=include_tools,
+                        include_thinking=include_thinking,
                     )
 
-                # Determine agent for parser selection
-                try:
-                    agent_name = AgentName.from_str(session.active_agent or "claude")
-                except ValueError:
-                    agent_name = AgentName.CLAUDE
+                    messages = [
+                        MessageDTO(
+                            role=str(m.get("role", "assistant")),
+                            type=str(m.get("type", "text")),
+                            text=str(m.get("text", "")),
+                            timestamp=str(m["timestamp"]) if m.get("timestamp") else None,
+                            entry_index=int(m.get("entry_index", 0)),
+                            file_index=int(m.get("file_index", 0)),
+                        )
+                        for m in raw_messages
+                    ]
 
-                raw_messages = extract_messages_from_chain(
-                    chain,
-                    agent_name,
-                    since=since,
-                    include_tools=True,
-                    include_thinking=True,
-                )
-
-                messages = [
-                    MessageDTO(
-                        role=str(m.get("role", "assistant")),
-                        type=str(m.get("type", "text")),
-                        text=str(m.get("text", "")),
-                        timestamp=str(m["timestamp"]) if m.get("timestamp") else None,
-                        entry_index=int(m.get("entry_index", 0)),
-                        file_index=int(m.get("file_index", 0)),
+                # Fallback path: when transcript files are not yet available or parsing
+                # yields no structured entries, use unified session-data retrieval.
+                if not messages:
+                    fallback_payload = await get_command_service().get_session_data(
+                        GetSessionDataCommand(
+                            session_id=session_id,
+                            since_timestamp=since,
+                            tail_chars=tail_chars if tail_chars > 0 else 10000,
+                        )
                     )
-                    for m in raw_messages
-                ]
+                    fallback_text_raw = fallback_payload.get("messages")
+                    fallback_text = fallback_text_raw if isinstance(fallback_text_raw, str) else ""
+                    if fallback_text:
+                        messages = [
+                            MessageDTO(
+                                role="assistant",
+                                type="text",
+                                text=fallback_text,
+                                timestamp=None,
+                                entry_index=0,
+                                file_index=0,
+                            )
+                        ]
 
                 return SessionMessagesDTO(
                     session_id=session_id,

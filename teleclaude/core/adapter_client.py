@@ -588,9 +588,7 @@ class AdapterClient:
         This keeps direct user experience local while fanning out for admin visibility.
         """
         default_actor = (
-            "TUI"
-            if source.lower() in {InputOrigin.API.value, InputOrigin.TERMINAL.value}
-            else source.upper()
+            "TUI" if source.lower() in {InputOrigin.API.value, InputOrigin.TERMINAL.value} else source.upper()
         )
         normalized_actor_name = (actor_name or "").strip() or (actor_id or "").strip() or default_actor
         fresh_session = await db.get_session(session.session_id)
@@ -598,8 +596,10 @@ class AdapterClient:
         final_text = text
 
         source_adapter = source.strip().lower()
-        display_origin_label = "TERMINAL" if source_adapter == InputOrigin.TERMINAL.value else (
-            source_adapter.upper() if source_adapter else "UNKNOWN"
+        display_origin_label = (
+            "TERMINAL"
+            if source_adapter == InputOrigin.TERMINAL.value
+            else (source_adapter.upper() if source_adapter else "UNKNOWN")
         )
         explicit_actor_name = (actor_name or "").strip()
         is_terminal_actor_reflection = source_adapter == InputOrigin.TERMINAL.value and bool(explicit_actor_name)

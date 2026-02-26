@@ -27,6 +27,10 @@ There are many of course, but this section is now intended to reveal the full su
 
 <!-- @exec: telec sessions -h -->
 
+### `telec sessions send`
+
+<!-- @exec: telec sessions send -h -->
+
 ### `telec computers`
 
 <!-- @exec: telec computers -h -->

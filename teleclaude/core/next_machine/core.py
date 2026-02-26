@@ -662,7 +662,7 @@ def resolve_holder_children(cwd: str, holder_slug: str) -> list[str]:
     if breakdown_state:
         raw_children = breakdown_state.get("todos")
         if isinstance(raw_children, list):
-            breakdown_children = [child for child in raw_children if isinstance(child, str) and child]
+            breakdown_children = [child for child in raw_children if child]
 
     if not grouped_children and not breakdown_children:
         return []

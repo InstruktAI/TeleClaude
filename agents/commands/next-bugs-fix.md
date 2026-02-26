@@ -52,6 +52,10 @@ Investigate the bug, apply a fix, and document findings in bug.md.
 - Commit the fix and `bug.md` updates together
 - Run tests: `make test`
 - Run lint: `make lint`
-- Verify working tree is clean
+- Verify no unexpected dirty files remain.
+- Expected orchestrator-managed planning/state drift is non-blocking:
+  - `todos/roadmap.yaml`
+  - `todos/{slug}/state.yaml`
+- Do not commit those orchestrator-managed drift files unless this bug task explicitly requires planning/state edits.
 - End with: `Ready for review.`
 - Summarize results in the completion report

@@ -68,6 +68,11 @@ If manual verification is not possible in the review environment, the reviewer m
    git diff $(git merge-base HEAD main)..HEAD
    ```
 
+   Treat orchestrator-managed planning/state drift as non-blocking review noise:
+   - `todos/roadmap.yaml`
+   - `todos/{slug}/state.yaml`
+     Do not raise findings solely for this drift unless review scope explicitly includes planning/state edits.
+
 4. Validate deferrals:
    - If `deferrals.md` exists, confirm each deferral is justified.
    - If unjustified, add a finding and set verdict to REQUEST CHANGES.
@@ -111,9 +116,8 @@ If manual verification is not possible in the review environment, the reviewer m
 - Prefer behavior/structure assertions (parsed outputs, references, idempotence, emitted actions).
 
 11. Write findings to `todos/{slug}/review-findings.md`.
-12. Set `todos/{slug}/state.yaml` field `review` to `approved` or `changes_requested`.
-13. Commit the review findings.
-14. Report summary and verdict to the caller.
+12. Commit review findings (and Review section checklist updates if present). Do not edit `state.yaml` in the reviewer session.
+13. Report summary and verdict to the caller. The orchestrator records the verdict in `state.yaml` via phase-marking commands.
 
 ## Report format
 
@@ -135,8 +139,8 @@ Verdict: APPROVE | REQUEST CHANGES
 ## Outputs
 
 - `todos/{slug}/review-findings.md` with structured severity sections.
-- Updated `todos/{slug}/state.yaml` with review status.
-- A commit containing the review findings.
+- A commit containing review findings (and any allowed checklist updates).
+- Verdict reported to orchestrator for phase-state recording.
 
 ## Recovery
 

@@ -26,7 +26,7 @@ subcommands:
       send:
         description: 'Send a message to a running session.'
       tail:
-        description: 'Retrieve session messages.'
+        description: 'Retrieve session messages (transcript chain with unified tmux/session-data fallback).'
       run:
         description: 'Run an agent command in a new session.'
       end:
@@ -162,6 +162,17 @@ subcommands:
         description: 'Scaffold bug files for a slug.'
       list:
         description: 'List in-flight bug fixes with status (prefers worktree state when present).'
+  auth:
+    description: 'Terminal login identity commands.'
+    subcommands:
+      login:
+        args:
+          - email: 'string'
+        description: 'Set terminal login identity for this TTY.'
+      whoami:
+        description: 'Show terminal login identity for this TTY.'
+      logout:
+        description: 'Clear terminal login identity for this TTY.'
   config:
     description: 'Interactive configuration (or get/patch/validate subcommands).'
     subcommands:

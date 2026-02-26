@@ -95,13 +95,17 @@ def parse_phase_transitions(
 ) -> list[tuple[str, str, str]]:
     """Derive phase transitions from POST_COMPLETION mark_phase instructions."""
     status_updates: dict[str, list[tuple[str, str]]] = {}
-    update_re: re.Pattern[str] = re.compile(
-        r'telec todo mark-phase\(slug="\{args\}", phase="([a-z]+)", status="([a-z_]+)"\)'
+    update_patterns: tuple[re.Pattern[str], ...] = (
+        # Legacy function-call style.
+        re.compile(r'telec todo mark-phase\(slug="\{args\}", phase="([a-z]+)", status="([a-z_]+)"\)'),
+        # Current CLI style.
+        re.compile(r"telec\s+todo\s+mark-phase[^\n]*?--phase\s+([a-z]+)[^\n]*?--status\s+([a-z_]+)"),
     )
 
     for command, body in post_completion.items():
-        for phase, status in cast(list[tuple[str, str]], update_re.findall(body)):
-            status_updates.setdefault(phase, []).append((status, command))
+        for pattern in update_patterns:
+            for phase, status in cast(list[tuple[str, str]], pattern.findall(body)):
+                status_updates.setdefault(phase, []).append((status, command))
 
     transitions: list[tuple[str, str, str]] = []
 

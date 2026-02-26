@@ -1,6 +1,15 @@
+phase: in_progress
+build: started
+review: pending
+deferrals_processed: false
 breakdown:
   assessed: true
   todos: []
+review_round: 3
+max_review_rounds: 3
+review_baseline_commit: cfeb878bbb2e000b48f4e49263c6a5cbc8a85aeb
+unresolved_findings: []
+resolved_findings: []
 dor:
   score: 9
   status: pass
@@ -13,11 +22,3 @@ dor:
     gate_validation_complete: true
     research_indexed: true
     roadmap_dependency_added: true
-build: pending
-review: pending
-deferrals_processed: false
-review_round: 0
-max_review_rounds: 3
-review_baseline_commit: ''
-unresolved_findings: []
-resolved_findings: []

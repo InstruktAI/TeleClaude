@@ -105,6 +105,7 @@ class CommandDef:
     flags: list[Flag] = field(default_factory=list)
     subcommands: dict[str, "CommandDef"] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)  # extra lines for subcommand help
+    examples: list[str] = field(default_factory=list)  # explicit examples when auto-generation is misleading
     hidden: bool = False  # hide from help output and completion
     standalone: bool = False  # bare invocation has behavior (not just help text)
 
@@ -142,6 +143,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "start": CommandDef(
                 desc="Start a new agent session",
+                args="--project <path>",
                 flags=[
                     _H,
                     Flag("--computer", desc="Target computer (optional; defaults to local)"),
@@ -150,12 +152,42 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--mode", desc="Thinking mode: fast, med, slow"),
                     Flag("--message", desc="Initial message to send"),
                     Flag("--title", desc="Session title"),
+                    Flag("--direct", desc="Conversation mode: create direct link with caller and bypass listeners"),
+                ],
+                notes=[
+                    "--project is required.",
+                    "Use --direct for peer conversation mode when you want shared linked output instead of worker supervision notifications.",
+                ],
+                examples=[
+                    "telec sessions start --project /tmp/project",
+                    "telec sessions start --project /tmp/project --agent claude --mode slow",
+                    'telec sessions start --project /tmp/project --message "Implement feature X"',
+                    "telec sessions start --project /tmp/project --direct",
                 ],
             ),
             "send": CommandDef(
                 desc="Send a message to a running session",
-                args="<session_id> <message>",
-                flags=[_H, Flag("--session", "-s", "Session ID")],
+                args="<session_id> [<message>]",
+                flags=[
+                    _H,
+                    Flag("--session", "-s", "Session ID (compatibility form)"),
+                    Flag("--message", "-m", "Message text (compatibility form)"),
+                    Flag("--direct", desc="Conversation mode: create/reuse shared direct link"),
+                    Flag("--close-link", desc="Close direct link with target session (alias: --close_link)"),
+                ],
+                notes=[
+                    "Positional form is canonical: telec sessions send <session_id> <message>.",
+                    "One-time ignition: sending once with --direct establishes/reuses the link.",
+                    "After link creation, turn-complete outputs from linked peers are cross-shared automatically.",
+                    "Only one party needs to send with --direct to establish the link.",
+                    "Use --close-link to sever the direct link for all members.",
+                    "Compatibility flags (--session/--message) are accepted for scripts and older clients.",
+                ],
+                examples=[
+                    'telec sessions send sess-123 "Please implement feature X"',
+                    'telec sessions send sess-123 "Let\'s discuss the architecture" --direct',
+                    "telec sessions send sess-123 --close-link",
+                ],
             ),
             "tail": CommandDef(
                 desc="Get recent messages from a session's transcript",
@@ -657,6 +689,8 @@ def _sample_flag_value(flag: Flag) -> str | None:
         "--closed",
         "--clear",
         "--attach",
+        "--direct",
+        "--close-link",
         "--baseline-only",
         "--third-party",
         "--validate-only",
@@ -816,7 +850,7 @@ def _usage_subcmd(cmd_name: str) -> str:
         for note in notes:
             lines.append(f"  {note}")
 
-        examples = _example_commands([cmd_name], cmd.args, visible)
+        examples = cmd.examples or _example_commands([cmd_name], cmd.args, visible)
         if examples:
             lines.append("\nExamples:")
             for example in examples:
@@ -860,7 +894,7 @@ def _usage_leaf(cmd_name: str, sub_name: str) -> str:
     for note in notes:
         lines.append(f"  {note}")
 
-    examples = _example_commands([cmd_name, sub_name], sub.args, visible)
+    examples = sub.examples or _example_commands([cmd_name, sub_name], sub.args, visible)
     if examples:
         lines.append("\nExamples:")
         for example in examples:
@@ -1897,20 +1931,24 @@ def _demo_create(slug: str, project_root: Path) -> None:
 def _handle_todo_demo(args: list[str]) -> None:
     """Handle telec todo demo subcommands: list, validate, run, create."""
     _DEMO_SUBCOMMANDS = {"list", "validate", "run", "create"}
+    project_root = Path.cwd()
     if not args:
-        print(_usage("todo", "demo"))
-        raise SystemExit(1)
+        _demo_list(project_root)
+        return
 
     subcommand = args[0]
-    if subcommand not in _DEMO_SUBCOMMANDS:
-        print(f"Unknown demo subcommand: {subcommand}")
-        print(_usage("todo", "demo"))
-        raise SystemExit(1)
-
     remaining_args = args[1:]
-
     slug: str | None = None
-    project_root = Path.cwd()
+
+    # Backward compatibility: `telec todo demo <slug>` behaves like
+    # `telec todo demo run <slug>`.
+    if subcommand not in _DEMO_SUBCOMMANDS:
+        if subcommand.startswith("-"):
+            print(f"Unknown option: {subcommand}")
+            print(_usage("todo", "demo"))
+            raise SystemExit(1)
+        slug = subcommand
+        subcommand = "run"
 
     i = 0
     while i < len(remaining_args):
