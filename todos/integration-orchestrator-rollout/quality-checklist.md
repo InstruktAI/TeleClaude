@@ -10,15 +10,22 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate integration-orchestrator-rollout` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate integration-orchestrator-rollout` exits 0, or exception noted)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+Manual verification evidence:
+
+1. Verified parent remains rollout container via `dor-report.md` dispatch summary.
+2. Verified child readiness states (`dor.status: pass`, `dor.score: 8`) for all four slices.
+3. Verified dependency order is encoded and unchanged:
+   `integration-events-model -> integrator-shadow-mode -> integrator-cutover -> integration-blocked-flow`.
 
 ## Review Gates (Reviewer)
 
