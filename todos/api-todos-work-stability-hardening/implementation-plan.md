@@ -88,10 +88,10 @@ request path deterministic for unchanged slugs.
       verify logs show prep/sync skip decisions after initial ready state.
 - [x] Verify phase timing logs are grep-friendly via:
       `instrukt-ai-logs teleclaude --since <window> --grep <phase-pattern>`.
-- Note (2026-02-26): runtime `/todos/work` invocation is denied in worker
-  sessions (`permission denied — role 'worker' is not permitted`), so this
-  worktree cannot execute the end-to-end command directly. Behavior is covered
-  by targeted single-flight/prep/sync tests plus full lint/test gates.
+- Note (2026-02-26): worker-role policy blocks direct `telec todo work` calls in
+  this session (`permission denied — role 'worker' is not permitted`). The log
+  grep command executed successfully, and operational behavior remains covered by
+  targeted prep/sync/single-flight tests plus full repo gates.
 - Requirements: `R1`, `R2`, `R4`
 
 ---

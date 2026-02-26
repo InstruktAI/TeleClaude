@@ -22,11 +22,11 @@ Ownership:
 
 Manual verification notes (2026-02-26):
 
-- Targeted coverage: `pytest -q tests/unit/test_next_machine_worktree_prep.py tests/unit/test_next_machine_hitl.py` -> `54 passed`.
-- Lint gate: `make lint` -> passed (ruff format/check + pyright clean).
+- Targeted next-machine coverage: `pytest -q tests/unit/test_next_machine_worktree_prep.py tests/unit/test_next_machine_hitl.py` -> `54 passed`.
+- Lint gate: `make lint` -> passed (`ruff format/check`, `pyright` clean).
 - Test gate: `make test` -> `2209 passed, 106 skipped, 1 warning`.
 - Demo structure: `telec todo demo validate api-todos-work-stability-hardening --project-root .` -> `Validation passed: 3 executable block(s) found`.
-- Runtime operational check attempt: `telec todo work api-todos-work-stability-hardening --project-root .` -> blocked by role policy (`permission denied — role 'worker' is not permitted`). No in-session runtime `/todos/work` log proof is available from this worker context.
+- Runtime `/todos/work` verification attempt: `telec todo work api-todos-work-stability-hardening --project-root .` -> blocked by worker-role policy (`permission denied — role 'worker' is not permitted`), so direct in-session phase-log proof is not available from this worker context.
 
 ## Review Gates (Reviewer)
 

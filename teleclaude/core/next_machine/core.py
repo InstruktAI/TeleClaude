@@ -1642,7 +1642,7 @@ async def write_text_async(path: Path, content: str) -> None:
 def _sync_file(src_root: Path, dst_root: Path, relative_path: str) -> bool:
     """Copy one file from src root to dst root if source exists.
 
-    Returns True when a copy happened, False when source was missing.
+    Returns True when a copy happened, False when source is missing or unchanged.
     """
     src = src_root / relative_path
     dst = dst_root / relative_path
@@ -1737,7 +1737,7 @@ def sync_slug_todo_from_worktree_to_main(cwd: str, slug: str) -> None:
 def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> int:
     """Copy canonical todo artifacts for a slug from main into worktree.
 
-    Planning artifacts are copied unconditionally (main is source of truth).
+    Planning artifacts are copied from main when changed (main remains source of truth).
     state.yaml is only seeded when missing — the worktree owns build/review
     progress once work begins.
     """
@@ -1746,7 +1746,7 @@ def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> int:
     worktree_root = Path(cwd) / "trees" / slug
     if not worktree_root.exists():
         return 0
-    # Planning artifacts: main always wins.
+    # Planning artifacts: main is source of truth; unchanged files are skipped.
     copied = 0
     for rel in [
         f"{todo_base}/bug.md",
