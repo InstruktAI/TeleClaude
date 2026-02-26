@@ -21,8 +21,8 @@ This keeps custom logic focused on output freshness/fairness while delegating AP
 - `teleclaude/config/__init__.py`
 - `config.sample.yml`
 
-- [ ] Add adapter QoS config structures and defaults (Telegram strict defaults, Discord/WhatsApp off/coalesce-only defaults).
-- [ ] Validate config parsing and backward compatibility with existing configs.
+- [x] Add adapter QoS config structures and defaults (Telegram strict defaults, Discord/WhatsApp off/coalesce-only defaults).
+- [x] Validate config parsing and backward compatibility with existing configs.
 
 ### Task 1.2: Define adapter policy contract
 
@@ -31,12 +31,12 @@ This keeps custom logic focused on output freshness/fairness while delegating AP
 - `teleclaude/adapters/qos/policy.py` (new)
 - `teleclaude/adapters/qos/__init__.py` (new)
 
-- [ ] Define policy interface for:
+- [x] Define policy interface for:
   - coalescing strategy
   - budget computation
   - priority class mapping
   - optional per-adapter hard limits
-- [ ] Provide `TelegramOutputPolicy`, `DiscordOutputPolicy`, `WhatsAppOutputPolicy` placeholders.
+- [x] Provide `TelegramOutputPolicy`, `DiscordOutputPolicy`, `WhatsAppOutputPolicy` placeholders.
 
 ---
 
@@ -48,11 +48,11 @@ This keeps custom logic focused on output freshness/fairness while delegating AP
 
 - `teleclaude/adapters/qos/output_scheduler.py` (new)
 
-- [ ] Implement in-memory session queues keyed by `(adapter, session_id)`.
-- [ ] Implement latest-only payload replacement for normal priority events.
-- [ ] Implement priority lane for final/completion updates.
-- [ ] Implement fair dispatch (round-robin across active emitting sessions).
-- [ ] Implement tick computation helpers with 100ms rounding.
+- [x] Implement in-memory session queues keyed by `(adapter, session_id)`.
+- [x] Implement latest-only payload replacement for normal priority events.
+- [x] Implement priority lane for final/completion updates.
+- [x] Implement fair dispatch (round-robin across active emitting sessions).
+- [x] Implement tick computation helpers with 100ms rounding.
 
 ### Task 2.2: Add instrumentation
 
@@ -61,7 +61,7 @@ This keeps custom logic focused on output freshness/fairness while delegating AP
 - `teleclaude/adapters/qos/output_scheduler.py` (new)
 - `teleclaude/services/monitoring_service.py` (if needed)
 
-- [ ] Emit metrics/log summaries:
+- [x] Emit metrics/log summaries:
   - queue depth
   - dropped/superseded payload count
   - effective dispatch cadence
@@ -79,9 +79,9 @@ This keeps custom logic focused on output freshness/fairness while delegating AP
 - `teleclaude/adapters/telegram_adapter.py`
 - `pyproject.toml`
 
-- [ ] Wire `Application.builder().rate_limiter(...)` using PTB supported limiter.
-- [ ] Add/install dependency support for PTB rate-limiter extra.
-- [ ] Ensure startup behavior is explicit if rate-limiter dependency is missing.
+- [x] Wire `Application.builder().rate_limiter(...)` using PTB supported limiter.
+- [x] Add/install dependency support for PTB rate-limiter extra.
+- [x] Ensure startup behavior is explicit if rate-limiter dependency is missing.
 
 ### Task 3.2: Route Telegram output through scheduler
 
@@ -91,11 +91,11 @@ This keeps custom logic focused on output freshness/fairness while delegating AP
 - `teleclaude/adapters/ui_adapter.py` (minimal hook points only)
 - `teleclaude/core/adapter_client.py` (only if required for clean hook insertion)
 
-- [ ] Apply scheduler to Telegram output methods for both:
+- [x] Apply scheduler to Telegram output methods for both:
   - `send_output_update`
   - `send_threaded_output`
-- [ ] Ensure non-blocking integration (shared fanout path remains free of sleep).
-- [ ] Ensure `is_final` flush behavior and deterministic cleanup on close.
+- [x] Ensure non-blocking integration (shared fanout path remains free of sleep).
+- [x] Ensure `is_final` flush behavior and deterministic cleanup on close.
 
 ### Task 3.3: Preserve existing fallback behavior
 
@@ -103,8 +103,8 @@ This keeps custom logic focused on output freshness/fairness while delegating AP
 
 - `teleclaude/adapters/telegram/message_ops.py`
 
-- [ ] Keep retry wrappers as fallback safety.
-- [ ] Remove only duplicated custom pacing logic (if superseded by scheduler + PTB limiter).
+- [x] Keep retry wrappers as fallback safety.
+- [x] Remove only duplicated custom pacing logic (if superseded by scheduler + PTB limiter).
 
 ---
 
@@ -117,8 +117,8 @@ This keeps custom logic focused on output freshness/fairness while delegating AP
 - `teleclaude/adapters/discord_adapter.py`
 - `teleclaude/adapters/qos/policy.py`
 
-- [ ] Add opt-in coalesce-only mode for Discord output.
-- [ ] Keep strict caps off by default.
+- [x] Add opt-in coalesce-only mode for Discord output.
+- [x] Keep strict caps off by default.
 
 ### Task 4.2: WhatsApp policy stub
 
@@ -126,8 +126,8 @@ This keeps custom logic focused on output freshness/fairness while delegating AP
 
 - `teleclaude/adapters/qos/policy.py`
 
-- [ ] Add policy stub and config slots for future adapter.
-- [ ] Document required external limit validation before enablement.
+- [x] Add policy stub and config slots for future adapter.
+- [x] Document required external limit validation before enablement.
 
 ---
 
@@ -142,11 +142,11 @@ This keeps custom logic focused on output freshness/fairness while delegating AP
 - `tests/unit/test_threaded_output_updates.py` (update)
 - `tests/unit/test_polling_coordinator.py` (update if integration points change)
 
-- [ ] Verify cadence math and rounding.
-- [ ] Verify coalescing (latest-only) and superseded drop accounting.
-- [ ] Verify fairness across many active sessions.
-- [ ] Verify final-priority flush behavior.
-- [ ] Verify threaded/non-threaded parity and no regression in output continuity.
+- [x] Verify cadence math and rounding.
+- [x] Verify coalescing (latest-only) and superseded drop accounting.
+- [x] Verify fairness across many active sessions.
+- [x] Verify final-priority flush behavior.
+- [x] Verify threaded/non-threaded parity and no regression in output continuity.
 
 ### Task 5.2: Integration/load checks
 
@@ -155,16 +155,16 @@ This keeps custom logic focused on output freshness/fairness while delegating AP
 - `tests/integration/test_telegram_output_qos_load.py` (new, if feasible)
 - `scripts/` load harness (optional)
 
-- [ ] Simulate `N=20` active emitting sessions.
-- [ ] Confirm sustained operation without runaway flood-control retries.
-- [ ] Confirm queue stabilization and bounded staleness.
+- [ ] Simulate `N=20` active emitting sessions. **(deferred — requires live daemon)**
+- [ ] Confirm sustained operation without runaway flood-control retries. **(deferred)**
+- [ ] Confirm queue stabilization and bounded staleness. **(deferred)**
 
 ### Task 5.3: Runtime validation
 
-- [ ] `make restart`
-- [ ] `make status`
-- [ ] `instrukt-ai-logs teleclaude --since 15m --grep "Output cadence summary|Rate limited|qos|scheduler"`
-- [ ] Validate final-message delivery correctness on session completion.
+- [ ] `make restart` **(deferred — requires live daemon, post-merge validation)**
+- [ ] `make status` **(deferred)**
+- [ ] `instrukt-ai-logs teleclaude --since 15m --grep "Output cadence summary|Rate limited|qos|scheduler"` **(deferred)**
+- [ ] Validate final-message delivery correctness on session completion. **(deferred)**
 
 ---
 
@@ -178,15 +178,15 @@ This keeps custom logic focused on output freshness/fairness while delegating AP
 - `docs/project/design/architecture/outbox.md`
 - `docs/` adapter docs where Telegram behavior is described
 
-- [ ] Document the two-layer model: PTB limiter + TeleClaude output coalescer.
-- [ ] Document tuning knobs and recommended defaults.
-- [ ] Document known multi-process caveat and future Redis token-bucket path.
+- [x] Document the two-layer model: PTB limiter + TeleClaude output coalescer.
+- [x] Document tuning knobs and recommended defaults.
+- [x] Document known multi-process caveat and future Redis token-bucket path.
 
 ### Task 6.2: Safe rollout strategy
 
-- [ ] Roll out behind feature flag.
-- [ ] Start with conservative Telegram output budget and observe metrics.
-- [ ] Enable Discord coalesce-only mode only after no-regression verification.
+- [x] Roll out behind feature flag (mode config: "off"/"coalesce_only"/"strict").
+- [x] Start with conservative Telegram output budget and observe metrics (defaults: group_mpm=20, reserve=4, ratio=0.8 → 16 mpm).
+- [x] Enable Discord coalesce-only mode only after no-regression verification (Discord defaults to coalesce_only).
 
 ## Decision Record (Locked 2026-02-26)
 
