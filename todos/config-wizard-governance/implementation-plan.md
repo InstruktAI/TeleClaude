@@ -24,12 +24,12 @@ Four governance doc edits, each adding targeted wording to close the config-surf
 
 **File(s):** `docs/project/procedure/add-adapter.md`
 
-- [ ] Expand the Steps section from 5 to 9 steps. After existing step 3 ("Add configuration keys to `config.sample.yml`"), insert:
+- [x] Expand the Steps section from 5 to 9 steps. After existing step 3 ("Add configuration keys to `config.sample.yml`"), insert:
   - Step 4: Register adapter env vars in `_ADAPTER_ENV_VARS` (`teleclaude/cli/config_handlers.py`).
   - Step 5: Register field guidance in `GuidanceRegistry` (`teleclaude/cli/tui/config_components/guidance.py`).
   - Step 6: Verify config wizard discovers and exposes the new adapter area.
   - Step 7: Update teleclaude-config spec (`docs/project/spec/teleclaude-config.md`) with new config keys and env vars.
-- [ ] Renumber remaining steps (old 4→8, old 5→9).
+- [x] Renumber remaining steps (old 4→8, old 5→9).
 
 ### Task 1.4: Add maintenance note to teleclaude-config spec
 
