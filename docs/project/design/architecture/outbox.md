@@ -133,6 +133,13 @@ sequenceDiagram
 - Outstanding depth includes both queued and in-flight rows.
 - This hysteresis avoids tight claim/requeue loops and protects other sessions from starvation.
 
+### 3c. Per-session critical reserve
+
+- `critical_reserve` (default `8`): reserves queue slots for critical events.
+- Effective bursty capacity is `max_pending - critical_reserve`.
+- When bursty rows hit that cap, oldest bursty rows are evicted first (latest-wins behavior) even before the queue is globally full.
+- Critical rows can still evict bursty rows when queue is full; critical rows are never dropped.
+
 ### 4. Retry Backoff Schedule
 
 | Attempt | Delay (default) |
