@@ -28,10 +28,17 @@ def _version_from_pyproject() -> str:
 
 def _resolve_version() -> str:
     """Read runtime version from installed package metadata."""
+    pyproject_version = _version_from_pyproject()
     try:
-        return version("teleclaude")
+        metadata_version = version("teleclaude")
     except PackageNotFoundError:
-        return _version_from_pyproject()
+        return pyproject_version
+
+    # In source-tree runs, local pyproject version is authoritative.
+    if pyproject_version != "0.0.0" and pyproject_version != metadata_version:
+        return pyproject_version
+
+    return metadata_version
 
 
 __version__ = _resolve_version()

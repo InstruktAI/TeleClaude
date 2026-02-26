@@ -293,6 +293,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
     ),
     "docs": CommandDef(
         desc="Query documentation snippets",
+        args="[IDS...]",
+        flags=[
+            _H,
+            Flag("--baseline-only", "-b", "Show only baseline snippets"),
+            Flag("--third-party", "-t", "Include third-party docs"),
+            Flag("--areas", "-a", "Filter by taxonomy type"),
+            Flag("--domains", "-d", "Filter by domain"),
+            _PROJECT_ROOT,
+        ],
         subcommands={
             "index": CommandDef(
                 desc="List snippet IDs and metadata (phase 1)",
@@ -311,7 +320,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[_H, _PROJECT_ROOT],
             ),
         },
+        standalone=True,
         notes=[
+            "Backward compatible: `telec docs [IDS...]` still works (no subcommand required).",
+            "Example legacy: telec docs software-development/policy/testing",
             "Two-phase flow: use 'telec docs index' to discover IDs, then 'telec docs get <id...>' to fetch content.",
             "Example phase 1: telec docs index --areas policy,procedure --domains software-development",
             "Example phase 2: telec docs get software-development/policy/testing project/spec/command-surface",
@@ -753,8 +765,22 @@ def _usage_subcmd(cmd_name: str) -> str:
 
     if cmd.subcommands:
         if cmd.standalone:
-            entry = f"telec {cmd_name}"
+            args_str = f" {cmd.args}" if cmd.args else ""
+            flag_hints = " [options]" if cmd.flags else ""
+            entry = f"telec {cmd_name}{args_str}{flag_hints}"
             lines.append(f"  {entry:<{col}}# {cmd.desc}")
+
+            visible_cmd_flags = [f for f in cmd.flags if f.long != "--help"] if cmd.flags else []
+            if visible_cmd_flags:
+                lines.append("\nOptions:")
+                for f in visible_cmd_flags:
+                    flag_label = f"  {f.short}, {f.long}" if f.short else f"  {f.long}"
+                    lines.append(f"{flag_label:<25s}{f.desc}")
+                examples = _example_commands([cmd_name], cmd.args, visible_cmd_flags)
+                if examples:
+                    lines.append("\nExamples:")
+                    for example in examples:
+                        lines.append(f"  {example}")
 
         for sub_name, sub_cmd in cmd.subcommands.items():
             expanded = HELP_SUBCOMMAND_EXPANSIONS.get(cmd_name, {}).get(sub_name)
@@ -952,6 +978,11 @@ def _complete_flags(
 def _complete_subcmd(cmd_name: str, rest: list[str], current: str, is_partial: bool) -> None:
     """Complete commands with subcommands (todo, roadmap, config, etc.)."""
     cmd_def = CLI_SURFACE[cmd_name]
+
+    # Standalone+subcommand commands (e.g., docs) can complete flags/args directly.
+    if cmd_def.standalone and rest and (rest[0].startswith("-") or rest[0] not in cmd_def.subcommands):
+        _complete_flags(cmd_def.flag_tuples, rest, current, is_partial, cmd_def.args)
+        return
 
     # Subcommand completion: no args yet, or partially typing subcommand name
     if not rest or (len(rest) == 1 and is_partial):
@@ -1392,9 +1423,76 @@ def _handle_docs(args: list[str]) -> None:
     elif subcommand == "get":
         _handle_docs_get(args[1:])
     else:
-        print(f"Unknown docs subcommand: {subcommand}")
-        print(_usage("docs"))
-        raise SystemExit(1)
+        # Backward-compatible mode: `telec docs [IDS...] [flags]`.
+        from teleclaude.context_selector import build_context_output
+
+        project_root = Path.cwd()
+        baseline_only = False
+        third_party = False
+        areas: list[str] = []
+        domains: list[str] | None = None
+        snippet_ids: list[str] = []
+
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            if arg in ("--project-root", "-p") and i + 1 < len(args):
+                project_root = Path(args[i + 1]).expanduser().resolve()
+                i += 2
+            elif arg in ("--project-root", "-p"):
+                print("Missing value for --project-root.")
+                print(_usage("docs"))
+                raise SystemExit(1)
+            elif arg in ("--baseline-only", "-b"):
+                baseline_only = True
+                i += 1
+            elif arg in ("--third-party", "-t"):
+                third_party = True
+                i += 1
+            elif arg in ("--areas", "-a") and i + 1 < len(args):
+                areas = [a.strip() for a in args[i + 1].split(",") if a.strip()]
+                i += 2
+            elif arg in ("--areas", "-a"):
+                print("Missing value for --areas.")
+                print(_usage("docs"))
+                raise SystemExit(1)
+            elif arg in ("--domains", "-d") and i + 1 < len(args):
+                domains = [d.strip() for d in args[i + 1].split(",") if d.strip()]
+                i += 2
+            elif arg in ("--domains", "-d"):
+                print("Missing value for --domains.")
+                print(_usage("docs"))
+                raise SystemExit(1)
+            elif arg.startswith("-"):
+                print(f"Unknown option: {arg}")
+                print(_usage("docs"))
+                raise SystemExit(1)
+            else:
+                for part in arg.split(","):
+                    part = part.strip()
+                    if part:
+                        snippet_ids.append(part)
+                i += 1
+
+        if snippet_ids:
+            output = build_context_output(
+                areas=[],
+                project_root=project_root,
+                snippet_ids=snippet_ids,
+                baseline_only=False,
+                include_third_party=False,
+                domains=None,
+            )
+        else:
+            output = build_context_output(
+                areas=areas,
+                project_root=project_root,
+                snippet_ids=None,
+                baseline_only=baseline_only,
+                include_third_party=third_party,
+                domains=domains,
+            )
+        print(output)
 
 
 def _handle_computers(args: list[str]) -> None:
@@ -1909,16 +2007,19 @@ def _handle_todo_demo(args: list[str]) -> None:
     """Handle telec todo demo subcommands: list, validate, run, create."""
     _DEMO_SUBCOMMANDS = {"list", "validate", "run", "create"}
     if not args:
-        print(_usage("todo", "demo"))
-        raise SystemExit(1)
+        _demo_list(Path.cwd())
+        return
 
     subcommand = args[0]
-    if subcommand not in _DEMO_SUBCOMMANDS:
-        print(f"Unknown demo subcommand: {subcommand}")
-        print(_usage("todo", "demo"))
-        raise SystemExit(1)
-
     remaining_args = args[1:]
+    if subcommand not in _DEMO_SUBCOMMANDS:
+        # Backward-compatible mode: `telec todo demo <slug> [--project-root ...]`
+        if subcommand.startswith("-"):
+            print(f"Unknown demo subcommand: {subcommand}")
+            print(_usage("todo", "demo"))
+            raise SystemExit(1)
+        remaining_args = args
+        subcommand = "run"
 
     slug: str | None = None
     project_root = Path.cwd()

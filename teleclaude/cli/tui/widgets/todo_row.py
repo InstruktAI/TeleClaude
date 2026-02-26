@@ -186,7 +186,8 @@ class TodoRow(TelecMixin, Widget):
         line.append(" ")
 
         # Slug — muted when missing artifacts, reverse when selected
-        missing_artifacts = not self.todo.has_requirements or not self.todo.has_impl_plan
+        is_bug_item = "bug.md" in self.todo.files
+        missing_artifacts = (not self.todo.has_requirements or not self.todo.has_impl_plan) and not is_bug_item
         if is_selected:
             slug_style = Style(reverse=True)
         elif missing_artifacts:

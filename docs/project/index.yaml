@@ -1,5 +1,5 @@
-project_root: ~/Workspace/InstruktAI/TeleClaude
-snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/project
+project_root: ~/Workspace/InstruktAI/TeleClaude/trees/deployment-versioning
+snippets_root: ~/Workspace/InstruktAI/TeleClaude/trees/deployment-versioning/docs/project
 snippets:
 - id: project/concept/ai-worker
   description: The role of an AI agent session in the TeleClaude network.
@@ -145,14 +145,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/layer-ownership.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: project/design/architecture/mcp-layer
-  description: Resilient two-layer MCP architecture for AI-to-AI communication.
-  type: design
-  scope: global
-  path: docs/project/design/architecture/mcp-layer.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -390,24 +382,6 @@ snippets:
   type: policy
   scope: global
   path: docs/project/policy/master-bot-registration.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: project/policy/mcp-connection-management
-  description: Architecture policy for MCP clients - tool-call filtering, connection
-    handling, to guarantee stable connection between daemon restarts.
-  type: policy
-  scope: global
-  path: docs/project/policy/mcp-connection-management.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: project/policy/mcp-tool-filtering
-  description: Role-based filtering of teleclaude tools to enforce least-privilege
-    for scoped agents.
-  type: policy
-  scope: project
-  path: docs/project/policy/mcp-tool-filtering.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -684,14 +658,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/jobs/youtube-sync-subscriptions.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: project/spec/mcp-tool-surface
-  description: Authoritative surface for Model Context Protocol (MCP) tools.
-  type: spec
-  scope: project
-  path: docs/project/spec/mcp-tool-surface.md
   role: member
   visibility: internal
   source_project: TeleClaude

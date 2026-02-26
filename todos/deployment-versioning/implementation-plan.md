@@ -39,19 +39,19 @@ release pipelines already exist and require no changes.
 
 ### Task 2.1: Tests
 
-- [ ] Unit test: `from teleclaude import __version__` returns a semver string
-- [ ] Unit test: `telec version` CLI output matches expected format
-- [ ] Run `make test`
+- [x] Unit test: `from teleclaude import __version__` returns a semver string
+- [x] Unit test: `telec version` CLI output matches expected format
+- [x] Run `make test`
 
 ### Task 2.2: Quality Checks
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
+- [x] Run `make lint`
+- [x] Verify no unchecked implementation tasks remain
 
 ---
 
 ## Phase 3: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)

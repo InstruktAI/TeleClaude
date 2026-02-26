@@ -69,6 +69,8 @@ subcommands:
       --attach: 'Attach to tmux session after revive.'
   init:
     description: 'Initialize docs sync and auto-rebuild watcher.'
+  version:
+    description: 'Print version, channel, and commit hash.'
   sync:
     description: 'Validate refs and build doc artifacts.'
     flags:
@@ -162,6 +164,15 @@ subcommands:
         description: 'Scaffold bug files for a slug.'
       list:
         description: 'List in-flight bug fixes with status.'
+  auth:
+    description: 'Terminal login identity commands.'
+    subcommands:
+      login:
+        description: 'Set terminal login identity for this TTY.'
+      whoami:
+        description: 'Show terminal login identity for this TTY.'
+      logout:
+        description: 'Clear terminal login identity for this TTY.'
   config:
     description: 'Interactive configuration (or get/patch/validate subcommands).'
     subcommands:
