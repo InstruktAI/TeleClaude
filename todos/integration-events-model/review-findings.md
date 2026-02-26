@@ -115,3 +115,15 @@ The mock addition at line 807-808 is orthogonal to this feature and would be cle
 - Important #6-8 (test coverage) leave FR2 durability untested and Verification Requirement #3 (contract tests) unmet.
 - Important #2 (no replay guard) creates a silent failure path for warm-start consumers.
 - Important #9 (missing public exports) blocks external consumers from type-safe construction.
+
+## Fixes Applied
+
+- Important #1: deterministic supersession ordering with equal `ready_at` timestamps plus tie regression test. Commit: `cd0a19c6`
+- Important #2: replay durable history during `IntegrationEventService` initialization with restart coverage. Commit: `f4dd8a8b`
+- Important #3: pass canonical event type through ISO8601 normalization errors with attribution test. Commit: `ab5697db`
+- Important #4: remove duplicate event digest implementation and reuse `compute_idempotency_key`. Commit: `7e95d517`
+- Important #5: explicitly narrow persisted record identifiers to `str` before build path, with deserialize coverage. Commit: `efa9cd04`
+- Important #6: add integration replay/durability restart test calling `replay()` on a new service instance. Commit: `b713bfdd`
+- Important #7: add contract test asserting `_REQUIRED_FIELDS` parity with spec YAML `required_event_fields`. Commit: `76261828`
+- Important #8: add unit coverage for `service.ingest_raw()` accepted and rejected raw event types. Commit: `02dfcbe6`
+- Important #9: export `ReachabilityChecker` and `IntegratedChecker` from package public API, with export-surface test. Commit: `2bc35e06`
