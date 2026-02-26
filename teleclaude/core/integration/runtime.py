@@ -196,6 +196,8 @@ class IntegratorShadowRuntime:
         self._housekeeping_committer = housekeeping_committer
         self._clock = clock if clock is not None else lambda: datetime.now(tz=UTC)
         self._sleep_fn = sleep_fn if sleep_fn is not None else time.sleep
+        if not shadow_mode and canonical_main_pusher is None:
+            raise ValueError("canonical_main_pusher is required when shadow_mode=False")
         self._shadow_mode = shadow_mode
         self._canonical_main_pusher = canonical_main_pusher
 

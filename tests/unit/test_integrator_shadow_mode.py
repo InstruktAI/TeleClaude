@@ -6,6 +6,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Barrier, Lock, Thread
 
+import pytest
+
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.queue import IntegrationQueue
 from teleclaude.core.integration.readiness_projection import CandidateKey, CandidateReadiness
@@ -188,6 +190,24 @@ def test_shadow_runtime_rechecks_readiness_and_never_pushes_main_in_shadow_mode(
     assert push_calls == []
     assert queue.get(key=integrate_key) and queue.get(key=integrate_key).status == "integrated"
     assert queue.get(key=block_key) and queue.get(key=block_key).status == "blocked"
+
+
+def test_shadow_runtime_requires_pusher_when_shadow_mode_disabled(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="canonical_main_pusher is required when shadow_mode=False"):
+        IntegratorShadowRuntime(
+            lease_store=IntegrationLeaseStore(state_path=tmp_path / "integration-lease.json"),
+            queue=IntegrationQueue(state_path=tmp_path / "integration-queue.json"),
+            readiness_lookup=lambda _key: None,
+            clearance_probe=MainBranchClearanceProbe(
+                sessions_provider=lambda: (),
+                session_tail_provider=lambda _session_id: "",
+                dirty_tracked_paths_provider=lambda: (),
+            ),
+            outcome_sink=lambda _outcome: None,
+            checkpoint_path=tmp_path / "integration-checkpoint.json",
+            shadow_mode=False,
+            canonical_main_pusher=None,
+        )
 
 
 def test_shadow_runtime_would_block_sets_fallback_reason_when_readiness_reasons_empty(tmp_path: Path) -> None:
