@@ -24,8 +24,6 @@ This follows existing artifact conventions (`## Required reads`, snippet schema,
 
 ### Task 1: Define exploratory scope and taxonomy source of truth
 
-- [x] Task complete
-
 **Files:**
 
 - `docs/global/general/concept/skill-taxonomy.md`
@@ -42,8 +40,6 @@ This follows existing artifact conventions (`## Required reads`, snippet schema,
 - Taxonomy doc exists and explicitly lists in-scope skills.
 
 ### Task 2: Extract procedures for each in-scope exploratory skill
-
-- [x] Task complete
 
 **Files:**
 
@@ -67,8 +63,6 @@ This follows existing artifact conventions (`## Required reads`, snippet schema,
 
 ### Task 3: Align in-scope skill wrappers
 
-- [x] Task complete
-
 **Files:**
 
 - `agents/skills/brainstorming/SKILL.md`
@@ -90,8 +84,6 @@ This follows existing artifact conventions (`## Required reads`, snippet schema,
 - Wrapper docs show correct `@` references and section order.
 
 ### Task 4: Validate and record readiness evidence
-
-- [x] Task complete
 
 **Actions:**
 
