@@ -462,7 +462,7 @@ STEP 1 - SELECT AGENT:
 {guidance}
 
 STEP 2 - DISPATCH:
-teleclaude__run_agent_command(
+telec sessions run(
   computer="local",
   command="{formatted_command}",
   args="{args}",
@@ -490,7 +490,7 @@ A) NOTIFICATION ARRIVES (worker completed):
 
 B) TIMER COMPLETES (no notification after 5 minutes):
    THIS IS YOUR ACTIVATION TRIGGER. You MUST act immediately:
-   - Check on the session: teleclaude__get_session_data(computer="local", session_id="<session_id>", tail_chars=2000)
+   - Check on the session: telec sessions tail(computer="local", session_id="<session_id>", tail_chars=2000)
    - If still running: reset timer (sleep 300, run_in_background=true) and WAIT again
    - If completed/idle: follow WHEN WORKER COMPLETES below
    - If stuck/errored: intervene or escalate to user

@@ -223,6 +223,42 @@ def test_convert_entry_with_thinking_and_text():
     assert "text-start" in types
 
 
+def test_convert_entry_codex_response_item_reasoning():
+    entry = {
+        "type": "response_item",
+        "payload": {
+            "type": "reasoning",
+            "summary": [
+                {"type": "summary_text", "text": "Step 1"},
+                {"type": "summary_text", "text": "Step 2"},
+            ],
+        },
+    }
+    events = list(convert_entry(entry))
+    parsed = _parse_sse_events(events)
+    types = [p["type"] for p in parsed]
+    assert "reasoning-start" in types
+    assert "reasoning-delta" in types
+    assert "reasoning-end" in types
+    delta = next(p for p in parsed if p["type"] == "reasoning-delta")
+    assert "Step 1" in str(delta["delta"])
+    assert "Step 2" in str(delta["delta"])
+
+
+def test_convert_entry_codex_response_item_message():
+    entry = {
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "Codex says hi"}],
+        },
+    }
+    events = list(convert_entry(entry))
+    parsed = _parse_sse_events(events)
+    assert any(p.get("type") == "text-delta" and p.get("delta") == "Codex says hi" for p in parsed)
+
+
 def test_convert_entry_user_message_skipped():
     entry = {
         "message": {

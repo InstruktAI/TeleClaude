@@ -221,6 +221,17 @@ def test_agent_protocol_blocks_mcp_for_interactive_profiles() -> None:
     assert all("mcp" not in profile.lower() for profile in codex_profiles.values())
 
 
+def test_codex_model_flags_force_reasoning_visibility() -> None:
+    codex_flags = AGENT_PROTOCOL["codex"]["model_flags"]
+    assert isinstance(codex_flags, dict)
+    for mode in ("fast", "med", "slow"):
+        flag = str(codex_flags[mode])
+        assert "--config model_reasoning_summary='detailed'" in flag
+        assert "--config model_supports_reasoning_summaries=true" in flag
+        assert "--config show_raw_agent_reasoning=true" in flag
+        assert "--config hide_agent_reasoning=false" in flag
+
+
 def test_job_spec_blocks_mcp_for_agent_jobs() -> None:
     claude_flags = str(agent_cli._JOB_SPEC["claude"]["flags"])
     assert "--strict-mcp-config" in claude_flags
@@ -232,3 +243,14 @@ def test_job_spec_blocks_mcp_for_agent_jobs() -> None:
     codex_spec = agent_cli._JOB_SPEC["codex"]
     assert str(codex_spec.get("mcp_tools_arg", "")) == ""
     assert "mcp" not in str(codex_spec["flags"]).lower()
+
+
+def test_job_spec_codex_model_flags_force_reasoning_visibility() -> None:
+    codex_flags = agent_cli._JOB_SPEC["codex"]["model_flags"]
+    assert isinstance(codex_flags, dict)
+    for mode in ("fast", "med", "slow"):
+        flag = str(codex_flags[mode])
+        assert "--config model_reasoning_summary='detailed'" in flag
+        assert "--config model_supports_reasoning_summaries=true" in flag
+        assert "--config show_raw_agent_reasoning=true" in flag
+        assert "--config hide_agent_reasoning=false" in flag

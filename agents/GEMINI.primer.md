@@ -19,7 +19,7 @@ If the user asks for thinking, reasoning, architecture, analysis, or planning (e
 
 **Requirement**:
 
-1. You must stop all tool usage except for `teleclaude__get_context`.
+1. You must stop all tool usage except for `telec docs get`.
 2. You are strictly forbidden from using `read_file`, `search_file_content`, `glob`, or any other filesystem investigation tool while in this mode.
 3. **Checkpoint Behavior in Think-Only Mode:** While in this mode, a system Checkpoint message ("Continue or validate...") **DOES NOT** grant permission to transition to execution. You may ONLY switch to execution if the user explicitly confirms the plan with a direct command (e.g., "Implement this", "Go ahead").
 4. Your response should immediately reflect this shift by prioritizing intellectual sparring and planning over execution or automated investigation.

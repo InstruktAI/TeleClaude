@@ -13,7 +13,7 @@ When the daemon goes down:
 
 - Our most important tool becomes unavailable
 - Agents lose knowledge retrieval entirely
-- Users cannot use `teleclaude__get_context` to bootstrap context
+- Users cannot use `telec docs get` to bootstrap context
 
 This is a recurring frustration point across agent sessions.
 

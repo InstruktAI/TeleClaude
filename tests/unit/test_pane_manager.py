@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.cli.tui import theme
-from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
+from teleclaude.cli.tui.pane_manager import ComputerInfo, SessionPaneSpec, TmuxPaneManager
 
 
 def test_toggle_session_returns_false_when_not_in_tmux():
@@ -424,3 +424,89 @@ def test_render_layout_split_windows_do_not_capture_focus_with_d_flag():
     split_windows = [call.args for call in mock_run.call_args_list if call.args and call.args[0] == "split-window"]
     assert split_windows, "expected layout to split at least one window"
     assert all("-d" in args for args in split_windows)
+
+
+def test_apply_layout_missing_agent_clears_stale_style_instead_of_crashing():
+    """Switching to a session with no agent must clear stale pane style, not throw."""
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
+        with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
+            manager = TmuxPaneManager()
+
+    manager._session_catalog = {
+        "sid-old": SimpleNamespace(
+            session_id="sid-old",
+            tmux_session_name="tc_old",
+            active_agent="claude",
+            computer="local",
+        ),
+        "sid-new": SimpleNamespace(
+            session_id="sid-new",
+            tmux_session_name="tc_new",
+            active_agent=None,
+            computer="local",
+        ),
+    }
+    manager._active_spec = SessionPaneSpec(
+        session_id="sid-old",
+        tmux_session_name="tc_old",
+        computer_info=None,
+        is_sticky=False,
+        active_agent="claude",
+    )
+    manager._layout_signature = manager._compute_layout_signature()
+    manager.state.session_to_pane = {"sid-old": "%10"}
+    manager.state.active_session_id = "sid-old"
+
+    def _run_tmux_side_effect(*args: str) -> str:
+        if args and args[0] == "list-panes":
+            return "%1\n%10\n"
+        return ""
+
+    mock_run = Mock(side_effect=_run_tmux_side_effect)
+    with (
+        patch.object(manager, "_run_tmux", mock_run),
+        patch.object(manager, "_get_pane_exists", return_value=True),
+    ):
+        manager.apply_layout(
+            active_session_id="sid-new",
+            sticky_session_ids=[],
+            get_computer_info=lambda _computer: None,
+            focus=False,
+        )
+
+    calls = [call.args for call in mock_run.call_args_list]
+    respawn_calls = [args for args in calls if args and args[0] == "respawn-pane"]
+    assert respawn_calls
+    assert any(args[1:4] == ("-k", "-t", "%10") for args in respawn_calls)
+    assert any("attach-session -t tc_new" in args[-1] for args in respawn_calls)
+    assert ("set", "-pu", "-t", "%10", "window-style") in calls
+    assert ("set", "-pu", "-t", "%10", "window-active-style") in calls
+    assert manager.state.active_session_id == "sid-new"
+    assert manager.state.session_to_pane["sid-new"] == "%10"
+
+
+def test_refresh_backgrounds_clears_style_when_agent_missing():
+    """Background refresh should clear stale style for sessions with unknown agent."""
+    with patch.dict(os.environ, {"TMUX": "1", "TMUX_PANE": "%1"}):
+        with patch.object(TmuxPaneManager, "_get_current_pane_id", return_value="%1"):
+            manager = TmuxPaneManager()
+
+    manager.state.session_to_pane = {"sid-none": "%22"}
+    manager._session_catalog = {
+        "sid-none": SimpleNamespace(
+            session_id="sid-none",
+            tmux_session_name="tc_none",
+            active_agent=None,
+        )
+    }
+
+    mock_run = Mock(return_value="")
+    with (
+        patch.object(manager, "_run_tmux", mock_run),
+        patch.object(manager, "_get_pane_exists", return_value=True),
+    ):
+        manager._refresh_session_pane_backgrounds()
+
+    calls = [call.args for call in mock_run.call_args_list]
+    assert ("set", "-pu", "-t", "%22", "window-style") in calls
+    assert ("set", "-pu", "-t", "%22", "window-active-style") in calls

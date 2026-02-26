@@ -16,13 +16,13 @@ Hand a customer conversation to a human admin when automated resolution is insuf
 
 - The current session has `human_role: customer`.
 - An escalation trigger has been identified (see escalation policy).
-- The `teleclaude__escalate` tool is available in the session.
+- The `telec sessions escalate` tool is available in the session.
 
 ## Steps
 
 1. Recognize the escalation trigger: low confidence, explicit human request, billing/security topic, or policy match.
 2. Summarize the conversation context so the admin can act without re-reading the full transcript.
-3. Call `teleclaude__escalate` with:
+3. Call `telec sessions escalate` with:
    - `customer_name`: the customer's name or identifier
    - `reason`: concise explanation of why escalation is needed
    - `context_summary`: brief summary of the conversation so far (optional but recommended)
@@ -39,5 +39,5 @@ Hand a customer conversation to a human admin when automated resolution is insuf
 
 ## Recovery
 
-- If `teleclaude__escalate` returns an error (e.g., Discord unavailable), inform the customer that escalation could not be completed and suggest they try again shortly or provide an alternative contact method.
+- If `telec sessions escalate` returns an error (e.g., Discord unavailable), inform the customer that escalation could not be completed and suggest they try again shortly or provide an alternative contact method.
 - If the admin does not respond within a reasonable time, the customer can continue the conversation with the AI (relay mode will be cleared on `@agent` handback).

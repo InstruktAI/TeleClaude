@@ -8,4 +8,4 @@ class InputOrigin(str, Enum):
     DISCORD = "discord"
     REDIS = "redis"
     API = "api"
-    HOOK = "hook"
+    TERMINAL = "terminal"

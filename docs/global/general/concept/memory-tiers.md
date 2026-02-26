@@ -74,7 +74,7 @@ Beyond the tiers that are loaded at start, the agent can extend into deeper
 stores on demand:
 
 - **Library** — the full documentation snippet collection, retrieved via
-  `get_context`. The reference shelf the agent consults when baseline
+  `telec docs index` (phase 1) and `telec docs get` (phase 2). The reference shelf the agent consults when baseline
   knowledge is insufficient.
 - **Journal** — observation records stored with the `Memory Management API Tool`,
   searchable memories captured by you to remember contrast-rich moments

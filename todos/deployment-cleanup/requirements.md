@@ -10,7 +10,7 @@ documentation to reflect the new automated flow.
 
 ### In scope
 
-1. **Remove MCP tool** — `teleclaude__deploy` from tool definitions, handlers,
+1. **Remove MCP tool** — `telec deploy` from tool definitions, handlers,
    and role_tools. **Conditional**: if `mcp-migration-delete-mcp` has already run,
    MCP tools are gone. The grep-first approach handles this naturally.
 2. **Remove deploy dispatch paths** — daemon system command handler, MCP server
@@ -29,7 +29,7 @@ documentation to reflect the new automated flow.
 
 ## Success Criteria
 
-- [ ] `teleclaude__deploy` MCP tool no longer exists (or MCP already removed)
+- [ ] `telec deploy` MCP tool no longer exists (or MCP already removed)
 - [ ] No deploy dispatch path remains in daemon, MCP server, or transport
 - [ ] `deploy_service.py` is deleted
 - [ ] `DeployArgs` dataclass is removed from `core/events.py`

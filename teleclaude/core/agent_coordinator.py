@@ -46,6 +46,7 @@ from teleclaude.core.events import (
     UserPromptSubmitPayload,
 )
 from teleclaude.core.feature_flags import is_threaded_output_enabled
+from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import (
@@ -176,6 +177,92 @@ def _is_pasted_content_placeholder(prompt: str) -> bool:
     return bool(_PASTED_CONTENT_PLACEHOLDER_RE.fullmatch((prompt or "").strip()))
 
 
+def _coerce_nonempty_str(value: object) -> str | None:
+    """Normalize value to a non-empty string when possible."""
+    if value is None:
+        return None
+    text = value.strip() if isinstance(value, str) else str(value).strip()
+    return text or None
+
+
+def _resolve_hook_actor_name(session: "Session") -> str:
+    """Resolve actor label for hook-reflected user input."""
+    metadata = session.session_metadata if isinstance(session.session_metadata, Mapping) else {}
+    for key in ("actor_name", "user_name", "display_name", "username", "name"):
+        resolved = _coerce_nonempty_str(metadata.get(key))
+        if resolved:
+            return resolved
+
+    ui_meta = session.get_metadata().get_ui()
+    telegram_user_id = ui_meta.get_telegram().user_id
+    discord_user_id = ui_meta.get_discord().user_id
+
+    origin_hint = (session.last_input_origin or "").strip().lower()
+    resolver = get_identity_resolver()
+
+    def _resolve_identity_name(origin: str, channel_meta: Mapping[str, object]) -> str | None:
+        identity = resolver.resolve(origin, channel_meta)
+        if not identity:
+            return None
+        return _coerce_nonempty_str(identity.person_name)
+
+    if origin_hint == InputOrigin.TELEGRAM.value and telegram_user_id is not None:
+        telegram_meta: dict[str, object] = {
+            "user_id": str(telegram_user_id),
+            "telegram_user_id": str(telegram_user_id),
+        }
+        resolved = _resolve_identity_name(InputOrigin.TELEGRAM.value, telegram_meta)
+        if resolved:
+            return resolved
+
+    if origin_hint == InputOrigin.DISCORD.value and discord_user_id:
+        discord_meta: dict[str, object] = {
+            "user_id": str(discord_user_id),
+            "discord_user_id": str(discord_user_id),
+        }
+        resolved = _resolve_identity_name(InputOrigin.DISCORD.value, discord_meta)
+        if resolved:
+            return resolved
+
+    if telegram_user_id is not None:
+        telegram_meta = {
+            "user_id": str(telegram_user_id),
+            "telegram_user_id": str(telegram_user_id),
+        }
+        resolved = _resolve_identity_name(InputOrigin.TELEGRAM.value, telegram_meta)
+        if resolved:
+            return resolved
+
+    if discord_user_id:
+        discord_meta = {
+            "user_id": str(discord_user_id),
+            "discord_user_id": str(discord_user_id),
+        }
+        resolved = _resolve_identity_name(InputOrigin.DISCORD.value, discord_meta)
+        if resolved:
+            return resolved
+
+    human_email = _coerce_nonempty_str(session.human_email)
+    if human_email:
+        return human_email
+
+    for key in ("actor_id", "user_id"):
+        resolved = _coerce_nonempty_str(metadata.get(key))
+        if resolved:
+            return resolved
+
+    if origin_hint == InputOrigin.TELEGRAM.value and telegram_user_id is not None:
+        return f"telegram:{telegram_user_id}"
+    if origin_hint == InputOrigin.DISCORD.value and discord_user_id:
+        return f"discord:{discord_user_id}"
+    if telegram_user_id is not None:
+        return f"telegram:{telegram_user_id}"
+    if discord_user_id:
+        return f"discord:{discord_user_id}"
+
+    return "operator"
+
+
 def _to_utc(ts: datetime) -> datetime:
     """Normalize naive datetimes to UTC for stable comparisons."""
     if ts.tzinfo is None:
@@ -228,6 +315,12 @@ class AgentCoordinator:
         self._incremental_noop_state: dict[str, _SuppressionState] = {}
         self._tool_use_skip_state: dict[str, _SuppressionState] = {}
         self._incremental_eval_state: dict[str, tuple[str, bool]] = {}
+        # Upstream render bookkeeping for incremental threaded output.
+        # Stores digest of the full rendered message (not adapter chunk digests).
+        self._incremental_render_digests: dict[str, str] = {}
+        # Serialize incremental rendering/sending per session to avoid
+        # concurrent poll/hook races emitting the same payload twice.
+        self._incremental_output_locks: dict[str, asyncio.Lock] = {}
         # Stall detection: one pending task per session, cancelled on output arrival (R4)
         self._stall_tasks: dict[str, asyncio.Task[object]] = {}
 
@@ -602,6 +695,7 @@ class AgentCoordinator:
 
         # Clear checkpoint state on real user input
         await db.update_session(session_id, last_checkpoint_at=None, last_tool_use_at=None)
+        self._incremental_render_digests.pop(session_id, None)
 
         # Prepare batched update
         now = datetime.now(timezone.utc)
@@ -626,12 +720,36 @@ class AgentCoordinator:
                     incoming_input[:50],
                 )
 
+        incoming_input = prompt_text.strip()
+        existing_input = (session.last_message_sent or "").strip()
+        existing_origin = (session.last_input_origin or "").strip().lower()
+        existing_at = session.last_message_sent_at
+        is_recent_routed_echo = (
+            session.lifecycle_status != "headless"
+            and not is_codex_synthetic
+            and existing_origin
+            and existing_origin != InputOrigin.TERMINAL.value
+            and isinstance(existing_at, datetime)
+            and (now - existing_at).total_seconds() <= 20
+            and existing_input
+            and incoming_input
+            and existing_input == incoming_input
+        )
+        if is_recent_routed_echo:
+            should_update_last_message = False
+            logger.debug(
+                "Skipping duplicate hook prompt persistence for session %s (origin=%s)",
+                session_id[:8],
+                existing_origin,
+            )
+
         update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
         if should_update_last_message:
             update_kwargs.update(
                 {
                     "last_message_sent": prompt_text[:200],
                     "last_message_sent_at": now.isoformat(),
+                    "last_input_origin": InputOrigin.TERMINAL.value,
                 }
             )
 
@@ -665,20 +783,22 @@ class AgentCoordinator:
         self._emit_status_event(session_id, "accepted", "user_prompt_accepted", last_activity_at=now_ts)
         self._schedule_stall_detection(session_id, last_activity_at=now_ts)
 
-        hook_actor_name = (
-            (getattr(session, "human_name", "") or "").strip()
-            or (getattr(session, "human_email", "") or "").strip()
-            or f"operator@{config.computer.name}"
-        )
+        hook_actor_name = _resolve_hook_actor_name(session)
 
         # Non-headless: DB write done above, no further routing needed
         # (the agent already received the input directly)
         if session.lifecycle_status != "headless":
+            if is_recent_routed_echo:
+                logger.debug(
+                    "Skipping duplicate non-headless hook reflection for session %s",
+                    session_id[:8],
+                )
+                return
             broadcast_result = self.client.broadcast_user_input(
                 session,
                 prompt_text,
-                InputOrigin.HOOK.value,
-                actor_id=f"hook:{config.computer.name}:{session_id}",
+                InputOrigin.TERMINAL.value,
+                actor_id=f"terminal:{config.computer.name}:{session_id}",
                 actor_name=hook_actor_name,
             )
             if inspect.isawaitable(broadcast_result):
@@ -692,8 +812,8 @@ class AgentCoordinator:
         cmd = ProcessMessageCommand(
             session_id=session_id,
             text=prompt_text,
-            origin=InputOrigin.HOOK.value,
-            actor_id=f"hook:{config.computer.name}:{session_id}",
+            origin=InputOrigin.TERMINAL.value,
+            actor_id=f"terminal:{config.computer.name}:{session_id}",
             actor_name=hook_actor_name,
         )
 
@@ -776,6 +896,18 @@ class AgentCoordinator:
                 session_id[:8],
             )
             self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
+            # Safety net: when Codex prompt polling misses a live submit marker,
+            # mirror the recovered user input to adapters so Discord/Telegram
+            # still show the user turn.
+            if session and session.lifecycle_status != "headless":
+                hook_actor_name = _resolve_hook_actor_name(session)
+                await self.client.broadcast_user_input(
+                    session,
+                    input_text,
+                    InputOrigin.TERMINAL.value,
+                    actor_id=f"terminal:{config.computer.name}:{session_id}",
+                    actor_name=hook_actor_name,
+                )
 
         raw_output = await self._extract_agent_output(session_id, payload)
         forwarded_output_raw = payload.raw.get("linked_output")
@@ -837,6 +969,7 @@ class AgentCoordinator:
         session = await db.get_session(session_id)  # Refresh to get latest metadata
         if session and is_threaded_output_enabled(session.active_agent):
             await self.client.break_threaded_turn(session)
+            self._incremental_render_digests.pop(session_id, None)
 
         # Clear turn-specific cursor at turn completion
         await db.update_session(session_id, last_tool_done_at=None)
@@ -911,6 +1044,18 @@ class AgentCoordinator:
         Returns:
             True if threaded message was sent, False otherwise.
         """
+        lock = self._incremental_output_locks.get(session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._incremental_output_locks[session_id] = lock
+
+        async with lock:
+            return await self._maybe_send_incremental_output_unlocked(session_id, payload)
+
+    async def _maybe_send_incremental_output_unlocked(
+        self, session_id: str, payload: AgentStopPayload | AgentOutputPayload
+    ) -> bool:
+        """Core incremental output path. Caller must hold session incremental lock."""
         session = await db.get_session(session_id)
         if not session:
             return False
@@ -958,26 +1103,31 @@ class AgentCoordinator:
         # Tools are always included in threaded mode
         include_tools = is_threaded_output_enabled(agent_key)
 
-        # 1. Retrieve all assistant messages since the last cursor
-        assistant_messages = get_assistant_messages_since(
-            transcript_path, agent_name, since_timestamp=session.last_tool_done_at
-        )
+        turn_cursor = session.last_tool_done_at
 
         # Force a turn break if a new user message is detected in the transcript.
         # This handles races where the agent starts outputting before the
         # user_prompt_submit hook has been processed.
-        if _has_active_output_message(session) and session.last_tool_done_at:
+        if _has_active_output_message(session):
             user_msg = extract_last_user_message_with_timestamp(transcript_path, agent_name)
             if user_msg:
                 _, user_ts = user_msg
                 # If user message is newer than our last rendered assistant block, break the block.
-                if user_ts and user_ts > session.last_tool_done_at:
+                if user_ts and (turn_cursor is None or user_ts > turn_cursor):
                     logger.info("New turn detected in transcript; forcing fresh message block for %s", session_id[:8])
                     await self.client.break_threaded_turn(session)
+                    self._incremental_render_digests.pop(session_id, None)
+                    # Anchor this turn to the user message timestamp so repeated
+                    # poll ticks don't keep re-breaking and replaying chunks.
+                    await db.update_session(session_id, last_tool_done_at=user_ts.isoformat())
+                    turn_cursor = user_ts
                     # Refresh session to reflect cleared state
                     session = await db.get_session(session_id)
                     if not session:
                         return False
+
+        # 1. Retrieve all assistant messages since the current turn cursor
+        assistant_messages = get_assistant_messages_since(transcript_path, agent_name, since_timestamp=turn_cursor)
 
         # Decide between clean (single-block) and standard (multi-block) rendering
         # using the number of renderable blocks, not message objects. Gemini often
@@ -985,7 +1135,7 @@ class AgentCoordinator:
         renderable_block_count = count_renderable_assistant_blocks(
             transcript_path,
             agent_name,
-            since_timestamp=session.last_tool_done_at,
+            since_timestamp=turn_cursor,
             include_tools=include_tools,
             include_tool_results=False,
         )
@@ -996,7 +1146,7 @@ class AgentCoordinator:
             transcript_path,
             len(assistant_messages),
             renderable_block_count,
-            session.last_tool_done_at.isoformat() if session.last_tool_done_at else None,
+            turn_cursor.isoformat() if turn_cursor else None,
         )
 
         if not assistant_messages:
@@ -1027,14 +1177,12 @@ class AgentCoordinator:
                 agent_name,
                 include_tools=include_tools,
                 include_tool_results=False,
-                since_timestamp=session.last_tool_done_at,
+                since_timestamp=turn_cursor,
                 include_timestamps=False,
             )
         else:
             # Single message: use clean, metadata-free renderer (italics/bold-monospace).
-            message, last_ts = render_clean_agent_output(
-                transcript_path, agent_name, since_timestamp=session.last_tool_done_at
-            )
+            message, last_ts = render_clean_agent_output(transcript_path, agent_name, since_timestamp=turn_cursor)
 
         if not message:
             # Activity detected but no renderable text (e.g. empty thinking blocks or hidden tool output).
@@ -1052,10 +1200,10 @@ class AgentCoordinator:
 
             # Skip if content unchanged since last send.
             display_digest = sha256(formatted_message.encode("utf-8")).hexdigest()
-            if session.last_output_digest == display_digest:
+            if self._incremental_render_digests.get(session_id) == display_digest:
                 self._mark_incremental_noop(
                     session_id,
-                    reason="unchanged_output_digest",
+                    reason="unchanged_render_digest",
                     signature=self._suppression_signature("digest", display_digest, is_multi),
                 )
                 return False
@@ -1068,6 +1216,7 @@ class AgentCoordinator:
                 is_multi,
             )
             await self.client.send_threaded_output(session, formatted_message, multi_message=is_multi)
+            self._incremental_render_digests[session_id] = display_digest
 
             # CRITICAL: Update cursor ONLY if we are NOT tracking this message for future updates.
             # If we are tracking (is_threaded_active), we want to re-render from the start of the turn

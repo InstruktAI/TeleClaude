@@ -12,7 +12,7 @@ type: 'concept'
 Role of an AI agent session in the TeleClaude network.
 
 1. **Execution**: Performs tasks (coding, testing, analysis) in a dedicated tmux session.
-2. **Collaboration**: Uses MCP tools to delegate sub-tasks to other workers or computers.
+2. **Collaboration**: Uses TeleClaude command surfaces (`telec` and daemon APIs) to delegate sub-tasks to other workers or computers.
 3. **Communication**:
    - Responds to `caller_session_id` annotations.
    - Provides turn-summaries for the Telegram topic.

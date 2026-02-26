@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict
 
 import pytest
@@ -104,6 +105,65 @@ def test_revive_session_warns_when_kick_fails(
     assert "Warning: revive kick failed: kick failed" in out
 
 
+def test_sessions_revive_routes_to_revive_handler(monkeypatch: pytest.MonkeyPatch) -> None:
+    called: Dict[str, Any] = {}
+
+    def fake_handle_revive(args: list[str]) -> None:
+        called["args"] = args
+
+    monkeypatch.setattr(telec, "_handle_revive", fake_handle_revive)
+
+    telec._handle_cli_command(["sessions", "revive", "sess-123", "--attach"])
+
+    assert called["args"] == ["sess-123", "--attach"]
+
+
+def test_top_level_revive_is_not_supported(capsys: pytest.CaptureFixture[str]) -> None:
+    telec._handle_cli_command(["revive", "sess-456"])
+    output = capsys.readouterr().out
+    assert "Unknown command: /revive" in output
+
+
+def test_namespace_commands_require_explicit_subcommand(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Parent commands must not execute behavior when invoked without a subcommand."""
+
+    standalone_namespaces = [name for name, cmd in telec.CLI_SURFACE.items() if cmd.subcommands and cmd.standalone]
+    assert standalone_namespaces == []
+
+    def _forbid(_args: list[str]) -> None:
+        raise AssertionError("Implicit parent execution is forbidden")
+
+    monkeypatch.setattr(telec, "handle_sessions", _forbid)
+    monkeypatch.setattr(telec, "handle_computers", _forbid)
+    monkeypatch.setattr(telec, "handle_projects", _forbid)
+    monkeypatch.setattr(telec, "handle_agents", _forbid)
+    monkeypatch.setattr(telec, "handle_channels", _forbid)
+
+    def _forbid_wizard(guided: bool = False) -> None:  # noqa: ARG001 - signature match
+        _forbid([])
+
+    monkeypatch.setattr(telec, "_run_tui_config_mode", _forbid_wizard)
+
+    namespace_commands = [name for name, cmd in telec.CLI_SURFACE.items() if cmd.subcommands and not cmd.standalone]
+    for command in namespace_commands:
+        telec._handle_cli_command([command])
+        output = capsys.readouterr().out
+        assert "Usage:" in output
+        assert f"telec {command}" in output
+
+
+def test_help_expands_config_second_level_actions() -> None:
+    output = telec._usage()
+    assert "telec config people list" in output
+    assert "telec config people add" in output
+    assert "telec config people edit" in output
+    assert "telec config people remove" in output
+    assert "telec config env list" in output
+    assert "telec config env set" in output
+
+
 def test_help_includes_notes_and_examples_for_all_subcommands() -> None:
     for cmd_name, cmd in telec.CLI_SURFACE.items():
         if not cmd.subcommands:
@@ -121,3 +181,30 @@ def test_help_includes_notes_and_examples_for_top_level_leaf_commands() -> None:
         output = telec._usage(cmd_name)
         assert "\nNotes:\n" in output
         assert "\nExamples:\n" in output
+
+
+def test_bugs_list_uses_worktree_state_for_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """bugs list and roadmap list should agree on worktree-owned build status."""
+    project_root = tmp_path
+    slug = "fix-bug"
+
+    todos_dir = project_root / "todos"
+    todo_dir = todos_dir / slug
+    todo_dir.mkdir(parents=True)
+    (todos_dir / "roadmap.yaml").write_text(f"- slug: {slug}\n", encoding="utf-8")
+    (todo_dir / "bug.md").write_text("# Bug\n", encoding="utf-8")
+    (todo_dir / "state.yaml").write_text("build: pending\nreview: pending\n", encoding="utf-8")
+
+    worktree_todo = project_root / "trees" / slug / "todos" / slug
+    worktree_todo.mkdir(parents=True, exist_ok=True)
+    (worktree_todo / "state.yaml").write_text("build: started\nreview: pending\n", encoding="utf-8")
+
+    telec._handle_roadmap(["list", "--project-root", str(project_root)])
+    roadmap_output = capsys.readouterr().out
+    assert "Build:started" in roadmap_output
+
+    telec._handle_bugs(["list", "--project-root", str(project_root)])
+    bugs_output = capsys.readouterr().out
+    bug_lines = [line for line in bugs_output.splitlines() if slug in line]
+    assert bug_lines
+    assert any("building" in line for line in bug_lines)

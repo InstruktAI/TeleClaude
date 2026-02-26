@@ -920,7 +920,7 @@ async def test_dispatch_hook_event_bootstraps_headless_codex_session_on_agent_st
         session_id="tele-booted",
         computer_name="TestMac",
         tmux_session_name="",
-        last_input_origin=InputOrigin.HOOK.value,
+        last_input_origin=InputOrigin.TERMINAL.value,
         title="Standalone",
         active_agent="codex",
     )
@@ -1022,6 +1022,10 @@ async def test_dispatch_hook_event_discovers_codex_transcript_in_worker():
         for session_id, kwargs in updates
     )
     assert transcript_call_found, f"Expected native_log_file update call, got: {updates}"
+    assert mock_coordinator.handle_event.await_count == 1
+    context = mock_coordinator.handle_event.await_args.args[0]
+    assert context.data.transcript_path == "/tmp/codex.jsonl"
+    assert context.data.raw.get("native_log_file") == "/tmp/codex.jsonl"
 
 
 @pytest.mark.asyncio

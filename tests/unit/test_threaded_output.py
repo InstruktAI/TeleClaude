@@ -65,7 +65,52 @@ def test_render_agent_output_thinking(tmp_path):
 
     result, _ts = render_agent_output(str(transcript_path), AgentName.CLAUDE)
     assert "Let me think..." in result
+    assert "*Let me think...*" in result
     assert "Hi there" in result
+
+
+def test_render_agent_output_codex_reasoning_payload(tmp_path):
+    transcript_path = tmp_path / "codex.jsonl"
+    transcript_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "user",
+                            "content": [{"type": "input_text", "text": "Hi"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "reasoning",
+                            "summary": [{"type": "summary_text", "text": "Analyzing request"}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "Done"}],
+                        },
+                    }
+                ),
+            ]
+        )
+    )
+
+    result, _ts = render_agent_output(str(transcript_path), AgentName.CODEX, include_timestamps=False)
+    assert result is not None
+    assert "*Analyzing request*" in result
+    assert "Done" in result
 
 
 def test_render_agent_output_exclude_tools(tmp_path):

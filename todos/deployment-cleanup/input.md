@@ -11,7 +11,7 @@ Remove the old manual deploy system now that automated deployment is in place.
 
 ### What to remove
 
-- `teleclaude__deploy` MCP tool (definitions, handlers, role_tools) — IF MCP
+- `telec deploy` MCP tool (definitions, handlers, role_tools) — IF MCP
   tools still exist. The `mcp-migration-delete-mcp` roadmap item may have already
   removed all MCP code. Check before attempting removal.
 - `teleclaude/services/deploy_service.py`

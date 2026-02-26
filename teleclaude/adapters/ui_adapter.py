@@ -45,8 +45,10 @@ if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 from teleclaude.utils.markdown import (
+    MARKDOWN_V2_INITIAL_STATE,
     MarkdownV2State,
     continuation_prefix_for_markdown_v2_state,
+    leading_balanced_markdown_v2_entity_span,
     scan_markdown_v2_state,
     truncate_markdown_v2_with_consumed,
 )
@@ -69,10 +71,21 @@ class UiAdapter(BaseAdapter):
 
     # Platform message size limit (subclasses can override)
     max_message_size: int = UI_MESSAGE_MAX_CHARS
+    # Keep small Markdown entities (e.g. links) atomic across chunk boundaries.
+    THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS = 50
 
     # Per-session lock to serialize output delivery and prevent concurrent
     # lanes from racing on output_message_id reads/writes.
     _output_delivery_locks: dict[str, asyncio.Lock] = {}
+
+    @classmethod
+    def _get_output_delivery_lock(cls, session_id: str) -> asyncio.Lock:
+        """Get/create the per-session output lock."""
+        lock = cls._output_delivery_locks.get(session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            cls._output_delivery_locks[session_id] = lock
+        return lock
 
     def __init__(self, client: "AdapterClient") -> None:
         """Initialize UiAdapter and register event listeners.
@@ -249,36 +262,51 @@ class UiAdapter(BaseAdapter):
         metadata: MessageMetadata,
         multi_message: bool = False,
         status_line: str = "",
+        dedupe_by_digest: bool = True,
     ) -> Optional[str]:
-        """Unified output delivery: dedup, edit/send, footer management.
+        """Unified output delivery: dedup, edit/send, footer management."""
+        lock = self._get_output_delivery_lock(session.session_id)
+        async with lock:
+            return await self._deliver_output_unlocked(
+                session,
+                text,
+                metadata,
+                multi_message=multi_message,
+                status_line=status_line,
+                dedupe_by_digest=dedupe_by_digest,
+            )
 
-        Serialized per session to prevent concurrent UI lanes from racing
-        on output_message_id reads/writes (which creates duplicate messages).
-        """
-        sid = session.session_id
-        if sid not in self._output_delivery_locks:
-            self._output_delivery_locks[sid] = asyncio.Lock()
+    async def _deliver_output_unlocked(
+        self,
+        session: "Session",
+        text: str,
+        metadata: MessageMetadata,
+        multi_message: bool = False,
+        status_line: str = "",
+        dedupe_by_digest: bool = True,
+    ) -> Optional[str]:
+        """Core output delivery logic. Caller must hold the session output lock."""
+        display_digest = sha256(text.encode("utf-8")).hexdigest()
 
-        async with self._output_delivery_locks[sid]:
-            # 1. Digest-based dedup
-            display_digest = sha256(text.encode("utf-8")).hexdigest()
-            if session.last_output_digest == display_digest:
-                return await self._get_output_message_id(session)
+        # Digest short-circuit is kept for non-threaded output updates.
+        # Threaded mode dedupe belongs upstream in the coordinator.
+        if dedupe_by_digest and session.last_output_digest == display_digest:
+            return await self._get_output_message_id(session)
 
-            # 2. Try edit existing
-            if await self._try_edit_output_message(session, text, metadata):
-                await db.update_session(session.session_id, last_output_digest=display_digest)
-                await self._send_footer(session, status_line=status_line)
-                return await self._get_output_message_id(session)
+        # 2. Try edit existing
+        if await self._try_edit_output_message(session, text, metadata):
+            await db.update_session(session.session_id, last_output_digest=display_digest)
+            await self._send_footer(session, status_line=status_line)
+            return await self._get_output_message_id(session)
 
-            # 3. Edit failed → cleanup footer, send new, send footer below
-            await self._cleanup_footer_if_present(session)
-            new_id = await self.send_message(session, text, metadata=metadata, multi_message=multi_message)
-            if new_id:
-                await self._store_output_message_id(session, new_id)
-                await db.update_session(session.session_id, last_output_digest=display_digest)
-                await self._send_footer(session, status_line=status_line)
-            return new_id
+        # 3. Edit failed → cleanup footer, send new, send footer below
+        await self._cleanup_footer_if_present(session)
+        new_id = await self.send_message(session, text, metadata=metadata, multi_message=multi_message)
+        if new_id:
+            await self._store_output_message_id(session, new_id)
+            await db.update_session(session.session_id, last_output_digest=display_digest)
+            await self._send_footer(session, status_line=status_line)
+        return new_id
 
     async def _try_edit_output_message(self, session: "Session", text: str, metadata: MessageMetadata) -> bool:
         """Try to edit existing output message, clear message_id if edit fails.
@@ -448,21 +476,40 @@ class UiAdapter(BaseAdapter):
         session: "Session",
         text: str,
         multi_message: bool = False,
-        _continuation_state: MarkdownV2State = (False, False, False),
+        _continuation_state: MarkdownV2State = MARKDOWN_V2_INITIAL_STATE,
     ) -> Optional[str]:
-        """Send or edit threaded output message with smart pagination.
-
-        Handles message length limits by splitting into multiple messages
-        with "..." continuity markers.
-        """
+        """Send or edit threaded output message with smart pagination."""
         # Skip threaded output for adapters that don't have it enabled.
         if not is_threaded_output_enabled(session.active_agent, adapter=self.ADAPTER_KEY):
             return None
 
-        # Convert raw Markdown to platform-specific format (e.g. Telegram escaping)
-        # BEFORE any processing. char_offset tracks the CONVERTED text.
-        text = self._convert_markdown_for_platform(text)
+        lock = self._get_output_delivery_lock(session.session_id)
+        async with lock:
+            # Re-sync from DB so stale callers cannot replay already-consumed chunks.
+            fresh = await db.get_session(session.session_id)
+            if fresh:
+                session.adapter_metadata = fresh.adapter_metadata
+                session.output_message_id = fresh.output_message_id
+                session.last_output_digest = fresh.last_output_digest
 
+            # Convert once per render cycle. Telegram markdown conversion is not
+            # idempotent; re-converting recursively can corrupt escape balance.
+            converted_text = self._convert_markdown_for_platform(text)
+            return await self._send_threaded_output_unlocked(
+                session,
+                converted_text,
+                multi_message=multi_message,
+                _continuation_state=_continuation_state,
+            )
+
+    async def _send_threaded_output_unlocked(
+        self,
+        session: "Session",
+        text: str,
+        multi_message: bool = False,
+        _continuation_state: MarkdownV2State = MARKDOWN_V2_INITIAL_STATE,
+    ) -> Optional[str]:
+        """Threaded-output core logic. Caller must hold the session output lock."""
         # HARD CLEANUP: Ensure no footer exists in threaded mode.
         await self._cleanup_footer_if_present(session)
 
@@ -482,60 +529,67 @@ class UiAdapter(BaseAdapter):
             return output_message_id
 
         # 3. Session Badge (Header)
-        # Send ONLY if badge hasn't been sent yet for this session.
-        # This is a static, one-time "Badge" message to identify the session context.
-        if not await self._get_badge_sent(session):
+        # Discord uses thread topper as the canonical badge and should not emit
+        # the legacy threaded badge block.
+        if self.ADAPTER_KEY != "discord" and not await self._get_badge_sent(session):
             badge_text = self._build_session_id_lines(session)
             if badge_text:
-                # Use client.send_message to ensure fan-out to all adapters.
-                # Mark untracked (ephemeral=False) to keep in history.
                 await self.client.send_message(
                     session,
                     badge_text,
                     metadata=MessageMetadata(parse_mode=None),
                     cleanup_trigger=CleanupTrigger.NEXT_TURN,
-                    ephemeral=False,  # Static log entry
+                    ephemeral=False,
                 )
                 await self._set_badge_sent(session, True)
 
         # 4. Add continuity markers
-        # Continuity markers (...) are disabled for threaded mode.
         is_markup_v2 = self._build_metadata_for_thread().parse_mode == "MarkdownV2"
         continuation_prefix = continuation_prefix_for_markdown_v2_state(_continuation_state) if is_markup_v2 else ""
-
-        # Body contains continuation prefix + active source text
         body_text = f"{continuation_prefix}{active_text}"
-
-        # Display text is just the body
         display_text = body_text
 
         # 5. Check for overflow
         limit = self.max_message_size - 10
-
         if len(display_text) > limit:
             # --- OVERFLOW: SEAL AND SPLIT ---
-
-            # Calculate how much actual text fits
-            available_for_content = limit
-            if available_for_content <= 0:
-                available_for_content = 1
+            available_for_content = max(limit, 1)
 
             if is_markup_v2:
-                # Threaded mode receives MarkdownV2 text from coordinator.
-                # Use the shared truncation helper to avoid slicing inside escapes/entities.
                 chunk, consumed_display = truncate_markdown_v2_with_consumed(
                     body_text,
                     max_chars=available_for_content,
                     suffix="",
                 )
 
-                # consumed_display is the amount of body_text consumed.
-                # Remove continuation_prefix length to get source text consumed.
                 consumed_prefix = min(consumed_display, len(continuation_prefix))
                 split_idx = consumed_display - consumed_prefix
 
+                # If the split point would cut through a short leading entity
+                # (like a compact link), try to move the boundary to the end
+                # of that entity so it remains intact.
+                entity_scan_limit = min(self.THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS, len(active_text))
+                atomic_entity_threshold = min(
+                    self.THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS,
+                    max(32, available_for_content // 2),
+                )
+                leading_entity_span = leading_balanced_markdown_v2_entity_span(
+                    active_text,
+                    max_scan_chars=entity_scan_limit,
+                )
+                if 0 < leading_entity_span <= atomic_entity_threshold and split_idx < leading_entity_span:
+                    atomic_chunk, atomic_consumed_display = truncate_markdown_v2_with_consumed(
+                        f"{continuation_prefix}{active_text[:leading_entity_span]}",
+                        max_chars=available_for_content,
+                        suffix="",
+                    )
+                    atomic_consumed_prefix = min(atomic_consumed_display, len(continuation_prefix))
+                    atomic_split_idx = atomic_consumed_display - atomic_consumed_prefix
+                    if atomic_split_idx == leading_entity_span:
+                        chunk = atomic_chunk
+                        split_idx = atomic_split_idx
+
                 if split_idx <= 0 and active_text:
-                    # Ensure forward progress under pathological inputs.
                     split_idx = min(len(active_text), available_for_content)
                     chunk, _ = truncate_markdown_v2_with_consumed(
                         f"{continuation_prefix}{active_text[:split_idx]}",
@@ -546,7 +600,6 @@ class UiAdapter(BaseAdapter):
                 consumed_source = active_text[:split_idx]
                 next_state = scan_markdown_v2_state(consumed_source, initial_state=_continuation_state)
             else:
-                # Find split point (smart truncate on space)
                 candidate = active_text[:available_for_content]
                 last_space = candidate.rfind(" ")
                 if last_space > (len(candidate) * 0.8):
@@ -564,7 +617,10 @@ class UiAdapter(BaseAdapter):
                 await self._try_edit_output_message(session, sealed_text, seal_metadata)
             else:
                 new_id = await self.send_message(
-                    session, sealed_text, metadata=seal_metadata, multi_message=multi_message
+                    session,
+                    sealed_text,
+                    metadata=seal_metadata,
+                    multi_message=multi_message,
                 )
                 if new_id:
                     await self._store_output_message_id(session, new_id)
@@ -574,17 +630,33 @@ class UiAdapter(BaseAdapter):
             await self._set_char_offset(session, new_offset)
             await self._clear_output_message_id(session)
 
-            # Recursive call to handle the remainder
-            return await self.send_threaded_output(
+            # Recursive call to handle the remainder (same converted source text).
+            return await self._send_threaded_output_unlocked(
                 session,
                 text,
-                multi_message,
+                multi_message=multi_message,
                 _continuation_state=next_state,
             )
 
         # --- NORMAL CASE: FIT AND SEND ---
+        if is_markup_v2 and display_text:
+            # Keep each intermediate threaded render syntactically valid for
+            # MarkdownV2 by trimming partial entities and appending closers.
+            display_text, _consumed = truncate_markdown_v2_with_consumed(
+                display_text,
+                max_chars=len(display_text),
+                suffix="",
+            )
+            if not display_text:
+                return output_message_id
         metadata = self._build_metadata_for_thread()
-        return await self._deliver_output(session, display_text, metadata, multi_message=multi_message)
+        return await self._deliver_output_unlocked(
+            session,
+            display_text,
+            metadata,
+            multi_message=multi_message,
+            dedupe_by_digest=False,
+        )
 
     def _build_metadata_for_thread(self) -> MessageMetadata:
         """Build metadata for threaded content messages. Override for platform-specific parse mode."""

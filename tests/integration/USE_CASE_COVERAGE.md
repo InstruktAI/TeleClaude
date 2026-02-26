@@ -31,8 +31,8 @@ This document maps integration tests to use cases defined in `tests/E2E_USE_CASE
 | UC-R2: Redis adapter warmup                        | test_redis_adapter_warmup.py       | test_startup_refreshes_remote_snapshot                   | ✅ Full |
 | UC-R3: Cache digest stability                      | test_projects_digest_refresh.py    | test_project_digest_changes_detected                     | ✅ Full |
 | UC-CTX: Context selector                           | test_context_selector_e2e.py       | test_context_selector_phase1                             | ✅ Full |
-| UC-CLI1: telec docs phase 1                        | test_telec_cli_commands.py         | test_docs_phase1_parses_flags_and_calls_selector         | ✅ Full |
-| UC-CLI2: telec docs phase 2                        | test_telec_cli_commands.py         | test_docs_phase2_ignores_filters                         | ✅ Full |
+| UC-CLI1: telec docs index                          | test_telec_cli_commands.py         | test_docs_phase1_parses_flags_and_calls_selector         | ✅ Full |
+| UC-CLI2: telec docs get                            | test_telec_cli_commands.py         | test_docs_phase2_ignores_filters                         | ✅ Full |
 | UC-CLI3: telec sync validate-only                  | test_telec_cli_commands.py         | test_sync_validate_only_calls_sync                       | ✅ Full |
 | UC-CLI4: telec init                                | test_telec_cli_commands.py         | test_init_calls_init_project                             | ✅ Full |
 | UC-CLI5: telec completion                          | test_telec_cli_commands.py         | test_completion_docs_flags                               | ✅ Full |

@@ -340,6 +340,47 @@ def test_parse_codex_transcript(tmp_path):
     assert "codex assistant reply" in result
 
 
+def test_parse_codex_transcript_reasoning_blocks(tmp_path):
+    """Codex response_item reasoning payloads render as assistant thinking blocks."""
+    session_file = tmp_path / "codex-reasoning.jsonl"
+    entries = [
+        json.dumps(
+            {
+                "type": "response_item",
+                "timestamp": "2025-12-15T21:00:00.000Z",
+                "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "prompt"}]},
+            }
+        ),
+        json.dumps(
+            {
+                "type": "response_item",
+                "timestamp": "2025-12-15T21:00:01.000Z",
+                "payload": {
+                    "type": "reasoning",
+                    "summary": [{"type": "summary_text", "text": "Reasoning line"}],
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "response_item",
+                "timestamp": "2025-12-15T21:00:02.000Z",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "final answer"}],
+                },
+            }
+        ),
+    ]
+    session_file.write_text("\n".join(entries), encoding="utf-8")
+
+    result = parse_codex_transcript(str(session_file), "Codex Reasoning", tail_chars=0)
+    assert "Reasoning line" in result
+    assert "*Reasoning line*" in result
+    assert "final answer" in result
+
+
 def test_parse_codex_transcript_tail_chars_prefers_recent_sections(tmp_path):
     """Codex tail truncation should keep the newest content visible."""
     session_file = tmp_path / "codex-tail.jsonl"

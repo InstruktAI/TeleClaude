@@ -22,10 +22,10 @@ Allow AI sessions to wait on other sessions and receive stop notifications.
 
 **Inputs:**
 
-- Listener registration requests from MCP tools (start_session, send_message, run_agent_command)
+- Listener registration requests from session command handlers (`start_session`, `send_message`, `run_agent_command`)
 - Session stop events from agent_coordinator
 - Session input_request events from agent parsers
-- Unsubscribe requests via stop_notifications MCP tool
+- Unsubscribe requests via the `stop_notifications` command
 - Cleanup triggers when caller sessions end
 
 **Outputs:**
@@ -49,22 +49,22 @@ Allow AI sessions to wait on other sessions and receive stop notifications.
 ```mermaid
 sequenceDiagram
     participant MasterAI
-    participant MCP
+    participant CommandAPI
     participant Registry
     participant DB
 
-    MasterAI->>MCP: start_session(computer="local", message="build feature")
-    MCP->>DB: Create session record
-    MCP->>DB: Get tmux session name
-    MCP->>Registry: register_listener(target=worker_id, caller=master_id, tmux=tc_master_123)
+    MasterAI->>CommandAPI: start_session(computer="local", message="build feature")
+    CommandAPI->>DB: Create session record
+    CommandAPI->>DB: Get tmux session name
+    CommandAPI->>Registry: register_listener(target=worker_id, caller=master_id, tmux=tc_master_123)
     Registry->>Registry: Check duplicate (caller, target) pair
     alt Not duplicate
         Registry->>Registry: Append listener to target's list
-        Registry->>MCP: True (registered)
+        Registry->>CommandAPI: True (registered)
     else Duplicate
-        Registry->>MCP: False (already registered)
+        Registry->>CommandAPI: False (already registered)
     end
-    MCP->>MasterAI: session_id
+    CommandAPI->>MasterAI: session_id
 ```
 
 ### 2. Stop Event Notification
@@ -83,7 +83,7 @@ sequenceDiagram
     Registry->>Coordinator: [listener1, listener2]
     loop For each listener
         Coordinator->>TmuxDelivery: deliver_listener_message(caller_id, tmux_session, notification)
-        TmuxDelivery->>MasterAI: Inject "Session abc finished. Use get_session_data(...)"
+        TmuxDelivery->>MasterAI: Inject "Session abc finished. Use telec sessions tail <session_id> --thinking --tools"
     end
     Note over Registry: Listeners removed (one-shot)
 ```
@@ -127,30 +127,30 @@ _listeners: dict[str, list[SessionListener]] = {
 
 ### 5. Notification Message Templates
 
-| Event Type    | Message Format                                                                                                                  |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Stop          | `Session {id} [on {computer}] "{title}" finished its turn. Use teleclaude__get_session_data(computer='{c}', session_id='{id}')` |
-| Input Request | `Session {id} on {computer} needs input: {message} Use teleclaude__send_message(computer='{c}', session_id='{id}', ...)`        |
+| Event Type    | Message Format                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------ |
+| Stop          | `Session {id} [on {computer}] "{title}" finished its turn. Use: telec sessions tail {id} --thinking --tools` |
+| Input Request | `Session {id} on {computer} needs input: {message}. Reply with: telec sessions send {id} "<your message>"`   |
 
 ### 6. Unsubscribe Flow (stop_notifications)
 
 ```mermaid
 sequenceDiagram
     participant MasterAI
-    participant MCP
+    participant CommandAPI
     participant Registry
 
-    MasterAI->>MCP: stop_notifications(computer="local", session_id=worker_id, caller_session_id=master_id)
-    MCP->>Registry: unregister_listener(target=worker_id, caller=master_id)
+    MasterAI->>CommandAPI: stop_notifications(computer="local", session_id=worker_id, caller_session_id=master_id)
+    CommandAPI->>Registry: unregister_listener(target=worker_id, caller=master_id)
     Registry->>Registry: Find and remove listener
     alt Found
         Registry->>Registry: Remove from target's list
         Registry->>Registry: Prune empty target list if needed
-        Registry->>MCP: True (removed)
+        Registry->>CommandAPI: True (removed)
     else Not found
-        Registry->>MCP: False (no such listener)
+        Registry->>CommandAPI: False (no such listener)
     end
-    MCP->>MasterAI: Success/Failure
+    CommandAPI->>MasterAI: Success/Failure
     Note over WorkerAI: Worker continues running, but master no longer notified
 ```
 

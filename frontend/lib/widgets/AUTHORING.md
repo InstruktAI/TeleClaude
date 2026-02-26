@@ -1,13 +1,13 @@
 # Widget Expression Format — Authoring Guide
 
-Use `teleclaude__render_widget` to render structured UI in the web interface.
+Use `telec sessions widget` to render structured UI in the web interface.
 Non-web adapters (Telegram, terminal) receive a text summary with file attachments.
 
 ## Tool Call
 
 ```json
 {
-  "name": "teleclaude__render_widget",
+  "name": "telec sessions widget",
   "arguments": {
     "session_id": "<current session>",
     "data": { ... }

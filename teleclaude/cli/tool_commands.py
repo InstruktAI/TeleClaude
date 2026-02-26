@@ -27,6 +27,7 @@ def handle_sessions(args: list[str]) -> None:
       send        Send a message to a session
       tail        Get recent messages from a session
       run         Run a slash command on a new agent session
+      revive      Revive a session by TeleClaude session ID
       end         End a session
       unsubscribe Stop receiving notifications from a session
       result      Send a formatted result to the session's user
@@ -51,6 +52,12 @@ def handle_sessions(args: list[str]) -> None:
         handle_sessions_tail(rest)
     elif sub == "run":
         handle_sessions_run(rest)
+    elif sub == "revive":
+        # Keep revive behavior centralized in telec CLI entrypoint since it
+        # includes post-revive kick and optional tmux attach semantics.
+        from teleclaude.cli import telec as telec_cli
+
+        telec_cli._handle_revive(rest)
     elif sub == "end":
         handle_sessions_end(rest)
     elif sub == "unsubscribe":
@@ -79,6 +86,7 @@ Subcommands:
   send         Send a message to a running session
   tail         Get recent messages from a session
   run          Run a slash command on a new agent session
+  revive       Revive session by TeleClaude session ID
   end          End (terminate) a session
   unsubscribe  Stop receiving notifications from a session
   result       Send a formatted result message to the session's user
@@ -913,14 +921,14 @@ def handle_todo_set_deps(args: list[str]) -> None:
 def handle_computers(args: list[str]) -> None:
     """List available computers (local + cached remote computers).
 
-    Usage: telec computers
+    Usage: telec computers list
 
     Returns all known computers with their status, user, host, and whether
     they are the local computer. Remote computers are populated from the
     Redis peer cache and may be stale if connectivity is lost.
 
     Examples:
-      telec computers
+      telec computers list
     """
     if "--help" in args or "-h" in args:
         print(handle_computers.__doc__ or "")
@@ -933,7 +941,7 @@ def handle_computers(args: list[str]) -> None:
 def handle_projects(args: list[str]) -> None:
     """List projects (local + cached remote projects).
 
-    Usage: telec projects [--computer <name>]
+    Usage: telec projects list [--computer <name>]
 
     Returns all known projects with their name, path, description, and
     which computer they are on. Local projects are served from cache when
@@ -943,8 +951,8 @@ def handle_projects(args: list[str]) -> None:
       --computer <name>  Filter to a specific computer (optional)
 
     Examples:
-      telec projects
-      telec projects --computer macbook
+      telec projects list
+      telec projects list --computer macbook
     """
     if "--help" in args or "-h" in args:
         print(handle_projects.__doc__ or "")

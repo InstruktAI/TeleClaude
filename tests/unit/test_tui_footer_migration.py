@@ -340,3 +340,33 @@ def test_start_work_on_file_row_uses_parent_slug(monkeypatch: pytest.MonkeyPatch
     assert captured["computer"] == "local"
     assert captured["project_path"] == "/tmp/project"
     assert captured["default_message"] == "/next-work todo-2"
+
+
+@pytest.mark.unit
+def test_start_work_bug_row_bypasses_dor_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    view = PreparationView()
+    project = _project_header("/tmp/project")
+    bug_row = TodoRow(
+        todo=TodoItem(
+            slug="fix-login-bug",
+            status=TodoStatus.PENDING,
+            description="bug",
+            has_requirements=False,
+            has_impl_plan=False,
+            dor_score=None,
+            files=["bug.md"],
+        )
+    )
+    view._nav_items = [project, bug_row]
+    view.cursor_index = 1
+    view._slug_to_project_path["fix-login-bug"] = "/tmp/project"
+    view._slug_to_computer["fix-login-bug"] = "local"
+
+    captured: dict[str, str] = {}
+    monkeypatch.setattr(view, "_open_session_modal", lambda **kwargs: captured.update(kwargs))
+
+    view.action_start_work()
+
+    assert captured["computer"] == "local"
+    assert captured["project_path"] == "/tmp/project"
+    assert captured["default_message"] == "/next-work fix-login-bug"

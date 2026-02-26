@@ -115,7 +115,7 @@ The `files_read` and `files_modified` columns are retained in the schema for bac
 
 ### 1. HTTP API (agent-facing)
 
-Agents discover the memory API through `teleclaude__get_context` which serves the `memory-management-api` spec doc. Agents then use `curl` against the daemon's unix socket.
+Agents discover the memory API through `telec docs index` + `telec docs get` (retrieving the `memory-management-api` spec doc) and then call the daemon API over the local unix socket.
 
 | Endpoint               | Method | Purpose                                    |
 | ---------------------- | ------ | ------------------------------------------ |

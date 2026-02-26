@@ -20,7 +20,6 @@ import type { MessageInfo } from "@/lib/api/types";
 import { fetchSessions } from "@/lib/api/sessions";
 import { SessionAgentProvider } from "@/hooks/useSessionAgent";
 import { safeAgent, type AgentType } from "@/lib/theme/tokens";
-import { cleanMessageText, isSystemInjected, getCommandHeader } from "@/lib/utils/text";
 
 interface Props {
   sessionId: string;
@@ -30,61 +29,52 @@ interface Props {
 /**
  * Convert daemon MessageInfo[] to AI SDK UIMessage[] format.
  * Groups consecutive same-role text messages into a single message.
- * Filters system-injected noise and reclassifies automated messages.
+ * Preserves canonical message text/reasoning from the daemon stream.
  */
 function toUIMessages(messages: MessageInfo[]): UIMessage[] {
   const result: UIMessage[] = [];
   let current: UIMessage | null = null;
-  
-  // Track if the current "burst" of same-role messages should be suppressed
-  let burstSuppressionRole: string | null = null;
 
   for (const msg of messages) {
-    if (msg.type !== "text") continue;
+    if (msg.type !== "text" && msg.type !== "thinking") continue;
 
     const role = msg.role === "user" ? "user" : "assistant";
 
-    // Reset burst suppression if the role switches
-    if (current && current.role !== role) {
-      burstSuppressionRole = null;
-    }
+    if (msg.type === "thinking") {
+      if (role !== "assistant") continue;
+      if (!msg.text?.trim()) continue;
 
-    // Skip if we are currently suppressing this role's burst
-    if (burstSuppressionRole === role) continue;
+      const reasoningPart = {
+        type: "reasoning" as const,
+        text: msg.text,
+      };
 
-    const cleanedText = cleanMessageText(msg.text);
-    const commandHeader = getCommandHeader(msg.text);
-
-    // Filter out system messages
-    if (isSystemInjected(cleanedText)) continue;
-
-    // If it's a command message, extraction is handled by cleanMessageText.
-    // We then trigger burst suppression to hide the "body" messages that follow.
-    if (commandHeader) {
-      burstSuppressionRole = role;
-    }
-
-    if (current && current.role === role) {
-      // If it's a command, we FORCE a new message instead of merging
-      // to keep it isolated from any previous text.
-      if (commandHeader) {
+      if (current && current.role === role) {
+        current.parts.push(reasoningPart as unknown as UIMessage["parts"][number]);
+      } else {
         current = {
-          id: `cmd-${msg.file_index}-${msg.entry_index}`,
+          id: `hist-think-${msg.file_index}-${msg.entry_index}`,
           role,
-          parts: [{ type: "text" as const, text: cleanedText }],
+          parts: [reasoningPart as unknown as UIMessage["parts"][number]],
         };
         result.push(current);
+      }
+      continue;
+    }
+    if (!msg.text?.trim()) continue;
+
+    if (current && current.role === role) {
+      const lastPart = current.parts[current.parts.length - 1];
+      if (lastPart && lastPart.type === "text") {
+        lastPart.text += "\n\n" + msg.text;
       } else {
-        const lastPart = current.parts[current.parts.length - 1];
-        if (lastPart && lastPart.type === "text") {
-          lastPart.text += "\n\n" + cleanedText;
-        }
+        current.parts.push({ type: "text" as const, text: msg.text });
       }
     } else {
       current = {
         id: `hist-${msg.file_index}-${msg.entry_index}`,
         role,
-        parts: [{ type: "text" as const, text: cleanedText }],
+        parts: [{ type: "text" as const, text: msg.text }],
       };
       result.push(current);
     }

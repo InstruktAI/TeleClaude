@@ -80,7 +80,8 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/context-selection
-  description: Context selection pipeline that picks relevant docs for MCP get_context.
+  description: Context selection pipeline that picks relevant docs for the two-phase
+    context retrieval flow.
   type: design
   scope: project
   path: docs/project/design/architecture/context-selection.md
@@ -145,14 +146,6 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/layer-ownership.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: project/design/architecture/mcp-layer
-  description: Resilient two-layer MCP architecture for AI-to-AI communication.
-  type: design
-  scope: global
-  path: docs/project/design/architecture/mcp-layer.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -393,24 +386,6 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: project/policy/mcp-connection-management
-  description: Architecture policy for MCP clients - tool-call filtering, connection
-    handling, to guarantee stable connection between daemon restarts.
-  type: policy
-  scope: global
-  path: docs/project/policy/mcp-connection-management.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: project/policy/mcp-tool-filtering
-  description: Role-based filtering of teleclaude tools to enforce least-privilege
-    for scoped agents.
-  type: policy
-  scope: project
-  path: docs/project/policy/mcp-tool-filtering.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
 - id: project/policy/orchestrator-jurisdiction
   description: Enforces strict separation between process state management and system
     code modification for the Orchestrator role.
@@ -480,7 +455,7 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/ai-to-ai-operations
-  description: Recommended flow for delegating work using TeleClaude MCP tools.
+  description: Recommended flow for delegating work using TeleClaude CLI/API commands.
   type: procedure
   scope: project
   path: docs/project/procedure/ai-to-ai-operations.md
@@ -684,14 +659,6 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/jobs/youtube-sync-subscriptions.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: project/spec/mcp-tool-surface
-  description: Authoritative surface for Model Context Protocol (MCP) tools.
-  type: spec
-  scope: project
-  path: docs/project/spec/mcp-tool-surface.md
   role: member
   visibility: internal
   source_project: TeleClaude

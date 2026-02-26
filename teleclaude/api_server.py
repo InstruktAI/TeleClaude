@@ -11,6 +11,7 @@ import faulthandler
 import json
 import os
 import shlex
+import socket
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -879,8 +880,6 @@ class APIServer:
             request: "Request",
             session_id: str,
             since: str | None = Query(None, description="ISO 8601 UTC timestamp; only messages after this time"),
-            include_tools: bool = Query(False, description="Include tool_use/tool_result entries"),
-            include_thinking: bool = Query(False, description="Include thinking/reasoning blocks"),
             identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_TAIL),  # noqa: ARG001
         ) -> SessionMessagesDTO:
             """Get structured messages from a session's transcript files."""
@@ -924,8 +923,8 @@ class APIServer:
                     chain,
                     agent_name,
                     since=since,
-                    include_tools=include_tools,
-                    include_thinking=include_thinking,
+                    include_tools=True,
+                    include_thinking=True,
                 )
 
                 messages = [
@@ -2326,13 +2325,37 @@ class APIServer:
 
         logger.info("API server listening on %s", self.socket_path)
 
-        # Start TCP server on localhost:8420
-        await self._start_tcp_server()
+        # Start TCP listener only when server lifecycle is active.
+        # Unit tests call _start_server() directly without setting _running.
+        if self._running:
+            await self._start_tcp_server()
 
     async def _start_tcp_server(self) -> None:
         """Start TCP server for web interface access."""
         if self._tcp_server_task and not self._tcp_server_task.done():
             logger.warning("TCP server already running; skipping start")
+            return
+
+        # During daemon restarts, the previous listener can briefly keep the
+        # port busy. Probe/retry first so TCP startup doesn't destabilize API
+        # initialization.
+        tcp_port_ready = False
+        for _ in range(20):  # ~2s grace window
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    probe.bind((API_TCP_HOST, API_TCP_PORT))
+                    tcp_port_ready = True
+                    break
+                except OSError:
+                    await asyncio.sleep(0.1)
+
+        if not tcp_port_ready:
+            logger.warning(
+                "TCP port unavailable; skipping TCP listener startup",
+                host=API_TCP_HOST,
+                port=API_TCP_PORT,
+            )
             return
 
         tcp_config = uvicorn.Config(

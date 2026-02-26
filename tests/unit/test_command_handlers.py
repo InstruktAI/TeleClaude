@@ -1792,6 +1792,55 @@ async def test_process_message_updates_last_input_origin_before_broadcast():
 
 
 @pytest.mark.asyncio
+async def test_process_message_breaks_threaded_turn_before_broadcast():
+    """Threaded sessions should sever the active output block before reflecting input."""
+    call_order: list[str] = []
+
+    mock_session = MagicMock()
+    mock_session.session_id = "sess-thread-boundary"
+    mock_session.lifecycle_status = "active"
+    mock_session.tmux_session_name = "tc_thread_boundary"
+    mock_session.active_agent = "gemini"
+    mock_session.project_path = "/tmp"
+    mock_session.subdir = None
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=mock_session)
+    mock_db.update_session = AsyncMock()
+    mock_db.update_last_activity = AsyncMock()
+
+    mock_client = AsyncMock()
+
+    async def record_break(*_args, **_kwargs):
+        call_order.append("break_threaded_turn")
+
+    async def record_broadcast(*_args, **_kwargs):
+        call_order.append("broadcast_user_input")
+
+    mock_client.break_threaded_turn = AsyncMock(side_effect=record_break)
+    mock_client.broadcast_user_input = AsyncMock(side_effect=record_broadcast)
+    mock_client.pre_handle_command = AsyncMock()
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(command_handlers, "tmux_io") as mock_tmux_io,
+        patch.object(command_handlers, "polling_coordinator"),
+        patch("teleclaude.core.command_handlers.is_threaded_output_enabled", return_value=True),
+    ):
+        mock_tmux_io.wrap_bracketed_paste.return_value = "hello"
+        mock_tmux_io.process_text = AsyncMock(return_value=True)
+
+        cmd = ProcessMessageCommand(
+            session_id="sess-thread-boundary",
+            text="hello",
+            origin=InputOrigin.TELEGRAM.value,
+        )
+        await command_handlers.process_message(cmd, mock_client, AsyncMock())
+
+    assert call_order == ["break_threaded_turn", "broadcast_user_input"]
+
+
+@pytest.mark.asyncio
 async def test_handle_voice_updates_last_input_origin_before_feedback():
     """last_input_origin must be persisted before any feedback/status messages.
 

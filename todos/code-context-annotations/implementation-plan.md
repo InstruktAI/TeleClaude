@@ -211,7 +211,7 @@ description: Add and maintain @context annotations in source code docstrings.
 
 Maintain accurate, granular code documentation by adding `@context` annotations
 to docstrings of key modules, classes, and functions. Annotations are extracted
-into documentation snippets that agents discover via `teleclaude__get_context`.
+into documentation snippets that agents discover via `telec docs get`.
 
 ## Preconditions
 

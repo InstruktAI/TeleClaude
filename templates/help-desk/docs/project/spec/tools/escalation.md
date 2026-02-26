@@ -2,7 +2,7 @@
 id: project/spec/tools/escalation
 type: spec
 scope: project
-description: Tool contract for teleclaude__escalate.
+description: Tool contract for telec sessions escalate.
 audience: [admin, help-desk]
 ---
 
@@ -10,11 +10,11 @@ audience: [admin, help-desk]
 
 ## What it is
 
-The `teleclaude__escalate` MCP tool creates a Discord relay thread for admin-to-customer communication and activates relay mode on the calling session.
+The `telec sessions escalate` MCP tool creates a Discord relay thread for admin-to-customer communication and activates relay mode on the calling session.
 
 ## Canonical fields
 
-**Tool name:** `teleclaude__escalate`
+**Tool name:** `telec sessions escalate`
 
 **Parameters:**
 

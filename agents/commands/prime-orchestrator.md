@@ -27,15 +27,15 @@ Prime the orchestrator with the canonical operating context before dispatching a
 
 - Primed orchestration context summary
 - Explicit next action recommendation:
-  - `teleclaude__next_work(slug="{slug}")` when work is implementation-ready
-  - `teleclaude__next_prepare(slug="{slug}")` when readiness work is still needed
+  - `telec todo work(slug="{slug}")` when work is implementation-ready
+  - `telec todo prepare(slug="{slug}")` when readiness work is still needed
 - Report format:
 
   ```
   ORCHESTRATOR PRIMED
 
   Focus: {focus or none}
-  Recommended next call: {teleclaude__next_work(...) | teleclaude__next_prepare(...)}
+  Recommended next call: {telec todo work(...) | telec todo prepare(...)}
   ```
 
 ## Steps

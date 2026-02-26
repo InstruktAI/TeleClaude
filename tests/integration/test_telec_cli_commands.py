@@ -30,7 +30,7 @@ class SyncInvocation(TypedDict, total=False):
 def test_docs_phase1_parses_flags_and_calls_selector(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """telec docs phase 1 should parse flags and call context selector."""
+    """telec docs index should parse flags and call context selector."""
     captured: DocsInvocation = {}
 
     def fake_build_context_output(**kwargs: Any) -> str:
@@ -43,6 +43,7 @@ def test_docs_phase1_parses_flags_and_calls_selector(
 
     telec._handle_docs(
         [
+            "index",
             "--project-root",
             str(tmp_path),
             "--baseline-only",
@@ -68,7 +69,7 @@ def test_docs_phase1_parses_flags_and_calls_selector(
 def test_docs_phase2_ignores_filters(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """telec docs phase 2 ignores filter flags when snippet IDs are supplied."""
+    """telec docs get should fetch snippet IDs and ignore index-only filters."""
     captured: DocsInvocation = {}
 
     def fake_build_context_output(**kwargs: Any) -> str:
@@ -81,12 +82,9 @@ def test_docs_phase2_ignores_filters(
 
     telec._handle_docs(
         [
+            "get",
             "--project-root",
             str(tmp_path),
-            "--areas",
-            "policy",
-            "--baseline-only",
-            "--third-party",
             "general/policy/one,general/policy/two",
             "software-development/policy/three",
         ]
@@ -170,7 +168,7 @@ def test_init_calls_init_project(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 def test_completion_docs_flags(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     """Shell completion should include docs flags when requested."""
     monkeypatch.setenv("TELEC_COMPLETE", "1")
-    monkeypatch.setenv("COMP_LINE", "telec docs --a")
+    monkeypatch.setenv("COMP_LINE", "telec docs index --a")
 
     telec.main()
 
@@ -193,12 +191,26 @@ def test_sessions_run_help_exposes_command_interface(capsys: pytest.CaptureFixtu
 
 @pytest.mark.integration
 def test_docs_help_exposes_ids_and_filters(capsys: pytest.CaptureFixture[str]) -> None:
-    """docs --help should expose IDS input shape, filters, and examples."""
+    """docs --help should expose explicit index/get subcommands and examples."""
     telec._handle_cli_command(["docs", "--help"])
     output = capsys.readouterr().out
     assert "Usage:" in output
-    assert "telec docs [IDS...]" in output
+    assert "telec docs index" in output
+    assert "telec docs get <id> [id...]" in output
     assert "--areas" in output
     assert "--domains" in output
-    assert "Examples:" in output
-    assert "telec docs software-development/policy/testing" in output
+    assert "Example phase 1:" in output
+    assert "Example phase 2:" in output
+    assert "telec docs get software-development/policy/testing" in output
+
+
+@pytest.mark.integration
+def test_config_help_exposes_second_level_actions(capsys: pytest.CaptureFixture[str]) -> None:
+    telec._handle_cli_command(["config", "--help"])
+    output = capsys.readouterr().out
+    assert "telec config people list" in output
+    assert "telec config people add" in output
+    assert "telec config people edit" in output
+    assert "telec config people remove" in output
+    assert "telec config env list" in output
+    assert "telec config env set" in output

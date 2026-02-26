@@ -71,9 +71,30 @@ _AGENT_MODEL_FLAGS: dict[str, dict[str, str]] = {
         "slow": "-m gemini-3-pro-preview",
     },
     "codex": {
-        "fast": "-m gpt-5.3-codex --config model_reasoning_effort='medium'",
-        "med": "-m gpt-5.3-codex --config model_reasoning_effort='high'",
-        "slow": "-m gpt-5.3-codex --config model_reasoning_effort='xhigh'",
+        "fast": (
+            "-m gpt-5.3-codex"
+            " --config model_reasoning_effort='medium'"
+            " --config model_reasoning_summary='detailed'"
+            " --config model_supports_reasoning_summaries=true"
+            " --config show_raw_agent_reasoning=true"
+            " --config hide_agent_reasoning=false"
+        ),
+        "med": (
+            "-m gpt-5.3-codex"
+            " --config model_reasoning_effort='high'"
+            " --config model_reasoning_summary='detailed'"
+            " --config model_supports_reasoning_summaries=true"
+            " --config show_raw_agent_reasoning=true"
+            " --config hide_agent_reasoning=false"
+        ),
+        "slow": (
+            "-m gpt-5.3-codex"
+            " --config model_reasoning_effort='xhigh'"
+            " --config model_reasoning_summary='detailed'"
+            " --config model_supports_reasoning_summaries=true"
+            " --config show_raw_agent_reasoning=true"
+            " --config hide_agent_reasoning=false"
+        ),
     },
 }
 

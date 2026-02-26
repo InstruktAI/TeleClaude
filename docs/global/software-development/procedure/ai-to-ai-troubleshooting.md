@@ -13,7 +13,7 @@ Diagnose and resolve failures in AI-to-AI session dispatch and notifications.
 
 ## Preconditions
 
-- An AI-to-AI session has been dispatched via `teleclaude__run_agent_command`.
+- An AI-to-AI session has been dispatched via `telec sessions run`.
 - Access to daemon logs (`bin/telec logs`).
 - SQLite3 CLI installed for database verification.
 
@@ -37,5 +37,5 @@ Diagnose and resolve failures in AI-to-AI session dispatch and notifications.
 ## Recovery
 
 - **Handshake Failures:** If `handshake replay failed`, manually retry the command or restart the client session.
-- **Missing Notifications:** Manually check worker status with `teleclaude__get_session_data` if the automated notification fails to deliver.
+- **Missing Notifications:** Manually check worker status with `telec sessions tail <worker_session_id> --thinking --tools` if the automated notification fails to deliver.
 - **Dead Listeners:** Restart the TeleClaude daemon if in-memory listeners have been cleared due to an unplanned restart.

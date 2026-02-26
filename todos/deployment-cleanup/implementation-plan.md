@@ -14,7 +14,7 @@ update docs.
 
 **File(s):** entire codebase
 
-- [ ] Grep for: `teleclaude__deploy`, `telec deploy`, `deploy_service`,
+- [ ] Grep for: `telec deploy`, `telec deploy`, `deploy_service`,
       `DeployService`, `deploy_status`, `system_status.*deploy`
 - [ ] Catalog every reference with file path and type (import, handler, test, doc)
 - [ ] Plan removal order: consumers -> service -> Redis commands -> docs
@@ -24,7 +24,7 @@ update docs.
 **File(s):** `teleclaude/mcp/tool_definitions.py`, `teleclaude/mcp/handlers.py`,
 `teleclaude/mcp/role_tools.py`, `teleclaude/mcp_server.py`
 
-- [ ] Remove `teleclaude__deploy` from `tool_definitions.py`
+- [ ] Remove `telec deploy` from `tool_definitions.py`
 - [ ] Remove deploy handler from `handlers.py`
 - [ ] Remove deploy from `role_tools.py`
 - [ ] Remove `ToolName.DEPLOY` enum member from `mcp_server.py`

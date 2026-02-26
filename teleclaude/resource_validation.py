@@ -19,8 +19,10 @@ from typing import Mapping
 
 import frontmatter
 import yaml
+from pydantic import ValidationError
 from typing_extensions import TypedDict
 
+from teleclaude.config.schema import JobWhenConfig
 from teleclaude.types.todos import TodoState
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -977,9 +979,25 @@ def validate_jobs_config(project_root: Path) -> list[str]:
             continue
         job_cfg = raw
 
-        schedule = job_cfg.get("schedule")
-        if not isinstance(schedule, str) or schedule not in allowed_schedules:
-            errors.append(f"{config_path}: jobs.{name}.schedule must be one of {sorted(allowed_schedules)}")
+        # New contract: jobs can use `when` and omit legacy `schedule`.
+        # Legacy `schedule` remains required only when `when` is absent.
+        when_raw = job_cfg.get("when")
+        has_valid_when = False
+        if when_raw is not None:
+            if not isinstance(when_raw, dict):
+                errors.append(f"{config_path}: jobs.{name}.when must be a mapping")
+            else:
+                try:
+                    JobWhenConfig.model_validate(when_raw)
+                    has_valid_when = True
+                except ValidationError as exc:
+                    first = exc.errors()[0] if exc.errors() else {"msg": "invalid when config"}
+                    errors.append(f"{config_path}: jobs.{name}.when {first['msg']}")
+
+        if not has_valid_when:
+            schedule = job_cfg.get("schedule")
+            if not isinstance(schedule, str) or schedule not in allowed_schedules:
+                errors.append(f"{config_path}: jobs.{name}.schedule must be one of {sorted(allowed_schedules)}")
 
         preferred_hour = job_cfg.get("preferred_hour", 6)
         if not isinstance(preferred_hour, int) or not (0 <= preferred_hour <= 23):

@@ -131,7 +131,7 @@ depends on.
 
 **File(s):** MCP handlers, telec CLI, deploy_service.py
 
-- [ ] Remove `teleclaude__deploy` from MCP tool definitions and handlers
+- [ ] Remove `telec deploy` from MCP tool definitions and handlers
 - [ ] Remove `telec deploy` CLI subcommand
 - [ ] Delete `teleclaude/services/deploy_service.py`
 - [ ] Remove deploy-related Redis system command handling

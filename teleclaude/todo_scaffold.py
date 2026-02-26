@@ -28,7 +28,7 @@ _DEFAULT_STATE = TodoState(
 
 
 _BUG_STATE = TodoState(
-    build="started",
+    build="pending",
     review="pending",
     deferrals_processed=False,
     breakdown=BreakdownState(assessed=False, todos=[]),
@@ -127,7 +127,7 @@ def create_bug_skeleton(
     - todos/{slug}/bug.md
     - todos/{slug}/state.yaml
 
-    Bug todos skip the prepare phase and start at in_progress/build phase.
+    Bug todos skip the prepare phase and start as pending build work.
     """
     from datetime import datetime, timezone
 

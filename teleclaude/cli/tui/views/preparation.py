@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time as _t
+from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 from textual.app import ComposeResult
@@ -716,10 +717,15 @@ class PreparationView(Widget, can_focus=True):
             todo_row = self._resolve_todo_for_cursor()
             if not todo_row:
                 return
-            dor = todo_row.todo.dor_score
-            if dor is None or dor < DOR_READY_THRESHOLD:
-                self.app.notify(f"DOR score too low ({dor or 0}/{DOR_READY_THRESHOLD})", severity="warning")
-                return
+            file_names = {name.lower() for name in todo_row.todo.files}
+            is_bug = "bug.md" in file_names
+            if not is_bug:
+                is_bug = (Path(project_path) / "todos" / slug / "bug.md").exists()
+            if not is_bug:
+                dor = todo_row.todo.dor_score
+                if dor is None or dor < DOR_READY_THRESHOLD:
+                    self.app.notify(f"DOR score too low ({dor or 0}/{DOR_READY_THRESHOLD})", severity="warning")
+                    return
 
         self._open_session_modal(
             computer=computer,

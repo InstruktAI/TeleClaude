@@ -34,32 +34,32 @@ If restart is not enough, use:
 4. Follow that runbook exactly.
 5. Verify recovery with `make status` and fresh logs.
 
-## Runbook: MCP tools time out or fail
+## Runbook: telec/API calls time out or fail
 
 ### Symptom
 
-- MCP tool calls hang, time out, or return backend unavailable errors.
+- `telec` or API calls hang, time out, or return backend unavailable errors.
 
 ### Likely causes
 
-- MCP socket unhealthy or restarting repeatedly.
-- Wrapper reconnecting but backend not stabilizing.
+- API socket unhealthy or restarting repeatedly.
+- Daemon restarting before API initialization stabilizes.
 
 ### Fast checks
 
 1. `make status`
-2. `instrukt-ai-logs teleclaude --since 2m --grep "mcp|socket|restart|health"`
+2. `instrukt-ai-logs teleclaude --since 2m --grep "api|socket|restart|health"`
 
 ### Recover
 
 1. `make restart`
 2. Wait for readiness.
-3. Re-check MCP logs for repeated restart loops.
+3. Re-check daemon logs for repeated restart loops.
 
 ### Verify
 
-- MCP calls complete normally.
-- No repeating MCP health-check failures in last 2 minutes.
+- `telec`/API calls complete normally.
+- No repeating API socket or restart failures in last 2 minutes.
 
 ## Runbook: Session output is frozen/stale
 
@@ -194,12 +194,45 @@ If restart is not enough, use:
 - `make status` reports healthy.
 - Recent logs show normal API startup without repeated failures.
 
+## Runbook: Discord/Web output missing after UCAP output unification
+
+### Symptom
+
+- Codex session appears active, but Discord shows little or no live output.
+- Web chat stream shows status transitions but little or no assistant content.
+
+### Likely causes
+
+- Discord threaded-output experiment suppresses standard poller output, and incremental threaded output has no usable transcript input (`missing_transcript_path` or `no_assistant_messages`).
+- Web SSE transcript conversion skips Codex `response_item` payload entries, so Codex assistant blocks are not emitted to the web client stream.
+
+### Fast checks
+
+1. `make status`
+2. `instrukt-ai-logs teleclaude --since 10m --grep "UI_SEND_OUTPUT|missing_transcript_path|no_assistant_messages|Sending incremental output"`
+3. `instrukt-ai-logs teleclaude --since 10m --grep "session_status|Invalid WebSocket event payload"`
+
+### Recover
+
+1. If logs show repeated `missing_transcript_path` for an active session, trigger one controlled restart:
+   `make restart`
+2. Re-check logs for the same session to confirm transcript resolution and incremental sends:
+   `instrukt-ai-logs teleclaude --since 10m --grep "Resolved Codex transcript|Codex transcript watcher bound transcript|Sending incremental output|<session_id_prefix>"`
+3. If web stream is still missing assistant text while transcript exists, escalate as converter regression in `teleclaude/api/transcript_converter.py` (Codex `response_item` support gap) and patch before expecting parity.
+
+### Verify
+
+- Discord logs show threaded sends, not only suppression:
+  `Sending incremental output` appears for affected sessions.
+- No repeated `missing_transcript_path` for active Codex sessions.
+- Web stream emits assistant text events (`text-delta`) for Codex transcripts.
+
 ## Runbook: API restart churn (SIGTERM storm)
 
 ### Symptom
 
 - API socket repeatedly disappears/rebinds.
-- MCP/API clients show bursts of connection-refused errors.
+- CLI/API clients show bursts of connection-refused errors.
 - Logs show frequent `Received SIGTERM signal...`.
 
 ### Likely causes
@@ -227,7 +260,7 @@ If restart is not enough, use:
 ### Verify
 
 - No new `Received SIGTERM signal...` lines in the verification window.
-- No sustained connection-refused bursts in MCP/API logs.
+- No sustained connection-refused bursts in CLI/API logs.
 - API socket remains present and healthy in `make status`.
 
 ## Infrastructure & Environment
@@ -511,7 +544,7 @@ Minimum fields for each case-trail entry:
 
 Escalate immediately if any of the following persists after one controlled restart:
 
-- MCP restart storm continues.
+- Daemon restart storm continues.
 - Hook outbox remains blocked.
 - Poller output remains frozen.
 - Daemon repeatedly exits during startup.

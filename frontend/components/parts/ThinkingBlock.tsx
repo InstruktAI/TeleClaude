@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import type { ReasoningMessagePartProps } from "@assistant-ui/react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
+import "@/styles/highlight-theme.css";
 
 export function ThinkingBlock({ text, status }: ReasoningMessagePartProps) {
   const [expanded, setExpanded] = useState(false);
@@ -21,8 +25,15 @@ export function ThinkingBlock({ text, status }: ReasoningMessagePartProps) {
         <span>{isStreaming ? "Thinking..." : "Thought"}</span>
       </button>
       {expanded && (
-        <div className="px-3 pb-2 text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap font-mono">
-          {text}
+        <div className="px-3 pb-2 text-xs text-muted-foreground">
+          <div className="prose prose-xs dark:prose-invert max-w-none break-words">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeHighlight]}
+            >
+              {text}
+            </ReactMarkdown>
+          </div>
         </div>
       )}
     </div>

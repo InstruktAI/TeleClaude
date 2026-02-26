@@ -24,7 +24,7 @@ Set up a distributed TeleClaude deployment across multiple computers.
 3. Configure `computer_name`, `telegram.is_master` (exactly one master), `redis_url`, and `trusted_dirs`.
 4. Configure SSH keychain using the ssh-agent-keychain procedure.
 5. Verify `make status` on all nodes.
-6. Use `teleclaude__list_computers()` to confirm network discovery.
+6. Use `telec computers` to confirm network discovery.
 
 ## Outputs
 
@@ -35,5 +35,5 @@ Set up a distributed TeleClaude deployment across multiple computers.
 
 - Multiple computers with `telegram.is_master: true` — causes duplicate command handling and message collisions.
 - Reusing bot tokens across computers — Telegram will deliver updates to only one instance.
-- Missing `trusted_dirs` entries — MCP tools won't expose projects on that computer.
+- Missing `trusted_dirs` entries — `telec`/API project commands won't expose projects on that computer.
 - Redis unreachable — cross-computer commands silently fail; local operations still work.

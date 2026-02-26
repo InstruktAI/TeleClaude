@@ -35,6 +35,7 @@ from teleclaude.cli.models import (
     UnsubscribeRequest,
     WsEvent,
 )
+from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.constants import API_SOCKET_PATH
 
 logger = get_logger(__name__)
@@ -366,6 +367,10 @@ class TelecAPIClient:
         session_id = self._read_caller_session_id()
         if session_id:
             headers["x-caller-session-id"] = session_id
+
+        terminal_email = read_current_session_email()
+        if terminal_email:
+            headers["x-telec-email"] = terminal_email
 
         tmux_session = self._read_tmux_session_name()
         if tmux_session:

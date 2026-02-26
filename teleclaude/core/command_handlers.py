@@ -32,6 +32,7 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     VoiceEventContext,
 )
+from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.identity import get_identity_resolver
@@ -895,6 +896,11 @@ async def process_message(
         if not adopted:
             return
         session = adopted
+
+    # Treat every user message as an explicit turn boundary in threaded mode.
+    # This ensures the next assistant output starts in a fresh threaded block.
+    if is_threaded_output_enabled(session.active_agent):
+        await client.break_threaded_turn(session)
 
     await db.update_session(
         session_id,

@@ -276,20 +276,25 @@ PY
     check_api_endpoint() {
         local socket_path="$1"
         local endpoint="$2"
+        local accepted_codes="${3:-200}"
         if command -v curl >/dev/null 2>&1; then
             local status
             status=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 1 --max-time 1 --unix-socket "$socket_path" "http://localhost${endpoint}") || status=""
-            if [ "$status" = "200" ]; then
-                echo "ok"
-            else
-                echo "fail"
-            fi
+            case ",$accepted_codes," in
+                *",$status,"*)
+                    echo "ok"
+                    ;;
+                *)
+                    echo "fail"
+                    ;;
+            esac
             return 0
         fi
         python3 - <<PY 2>/dev/null
-import socket, sys
+import socket
 path = "$socket_path"
 endpoint = "$endpoint"
+accepted = {code.strip() for code in "$accepted_codes".split(",") if code.strip()}
 try:
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.settimeout(1.0)
@@ -303,13 +308,15 @@ try:
             break
         data += chunk
     s.close()
-    first = data.split(b\"\\r\\n\", 1)[0].decode(\"utf-8\", \"ignore\")
-    if \" 200 \" in first or first.endswith(\" 200\"):
-        print(\"ok\")
+    first = data.split(b"\\r\\n", 1)[0].decode("utf-8", "ignore")
+    parts = first.split()
+    status_code = parts[1] if len(parts) >= 2 else ""
+    if status_code in accepted:
+        print("ok")
     else:
-        print(\"fail\")
+        print("fail")
 except Exception:
-    print(\"fail\")
+    print("fail")
 PY
     }
 
@@ -325,7 +332,7 @@ PY
                 log_warn "API /health: FAIL"
                 overall_ok=1
             fi
-            API_READ=$(check_api_endpoint "$API_SOCKET" "/computers" || true)
+            API_READ=$(check_api_endpoint "$API_SOCKET" "/computers" "200,401,403" || true)
             if [ "$API_READ" = "ok" ]; then
                 log_info "API read (/computers): OK"
             else
@@ -394,8 +401,13 @@ restart_daemon() {
         log_info "Daemon restarted successfully (PID: ${PID:-unknown})"
         EXIT_CODE=0
     else
-        log_error "Restart failed. Try: make kill to hard kill the daemon."
-        EXIT_CODE=1
+        log_warn "Restart health check failed after kickstart; falling back to stop/start."
+        if stop_daemon && start_daemon; then
+            EXIT_CODE=0
+        else
+            log_error "Restart failed. Try: make kill to hard kill the daemon."
+            EXIT_CODE=1
+        fi
     fi
 
     # Always run a status check after restart

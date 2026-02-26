@@ -32,7 +32,7 @@ audience: [admin, help-desk]
 ## Enforcement
 
 - The operator brain references this policy via Required reads.
-- The `teleclaude__escalate` tool enforces that only customer sessions can invoke it.
+- The `telec sessions escalate` tool enforces that only customer sessions can invoke it.
 
 ## Exceptions
 

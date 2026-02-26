@@ -111,7 +111,7 @@ export const RenderWidgetUI = makeAssistantToolUI<
   RenderWidgetArgs,
   RenderWidgetResult
 >({
-  toolName: "teleclaude__render_widget",
+  toolName: "telec sessions widget",
   render: ({ args, status }) => {
     if (status.type === "running" && !args) {
       return <WidgetSkeleton />;

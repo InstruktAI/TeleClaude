@@ -31,6 +31,7 @@ description: 'Command surface contract for TeleClaude client interfaces.'
 ## Allowed values
 
 - `command`: `start_session`, `send_message`, `end_session`, `get_session_data`, `run_agent_command`, `stop_notifications`, `list_sessions`, `list_projects`.
+- Human-facing CLI mapping: `get_session_data` is surfaced as `telec sessions tail`.
 
 ## Known caveats
 
