@@ -13,7 +13,7 @@ Ownership:
 - [x] Requirements implemented according to scope
 - [x] Implementation-plan task checkboxes all `[x]`
 - [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
+- [x] Lint passes (`make lint`)
 - [x] No silent deferrals in implementation plan
 - [x] Code committed
 - [x] Demo validated (`telec todo demo discord-slash-commands-like-telegram` exits 0, or exception noted)
