@@ -2,6 +2,7 @@
 
 from typing import Dict, List, Optional, cast
 
+from teleclaude.core.agents import get_enabled_agents, get_known_agents
 from teleclaude.core.events import parse_command_string
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent
 from teleclaude.core.origins import InputOrigin
@@ -35,6 +36,13 @@ _KEY_COMMANDS = {
     "key_right",
     "ctrl",
 }
+
+
+def _default_agent_name() -> str:
+    enabled_agents = get_enabled_agents()
+    if enabled_agents:
+        return enabled_agents[0]
+    return "claude"
 
 
 class CommandMapper:
@@ -134,7 +142,7 @@ class CommandMapper:
             )
 
         if event == "agent":
-            agent_name = args[0] if args else "claude"
+            agent_name = args[0] if args else _default_agent_name()
             agent_args = args[1:] if len(args) > 1 else []
             return StartAgentCommand(
                 session_id=session_id or "",
@@ -205,14 +213,14 @@ class CommandMapper:
             )
 
         if cmd_name == "agent":
-            agent_name = args[0] if args else "claude"
+            agent_name = args[0] if args else _default_agent_name()
             return StartAgentCommand(
                 session_id=session_id or "",
                 agent_name=agent_name,
                 args=args[1:] if len(args) > 1 else [],
             )
 
-        if cmd_name in {"claude", "gemini", "codex"}:
+        if cmd_name in set(get_known_agents()):
             return StartAgentCommand(
                 session_id=session_id or "",
                 agent_name=cmd_name,
@@ -367,7 +375,7 @@ class CommandMapper:
 
         if command_name == "agent":
             args = cast(List[str], payload.get("args", []))
-            agent_name = args[0] if args else "claude"
+            agent_name = args[0] if args else _default_agent_name()
             return StartAgentCommand(
                 session_id=session_id,
                 agent_name=agent_name,

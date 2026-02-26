@@ -386,6 +386,42 @@ def test_create_session_uses_auto_command_override(test_client, mock_command_ser
     assert cmd.auto_command == "custom_cmd"
 
 
+def test_create_session_rejects_disabled_agent(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """Disabled agents should be rejected before session creation dispatch."""
+    response = test_client.post(
+        "/sessions",
+        json={
+            "project_path": "/home/user/project",
+            "computer": "local",
+            "agent": "codex",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "config.yml:agents.codex.enabled" in response.json()["detail"]
+    mock_command_service.create_session.assert_not_called()
+
+
+def test_create_session_defaults_to_first_enabled_agent(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """When agent is omitted, create_session should pick the first enabled policy agent."""
+    mock_command_service.create_session.return_value = {
+        "session_id": "sess-123",
+        "tmux_session_name": "tc_123",
+    }
+
+    with patch("teleclaude.api_server.get_enabled_agents", return_value=("gemini",)):
+        response = test_client.post(
+            "/sessions",
+            json={"project_path": "/home/user/project", "computer": "local"},
+        )
+
+    assert response.status_code == 200
+    call_args = mock_command_service.create_session.call_args
+    cmd = call_args.args[0]
+    assert cmd.launch_intent is not None
+    assert cmd.launch_intent.agent == "gemini"
+
+
 def test_run_session_sets_initiator_session_id(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     """sessions/run should preserve caller linkage metadata."""
     mock_command_service.create_session.return_value = {
@@ -408,6 +444,44 @@ def test_run_session_sets_initiator_session_id(test_client, mock_command_service
     assert cmd.channel_metadata is not None
     assert cmd.channel_metadata.get("initiator_session_id") == "test-session"
     assert cmd.channel_metadata.get("working_slug") == "my-slug"
+
+
+def test_run_session_rejects_disabled_agent(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    response = test_client.post(
+        "/sessions/run",
+        json={
+            "command": "/next-build",
+            "project": "/tmp/project",
+            "args": "my-slug",
+            "agent": "codex",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "config.yml:agents.codex.enabled" in response.json()["detail"]
+    mock_command_service.create_session.assert_not_called()
+
+
+def test_run_session_defaults_to_first_enabled_agent(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    mock_command_service.create_session.return_value = {
+        "session_id": "sess-run-1",
+        "tmux_session_name": "tc_run_1",
+    }
+
+    with patch("teleclaude.api_server.get_enabled_agents", return_value=("gemini",)):
+        response = test_client.post(
+            "/sessions/run",
+            json={
+                "command": "/next-build",
+                "project": "/tmp/project",
+                "args": "my-slug",
+            },
+        )
+
+    assert response.status_code == 200
+    call_args = mock_command_service.create_session.call_args
+    cmd = call_args.args[0]
+    assert cmd.auto_command.startswith("agent_then_message gemini ")
 
 
 def test_run_session_worker_command_requires_slug(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]

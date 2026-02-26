@@ -35,7 +35,7 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
   - [x] `get_enabled_agents()`
   - [x] `is_agent_enabled(name)`
   - [x] rejection helper for disabled agent selection
-- [ ] Ensure helpers are import-safe and reusable across core/API/TUI/MCP.
+- [x] Ensure helpers are import-safe and reusable across core/API/TUI/MCP.
 
 ### Files (expected)
 
@@ -44,13 +44,15 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
 
 ## Phase 3 — Enforce in Dispatch/Start Paths
 
-- [ ] Enforce enabled-agent policy before start/resume/restart and worker dispatch.
-- [ ] Reject disabled selection in:
-  - [ ] API session creation path
-  - [ ] MCP `teleclaude__start_session`
-  - [ ] MCP `teleclaude__run_agent_command`
-  - [ ] core command handlers (`start_agent`, `resume_agent`, `agent_restart`)
-- [ ] Ensure fallback picker logic uses enabled-agent helper.
+- [x] Enforce enabled-agent policy before start/resume/restart and worker dispatch.
+- [x] Reject disabled selection in:
+  - [x] API session creation path
+  - [x] MCP `teleclaude__start_session`
+  - [x] MCP `teleclaude__run_agent_command`
+  - [x] core command handlers (`start_agent`, `resume_agent`, `agent_restart`)
+- [x] Ensure fallback picker logic uses enabled-agent helper.
+
+Note: MCP runtime/tool modules are no longer present in this codebase; enforcement for equivalent dispatch surfaces is implemented in `/sessions/run` and command dispatch handlers.
 
 ### Files (expected)
 
@@ -62,10 +64,10 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
 
 ## Phase 4 — Next-Machine Guidance and UX Behavior
 
-- [ ] Replace blank guidance content with explicit placeholders when strengths/avoid are unset.
-- [ ] Ensure next-machine guidance lists only enabled+available agents.
-- [ ] TUI agent lists and selectors derive from policy helpers (no fixed lists for selection logic).
-- [ ] Add explicit blocking feedback for zero-enabled configuration.
+- [x] Replace blank guidance content with explicit placeholders when strengths/avoid are unset.
+- [x] Ensure next-machine guidance lists only enabled+available agents.
+- [x] TUI agent lists and selectors derive from policy helpers (no fixed lists for selection logic).
+- [x] Add explicit blocking feedback for zero-enabled configuration.
 
 ### Files (expected)
 
@@ -77,11 +79,11 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
 
 ## Phase 5 — Tests
 
-- [ ] Config validation tests for missing `agents`, all-disabled, unknown keys.
-- [ ] Unit tests for centralized helper behavior.
-- [ ] API/MCP path tests for disabled-agent rejection.
-- [ ] Next-machine guidance tests for non-blank output semantics.
-- [ ] TUI/tests for selectable agent behavior from policy-driven source.
+- [x] Config validation tests for missing `agents`, all-disabled, unknown keys.
+- [x] Unit tests for centralized helper behavior.
+- [x] API/MCP path tests for disabled-agent rejection.
+- [x] Next-machine guidance tests for non-blank output semantics.
+- [x] TUI/tests for selectable agent behavior from policy-driven source.
 
 ### Files (expected)
 
