@@ -91,6 +91,8 @@ This follows existing artifact conventions (`## Required reads`, snippet schema,
 
 ### Task 4: Validate and record readiness evidence
 
+- [x] Task complete
+
 **Actions:**
 
 - Run `telec sync`.
