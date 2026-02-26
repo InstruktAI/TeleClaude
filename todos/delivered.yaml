@@ -1,5 +1,13 @@
 # Delivered work items. Newest first.
 
+- slug: agent-availability-enforcement-migration
+  date: '2026-02-26'
+  title: Enforce agent availability on all session and worker launch paths, replacing
+    enabled-only and hardcoded-agent selection with one canonical routable-agent policy
+  commit: 7132da8d791bcfd29c3d95691fd73788d06890ce
+  description: Enforce agent availability on all session and worker launch paths,
+    replacing enabled-only and hardcoded-agent selection with one canonical routable-agent
+    policy
 - slug: adapter-output-qos-scheduler
   date: '2026-02-26'
   title: Adapter-aware output QoS scheduler with PTB Telegram rate limiting plus per-session

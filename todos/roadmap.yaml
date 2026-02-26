@@ -1,9 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: agent-availability-enforcement-migration
-  description: Enforce agent availability on all session and worker launch paths,
-    replacing enabled-only and hardcoded-agent selection with one canonical routable-agent
-    policy
 - slug: integration-orchestrator-rollout
   description: Parent rollout for event-driven singleton integrator and guarded mainline
     integration
