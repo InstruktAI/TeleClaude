@@ -232,3 +232,18 @@ def test_clearance_probe_blocks_active_standalone_main_session() -> None:
 
     check = probe.check()
     assert check.blocking_session_ids == ("solo",)
+
+
+def test_clearance_probe_excludes_owner_session_from_standalone_blockers() -> None:
+    probe = MainBranchClearanceProbe(
+        sessions_provider=lambda: (
+            SessionSnapshot(session_id="integrator-1", initiator_session_id=None),
+            SessionSnapshot(session_id="solo", initiator_session_id=None),
+        ),
+        session_tail_provider=lambda _session_id: "git switch main && git commit -m 'wip'",
+        dirty_tracked_paths_provider=lambda: (),
+    )
+
+    check = probe.check(exclude_session_id="integrator-1")
+    assert check.standalone_session_ids == ("solo",)
+    assert check.blocking_session_ids == ("solo",)

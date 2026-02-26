@@ -104,10 +104,10 @@ class MainBranchClearanceProbe:
         self._session_tail_provider = session_tail_provider
         self._dirty_tracked_paths_provider = dirty_tracked_paths_provider
 
-    def check(self) -> MainBranchClearanceCheck:
+    def check(self, *, exclude_session_id: str | None = None) -> MainBranchClearanceCheck:
         """Return standalone blockers and dirty tracked paths."""
         sessions = self._sessions_provider()
-        standalone = classify_standalone_sessions(sessions)
+        standalone = classify_standalone_sessions(sessions, exclude_session_id=exclude_session_id)
 
         blockers: list[str] = []
         for session in standalone:
@@ -123,11 +123,19 @@ class MainBranchClearanceProbe:
         )
 
 
-def classify_standalone_sessions(sessions: tuple[SessionSnapshot, ...]) -> tuple[SessionSnapshot, ...]:
+def classify_standalone_sessions(
+    sessions: tuple[SessionSnapshot, ...],
+    *,
+    exclude_session_id: str | None = None,
+) -> tuple[SessionSnapshot, ...]:
     """Exclude workers and orchestrators; return standalone main-session candidates."""
     orchestrator_ids = {item.initiator_session_id for item in sessions if item.initiator_session_id is not None}
     standalone = [
-        item for item in sessions if item.initiator_session_id is None and item.session_id not in orchestrator_ids
+        item
+        for item in sessions
+        if item.initiator_session_id is None
+        and item.session_id not in orchestrator_ids
+        and item.session_id != exclude_session_id
     ]
     standalone.sort(key=lambda item: item.session_id)
     return tuple(standalone)
@@ -268,7 +276,7 @@ class IntegratorShadowRuntime:
     def _wait_for_main_clearance(self, *, owner_session_id: str, lease_token: str) -> None:
         while True:
             self._renew_or_raise(owner_session_id=owner_session_id, lease_token=lease_token)
-            clearance = self._clearance_probe.check()
+            clearance = self._clearance_probe.check(exclude_session_id=owner_session_id)
 
             if clearance.blocking_session_ids:
                 self._sleep_fn(self._clearance_retry_seconds)
@@ -283,7 +291,7 @@ class IntegratorShadowRuntime:
                     self._sleep_fn(self._clearance_retry_seconds)
                     continue
 
-                post_commit = self._clearance_probe.check()
+                post_commit = self._clearance_probe.check(exclude_session_id=owner_session_id)
                 if not post_commit.cleared:
                     self._sleep_fn(self._clearance_retry_seconds)
                     continue
