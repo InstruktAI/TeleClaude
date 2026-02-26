@@ -1429,7 +1429,7 @@ async def test_handle_cancel_slash_returns_error_when_no_session_found() -> None
     adapter._find_session = AsyncMock(return_value=None)  # type: ignore[method-assign]
 
     interaction = SimpleNamespace(
-        channel=SimpleNamespace(id=444),
+        channel=FakeThread(thread_id=444, parent_id=333),
         user=SimpleNamespace(id=999001),
         response=SimpleNamespace(send_message=AsyncMock()),
     )
@@ -1449,7 +1449,7 @@ async def test_handle_cancel_slash_dispatches_keys_when_session_exists() -> None
     fake_command_service = MagicMock()
     fake_command_service.keys = AsyncMock()
     interaction = SimpleNamespace(
-        channel=SimpleNamespace(id=444),
+        channel=FakeThread(thread_id=444, parent_id=333),
         user=SimpleNamespace(id=999001),
         response=SimpleNamespace(send_message=AsyncMock()),
     )

@@ -1846,21 +1846,25 @@ class DiscordAdapter(UiAdapter):
 
     async def _handle_cancel_slash(self, interaction: object) -> None:
         channel = getattr(interaction, "channel", None)
-        channel_id = self._parse_optional_int(getattr(channel, "id", None))
-        thread_id: int | None = None
-        if self._is_thread_channel(channel):
-            thread_id = channel_id
-            parent = getattr(channel, "parent", None)
-            parent_id = self._parse_optional_int(getattr(parent, "id", None))
-            channel_id = parent_id or channel_id
-
-        user_obj = getattr(interaction, "user", None)
-        user_id = str(getattr(user_obj, "id", "")).strip()
-        session = await self._find_session(channel_id=channel_id, thread_id=thread_id, user_id=user_id)
         response = getattr(interaction, "response", None)
         response_send = getattr(response, "send_message", None)
         if not callable(response_send):
             return
+        if not self._is_thread_channel(channel):
+            await self._require_async_callable(response_send, label="Discord interaction response.send_message")(
+                "No active session in this thread.",
+                ephemeral=True,
+            )
+            return
+
+        thread_id = self._parse_optional_int(getattr(channel, "id", None))
+        parent = getattr(channel, "parent", None)
+        parent_id = self._parse_optional_int(getattr(parent, "id", None))
+        channel_id = parent_id or thread_id
+
+        user_obj = getattr(interaction, "user", None)
+        user_id = str(getattr(user_obj, "id", "")).strip()
+        session = await self._find_session(channel_id=channel_id, thread_id=thread_id, user_id=user_id)
         if session is None:
             await self._require_async_callable(response_send, label="Discord interaction response.send_message")(
                 "No active session in this thread.",
