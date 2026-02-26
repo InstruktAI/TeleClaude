@@ -2,22 +2,22 @@
 
 ## Gate Verdict
 
-- Status: `needs_work` (draft)
-- Score: `7/10`
-- Ready Decision: **Not ready for build dispatch until formal gate pass.**
+- Status: `pass`
+- Score: `8/10`
+- Ready Decision: **Ready for build dispatch.**
 
-## Draft Assessment
+## Gate Assessment
 
-1. Requirements clearly define singleton lease and shadow safety boundaries.
-2. Plan decomposes lease, queue, runtime simulation, and tests.
-3. Verification exists but requires independent gate confirmation.
+1. Requirements clearly enforce singleton lease semantics.
+2. Queue and runtime behaviors are scoped to shadow-mode safety.
+3. Verification path includes concurrency, FIFO, and restart coverage.
+4. Plan-to-requirement mapping is coherent with no contradictions.
 
-## Draft Blockers
+## Gate Tightenings Applied
 
-1. Formal `next-prepare-gate` verdict has not yet been recorded.
+1. Confirmed shadow path emits outcomes without canonical `main` pushes.
+2. Confirmed shutdown/resume behavior is explicitly test-scoped.
 
-## Actions Taken
+## Open Blockers
 
-1. Replaced placeholder requirements with shadow-runtime contract.
-2. Replaced placeholder implementation plan with lease/queue tasks.
-3. Added demo validation commands for prep artifact integrity.
+1. None.

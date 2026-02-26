@@ -2,22 +2,22 @@
 
 ## Gate Verdict
 
-- Status: `needs_work` (draft)
-- Score: `7/10`
-- Ready Decision: **Not ready for build dispatch until formal gate pass.**
+- Status: `pass`
+- Score: `8/10`
+- Ready Decision: **Ready for build dispatch.**
 
-## Draft Assessment
+## Gate Assessment
 
-1. Event fidelity and readiness requirements are explicit and trace to spec.
-2. Implementation tasks are decomposed into contract, projection, and tests.
-3. Verification path is defined but still needs independent gate confirmation.
+1. Intent is explicit: canonical event model plus readiness projection.
+2. Scope is atomic and aligned to rollout slice boundaries.
+3. Verification path covers validation, idempotency, readiness, and supersession.
+4. Plan-to-requirement mapping is coherent with no contradictions.
 
-## Draft Blockers
+## Gate Tightenings Applied
 
-1. Formal `next-prepare-gate` verdict has not yet been recorded.
+1. Confirmed canonical payload requirements match integration-orchestrator spec.
+2. Confirmed readiness computation excludes non-trigger signals.
 
-## Actions Taken
+## Open Blockers
 
-1. Replaced placeholder requirements with concrete FRs.
-2. Replaced placeholder implementation plan with task-level decomposition.
-3. Added demo validation commands aligned to prep artifacts.
+1. None.

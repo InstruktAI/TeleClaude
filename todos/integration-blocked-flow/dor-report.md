@@ -2,22 +2,22 @@
 
 ## Gate Verdict
 
-- Status: `needs_work` (draft)
-- Score: `7/10`
-- Ready Decision: **Not ready for build dispatch until formal gate pass.**
+- Status: `pass`
+- Score: `8/10`
+- Ready Decision: **Ready for build dispatch.**
 
-## Draft Assessment
+## Gate Assessment
 
-1. Blocked-flow behavior is defined as evidence-rich and resumable.
-2. Plan covers blocked payload, follow-up linkage, and resume mechanics.
-3. Verification exists but requires independent gate confirmation.
+1. Blocked outcome evidence contract is concrete and testable.
+2. Follow-up linkage and resume mechanics are explicitly scoped.
+3. Verification path covers conflict, follow-up idempotency, and resume.
+4. Plan-to-requirement mapping is coherent with no contradictions.
 
-## Draft Blockers
+## Gate Tightenings Applied
 
-1. Formal `next-prepare-gate` verdict has not yet been recorded.
+1. Confirmed follow-up linkage preserves slug/branch/sha traceability.
+2. Confirmed resume path requires readiness re-check before requeue.
 
-## Actions Taken
+## Open Blockers
 
-1. Replaced placeholder requirements with blocked-flow contract.
-2. Replaced placeholder implementation plan with executable task decomposition.
-3. Added demo validation commands for prep artifact integrity.
+1. None.
