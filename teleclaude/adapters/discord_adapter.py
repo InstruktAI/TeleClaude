@@ -483,6 +483,7 @@ class DiscordAdapter(UiAdapter):
                     )
                     edit_fn = self._require_async_callable(getattr(message, "edit", None), label="Discord message edit")
                     await edit_fn(content=launcher_text, view=self._build_session_launcher_view())
+                    await self._pin_launcher_message(message, forum_id=forum_id)
                     return
                 except Exception as exc:
                     logger.warning(
@@ -501,9 +502,27 @@ class DiscordAdapter(UiAdapter):
             launcher_text,
             view=self._build_session_launcher_view(),
         )
+        await self._pin_launcher_message(sent, forum_id=forum_id)
         launcher_message_id = getattr(sent, "id", None)
         if launcher_message_id is not None:
             await db.set_system_setting(setting_key, str(launcher_message_id))
+
+    async def _pin_launcher_message(self, message: object, *, forum_id: int) -> None:
+        message_id = getattr(message, "id", None)
+        pin_fn = getattr(message, "pin", None)
+        if not callable(pin_fn):
+            logger.debug("Launcher message %s in forum %s cannot be pinned", message_id, forum_id)
+            return
+
+        try:
+            await self._require_async_callable(pin_fn, label="Discord message pin")()
+        except Exception as exc:
+            logger.warning(
+                "Failed to pin Discord launcher message %s in forum %s: %s",
+                message_id,
+                forum_id,
+                exc,
+            )
 
     async def _ensure_project_forums(self, guild: object, category: object | None) -> None:
         """Create a forum for each trusted dir that lacks a valid discord_forum ID."""
