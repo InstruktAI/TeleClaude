@@ -17,7 +17,7 @@ Four governance doc edits, each adding targeted wording to close the config-surf
 
 **File(s):** `docs/global/software-development/policy/definition-of-ready.md`
 
-- [ ] In Gate 6 "Dependencies & preconditions", add a new bullet:
+- [x] In Gate 6 "Dependencies & preconditions", add a new bullet:
       `- If the work introduces new configuration (config keys, env vars, YAML sections), they are listed explicitly and their wizard exposure is confirmed.`
 
 ### Task 1.3: Expand add-adapter procedure with registration steps
