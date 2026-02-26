@@ -90,7 +90,7 @@ See `project/spec/demo-artifact` for the full schema.
 ### Conversational presentation (/next-demo)
 
 - **No slug:** AI lists available demos and asks which to present.
-- **With slug:** AI reads `demos/{slug}/demo.md` and presents **one section at a time** — executing code blocks, operating the system for guided steps, checking verification assertions. After each section, the presenter pauses and asks "Ready for the next step? (Y/N)". The user controls the pace. After a successful walkthrough, celebrates with the five acts narrative from `snapshot.json`.
+- **With slug:** AI reads `demos/{slug}/demo.md` and presents **one section at a time** — executing code blocks, operating the system for guided steps, checking verification assertions. After each section, the presenter pauses and asks "Ready?" — the user controls the pace. After a successful walkthrough, celebrates with the five acts narrative from `snapshot.json`.
 
 ### CLI commands (telec todo demo)
 
