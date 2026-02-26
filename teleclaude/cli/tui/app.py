@@ -509,10 +509,13 @@ class TelecApp(App[str | None]):
         session = message.session
         if session.active_agent:
             self._session_agents[session.session_id] = session.active_agent
-        # Auto-select new user-initiated sessions (not AI-delegated children)
+        # Auto-select new user-initiated sessions only while Sessions tab is active.
+        # Otherwise this steals focus from Preparation/other tabs.
         if not session.initiator_session_id:
-            sessions_view = self.query_one("#sessions-view", SessionsView)
-            sessions_view.request_select_session(session.session_id)
+            tabs = self.query_one("#main-tabs", TabbedContent)
+            if tabs.active == "sessions":
+                sessions_view = self.query_one("#sessions-view", SessionsView)
+                sessions_view.request_select_session(session.session_id)
         # Trigger full data refresh so tree rebuilds
         self._refresh_data()
 
@@ -709,7 +712,16 @@ class TelecApp(App[str | None]):
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         tab_id = event.pane.id or "sessions"
         logger.trace("[PERF] tab_activated(%s) t=%.3f", tab_id, _t.monotonic())
-        box_tabs = self.query_one("#box-tab-bar", BoxTabBar)
+        # Ignore stale activations (e.g. initial default-tab activation arriving
+        # after we've already switched tabs).
+        tabs = self.query_one("#main-tabs", TabbedContent)
+        if tabs.active != tab_id:
+            return
+        try:
+            box_tabs = self.query_one("#box-tab-bar", BoxTabBar)
+        except Exception:
+            # Late activation can arrive while the app is tearing down.
+            return
         box_tabs.active_tab = tab_id
         self._focus_active_view(tab_id)
         self.post_message(StateChanged())
