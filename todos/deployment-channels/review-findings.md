@@ -190,6 +190,18 @@ Suggestions #9-13 from round 1 remain open and are carried forward.
 
 ---
 
+## Fixes Applied (Round 2 findings)
+
+| #   | Issue                                                      | Fix                                                                         | Commit     |
+| --- | ---------------------------------------------------------- | --------------------------------------------------------------------------- | ---------- |
+| 14  | `_is_within_pinned_minor` prefix match accepts wrong minor | Replaced string `startswith` with `parse_version` integer compare           | `f48323b4` |
+| 15  | `make install` subprocess not killed on timeout            | Added `install.kill()` + `await install.wait()` after `TimeoutError`        | `68299f24` |
+| 16  | `execute_update` task fire-and-forget, no done callback    | Added `_log_execute_update_task_exception` callback via `add_done_callback` | `43e06e81` |
+| 17  | Beta fan-out accepted by stable node                       | Changed condition to `version_info.get("channel") == channel`               | `21f188e7` |
+| 18  | Fanout consumer dies permanently on Redis startup failure  | Moved `_get_redis()` call inside the retry loop                             | `3924e009` |
+
+---
+
 ## Verdict: REQUEST CHANGES
 
 Round 1 findings (1 Critical, 7 Important) are all resolved. However, deeper analysis reveals 2 new Critical bugs (#14: prefix match accepts wrong minor versions; #15: orphaned subprocess on timeout) and 3 Important issues (#16-18). These should be fixed before merge.
