@@ -842,6 +842,7 @@ async def test_next_work_concurrent_same_slug_single_flight_prep():
 
         with (
             patch("teleclaude.core.next_machine.core._prepare_worktree", side_effect=_slow_prepare),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
             patch(
                 "teleclaude.core.next_machine.core.compose_agent_guidance",
                 new=AsyncMock(return_value="guidance"),
@@ -859,6 +860,7 @@ async def test_next_work_concurrent_same_slug_single_flight_prep():
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(10)
 async def test_next_work_concurrent_same_slug_different_repos_do_not_serialize_prep():
     """Same slug in separate repos should not block each other's prep phase."""
     db = MagicMock(spec=Db)
