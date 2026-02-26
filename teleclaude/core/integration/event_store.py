@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
 from teleclaude.core.integration.events import (
     IntegrationEvent,
     IntegrationEventValidationError,
+    compute_idempotency_key,
     integration_event_from_record,
     integration_event_to_record,
 )
@@ -52,7 +52,7 @@ class IntegrationEventStore:
     def append(self, event: IntegrationEvent) -> AppendResult:
         """Persist event to append-only log unless an idempotent duplicate exists."""
         self._ensure_loaded()
-        event_digest = _event_digest(event)
+        event_digest = compute_idempotency_key(event.event_type, event.payload)
         existing_digest = self._digest_by_idempotency_key.get(event.idempotency_key)
         if existing_digest is not None:
             if existing_digest != event_digest:
@@ -105,7 +105,7 @@ class IntegrationEventStore:
                     raise IntegrationEventStoreError(
                         f"corrupt integration event log at line {line_number}: {'; '.join(exc.diagnostics)}"
                     ) from exc
-                event_digest = _event_digest(event)
+                event_digest = compute_idempotency_key(event.event_type, event.payload)
                 existing_digest = self._digest_by_idempotency_key.get(event.idempotency_key)
                 if existing_digest is not None and existing_digest != event_digest:
                     raise IntegrationEventStoreError(
@@ -114,13 +114,3 @@ class IntegrationEventStore:
                 self._events.append(event)
                 self._digest_by_idempotency_key[event.idempotency_key] = event_digest
         self._loaded = True
-
-
-def _event_digest(event: IntegrationEvent) -> str:
-    canonical = json.dumps(
-        {"event_type": event.event_type, "payload": event.payload},
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    return sha256(canonical.encode("utf-8")).hexdigest()
