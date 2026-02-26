@@ -20,16 +20,16 @@ Ownership:
 - [x] Working tree clean
 - [x] Comments/docstrings updated where behavior changed
 
-Manual verification: library-only delivery; verified behavior through direct invocation tests (`run_migrations` success/skip/failure/dry-run paths) and demo validation blocks.
+Manual verification: library-only delivery. Verified behavior by executing migration tests (run, skip, failure, dry-run, atomic state write) and demo validation blocks.
 
 ## Review Gates (Reviewer)
 
-- [x] Requirements traced to implemented behavior
-- [x] Deferrals justified and not hiding required scope
-- [x] Findings written in `review-findings.md`
-- [x] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [x] Critical issues resolved or explicitly blocked
-- [x] Test coverage and regression risk assessed
+- [ ] Requirements traced to implemented behavior
+- [ ] Deferrals justified and not hiding required scope
+- [ ] Findings written in `review-findings.md`
+- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
+- [ ] Critical issues resolved or explicitly blocked
+- [ ] Test coverage and regression risk assessed
 
 ## Finalize Gates (Finalizer)
 
