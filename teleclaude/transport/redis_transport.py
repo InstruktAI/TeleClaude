@@ -1035,7 +1035,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                         )
 
                         # Persist last_id BEFORE processing to prevent re-processing on restart
-                        # This is critical for deploy commands that call os._exit(0)
+                        # This is critical for commands that call os._exit(0) (e.g., restart)
                         last_id = message_id
                         msg_id_str: str = last_id.decode("utf-8")
                         await self._set_last_processed_message_id(msg_id_str)
@@ -1860,11 +1860,11 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         """Send system command to remote computer (not session-specific).
 
         System commands are handled by the daemon itself, not routed to tmux.
-        Examples: deploy, restart, health_check
+        Examples: restart, health_check
 
         Args:
             computer_name: Target computer name
-            command: System command (e.g., "deploy")
+            command: System command (e.g., "health_check")
             args: Optional command arguments
 
         Returns:

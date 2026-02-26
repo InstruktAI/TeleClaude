@@ -1119,7 +1119,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _handle_system_command(self, _event: str, context: SystemCommandContext) -> None:
         """Handler for SYSTEM_COMMAND events.
 
-        System commands are daemon-level operations (deploy, restart, etc.)
+        System commands are daemon-level operations (restart, health_check, etc.)
 
         Args:
             _event: Event type (always "system_command") - unused but required by event handler signature
