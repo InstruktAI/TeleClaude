@@ -27,10 +27,13 @@ Ownership:
 
 Manual verification:
 
-- `make restart` completed with daemon recovery and healthy API (`launchd state: running`, `/health: OK`).
-- `make status` passed after restart settled (`Daemon health: HEALTHY`).
-- `instrukt-ai-logs teleclaude --since 15m --grep "Output cadence summary|Rate limited|qos|scheduler"` showed live cadence summaries and rate-limit retries, including `reason=final` cadence entries during completion.
+- `make test` passed on 2026-02-26 (`2246 passed, 106 skipped`), including scheduler, adapter, and regression coverage.
+- `make lint` passed on 2026-02-26 (`ruff format/check`, guardrails, markdown validation, and `pyright` all clean).
 - `telec todo demo validate adapter-output-qos-scheduler` passed with `3 executable block(s) found`.
+- `make restart` and `make status` both reported healthy daemon/API status (`launchd state: running`, `/health: OK`).
+- `instrukt-ai-logs teleclaude --since 15m --grep "Output cadence summary|Rate limited|qos|scheduler"` returned scheduler cadence lines and `reason=final` cadence summaries during completion.
+- `todos/adapter-output-qos-scheduler/demo.md` and `demos/adapter-output-qos-scheduler/demo.md` are in sync (`diff -q` clean).
+- Build-scope files are committed in this phase; remaining local drift (`todos/roadmap.yaml`, `todos/adapter-output-qos-scheduler/state.yaml`, `todos/adapter-output-qos-scheduler/review-findings.md`) is orchestrator/review flow state and outside builder code scope.
 
 ## Review Gates (Reviewer)
 
