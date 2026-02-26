@@ -27,7 +27,6 @@ from teleclaude.cli.tool_commands import (  # noqa: E402
     handle_agents,
     handle_channels,
     handle_computers,
-    handle_deploy,
     handle_projects,
     handle_sessions,
     handle_todo_maintain,
@@ -69,7 +68,6 @@ class TelecCommand(str, Enum):
     SESSIONS = "sessions"
     COMPUTERS = "computers"
     PROJECTS = "projects"
-    DEPLOY = "deploy"
     AGENTS = "agents"
     CHANNELS = "channels"
     INIT = "init"
@@ -289,12 +287,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[_H, Flag("--computer", desc="Filter to a specific computer")],
             ),
         },
-    ),
-    "deploy": CommandDef(
-        desc="Deploy latest code to remote computers",
-        args="[<computer> ...]",
-        flags=[_H],
-        notes=["If no computers given, deploys to all online remotes."],
     ),
     "agents": CommandDef(
         desc="Manage agent dispatch status and availability",
@@ -954,7 +946,7 @@ def _handle_completion() -> None:
         return
 
     # Command-specific completions
-    if cmd in ("sync", "watch", "deploy"):
+    if cmd in ("sync", "watch"):
         if cmd in CLI_SURFACE:
             _complete_flags(CLI_SURFACE[cmd].flag_tuples, rest, current, is_partial)
     elif cmd in (
@@ -1200,8 +1192,6 @@ def _handle_cli_command(argv: list[str]) -> None:
         _handle_computers(args)
     elif cmd_enum is TelecCommand.PROJECTS:
         _handle_projects(args)
-    elif cmd_enum is TelecCommand.DEPLOY:
-        handle_deploy(args)
     elif cmd_enum is TelecCommand.AGENTS:
         handle_agents(args)
     elif cmd_enum is TelecCommand.CHANNELS:

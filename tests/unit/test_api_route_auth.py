@@ -61,7 +61,6 @@ def auth_client() -> TestClient:
             {"customer_name": "Jane Doe", "reason": "Need admin help", "context_summary": "summary"},
         ),
         ("post", "/agents/claude/status", {"status": "degraded", "reason": "rate_limited"}),
-        ("post", "/deploy", {"computers": ["peer-1"]}),
     ],
 )
 def test_protected_routes_require_identity(

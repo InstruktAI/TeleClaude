@@ -32,7 +32,6 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
-    DeployArgs,
     SystemCommandContext,
     build_agent_payload,
     parse_command_string,
@@ -1303,36 +1302,18 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         """
         command = data.get(b"command", b"").decode("utf-8")
         from_computer = data.get(b"from_computer", b"").decode("utf-8")
-        args_json = data.get(b"args", b"{}").decode("utf-8")
 
         if not command:
             logger.warning("Invalid system command data: %s", data)
             return
 
-        # Parse args
-        args_obj: object
-        try:
-            args_obj = json.loads(args_json)
-        except json.JSONDecodeError:
-            logger.warning("Invalid JSON in system command args: %s", args_json[:100])
-            args_obj = {}
-
         logger.info("Received system command '%s' from %s", command, from_computer)
-
-        verify_health = True
-        if isinstance(args_obj, dict) and "verify_health" in args_obj:
-            try:
-                verify_health = bool(args_obj["verify_health"])
-            except Exception:
-                verify_health = True
-        deploy_args = DeployArgs(verify_health=verify_health)
 
         event_bus.emit(
             "system_command",
             SystemCommandContext(
                 command=command,
                 from_computer=from_computer or "unknown",
-                args=deploy_args,
             ),
         )
 

@@ -115,14 +115,12 @@ class TestCustomerToolFiltering:
             "telec sessions escalate",
             "telec channels publish",
             "telec channels list",
-            "telec deploy",
         ]
         filtered = filter_tool_names(None, all_tools, human_role=HUMAN_ROLE_CUSTOMER)
         assert "telec sessions escalate" in filtered
         assert "telec docs get" in filtered
         assert "telec channels publish" not in filtered
         assert "telec channels list" not in filtered
-        assert "telec deploy" not in filtered
 
 
 # =========================================================================
