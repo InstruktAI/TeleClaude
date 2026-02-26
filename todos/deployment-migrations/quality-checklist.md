@@ -10,19 +10,15 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [x] Requirements implemented according to scope
-- [x] Implementation-plan task checkboxes all `[x]`
-- [x] Tests pass (`make test`)
-- [x] Lint passes (`make lint`)
-- [x] No silent deferrals in implementation plan
-- [x] Code committed
-- [x] Demo validated (`telec todo demo deployment-migrations` exits 0, or exception noted)
-- [x] Working tree clean
-- [x] Comments/docstrings updated where behavior changed
-
-Manual verification: library-only delivery verified via
-`tests/unit/test_deployment_migration_runner.py` behavioral coverage and
-`telec todo demo validate deployment-migrations` (3 executable blocks found).
+- [ ] Requirements implemented according to scope
+- [ ] Implementation-plan task checkboxes all `[x]`
+- [ ] Tests pass (`make test`)
+- [ ] Lint passes (`make lint`)
+- [ ] No silent deferrals in implementation plan
+- [ ] Code committed
+- [ ] Demo validated (`telec todo demo deployment-migrations` exits 0, or exception noted)
+- [ ] Working tree clean
+- [ ] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 
