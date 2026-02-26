@@ -20,13 +20,12 @@ Ownership:
 - [x] Working tree clean
 - [x] Comments/docstrings updated where behavior changed
 
-Manual verification notes:
+Manual verification notes (2026-02-26):
 
-- Replaced flaky cross-repo same-slug test with a deterministic lock-scope invariant test over `_get_slug_single_flight_lock`.
-- Verified targeted lock-scope test stability with 40 consecutive passes.
-- Verified full quality gates with `make lint` (pass) and `make test` (`2208 passed, 106 skipped, 1 warning`).
-- Verified demo structure with `telec todo demo validate api-todos-work-stability-hardening --project-root .` (3 executable blocks).
-- Attempted runtime operational validation (`telec todo work ...` twice + `instrukt-ai-logs ... --grep NEXT_WORK_PHASE`), but worker role permissions block `telec todo work`; no runtime logs were emitted from this session.
+- Verified lint gate passes with fresh run: `make lint` (ruff format/check + pyright all clean; markdown/resource checks passed).
+- Verified test gate passes with fresh run: `make test` => `2209 passed, 106 skipped, 1 warning`.
+- Verified demo structure: `telec todo demo validate api-todos-work-stability-hardening --project-root .` => `Validation passed: 3 executable block(s) found`.
+- Attempted runtime operational check (`telec todo work ...` twice + `instrukt-ai-logs ... --grep NEXT_WORK_PHASE`), but worker role is denied for `telec todo work`; no in-session runtime log evidence available from this worker context.
 
 ## Review Gates (Reviewer)
 
