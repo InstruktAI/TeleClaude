@@ -11,8 +11,8 @@ from canonical signals only.
 
 **File(s):** `teleclaude/core/integration/events.py`, `teleclaude/core/integration/event_store.py`
 
-- [ ] Define typed event models and required field validation.
-- [ ] Persist accepted events in append-only storage with idempotency keys.
+- [x] Define typed event models and required field validation.
+- [x] Persist accepted events in append-only storage with idempotency keys.
 
 ### Task 1.2: Build readiness projection and supersession rules
 
