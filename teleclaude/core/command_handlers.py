@@ -323,13 +323,19 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
 
     # Enforce jail only for explicit non-admin role assignments.
     # Missing role means unrestricted fallback ("god mode") for local/TUI/API flows.
+    raw_help_desk_path = getattr(config.computer, "help_desk_dir", None)
+    configured_help_desk_path = (
+        raw_help_desk_path
+        if isinstance(raw_help_desk_path, str) and raw_help_desk_path.strip()
+        else os.path.join(WORKING_DIR, "help-desk")
+    )
     if human_role and human_role != HUMAN_ROLE_ADMIN:
         logger.info(
             "Restricted session attempt from origin=%s role=%s. Jailing to help-desk.",
             origin,
             human_role,
         )
-        project_path = os.path.join(WORKING_DIR, "help-desk")
+        project_path = configured_help_desk_path
         Path(project_path).mkdir(parents=True, exist_ok=True)
         subfolder = None
         working_slug = None
@@ -340,7 +346,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
                 "Session creation missing project_path from origin=%s; defaulting to help-desk.",
                 origin,
             )
-            project_path = os.path.join(WORKING_DIR, "help-desk")
+            project_path = configured_help_desk_path
             Path(project_path).mkdir(parents=True, exist_ok=True)
             subfolder = None
             working_slug = None
@@ -441,6 +447,10 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         except (ValueError, TypeError):
             pass
+    if identity and identity.platform == "whatsapp" and identity.platform_user_id:
+        wa_meta = session.get_metadata().get_ui().get_whatsapp()
+        wa_meta.phone_number = identity.platform_user_id
+        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
 
     # NOTE: tmux creation + auto-command execution are handled asynchronously
     # by the daemon bootstrap task. Channel creation is deferred to UI lanes
@@ -656,8 +666,9 @@ async def get_session_data(
         if not isinstance(tmux_session_name, str) or not tmux_session_name.strip():
             return None
 
+        tail = cmd.tail_chars if cmd.tail_chars > 0 else 2000
         try:
-            pane_output = await tmux_bridge.capture_pane(tmux_session_name)
+            pane_output = await tmux_bridge.capture_pane(tmux_session_name, capture_lines=tail)
         except Exception as exc:
             logger.warning(
                 "Tmux fallback capture failed for session %s (%s): %s",
@@ -667,7 +678,6 @@ async def get_session_data(
             )
             return None
 
-        tail = cmd.tail_chars if cmd.tail_chars > 0 else 2000
         # Strip ANSI before truncation so tail slicing cannot split escape codes.
         sanitized_output = strip_ansi_codes(pane_output)
         messages = sanitized_output[-tail:] if len(sanitized_output) > tail else sanitized_output

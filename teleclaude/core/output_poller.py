@@ -160,8 +160,7 @@ class OutputPoller:
                         )
                     else:
                         # Unexpected death - log as critical with diagnostics
-                        baseline = started_at
-                        age_seconds = time.time() - baseline
+                        age_seconds = time.time() - started_at
                         logger.critical(
                             "Session %s disappeared between polls (watchdog triggered) "
                             "session=%s age=%.2fs poll_iteration=%d seconds_since_last_poll=%.1f",

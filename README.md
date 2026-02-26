@@ -161,6 +161,9 @@ Yes. Claude, Gemini, and Codex run side by side in the same network. Each sessio
 **How does multi-computer work?**
 Every machine runs a TeleClaude daemon. They discover each other via Redis heartbeats and communicate through Redis Streams. You dispatch work to any computer from any client. Sessions are local to their machine; coordination is global.
 
+**Isn't all that context expensive?**
+This is one of the most token-efficient approaches you'll find. Yes, the initial context layer is substantial — policies, principles, procedures, memory — but it is high-quality, consistent, and precisely scoped. The real token waste in multi-agent systems comes from what happens _without_ this foundation: agents fumbling to figure out what to do next, circular discussions, frivolous back-and-forth, and low-quality outcomes that need rework. TeleClaude's Next Machine drives deterministic phase transitions — Prepare, Build, Review, Finalize — so agents never waste turns negotiating process. The Breath methodology and message discipline ensure every exchange carries signal. Heavy context upfront, zero waste downstream. When purists talk about context rot, they're usually describing bad-quality context provisioning. Ours is surgically curated and selectively retrieved.
+
 ---
 
 ## License

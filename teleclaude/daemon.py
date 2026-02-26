@@ -67,6 +67,8 @@ from teleclaude.hooks.handlers import HandlerRegistry
 from teleclaude.hooks.inbound import InboundEndpointRegistry, NormalizerRegistry
 from teleclaude.hooks.normalizers import register_builtin_normalizers
 from teleclaude.hooks.registry import ContractRegistry
+from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
+from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
 from teleclaude.logging_config import setup_logging
 from teleclaude.notifications import NotificationOutboxWorker
 from teleclaude.services.deploy_service import DeployService
@@ -1515,6 +1517,18 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Load contracts from DB
         await contract_registry.load_from_db()
+
+        # Built-in inbound WhatsApp handling (global subscription handler).
+        handler_registry.register("whatsapp_inbound", handle_whatsapp_event)
+        await contract_registry.register(
+            Contract(
+                id="builtin-whatsapp-inbound",
+                target=Target(handler="whatsapp_inbound"),
+                source_criterion=PropertyCriterion(match="whatsapp"),
+                type_criterion=PropertyCriterion(pattern="message.*"),
+                source="programmatic",
+            )
+        )
 
         # Register built-in normalizers.
         normalizer_registry = NormalizerRegistry()

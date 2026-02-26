@@ -23,7 +23,13 @@ from teleclaude.core.events import SessionLifecycleContext, SessionStatusContext
 from teleclaude.core.models import SessionAdapterMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
-from teleclaude.types.commands import CreateSessionCommand, HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
+from teleclaude.types.commands import (
+    CreateSessionCommand,
+    HandleFileCommand,
+    HandleVoiceCommand,
+    KeysCommand,
+    ProcessMessageCommand,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -79,8 +85,12 @@ class DiscordAdapter(UiAdapter):
         self._client: DiscordClientLike | None = None
         # project_path -> discord_forum_id mapping, built at startup
         self._project_forum_map: dict[str, int] = {}
+        # discord_forum_id -> project_path mapping, built at startup
+        self._forum_project_map: dict[int, str] = {}
         # forum-channel-id -> webhook cache for actor-based reflection delivery
         self._reflection_webhook_cache: dict[int, object] = {}
+        self._tree: object | None = None
+        self._launcher_registration_view: object | None = None
 
     async def start(self) -> None:
         """Initialize Discord client and start gateway task."""
@@ -93,6 +103,7 @@ class DiscordAdapter(UiAdapter):
         intents.message_content = True
 
         self._client = self._discord.Client(intents=intents)
+        self._register_cancel_slash_command()
         self._register_gateway_handlers()
         self._ready_event.clear()
 
@@ -112,12 +123,29 @@ class DiscordAdapter(UiAdapter):
 
     async def stop(self) -> None:
         """Stop Discord client and gateway task."""
+        self._tree = None
+        self._launcher_registration_view = None
         if self._client is not None:
             await self._client.close()
         if self._gateway_task and not self._gateway_task.done():
             self._gateway_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._gateway_task
+
+    def _get_enabled_agents(self) -> list[str]:
+        return [name for name, agent_cfg in config.agents.items() if agent_cfg.enabled]
+
+    @property
+    def _multi_agent(self) -> bool:
+        return len(self._get_enabled_agents()) > 1
+
+    @property
+    def _default_agent(self) -> str:
+        enabled_agents = self._get_enabled_agents()
+        if enabled_agents:
+            return enabled_agents[0]
+        logger.warning("No enabled agents configured for Discord; defaulting to claude")
+        return "claude"
 
     def store_channel_id(self, adapter_metadata: object, channel_id: str) -> None:
         if not isinstance(adapter_metadata, SessionAdapterMetadata):
@@ -423,7 +451,153 @@ class DiscordAdapter(UiAdapter):
         ]
         entries.sort(key=lambda e: len(e[0]), reverse=True)
         self._project_forum_map = dict(entries)
+        self._forum_project_map = {forum_id: project_path for project_path, forum_id in entries}
         logger.info("Discord project forum map: %d entries", len(self._project_forum_map))
+
+    def _resolve_project_from_forum(self, forum_id: int) -> str | None:
+        return self._forum_project_map.get(forum_id)
+
+    def _resolve_parent_forum_id(self, channel: object | None) -> int | None:
+        if channel is None:
+            return None
+        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
+        if parent_id is not None:
+            return parent_id
+        parent = getattr(channel, "parent", None)
+        return self._parse_optional_int(getattr(parent, "id", None))
+
+    @staticmethod
+    def _extract_forum_thread_result(create_result: object) -> tuple[object | None, object | None]:
+        thread = getattr(create_result, "thread", None)
+        starter_message = getattr(create_result, "message", None)
+        if thread is None and isinstance(create_result, tuple) and create_result:
+            thread = create_result[0]
+            if len(create_result) > 1:
+                starter_message = create_result[1]
+        if thread is None:
+            thread = create_result
+        return thread, starter_message
+
+    def _build_session_launcher_view(self) -> object:
+        from teleclaude.adapters.discord.session_launcher import SessionLauncherView
+
+        return SessionLauncherView(enabled_agents=self._get_enabled_agents(), on_launch=self._handle_launcher_click)
+
+    async def _post_or_update_launcher(self, forum_id: int) -> None:
+        if self._client is None or not self._multi_agent:
+            return
+
+        forum_channel = await self._get_channel(forum_id)
+        if forum_channel is None:
+            logger.warning("Cannot post launcher for forum %s: channel not found", forum_id)
+            return
+
+        if not self._is_forum_channel(forum_channel):
+            logger.warning("Cannot post launcher for forum %s: channel is not a forum", forum_id)
+            return
+
+        setting_prefix = f"discord_launcher:{forum_id}"
+        legacy_message_key = setting_prefix
+        thread_key = f"{setting_prefix}:thread_id"
+        message_key = f"{setting_prefix}:message_id"
+        launcher_title = "Start a session"
+        launcher_text = "Start a session"
+        existing_thread_id = await db.get_system_setting(thread_key)
+        existing_message_id = await db.get_system_setting(message_key)
+        if existing_message_id is None:
+            existing_message_id = await db.get_system_setting(legacy_message_key)
+
+        if (
+            existing_thread_id
+            and existing_thread_id.isdigit()
+            and existing_message_id
+            and existing_message_id.isdigit()
+        ):
+            launcher_thread = await self._get_channel(int(existing_thread_id))
+            if launcher_thread is not None and self._resolve_parent_forum_id(launcher_thread) == forum_id:
+                try:
+                    fetch_fn = self._require_async_callable(
+                        getattr(launcher_thread, "fetch_message", None),
+                        label="Discord thread fetch_message",
+                    )
+                    message = await fetch_fn(int(existing_message_id))
+                    edit_fn = self._require_async_callable(getattr(message, "edit", None), label="Discord message edit")
+                    await edit_fn(content=launcher_text, view=self._build_session_launcher_view())
+                    await self._pin_launcher_message(message, forum_id=forum_id)
+                    return
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to update Discord launcher message %s in forum %s (thread %s): %s",
+                        existing_message_id,
+                        forum_id,
+                        existing_thread_id,
+                        exc,
+                    )
+
+        create_thread_fn = getattr(forum_channel, "create_thread", None)
+        if not callable(create_thread_fn):
+            logger.warning("Forum channel %s does not support create_thread(); launcher not posted", forum_id)
+            return
+
+        created = await self._require_async_callable(create_thread_fn, label="Discord forum create_thread")(
+            name=launcher_title,
+            content=launcher_text,
+            view=self._build_session_launcher_view(),
+        )
+        launcher_thread, launcher_message = self._extract_forum_thread_result(created)
+        launcher_thread_id = self._parse_optional_int(getattr(launcher_thread, "id", None))
+        if launcher_thread_id is None:
+            logger.warning("Discord launcher create_thread returned invalid thread id for forum %s", forum_id)
+            return
+
+        launcher_message_id_raw = getattr(launcher_message, "id", None)
+        launcher_message_id = self._parse_optional_int(launcher_message_id_raw)
+        if launcher_message is not None:
+            await self._pin_launcher_message(launcher_message, forum_id=forum_id)
+        if launcher_message_id is None:
+            launcher_message_id = launcher_thread_id
+
+        await db.set_system_setting(thread_key, str(launcher_thread_id))
+        await db.set_system_setting(message_key, str(launcher_message_id))
+        await db.set_system_setting(legacy_message_key, str(launcher_message_id))
+
+    async def _resolve_interaction_forum_id(self, interaction: object) -> int | None:
+        channel = getattr(interaction, "channel", None)
+        parent_forum_id = self._resolve_parent_forum_id(channel)
+        if parent_forum_id is not None:
+            return parent_forum_id
+
+        interaction_channel_id = self._parse_optional_int(getattr(interaction, "channel_id", None))
+        if interaction_channel_id is None:
+            return None
+
+        if channel is not None and self._is_forum_channel(channel):
+            return interaction_channel_id
+
+        resolved_channel = await self._get_channel(interaction_channel_id)
+        resolved_parent_forum_id = self._resolve_parent_forum_id(resolved_channel)
+        if resolved_parent_forum_id is not None:
+            return resolved_parent_forum_id
+        if resolved_channel is not None and self._is_forum_channel(resolved_channel):
+            return interaction_channel_id
+        return interaction_channel_id
+
+    async def _pin_launcher_message(self, message: object, *, forum_id: int) -> None:
+        message_id = getattr(message, "id", None)
+        pin_fn = getattr(message, "pin", None)
+        if not callable(pin_fn):
+            logger.debug("Launcher message %s in forum %s cannot be pinned", message_id, forum_id)
+            return
+
+        try:
+            await self._require_async_callable(pin_fn, label="Discord message pin")()
+        except Exception as exc:
+            logger.warning(
+                "Failed to pin Discord launcher message %s in forum %s: %s",
+                message_id,
+                forum_id,
+                exc,
+            )
 
     async def _ensure_project_forums(self, guild: object, category: object | None) -> None:
         """Create a forum for each trusted dir that lacks a valid discord_forum ID."""
@@ -1084,6 +1258,30 @@ class DiscordAdapter(UiAdapter):
             return int(text)
         return None
 
+    def _register_cancel_slash_command(self) -> None:
+        if self._client is None:
+            return
+        app_commands = getattr(self._discord, "app_commands", None)
+        command_tree_cls = getattr(app_commands, "CommandTree", None) if app_commands else None
+        command_cls = getattr(app_commands, "Command", None) if app_commands else None
+        object_cls = getattr(self._discord, "Object", None)
+        if not callable(command_tree_cls) or not callable(command_cls):
+            logger.warning("Discord app_commands unavailable; /cancel slash command not registered")
+            return
+
+        self._tree = command_tree_cls(self._client)
+        cancel_command = command_cls(
+            name="cancel",
+            description="Send CTRL+C to interrupt the current agent",
+            callback=self._handle_cancel_slash,
+        )
+        if self._guild_id is None or not callable(object_cls):
+            logger.warning("DISCORD_GUILD_ID missing or invalid; skipping guild-scoped /cancel registration")
+            return
+        add_command = getattr(self._tree, "add_command", None)
+        if callable(add_command):
+            add_command(cancel_command, guild=object_cls(id=self._guild_id))
+
     def _register_gateway_handlers(self) -> None:
         if self._client is None:
             raise AdapterError("Discord client not initialized")
@@ -1106,6 +1304,8 @@ class DiscordAdapter(UiAdapter):
             return
         user = getattr(self._client, "user", None)
         logger.info("Discord adapter ready as %s", user)
+        # Mark gateway readiness immediately; follow-up bootstrap can be slow.
+        self._ready_event.set()
 
         # Auto-provision Discord infrastructure (category + forums)
         try:
@@ -1113,7 +1313,31 @@ class DiscordAdapter(UiAdapter):
         except Exception as exc:
             logger.warning("Discord infrastructure provisioning failed: %s", exc)
 
-        self._ready_event.set()
+        if self._tree is not None and self._guild_id is not None:
+            sync_fn = getattr(self._tree, "sync", None)
+            object_cls = getattr(self._discord, "Object", None)
+            if callable(sync_fn) and callable(object_cls):
+                try:
+                    await self._require_async_callable(sync_fn, label="Discord command tree sync")(
+                        guild=object_cls(id=self._guild_id)
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to sync Discord slash commands: %s", exc)
+
+        if self._multi_agent:
+            add_view = getattr(self._client, "add_view", None)
+            if callable(add_view):
+                try:
+                    self._launcher_registration_view = self._build_session_launcher_view()
+                    add_view(self._launcher_registration_view)
+                except Exception as exc:
+                    logger.warning("Failed to register persistent Discord launcher view: %s", exc)
+
+            for forum_id in self._project_forum_map.values():
+                try:
+                    await self._post_or_update_launcher(forum_id)
+                except Exception as exc:
+                    logger.warning("Failed to post launcher for forum %s: %s", forum_id, exc)
 
     async def _handle_discord_dm(self, message: object) -> None:
         """Handle Direct Message (no guild) — invite token binding or bound user messaging."""
@@ -1671,6 +1895,84 @@ class DiscordAdapter(UiAdapter):
                 return session
         return None
 
+    async def _handle_launcher_click(self, interaction: object, agent_name: str) -> None:
+        response = getattr(interaction, "response", None)
+        response_defer = getattr(response, "defer", None)
+        if callable(response_defer):
+            await self._require_async_callable(response_defer, label="Discord interaction response.defer")(
+                ephemeral=True
+            )
+
+        forum_id = await self._resolve_interaction_forum_id(interaction)
+        project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
+        if project_path is None:
+            followup = getattr(interaction, "followup", None)
+            followup_send = getattr(followup, "send", None)
+            if callable(followup_send):
+                await self._require_async_callable(followup_send, label="Discord interaction followup.send")(
+                    "Unable to resolve project for this forum.",
+                    ephemeral=True,
+                )
+            return
+
+        create_cmd = CreateSessionCommand(
+            project_path=project_path,
+            auto_command=f"agent {agent_name}",
+            origin=InputOrigin.DISCORD.value,
+        )
+        result = await get_command_service().create_session(create_cmd)
+        session_id = str(result.get("session_id", ""))
+
+        followup = getattr(interaction, "followup", None)
+        followup_send = getattr(followup, "send", None)
+        if not callable(followup_send):
+            return
+        if session_id:
+            await self._require_async_callable(followup_send, label="Discord interaction followup.send")(
+                f"Starting {agent_name}...",
+                ephemeral=True,
+            )
+            return
+        await self._require_async_callable(followup_send, label="Discord interaction followup.send")(
+            f"Failed to start {agent_name}.",
+            ephemeral=True,
+        )
+
+    async def _handle_cancel_slash(self, interaction: object) -> None:
+        channel = getattr(interaction, "channel", None)
+        response = getattr(interaction, "response", None)
+        response_send = getattr(response, "send_message", None)
+        if not callable(response_send):
+            return
+        if not self._is_thread_channel(channel):
+            await self._require_async_callable(response_send, label="Discord interaction response.send_message")(
+                "No active session in this thread.",
+                ephemeral=True,
+            )
+            return
+
+        thread_id = self._parse_optional_int(getattr(channel, "id", None))
+        parent = getattr(channel, "parent", None)
+        parent_id = self._parse_optional_int(getattr(parent, "id", None))
+        channel_id = parent_id or thread_id
+
+        user_obj = getattr(interaction, "user", None)
+        user_id = str(getattr(user_obj, "id", "")).strip()
+        session = await self._find_session(channel_id=channel_id, thread_id=thread_id, user_id=user_id)
+        if session is None:
+            await self._require_async_callable(response_send, label="Discord interaction response.send_message")(
+                "No active session in this thread.",
+                ephemeral=True,
+            )
+            return
+
+        cmd = KeysCommand(session_id=session.session_id, key="cancel", args=[])
+        await self._require_async_callable(response_send, label="Discord interaction response.send_message")(
+            "Sent CTRL+C",
+            ephemeral=True,
+        )
+        await get_command_service().keys(cmd)
+
     async def _create_session_for_message(
         self,
         message: object,
@@ -1683,28 +1985,28 @@ class DiscordAdapter(UiAdapter):
         display_name = str(
             getattr(author, "display_name", None) or getattr(author, "name", None) or f"discord-{user_id}"
         )
+        channel_metadata: dict[str, str] = {
+            "user_id": user_id,
+            "discord_user_id": user_id,
+            "platform": "discord",
+        }
 
         if forum_type == "help_desk":
-            human_role = "customer"
+            channel_metadata["human_role"] = "customer"
             effective_path = project_path or config.computer.help_desk_dir
+            auto_command = "agent claude"
         else:
-            from teleclaude.core.identity import get_identity_resolver
-
-            identity = get_identity_resolver().resolve("discord", {"user_id": user_id, "discord_user_id": user_id})
-            human_role = (identity.person_role if identity and identity.person_name else None) or "member"
-            effective_path = project_path or config.computer.help_desk_dir
+            forum_id, _ = self._extract_channel_ids(message)
+            forum_project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
+            effective_path = forum_project_path or project_path or config.computer.help_desk_dir
+            auto_command = f"agent {self._default_agent}"
 
         create_cmd = CreateSessionCommand(
             project_path=effective_path,
             title=f"Discord: {display_name}",
             origin=InputOrigin.DISCORD.value,
-            channel_metadata={
-                "user_id": user_id,
-                "discord_user_id": user_id,
-                "human_role": human_role,
-                "platform": "discord",
-            },
-            auto_command="agent claude",
+            channel_metadata=channel_metadata,
+            auto_command=auto_command,
         )
         result = await get_command_service().create_session(create_cmd)
         session_id = str(result.get("session_id", ""))
@@ -1821,14 +2123,7 @@ class DiscordAdapter(UiAdapter):
         if len(title) > 100:
             title = title[:97] + "..."
         result = await create_thread_fn(name=title, content=self._fit_message_text(content, context="thread_starter"))
-        thread = getattr(result, "thread", None)
-        starter_message = getattr(result, "message", None)
-        if thread is None and isinstance(result, tuple) and result:
-            thread = result[0]
-            if len(result) > 1:
-                starter_message = result[1]
-        if thread is None:
-            thread = result
+        thread, starter_message = self._extract_forum_thread_result(result)
 
         thread_id = self._parse_optional_int(getattr(thread, "id", None))
         if thread_id is None:

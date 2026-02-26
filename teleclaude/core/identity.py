@@ -38,6 +38,7 @@ class IdentityResolver:
         self._by_username: dict[str, PersonEntry] = {}
         self._by_telegram_user_id: dict[int, PersonEntry] = {}
         self._by_discord_user_id: dict[str, PersonEntry] = {}
+        self._by_whatsapp_phone: dict[str, PersonEntry] = {}
         self._load_config()
 
     @staticmethod
@@ -51,6 +52,11 @@ class IdentityResolver:
         if role in HUMAN_ROLES:
             return role
         return HUMAN_ROLE_CUSTOMER
+
+    @staticmethod
+    def _normalize_phone_number(phone_number: str) -> str:
+        """Normalize phone number to numeric digits without leading plus."""
+        return "".join(ch for ch in phone_number if ch.isdigit())
 
     def _load_config(self) -> None:
         """Load global and per-person configuration to build lookup maps."""
@@ -89,6 +95,12 @@ class IdentityResolver:
             discord_creds = getattr(person_conf.creds, "discord", None) if person_conf.creds else None
             if discord_creds:
                 self._by_discord_user_id[discord_creds.user_id] = person
+
+            whatsapp_creds = getattr(person_conf.creds, "whatsapp", None) if person_conf.creds else None
+            if whatsapp_creds and getattr(whatsapp_creds, "phone_number", None):
+                normalized_phone = self._normalize_phone_number(str(whatsapp_creds.phone_number))
+                if normalized_phone:
+                    self._by_whatsapp_phone[normalized_phone] = person
 
     def resolve(self, origin: str, channel_metadata: Mapping[str, object]) -> Optional[IdentityContext]:
         """Resolve identity from origin and metadata.
@@ -149,6 +161,26 @@ class IdentityResolver:
                     platform_user_id=discord_uid_str,
                 )
 
+        if origin == "whatsapp":
+            phone_number = channel_metadata.get("phone_number")
+            if phone_number is not None:
+                normalized_phone = self._normalize_phone_number(str(phone_number))
+                person = self._by_whatsapp_phone.get(normalized_phone)
+                if person:
+                    return IdentityContext(
+                        person_name=person.name,
+                        person_email=person.email,
+                        person_role=self._normalize_role(person.role),
+                        platform="whatsapp",
+                        platform_user_id=normalized_phone,
+                    )
+                if normalized_phone:
+                    return IdentityContext(
+                        person_role=CUSTOMER_ROLE,
+                        platform="whatsapp",
+                        platform_user_id=normalized_phone,
+                    )
+
         return None
 
 
@@ -163,6 +195,8 @@ def derive_identity_key(adapter_metadata: SessionAdapterMetadata) -> str | None:
         return f"discord:{ui._discord.user_id}"
     if ui._telegram and getattr(ui._telegram, "user_id", None):
         return f"telegram:{ui._telegram.user_id}"
+    if ui._whatsapp and ui._whatsapp.phone_number:
+        return f"whatsapp:{ui._whatsapp.phone_number}"
     # TODO: Add web platform when WebAdapterMetadata is implemented:
     #   if ui._web and ui._web.email: return f"web:{ui._web.email}"
     return None

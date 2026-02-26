@@ -99,6 +99,8 @@ def parse_phase_transitions(
         # Legacy function-call style.
         re.compile(r'telec todo mark-phase\(slug="\{args\}", phase="([a-z]+)", status="([a-z_]+)"\)'),
         # Current CLI style.
+        re.compile(r"telec todo mark-phase \{args\} --phase ([a-z]+) --status ([a-z_]+)"),
+        # Flexible spacing/ordering fallback for CLI forms.
         re.compile(r"telec\s+todo\s+mark-phase[^\n]*?--phase\s+([a-z]+)[^\n]*?--status\s+([a-z_]+)"),
     )
 

@@ -1,4 +1,4 @@
-# Quality Checklist: help-desk-whatsapp
+# Quality Checklist: integration-orchestrator-rollout
 
 This checklist is the execution projection of `definition-of-done.md` for this todo.
 
@@ -16,6 +16,7 @@ Ownership:
 - [ ] Lint passes (`make lint`)
 - [ ] No silent deferrals in implementation plan
 - [ ] Code committed
+- [ ] Demo validated (`telec todo demo validate integration-orchestrator-rollout` exits 0, or exception noted)
 - [ ] Working tree clean
 - [ ] Comments/docstrings updated where behavior changed
 

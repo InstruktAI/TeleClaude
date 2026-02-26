@@ -43,6 +43,7 @@ from teleclaude.todo_scaffold import create_bug_skeleton, create_todo_skeleton  
 
 TMUX_ENV_KEY = "TMUX"
 TUI_ENV_KEY = "TELEC_TUI_SESSION"
+TUI_AUTH_EMAIL_ENV_KEY = "TELEC_AUTH_EMAIL"
 TUI_SESSION_NAME = "tc_tui"
 
 
@@ -1084,6 +1085,12 @@ def main() -> None:
 
     # TUI mode - ensure we're in tmux for pane preview
     if not os.environ.get(TMUX_ENV_KEY):
+        # Bridge outer-shell login identity into the trusted tc_tui session.
+        terminal_email = read_current_session_email()
+        if _requires_tui_login() and not terminal_email:
+            print("Error: telec auth login is required before starting the TUI in multi-user mode.")
+            print("Run: telec auth login <email>")
+            raise SystemExit(1)
         # Always restart the TUI session to avoid adopting stale panes
         tmux = config.computer.tmux_binary
         result = subprocess.run(
@@ -1098,8 +1105,10 @@ def main() -> None:
             )
         # Create new named session and mark it as telec-managed
         tmux_args = [tmux, "new-session", "-s", TUI_SESSION_NAME, "-e", f"{TUI_ENV_KEY}={ENV_ENABLE}"]
+        if terminal_email:
+            tmux_args.extend(["-e", f"{TUI_AUTH_EMAIL_ENV_KEY}={terminal_email}"])
         for key, value in os.environ.items():
-            if key == TUI_ENV_KEY:
+            if key in {TUI_ENV_KEY, TUI_AUTH_EMAIL_ENV_KEY}:
                 continue
             tmux_args.extend(["-e", f"{key}={value}"])
         tmux_args.append("telec")
@@ -1975,13 +1984,16 @@ def _demo_create(slug: str, project_root: Path) -> None:
 def _handle_todo_demo(args: list[str]) -> None:
     """Handle telec todo demo subcommands: list, validate, run, create."""
     _DEMO_SUBCOMMANDS = {"list", "validate", "run", "create"}
+    # Backward compatibility:
+    # - `telec todo demo` lists demos
+    # - `telec todo demo <slug>` runs demo for slug
     project_root = Path.cwd()
     if not args:
-        _demo_list(project_root)
-        return
-
-    subcommand = args[0]
-    remaining_args = args[1:]
+        subcommand = "list"
+        remaining_args: list[str] = []
+    else:
+        subcommand = args[0]
+        remaining_args = args[1:]
     slug: str | None = None
 
     # Backward compatibility: `telec todo demo <slug>` behaves like
@@ -2902,6 +2914,17 @@ def _role_for_email(email: str) -> str | None:
         if person.email.strip().lower() == normalized:
             return person.role
     return None
+
+
+def _requires_tui_login() -> bool:
+    """Return True when terminal login is required before launching TUI."""
+    try:
+        from teleclaude.config.loader import load_global_config
+
+        global_cfg = load_global_config()
+    except Exception:
+        return False
+    return len(global_cfg.people) > 1
 
 
 def _handle_login(args: list[str]) -> None:

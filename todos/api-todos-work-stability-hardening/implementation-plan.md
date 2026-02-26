@@ -2,7 +2,9 @@
 
 ## Overview
 
-- Instrument first, then optimize with safety-preserving guards. The implementation should prove where time is spent, remove redundant prep/sync work, and keep existing state-machine behavior intact.
+Instrument first, then remove redundant prep/sync work with explicit safety
+guards. Keep behavior-compatible orchestration semantics while making the
+request path deterministic for unchanged slugs.
 
 ## Phase 1: Core Changes
 
@@ -10,31 +12,53 @@
 
 **File(s):** `teleclaude/core/next_machine/core.py`, `teleclaude/api_server.py` (if request correlation is needed)
 
-- [ ] Add structured timing logs around major `next_work(...)` phases.
-- [ ] Include slug and request correlation where available.
-- [ ] Ensure logs are high-signal and grep-friendly.
+- [ ] Add structured timing logs around major `next_work(...)` phases
+      (slug resolution, precondition checks, ensure/prep, sync, gate execution,
+      dispatch decision).
+- [ ] Include slug and stable phase identifiers so operations can grep a single
+      `/todos/work` path without stack traces.
+- [ ] Ensure logs encode decision reason for skip/run outcomes.
+- Requirements: `R1`
 
 ### Task 1.2: Replace always-prep behavior with conditional prep policy
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] Add explicit prep decision logic for existing worktrees.
-- [ ] Keep always-prep only for first worktree creation or explicit refresh paths.
-- [ ] Preserve failure reporting when prep is required and fails.
+- [ ] Introduce explicit prep-decision helper(s) for existing worktrees.
+- [ ] Require prep on new worktree creation and when prep-state/drift checks
+      indicate worktree is stale.
+- [ ] Skip prep when worktree is unchanged and known-good.
+- [ ] Preserve existing prep failure contract (`WORKTREE_PREP_FAILED` path).
+- Requirements: `R2`, `R5`
 
 ### Task 1.3: Add per-slug single-flight protection for prep
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] Ensure concurrent `/todos/work` calls for the same slug do not duplicate prep subprocess execution.
-- [ ] Avoid global serialization across different slugs.
+- [ ] Add per-slug lock/single-flight coordination around ensure/prep execution.
+- [ ] Ensure only one same-slug call runs prep at a time; followers reuse the
+      completed state.
+- [ ] Avoid cross-slug serialization (no global worktree prep lock).
+- Requirements: `R3`, `R5`
 
 ### Task 1.4: Make sync operations conditional where safe
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] Skip `sync_main_to_worktree(...)` and todo sync when refs/content are unchanged.
-- [ ] Keep sync mandatory when change detection indicates drift or newer main commits.
+- [ ] Add change-detection checks for `sync_main_to_worktree(...)` and
+      `sync_slug_todo_from_main_to_worktree(...)`.
+- [ ] Skip sync when tracked source artifacts are unchanged.
+- [ ] Preserve state seeding/repair behavior when destination files are missing
+      or source has changed.
+- Requirements: `R4`, `R5`
+
+### Task 1.5: Update architecture docs for new prep/sync decision contract
+
+**File(s):** `docs/project/design/architecture/next-machine.md`
+
+- [ ] Document conditional prep/sync policy and single-flight behavior.
+- [ ] Document new phase timing log contract for `/todos/work`.
+- Requirements: `R1`, `R2`, `R3`, `R4`
 
 ---
 
@@ -42,25 +66,40 @@
 
 ### Task 2.1: Tests
 
-- [ ] Update `tests/unit/test_next_machine_worktree_prep.py` for conditional prep behavior.
-- [ ] Add/extend tests for concurrent prep calls and per-slug single-flight behavior.
-- [ ] Update tests that currently encode "always prep" assumptions.
-- [ ] Run targeted tests for next-machine prep/work behavior.
+- [ ] Update `tests/unit/test_next_machine_worktree_prep.py` to replace
+      "always prep" assertions with conditional decision assertions.
+- [ ] Add/extend tests for concurrent same-slug calls to verify single-flight
+      prep behavior.
+- [ ] Add/extend sync tests to verify safe skip on unchanged inputs and re-sync
+      on changes.
+- [ ] Validate no regression in build gate/reset and dispatch behavior.
+- Requirements: `R2`, `R3`, `R4`, `R5`, `R6`
 
 ### Task 2.2: Quality Checks
 
-- [ ] Run lint/type checks for touched modules.
-- [ ] Verify no unchecked implementation tasks remain
+- [ ] Run targeted unit tests for next-machine modules touched in this todo.
+- [ ] Run repo quality gates (`make lint`, `make test`) before completion.
+- [ ] Verify no unchecked implementation tasks remain.
+- Requirements: `R5`, `R6`
+
+### Task 2.3: Operational validation
+
+- [ ] Run repeated same-slug `/todos/work` calls in a controlled scenario and
+      verify logs show prep/sync skip decisions after initial ready state.
+- [ ] Verify phase timing logs are grep-friendly via:
+      `instrukt-ai-logs teleclaude --since <window> --grep <phase-pattern>`.
+- Requirements: `R1`, `R2`, `R4`
 
 ---
 
 ## Phase 3: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [ ] Confirm every task traces to one or more requirements (`R1`-`R6`).
+- [ ] Confirm implementation tasks are all marked `[x]`.
+- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable).
+- Requirements: `R6`
 
-## Deferred follow-up (only if Phase 1/2 still leave SLO violations)
+## Potential follow-up (separate todo if needed; not part of this delivery scope)
 
-- [ ] Evaluate moving heavyweight checks out of synchronous request path.
-- [ ] Tune watchdog thresholds using measured phase timings, not guesswork.
+- Evaluate moving heavyweight checks out of synchronous request path.
+- Tune watchdog thresholds using measured phase timings, not guesswork.

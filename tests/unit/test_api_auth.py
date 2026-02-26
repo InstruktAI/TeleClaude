@@ -113,6 +113,42 @@ async def test_verify_caller_derives_worker_from_working_slug() -> None:
 
 
 @pytest.mark.asyncio
+async def test_verify_caller_tmux_uses_terminal_role_mapping() -> None:
+    request = _request_with_headers()
+    with (
+        patch("teleclaude.api.auth._resolve_terminal_role", return_value="member"),
+        patch("teleclaude.api.auth._requires_terminal_login", return_value=True),
+    ):
+        identity = await verify_caller(
+            request=request,
+            x_caller_session_id=None,
+            x_telec_email="member@example.com",
+            x_tmux_session="tc_tui",
+        )
+    assert identity.session_id == ""
+    assert identity.human_role == "member"
+    assert identity.tmux_session_name == "tc_tui"
+
+
+@pytest.mark.asyncio
+async def test_verify_caller_tmux_requires_login_in_multi_user_mode() -> None:
+    request = _request_with_headers()
+    with (
+        patch("teleclaude.api.auth._resolve_terminal_role", return_value=None),
+        patch("teleclaude.api.auth._requires_terminal_login", return_value=True),
+    ):
+        with pytest.raises(HTTPException) as excinfo:
+            await verify_caller(
+                request=request,
+                x_caller_session_id=None,
+                x_telec_email=None,
+                x_tmux_session="tc_tui",
+            )
+    assert excinfo.value.status_code == 401
+    assert "terminal login required" in str(excinfo.value.detail)
+
+
+@pytest.mark.asyncio
 async def test_require_clearance_denies_excluded_tool() -> None:
     check = require_clearance("telec sessions start")
     identity = CallerIdentity(
