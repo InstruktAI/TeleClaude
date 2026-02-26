@@ -12,6 +12,14 @@ from typing import Literal, TypedDict
 from teleclaude.core.integration.readiness_projection import CandidateKey
 
 QueueStatus = Literal["queued", "in_progress", "integrated", "blocked", "superseded"]
+_RECOVERY_REQUEUE_REASON = "requeued after runtime restart"
+_ALLOWED_STATUS_TRANSITIONS: dict[QueueStatus, frozenset[QueueStatus]] = {
+    "queued": frozenset({"in_progress"}),
+    "in_progress": frozenset({"queued", "integrated", "blocked", "superseded"}),
+    "integrated": frozenset(),
+    "blocked": frozenset(),
+    "superseded": frozenset(),
+}
 
 
 class IntegrationQueueError(RuntimeError):
@@ -185,6 +193,14 @@ class IntegrationQueue:
         if item.status == to_status and item.status_reason == reason:
             return item
 
+        allowed_targets = _ALLOWED_STATUS_TRANSITIONS[item.status]
+        if to_status not in allowed_targets:
+            raise IntegrationQueueError(
+                f"invalid queue transition {item.status}->{to_status} for candidate {key.slug}/{key.branch}@{key.sha}"
+            )
+        if item.status == "in_progress" and to_status == "queued" and reason != _RECOVERY_REQUEUE_REASON:
+            raise IntegrationQueueError(f"invalid queue transition reason for in_progress->queued: {reason!r}")
+
         changed_at = _format_timestamp(_resolve_now(now))
         updated = QueueItem(
             key=item.key,
@@ -220,7 +236,7 @@ class IntegrationQueue:
                 ready_at=item.ready_at,
                 status="queued",
                 status_updated_at=resumed_at,
-                status_reason="requeued after runtime restart",
+                status_reason=_RECOVERY_REQUEUE_REASON,
             )
             self._items_by_key[key] = queued
             self._transitions.append(
@@ -229,7 +245,7 @@ class IntegrationQueue:
                     from_status="in_progress",
                     to_status="queued",
                     transitioned_at=resumed_at,
-                    reason="requeued after runtime restart",
+                    reason=_RECOVERY_REQUEUE_REASON,
                 )
             )
 

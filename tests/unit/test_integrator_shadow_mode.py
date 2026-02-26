@@ -9,7 +9,7 @@ from threading import Barrier, Lock, Thread
 import pytest
 
 from teleclaude.core.integration.lease import IntegrationLeaseStore
-from teleclaude.core.integration.queue import IntegrationQueue
+from teleclaude.core.integration.queue import IntegrationQueue, IntegrationQueueError
 from teleclaude.core.integration.readiness_projection import CandidateKey, CandidateReadiness
 from teleclaude.core.integration.runtime import IntegratorShadowRuntime, MainBranchClearanceProbe, SessionSnapshot
 
@@ -135,6 +135,22 @@ def test_queue_processes_candidates_fifo_by_ready_at_and_tracks_transitions(tmp_
     assert ("a", "queued", "in_progress") in keyed_transitions
     assert ("a", "in_progress", "integrated") in keyed_transitions
     assert ("b", "in_progress", "blocked") in keyed_transitions
+
+
+def test_queue_rejects_invalid_status_transitions(tmp_path: Path) -> None:
+    queue = IntegrationQueue(state_path=tmp_path / "integration-queue.json")
+    key = CandidateKey(slug="invalid", branch="worktree/invalid", sha="444")
+    queue.enqueue(key=key, ready_at="2026-02-26T12:01:00+00:00")
+
+    with pytest.raises(IntegrationQueueError, match="invalid queue transition queued->integrated"):
+        queue.mark_integrated(key=key)
+
+    popped = queue.pop_next()
+    assert popped is not None
+    queue.mark_blocked(key=key, reason="failed readiness")
+
+    with pytest.raises(IntegrationQueueError, match="invalid queue transition blocked->integrated"):
+        queue.mark_integrated(key=key)
 
 
 def test_shadow_runtime_rechecks_readiness_and_never_pushes_main_in_shadow_mode(tmp_path: Path) -> None:
