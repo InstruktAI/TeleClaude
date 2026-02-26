@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: integration-orchestrator-rollout
+  date: '2026-02-26'
+  title: Parent rollout for event-driven singleton integrator and guarded mainline
+    integration
+  commit: a68b3fe07a008609a5fb43827630bed717fdb23f
+  description: Parent rollout for event-driven singleton integrator and guarded mainline
+    integration
 - slug: integration-safety-gates
   date: '2026-02-26'
   title: 'Step 1: add finalize/apply safety gates for dirty/diverged canonical main'
