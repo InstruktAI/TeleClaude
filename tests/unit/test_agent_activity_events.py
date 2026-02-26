@@ -263,6 +263,74 @@ async def test_handle_tool_use_builds_preview_from_command(coordinator):
         assert event.tool_preview == "run_shell_command git status --short"
 
 
+@pytest.mark.asyncio
+async def test_handle_tool_use_prefers_explicit_tool_preview_from_payload(coordinator):
+    """Synthetic payload tool_preview should pass through to activity event."""
+    session_id = "sess-preview-explicit"
+    payload = AgentOutputPayload(
+        session_id="native-1",
+        transcript_path="/tmp/transcript.jsonl",
+        raw=MappingProxyType(
+            {
+                "tool_name": "Ran",
+                "tool_preview": "Ran rg -n codex_prompt --glob '*.py'",
+            }
+        ),
+    )
+    context = AgentEventContext(event_type=AgentHookEvents.TOOL_USE, session_id=session_id, data=payload)
+
+    session = MagicMock()
+    session.last_tool_use_at = None
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db") as mock_db,
+        patch("teleclaude.core.agent_coordinator.event_bus") as mock_event_bus,
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_session = AsyncMock()
+        await coordinator.handle_tool_use(context)
+
+        event: AgentActivityEvent = next(
+            c[0][1] for c in mock_event_bus.emit.call_args_list if c[0][0] == TeleClaudeEvents.AGENT_ACTIVITY
+        )
+        assert event.tool_name == "Ran"
+        assert event.tool_preview == "Ran rg -n codex_prompt --glob '*.py'"
+
+
+@pytest.mark.asyncio
+async def test_handle_tool_use_normalizes_legacy_tool_name_and_tree_preview(coordinator):
+    """Legacy teleclaude__ names and tree prefixes should be normalized for UI activity."""
+    session_id = "sess-preview-legacy"
+    payload = AgentOutputPayload(
+        session_id="native-1",
+        transcript_path="/tmp/transcript.jsonl",
+        raw=MappingProxyType(
+            {
+                "tool_name": "teleclaude__next_prepare",
+                "tool_preview": "Called └ teleclaude__next_prepare(slug='demo')",
+            }
+        ),
+    )
+    context = AgentEventContext(event_type=AgentHookEvents.TOOL_USE, session_id=session_id, data=payload)
+
+    session = MagicMock()
+    session.last_tool_use_at = None
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db") as mock_db,
+        patch("teleclaude.core.agent_coordinator.event_bus") as mock_event_bus,
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_session = AsyncMock()
+        await coordinator.handle_tool_use(context)
+
+        event: AgentActivityEvent = next(
+            c[0][1] for c in mock_event_bus.emit.call_args_list if c[0][0] == TeleClaudeEvents.AGENT_ACTIVITY
+        )
+        assert event.tool_name == "next_prepare"
+        assert event.tool_preview == "Called next_prepare(slug='demo')"
+
+
 # ---------------------------------------------------------------------------
 # Canonical contract field population (ucap-canonical-contract)
 # ---------------------------------------------------------------------------

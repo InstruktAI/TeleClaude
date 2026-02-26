@@ -675,6 +675,33 @@ class TestCodexSyntheticPromptDetection:
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
+    async def test_dispatch_seed_is_not_overwritten_by_shorter_prompt_snapshot(self):
+        """Authoritative seeded input should survive shorter prompt snapshots before submit."""
+        session_id = "codex-dispatch-seed-shorter-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            full_prompt = "Please inspect all adapters and summarize the diff behavior"
+            polling_coordinator.seed_codex_prompt_from_message(session_id, full_prompt)
+
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› Please inspect all adapters\n• Working...",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            payload = context.data
+            assert isinstance(payload, UserPromptSubmitPayload)
+            assert payload.prompt == full_prompt
+            assert payload.raw.get("source") == "codex_output_polling"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
     async def test_does_not_emit_while_prompt_text_is_still_visible(self):
         """Stale marker glyphs above prompt should not trigger synthetic submit."""
         session_id = "codex-visible-1"
@@ -869,6 +896,50 @@ class TestCodexSyntheticTurnEvents:
             assert context.event_type == AgentHookEvents.TOOL_USE
             assert context.data.raw.get("tool_name") == "Ran"
             assert context.data.raw.get("tool_preview") == "Ran rg -n foo"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
+    async def test_tool_preview_uses_next_line_when_action_line_has_no_detail(self):
+        session_id = "codex-turn-tool-nextline-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            output = "\x1b[2m• \x1b[0m\x1b[1mRan\x1b[0m\n\x1b[2m│\x1b[0m rg -n foo --glob '*.py'"
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output=output,
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=True,
+            )
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            assert context.event_type == AgentHookEvents.TOOL_USE
+            assert context.data.raw.get("tool_name") == "Ran"
+            assert context.data.raw.get("tool_preview") == "Ran rg -n foo --glob '*.py'"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
+    async def test_tool_preview_strips_tree_prefix_and_legacy_tool_prefix(self):
+        session_id = "codex-turn-tool-cleanup-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            output = "\x1b[2m• \x1b[0m\x1b[1mCalled\x1b[0m\n\x1b[2m└ \x1b[0m teleclaude__next_work(slug='demo')"
+            await polling_coordinator._maybe_emit_codex_turn_events(
+                session_id=session_id,
+                active_agent="codex",
+                current_output=output,
+                emit_agent_event=emit,
+                enable_synthetic_turn_events=True,
+            )
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            assert context.event_type == AgentHookEvents.TOOL_USE
+            assert context.data.raw.get("tool_name") == "Called"
+            assert context.data.raw.get("tool_preview") == "Called next_work(slug='demo')"
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 

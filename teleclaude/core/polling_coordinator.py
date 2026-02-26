@@ -71,6 +71,7 @@ CODEX_AGENT_MARKERS = frozenset(
 _ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
 _ANSI_BOLD_TOKEN_RE = re.compile(r"\x1b\[[0-9;]*1m([A-Za-z][A-Za-z_-]{1,40})\x1b\[[0-9;]*m")
 _ACTION_WORD_RE = re.compile(r"^([A-Za-z][A-Za-z_-]{1,40})")
+_TREE_CONTINUATION_PREFIX_RE = re.compile(r"^(?:[│┃┆┊|]+\s*|[├└]\s*)+")
 
 # Visible Codex action verbs in tmux output (bold in UI) that imply tool usage.
 _CODEX_TOOL_ACTION_WORDS = frozenset(
@@ -155,6 +156,7 @@ class CodexInputState:
     last_emitted_prompt: str = ""  # Last emitted synthetic prompt (duplicate guard)
     last_output_change_time: float = 0.0
     submitted_for_current_response: bool = False  # Prevent duplicate emits during same response phase
+    has_authoritative_seed: bool = False  # True when last_prompt_input came from process_message seed
 
 
 @dataclass
@@ -280,6 +282,7 @@ def seed_codex_prompt_from_message(session_id: str, prompt_text: str) -> None:
     state.last_prompt_input = clipped
     # New dispatched message starts a fresh turn-candidate.
     state.submitted_for_current_response = False
+    state.has_authoritative_seed = True
 
 
 def _extract_prompt_block(output: str) -> tuple[str, bool]:
@@ -434,7 +437,9 @@ def _is_compact_dimmed_agent_boundary_line(line: str) -> bool:
 def _find_recent_tool_action(output: str) -> tuple[str, str, str] | None:
     """Find recent visible tool action and return (action_word, signature, preview)."""
     lines = output.rstrip().split("\n")
-    for raw_line in reversed(lines[-CODEX_TOOL_ACTION_LOOKBACK_LINES:]):
+    start_index = max(0, len(lines) - CODEX_TOOL_ACTION_LOOKBACK_LINES)
+    for idx in range(len(lines) - 1, start_index - 1, -1):
+        raw_line = lines[idx]
         clean_line = _strip_ansi(raw_line).strip()
         if not clean_line or clean_line[0] not in CODEX_AGENT_MARKERS:
             continue
@@ -445,10 +450,33 @@ def _find_recent_tool_action(output: str) -> tuple[str, str, str] | None:
         action_word = match.group(1) if match else None
         bold_match = _ANSI_BOLD_TOKEN_RE.search(raw_line)
         bold_word = bold_match.group(1) if bold_match else None
+
+        def _preview_for(action: str) -> str:
+            detail = ""
+            if action_word and tail.startswith(action_word):
+                detail = tail[len(action_word) :].strip()
+
+            if not detail:
+                for continuation_idx in range(idx + 1, min(len(lines), idx + 4)):
+                    continuation = _strip_ansi(lines[continuation_idx]).strip()
+                    if not continuation:
+                        continue
+                    if continuation.startswith(CODEX_PROMPT_MARKER):
+                        break
+                    if continuation[0] in CODEX_AGENT_MARKERS:
+                        break
+                    continuation = _TREE_CONTINUATION_PREFIX_RE.sub("", continuation).strip()
+                    if continuation:
+                        detail = continuation
+                        break
+
+            detail = _TREE_CONTINUATION_PREFIX_RE.sub("", detail).strip()
+            return f"{action} {detail}".strip() if detail else action
+
         if action_word in _CODEX_TOOL_ACTION_WORDS:
-            return action_word, clean_line, tail
+            return action_word, clean_line, _preview_for(action_word)
         if bold_word and (bold_word in _CODEX_TOOL_ACTION_WORDS or bold_word == action_word):
-            return bold_word, clean_line, tail
+            return bold_word, clean_line, _preview_for(bold_word)
     return None
 
 
@@ -645,16 +673,32 @@ async def _maybe_emit_codex_input(
         _mark_codex_turn_started(session_id)
         state.last_emitted_prompt = state.last_prompt_input
         state.last_prompt_input = ""
+        state.has_authoritative_seed = False
         return True
 
-    if current_input and current_input != state.last_prompt_input:
-        logger.debug(
-            "[CODEX %s] Tracking input: %r",
-            session_id[:8],
-            current_input[:50],
-        )
     if current_input:
-        state.last_prompt_input = current_input
+        if current_input != state.last_prompt_input:
+            logger.debug(
+                "[CODEX %s] Tracking input: %r",
+                session_id[:8],
+                current_input[:50],
+            )
+
+        overwrite_seeded_with_shorter = (
+            state.has_authoritative_seed
+            and bool(state.last_prompt_input)
+            and len(current_input) < len(state.last_prompt_input)
+        )
+        if overwrite_seeded_with_shorter:
+            logger.debug(
+                "[CODEX %s] Keeping authoritative seeded prompt over shorter snapshot (%d < %d)",
+                session_id[:8],
+                len(current_input),
+                len(state.last_prompt_input),
+            )
+        else:
+            state.last_prompt_input = current_input
+            state.has_authoritative_seed = False
 
     strict_boundary = bool(current_input and has_submit_boundary)
     transition_boundary = agent_responding and not current_input and bool(state.last_prompt_input)
