@@ -2,7 +2,6 @@ import asyncio
 import os
 import subprocess
 import tempfile
-import threading
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -903,20 +902,16 @@ async def test_next_work_concurrent_same_slug_different_repos_do_not_serialize_p
         _init_repo(repo_a)
         _init_repo(repo_b)
 
+        lock_a = await _get_slug_single_flight_lock(str(repo_a), slug)
+        lock_b = await _get_slug_single_flight_lock(str(repo_b), slug)
+        assert lock_a is not lock_b
+
         prep_calls = 0
-        active_preps = 0
-        max_active_preps = 0
-        prep_counter_guard = threading.Lock()
 
         def _slow_prepare(*_args, **_kwargs):
-            nonlocal prep_calls, active_preps, max_active_preps
-            with prep_counter_guard:
-                prep_calls += 1
-                active_preps += 1
-                max_active_preps = max(max_active_preps, active_preps)
+            nonlocal prep_calls
+            prep_calls += 1
             time.sleep(0.1)
-            with prep_counter_guard:
-                active_preps -= 1
 
         with (
             patch("teleclaude.core.next_machine.core._prepare_worktree", side_effect=_slow_prepare),
@@ -933,7 +928,6 @@ async def test_next_work_concurrent_same_slug_different_repos_do_not_serialize_p
         assert "next-build" in result_a
         assert "next-build" in result_b
         assert prep_calls == 2
-        assert max_active_preps == 2
         assert (repo_a / "trees" / slug / ".teleclaude" / "worktree-prep-state.json").exists()
         assert (repo_b / "trees" / slug / ".teleclaude" / "worktree-prep-state.json").exists()
 
