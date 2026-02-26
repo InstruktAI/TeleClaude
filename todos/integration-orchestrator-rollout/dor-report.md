@@ -13,7 +13,8 @@
      (5 ordered slices delivered, integrator as sole main merger) are explicit and testable.
    - FR1-FR5 map directly to `docs/project/spec/integration-orchestrator.md`.
 2. **Scope & size: PASS**
-   - Explicitly a rollout container. No implementation code in this slug.
+   - Primarily a rollout container, with one scoped runtime hardening change for launcher import
+     reliability at `teleclaude/adapters/discord_adapter.py::_build_session_launcher_view`.
    - Decomposed into 4 active child slices with correct `group:` and `after:` in roadmap.yaml.
 3. **Verification: PASS**
    - Parent verification requirements are concrete: roadmap encoding, child gate artifacts,
@@ -40,7 +41,8 @@
 All implementation plan tasks trace to requirements. No contradictions found.
 FR3 events match spec exactly (`review_approved`, `finalize_ready`, `branch_pushed`).
 FR4 lease key (`integration/main`) and queue semantics match spec.
-Plan correctly describes orchestration/governance work, not implementation code.
+Plan describes rollout governance work and explicitly traces the scoped launcher-runtime
+hardening included in this branch.
 
 ## Resolved Blockers
 

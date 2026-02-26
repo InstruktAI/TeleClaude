@@ -22,10 +22,13 @@ integration must be serialized, auditable, and low-risk.
 2. Dependency ordering and phase-gated progression across those slices.
 3. Integration authority boundary (`main` is integration-owned).
 4. Rollout-level verification expectations and go/no-go evidence.
+5. Explicit traceability for the launcher-runtime hardening included in this branch at
+   `teleclaude/adapters/discord_adapter.py::_build_session_launcher_view`.
 
 ## Out of Scope
 
-1. Implementing the internals of child slices in this parent todo.
+1. Implementing the internals of child slices in this parent todo, beyond the scoped
+   launcher-runtime hardening listed in "In Scope".
 2. Replacing Git workflow fundamentals (worktrees/feature branches stay).
 3. Non-integration architecture work outside the orchestrator contract.
 
