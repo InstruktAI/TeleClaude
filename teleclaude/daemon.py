@@ -1749,16 +1749,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """
         from teleclaude.hooks.webhook_models import HookEvent as _HookEvent
 
-        try:
-            redis = await redis_transport._get_redis()
-        except Exception as exc:
-            logger.error("Deployment fanout consumer: failed to get Redis client: %s", exc)
-            return
-
         last_id = "$"  # only new messages after startup
         logger.info("Deployment fanout consumer started (channel=%s)", DEPLOYMENT_FANOUT_CHANNEL)
         while not self.shutdown_event.is_set():
             try:
+                redis = await redis_transport._get_redis()
                 results = await redis.xread({DEPLOYMENT_FANOUT_CHANNEL: last_id}, count=10, block=5000)
                 if not results:
                     continue
