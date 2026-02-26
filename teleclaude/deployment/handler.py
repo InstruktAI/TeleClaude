@@ -47,8 +47,17 @@ def _is_within_pinned_minor(version: str, pinned_minor: str) -> bool:
     """Return True when version falls within the pinned minor series (e.g. '1.2.5' in '1.2')."""
     if not version or not pinned_minor:
         return False
-    expected_prefix = f"{pinned_minor}."
-    return version.startswith(expected_prefix) and version.count(".") == 2
+    try:
+        from teleclaude.deployment import parse_version
+
+        parts = pinned_minor.split(".")
+        if len(parts) != 2 or not all(p.isdigit() for p in parts):
+            return False
+        pin_major, pin_minor = int(parts[0]), int(parts[1])
+        v_major, v_minor, _ = parse_version(version)
+        return v_major == pin_major and v_minor == pin_minor
+    except ValueError:
+        return False
 
 
 async def handle_deployment_event(event: HookEvent) -> None:

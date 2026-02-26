@@ -415,6 +415,8 @@ def test_is_within_pinned_minor_rejects_different_minor():
 
     assert _is_within_pinned_minor("1.3.0", "1.2") is False
     assert _is_within_pinned_minor("2.2.0", "1.2") is False
+    # Regression: "1.20.0".startswith("1.2.") is True — must be rejected
+    assert _is_within_pinned_minor("1.20.0", "1.2") is False
 
 
 def test_is_within_pinned_minor_rejects_empty_strings():
