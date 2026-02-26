@@ -108,7 +108,7 @@ Note: MCP runtime/tool modules are no longer present in this codebase; enforceme
 
 ## Definition of Done
 
-- [ ] Config fails closed when agent policy is invalid.
+- [x] Config fails closed when agent policy is invalid.
 - [ ] All dispatch/select surfaces use centralized enabled-agent policy.
 - [ ] No blank agent-guidance lines.
 - [ ] Tests cover fail-closed contract and pass in CI.
