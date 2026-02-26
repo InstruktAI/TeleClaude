@@ -27,6 +27,7 @@ Build verification notes:
 - `make lint`: PASS (`ruff`, `pyright`, guardrails)
 - `telec todo demo validate agent-availability-enforcement-migration`: PASS (`6 executable block(s)`)
 - `instrukt-ai-logs teleclaude --since 15m --grep "agent routing|availability|rejected"`: executed successfully (exit 0)
+- Manual verification: user-facing launch enforcement was validated via targeted CLI/API runtime regression tests; direct live `telec sessions run` probes were intentionally not executed in this worktree.
 - Working tree cleanliness validated for build scope; remaining dirty file `todos/agent-availability-enforcement-migration/state.yaml` is orchestrator-managed drift and intentionally uncommitted
 
 ## Review Gates (Reviewer)
