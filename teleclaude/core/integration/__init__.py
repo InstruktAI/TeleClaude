@@ -21,6 +21,7 @@ from teleclaude.core.integration.readiness_projection import (
     ReadinessProjection,
     ReadinessStatus,
 )
+from teleclaude.core.integration.service import IngestionResult, IngestionStatus, IntegrationEventService
 
 __all__ = [
     "AppendResult",
@@ -30,8 +31,11 @@ __all__ = [
     "IntegrationEventPayload",
     "IntegrationEventStore",
     "IntegrationEventStoreError",
+    "IntegrationEventService",
     "IntegrationEventType",
     "IntegrationEventValidationError",
+    "IngestionResult",
+    "IngestionStatus",
     "ProjectionUpdate",
     "ReadinessProjection",
     "ReadinessStatus",

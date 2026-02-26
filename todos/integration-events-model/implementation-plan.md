@@ -27,8 +27,8 @@ from canonical signals only.
 
 **File(s):** `teleclaude/core/integration/service.py`
 
-- [ ] Update projection on event append/replay.
-- [ ] Emit diagnostics for rejected or superseded candidates.
+- [x] Update projection on event append/replay.
+- [x] Emit diagnostics for rejected or superseded candidates.
 
 ### Task 2.2: Add tests and quality checks
 
