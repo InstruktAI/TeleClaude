@@ -199,6 +199,30 @@ async def test_create_session_success():
 
 
 @pytest.mark.asyncio
+async def test_create_session_includes_skip_listener_registration_flag():
+    """create_session should forward skip_listener_registration when requested."""
+    client = TelecAPIClient()
+    await client.connect()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = json.dumps({"status": "success", "session_id": "new-sess", "tmux_session_name": "tmux-1"})
+
+    with patch.object(client, "_request", new=AsyncMock(return_value=mock_response)) as mock_request:
+        await client.create_session(
+            computer="local",
+            project_path="/home/user/project",
+            agent="claude",
+            thinking_mode="slow",
+            skip_listener_registration=True,
+        )
+
+    kwargs = mock_request.await_args.kwargs
+    assert kwargs["json_body"]["skip_listener_registration"] is True
+    await client.close()
+
+
+@pytest.mark.asyncio
 async def test_end_session_success():
     """Test end_session sends DELETE request."""
     client = TelecAPIClient()

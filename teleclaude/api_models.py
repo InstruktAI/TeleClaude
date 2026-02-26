@@ -21,6 +21,7 @@ class CreateSessionRequest(BaseModel):  # type: ignore[explicit-any]
     title: str | None = None
     message: str | None = None
     direct: bool = False
+    skip_listener_registration: bool = False
     auto_command: str | None = None
     native_session_id: str | None = None
     subdir: str | None = None

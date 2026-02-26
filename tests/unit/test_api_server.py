@@ -493,6 +493,28 @@ def test_create_session_defaults_to_first_enabled_agent(test_client, mock_comman
     assert cmd.launch_intent.agent == "gemini"
 
 
+def test_create_session_propagates_skip_listener_registration(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """Create-session endpoint should pass listener-skip intent to command mapping."""
+    mock_command_service.create_session.return_value = {
+        "session_id": "sess-123",
+        "tmux_session_name": "tc_123",
+    }
+
+    response = test_client.post(
+        "/sessions",
+        json={
+            "project_path": "/home/user/project",
+            "computer": "local",
+            "skip_listener_registration": True,
+        },
+    )
+
+    assert response.status_code == 200
+    call_args = mock_command_service.create_session.call_args
+    cmd = call_args.args[0]
+    assert cmd.skip_listener_registration is True
+
+
 def test_run_session_sets_initiator_session_id(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     """sessions/run should preserve caller linkage metadata."""
     mock_command_service.create_session.return_value = {
