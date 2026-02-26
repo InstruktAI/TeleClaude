@@ -18,8 +18,8 @@ from canonical signals only.
 
 **File(s):** `teleclaude/core/integration/readiness_projection.py`
 
-- [ ] Compute readiness for `(slug, branch, sha)` from canonical events.
-- [ ] Implement supersession for older slug candidates.
+- [x] Compute readiness for `(slug, branch, sha)` from canonical events.
+- [x] Implement supersession for older slug candidates.
 
 ## Phase 2: Integration and Diagnostics
 

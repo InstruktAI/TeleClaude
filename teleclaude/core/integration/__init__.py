@@ -14,6 +14,13 @@ from teleclaude.core.integration.events import (
     parse_event_type,
     validate_event_payload,
 )
+from teleclaude.core.integration.readiness_projection import (
+    CandidateKey,
+    CandidateReadiness,
+    ProjectionUpdate,
+    ReadinessProjection,
+    ReadinessStatus,
+)
 
 __all__ = [
     "AppendResult",
@@ -25,7 +32,12 @@ __all__ = [
     "IntegrationEventStoreError",
     "IntegrationEventType",
     "IntegrationEventValidationError",
+    "ProjectionUpdate",
+    "ReadinessProjection",
+    "ReadinessStatus",
     "ReviewApprovedPayload",
+    "CandidateKey",
+    "CandidateReadiness",
     "build_integration_event",
     "compute_idempotency_key",
     "parse_event_type",
