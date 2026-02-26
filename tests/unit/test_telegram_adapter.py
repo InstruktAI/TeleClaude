@@ -691,7 +691,8 @@ class TestChannelManagement:
 
     @pytest.mark.asyncio
     async def test_delete_channel_success(self, telegram_adapter):
-        """Test deleting a forum topic."""
+        """Test deleting a forum topic clears topic_id in DB."""
+        from unittest.mock import patch
 
         telegram_adapter.app = MagicMock()
         telegram_adapter.app.bot = MagicMock()
@@ -699,7 +700,6 @@ class TestChannelManagement:
 
         from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
 
-        # Mock db.get_session to return a session with channel metadata
         mock_session = Session(
             session_id="123",
             computer_name="test",
@@ -709,18 +709,39 @@ class TestChannelManagement:
             title="Test",
         )
 
-        calls = []
+        # fresh_session returned by db.get_session after deletion (topic_id still set, will be cleared)
+        fresh_session = Session(
+            session_id="123",
+            computer_name="test",
+            tmux_session_name="test-session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=456)),
+            title="Test",
+        )
+
+        delete_calls: list = []
 
         async def record_delete_forum_topic(*args, **kwargs):
-            calls.append((args, kwargs))
+            delete_calls.append((args, kwargs))
             return True
 
         telegram_adapter.app.bot.delete_forum_topic = record_delete_forum_topic
 
-        result = await telegram_adapter.delete_channel(mock_session)
+        with (
+            patch("teleclaude.adapters.telegram.channel_ops.db.get_session", new=AsyncMock(return_value=fresh_session)),
+            patch("teleclaude.adapters.telegram.channel_ops.db.update_session", new=AsyncMock()) as mock_update,
+        ):
+            result = await telegram_adapter.delete_channel(mock_session)
 
         assert result is True
-        assert len(calls) == 1
+        assert len(delete_calls) == 1
+        # topic_id must be cleared in DB after successful deletion
+        mock_update.assert_called_once()
+        updated_meta = mock_update.call_args.kwargs.get("adapter_metadata") or mock_update.call_args[1].get(
+            "adapter_metadata"
+        )
+        assert updated_meta is not None
+        assert updated_meta.get_ui().get_telegram().topic_id is None
 
     @pytest.mark.asyncio
     async def test_close_channel_missing_topic_is_noop(self, telegram_adapter):
@@ -763,6 +784,52 @@ class TestChannelManagement:
 
         assert result is False
         telegram_adapter.app.bot.delete_forum_topic.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_channel_topic_id_invalid_is_success(self, telegram_adapter):
+        """Topic_id_invalid from Telegram means already deleted — must be treated as success.
+
+        Fixes: duplicate cleanup → Topic_id_invalid warning spam and retry loops.
+        """
+        from unittest.mock import patch
+
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+        telegram_adapter.app.bot.delete_forum_topic = AsyncMock(side_effect=BadRequest("Topic_id_invalid"))
+
+        mock_session = Session(
+            session_id="topic-invalid-test",
+            computer_name="test",
+            tmux_session_name="test-session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=789)),
+            title="Test",
+        )
+
+        fresh_session = Session(
+            session_id="topic-invalid-test",
+            computer_name="test",
+            tmux_session_name="test-session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=789)),
+            title="Test",
+        )
+
+        with (
+            patch("teleclaude.adapters.telegram.channel_ops.db.get_session", new=AsyncMock(return_value=fresh_session)),
+            patch("teleclaude.adapters.telegram.channel_ops.db.update_session", new=AsyncMock()) as mock_update,
+        ):
+            result = await telegram_adapter.delete_channel(mock_session)
+
+        # Topic_id_invalid = already deleted = success
+        assert result is True
+        # topic_id must be cleared in DB so maintenance replay skips this session
+        mock_update.assert_called_once()
+        updated_meta = mock_update.call_args.kwargs.get("adapter_metadata") or mock_update.call_args[1].get(
+            "adapter_metadata"
+        )
+        assert updated_meta is not None
+        assert updated_meta.get_ui().get_telegram().topic_id is None
 
 
 class TestRateLimitHandling:

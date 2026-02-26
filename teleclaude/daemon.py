@@ -1070,18 +1070,19 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._track_background_task(task, label)
 
     async def _handle_session_closed(self, _event: str, context: SessionLifecycleContext) -> None:
-        """Handler for session_closed events - user closed session.
+        """Observer-only handler for session_closed events.
+
+        SESSION_CLOSED is a fact: the session record is now closed in DB.
+        This handler cleans up in-memory state only. It MUST NOT call
+        terminate_session — doing so causes duplicate channel deletion
+        (Topic_id_invalid). The close-intent path is SESSION_CLOSE_REQUESTED.
 
         Args:
             _event: Event type (always "session_closed") - unused but required by event handler signature
             context: Session lifecycle context
         """
         ctx = context
-
-        session = await db.get_session(ctx.session_id)
-        if not session:
-            logger.warning("Session %s not found for termination event", ctx.session_id[:8])
-            return
+        logger.debug("session_closed observer: cleaning in-memory state for %s", ctx.session_id[:8])
 
         self._session_outbox_queues.pop(ctx.session_id, None)
         self._hook_outbox_claim_paused_sessions.discard(ctx.session_id)
@@ -1094,11 +1095,29 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 pass
         polling_coordinator._cleanup_codex_input_state(ctx.session_id)
 
-        logger.info("Handling session_closed for %s", ctx.session_id[:8])
+    async def _handle_session_close_requested(self, _event: str, context: SessionLifecycleContext) -> None:
+        """Handler for session_close_requested events — performs termination exactly once.
+
+        SESSION_CLOSE_REQUESTED is an intent: something wants this session closed.
+        This handler calls terminate_session, which deletes channels and closes
+        the DB record (emitting SESSION_CLOSED as a fact afterwards).
+
+        Args:
+            _event: Event type (always "session_close_requested") - unused but required by event handler signature
+            context: Session lifecycle context
+        """
+        ctx = context
+
+        session = await db.get_session(ctx.session_id)
+        if not session:
+            logger.warning("Session %s not found for session_close_requested", ctx.session_id[:8])
+            return
+
+        logger.info("Handling session_close_requested for %s", ctx.session_id[:8])
         await session_cleanup.terminate_session(
             ctx.session_id,
             self.client,
-            reason="topic_closed",
+            reason="close_requested",
             session=session,
         )
 

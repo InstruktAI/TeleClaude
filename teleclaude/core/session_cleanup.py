@@ -36,9 +36,13 @@ logger = get_logger(__name__)
 TMUX_SESSION_PREFIX = "tc_"
 TMUX_TUI_SESSION_NAME = "tc_tui"
 
-# Lookback window for replaying session_closed events for rows marked closed by an earlier
-# process instance. Replays are safe but intentionally bounded.
+# Lookback window for replaying cleanup for closed sessions from an earlier process instance.
+# Only sessions with unresolved channel references (e.g. topic_id still set) are replayed.
 RECENTLY_CLOSED_SESSION_HOURS = 12
+
+# Concurrency guard: session IDs whose cleanup is currently in flight.
+# Prevents duplicate terminate_session calls from parallel SESSION_CLOSE_REQUESTED events.
+_cleanup_in_flight: set[str] = set()
 
 
 async def cleanup_session_resources(
@@ -122,8 +126,37 @@ async def terminate_session(
         delete_channel: Whether to delete adapter channels/topics
 
     Returns:
-        True if session was terminated, False if session not found
+        True if session was terminated, False if session not found or already in flight
     """
+    if session_id in _cleanup_in_flight:
+        logger.debug("Session %s cleanup already in flight; skipping duplicate", session_id[:8])
+        return False
+    _cleanup_in_flight.add(session_id)
+    try:
+        return await _terminate_session_inner(
+            session_id,
+            adapter_client,
+            reason=reason,
+            session=session,
+            kill_tmux=kill_tmux,
+            delete_channel=delete_channel,
+            delete_db=delete_db,
+        )
+    finally:
+        _cleanup_in_flight.discard(session_id)
+
+
+async def _terminate_session_inner(
+    session_id: str,
+    adapter_client: "AdapterClient",
+    *,
+    reason: str,
+    session: Optional["Session"] = None,
+    kill_tmux: bool | None = None,
+    delete_channel: bool = True,
+    delete_db: bool = False,
+) -> bool:
+    """Inner implementation of terminate_session (called only when not in flight)."""
     session = session or await db.get_session(session_id)
     if not session:
         logger.debug("Session %s not found for termination", session_id[:8])
@@ -168,14 +201,17 @@ async def emit_recently_closed_session_events(
     hours: float = RECENTLY_CLOSED_SESSION_HOURS,
     include_headless: bool = True,
 ) -> int:
-    """Replay session_closed for closed sessions from the last *hours* window.
+    """Replay SESSION_CLOSE_REQUESTED for closed sessions with unresolved channel cleanup.
 
-    Used by maintenance to recover closed sessions from daemon restarts or missed
-    event delivery paths (for example, when sessions reach "closed" in DB before
-    channel cleanup runs).
+    Used by maintenance to recover cleanup missed across daemon restarts. Only replays
+    sessions that are closed in DB but still have a Telegram topic_id (or other adapter
+    channel reference) persisted — indicating the channel deletion never completed.
+
+    Emits SESSION_CLOSE_REQUESTED (not SESSION_CLOSED) so that terminate_session runs
+    exactly once and clears the channel reference on success.
 
     Returns:
-        Number of sessions for which a session_closed event was emitted.
+        Number of sessions for which a SESSION_CLOSE_REQUESTED event was emitted.
     """
     if hours <= 0:
         return 0
@@ -194,13 +230,24 @@ async def emit_recently_closed_session_events(
         if session.closed_at < cutoff:
             continue
 
+        # Only replay if channel cleanup is still pending (topic_id or discord channel still set).
+        # If already cleared, the cleanup already completed — skip to avoid duplicate deletes.
+        telegram_topic_id = session.get_metadata().get_ui().get_telegram().topic_id
+        discord_channel_id = session.get_metadata().get_ui().get_discord().channel_id
+        if telegram_topic_id is None and discord_channel_id is None:
+            logger.debug(
+                "Skipping replay for session %s: channel already cleared",
+                session.session_id[:8],
+            )
+            continue
+
         event_bus.emit(
-            TeleClaudeEvents.SESSION_CLOSED,
+            TeleClaudeEvents.SESSION_CLOSE_REQUESTED,
             SessionLifecycleContext(session_id=session.session_id),
         )
         emitted += 1
         logger.info(
-            "Replayed session_closed for session %s (closed_at=%s)",
+            "Replayed session_close_requested for session %s (closed_at=%s, pending cleanup)",
             session.session_id[:8],
             session.closed_at.isoformat(),
         )

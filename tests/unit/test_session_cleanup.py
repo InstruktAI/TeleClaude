@@ -15,6 +15,7 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core import session_cleanup
 from teleclaude.core.events import TeleClaudeEvents
+from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
 from teleclaude.core.session_cleanup import (
     cleanup_all_stale_sessions,
     cleanup_orphan_workspaces,
@@ -336,29 +337,31 @@ async def test_cleanup_session_resources_uses_to_thread_for_rmtree(monkeypatch, 
     assert not tmp_path.exists()
 
 
+def _session_with_topic(session_id: str, closed_at: datetime | None, topic_id: int | None) -> SimpleNamespace:
+    """Build a minimal session-like object with proper get_metadata() support."""
+    meta = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=topic_id))
+    return SimpleNamespace(session_id=session_id, closed_at=closed_at, get_metadata=lambda: meta)
+
+
 @pytest.mark.asyncio
 async def test_emit_recently_closed_session_events_only_replays_window() -> None:
-    """Replay session_closed only for sessions that closed within configured window."""
+    """Replay SESSION_CLOSE_REQUESTED only for sessions with unresolved cleanup within the window."""
     fixed_now = datetime(2026, 1, 14, 12, 0, 0, tzinfo=timezone.utc)
 
-    recent_closed = SimpleNamespace(
-        session_id="recent",
-        closed_at=fixed_now - timedelta(hours=1),
-    )
-    old_closed = SimpleNamespace(
-        session_id="old",
-        closed_at=fixed_now - timedelta(hours=24),
-    )
-    active_session = SimpleNamespace(
-        session_id="active",
-        closed_at=None,
-    )
+    # Recent, topic still set → should be replayed
+    recent_with_topic = _session_with_topic("recent-topic", fixed_now - timedelta(hours=1), topic_id=111)
+    # Recent, topic already cleared → should be skipped
+    recent_no_topic = _session_with_topic("recent-no-topic", fixed_now - timedelta(hours=1), topic_id=None)
+    # Too old → should be skipped
+    old_with_topic = _session_with_topic("old", fixed_now - timedelta(hours=24), topic_id=222)
+    # Not closed → should be skipped
+    active_session = _session_with_topic("active", None, topic_id=333)
 
     with (
         patch("teleclaude.core.session_cleanup.datetime") as mock_datetime,
         patch(
             "teleclaude.core.session_cleanup.db.list_sessions",
-            new=AsyncMock(return_value=[recent_closed, old_closed, active_session]),
+            new=AsyncMock(return_value=[recent_with_topic, recent_no_topic, old_with_topic, active_session]),
         ),
         patch("teleclaude.core.session_cleanup.event_bus.emit") as mock_emit,
     ):
@@ -369,5 +372,5 @@ async def test_emit_recently_closed_session_events_only_replays_window() -> None
     assert emitted == 1
     assert mock_emit.call_count == 1
     emitted_event, emitted_ctx = mock_emit.call_args.args  # type: ignore[misc]
-    assert emitted_event == TeleClaudeEvents.SESSION_CLOSED
-    assert emitted_ctx.session_id == "recent"
+    assert emitted_event == TeleClaudeEvents.SESSION_CLOSE_REQUESTED
+    assert emitted_ctx.session_id == "recent-topic"

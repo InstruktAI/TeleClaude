@@ -13,6 +13,7 @@ from typing import Literal, Optional, Union, cast
 EventType = Literal[
     "session_started",
     "session_closed",
+    "session_close_requested",
     "session_updated",
     "session_status",
     "agent_event",
@@ -350,12 +351,17 @@ class TeleClaudeEvents:
 
     # Events (facts)
     SESSION_STARTED: Literal["session_started"] = "session_started"
-    SESSION_CLOSED: Literal["session_closed"] = "session_closed"
+    SESSION_CLOSED: Literal["session_closed"] = "session_closed"  # Fact: session is now closed. Observer-only.
     SESSION_UPDATED: Literal["session_updated"] = "session_updated"  # Session fields updated in DB
     SESSION_STATUS: Literal["session_status"] = "session_status"  # Canonical lifecycle status transition
     AGENT_EVENT: Literal["agent_event"] = "agent_event"  # Agent events (title change, etc.)
     AGENT_ACTIVITY: Literal["agent_activity"] = "agent_activity"  # Agent activity events (tool_use, tool_done, etc.)
     ERROR: Literal["error"] = "error"
+
+    # Intents (commands)
+    SESSION_CLOSE_REQUESTED: Literal["session_close_requested"] = (
+        "session_close_requested"  # Intent: close this session. Triggers terminate_session exactly once.
+    )
 
 
 ErrorSeverity = Literal["warning", "error", "critical"]
