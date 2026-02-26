@@ -323,13 +323,14 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
 
     # Enforce jail only for explicit non-admin role assignments.
     # Missing role means unrestricted fallback ("god mode") for local/TUI/API flows.
+    configured_help_desk_path = config.computer.help_desk_dir or os.path.join(WORKING_DIR, "help-desk")
     if human_role and human_role != HUMAN_ROLE_ADMIN:
         logger.info(
             "Restricted session attempt from origin=%s role=%s. Jailing to help-desk.",
             origin,
             human_role,
         )
-        project_path = os.path.join(WORKING_DIR, "help-desk")
+        project_path = configured_help_desk_path
         Path(project_path).mkdir(parents=True, exist_ok=True)
         subfolder = None
         working_slug = None
@@ -340,7 +341,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
                 "Session creation missing project_path from origin=%s; defaulting to help-desk.",
                 origin,
             )
-            project_path = os.path.join(WORKING_DIR, "help-desk")
+            project_path = configured_help_desk_path
             Path(project_path).mkdir(parents=True, exist_ok=True)
             subfolder = None
             working_slug = None
