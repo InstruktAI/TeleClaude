@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from teleclaude.adapters.qos.output_scheduler import OutputScheduler
-from teleclaude.adapters.qos.policy import OutputPriority, TelegramOutputPolicy
+from teleclaude.adapters.qos.policy import DiscordOutputPolicy, OutputPriority, OutputQoSMode, TelegramOutputPolicy
 
 
 @pytest.mark.asyncio
@@ -57,6 +57,49 @@ async def test_scheduler_coalesces_latest_payload_per_session() -> None:
         await scheduler.submit("s1", OutputPriority.NORMAL, lambda: _dispatch("latest"))
 
         await asyncio.sleep(0.45)
+
+        assert calls == ["seed", "latest"]
+        assert scheduler.snapshot().superseded_payloads == 1
+    finally:
+        await scheduler.stop()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_coalesce_only_replaces_stale_payload_during_inflight_dispatch() -> None:
+    """Coalesce-only mode should queue and replace stale payloads while a session is dispatching."""
+    scheduler = OutputScheduler(
+        adapter_key="discord",
+        policy=DiscordOutputPolicy(mode=OutputQoSMode.COALESCE_ONLY),
+    )
+    calls: list[str] = []
+    seed_started = asyncio.Event()
+    allow_seed_finish = asyncio.Event()
+    latest_dispatched = asyncio.Event()
+
+    async def _dispatch_seed() -> str:
+        calls.append("seed")
+        seed_started.set()
+        await allow_seed_finish.wait()
+        return "seed"
+
+    async def _dispatch(tag: str) -> str:
+        calls.append(tag)
+        if tag == "latest":
+            latest_dispatched.set()
+        return tag
+
+    try:
+        seed_task = asyncio.create_task(scheduler.submit("s1", OutputPriority.NORMAL, _dispatch_seed))
+        await asyncio.wait_for(seed_started.wait(), timeout=1.0)
+
+        await asyncio.gather(
+            scheduler.submit("s1", OutputPriority.NORMAL, lambda: _dispatch("stale")),
+            scheduler.submit("s1", OutputPriority.NORMAL, lambda: _dispatch("latest")),
+        )
+
+        allow_seed_finish.set()
+        await seed_task
+        await asyncio.wait_for(latest_dispatched.wait(), timeout=1.0)
 
         assert calls == ["seed", "latest"]
         assert scheduler.snapshot().superseded_payloads == 1

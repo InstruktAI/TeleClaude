@@ -169,6 +169,12 @@ class OutputScheduler:
         self._worker_task = asyncio.create_task(self._worker_loop(), name=f"qos-{self._adapter_key}")
 
     def _can_inline_dispatch_locked(self, session_id: str, now: float) -> bool:
+        if self._policy.mode == OutputQoSMode.COALESCE_ONLY:
+            state = self._sessions.get(session_id)
+            if state is not None and state.dispatching:
+                return False
+            return True
+
         if self._policy.mode == OutputQoSMode.STRICT:
             if self._pending_sessions_locked() > 1:
                 return False
