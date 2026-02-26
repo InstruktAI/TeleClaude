@@ -100,6 +100,7 @@ from teleclaude.core.events import (
     SessionStatusContext,
     SessionUpdatedContext,
     TeleClaudeEvents,
+    parse_command_string,
 )
 from teleclaude.core.models import (
     MessageMetadata,
@@ -555,6 +556,27 @@ class APIServer:
                     )
                 return enabled_agents[0]
 
+            validated_request_agent: str | None = None
+            if request.agent:
+                validated_request_agent = _resolve_enabled_agent(request.agent)
+
+            if request.auto_command:
+                command_name, command_args = parse_command_string(request.auto_command)
+                normalized_command = (command_name or "").lower()
+                known_agents = set(get_known_agents())
+
+                if normalized_command in known_agents:
+                    _resolve_enabled_agent(normalized_command)
+                elif normalized_command in {"agent", "agent_then_message", "agent_resume", "agent_restart"}:
+                    auto_command_agent = command_args[0] if command_args else validated_request_agent
+                    if auto_command_agent:
+                        _resolve_enabled_agent(auto_command_agent)
+
+            def _effective_launch_agent() -> str:
+                if validated_request_agent:
+                    return validated_request_agent
+                return _resolve_enabled_agent(None)
+
             launch_intent = None
             if not request.auto_command:
                 launch_kind = SessionLaunchKind(request.launch_kind)
@@ -566,7 +588,7 @@ class APIServer:
                 elif launch_kind == SessionLaunchKind.AGENT_RESUME:
                     if not request.agent:
                         raise HTTPException(status_code=400, detail="agent required for agent_resume")
-                    effective_agent = _resolve_enabled_agent(request.agent)
+                    effective_agent = validated_request_agent or _resolve_enabled_agent(request.agent)
                     launch_intent = SessionLaunchIntent(
                         kind=SessionLaunchKind.AGENT_RESUME,
                         agent=effective_agent,
@@ -576,7 +598,7 @@ class APIServer:
                 elif launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
                     if request.message is None:
                         raise HTTPException(status_code=400, detail="message required for agent_then_message")
-                    effective_agent = _resolve_enabled_agent(request.agent)
+                    effective_agent = _effective_launch_agent()
                     launch_intent = SessionLaunchIntent(
                         kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
                         agent=effective_agent,
@@ -584,7 +606,7 @@ class APIServer:
                         message=request.message,
                     )
                 else:
-                    effective_agent = _resolve_enabled_agent(request.agent)
+                    effective_agent = _effective_launch_agent()
                     launch_intent = SessionLaunchIntent(
                         kind=SessionLaunchKind.AGENT,
                         agent=effective_agent,
