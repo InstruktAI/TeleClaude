@@ -1,12 +1,15 @@
 # Review Findings: integration-events-model
 
-**Review round:** 2
-**Scope:** `git diff $(git merge-base HEAD main)..HEAD` — 13 changed files, 1535 insertions
+**Review round:** 3
+**Scope:** `git diff $(git merge-base HEAD main)..HEAD` — 9 changed files, 1143 insertions
+**Previous verdict:** REQUEST CHANGES (round 1) — 9 Important findings
+**Tests:** 2311 passed, 106 skipped (9.67s) — `make test` clean
+**Lint:** ruff + pyright 0 errors — `make lint` clean
 
 ## Paradigm-Fit Assessment
 
 1. **Data flow:** Implementation follows the established domain-core pattern. All types are domain-level (`IntegrationEvent`, `CandidateReadiness`, etc.) with no transport or UI coupling. File-backed persistence is behind a clean store abstraction. Boundary purity is maintained.
-2. **Component reuse:** No copy-paste of existing codebase components detected. The round-1 `_event_digest` duplication was eliminated (fix #4).
+2. **Component reuse:** No copy-paste of existing codebase components detected. The former `_event_digest` / `compute_idempotency_key` duplication was resolved (Fix #4).
 3. **Pattern consistency:** Follows project conventions: frozen dataclasses for immutable domain objects, TypedDict for serialization contracts, Literal types for closed sets, explicit validation at boundaries. Naming is domain-semantic.
 
 ## Contract Fidelity (FR1)
@@ -18,68 +21,76 @@ Verified against `docs/project/spec/integration-orchestrator.md`:
 - `branch_pushed` fields: match exactly
 - Readiness predicate conditions 1-6: all implemented in `_recompute()`
 - `worktree dirty -> clean` correctly excluded (not referenced anywhere)
-- Contract parity test (`test_required_fields_contract_matches_integration_spec`) guards against spec drift
+- Contract test `test_required_fields_contract_matches_integration_spec` validates `_REQUIRED_FIELDS` against spec YAML
 
-## Round 1 Fix Verification (all 9 fixes confirmed)
+## Verification of Round 1 Fixes (All 9 Confirmed)
 
-| #   | Issue                                | Fix                                                                               | Evidence                                                                                                 |
-| --- | ------------------------------------ | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 1   | Supersession tie-break undefined     | `supersession_rank()` with `(ready_at, branch, sha)` + `>=` in supersession check | `readiness_projection.py:56-58,166,173` + `test_service_breaks_equal_ready_at_ties_deterministically`    |
-| 2   | No auto-replay on init               | `self.replay()` in `__init__`                                                     | `service.py:47` + `test_service_replays_history_on_init`                                                 |
-| 3   | Wrong event_type in timestamp errors | `_normalize_iso8601` accepts `event_type` as first param                          | `events.py:306` + `test_build_event_reports_correct_event_type_for_received_at_validation`               |
-| 4   | Duplicate digest function            | Store imports and calls `compute_idempotency_key`                                 | `event_store.py:14,55,108`                                                                               |
-| 5   | Type narrowing gap                   | `cast(str, ...)` after guard block                                                | `events.py:200-202`                                                                                      |
-| 6   | Missing replay/durability test       | Unit + integration restart tests                                                  | `test_service_replays_history_on_init`, `test_replay_restores_readiness_after_restart`                   |
-| 7   | Missing contract tests               | Spec YAML parity assertion                                                        | `test_required_fields_contract_matches_integration_spec`                                                 |
-| 8   | `ingest_raw()` untested              | Accepted + rejected test paths                                                    | `test_service_ingest_raw_accepts_valid_event_type`, `test_service_ingest_raw_rejects_unknown_event_type` |
-| 9   | Checker aliases not exported         | Added to `__init__.py` imports and `__all__`                                      | `__init__.py:18-19,48-49` + `test_public_api_exports_checker_type_aliases`                               |
+| #   | Issue                                         | Fix                                                                                        | Verified |
+| --- | --------------------------------------------- | ------------------------------------------------------------------------------------------ | -------- |
+| 1   | Supersession tie-break undefined              | `supersession_rank()` returns `(ready_at, branch, sha)`; `>=` comparison in `_recompute()` | Yes      |
+| 2   | No auto-replay on init                        | `service.py:47` — `self.replay()` in `__init__`                                            | Yes      |
+| 3   | `_normalize_iso8601` misattributed event type | `events.py:306` — accepts `event_type` parameter                                           | Yes      |
+| 4   | Duplicate digest                              | `event_store.py:55` — calls `compute_idempotency_key`                                      | Yes      |
+| 5   | Type narrowing gap in `from_record`           | `events.py:200-202` — `cast(str, ...)` after guard                                         | Yes      |
+| 6   | Missing replay/durability test                | `test_service_replays_history_on_init` — no explicit `replay()`                            | Yes      |
+| 7   | Missing contract tests (VR3)                  | `test_required_fields_contract_matches_integration_spec` parses spec YAML                  | Yes      |
+| 8   | `ingest_raw()` untested                       | Two tests: accepted and rejected raw event type paths                                      | Yes      |
+| 9   | Checker aliases missing from `__all__`        | Both in `__init__.py` imports and `__all__`                                                | Yes      |
 
-## Critical
+## Requirement Coverage Trace
 
-(none)
+| Requirement                               | Evidence                                                                                             |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| FR1.1 — Fields match spec                 | Contract test + manual spec comparison                                                               |
+| FR1.2 — Missing fields rejected           | `test_validate_event_payload_rejects_missing_and_unexpected_fields`                                  |
+| FR2.1 — Persist before projection         | Code: `store.append()` then `projection.apply()` in `service.py:117-124`                             |
+| FR2.2 — Duplicate idempotency             | `test_event_store_append_is_idempotent_and_collision_safe`                                           |
+| FR3.1 — All three events required         | `test_candidate_transitions_from_not_ready_to_ready`                                                 |
+| FR3.2 — Reachability + not-integrated     | Covered via lambda stubs in projection tests                                                         |
+| FR3.3 — `worktree dirty → clean` excluded | Not defined as event type; `parse_event_type` rejects unknown types                                  |
+| FR4.1 — Newer finalize supersedes         | `test_service_marks_older_finalize_candidate_as_superseded`                                          |
+| FR4.2 — Superseded remain auditable       | Same test: `old_candidate.status == "SUPERSEDED"` still retrievable                                  |
+| VR1 — Unit tests                          | 12 unit tests covering validation, idempotency, supersession, tie-break, replay, ingest_raw, exports |
+| VR2 — Integration test NOT_READY → READY  | `test_candidate_transitions_from_not_ready_to_ready`                                                 |
+| VR3 — Contract tests                      | `test_required_fields_contract_matches_integration_spec`                                             |
 
-## Important
+## Why No Important/Critical Issues
 
-(none)
+1. **Paradigm-fit verified:** All domain types are pure (frozen dataclasses, TypedDicts). No transport coupling. Store abstraction is clean. Projection recomputation is side-effect-free.
+2. **Requirements verified:** Every FR1-FR4 and VR1-VR3 requirement has implementation evidence and test coverage. Coverage trace above.
+3. **Copy-paste checked:** No duplicate components found. The round 1 digest duplication was resolved.
+4. **All 9 prior fixes verified:** Each fix addresses the original finding correctly, with regression tests where applicable.
 
 ## Suggestions
 
-### S1. `_TIMESTAMP_FIELDS` is dead code
+### S1. Integration test has redundant `replay()` call
 
-**File:** `teleclaude/core/integration/events.py:67-69`
+**File:** `tests/integration/test_integration_readiness_projection.py:137`
 
-`_TIMESTAMP_FIELDS` is defined but never referenced anywhere in the codebase. Remove it or use it.
+`restarted.replay()` is called explicitly after construction, but `__init__` already auto-replays. The explicit call is a leftover from before Fix #2. The unit test `test_service_replays_history_on_init` correctly guards the auto-replay invariant without an explicit call. Removing line 137 would make the integration test consistent and a better regression guard.
 
-### S2. `event_id` whitespace asymmetry (carried from round 1)
+### S2. `_as_positive_int` accepts `bool` as int
 
-`build_integration_event` (line 130) doesn't strip `event_id` before the empty check, but `integration_event_from_record` (line 189) does. An `event_id=" "` would pass the build path.
+**File:** `teleclaude/core/integration/events.py:282`
 
-### S3. Redundant diagnostics for missing fields (carried from round 1)
+`isinstance(True, int)` is `True` in Python, so `review_round: True` would pass validation. Edge case — internal callers pass integers. Adding `or isinstance(raw, bool)` to the guard would close the gap.
 
-When a field is missing, both `_validate_field_set` and `_as_non_empty_str` report the same root cause, producing duplicate messages.
+### S3. `event_id` whitespace inconsistency (carried from round 1 S1)
 
-### S4. No diagnostic for mismatched-remote `branch_pushed` (carried from round 1)
+**File:** `teleclaude/core/integration/events.py:130`
 
-A push with `remote="upstream"` is silently ignored when the projection expects `remote="origin"`. An explicit diagnostic would aid operator debugging.
+`build_integration_event` does not strip `event_id` before the empty check, while `integration_event_from_record` does. `event_id=" "` would be stored via build but rejected on deserialization. Adding `.strip()` to the build path would close the asymmetry.
 
-### S5. Unrelated `test_discord_adapter.py` change (carried from round 1)
+### S4. Build Gates checklist reset by merge
 
-The mock addition at line 807-808 is orthogonal to this feature and would be cleaner in a separate commit.
-
-## Why No Issues
-
-1. **Paradigm-fit verification:** Checked data flow (domain-only types, no transport coupling), component reuse (no copy-paste, digest duplication resolved), pattern consistency (frozen dataclasses, TypedDicts, Literal types, explicit boundary validation). All conform to project conventions.
-2. **Requirements validation:** FR1 verified by tracing `_REQUIRED_FIELDS` against spec YAML and confirming all 6 readiness predicate conditions in `_recompute()`. FR2 verified by tracing `append()` → fsync → in-memory update + auto-replay in constructor. FR3 verified by walking all 6 predicate checks in `_recompute()`. FR4 verified by tracing `supersession_rank()` with `>=` comparison ensuring single-winner invariant.
-3. **Copy-paste duplication check:** No duplication found. The round-1 `_event_digest` / `compute_idempotency_key` duplication was eliminated.
-4. **Test coverage:** 12 unit tests + 2 integration tests covering validation, idempotency, collision, supersession, tie-breaking, replay/restart, contract parity, ingest_raw, and public API exports. All pass (2309 total suite, 0 failures). Pyright: 0 errors. Ruff: clean.
-
-## Verification Evidence
-
-- `make test`: 2309 passed, 106 skipped, 0 failures (9.15s)
-- `make lint`: ruff format clean (320 files), ruff check passed, pyright 0 errors
-- All implementation-plan tasks checked `[x]` in committed state
-- Build gates all checked in committed state
+The committed quality checklist Build Gates are `[ ]` due to merge `4a01182c` overwriting commit `2229172c` which had them all `[x]`. The actual build evidence (tests, lint, pyright, state.yaml `build: complete`) is valid.
 
 ## Verdict: APPROVE
 
-**Rationale:** All 9 round-1 Important findings have been resolved with corresponding code fixes and regression tests. No new Critical or Important issues found. Contract fidelity, durability, idempotency, readiness projection, and supersession semantics all verified against spec. Test suite passes cleanly with adequate coverage across unit and integration layers. Type checker reports zero errors. Remaining suggestions are non-blocking quality improvements.
+**Rationale:**
+
+- All 9 round 1 Important findings are correctly fixed and verified with evidence.
+- Contract fidelity confirmed: `_REQUIRED_FIELDS` matches spec YAML, readiness predicate conditions 1-6 implemented, `worktree dirty → clean` excluded.
+- Tests pass (2311), lint clean (ruff + pyright 0 errors).
+- All FR1-FR4 requirements traced to implementation and test coverage.
+- No Important or Critical issues found in round 3. Four suggestions noted for future improvement.
