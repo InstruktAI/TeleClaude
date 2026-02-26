@@ -785,10 +785,11 @@ async def test_handle_get_session_data_codex_falls_back_to_tmux_when_no_transcri
 
     cmd = GetSessionDataCommand(session_id="codex-session-tmux-1", tail_chars=6)
 
+    capture_mock = AsyncMock(return_value="abcdef123456")
     with (
         patch.object(command_handlers, "db") as mock_db,
         patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
-        patch.object(command_handlers.tmux_bridge, "capture_pane", new=AsyncMock(return_value="abcdef123456")),
+        patch.object(command_handlers.tmux_bridge, "capture_pane", new=capture_mock),
     ):
         mock_db.get_session = AsyncMock(return_value=mock_session)
 
@@ -797,6 +798,7 @@ async def test_handle_get_session_data_codex_falls_back_to_tmux_when_no_transcri
     assert result["status"] == "success"
     assert result["messages"] == "123456"
     assert result.get("transcript") is None
+    capture_mock.assert_awaited_once_with("tc_codex_1", capture_lines=6)
 
 
 @pytest.mark.asyncio

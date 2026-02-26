@@ -656,8 +656,9 @@ async def get_session_data(
         if not isinstance(tmux_session_name, str) or not tmux_session_name.strip():
             return None
 
+        tail = cmd.tail_chars if cmd.tail_chars > 0 else 2000
         try:
-            pane_output = await tmux_bridge.capture_pane(tmux_session_name)
+            pane_output = await tmux_bridge.capture_pane(tmux_session_name, capture_lines=tail)
         except Exception as exc:
             logger.warning(
                 "Tmux fallback capture failed for session %s (%s): %s",
@@ -667,7 +668,6 @@ async def get_session_data(
             )
             return None
 
-        tail = cmd.tail_chars if cmd.tail_chars > 0 else 2000
         # Strip ANSI before truncation so tail slicing cannot split escape codes.
         sanitized_output = strip_ansi_codes(pane_output)
         messages = sanitized_output[-tail:] if len(sanitized_output) > tail else sanitized_output

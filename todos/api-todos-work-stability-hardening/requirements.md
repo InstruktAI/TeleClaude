@@ -1,38 +1,86 @@
 # Requirements: api-todos-work-stability-hardening
 
-## Goal
+## Problem
 
-- Reduce `/todos/work` request-path latency and watchdog noise by removing redundant expensive work, while preserving existing orchestration behavior and safety checks.
+`/todos/work` currently executes expensive preparation and sync steps on every
+call, even when the slug worktree is already prepared and unchanged. That makes
+request latency unpredictable and correlates with watchdog loop-lag alerts.
+
+## Intended Outcome
+
+Keep the current safety/correctness behavior of `next_work(...)`, but make
+repeated calls for unchanged slugs fast, deterministic, and diagnosable.
 
 ## Scope
 
-- In scope:
-- Add phase-level timing/trace logs for `next_work(...)` critical sections (resolution, prep, sync, precondition checks, gates).
-- Ensure worktree preparation does not rerun redundantly for unchanged worktrees.
-- Prevent duplicate concurrent prep work for the same slug.
-- Preserve and verify current correctness guarantees (drift recovery, dependency checks, phase transitions, build/review/finalize flow).
-- Add/adjust tests that cover prep/sync skip conditions and single-flight behavior.
-- Out of scope:
-- Replacing `aiosqlite` or changing database backend.
-- Host service manager changes, launchctl/systemd changes, or infra-level daemon changes.
-- Broad redesign of next-machine flow unrelated to `/todos/work` latency.
-- Blind watchdog-threshold tuning without supporting phase metrics.
+### In scope
+
+1. **R1 - Phase observability**
+   Add structured per-phase timing logs for the `/todos/work` request path so
+   operators can see exactly where time is spent.
+2. **R2 - Conditional preparation**
+   Replace unconditional "always prepare existing worktree" behavior with a
+   deterministic decision policy that prepares only when needed.
+3. **R3 - Per-slug single-flight**
+   Ensure concurrent calls for the same slug do not duplicate expensive prep
+   subprocesses.
+4. **R4 - Conditional sync**
+   Avoid redundant main-to-worktree and slug-artifact sync work when source
+   inputs are unchanged.
+5. **R5 - Behavior parity and safety**
+   Preserve existing dependency checks, phase transitions, build gates, and
+   error contracts (including prep-failure reporting).
+6. **R6 - Verification coverage**
+   Add/update tests for prep decision logic, concurrency behavior, and sync
+   skip/execute conditions.
+
+### Out of scope
+
+- Database-layer changes (`aiosqlite` replacement, backend migration).
+- Host/service-manager changes (`launchctl`, `systemctl`, daemon unit wiring).
+- Broad `next_machine` redesign unrelated to `/todos/work` latency.
+- Watchdog-threshold tuning without phase-level evidence.
 
 ## Success Criteria
 
-- [ ] Repeated `/todos/work` calls for an unchanged prepared slug do not rerun worktree prep on every call.
-- [ ] Phase timing logs clearly identify where request-path time is spent for `/todos/work`.
-- [ ] Existing next-work behavior remains functionally correct (no regressions in gating, state transitions, dependency checks).
-- [ ] Test coverage exists for skip/prepare decision logic and concurrent-call behavior.
+1. Repeated `/todos/work` calls for an unchanged, prepared slug do not execute
+   `_prepare_worktree(...)` each time.
+2. Logs expose per-phase duration and decision context (slug + phase +
+   decision/reason) for `/todos/work`.
+3. Concurrent same-slug calls trigger at most one prep execution for that slug.
+4. Existing orchestration behavior remains intact (no regressions in build/review
+   flow, dependency gating, or finalize readiness paths).
+5. Tests explicitly cover:
+   - prep skipped when unchanged,
+   - prep executed when required signals are present,
+   - single-flight behavior under concurrent same-slug requests,
+   - sync skipped only when safe.
 
-## Constraints
+## Verification Path
 
-- Must keep API and CLI-facing behavior compatible unless explicitly approved.
-- Must not reduce safety by skipping prep when drift or dependency changes require it.
-- Must avoid introducing global locks that serialize unrelated slug work.
+- Unit tests for prep policy and sync policy in `next_machine` helpers.
+- Unit tests for `next_work(...)` concurrent-call behavior and safety invariants.
+- Observable daemon logs confirming phase timings and prep/sync decisions.
+
+## Dependencies and Preconditions
+
+- This todo has no `after` dependency in `todos/roadmap.yaml`.
+- Worktree creation/preparation commands must remain available in the runtime
+  environment.
+- Log access via `instrukt-ai-logs teleclaude --since <window> --grep <pattern>`
+  must be functional for operational verification.
+
+## Integration Safety
+
+- Changes remain localized to `next_machine` worktree orchestration and tests.
+- Rollback path is straightforward: restore unconditional prep/sync behavior in
+  `next_work(...)`/`ensure_worktree(...)` if regressions appear.
 
 ## Risks
 
-- False negatives in drift detection could skip needed prep and cause hard-to-debug failures.
-- Single-flight coordination bugs could deadlock or starve calls under contention.
-- Additional logging could become noisy without clear structure.
+- **False skip risk**: prep/sync could be skipped when needed if drift detection
+  is incomplete.
+- **Locking risk**: single-flight implementation could accidentally serialize
+  unrelated slugs or deadlock.
+- **Log noise risk**: timing logs could add noise unless they stay structured
+  and low-cardinality.

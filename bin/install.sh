@@ -444,13 +444,20 @@ install_global_cli() {
     print_header "Installing Global CLI (telec)"
 
     local target_dir=""
-    if [ "$OS" = "macos" ] && [ -d "/opt/homebrew/bin" ]; then
+    local local_bin="$HOME/.local/bin"
+    if [ -d "$local_bin" ] && [[ ":$PATH:" == *":$local_bin:"* ]]; then
+        target_dir="$local_bin"
+    elif [ "$OS" = "macos" ] && [ -d "/opt/homebrew/bin" ]; then
         target_dir="/opt/homebrew/bin"
     elif [ -d "/usr/local/bin" ]; then
         target_dir="/usr/local/bin"
+    elif [ -d "$local_bin" ]; then
+        target_dir="$local_bin"
+        print_warning "$local_bin exists but is not in PATH; telec may not be globally resolvable"
     else
-        target_dir="$HOME/.local/bin"
+        target_dir="$local_bin"
         mkdir -p "$target_dir"
+        print_warning "Created $local_bin, but it is not in PATH; telec may not be globally resolvable"
     fi
 
     local target="$target_dir/telec"
