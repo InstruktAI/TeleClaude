@@ -17,6 +17,7 @@ The human_role comes from DB session record or terminal email mapping.
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Final
@@ -41,6 +42,37 @@ _GLOBAL_CONFIG_PATH = Path("~/.teleclaude/teleclaude.yml").expanduser()
 _email_role_cache: dict[str, str] = {}
 _email_role_cache_mtime_ns: int | None = None
 _registered_people_count_cache: int = 0
+
+# In-memory session cache for verify_caller (avoids DB hit per authenticated request)
+_SESSION_CACHE_TTL = 30.0  # seconds
+_SESSION_CACHE_MAX = 256
+_session_cache: dict[str, tuple[float, "Session"]] = {}
+
+
+def _get_cached_session(session_id: str) -> "Session | None":
+    """Get session from cache if present and not expired."""
+    entry = _session_cache.get(session_id)
+    if entry is None:
+        return None
+    ts, session = entry
+    if time.monotonic() - ts > _SESSION_CACHE_TTL:
+        _session_cache.pop(session_id, None)
+        return None
+    return session
+
+
+def _put_cached_session(session_id: str, session: "Session") -> None:
+    """Store session in cache with eviction when full."""
+    if len(_session_cache) >= _SESSION_CACHE_MAX:
+        # Evict oldest entry
+        oldest_key = min(_session_cache, key=lambda k: _session_cache[k][0])
+        _session_cache.pop(oldest_key, None)
+    _session_cache[session_id] = (time.monotonic(), session)
+
+
+def invalidate_session_cache(session_id: str) -> None:
+    """Invalidate a specific session from the auth cache (call on session update/close)."""
+    _session_cache.pop(session_id, None)
 
 
 def _normalize_email(value: object) -> str | None:
@@ -131,6 +163,7 @@ async def verify_caller(
     request: Request,
     x_caller_session_id: Annotated[str | None, Header()] = None,
     x_telec_email: Annotated[str | None, Header()] = None,
+    x_web_user_email: Annotated[str | None, Header()] = None,
     x_tmux_session: Annotated[str | None, Header()] = None,
 ) -> CallerIdentity:
     """FastAPI dependency: verify caller identity via dual-factor check.
@@ -154,7 +187,8 @@ async def verify_caller(
         # - otherwise tmux falls back to default unidentified role
         # - non-tmux contexts may use telec login email mapping
         # - otherwise reject as unauthorized
-        terminal_role = _resolve_terminal_role(x_telec_email)
+        email_to_use = x_telec_email or x_web_user_email
+        terminal_role = _resolve_terminal_role(email_to_use)
         if x_tmux_session:
             if terminal_role:
                 return CallerIdentity(
@@ -180,9 +214,12 @@ async def verify_caller(
             )
         raise HTTPException(status_code=401, detail="missing session")
 
-    session = await db.get_session(x_caller_session_id)
-    if not session:
-        raise HTTPException(status_code=401, detail="unknown session")
+    session = _get_cached_session(x_caller_session_id)
+    if session is None:
+        session = await db.get_session(x_caller_session_id)
+        if not session:
+            raise HTTPException(status_code=401, detail="unknown session")
+        _put_cached_session(x_caller_session_id, session)
 
     # Cross-check: tmux session name from header must match DB record.
     # Skip when either side is missing (non-tmux callers like TUI, tests).

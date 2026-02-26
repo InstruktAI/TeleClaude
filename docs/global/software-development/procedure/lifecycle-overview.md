@@ -73,6 +73,7 @@ Maintenance covers dependency updates, security patches, and operational upkeep.
 - **Serial execution**: One phase runs, completes, then the next begins
 - **Deterministic handoffs**: Every step ends cleanly before the next begins
 - **No micromanagement**: Orchestrator dispatches and monitors; workers implement autonomously
+- **No no-op chatter**: Orchestrator messages workers only when there is actionable guidance
 - **Quality gates**: Pre-commit hooks enforce standards; review validates completeness
 
 Work state lives in `todos/{slug}/state.yaml` and records:

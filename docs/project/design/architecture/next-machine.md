@@ -64,6 +64,10 @@ stateDiagram-v2
 - **Phase Ordering**: Phases progress sequentially; no phase skipping.
 - **Git Requirement**: All work items must be in git for worktree accessibility.
 - **Finalize Serialization**: Only one finalize may run at a time across all orchestrators, enforced by a session-bound file lock (`todos/.finalize-lock`).
+- **Conditional Prep**: Worktree prep is required on new worktree creation or prep-input drift; unchanged known-good worktrees skip prep.
+- **Per-Repo+Slug Single-Flight**: Concurrent `/todos/work` calls for the same slug share one ensure/prep/sync critical section only within the same project root.
+- **Conditional Sync**: Main-to-worktree and slug-artifact sync copy only changed files; unchanged files are skipped.
+- **Phase Observability**: `/todos/work` emits per-phase timing logs with stable `NEXT_WORK_PHASE` markers.
 - **Finalize Safety Gates**: Finalize dispatch/apply are blocked unless canonical `main` is clean (except lock file), git state is inspectable, and canonical `main` is not ahead of the slug branch.
 
 ## Primary flows
@@ -112,6 +116,44 @@ flowchart TD
     AcquireLock -->|Held| LOCKED[Return FINALIZE_LOCKED]
     Fix --> DispatchFixer[Dispatch fixer AI]
 ```
+
+### Worktree Prep and Sync Policy
+
+For each `/todos/work` request, Next Machine applies deterministic prep/sync decisions:
+
+1. **Ensure worktree exists**
+   - If missing: create `trees/{slug}` and branch.
+2. **Prep decision**
+   - Run prep when:
+     - worktree was newly created
+     - prep-state marker is missing/corrupt
+     - prep input digest changed (`tools/worktree-prepare.sh`, dependency manifests/lockfiles)
+   - Skip prep when inputs are unchanged and previous prep succeeded.
+3. **Single-flight**
+   - Ensure/prep/sync is guarded by a per-repo+slug async lock.
+   - Same-slug concurrent calls in the same repo wait and reuse resulting ready state.
+   - Same-slug calls in different repos run independently.
+4. **Sync decision**
+   - `sync_main_to_worktree` and `sync_slug_todo_from_main_to_worktree` compare source/destination file contents.
+   - Copy happens only when destination is missing or content differs.
+   - `state.yaml` remains seed-only (copied from main only when missing in worktree).
+
+### `/todos/work` Phase Logs
+
+`next_work(...)` logs timing for major phases with a grep-stable marker:
+
+- `NEXT_WORK_PHASE slug=<slug> phase=slug_resolution ...`
+- `NEXT_WORK_PHASE slug=<slug> phase=preconditions ...`
+- `NEXT_WORK_PHASE slug=<slug> phase=ensure_prepare ...`
+- `NEXT_WORK_PHASE slug=<slug> phase=sync ...`
+- `NEXT_WORK_PHASE slug=<slug> phase=gate_execution ...`
+- `NEXT_WORK_PHASE slug=<slug> phase=dispatch_decision ...`
+
+Each entry includes:
+
+- `decision` (`run`, `skip`, `error`, `wait`)
+- `reason` (deterministic reason code)
+- `duration_ms` (phase duration)
 
 ### Finalize Lock
 

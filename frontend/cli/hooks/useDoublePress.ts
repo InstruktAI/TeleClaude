@@ -20,7 +20,7 @@ import {
 
 export interface UseDoublePressResult {
   /** Call this on every press/select event with the item identifier. */
-  handlePress: (itemId: string) => void;
+  handlePress: (itemId: string, isSticky?: boolean) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -28,19 +28,21 @@ export interface UseDoublePressResult {
 // ---------------------------------------------------------------------------
 
 /**
- * @param onPreview - Called on a single press (first press or expired double-press window).
- * @param onToggle  - Called on a confirmed double press within the threshold.
+ * @param onPreview      - Called on a single press (first press or expired double-press window).
+ * @param onToggle       - Called on a confirmed double press within the threshold.
+ * @param onClearPreview - Called when pressing a sticky item to dismiss any active non-sticky preview.
  */
 export function useDoublePress(
   onPreview: (id: string) => void,
   onToggle: (id: string) => void,
+  onClearPreview?: () => void,
 ): UseDoublePressResult {
   // Persistent state machine instance across renders.
   const stateRef = useRef<TreeInteractionState>(new TreeInteractionState());
 
   const handlePress = useCallback(
-    (itemId: string) => {
-      const decision = stateRef.current.decidePreviewAction(itemId);
+    (itemId: string, isSticky: boolean = false) => {
+      const decision = stateRef.current.decidePreviewAction(itemId, isSticky);
 
       switch (decision.action) {
         case TreeInteractionAction.PREVIEW:
@@ -52,8 +54,8 @@ export function useDoublePress(
           break;
 
         case TreeInteractionAction.CLEAR_STICKY_PREVIEW:
-          // Item is already sticky; treat as a preview toggle-off.
-          onPreview(itemId);
+          // Item is already sticky — dismiss any active non-sticky preview.
+          onClearPreview?.();
           break;
 
         case TreeInteractionAction.NONE:
@@ -61,7 +63,7 @@ export function useDoublePress(
           break;
       }
     },
-    [onPreview, onToggle],
+    [onPreview, onToggle, onClearPreview],
   );
 
   return { handlePress };

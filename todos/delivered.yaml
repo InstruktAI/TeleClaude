@@ -1,5 +1,31 @@
 # Delivered work items. Newest first.
 
+- slug: deployment-migrations
+  date: '2026-02-26'
+  title: 'Phase 2: Migration manifest format, runner, version utilities (no CLI —
+    internal library)'
+  commit: 3b43dc8c1fed747e047e3f74dea5a01950889746
+  description: 'Phase 2: Migration manifest format, runner, version utilities (no
+    CLI — internal library)'
+- slug: adapter-output-qos-scheduler
+  date: '2026-02-26'
+  title: Adapter-aware output QoS system to prevent Telegram flood-control churn under
+    high concurrency
+  description: Adapter-aware output QoS system to prevent Telegram flood-control churn
+    under high concurrency
+- slug: help-desk-startup-command-ordering
+  date: '2026-02-26'
+  title: Deterministic startup ordering between help-desk bootstrap and first customer
+    message
+  commit: 78dedfa9
+  description: Gate process_message on session lifecycle, ensuring auto-command dispatch
+    completes before customer input injection into tmux
+- slug: api-todos-work-stability-hardening
+  date: '2026-02-26'
+  title: Stabilize `/todos/work` latency by removing redundant worktree prep/sync
+    and adding phase-level diagnostics
+  description: Stabilize `/todos/work` latency by removing redundant worktree prep/sync
+    and adding phase-level diagnostics
 - slug: integration-orchestrator-rollout
   date: '2026-02-26'
   title: Parent rollout for event-driven singleton integrator and guarded mainline

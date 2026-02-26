@@ -117,6 +117,43 @@ sequenceDiagram
 - If session missing → emit OUTPUT_UPDATE with process exit status
 - Mark session as closed, stop polling
 
+## Adapter-level Output QoS
+
+Between `AdapterClient.send_output_update` and the platform API sits an optional adapter-level QoS
+scheduler (`teleclaude/adapters/qos/output_scheduler.py`). It runs per-adapter and operates in one
+of three modes configured under each adapter's `qos:` section:
+
+| Mode            | Behaviour                                                                                                                                                                |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `off`           | Scheduler is bypassed; every emission goes directly to the platform API.                                                                                                 |
+| `coalesce_only` | Background loop ticks at `rounding_ms` intervals; within each tick, superseded normal payloads per session are dropped (latest-only). No hard rate cap. Discord default. |
+| `strict`        | Tick computed from `group_mpm`, `output_budget_ratio`, and `reserve_mpm`; dispatches ONE session per tick in round-robin order. Telegram default.                        |
+
+### Two-layer rate control (Telegram)
+
+1. **PTB AIORateLimiter** — transport-level: Telegram enforces per-chat limits at the API layer. PTB's
+   built-in limiter queues requests and auto-retries, staying inside flood-control thresholds without
+   custom sleep logic.
+2. **TeleClaude OutputQoSScheduler** — product-level: coalesces stale intermediate output frames
+   and paces delivery to stay within the configured group MPM budget across all concurrent sessions.
+
+### Tuning knobs
+
+| Config key                 | Default (Telegram) | Effect                                                        |
+| -------------------------- | ------------------ | ------------------------------------------------------------- |
+| `group_mpm`                | 20                 | Platform group message budget per minute.                     |
+| `output_budget_ratio`      | 0.8                | Fraction of `group_mpm` reserved for output updates.          |
+| `reserve_mpm`              | 4                  | Hard reservation for non-output messages (commands, footers). |
+| `rounding_ms`              | 100                | Tick rounding granularity.                                    |
+| `active_emitter_window_s`  | 10.0               | Window during which a session stays counted as active.        |
+| `active_emitter_ema_alpha` | 0.2                | EMA smoothing factor for active session count.                |
+
+### Multi-process caveat
+
+`OutputQoSScheduler` is in-process only. When running multiple daemon workers, each process applies
+its own budget independently. A shared Redis token-bucket is the future path for cross-process rate
+enforcement — currently out of scope.
+
 ## Failure modes
 
 - **Tmux Hangs on Capture**: Poller times out after 5s. Logs error, skips this poll cycle. Session appears frozen until next successful poll.

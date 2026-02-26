@@ -151,8 +151,37 @@ class RedisConfig:
 
 
 @dataclass
+class TelegramQoSConfig:
+    """QoS configuration for Telegram output pacing and coalescing."""
+
+    enabled: bool = True
+    group_mpm: int = 20
+    output_budget_ratio: float = 0.8
+    reserve_mpm: int = 4
+    min_session_tick_s: float = 3.0
+    active_emitter_window_s: float = 10.0
+    active_emitter_ema_alpha: float = 0.2
+    rounding_ms: int = 100
+
+
+@dataclass
+class DiscordQoSConfig:
+    """QoS configuration for Discord output coalescing."""
+
+    mode: str = "coalesce_only"  # "off" | "coalesce_only" | "strict"
+
+
+@dataclass
+class WhatsAppQoSConfig:
+    """QoS configuration for WhatsApp (disabled until limits are confirmed)."""
+
+    mode: str = "off"  # "off" | "coalesce_only" | "strict"
+
+
+@dataclass
 class TelegramConfig:
     trusted_bots: list[str]
+    qos: TelegramQoSConfig = field(default_factory=TelegramQoSConfig)
 
 
 @dataclass
@@ -167,6 +196,7 @@ class DiscordConfig:
     announcements_channel_id: int | None = None
     general_channel_id: int | None = None
     categories: dict[str, int] | None = None
+    qos: DiscordQoSConfig = field(default_factory=DiscordQoSConfig)
 
 
 @dataclass
@@ -179,6 +209,7 @@ class WhatsAppConfig:
     api_version: str = "v21.0"
     template_name: str | None = None
     template_language: str = "en_US"
+    qos: WhatsAppQoSConfig = field(default_factory=WhatsAppQoSConfig)
 
 
 @dataclass
@@ -369,6 +400,16 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
     },
     "telegram": {
         "trusted_bots": [],
+        "qos": {
+            "enabled": True,
+            "group_mpm": 20,
+            "output_budget_ratio": 0.8,
+            "reserve_mpm": 4,
+            "min_session_tick_s": 3.0,
+            "active_emitter_window_s": 10.0,
+            "active_emitter_ema_alpha": 0.2,
+            "rounding_ms": 100,
+        },
     },
     "discord": {
         "enabled": False,
@@ -381,6 +422,9 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "announcements_channel_id": None,
         "general_channel_id": None,
         "categories": None,
+        "qos": {
+            "mode": "coalesce_only",
+        },
     },
     "whatsapp": {
         "enabled": False,
@@ -391,6 +435,9 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "api_version": "v21.0",
         "template_name": None,
         "template_language": "en_US",
+        "qos": {
+            "mode": "off",
+        },
     },
     "creds": {
         "telegram": None,
@@ -640,6 +687,40 @@ def _parse_optional_int(value: object) -> int | None:
     return None
 
 
+def _parse_telegram_qos_config(raw_qos: dict[str, object] | None) -> TelegramQoSConfig:  # guard: loose-dict
+    """Parse Telegram QoS config from raw dict, falling back to defaults."""
+    if not isinstance(raw_qos, dict):
+        return TelegramQoSConfig()
+    return TelegramQoSConfig(
+        enabled=bool(raw_qos.get("enabled", True)),
+        group_mpm=int(raw_qos.get("group_mpm", 20)),  # type: ignore[arg-type]
+        output_budget_ratio=float(raw_qos.get("output_budget_ratio", 0.8)),  # type: ignore[arg-type]
+        reserve_mpm=int(raw_qos.get("reserve_mpm", 4)),  # type: ignore[arg-type]
+        min_session_tick_s=float(raw_qos.get("min_session_tick_s", 3.0)),  # type: ignore[arg-type]
+        active_emitter_window_s=float(raw_qos.get("active_emitter_window_s", 10.0)),  # type: ignore[arg-type]
+        active_emitter_ema_alpha=float(raw_qos.get("active_emitter_ema_alpha", 0.2)),  # type: ignore[arg-type]
+        rounding_ms=int(raw_qos.get("rounding_ms", 100)),  # type: ignore[arg-type]
+    )
+
+
+def _parse_discord_qos_config(raw_qos: dict[str, object] | None) -> DiscordQoSConfig:  # guard: loose-dict
+    """Parse Discord QoS config from raw dict, falling back to defaults."""
+    if not isinstance(raw_qos, dict):
+        return DiscordQoSConfig()
+    return DiscordQoSConfig(
+        mode=str(raw_qos.get("mode", "coalesce_only")),
+    )
+
+
+def _parse_whatsapp_qos_config(raw_qos: dict[str, object] | None) -> WhatsAppQoSConfig:  # guard: loose-dict
+    """Parse WhatsApp QoS config from raw dict, falling back to defaults."""
+    if not isinstance(raw_qos, dict):
+        return WhatsAppQoSConfig()
+    return WhatsAppQoSConfig(
+        mode=str(raw_qos.get("mode", "off")),
+    )
+
+
 def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML deserialization input
     """Build typed Config from raw dict with proper type conversion."""
     db_raw = raw["database"]
@@ -782,6 +863,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
         ),
         telegram=TelegramConfig(
             trusted_bots=list(tg_raw["trusted_bots"]),  # type: ignore[index,misc]
+            qos=_parse_telegram_qos_config(tg_raw.get("qos")),  # type: ignore[arg-type]
         ),
         discord=DiscordConfig(
             enabled=bool(discord_raw.get("enabled", False)) if isinstance(discord_raw, dict) else False,
@@ -814,6 +896,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
                 _parse_optional_int(discord_raw.get("general_channel_id")) if isinstance(discord_raw, dict) else None
             ),
             categories=(_parse_categories(discord_raw.get("categories")) if isinstance(discord_raw, dict) else None),
+            qos=_parse_discord_qos_config(discord_raw.get("qos") if isinstance(discord_raw, dict) else None),  # type: ignore[arg-type]
         ),
         creds=CredsConfig(telegram=tg_creds, whatsapp=whatsapp_creds),
         agents=agents_registry,
@@ -835,6 +918,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
             api_version=whatsapp_api_version,
             template_name=whatsapp_template_name,
             template_language=whatsapp_template_language,
+            qos=_parse_whatsapp_qos_config(whatsapp_raw.get("qos") if isinstance(whatsapp_raw, dict) else None),  # type: ignore[arg-type]
         ),
         tts=_parse_tts_config(tts_raw),  # type: ignore[arg-type]
         stt=_parse_stt_config(stt_raw),  # type: ignore[arg-type]

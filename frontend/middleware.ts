@@ -7,6 +7,12 @@ export function middleware(request: NextRequest) {
     request.cookies.get("__Secure-authjs.session-token")?.value;
 
   if (!sessionToken && request.nextUrl.pathname !== "/login") {
+    if (request.nextUrl.pathname.startsWith("/api/")) {
+      return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

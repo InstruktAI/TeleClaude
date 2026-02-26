@@ -35,6 +35,16 @@ telegram:
     - teleclaude_workstation_bot
     - teleclaude_server_bot
     # Add other computer bot usernames here
+  # Output QoS: pacing and coalescing to prevent Telegram flood-control churn
+  qos:
+    enabled: true           # Enable output QoS scheduler for Telegram
+    group_mpm: 20           # Telegram group message-per-minute limit
+    output_budget_ratio: 0.8  # Fraction of group_mpm reserved for output updates
+    reserve_mpm: 4          # Additional mpm reserve for non-output messages
+    min_session_tick_s: 3.0  # Minimum seconds between dispatches for the same session
+    active_emitter_window_s: 10.0  # Seconds a session remains "active" after last dispatch
+    active_emitter_ema_alpha: 0.2  # EMA smoothing factor for active session count
+    rounding_ms: 100        # Cadence rounding granularity in milliseconds
 
 discord:
   enabled: false
@@ -45,6 +55,9 @@ discord:
   # All channel/category IDs below are auto-provisioned on startup.
   # The bot creates the full structure (categories, forums, text channels)
   # and persists IDs here. Do not edit manually.
+  # Output QoS: coalescing mode (no hard cap; Discord library handles transport RL)
+  qos:
+    mode: coalesce_only     # "off" | "coalesce_only" | "strict"
 
 # Agent binaries are resolved internally by platform policy:
 # macOS: ~/Applications/{Claude,Gemini,Codex}Launcher.app/...

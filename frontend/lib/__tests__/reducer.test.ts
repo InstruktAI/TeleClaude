@@ -196,6 +196,32 @@ describe('reducer', () => {
       expect(next.sessions.stickySessions).toHaveLength(0)
     })
 
+    it('should clear preview when removing a sticky session that is being previewed', () => {
+      const state = freshState()
+      state.sessions.stickySessions = [{ sessionId: 's1' }]
+      state.sessions.preview = { sessionId: 's1' }
+      const next = reduce(state, { type: 'TOGGLE_STICKY', sessionId: 's1' })
+      expect(next.sessions.stickySessions).toHaveLength(0)
+      expect(next.sessions.preview).toBeNull()
+    })
+
+    it('should not clear preview for a different session when removing sticky', () => {
+      const state = freshState()
+      state.sessions.stickySessions = [{ sessionId: 's1' }, { sessionId: 's2' }]
+      state.sessions.preview = { sessionId: 's2' }
+      const next = reduce(state, { type: 'TOGGLE_STICKY', sessionId: 's1' })
+      expect(next.sessions.stickySessions).toEqual([{ sessionId: 's2' }])
+      expect(next.sessions.preview).toEqual({ sessionId: 's2' })
+    })
+
+    it('should not affect preview when removing a non-previewed sticky', () => {
+      const state = freshState()
+      state.sessions.stickySessions = [{ sessionId: 's1' }]
+      state.sessions.preview = null
+      const next = reduce(state, { type: 'TOGGLE_STICKY', sessionId: 's1' })
+      expect(next.sessions.preview).toBeNull()
+    })
+
     it('should remove output highlight for non-codex agent on add', () => {
       const state = freshState()
       state.sessions.outputHighlights.add('s1')

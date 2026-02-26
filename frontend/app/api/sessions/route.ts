@@ -7,6 +7,7 @@ import { buildIdentityHeaders } from "@/lib/proxy/identity-headers";
 export async function GET(request: NextRequest) {
   const session = await auth();
   if (!session) {
+    console.warn("[api/sessions GET] Unauthorized: no session found");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -21,12 +22,12 @@ export async function GET(request: NextRequest) {
     });
 
     if (res.status >= 400) {
-      return NextResponse.json(
-        normalizeUpstreamError(res.status, res.body),
-        { status: res.status },
-      );
+      const errorData = normalizeUpstreamError(res.status, res.body);
+      console.error(`[api/sessions GET] upstream error ${res.status}:`, errorData);
+      return NextResponse.json(errorData, { status: res.status });
     }
 
+    // console.log(`[api/sessions GET] success, body length: ${res.body.length}`);
     return new NextResponse(res.body, {
       status: res.status,
       headers: { "Content-Type": "application/json" },

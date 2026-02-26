@@ -52,6 +52,7 @@ def _make_hook_queue_daemon() -> TeleClaudeDaemon:
     daemon._hook_outbox_last_summary_at = 0.0
     daemon._hook_outbox_last_backlog_warn_at = {}
     daemon._hook_outbox_last_lag_warn_at = {}
+    daemon._hook_outbox_claim_paused_sessions = set()
     daemon._track_background_task = MagicMock()
     return daemon
 
@@ -362,7 +363,7 @@ async def test_hook_outbox_requeues_critical_when_capacity_full_of_critical() ->
     mock_mark_delivered.assert_not_awaited()
     mock_mark_failed.assert_awaited_once()
     assert mock_mark_failed.await_args.kwargs["row_id"] == 3
-    assert mock_mark_failed.await_args.kwargs["attempt_count"] == 0
+    assert mock_mark_failed.await_args.kwargs["attempt_count"] == 1
     assert mock_mark_failed.await_args.kwargs["error"] == "backpressure:session_queue_full"
     assert isinstance(mock_mark_failed.await_args.kwargs["next_attempt_at"], str)
 
@@ -408,6 +409,111 @@ async def test_hook_outbox_duplicate_claim_is_skipped_while_inflight() -> None:
         await asyncio.wait_for(worker, timeout=0.5)
 
     assert session_id not in daemon._session_outbox_queues
+
+
+@pytest.mark.asyncio
+async def test_hook_outbox_claim_watermark_hysteresis() -> None:
+    """Claim pauses at high watermark and resumes only after draining below low watermark."""
+    daemon = _make_hook_queue_daemon()
+    session_id = "sess-watermark"
+    worker = MagicMock()
+    worker.done.return_value = False
+    daemon._session_outbox_workers[session_id] = worker
+
+    row = {
+        "id": 1,
+        "session_id": session_id,
+        "event_type": AgentHookEvents.AGENT_STOP,
+        "payload": "{}",
+        "attempt_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    with (
+        patch("teleclaude.daemon.db.mark_hook_outbox_failed", new_callable=AsyncMock),
+        patch("teleclaude.daemon.db.mark_hook_outbox_delivered", new_callable=AsyncMock),
+    ):
+        await daemon._enqueue_session_outbox_item(session_id, row)
+
+    queue_state = daemon._session_outbox_queues[session_id]
+    async with queue_state.lock:
+        queue_state.pending.clear()
+        queue_state.claimed_row_ids = set(range(1, 25))
+
+    with (
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK", 24),
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK", 8),
+    ):
+        assert await daemon._should_pause_hook_outbox_claims(session_id) is True
+        assert session_id in daemon._hook_outbox_claim_paused_sessions
+
+        async with queue_state.lock:
+            queue_state.claimed_row_ids = set(range(1, 9))
+
+        assert await daemon._should_pause_hook_outbox_claims(session_id) is False
+        assert session_id not in daemon._hook_outbox_claim_paused_sessions
+
+
+@pytest.mark.asyncio
+async def test_hook_outbox_worker_skips_claims_for_paused_session() -> None:
+    """Outbox worker should skip DB claim attempts for sessions above claim watermark."""
+    daemon = _make_hook_queue_daemon()
+    session_id = "sess-paused-claim"
+
+    # Seed queue state for this session without starting a real worker.
+    existing_worker = MagicMock()
+    existing_worker.done.return_value = False
+    daemon._session_outbox_workers[session_id] = existing_worker
+    seed_row = {
+        "id": 1,
+        "session_id": session_id,
+        "event_type": AgentHookEvents.AGENT_STOP,
+        "payload": "{}",
+        "attempt_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with (
+        patch("teleclaude.daemon.db.mark_hook_outbox_failed", new_callable=AsyncMock),
+        patch("teleclaude.daemon.db.mark_hook_outbox_delivered", new_callable=AsyncMock),
+    ):
+        await daemon._enqueue_session_outbox_item(session_id, seed_row)
+
+    queue_state = daemon._session_outbox_queues[session_id]
+    async with queue_state.lock:
+        queue_state.pending.clear()
+        queue_state.claimed_row_ids = set(range(1, 25))
+
+    candidate_row = {
+        "id": 99,
+        "session_id": session_id,
+        "event_type": AgentHookEvents.AGENT_STOP,
+        "payload": "{}",
+        "attempt_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    fetch_calls = 0
+
+    async def _fetch(*_args: object) -> list[HookOutboxRow]:
+        nonlocal fetch_calls
+        fetch_calls += 1
+        if fetch_calls == 1:
+            daemon.shutdown_event.set()
+            return [candidate_row]
+        return []
+
+    with (
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK", 24),
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK", 8),
+        patch("teleclaude.daemon.HOOK_OUTBOX_POLL_INTERVAL_S", 0.001),
+        patch("teleclaude.daemon.db.fetch_hook_outbox_batch", new=AsyncMock(side_effect=_fetch)),
+        patch("teleclaude.daemon.db.claim_hook_outbox_batch", new_callable=AsyncMock) as mock_claim_batch,
+        patch.object(daemon, "_enqueue_session_outbox_item", new=AsyncMock()) as mock_enqueue,
+    ):
+        await daemon._hook_outbox_worker()
+
+    mock_claim_batch.assert_not_awaited()
+    mock_enqueue.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -744,6 +850,90 @@ async def test_agent_then_message_normalizes_codex_next_commands() -> None:
         assert result["status"] == "success"
         sent_text = mock_send.await_args.args[1]
         assert sent_text == "/prompts:next-work test-todo"
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_sets_active_only_after_auto_command_dispatch():
+    """_bootstrap_session_resources sets lifecycle=active AFTER auto-command dispatch."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+
+    call_order: list[str] = []
+
+    async def mock_execute_auto(session_id: str, auto_command: str) -> dict[str, str]:
+        call_order.append("execute_auto_command")
+        return {"status": "success"}
+
+    daemon._execute_auto_command = AsyncMock(side_effect=mock_execute_auto)
+    daemon._start_polling_for_session = AsyncMock()
+
+    mock_session = MagicMock()
+    mock_session.session_id = "sess-boot-order"
+    mock_session.tmux_session_name = "tc_boot_order"
+    mock_session.lifecycle_status = "initializing"
+    mock_session.project_path = "/tmp"
+    mock_session.subdir = None
+
+    with (
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.tmux_bridge") as mock_tmux,
+    ):
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+        mock_db.get_voice = AsyncMock(return_value=None)
+        mock_tmux.ensure_tmux_session = AsyncMock(return_value=True)
+
+        async def record_update(session_id: str, **kwargs: object) -> None:
+            if "lifecycle_status" in kwargs and kwargs["lifecycle_status"] == "active":
+                call_order.append("set_active")
+
+        mock_db.update_session = AsyncMock(side_effect=record_update)
+
+        await daemon._bootstrap_session_resources("sess-boot-order", "agent claude")
+
+    assert "execute_auto_command" in call_order
+    assert "set_active" in call_order
+    assert call_order.index("execute_auto_command") < call_order.index("set_active"), (
+        f"Auto-command must execute before active transition: {call_order}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_auto_command_error_still_transitions_to_active():
+    """If auto-command raises, session must still transition to active (not strand in initializing)."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+
+    daemon._execute_auto_command = AsyncMock(side_effect=RuntimeError("boom"))
+    daemon._start_polling_for_session = AsyncMock()
+
+    mock_session = MagicMock()
+    mock_session.session_id = "sess-boot-err"
+    mock_session.tmux_session_name = "tc_boot_err"
+    mock_session.lifecycle_status = "initializing"
+    mock_session.project_path = "/tmp"
+    mock_session.subdir = None
+
+    lifecycle_updates: list[str] = []
+
+    with (
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.tmux_bridge") as mock_tmux,
+    ):
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+        mock_db.get_voice = AsyncMock(return_value=None)
+        mock_tmux.ensure_tmux_session = AsyncMock(return_value=True)
+
+        async def record_update(session_id: str, **kwargs: object) -> None:
+            if "lifecycle_status" in kwargs:
+                lifecycle_updates.append(str(kwargs["lifecycle_status"]))
+
+        mock_db.update_session = AsyncMock(side_effect=record_update)
+
+        await daemon._bootstrap_session_resources("sess-boot-err", "agent claude")
+
+    assert "active" in lifecycle_updates, (
+        f"Session must reach active even after auto-command error: {lifecycle_updates}"
+    )
 
 
 @pytest.mark.asyncio
@@ -1256,6 +1446,44 @@ async def test_cleanup_skips_already_closed_inactive_sessions_and_normalizes_sta
 
         terminate_session.assert_not_called()
         mock_db.update_session.assert_awaited_once_with("closed-123", lifecycle_status="closed")
+
+
+@pytest.mark.asyncio
+async def test_cleanup_purges_closed_sessions_older_than_72h():
+    """Sessions closed longer than 72h should be deleted from the database."""
+    service = MaintenanceService(client=MagicMock(), output_poller=MagicMock(), poller_watch_interval_s=1.0)
+
+    fixed_now = datetime(2026, 1, 14, 12, 0, 0, tzinfo=timezone.utc)
+    old_closed_session = Session(
+        session_id="old-closed-456",
+        computer_name="TestMac",
+        tmux_session_name="old-closed-tmux",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Old Closed",
+        last_activity=fixed_now - timedelta(days=6),
+        closed_at=fixed_now - timedelta(days=6),
+        lifecycle_status="closed",
+    )
+
+    with (
+        patch("teleclaude.services.maintenance_service.datetime") as mock_datetime,
+        patch("teleclaude.services.maintenance_service.db") as mock_db,
+        patch(
+            "teleclaude.services.maintenance_service.session_cleanup.terminate_session",
+            new_callable=AsyncMock,
+        ) as terminate_session,
+    ):
+        mock_datetime.now.return_value = fixed_now
+        mock_db.list_sessions = AsyncMock(return_value=[old_closed_session])
+
+        await service._cleanup_inactive_sessions()
+
+        terminate_session.assert_awaited_once()
+        args, kwargs = terminate_session.call_args
+        assert args[0] == "old-closed-456"
+        assert kwargs["reason"] == "closed_expired"
+        assert kwargs["delete_db"] is True
+        assert kwargs["kill_tmux"] is False
 
 
 @pytest.mark.asyncio

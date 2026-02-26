@@ -1838,3 +1838,55 @@ async def test_discord_session_updated_uses_thread_id_when_topper_message_missin
     assert args[1] == "555"
     assert session.get_metadata().get_ui().get_discord().thread_topper_message_id == "555"
     fake_db.update_session.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_discord_first_message_payload_is_standalone() -> None:
+    """First message dispatch must be a single-shot ProcessMessageCommand with unchanged payload.
+
+    Regression guard: the process_message text must exactly match the user's
+    message content — no concatenation with auto_command or startup arguments.
+    """
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        client = AdapterClient()
+        adapter = DiscordAdapter(client)
+        client.register_adapter("discord", adapter)
+
+    adapter._guild_id = None
+    adapter._help_desk_channel_id = 333
+
+    session = _build_session()
+    fake_db = MagicMock()
+    fake_db.get_sessions_by_adapter_metadata = AsyncMock(side_effect=[[], []])
+    fake_db.get_session = AsyncMock(return_value=session)
+    fake_db.update_session = AsyncMock()
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": session.session_id})
+    fake_command_service.process_message = AsyncMock()
+
+    thread = FakeThread(thread_id=555, parent_id=333)
+    raw_user_text = "I need help with my account"
+    message = SimpleNamespace(
+        id=12345,
+        content=raw_user_text,
+        author=SimpleNamespace(id=999001, bot=False, display_name="Bob", name="bob"),
+        channel=thread,
+        guild=SimpleNamespace(id=202020),
+    )
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+    ):
+        await adapter._handle_on_message(message)
+
+    # process_message must be called exactly once (single-shot)
+    fake_command_service.process_message.assert_awaited_once()
+    process_cmd = fake_command_service.process_message.await_args.args[0]
+    assert isinstance(process_cmd, ProcessMessageCommand)
+    # Text must be exactly the user's raw input — not concatenated with startup arguments
+    assert process_cmd.text == raw_user_text
