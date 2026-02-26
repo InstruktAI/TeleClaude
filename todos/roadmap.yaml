@@ -46,3 +46,14 @@
 - slug: skills-procedure-taxonomy-alignment
   description: Extract procedure logic from agents/skills into docs procedures and
     align skill wrappers with breath-aware taxonomy (exploratory, skills-only scope).
+- slug: config-wizard-whatsapp-wiring
+  description: Wire WhatsApp env vars, guidance, and config.sample into the config
+    wizard
+- slug: config-wizard-governance
+  description: Add config wizard integration gates to DoD, DOR, add-adapter procedure,
+    and teleclaude-config spec
+- slug: config-wizard-redesign
+  after:
+  - config-wizard-whatsapp-wiring
+  description: Major visual and interaction redesign of the config wizard — card layout,
+    inline editing, guided onboarding, progress indicators

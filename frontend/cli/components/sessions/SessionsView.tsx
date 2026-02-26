@@ -219,7 +219,7 @@ export function SessionsView({
 
     space_action: () => {
       if (selectedSessionId) {
-        handlePress(selectedSessionId);
+        handlePress(selectedSessionId, stickyIds.has(selectedSessionId));
       }
     },
 

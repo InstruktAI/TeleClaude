@@ -20,7 +20,7 @@ import {
 
 export interface UseDoublePressResult {
   /** Call this on every press/select event with the item identifier. */
-  handlePress: (itemId: string) => void;
+  handlePress: (itemId: string, isSticky?: boolean) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -39,8 +39,8 @@ export function useDoublePress(
   const stateRef = useRef<TreeInteractionState>(new TreeInteractionState());
 
   const handlePress = useCallback(
-    (itemId: string) => {
-      const decision = stateRef.current.decidePreviewAction(itemId);
+    (itemId: string, isSticky: boolean = false) => {
+      const decision = stateRef.current.decidePreviewAction(itemId, isSticky);
 
       switch (decision.action) {
         case TreeInteractionAction.PREVIEW:
