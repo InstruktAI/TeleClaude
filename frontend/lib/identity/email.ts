@@ -17,6 +17,7 @@ export async function sendVerificationRequest(
   params: SendVerificationRequestParams,
 ) {
   const { identifier: email, token, provider } = params;
+  console.log(`[AUTH] Sending verification code ${token} to ${email}`);
   if (!provider.server) throw new Error("SMTP server not configured");
 
   const transport = createTransport(provider.server as object);
