@@ -22,9 +22,10 @@ Ownership:
 
 Manual verification notes:
 
-- Attempted runtime validation (`telec todo work ...` twice plus `instrukt-ai-logs ... --grep NEXT_WORK_PHASE`).
-- Build environment had no running daemon (`/tmp/teleclaude-api.sock` missing), so live log-capture verification could not complete in-worktree.
-- Behavioral validation covered by targeted next-machine tests and full repo lint/test gates.
+- Verified targeted behavior with `pytest -q tests/unit/test_next_machine_worktree_prep.py tests/unit/test_next_machine_hitl.py` (53 passed), including the new cross-repo single-flight isolation regression.
+- Verified full quality gates with `make lint` (pass) and `make test` (2208 passed, 106 skipped).
+- Verified demo structure with `telec todo demo validate api-todos-work-stability-hardening --project-root .` (3 executable blocks).
+- Attempted runtime operational validation (`telec todo work ...` twice + `instrukt-ai-logs ... --grep NEXT_WORK_PHASE`), but worker role permissions block `telec todo work`; no runtime logs were emitted from this session.
 
 ## Review Gates (Reviewer)
 

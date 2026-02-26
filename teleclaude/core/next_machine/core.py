@@ -88,7 +88,7 @@ _PREP_ROOT_INPUT_FILES = (
     "tools/worktree-prepare.sh",
 )
 _SINGLE_FLIGHT_GUARD = threading.Lock()
-_SINGLE_FLIGHT_LOCKS: dict[str, asyncio.Lock] = {}
+_SINGLE_FLIGHT_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
 
 
 @dataclass(frozen=True)
@@ -105,13 +105,14 @@ class EnsureWorktreeResult:
     prep_reason: str
 
 
-async def _get_slug_single_flight_lock(slug: str) -> asyncio.Lock:
-    """Return per-slug lock so same-slug prep/sync runs single-flight."""
+async def _get_slug_single_flight_lock(cwd: str, slug: str) -> asyncio.Lock:
+    """Return repo-scoped slug lock so single-flight isolation stays per project."""
+    key = (cwd, slug)
     with _SINGLE_FLIGHT_GUARD:
-        lock = _SINGLE_FLIGHT_LOCKS.get(slug)
+        lock = _SINGLE_FLIGHT_LOCKS.get(key)
         if lock is None:
             lock = asyncio.Lock()
-            _SINGLE_FLIGHT_LOCKS[slug] = lock
+            _SINGLE_FLIGHT_LOCKS[key] = lock
     return lock
 
 
@@ -2572,7 +2573,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
 
     worktree_cwd = str(Path(cwd) / "trees" / resolved_slug)
     ensure_started = perf_counter()
-    slug_lock = await _get_slug_single_flight_lock(resolved_slug)
+    slug_lock = await _get_slug_single_flight_lock(cwd, resolved_slug)
     if slug_lock.locked():
         logger.info(
             "%s slug=%s phase=ensure_prepare decision=wait reason=single_flight_in_progress duration_ms=0",

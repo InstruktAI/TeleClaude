@@ -88,9 +88,10 @@ request path deterministic for unchanged slugs.
       verify logs show prep/sync skip decisions after initial ready state.
 - [x] Verify phase timing logs are grep-friendly via:
       `instrukt-ai-logs teleclaude --since <window> --grep <phase-pattern>`.
-- Note: attempted the runtime validation commands in this worktree, but daemon
-  socket `/tmp/teleclaude-api.sock` was unavailable; this prevented live
-  `/todos/work` execution/log capture in build environment.
+- Note: attempted runtime `/todos/work` validation from this worker session, but
+  `telec todo work` is blocked by role policy (`permission denied — role
+'worker' is not permitted`). Behavioral verification for this delivery is
+  covered by targeted unit tests and full lint/test gates.
 - Requirements: `R1`, `R2`, `R4`
 
 ---

@@ -2,6 +2,7 @@ import asyncio
 import os
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -855,6 +856,80 @@ async def test_next_work_concurrent_same_slug_single_flight_prep():
         assert "next-build" in result_b
         assert prep_calls == 1
         assert (tmp_path / "trees" / slug / ".teleclaude" / "worktree-prep-state.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_next_work_single_flight_is_scoped_to_repo_and_slug():
+    """Same slug in different repos should prepare concurrently (no cross-repo lock contention)."""
+    db = MagicMock(spec=Db)
+    slug = "same-slug"
+
+    def _setup_repo(repo_dir: str, repo_slug: str) -> None:
+        repo_path = Path(repo_dir)
+        subprocess.run(["git", "init"], cwd=repo_dir, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "config", "user.email", "tests@example.com"],
+            cwd=repo_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Tests"], cwd=repo_dir, check=True, capture_output=True, text=True
+        )
+        _write_roadmap_yaml(repo_dir, [repo_slug])
+
+        item_dir = repo_path / "todos" / repo_slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Req")
+        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+
+        subprocess.run(["git", "add", "todos"], cwd=repo_dir, check=True, capture_output=True, text=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=repo_dir, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "worktree", "add", f"trees/{repo_slug}", "-b", repo_slug],
+            cwd=repo_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        worktree_todo = repo_path / "trees" / repo_slug / "todos" / repo_slug
+        (worktree_todo / "state.yaml").write_text('{"build":"pending","review":"pending"}')
+
+    with tempfile.TemporaryDirectory() as repo_a, tempfile.TemporaryDirectory() as repo_b:
+        _setup_repo(repo_a, slug)
+        _setup_repo(repo_b, slug)
+
+        active_prepares = 0
+        max_active_prepares = 0
+        active_lock = threading.Lock()
+
+        def _tracked_prepare(*_args, **_kwargs):
+            nonlocal active_prepares, max_active_prepares
+            with active_lock:
+                active_prepares += 1
+                max_active_prepares = max(max_active_prepares, active_prepares)
+            time.sleep(0.1)
+            with active_lock:
+                active_prepares -= 1
+
+        with (
+            patch("teleclaude.core.next_machine.core._prepare_worktree", side_effect=_tracked_prepare),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="guidance"),
+            ),
+        ):
+            result_a, result_b = await asyncio.gather(
+                next_work(db, slug=slug, cwd=repo_a),
+                next_work(db, slug=slug, cwd=repo_b),
+            )
+
+        assert "next-build" in result_a
+        assert "next-build" in result_b
+        assert max_active_prepares == 2
 
 
 def test_post_completion_finalize_includes_make_restart():

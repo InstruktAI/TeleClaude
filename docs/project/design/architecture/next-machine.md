@@ -65,7 +65,7 @@ stateDiagram-v2
 - **Git Requirement**: All work items must be in git for worktree accessibility.
 - **Finalize Serialization**: Only one finalize may run at a time across all orchestrators, enforced by a session-bound file lock (`todos/.finalize-lock`).
 - **Conditional Prep**: Worktree prep is required on new worktree creation or prep-input drift; unchanged known-good worktrees skip prep.
-- **Per-Slug Single-Flight**: Concurrent `/todos/work` calls for the same slug share one ensure/prep/sync critical section.
+- **Per-Repo+Slug Single-Flight**: Concurrent `/todos/work` calls for the same slug share one ensure/prep/sync critical section only within the same project root.
 - **Conditional Sync**: Main-to-worktree and slug-artifact sync copy only changed files; unchanged files are skipped.
 - **Phase Observability**: `/todos/work` emits per-phase timing logs with stable `NEXT_WORK_PHASE` markers.
 
@@ -129,8 +129,9 @@ For each `/todos/work` request, Next Machine applies deterministic prep/sync dec
      - prep input digest changed (`tools/worktree-prepare.sh`, dependency manifests/lockfiles)
    - Skip prep when inputs are unchanged and previous prep succeeded.
 3. **Single-flight**
-   - Ensure/prep/sync is guarded by a per-slug async lock.
-   - Same-slug concurrent calls wait and reuse resulting ready state.
+   - Ensure/prep/sync is guarded by a per-repo+slug async lock.
+   - Same-slug concurrent calls in the same repo wait and reuse resulting ready state.
+   - Same-slug calls in different repos run independently.
 4. **Sync decision**
    - `sync_main_to_worktree` and `sync_slug_todo_from_main_to_worktree` compare source/destination file contents.
    - Copy happens only when destination is missing or content differs.
