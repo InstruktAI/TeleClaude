@@ -12,14 +12,14 @@ Ownership:
 
 - [x] Requirements implemented according to scope
 - [x] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
+- [x] Tests pass (`make test`)
 - [x] Lint passes (`make lint`)
 - [x] No silent deferrals in implementation plan
 - [x] Code committed
 - [x] Demo validated (`telec todo demo discord-slash-commands-like-telegram` exits 0, or exception noted)
 - [x] Working tree clean
 - [x] Comments/docstrings updated where behavior changed
-- Manual verification: `pytest -q tests/unit/test_discord_adapter.py tests/integration/test_discord_media.py` passed (64 passed) and exercised launcher/session creation + `/cancel` flow behavior at adapter level.
+- Manual verification: `pytest -q -n0 tests/unit/core/test_next_machine_deferral.py tests/unit/test_next_machine_demo.py tests/unit/test_diagram_extractors.py::test_extract_state_machines_regression tests/integration/test_contracts.py::test_cli_surface_contract` passed (40 passed), validating deferral dispatch messaging, demo CLI compatibility, diagram transition extraction, and CLI surface contract behavior.
 
 ## Review Gates (Reviewer)
 

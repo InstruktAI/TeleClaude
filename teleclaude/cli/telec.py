@@ -1878,17 +1878,22 @@ def _demo_create(slug: str, project_root: Path) -> None:
 def _handle_todo_demo(args: list[str]) -> None:
     """Handle telec todo demo subcommands: list, validate, run, create."""
     _DEMO_SUBCOMMANDS = {"list", "validate", "run", "create"}
+    # Backward compatibility:
+    # - `telec todo demo` lists demos
+    # - `telec todo demo <slug>` runs demo for slug
     if not args:
+        subcommand = "list"
+        remaining_args: list[str] = []
+    elif args[0] in _DEMO_SUBCOMMANDS:
+        subcommand = args[0]
+        remaining_args = args[1:]
+    elif args[0].startswith("-"):
+        print(f"Unknown option: {args[0]}")
         print(_usage("todo", "demo"))
         raise SystemExit(1)
-
-    subcommand = args[0]
-    if subcommand not in _DEMO_SUBCOMMANDS:
-        print(f"Unknown demo subcommand: {subcommand}")
-        print(_usage("todo", "demo"))
-        raise SystemExit(1)
-
-    remaining_args = args[1:]
+    else:
+        subcommand = "run"
+        remaining_args = args
 
     slug: str | None = None
     project_root = Path.cwd()

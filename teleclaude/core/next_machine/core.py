@@ -213,6 +213,7 @@ Based on the above guidance and the work item details, select the best agent and
 
 telec sessions run --computer local --command "{formatted_command}" --args "{args}" --project "{project}" --agent "<your selection>" --mode "<your selection>" --subfolder "{subfolder}"
 Save the returned session_id.
+Command metadata: command="{formatted_command}" args="{args}" subfolder="{subfolder}".
 
 STEP 2 - START BACKGROUND TIMER:
 Bash(command="sleep 300", run_in_background=true)

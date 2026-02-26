@@ -54,6 +54,16 @@ subcommands:
         description: 'Get availability for all agents.'
       status:
         description: 'Set dispatch status for a specific agent.'
+  auth:
+    description: 'Manage terminal session authentication.'
+    subcommands:
+      login:
+        args:
+          - email: 'string'
+      whoami:
+        description: 'Show current terminal auth identity.'
+      logout:
+        description: 'Clear current terminal auth identity.'
   channels:
     description: 'Manage internal Redis stream channels.'
     subcommands:
