@@ -2,49 +2,61 @@
 
 ## Critical
 
-- None.
+1. New prep-state marker is treated as user dirty state, causing `/todos/work` to fail immediately after prep.
+   - Confidence: 99
+   - Location: `teleclaude/core/next_machine/core.py:73`, `teleclaude/core/next_machine/core.py:2018`, `teleclaude/core/next_machine/core.py:1805`
+   - Evidence:
+     - Prep writes `.teleclaude/worktree-prep-state.json` (`_WORKTREE_PREP_STATE_REL`, `_write_worktree_prep_state`).
+     - `has_uncommitted_changes(...)` ignores only roadmap + `todos/{slug}` paths, not `.teleclaude/`.
+     - Concrete repro (this review):
+       - Minimal temp repo + slug, call `next_work(...)` once.
+       - Returned first line: `UNCOMMITTED CHANGES in trees/single-flight`.
+       - `git status --porcelain` in worktree showed: `?? .teleclaude/`.
+   - Impact:
+     - First prep for a slug can self-trigger uncommitted-change blocking and prevent normal build dispatch.
+     - Violates behavior parity/safety requirement (`R5`) by introducing a new false-positive guardrail failure.
+   - Required fix:
+     - Treat prep-state marker as orchestrator-owned (ignore it in `has_uncommitted_changes`, or move marker under an already-ignored orchestrator path).
+     - Add regression coverage asserting `next_work(...)` can dispatch after prep without patching `has_uncommitted_changes`.
 
 ## Important
 
-1. Prep invalidation misses root config changes, so stale worktree config can be reused.
-   - Confidence: 98
-   - Location: `teleclaude/core/next_machine/core.py:74`, `teleclaude/core/next_machine/core.py:1975`, `teleclaude/core/next_machine/core.py:2034`, `tools/worktree-prepare.sh:88`
+1. Test coverage currently masks the above regression.
+   - Confidence: 95
+   - Location: `tests/unit/test_next_machine_hitl.py:826`
    - Evidence:
-     - `_compute_prep_inputs_digest(...)` hashes `tools/worktree-prepare.sh` plus worktree manifests/lockfiles, but not root `config.yml`.
-     - `tools/worktree-prepare.sh` regenerates worktree `config.yml` from root `config.yml` during prep.
-     - Concrete repro in this review: first `ensure_worktree_with_policy(...)` returned `prepared=True` (`prep_state_missing`); after editing root `config.yml`, second call returned `prepared=False` with `prep_reason='unchanged_known_good'`.
-   - Impact:
-     - `/todos/work` can skip prep after root config edits, leaving `trees/{slug}/config.yml` stale and diverged from main.
+     - New concurrent single-flight test patches `has_uncommitted_changes` to `False`.
+     - This bypass hides dirty-path interactions from the new prep-state file.
    - Required fix:
-     - Include root `config.yml` (and any other root inputs consumed by prep) in prep-input digest, and add a unit test that asserts prep runs when root config changes.
+     - Add at least one test that exercises real dirty-path filtering with prep-state marker present.
 
 ## Suggestions
 
 1. Comment/docstring drift:
-   - `teleclaude/core/next_machine/core.py:1639` says `_sync_file` returns `False` only when source is missing, but it now also returns `False` when contents match.
-   - `teleclaude/core/next_machine/core.py:1734` says planning artifacts are copied unconditionally, but copy is now conditional on content change.
-2. Manual verification gap:
-   - I validated targeted unit tests only (`test_next_machine_worktree_prep.py`, `test_next_machine_hitl.py`, `test_config_cli.py`).
-   - I did not run live `/todos/work` + daemon log inspection (`instrukt-ai-logs ... NEXT_WORK_PHASE`) in this review environment.
+   - `teleclaude/core/next_machine/core.py:1639` says `_sync_file` returns `False` only when source is missing, but it now also returns `False` when source/destination are identical.
+   - `teleclaude/core/next_machine/core.py:1738` says planning artifacts are copied unconditionally, but the implementation now conditionally skips unchanged files.
 
 ## Paradigm-Fit Assessment
 
-- Data flow: follows existing `next_machine` orchestration path and helper boundaries; no adapter bypasses observed.
-- Component reuse: reuses existing worktree/sync helpers and extends them instead of copy-pasting parallel flows.
-- Pattern consistency: follows existing dispatch/error contracts (`format_error`, `format_tool_call`, phase checks).
+- Data flow: implementation stays inside existing next-machine orchestration path and helper boundaries.
+- Component reuse: extends existing ensure/sync helpers rather than introducing parallel ad-hoc flows.
+- Pattern consistency: dispatch/error formatting patterns are preserved; no transport-bound leakage into domain policy observed.
 
 ## Verification Evidence
 
-- `pytest -q tests/unit/test_next_machine_worktree_prep.py` -> 7 passed
-- `pytest -q tests/unit/test_next_machine_hitl.py` -> 44 passed
-- `pytest -q tests/unit/test_config_cli.py` -> 26 passed
-
-## Fixes Applied
-
-1. Prep invalidation misses root config changes.
-   - Fix: Added root prep-input tracking for `config.yml` in `_compute_prep_inputs_digest(...)` and added regression test `test_runs_preparation_when_root_config_changes`.
-   - Commit: `948e8e2e`
+- `pytest -q tests/unit/test_next_machine_worktree_prep.py tests/unit/test_next_machine_hitl.py -q` -> 52 passed
+- `pytest -q tests/unit/test_config_cli.py -q` -> 26 passed
+- Manual repro (temp git repo): first `next_work(...)` returned `UNCOMMITTED CHANGES in trees/single-flight`; worktree status contained `?? .teleclaude/`.
 
 ## Verdict
 
 REQUEST CHANGES
+
+## Fixes Applied
+
+1. Critical: prep-state marker was treated as user dirty state.
+   - Fix: `has_uncommitted_changes(...)` now ignores orchestrator-owned `.teleclaude` prep-state paths, including directory-form porcelain output (`?? .teleclaude/`).
+   - Commit: `8493525d`
+2. Important: concurrent single-flight test masked dirty-path regression by stubbing dirty checks.
+   - Fix: `test_next_work_concurrent_same_slug_single_flight_prep` now runs against a real git repo/worktree and no longer patches `has_uncommitted_changes`, asserting dispatch succeeds with prep-state marker present.
+   - Commit: `0e7090a3`
