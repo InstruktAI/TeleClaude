@@ -41,6 +41,13 @@ class SessionUpdate(TypedDict, total=False):
     last_input_origin: str
 
 
+@pytest.fixture(autouse=True)
+def mock_agent_availability_lookup():
+    """Default routing availability to implicit available for daemon unit tests."""
+    with patch("teleclaude.core.agent_routing.db.get_agent_availability", new=AsyncMock(return_value=None)):
+        yield
+
+
 def _make_hook_queue_daemon() -> TeleClaudeDaemon:
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.shutdown_event = asyncio.Event()

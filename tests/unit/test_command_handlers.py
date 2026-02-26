@@ -35,6 +35,13 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 
 @pytest.fixture(autouse=True)
+def mock_agent_availability_lookup():
+    """Default routing availability to implicit available for unit tests."""
+    with patch("teleclaude.core.agent_routing.db.get_agent_availability", new=AsyncMock(return_value=None)):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def mock_identity_resolver():
     """Default command handler tests to an authorized human identity."""
     with patch("teleclaude.core.command_handlers.get_identity_resolver") as mock_get_resolver:

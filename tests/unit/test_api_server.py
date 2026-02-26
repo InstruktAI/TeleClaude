@@ -85,6 +85,13 @@ def test_client(api_server):  # type: ignore[explicit-any, unused-ignore]
     return client
 
 
+@pytest.fixture(autouse=True)
+def mock_agent_availability_lookup():  # type: ignore[explicit-any, unused-ignore]
+    """Default routing availability to implicit available for API unit tests."""
+    with patch("teleclaude.core.agent_routing.db.get_agent_availability", new=AsyncMock(return_value=None)):
+        yield
+
+
 def test_health_endpoint(test_client):  # type: ignore[explicit-any, unused-ignore]
     """Test health check endpoint."""
     response = test_client.get("/health")
