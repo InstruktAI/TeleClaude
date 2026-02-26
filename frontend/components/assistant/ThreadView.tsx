@@ -103,7 +103,7 @@ function AssistantMessage() {
             File: FileLink,
             tools: {
               by_name: {
-                telec sessions widget: RenderWidgetUI,
+                "telec sessions widget": RenderWidgetUI,
                 AskUserQuestion: AskUserQuestionUI,
               },
               Fallback: ToolCallBlock,
