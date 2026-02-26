@@ -902,18 +902,19 @@ async def test_next_work_single_flight_is_scoped_to_repo_and_slug():
         _setup_repo(repo_a, slug)
         _setup_repo(repo_b, slug)
 
-        active_prepares = 0
-        max_active_prepares = 0
-        active_lock = threading.Lock()
+        entered_prepares = 0
+        entered_lock = threading.Lock()
+        overlap_barrier = threading.Barrier(2, timeout=5)
 
         def _tracked_prepare(*_args, **_kwargs):
-            nonlocal active_prepares, max_active_prepares
-            with active_lock:
-                active_prepares += 1
-                max_active_prepares = max(max_active_prepares, active_prepares)
-            time.sleep(0.1)
-            with active_lock:
-                active_prepares -= 1
+            nonlocal entered_prepares
+            with entered_lock:
+                entered_prepares += 1
+            try:
+                overlap_barrier.wait()
+            except threading.BrokenBarrierError as exc:
+                raise AssertionError("cross-repo same-slug prep did not overlap") from exc
+            time.sleep(0.05)
 
         with (
             patch("teleclaude.core.next_machine.core._prepare_worktree", side_effect=_tracked_prepare),
@@ -929,7 +930,7 @@ async def test_next_work_single_flight_is_scoped_to_repo_and_slug():
 
         assert "next-build" in result_a
         assert "next-build" in result_b
-        assert max_active_prepares == 2
+        assert entered_prepares == 2
 
 
 def test_post_completion_finalize_includes_make_restart():

@@ -22,8 +22,9 @@ Ownership:
 
 Manual verification notes:
 
-- Verified targeted behavior with `pytest -q tests/unit/test_next_machine_worktree_prep.py tests/unit/test_next_machine_hitl.py` (53 passed), including the new cross-repo single-flight isolation regression.
-- Verified full quality gates with `make lint` (pass) and `make test` (2208 passed, 106 skipped).
+- Reproduced and hardened flaky regression path for `test_next_work_single_flight_is_scoped_to_repo_and_slug` with barrier-based overlap assertion.
+- Verified targeted test repeatedly (`15` consecutive passes) to confirm stability.
+- Verified full quality gates with `make lint` (pass) and `make test` (`2208 passed, 106 skipped, 1 warning`).
 - Verified demo structure with `telec todo demo validate api-todos-work-stability-hardening --project-root .` (3 executable blocks).
 - Attempted runtime operational validation (`telec todo work ...` twice + `instrukt-ai-logs ... --grep NEXT_WORK_PHASE`), but worker role permissions block `telec todo work`; no runtime logs were emitted from this session.
 
