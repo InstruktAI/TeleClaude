@@ -77,6 +77,23 @@ integrator:
     renew_every_seconds: 30
     stale_break_policy: allowed_when_expired
 
+  main_branch_clearance:
+    required_before_processing: true
+    session_classification:
+      workers_identified_by_initiator_session_id: true
+      orchestrators_identified_by_worker_backreferences: true
+      standalone_candidates_are_only_remaining_sessions: true
+    standalone_activity_signal:
+      source: telec sessions tail
+      blocks_when_actively_modifying_main: true
+      stale_or_idle_sessions_do_not_block: true
+    retry_policy:
+      wait_seconds: 60
+      repeat_until_clear: true
+    housekeeping_commit:
+      allowed_when_no_active_standalone_on_main: true
+      recheck_clean_tree_before_proceeding: true
+
   integrator_exit:
     allowed_when:
       - queue_empty
@@ -169,7 +186,8 @@ Queue is durable and event-derived:
 2. If any candidate becomes `READY`, attempt lease acquisition.
 3. If lease is acquired:
    - start integrator session (or continue existing holder),
-   - drain queue serially.
+   - verify main-branch clearance (session + working tree hygiene),
+   - then drain queue serially.
 4. For each candidate:
    - re-check readiness predicate just before apply,
    - integrate from clean canonical refs,
@@ -212,4 +230,5 @@ For each queued candidate:
 - Only integrator may push canonical `main`.
 - Workers may push only their feature/worktree branches.
 - Integration is serialized by lease + durable queue, not by heartbeat timing.
+- Main-branch clearance is a hard prerequisite before any queue candidate processing.
 - Dirty canonical `main` must never be used as integration source-of-truth.

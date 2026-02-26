@@ -14,6 +14,22 @@ from teleclaude.core.integration.events import (
     parse_event_type,
     validate_event_payload,
 )
+from teleclaude.core.integration.lease import (
+    IntegrationLeaseError,
+    IntegrationLeaseStore,
+    LeaseAcquireResult,
+    LeaseAcquireStatus,
+    LeaseRecord,
+    LeaseRenewResult,
+    LeaseRenewStatus,
+)
+from teleclaude.core.integration.queue import (
+    IntegrationQueue,
+    IntegrationQueueError,
+    QueueItem,
+    QueueStatus,
+    QueueTransition,
+)
 from teleclaude.core.integration.readiness_projection import (
     CandidateKey,
     CandidateReadiness,
@@ -22,6 +38,18 @@ from teleclaude.core.integration.readiness_projection import (
     ReachabilityChecker,
     ReadinessProjection,
     ReadinessStatus,
+)
+from teleclaude.core.integration.runtime import (
+    IntegrationRuntimeError,
+    IntegratorShadowRuntime,
+    MainBranchClearanceCheck,
+    MainBranchClearanceProbe,
+    RuntimeDrainResult,
+    SessionSnapshot,
+    ShadowOutcome,
+    ShadowOutcomeType,
+    classify_standalone_sessions,
+    tail_indicates_active_main_modification,
 )
 from teleclaude.core.integration.service import IngestionResult, IngestionStatus, IntegrationEventService
 
@@ -34,10 +62,23 @@ __all__ = [
     "IntegrationEventStore",
     "IntegrationEventStoreError",
     "IntegrationEventService",
+    "IntegrationLeaseError",
+    "IntegrationLeaseStore",
     "IntegrationEventType",
     "IntegrationEventValidationError",
     "IngestionResult",
     "IngestionStatus",
+    "IntegrationQueue",
+    "IntegrationQueueError",
+    "IntegrationRuntimeError",
+    "IntegratorShadowRuntime",
+    "LeaseAcquireResult",
+    "LeaseAcquireStatus",
+    "LeaseRecord",
+    "LeaseRenewResult",
+    "LeaseRenewStatus",
+    "MainBranchClearanceCheck",
+    "MainBranchClearanceProbe",
     "ProjectionUpdate",
     "ReadinessProjection",
     "ReadinessStatus",
@@ -48,6 +89,15 @@ __all__ = [
     "build_integration_event",
     "compute_idempotency_key",
     "parse_event_type",
+    "RuntimeDrainResult",
     "ReachabilityChecker",
+    "QueueItem",
+    "QueueStatus",
+    "QueueTransition",
+    "SessionSnapshot",
+    "ShadowOutcome",
+    "ShadowOutcomeType",
+    "classify_standalone_sessions",
+    "tail_indicates_active_main_modification",
     "validate_event_payload",
 ]
