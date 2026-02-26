@@ -741,6 +741,89 @@ async def test_next_work_finalize_next_call_without_slug():
 
 
 @pytest.mark.asyncio
+async def test_next_work_approved_review_repairs_build_drift_and_dispatches_finalize():
+    """Approved review should not regress to build when build state drifted."""
+    db = MagicMock(spec=Db)
+    slug = "final-item-repair-build"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Requirements\n")
+        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text(
+            '{"build":"started","review":"approved","review_baseline_commit":"head-sha"}'
+        )
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core._get_head_commit", return_value="head-sha"),
+            patch("teleclaude.core.next_machine.core.get_finalize_canonical_dirty_paths", return_value=[]),
+            patch("teleclaude.core.next_machine.core.is_main_ahead", return_value=False),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
+            ),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir, caller_session_id="orchestrator-session")
+
+        repaired_state = yaml.safe_load((state_dir / "state.yaml").read_text())
+        assert repaired_state["build"] == "complete"
+        assert repaired_state["review"] == "approved"
+        assert '--command "/next-finalize"' in result
+        assert "next-build" not in result
+
+
+@pytest.mark.asyncio
+async def test_next_work_stale_review_approval_routes_back_to_review():
+    """Approval baseline drift should clear approval and require re-review."""
+    db = MagicMock(spec=Db)
+    slug = "review-stale-baseline"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Requirements\n")
+        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text(
+            '{"build":"complete","review":"approved","review_baseline_commit":"old-sha"}'
+        )
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core._get_head_commit", return_value="new-sha"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
+            ),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+        updated_state = yaml.safe_load((state_dir / "state.yaml").read_text())
+        assert updated_state["review"] == "pending"
+        assert "next-review" in result
+        assert "next-finalize" not in result
+        assert "next-build" not in result
+
+
+@pytest.mark.asyncio
 async def test_next_work_finalize_blocks_on_dirty_canonical_main():
     """Finalize dispatch should fail fast when canonical main is dirty."""
     db = MagicMock(spec=Db)
