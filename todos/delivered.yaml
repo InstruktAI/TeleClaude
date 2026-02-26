@@ -1,5 +1,10 @@
 # Delivered work items. Newest first.
 
+- slug: help-desk-whatsapp
+  date: '2026-02-26'
+  title: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
+  commit: 2bcca366ae3709cfae601deb1c31ef3c7a0cd3bf
+  description: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
 - slug: discord-slash-commands-like-telegram
   date: '2026-02-26'
   title: Add Discord Application Commands (slash commands) mirroring Telegram command
