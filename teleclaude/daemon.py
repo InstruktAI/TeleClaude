@@ -109,6 +109,7 @@ class _HookOutboxSessionQueue:
     """Per-session hook queue state."""
 
     pending: list[_HookOutboxQueueItem] = field(default_factory=list)
+    claimed_row_ids: set[int] = field(default_factory=set)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     notify: asyncio.Event = field(default_factory=asyncio.Event)
 
@@ -764,6 +765,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     ) -> None:
         """Enqueue a claimed outbox row with bounded burst coalescing."""
         event_type = str(row.get("event_type") or "")
+        row_id = int(row.get("id") or 0)
         classification = self._classify_hook_event(event_type)
         queue_state = self._session_outbox_queues.get(session_id)
         if queue_state is None:
@@ -773,6 +775,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         dropped_rows: list[HookOutboxRow] = []
         enqueued = True
         requeue_claimed_critical = False
+        duplicate_claimed_row = False
+        queue_depth = 0
         queue_item = _HookOutboxQueueItem(
             row=row,
             event_type=event_type,
@@ -781,23 +785,40 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         async with queue_state.lock:
             pending = queue_state.pending
+            claimed_row_ids = queue_state.claimed_row_ids
 
-            if classification == "bursty":
+            # Ignore duplicate claims for rows already queued or currently in-flight.
+            if row_id and row_id in claimed_row_ids:
+                duplicate_claimed_row = True
+                enqueued = False
+            elif classification == "bursty":
                 replace_idx = self._find_bursty_coalesce_index(pending, event_type)
                 if replace_idx is not None:
-                    dropped_rows.append(pending[replace_idx].row)
+                    replaced_row = pending[replace_idx].row
+                    replaced_row_id = int(replaced_row.get("id") or 0)
+                    dropped_rows.append(replaced_row)
+                    if replaced_row_id:
+                        claimed_row_ids.discard(replaced_row_id)
                     pending[replace_idx] = queue_item
+                    if row_id:
+                        claimed_row_ids.add(row_id)
                 else:
                     if len(pending) >= HOOK_OUTBOX_SESSION_MAX_PENDING:
                         drop_idx = self._find_oldest_bursty_index(pending)
                         if drop_idx is not None:
-                            dropped_rows.append(pending.pop(drop_idx).row)
+                            dropped_row = pending.pop(drop_idx).row
+                            dropped_row_id = int(dropped_row.get("id") or 0)
+                            dropped_rows.append(dropped_row)
+                            if dropped_row_id:
+                                claimed_row_ids.discard(dropped_row_id)
                         else:
                             # Critical-only backlog: preserve critical order, drop incoming bursty.
                             dropped_rows.append(row)
                             enqueued = False
                     if enqueued:
                         pending.append(queue_item)
+                        if row_id:
+                            claimed_row_ids.add(row_id)
             else:
                 while len(pending) >= HOOK_OUTBOX_SESSION_MAX_PENDING:
                     drop_idx = self._find_oldest_bursty_index(pending)
@@ -806,9 +827,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                         requeue_claimed_critical = True
                         enqueued = False
                         break
-                    dropped_rows.append(pending.pop(drop_idx).row)
+                    dropped_row = pending.pop(drop_idx).row
+                    dropped_row_id = int(dropped_row.get("id") or 0)
+                    dropped_rows.append(dropped_row)
+                    if dropped_row_id:
+                        claimed_row_ids.discard(dropped_row_id)
                 if enqueued:
                     pending.append(queue_item)
+                    if row_id:
+                        claimed_row_ids.add(row_id)
 
             queue_depth = len(pending)
             if enqueued:
@@ -823,17 +850,17 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     error=f"coalesced:{event_type or 'unknown'}",
                 )
 
-        if requeue_claimed_critical:
+        if requeue_claimed_critical and not duplicate_claimed_row:
             logger.debug(
                 "Hook outbox session queue at capacity; deferring claimed critical row",
                 session_id=session_id[:8],
-                row_id=row["id"],
+                row_id=row_id or row["id"],
                 queue_depth=queue_depth,
                 max_pending=HOOK_OUTBOX_SESSION_MAX_PENDING,
             )
             retry_at = (datetime.now(timezone.utc) + timedelta(seconds=HOOK_OUTBOX_POLL_INTERVAL_S)).isoformat()
             await db.mark_hook_outbox_failed(
-                row_id=row["id"],
+                row_id=row_id or row["id"],
                 attempt_count=int(row.get("attempt_count", 0)),
                 next_attempt_at=retry_at,
                 error="backpressure:session_queue_full",
@@ -877,7 +904,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     continue
 
                 self._maybe_warn_hook_backlog(session_id, queue_depth)
-                await self._process_outbox_item(row)
+                in_flight_row_id = int(row.get("id") or 0)
+                try:
+                    await self._process_outbox_item(row)
+                finally:
+                    if in_flight_row_id:
+                        async with queue_state.lock:
+                            queue_state.claimed_row_ids.discard(in_flight_row_id)
         finally:
             current = asyncio.current_task()
             if self._session_outbox_workers.get(session_id) is current:
@@ -885,7 +918,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             active_queue = self._session_outbox_queues.get(session_id)
             if active_queue is queue_state:
                 async with queue_state.lock:
-                    if not queue_state.pending:
+                    if not queue_state.pending and not queue_state.claimed_row_ids:
                         self._session_outbox_queues.pop(session_id, None)
 
     async def _process_outbox_item(

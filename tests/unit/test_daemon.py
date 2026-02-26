@@ -31,7 +31,7 @@ from teleclaude.core.models import (
     SessionAdapterMetadata,
     TelegramAdapterMetadata,
 )
-from teleclaude.daemon import TeleClaudeDaemon
+from teleclaude.daemon import HookOutboxRow, TeleClaudeDaemon
 from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.types.commands import CreateSessionCommand, GetSessionDataCommand
 
@@ -365,6 +365,49 @@ async def test_hook_outbox_requeues_critical_when_capacity_full_of_critical() ->
     assert mock_mark_failed.await_args.kwargs["attempt_count"] == 0
     assert mock_mark_failed.await_args.kwargs["error"] == "backpressure:session_queue_full"
     assert isinstance(mock_mark_failed.await_args.kwargs["next_attempt_at"], str)
+
+
+@pytest.mark.asyncio
+async def test_hook_outbox_duplicate_claim_is_skipped_while_inflight() -> None:
+    """Duplicate claims for an in-flight row must not be re-enqueued."""
+    daemon = _make_hook_queue_daemon()
+    session_id = "sess-inflight-dup"
+    row = {
+        "id": 1,
+        "session_id": session_id,
+        "event_type": AgentHookEvents.AGENT_STOP,
+        "payload": "{}",
+        "attempt_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _block_processing(_row: HookOutboxRow) -> None:
+        started.set()
+        await release.wait()
+
+    with (
+        patch.object(daemon, "_process_outbox_item", new=AsyncMock(side_effect=_block_processing)),
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S", 0.01),
+        patch("teleclaude.daemon.db.mark_hook_outbox_failed", new_callable=AsyncMock) as mock_mark_failed,
+    ):
+        await daemon._enqueue_session_outbox_item(session_id, row)
+        worker = daemon._session_outbox_workers[session_id]
+        await asyncio.wait_for(started.wait(), timeout=0.5)
+
+        await daemon._enqueue_session_outbox_item(session_id, row)
+
+        queue_state = daemon._session_outbox_queues[session_id]
+        assert len(queue_state.pending) == 0
+        assert queue_state.claimed_row_ids == {1}
+        mock_mark_failed.assert_not_awaited()
+
+        release.set()
+        await asyncio.wait_for(worker, timeout=0.5)
+
+    assert session_id not in daemon._session_outbox_queues
 
 
 @pytest.mark.asyncio

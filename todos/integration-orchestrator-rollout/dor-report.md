@@ -27,11 +27,8 @@
 6. **Dependencies & preconditions: PASS**
    - `integration-safety-gates` delivered. Child chain encoded in roadmap.yaml.
    - All 4 children have preparation artifacts on disk (requirements.md, implementation-plan.md, demo.md).
-   - Child readiness states are current and assessed:
-     - `integration-events-model`: `dor.status=pass`, `dor.score=8`.
-     - `integrator-shadow-mode`: `dor.status=pass`, `dor.score=8`.
-     - `integrator-cutover`: `dor.status=pass`, `dor.score=8`.
-     - `integration-blocked-flow`: `dor.status=pass`, `dor.score=8`.
+   - Children lack formal DOR assessment (score 0), but that is expected — they proceed through
+     their own prep/gate cycle independently of the parent.
 7. **Integration safety: PASS**
    - Incremental rollout by design. Shadow mode before cutover provides containment.
    - Each slice independently shippable per roadmap dependency order.

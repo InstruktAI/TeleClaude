@@ -12,17 +12,17 @@ destabilizing canonical `main`.
 
 **File(s):** `todos/integration-orchestrator-rollout/requirements.md`, `docs/project/spec/integration-orchestrator.md`
 
-- [x] Confirm the parent requirements reflect authoritative event, readiness,
+- [ ] Confirm the parent requirements reflect authoritative event, readiness,
       lease, and queue semantics from spec.
-- [x] Confirm parent scope stays at rollout-governance level (not child implementation details).
+- [ ] Confirm parent scope stays at rollout-governance level (not child implementation details).
 
 ### Task 1.2: Record decomposition and active child dependency graph
 
 **File(s):** `todos/roadmap.yaml`, `todos/integration-orchestrator-rollout/state.yaml`
 
-- [x] Confirm active child slice order remains:
+- [ ] Confirm active child slice order remains:
       `integration-events-model -> integrator-shadow-mode -> integrator-cutover -> integration-blocked-flow`.
-- [x] Mark parent breakdown as assessed with child todo list.
+- [ ] Mark parent breakdown as assessed with child todo list.
 
 Verification:
 
@@ -35,31 +35,17 @@ Verification:
 
 **File(s):** `todos/integration-events-model/*`, `todos/integrator-shadow-mode/*`, `todos/integrator-cutover/*`, `todos/integration-blocked-flow/*`
 
-- [x] Run `next-prepare-draft` for each active child slice in dependency order.
-- [x] Ensure each child has concrete `requirements.md`, `implementation-plan.md`,
+- [ ] Run `next-prepare-draft` for each active child slice in dependency order.
+- [ ] Ensure each child has concrete `requirements.md`, `implementation-plan.md`,
       `demo.md`, and draft `dor-report.md`.
-
-Notes:
-
-1. `telec sessions run --command /next-prepare-draft ...` is blocked for this role
-   (`permission denied`). Equivalent draft artifacts were produced directly in this
-   builder session for each child slug.
 
 ### Task 2.2: Gate active child slices in separate worker sessions
 
 **File(s):** same as Task 2.1
 
-- [x] Dispatch `next-prepare-gate` for each child using separate worker sessions.
-- [x] Ensure each child `state.yaml.dor.score >= 8` before build dispatch.
-- [x] Capture unresolved blockers on any child that returns `needs_work` or `needs_decision`.
-
-Notes:
-
-1. `telec sessions run --command /next-prepare-gate ...` is blocked for this role
-   (`permission denied`). Equivalent formal gate outputs were produced directly in
-   this builder session, and all child slices are now `dor.status: pass` with
-   `dor.score: 8`.
-2. No child returned `needs_work` or `needs_decision`; unresolved blocker list is empty.
+- [ ] Dispatch `next-prepare-gate` for each child using separate worker sessions.
+- [ ] Ensure each child `state.yaml.dor.score >= 8` before build dispatch.
+- [ ] Capture unresolved blockers on any child that returns `needs_work` or `needs_decision`.
 
 Verification:
 
@@ -72,25 +58,25 @@ Verification:
 
 **File(s):** `todos/integration-orchestrator-rollout/dor-report.md`
 
-- [x] Summarize per-slice prep/gate status and unresolved blockers.
-- [x] Explicitly map blockers to DOR gates and remediation actions.
+- [ ] Summarize per-slice prep/gate status and unresolved blockers.
+- [ ] Explicitly map blockers to DOR gates and remediation actions.
 
 ### Task 3.2: Draft go/no-go policy for cutover entry
 
 **File(s):** `todos/integration-orchestrator-rollout/dor-report.md`
 
-- [x] Document minimum evidence required to move from shadow mode to cutover.
-- [x] Document containment path if cutover readiness evidence is incomplete.
+- [ ] Document minimum evidence required to move from shadow mode to cutover.
+- [ ] Document containment path if cutover readiness evidence is incomplete.
 
 ## Phase 4: Validation and Review Readiness
 
 ### Task 4.1: Artifact validation
 
-- [x] Run `telec todo demo validate integration-orchestrator-rollout`.
-- [x] Verify parent and child preparation docs are internally consistent.
-- [x] Verify no unchecked required tasks remain in this plan.
+- [ ] Run `telec todo demo validate integration-orchestrator-rollout`.
+- [ ] Verify parent and child preparation docs are internally consistent.
+- [ ] Verify no unchecked required tasks remain in this plan.
 
 ### Task 4.2: Dispatch readiness
 
-- [x] Confirm parent remains a rollout container (not direct build work).
-- [x] Confirm next actionable work is the first dependency-satisfied child slice.
+- [ ] Confirm parent remains a rollout container (not direct build work).
+- [ ] Confirm next actionable work is the first dependency-satisfied child slice.
