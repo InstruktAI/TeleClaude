@@ -24,7 +24,7 @@ JsonDict = dict[str, JsonValue]
 
 
 def asdict_exclude_none(
-    obj: "SessionAdapterMetadata | TelegramAdapterMetadata | DiscordAdapterMetadata | RedisTransportMetadata | dict[str, JsonValue]",
+    obj: "SessionAdapterMetadata | TelegramAdapterMetadata | DiscordAdapterMetadata | WhatsAppAdapterMetadata | RedisTransportMetadata | dict[str, JsonValue]",
 ) -> JsonDict:
     """Convert dataclass to dict, recursively excluding None values."""
 
@@ -107,6 +107,7 @@ class AdapterType(str, Enum):
 
     TELEGRAM = "telegram"
     DISCORD = "discord"
+    WHATSAPP = "whatsapp"
     REDIS = "redis"
 
 
@@ -157,11 +158,26 @@ class DiscordAdapterMetadata:
 
 
 @dataclass
+class WhatsAppAdapterMetadata:
+    """WhatsApp-specific adapter metadata."""
+
+    phone_number: Optional[str] = None
+    conversation_id: Optional[str] = None
+    output_message_id: Optional[str] = None
+    badge_sent: bool = False
+    char_offset: int = 0
+    last_customer_message_at: Optional[str] = None
+    last_received_message_id: Optional[str] = None
+    closed: bool = False
+
+
+@dataclass
 class UiAdapterMetadata:
     """Metadata container for UI adapters."""
 
     _telegram: Optional[TelegramAdapterMetadata] = None
     _discord: Optional[DiscordAdapterMetadata] = None
+    _whatsapp: Optional[WhatsAppAdapterMetadata] = None
 
     def get_telegram(self) -> TelegramAdapterMetadata:
         """Get Telegram metadata, initializing if missing."""
@@ -174,6 +190,12 @@ class UiAdapterMetadata:
         if self._discord is None:
             self._discord = DiscordAdapterMetadata()
         return self._discord
+
+    def get_whatsapp(self) -> WhatsAppAdapterMetadata:
+        """Get WhatsApp metadata, initializing if missing."""
+        if self._whatsapp is None:
+            self._whatsapp = WhatsAppAdapterMetadata()
+        return self._whatsapp
 
 
 @dataclass
@@ -214,6 +236,7 @@ class SessionAdapterMetadata:
         self,
         telegram: Optional[TelegramAdapterMetadata] = None,
         discord: Optional[DiscordAdapterMetadata] = None,
+        whatsapp: Optional[WhatsAppAdapterMetadata] = None,
         redis: Optional[RedisTransportMetadata] = None,
         _ui: Optional[UiAdapterMetadata] = None,
         _transport: Optional[TransportAdapterMetadata] = None,
@@ -222,7 +245,7 @@ class SessionAdapterMetadata:
         if _ui is not None:
             self._ui = _ui
         else:
-            self._ui = UiAdapterMetadata(_telegram=telegram, _discord=discord)
+            self._ui = UiAdapterMetadata(_telegram=telegram, _discord=discord, _whatsapp=whatsapp)
 
         if _transport is not None:
             self._transport = _transport
@@ -250,6 +273,8 @@ class SessionAdapterMetadata:
             data["telegram"] = asdict_exclude_none(self._ui._telegram)
         if self._ui._discord:
             data["discord"] = asdict_exclude_none(self._ui._discord)
+        if self._ui._whatsapp:
+            data["whatsapp"] = asdict_exclude_none(self._ui._whatsapp)
 
         # Transport Adapters (flattened)
         if self._transport._redis:
@@ -263,6 +288,7 @@ class SessionAdapterMetadata:
         data_obj: object = json.loads(raw)
         telegram_metadata: Optional[TelegramAdapterMetadata] = None
         discord_metadata: Optional[DiscordAdapterMetadata] = None
+        whatsapp_metadata: Optional[WhatsAppAdapterMetadata] = None
         redis_metadata: Optional[RedisTransportMetadata] = None
 
         if isinstance(data_obj, dict):
@@ -330,6 +356,24 @@ class SessionAdapterMetadata:
                     char_offset=int(discord_raw.get("char_offset", 0)),
                 )
 
+            whatsapp_raw = data_obj.get("whatsapp")
+            if isinstance(whatsapp_raw, dict):
+
+                def _get_wa_str(key: str) -> Optional[str]:
+                    val = whatsapp_raw.get(key)
+                    return str(val) if val is not None else None
+
+                whatsapp_metadata = WhatsAppAdapterMetadata(
+                    phone_number=_get_wa_str("phone_number"),
+                    conversation_id=_get_wa_str("conversation_id"),
+                    output_message_id=_get_wa_str("output_message_id"),
+                    badge_sent=bool(whatsapp_raw.get("badge_sent", False)),
+                    char_offset=int(whatsapp_raw.get("char_offset", 0)),
+                    last_customer_message_at=_get_wa_str("last_customer_message_at"),
+                    last_received_message_id=_get_wa_str("last_received_message_id"),
+                    closed=bool(whatsapp_raw.get("closed", False)),
+                )
+
             redis_raw = data_obj.get("redis")
             if isinstance(redis_raw, dict):
 
@@ -358,7 +402,9 @@ class SessionAdapterMetadata:
                 )
 
         # Reconstruct hierarchy
-        ui_metadata = UiAdapterMetadata(_telegram=telegram_metadata, _discord=discord_metadata)
+        ui_metadata = UiAdapterMetadata(
+            _telegram=telegram_metadata, _discord=discord_metadata, _whatsapp=whatsapp_metadata
+        )
         transport_metadata = TransportAdapterMetadata(_redis=redis_metadata)
         return cls(_ui=ui_metadata, _transport=transport_metadata)
 

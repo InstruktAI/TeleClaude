@@ -3,8 +3,9 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from teleclaude.config.schema import CredsConfig, GlobalConfig, PersonConfig, PersonEntry, TelegramCreds
-from teleclaude.core.identity import IdentityResolver
+from teleclaude.config.schema import CredsConfig, GlobalConfig, PersonConfig, PersonEntry, TelegramCreds, WhatsAppCreds
+from teleclaude.core.identity import IdentityResolver, derive_identity_key
+from teleclaude.core.models import SessionAdapterMetadata
 
 
 def _make_global_config(people: list[PersonEntry]) -> GlobalConfig:
@@ -111,6 +112,30 @@ def test_discord_user_maps_to_customer(mock_load_global_config, mock_glob) -> No
 
 
 @patch("teleclaude.core.identity.Path.glob")
+@patch("teleclaude.core.identity.load_person_config")
+@patch("teleclaude.core.identity.load_global_config")
+def test_resolve_known_whatsapp_user(
+    mock_load_global_config,
+    mock_load_person_config,
+    mock_glob,
+) -> None:
+    person = PersonEntry(name="carol", email="carol@example.com", role="member")
+    mock_load_global_config.return_value = _make_global_config([person])
+    mock_glob.return_value = [Path("/tmp/.teleclaude/people/carol/teleclaude.yml")]
+    mock_load_person_config.return_value = PersonConfig(creds=CredsConfig(whatsapp=WhatsAppCreds(phone_number="+1555")))
+
+    resolver = IdentityResolver()
+    ctx = resolver.resolve("whatsapp", {"phone_number": "1555"})
+
+    assert ctx is not None
+    assert ctx.person_name == "carol"
+    assert ctx.person_email == "carol@example.com"
+    assert ctx.person_role == "member"
+    assert ctx.platform == "whatsapp"
+    assert ctx.platform_user_id == "1555"
+
+
+@patch("teleclaude.core.identity.Path.glob")
 @patch("teleclaude.core.identity.load_global_config")
 def test_tui_origin_requires_boundary_identity(mock_load_global_config, mock_glob) -> None:
     """TUI-local trust must be injected at boundary metadata, not inferred in resolver."""
@@ -194,3 +219,9 @@ def test_normalize_role_unknown_defaults_to_customer(mock_load_global_config, mo
     assert resolver._normalize_role("boss") == "customer"
     assert resolver._normalize_role("superadmin") == "customer"
     assert resolver._normalize_role("") == "customer"
+
+
+def test_derive_identity_key_from_whatsapp_metadata() -> None:
+    metadata = SessionAdapterMetadata()
+    metadata.get_ui().get_whatsapp().phone_number = "15550001111"
+    assert derive_identity_key(metadata) == "whatsapp:15550001111"
