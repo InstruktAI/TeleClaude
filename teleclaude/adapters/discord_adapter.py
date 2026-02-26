@@ -1399,7 +1399,7 @@ class DiscordAdapter(UiAdapter):
                     "human_role": identity.person_role or "member",
                     "platform": "discord",
                 },
-                auto_command="agent claude",
+                auto_command="agent",
             )
             result = await get_command_service().create_session(create_cmd)
             session_id = str(result.get("session_id", ""))
@@ -1474,7 +1474,7 @@ class DiscordAdapter(UiAdapter):
                 "human_role": "member",
                 "platform": "discord",
             },
-            auto_command="agent claude",
+            auto_command="agent",
         )
         result = await get_command_service().create_session(create_cmd)
         session_id = str(result.get("session_id", ""))
@@ -1996,12 +1996,12 @@ class DiscordAdapter(UiAdapter):
         if forum_type == "help_desk":
             channel_metadata["human_role"] = "customer"
             effective_path = project_path or config.computer.help_desk_dir
-            auto_command = "agent claude"
+            auto_command = "agent"
         else:
             forum_id, _ = self._extract_channel_ids(message)
             forum_project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
             effective_path = forum_project_path or project_path or config.computer.help_desk_dir
-            auto_command = f"agent {self._default_agent}"
+            auto_command = "agent"
 
         create_cmd = CreateSessionCommand(
             project_path=effective_path,

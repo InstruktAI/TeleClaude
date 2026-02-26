@@ -2736,7 +2736,6 @@ def _handle_bugs_report(args: list[str]) -> None:
                 computer="local",
                 project_path=str(project_root),
                 subdir=f"trees/{slug}",
-                agent="claude",
                 thinking_mode="slow",
                 title=f"Bug fix: {slug}",
                 message=f"Run telec todo work {slug} and follow output verbatim until done.",

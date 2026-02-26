@@ -25,7 +25,8 @@ from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_coordinator import AgentCoordinator
-from teleclaude.core.agents import AgentName
+from teleclaude.core.agent_routing import AgentRoutingError, resolve_routable_agent
+from teleclaude.core.agents import AgentName, get_known_agents
 from teleclaude.core.cache import DaemonCache
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_registry import init_command_service
@@ -1019,6 +1020,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _execute_auto_command(self, session_id: str, auto_command: str) -> dict[str, str]:
         """Execute a post-session auto_command and return status/message."""
         cmd_name, auto_args = parse_command_string(auto_command)
+        known_agents = set(get_known_agents())
+
+        def _split_explicit_agent(args: list[str]) -> tuple[str | None, list[str]]:
+            if not args:
+                return None, []
+            first = args[0].strip().lower()
+            if first in known_agents:
+                return first, args[1:]
+            return None, list(args)
 
         if cmd_name and auto_command:
             session = await db.get_session(session_id)
@@ -1040,20 +1050,33 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if cmd_name == "agent_then_message":
             return await self._handle_agent_then_message(session_id, auto_args)
 
-        if cmd_name == "agent" and auto_args:
-            agent_name = auto_args.pop(0)
+        if cmd_name == "agent":
+            agent_name, agent_args = _split_explicit_agent(auto_args)
+            try:
+                routed_agent = await resolve_routable_agent(agent_name, source="daemon.auto_command.agent")
+            except AgentRoutingError as exc:
+                return {"status": "error", "message": str(exc)}
             await self.command_service.start_agent(
-                StartAgentCommand(session_id=session_id, agent_name=agent_name, args=auto_args)
+                StartAgentCommand(session_id=session_id, agent_name=routed_agent, args=agent_args)
             )
             return {"status": "success"}
 
-        if cmd_name == "agent_resume" and auto_args:
-            agent_name = auto_args.pop(0)
-            native_session_id = auto_args[0] if auto_args else None
+        if cmd_name == "agent_resume":
+            agent_name, resume_args = _split_explicit_agent(auto_args)
+            routed_agent = agent_name
+            if agent_name:
+                try:
+                    routed_agent = await resolve_routable_agent(
+                        agent_name,
+                        source="daemon.auto_command.agent_resume",
+                    )
+                except AgentRoutingError as exc:
+                    return {"status": "error", "message": str(exc)}
+            native_session_id = resume_args[0] if resume_args else None
             await self.command_service.resume_agent(
                 ResumeAgentCommand(
                     session_id=session_id,
-                    agent_name=agent_name,
+                    agent_name=routed_agent,
                     native_session_id=native_session_id,
                 )
             )
@@ -1113,6 +1136,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         message = " ".join(args[2:]).strip()
         if not message:
             return {"status": "error", "message": "agent_then_message requires a non-empty message"}
+        try:
+            agent_name = await resolve_routable_agent(agent_name, source="daemon.auto_command.agent_then_message")
+        except AgentRoutingError as exc:
+            return {"status": "error", "message": str(exc)}
 
         await db.update_session(
             session_id,

@@ -88,7 +88,8 @@ from teleclaude.api_models import (
 from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core import command_handlers
-from teleclaude.core.agents import assert_agent_enabled, get_enabled_agents, get_known_agents
+from teleclaude.core.agent_routing import AgentRoutingError, resolve_routable_agent
+from teleclaude.core.agents import get_known_agents
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
@@ -548,46 +549,57 @@ class APIServer:
             title = title or "Untitled"
 
             effective_thinking_mode = request.thinking_mode or "slow"
+            known_agents = set(get_known_agents())
+            resume_aliases = {f"{agent}_resume" for agent in known_agents}
 
-            def _resolve_enabled_agent(requested_agent: str | None) -> str:
-                if requested_agent:
-                    try:
-                        return assert_agent_enabled(requested_agent)
-                    except ValueError as exc:
-                        raise HTTPException(status_code=400, detail=str(exc)) from exc
+            def _split_explicit_agent(args: list[str]) -> tuple[str | None, list[str]]:
+                if not args:
+                    return None, []
+                first = args[0].strip().lower()
+                if first in known_agents:
+                    return first, args[1:]
+                return None, list(args)
 
-                enabled_agents = get_enabled_agents()
-                if not enabled_agents:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="No enabled agents configured. Set config.yml:agents.<agent>.enabled to true.",
-                    )
-                return enabled_agents[0]
+            async def _resolve_request_agent(requested_agent: str | None, *, source: str) -> str:
+                try:
+                    return await resolve_routable_agent(requested_agent, source=source)
+                except AgentRoutingError as exc:
+                    status_code = 409 if exc.code == "no_routable_agent" else 400
+                    raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
             validated_request_agent: str | None = None
             if request.agent:
-                validated_request_agent = _resolve_enabled_agent(request.agent)
+                validated_request_agent = await _resolve_request_agent(
+                    request.agent,
+                    source="api.create_session.request.agent",
+                )
 
             if request.auto_command:
                 command_name, command_args = parse_command_string(request.auto_command)
                 normalized_command = (command_name or "").lower()
-                known_agents = set(get_known_agents())
-
-                resume_aliases = {f"{agent}_resume" for agent in known_agents}
 
                 if normalized_command in known_agents:
-                    _resolve_enabled_agent(normalized_command)
+                    await _resolve_request_agent(
+                        normalized_command,
+                        source="api.create_session.auto_command.known_agent",
+                    )
                 elif normalized_command in resume_aliases:
-                    _resolve_enabled_agent(normalized_command.removesuffix("_resume"))
+                    await _resolve_request_agent(
+                        normalized_command.removesuffix("_resume"),
+                        source="api.create_session.auto_command.resume_alias",
+                    )
                 elif normalized_command in {"agent", "agent_then_message", "agent_resume", "agent_restart"}:
-                    auto_command_agent = command_args[0] if command_args else validated_request_agent
-                    if auto_command_agent:
-                        _resolve_enabled_agent(auto_command_agent)
+                    explicit_agent, _agent_args = _split_explicit_agent(command_args)
+                    auto_command_agent = explicit_agent or validated_request_agent
+                    await _resolve_request_agent(
+                        auto_command_agent,
+                        source=f"api.create_session.auto_command.{normalized_command}",
+                    )
 
-            def _effective_launch_agent() -> str:
+            async def _effective_launch_agent() -> str:
                 if validated_request_agent:
                     return validated_request_agent
-                return _resolve_enabled_agent(None)
+                return await _resolve_request_agent(None, source="api.create_session.implicit_default")
 
             launch_intent = None
             if not request.auto_command:
@@ -600,7 +612,10 @@ class APIServer:
                 elif launch_kind == SessionLaunchKind.AGENT_RESUME:
                     if not request.agent:
                         raise HTTPException(status_code=400, detail="agent required for agent_resume")
-                    effective_agent = validated_request_agent or _resolve_enabled_agent(request.agent)
+                    effective_agent = validated_request_agent or await _resolve_request_agent(
+                        request.agent,
+                        source="api.create_session.launch_intent.agent_resume",
+                    )
                     launch_intent = SessionLaunchIntent(
                         kind=SessionLaunchKind.AGENT_RESUME,
                         agent=effective_agent,
@@ -610,7 +625,7 @@ class APIServer:
                 elif launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
                     if request.message is None:
                         raise HTTPException(status_code=400, detail="message required for agent_then_message")
-                    effective_agent = _effective_launch_agent()
+                    effective_agent = await _effective_launch_agent()
                     launch_intent = SessionLaunchIntent(
                         kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
                         agent=effective_agent,
@@ -618,7 +633,7 @@ class APIServer:
                         message=request.message,
                     )
                 else:
-                    effective_agent = _effective_launch_agent()
+                    effective_agent = await _effective_launch_agent()
                     launch_intent = SessionLaunchIntent(
                         kind=SessionLaunchKind.AGENT,
                         agent=effective_agent,
@@ -1156,19 +1171,11 @@ class APIServer:
             if not request.project:
                 raise HTTPException(status_code=400, detail="project required")
 
-            if "agent" in request.model_fields_set:
-                try:
-                    effective_agent = assert_agent_enabled(request.agent)
-                except ValueError as exc:
-                    raise HTTPException(status_code=400, detail=str(exc)) from exc
-            else:
-                enabled_agents = get_enabled_agents()
-                if not enabled_agents:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="No enabled agents configured. Set config.yml:agents.<agent>.enabled to true.",
-                    )
-                effective_agent = enabled_agents[0]
+            try:
+                effective_agent = await resolve_routable_agent(request.agent, source="api.sessions_run")
+            except AgentRoutingError as exc:
+                status_code = 409 if exc.code == "no_routable_agent" else 400
+                raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
             normalized_cmd = request.command.lstrip("/")
             normalized_args = request.args.strip()

@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Optional, cast
 
-from teleclaude.core.agents import get_enabled_agents, get_known_agents
+from teleclaude.core.agents import get_known_agents
 from teleclaude.core.events import parse_command_string
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent
 from teleclaude.core.origins import InputOrigin
@@ -38,11 +38,16 @@ _KEY_COMMANDS = {
 }
 
 
-def _default_agent_name() -> str:
-    enabled_agents = get_enabled_agents()
-    if enabled_agents:
-        return enabled_agents[0]
-    raise ValueError("No enabled agents configured. Set config.yml:agents.<agent>.enabled to true.")
+_KNOWN_AGENTS = set(get_known_agents())
+
+
+def _split_explicit_agent(args: List[str]) -> tuple[Optional[str], List[str]]:
+    if not args:
+        return None, []
+    first = args[0].strip().lower()
+    if first in _KNOWN_AGENTS:
+        return first, args[1:]
+    return None, list(args)
 
 
 class CommandMapper:
@@ -146,8 +151,7 @@ class CommandMapper:
             )
 
         if event == "agent":
-            agent_name = args[0] if args else _default_agent_name()
-            agent_args = args[1:] if len(args) > 1 else []
+            agent_name, agent_args = _split_explicit_agent(args)
             return StartAgentCommand(
                 session_id=session_id or "",
                 agent_name=agent_name,
@@ -217,11 +221,11 @@ class CommandMapper:
             )
 
         if cmd_name == "agent":
-            agent_name = args[0] if args else _default_agent_name()
+            agent_name, agent_args = _split_explicit_agent(args)
             return StartAgentCommand(
                 session_id=session_id or "",
                 agent_name=agent_name,
-                args=args[1:] if len(args) > 1 else [],
+                args=agent_args,
             )
 
         if cmd_name in set(get_known_agents()):
@@ -381,11 +385,11 @@ class CommandMapper:
 
         if command_name == "agent":
             args = cast(List[str], payload.get("args", []))
-            agent_name = args[0] if args else _default_agent_name()
+            agent_name, agent_args = _split_explicit_agent(args)
             return StartAgentCommand(
                 session_id=session_id,
                 agent_name=agent_name,
-                args=args[1:] if len(args) > 1 else [],
+                args=agent_args,
             )
 
         if command_name == "agent_restart":

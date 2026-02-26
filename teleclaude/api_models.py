@@ -488,7 +488,7 @@ class RunSessionRequest(BaseModel):  # type: ignore[explicit-any]
     command: str = Field(..., min_length=1, description="Slash command (e.g. '/next-build')")
     args: str = Field(default="", description="Command arguments")
     project: str = Field(..., min_length=1, description="Project path")
-    agent: Literal["claude", "gemini", "codex"] = "claude"
+    agent: Literal["claude", "gemini", "codex"] | None = None
     subfolder: str = ""
     thinking_mode: Literal["fast", "med", "slow"] = "slow"
 

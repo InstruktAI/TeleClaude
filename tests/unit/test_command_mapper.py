@@ -81,15 +81,26 @@ def test_map_rest_message():
     assert cmd.origin == InputOrigin.API.value
 
 
-def test_map_api_agent_rejects_when_no_enabled_agents(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("teleclaude.core.command_mapper.get_enabled_agents", lambda: ())
+def test_map_api_agent_defers_default_selection_when_no_explicit_agent() -> None:
+    cmd = CommandMapper.map_api_input(
+        "agent",
+        {"session_id": "sess_789", "args": []},
+        MessageMetadata(origin=InputOrigin.API.value),
+    )
+    assert isinstance(cmd, StartAgentCommand)
+    assert cmd.agent_name is None
+    assert cmd.args == []
 
-    with pytest.raises(ValueError, match="No enabled agents configured"):
-        CommandMapper.map_api_input(
-            "agent",
-            {"session_id": "sess_789", "args": []},
-            MessageMetadata(origin=InputOrigin.API.value),
-        )
+
+def test_map_api_agent_treats_thinking_mode_as_arg_when_agent_omitted() -> None:
+    cmd = CommandMapper.map_api_input(
+        "agent",
+        {"session_id": "sess_789", "args": ["slow"]},
+        MessageMetadata(origin=InputOrigin.API.value),
+    )
+    assert isinstance(cmd, StartAgentCommand)
+    assert cmd.agent_name is None
+    assert cmd.args == ["slow"]
 
 
 # --- R1/R2: Actor attribution parity across adapters ---

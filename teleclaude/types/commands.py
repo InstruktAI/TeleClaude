@@ -89,7 +89,7 @@ class StartAgentCommand(InternalCommand):
     """Intent to start an agent in an existing session."""
 
     session_id: str
-    agent_name: str
+    agent_name: Optional[str] = None
     thinking_mode: str = "slow"
     args: List[str] = field(default_factory=list)
 
@@ -97,7 +97,7 @@ class StartAgentCommand(InternalCommand):
         self,
         *,
         session_id: str,
-        agent_name: str,
+        agent_name: Optional[str] = None,
         thinking_mode: str = "slow",
         args: Optional[List[str]] = None,
         request_id: Optional[str] = None,
@@ -109,7 +109,9 @@ class StartAgentCommand(InternalCommand):
         self.args = args or []
 
     def to_payload(self) -> Dict[str, object]:
-        args = [self.agent_name] + list(self.args)
+        args = list(self.args)
+        if self.agent_name:
+            args.insert(0, self.agent_name)
         return {"session_id": self.session_id, "args": args}
 
 

@@ -43,7 +43,7 @@ async def _resolve_or_create_session(phone_number: str) -> object | None:
             "human_role": "customer",
             "platform": "whatsapp",
         },
-        auto_command="agent claude",
+        auto_command="agent",
     )
     result = await get_command_service().create_session(create_cmd)
     session_id_raw = result.get("session_id")

@@ -15,7 +15,7 @@ automation, and CLI scaffolding defaults.
 This matches the existing proven behavior in `helpers/agent_cli.py::_pick_agent`.
 
 - [x] Degraded behavior locked to Option B (gate decision based on codebase precedent)
-- [ ] Codify Option B in the core resolver and tests during Phase 1
+- [x] Codify Option B in the core resolver and tests during Phase 1
 
 ---
 
@@ -25,19 +25,19 @@ This matches the existing proven behavior in `helpers/agent_cli.py::_pick_agent`
 
 **File(s):** `teleclaude/core/agent_routing.py` (new), `teleclaude/core/agents.py`, `teleclaude/core/db.py`
 
-- [ ] Add a core helper that resolves/validates routable agent names from:
+- [x] Add a core helper that resolves/validates routable agent names from:
       requested agent + source + selection mode
-- [ ] Enforce known/enabled/availability/degraded checks in one place
-- [ ] Reuse DB availability methods; do not duplicate inline SQL checks
-- [ ] Return stable errors for API and adapter consumption
+- [x] Enforce known/enabled/availability/degraded checks in one place
+- [x] Reuse DB availability methods; do not duplicate inline SQL checks
+- [x] Return stable errors for API and adapter consumption
 
 ### Task 1.2: Remove mapper-level enabled-only default selection
 
 **File(s):** `teleclaude/core/command_mapper.py`, `teleclaude/types/commands.py`
 
-- [ ] Remove `_default_agent_name()` fallback behavior that picks first enabled agent
-- [ ] Ensure mapper payloads can carry "no explicit agent provided" and defer selection to runtime resolver
-- [ ] Preserve command mapping behavior for explicit agent commands
+- [x] Remove `_default_agent_name()` fallback behavior that picks first enabled agent
+- [x] Ensure mapper payloads can carry "no explicit agent provided" and defer selection to runtime resolver
+- [x] Preserve command mapping behavior for explicit agent commands
 
 ---
 
@@ -47,20 +47,20 @@ This matches the existing proven behavior in `helpers/agent_cli.py::_pick_agent`
 
 **File(s):** `teleclaude/api_server.py`, `teleclaude/api_models.py`
 
-- [ ] Replace enabled-only resolver logic in `/sessions` with canonical routable resolver
-- [ ] Replace enabled-only logic in `/sessions/run` with canonical routable resolver
-- [ ] Validate `auto_command` agent targets using canonical resolver
-- [ ] Remove hardcoded API model default that preselects `claude` for `/sessions/run`
+- [x] Replace enabled-only resolver logic in `/sessions` with canonical routable resolver
+- [x] Replace enabled-only logic in `/sessions/run` with canonical routable resolver
+- [x] Validate `auto_command` agent targets using canonical resolver
+- [x] Remove hardcoded API model default that preselects `claude` for `/sessions/run`
 
 ### Task 2.2: Migrate command handlers and daemon auto-command path
 
 **File(s):** `teleclaude/core/command_handlers.py`, `teleclaude/daemon.py`
 
-- [ ] Update `start_agent`, `resume_agent`, `agent_restart`, `run_agent_command`
+- [x] Update `start_agent`, `resume_agent`, `agent_restart`, `run_agent_command`
       to enforce canonical routable policy
-- [ ] Update daemon `_execute_auto_command` / `_handle_agent_then_message`
+- [x] Update daemon `_execute_auto_command` / `_handle_agent_then_message`
       to enforce canonical routable policy before launch
-- [ ] Emit structured rejection logs with source context
+- [x] Emit structured rejection logs with source context
 
 ---
 
@@ -75,17 +75,17 @@ This matches the existing proven behavior in `helpers/agent_cli.py::_pick_agent`
 - `teleclaude/adapters/telegram/callback_handlers.py`
 - `teleclaude/hooks/whatsapp_handler.py`
 
-- [ ] Remove hardcoded runtime `agent claude` launch defaults
-- [ ] Ensure adapter-driven launch actions resolve through canonical routable policy
-- [ ] Preserve existing UX while failing closed on unavailable selections
+- [x] Remove hardcoded runtime `agent claude` launch defaults
+- [x] Ensure adapter-driven launch actions resolve through canonical routable policy
+- [x] Preserve existing UX while failing closed on unavailable selections
 
 ### Task 3.2: Migrate cron and CLI bug scaffolding defaults
 
 **File(s):** `teleclaude/cron/runner.py`, `teleclaude/cli/telec.py`, `teleclaude/cli/tool_commands.py`
 
-- [ ] Replace `config.agent or "claude"` runtime fallback in cron jobs with routed selection
-- [ ] Remove bug scaffold orchestrator hardcoded `agent="claude"` pin
-- [ ] Keep explicit `--agent` behavior while rejecting non-routable agents
+- [x] Replace `config.agent or "claude"` runtime fallback in cron jobs with routed selection
+- [x] Remove bug scaffold orchestrator hardcoded `agent="claude"` pin
+- [x] Keep explicit `--agent` behavior while rejecting non-routable agents
 
 ---
 
@@ -105,17 +105,17 @@ This matches the existing proven behavior in `helpers/agent_cli.py::_pick_agent`
 - `tests/unit/test_cron_runner_job_contract.py`
 - `tests/unit/cli/test_tool_commands.py`
 
-- [ ] Explicit unavailable agent selection is rejected
-- [ ] Implicit/default selection never routes to unavailable agent
-- [ ] Degraded behavior matches the locked policy decision
-- [ ] Hardcoded-default paths are removed or routed through policy
+- [x] Explicit unavailable agent selection is rejected
+- [x] Implicit/default selection never routes to unavailable agent
+- [x] Degraded behavior matches the locked policy decision
+- [x] Hardcoded-default paths are removed or routed through policy
 
 ### Task 4.2: Runtime checks
 
-- [ ] Run targeted test set for migrated surfaces
-- [ ] Run `make test`
-- [ ] Run `make lint`
-- [ ] Validate rejection logs via:
+- [x] Run targeted test set for migrated surfaces
+- [x] Run `make test`
+- [x] Run `make lint`
+- [x] Validate rejection logs via:
       `instrukt-ai-logs teleclaude --since 15m --grep "agent routing|availability|rejected"`
 
 ## Requirement Traceability

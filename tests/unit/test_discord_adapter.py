@@ -817,6 +817,7 @@ async def test_discord_stop_stops_qos_before_closing_client() -> None:
 async def test_handle_on_ready_sets_ready_before_slow_bootstrap() -> None:
     adapter = _make_adapter()
     adapter._client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    adapter._get_enabled_agents = MagicMock(return_value=["claude"])  # type: ignore[method-assign]
 
     infra_entered = asyncio.Event()
     infra_release = asyncio.Event()
@@ -1483,6 +1484,7 @@ async def test_create_session_for_help_desk_still_uses_customer_role() -> None:
     fake_command_service.create_session.assert_awaited_once()
     create_cmd = fake_command_service.create_session.await_args.args[0]
     assert create_cmd.channel_metadata["human_role"] == "customer"
+    assert create_cmd.auto_command == "agent"
 
 
 @pytest.mark.asyncio
@@ -1555,7 +1557,7 @@ async def test_create_session_for_message_uses_forum_derived_project() -> None:
 
     create_cmd = fake_command_service.create_session.await_args.args[0]
     assert create_cmd.project_path == "/home/user/proj-a"
-    assert create_cmd.auto_command == "agent codex"
+    assert create_cmd.auto_command == "agent"
     assert "human_role" not in create_cmd.channel_metadata
 
 

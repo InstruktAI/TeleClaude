@@ -475,8 +475,8 @@ class TelecAPIClient:
         computer: str,
         project_path: str,
         subdir: str | None = None,
-        agent: str,
-        thinking_mode: str,
+        agent: str | None = None,
+        thinking_mode: str | None = None,
         title: str | None = None,
         message: str | None = None,
         auto_command: str | None = None,
@@ -499,8 +499,6 @@ class TelecAPIClient:
         payload = {
             "computer": computer,
             "project_path": project_path,
-            "agent": agent,
-            "thinking_mode": thinking_mode,
             "title": title,
             "message": message,
             "auto_command": auto_command,
@@ -508,6 +506,10 @@ class TelecAPIClient:
             "human_role": human_role,
             "metadata": metadata,
         }
+        if agent is not None:
+            payload["agent"] = agent
+        if thinking_mode is not None:
+            payload["thinking_mode"] = thinking_mode
         if subdir is not None:
             payload["subdir"] = subdir
         resp = await self._request("POST", "/sessions", timeout=30.0, json_body=payload)

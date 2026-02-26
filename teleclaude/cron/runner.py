@@ -222,7 +222,9 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
     if not message:
         return False
 
-    agent = str(config.agent or "claude")
+    explicit_fields = getattr(config, "model_fields_set", set())
+    configured_agent = str(config.agent).strip() if ("agent" in explicit_fields and config.agent) else ""
+    agent = configured_agent or None
     thinking_mode = str(config.thinking_mode or "fast")
 
     # Job sessions are always created on the local computer where the runner is active

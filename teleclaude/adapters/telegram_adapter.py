@@ -433,7 +433,7 @@ class TelegramAdapter(
                 "platform": "telegram",
                 "chat_type": "private",
             },
-            auto_command="agent claude",
+            auto_command="agent",
         )
         result_dict = await get_command_service().create_session(create_cmd)
         session_id = str(result_dict.get("session_id", ""))
@@ -502,7 +502,7 @@ class TelegramAdapter(
                     "platform": "telegram",
                     "chat_type": "private",
                 },
-                auto_command="agent claude",
+                auto_command="agent",
             )
             result_dict = await get_command_service().create_session(create_cmd)
             session_id = str(result_dict.get("session_id", ""))

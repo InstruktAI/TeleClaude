@@ -480,7 +480,10 @@ def test_create_session_defaults_to_first_enabled_agent(test_client, mock_comman
         "tmux_session_name": "tc_123",
     }
 
-    with patch("teleclaude.api_server.get_enabled_agents", return_value=("gemini",)):
+    with patch(
+        "teleclaude.api_server.resolve_routable_agent",
+        new=AsyncMock(side_effect=lambda requested_agent, **_kwargs: requested_agent or "gemini"),
+    ):
         response = test_client.post(
             "/sessions",
             json={"project_path": "/home/user/project", "computer": "local"},
@@ -568,7 +571,10 @@ def test_run_session_defaults_to_first_enabled_agent(test_client, mock_command_s
         "tmux_session_name": "tc_run_1",
     }
 
-    with patch("teleclaude.api_server.get_enabled_agents", return_value=("gemini",)):
+    with patch(
+        "teleclaude.api_server.resolve_routable_agent",
+        new=AsyncMock(side_effect=lambda requested_agent, **_kwargs: requested_agent or "gemini"),
+    ):
         response = test_client.post(
             "/sessions/run",
             json={

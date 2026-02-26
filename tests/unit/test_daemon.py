@@ -686,6 +686,7 @@ async def test_agent_then_message_normalizes_codex_next_commands() -> None:
         patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock, return_value=True),
         patch.object(TeleClaudeDaemon, "_wait_for_output_stable", mock_wait_stable),
         patch.object(TeleClaudeDaemon, "_confirm_command_acceptance", mock_confirm),
+        patch("teleclaude.daemon.resolve_routable_agent", new=AsyncMock(return_value="codex")),
     ):
         mock_db.get_session = AsyncMock(
             return_value=MagicMock(tmux_session_name="tc_123", project_path=".", active_agent="codex")
@@ -734,6 +735,29 @@ async def test_execute_auto_command_updates_last_message_sent():
             and kwargs.get("last_input_origin") == InputOrigin.TELEGRAM.value
             for session_id, kwargs in updates
         )
+
+
+@pytest.mark.asyncio
+async def test_execute_auto_command_supports_implicit_agent_selection() -> None:
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon._execute_terminal_command = AsyncMock()
+    daemon.command_service = MagicMock()
+    daemon.command_service.start_agent = AsyncMock()
+    daemon.command_service.resume_agent = AsyncMock()
+
+    with patch("teleclaude.daemon.db") as mock_db:
+        mock_db.get_session = AsyncMock(
+            return_value=MagicMock(active_agent="codex", last_input_origin=InputOrigin.TELEGRAM.value)
+        )
+        mock_db.update_session = AsyncMock()
+
+        await daemon._execute_auto_command("sess-implicit", "agent slow")
+
+    daemon.command_service.start_agent.assert_awaited_once()
+    start_cmd = daemon.command_service.start_agent.await_args.args[0]
+    assert start_cmd.agent_name is not None
+    assert start_cmd.args == ["slow"]
 
 
 @pytest.mark.asyncio

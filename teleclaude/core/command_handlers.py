@@ -21,7 +21,8 @@ from teleclaude.config import WORKING_DIR, config
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core import polling_coordinator, tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
-from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
+from teleclaude.core.agent_routing import AgentRoutingError, resolve_routable_agent
+from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -1543,26 +1544,19 @@ async def start_agent(
             return
         session = adopted
 
-    agent_name = cmd.agent_name
+    requested_agent = cmd.agent_name
     args = list(cmd.args)
     logger.debug(
-        "agent_start: session=%s agent_name=%r args=%s config_agents=%s",
+        "agent_start: session=%s requested_agent=%r args=%s config_agents=%s",
         session.session_id[:8],
-        agent_name,
+        requested_agent,
         args,
         list(config.agents.keys()),
     )
     try:
-        agent_name = assert_agent_enabled(agent_name)
-    except ValueError as exc:
+        agent_name = await resolve_routable_agent(requested_agent, source="handler.start_agent")
+    except AgentRoutingError as exc:
         error = str(exc)
-        logger.error(
-            "Agent start rejected: %r (session=%s, available=%s, error=%s)",
-            agent_name,
-            session.session_id[:8],
-            list(config.agents.keys()),
-            error,
-        )
         await client.send_message(session, error)
         return
 
@@ -1669,8 +1663,8 @@ async def resume_agent(
         agent_name = active
 
     try:
-        agent_name = assert_agent_enabled(agent_name)
-    except ValueError as exc:
+        agent_name = await resolve_routable_agent(agent_name, source="handler.resume_agent")
+    except AgentRoutingError as exc:
         await client.send_message(session, str(exc))
         return
 
@@ -1792,8 +1786,8 @@ async def agent_restart(
         session = adopted
 
     try:
-        target_agent = assert_agent_enabled(target_agent)
-    except ValueError as exc:
+        target_agent = await resolve_routable_agent(target_agent, source="handler.agent_restart")
+    except AgentRoutingError as exc:
         error = str(exc)
         logger.error(
             "agent_restart blocked (session=%s): %s",
@@ -1880,8 +1874,8 @@ async def run_agent_command(
         return
     if session.active_agent:
         try:
-            assert_agent_enabled(session.active_agent)
-        except ValueError as exc:
+            await resolve_routable_agent(session.active_agent, source="handler.run_agent_command")
+        except AgentRoutingError as exc:
             await client.send_message(session, str(exc))
             return
     if session.lifecycle_status == "headless" or not session.tmux_session_name:

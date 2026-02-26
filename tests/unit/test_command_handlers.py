@@ -1074,7 +1074,11 @@ async def test_handle_agent_start_executes_command_without_extra_args_if_none_pr
 
     with (
         patch.object(command_handlers, "config") as mock_config,
-        patch.object(command_handlers, "assert_agent_enabled", side_effect=lambda name: name),
+        patch.object(
+            command_handlers,
+            "resolve_routable_agent",
+            new=AsyncMock(side_effect=lambda name, **_kwargs: name if name is not None else "claude"),
+        ),
     ):
         mock_config.agents.get.return_value = mock_agent_config
 
@@ -1144,7 +1148,11 @@ async def test_handle_agent_start_accepts_deep_for_codex(mock_initialized_db):
         patch.object(command_handlers, "config") as mock_config,
         patch.object(command_handlers, "db") as mock_db,
         patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
-        patch.object(command_handlers, "assert_agent_enabled", side_effect=lambda name: name),
+        patch.object(
+            command_handlers,
+            "resolve_routable_agent",
+            new=AsyncMock(side_effect=lambda name, **_kwargs: name if name is not None else "claude"),
+        ),
     ):
         mock_config.agents.get.return_value = MagicMock()
         mock_db.update_session = AsyncMock()
@@ -1218,8 +1226,16 @@ async def test_handle_agent_start_rejects_disabled_agent(mock_initialized_db):
     with (
         patch.object(
             command_handlers,
-            "assert_agent_enabled",
-            side_effect=ValueError("Agent 'codex' is disabled by `config.yml:agents.codex.enabled`."),
+            "resolve_routable_agent",
+            new=AsyncMock(
+                side_effect=command_handlers.AgentRoutingError(
+                    message="Agent 'codex' is disabled by `config.yml:agents.codex.enabled`.",
+                    code="disabled",
+                    source="test",
+                    requested_agent="codex",
+                    status="disabled",
+                )
+            ),
         ),
         patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
     ):
@@ -1273,7 +1289,11 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
     with (
         patch.object(command_handlers, "config") as mock_config,
         patch.object(command_handlers, "db") as mock_db,
-        patch.object(command_handlers, "assert_agent_enabled", side_effect=lambda name: name),
+        patch.object(
+            command_handlers,
+            "resolve_routable_agent",
+            new=AsyncMock(side_effect=lambda name, **_kwargs: name if name is not None else "claude"),
+        ),
     ):
         mock_config.agents.get.return_value = mock_agent_config
         mock_db.update_session = AsyncMock()
@@ -1384,7 +1404,11 @@ async def test_handle_agent_resume_uses_override_session_id_from_args(mock_initi
     with (
         patch.object(command_handlers, "config") as mock_config,
         patch.object(command_handlers, "db") as mock_db,
-        patch.object(command_handlers, "assert_agent_enabled", side_effect=lambda name: name),
+        patch.object(
+            command_handlers,
+            "resolve_routable_agent",
+            new=AsyncMock(side_effect=lambda name, **_kwargs: name if name is not None else "claude"),
+        ),
     ):
         mock_config.agents.get.return_value = mock_agent_config
         mock_db.update_session = AsyncMock()
@@ -1579,7 +1603,11 @@ async def test_handle_agent_restart_uses_context_payload_for_post_restart_checkp
         patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
         patch.object(command_handlers, "config") as mock_config,
         patch.object(command_handlers, "db") as mock_db,
-        patch.object(command_handlers, "assert_agent_enabled", side_effect=lambda name: name),
+        patch.object(
+            command_handlers,
+            "resolve_routable_agent",
+            new=AsyncMock(side_effect=lambda name, **_kwargs: name if name is not None else "claude"),
+        ),
         patch.object(command_handlers.asyncio, "sleep", new=AsyncMock()),
         patch.object(command_handlers.asyncio, "create_task", side_effect=_capture_task),
         patch(
@@ -1637,8 +1665,16 @@ async def test_run_agent_command_rejects_disabled_active_agent(mock_initialized_
 
     with patch.object(
         command_handlers,
-        "assert_agent_enabled",
-        side_effect=ValueError("Agent 'codex' is disabled by `config.yml:agents.codex.enabled`."),
+        "resolve_routable_agent",
+        new=AsyncMock(
+            side_effect=command_handlers.AgentRoutingError(
+                message="Agent 'codex' is disabled by `config.yml:agents.codex.enabled`.",
+                code="disabled",
+                source="test",
+                requested_agent="codex",
+                status="disabled",
+            )
+        ),
     ):
         await command_handlers.run_agent_command.__wrapped__(mock_session, cmd, mock_client, mock_execute)
 
@@ -1681,7 +1717,11 @@ async def test_handle_agent_restart_skips_post_restart_checkpoint_when_no_payloa
         patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
         patch.object(command_handlers, "config") as mock_config,
         patch.object(command_handlers, "db") as mock_db,
-        patch.object(command_handlers, "assert_agent_enabled", side_effect=lambda name: name),
+        patch.object(
+            command_handlers,
+            "resolve_routable_agent",
+            new=AsyncMock(side_effect=lambda name, **_kwargs: name if name is not None else "claude"),
+        ),
         patch.object(command_handlers.asyncio, "sleep", new=AsyncMock()),
         patch.object(command_handlers.asyncio, "create_task", side_effect=_capture_task),
         patch("teleclaude.hooks.checkpoint.get_checkpoint_content", return_value=None),
