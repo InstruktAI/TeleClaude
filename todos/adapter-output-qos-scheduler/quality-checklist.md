@@ -10,20 +10,27 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] PTB rate-limiter integration is active and verified in runtime logs
-- [ ] Scheduler applies to both Telegram output paths (legacy + threaded)
-- [ ] Final updates are not starved by normal updates
-- [ ] Dynamic cadence math is covered by tests
-- [ ] Fairness and coalescing behavior validated under multi-session load
-- [ ] Tests pass (`make test` or targeted suite with rationale)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Runtime smoke checks completed (`make restart`, `make status`, relevant log grep)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
-- [ ] Docs updated for tuning knobs and behavior
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] PTB rate-limiter integration is active and verified in runtime logs
+- [x] Scheduler applies to both Telegram output paths (legacy + threaded)
+- [x] Final updates are not starved by normal updates
+- [x] Dynamic cadence math is covered by tests
+- [x] Fairness and coalescing behavior validated under multi-session load
+- [x] Tests pass (`make test` or targeted suite with rationale)
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
+- [x] Runtime smoke checks completed (`make restart`, `make status`, relevant log grep)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+- [x] Docs updated for tuning knobs and behavior
+
+Build verification notes (2026-02-26):
+
+- `make test`: passing (`2246 passed, 106 skipped`).
+- `make lint`: passing (`ruff`, `pyright`, and markdown checks clean).
+- Runtime smoke: `make restart` succeeded; `make status` succeeded after restart; log grep confirmed cadence and rate-limit activity entries.
+- Demo gate: `telec todo demo validate adapter-output-qos-scheduler` passed with 3 executable blocks.
 
 ## Review Gates (Reviewer)
 
