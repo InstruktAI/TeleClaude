@@ -100,15 +100,6 @@ async def handle_deployment_event(event: HookEvent) -> None:
 
     elif event.source == "deployment" and event.type == "version_available":
         # Fan-out received from another daemon via Redis.
-        version_info_raw = event.properties.get("version_info") or ""
-        if isinstance(version_info_raw, str):
-            import json
-
-            try:
-                version_info = json.loads(version_info_raw)
-            except Exception:  # noqa: BLE001
-                version_info = {}
-
         fan_channel = event.properties.get("channel") or ""
         fan_version = event.properties.get("version") or ""
         from_version = event.properties.get("from_version") or __version__
