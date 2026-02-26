@@ -4,48 +4,68 @@
 
 - Status: `pass`
 - Score: `8/10`
-- Ready Decision: **Ready** — parent rollout governance is prepared; execute child slices in dependency order.
+- Ready Decision: **Ready** — parent rollout container is complete and sound for governance-level build.
 
-## Rollout Readiness Matrix
+## Gate Assessment
 
-| Slice                      | Draft Artifacts | Gate Verdict | Score | Blockers | Remediation / Next Action                  |
-| -------------------------- | --------------- | ------------ | ----- | -------- | ------------------------------------------ |
-| `integration-events-model` | complete        | pass         | 8     | none     | dispatch as first build slice              |
-| `integrator-shadow-mode`   | complete        | pass         | 8     | none     | dispatch after events-model delivery       |
-| `integrator-cutover`       | complete        | pass         | 8     | none     | dispatch only after shadow parity evidence |
-| `integration-blocked-flow` | complete        | pass         | 8     | none     | dispatch after cutover delivery            |
+1. **Intent & success: PASS**
+   - Problem statement (serialize main integration via event-driven singleton) and outcome
+     (5 ordered slices delivered, integrator as sole main merger) are explicit and testable.
+   - FR1-FR5 map directly to `docs/project/spec/integration-orchestrator.md`.
+2. **Scope & size: PASS**
+   - Explicitly a rollout container. No implementation code in this slug.
+   - Decomposed into 4 active child slices with correct `group:` and `after:` in roadmap.yaml.
+3. **Verification: PASS**
+   - Parent verification requirements are concrete: roadmap encoding, child gate artifacts,
+     cutover verification (no non-integrator push path), blocked-flow verification (resumable outcomes).
+   - Demo commands are executable and cover roadmap, state, and child artifact checks.
+4. **Approach known: PASS**
+   - Technical path defined in canonical spec. Shadow-then-cutover progression is established.
+   - No architectural unknowns at parent governance level.
+5. **Research complete: PASS (auto)**
+   - No third-party dependencies introduced.
+6. **Dependencies & preconditions: PASS**
+   - `integration-safety-gates` delivered. Child chain encoded in roadmap.yaml.
+   - All 4 children have preparation artifacts on disk (requirements.md, implementation-plan.md, demo.md).
+   - All 4 child slices have formal DOR assessment recorded (`dor.status: pass`, `dor.score: 8`).
+   - Child slices still proceed through their own prep/gate cycle independently of the parent.
+7. **Integration safety: PASS**
+   - Incremental rollout by design. Shadow mode before cutover provides containment.
+   - Each slice independently shippable per roadmap dependency order.
+8. **Tooling impact: PASS (auto)**
+   - No scaffolding or tooling changes.
 
-## Blocker-to-Gate Mapping
+### Plan-to-requirement fidelity
 
-1. **Intent & Success:** pass for all slices; requirements specify measurable outcomes.
-2. **Scope & Size:** pass for all slices; each child remains an atomic integration slice.
-3. **Verification:** pass for all slices; plans include test and lint gates.
-4. **Approach Known:** pass for all slices; implementation strategy follows canonical spec.
-5. **Research Complete:** pass by contract reuse; no new third-party dependencies.
-6. **Dependencies & Preconditions:** pass; roadmap `after:` chain enforces ordering.
-7. **Integration Safety:** pass; shadow-before-cutover progression preserved.
-8. **Tooling Impact:** pass; rollout container introduces no tooling breakage.
+All implementation plan tasks trace to requirements. No contradictions found.
+FR3 events match spec exactly (`review_approved`, `finalize_ready`, `branch_pushed`).
+FR4 lease key (`integration/main`) and queue semantics match spec.
+Plan correctly describes orchestration/governance work, not implementation code.
 
-Current unresolved blockers: **none**.
+## Resolved Blockers
 
-## Shadow-to-Cutover Go/No-Go Policy
+1. ~~Active child slices need draft+gate artifacts~~ — all 4 children have artifacts on disk.
+   Children proceed through their own DOR cycle; not a parent blocker.
+2. ~~Formal gate not yet run~~ — this report IS the formal gate.
+3. Parent-as-container intent confirmed — "build" for this slug means executing the rollout
+   governance plan (dispatch children, track readiness, make go/no-go decisions).
 
-### Minimum Evidence Required (Go)
+## Open Questions (deferred to children)
 
-1. `integrator-shadow-mode` is delivered and review-approved.
-2. Shadow parity evidence shows singleton lease+queue behavior with no canonical `main` pushes.
-3. Cutover acceptance proves non-integrator canonical `main` merge/push attempts are blocked.
-4. Cutover acceptance proves integrator canonical `main` path remains functional.
-5. Rollback trigger and rollback steps are documented and validated.
+1. Shadow-mode exit parity threshold → deferred to `integrator-cutover`.
+2. `integration_blocked` follow-up todo template → deferred to `integration-blocked-flow`.
+3. Parent completion criteria → resolved: parent completes when all child slices deliver.
 
-### Incomplete Evidence Containment (No-Go)
+## Assumptions
 
-1. Do **not** dispatch `integrator-cutover` build.
-2. Keep integration in shadow mode and continue collecting parity evidence.
-3. Record missing evidence as explicit blockers in `integrator-cutover/dor-report.md`.
-4. If needed, open a focused follow-up todo for missing parity/authorization evidence before re-gating cutover.
+1. `integration-safety-gates` remains delivered and accepted as prerequisite baseline.
+2. `docs/project/spec/integration-orchestrator.md` remains the canonical contract source.
+3. Child slices carry implementation-level details and verification evidence.
 
-## Dispatch Readiness Summary
+## Actions Taken
 
-1. Parent remains a rollout container; no direct product build scope exists in this slug.
-2. Next actionable dependency-satisfied child slice: `integration-events-model`.
+1. Validated all 8 DOR gates against artifacts, roadmap, and canonical spec.
+2. Verified plan-to-requirement fidelity (no contradictions).
+3. Reassessed draft blockers with current evidence — all resolved at parent level.
+4. Confirmed open questions are properly scoped to child slices.
+5. Set gate verdict: pass, score 8.
