@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -15,9 +15,15 @@ from teleclaude.core.origins import InputOrigin
 
 
 class _FakeResponse:
-    def __init__(self, payload: dict[str, object], status_code: int = 200) -> None:  # guard: loose-dict - Mock JSON.
+    def __init__(
+        self,
+        payload: dict[str, object],  # guard: loose-dict - Mock JSON.
+        status_code: int = 200,
+        headers: dict[str, str] | None = None,  # guard: loose-dict - Mock HTTP headers.
+    ) -> None:
         self._payload = payload
         self.status_code = status_code
+        self.headers = headers or {}
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
@@ -65,6 +71,39 @@ async def test_send_message_posts_text_payload(adapter: WhatsAppAdapter, custome
     assert call.args[0].endswith("/messages")
     assert call.kwargs["json"]["type"] == "text"
     assert call.kwargs["json"]["text"]["body"] == "hello from bot"
+
+
+@pytest.mark.asyncio
+async def test_send_message_retries_on_429(adapter: WhatsAppAdapter, customer_session: Session) -> None:
+    adapter._http = AsyncMock()
+    adapter._http.post = AsyncMock(
+        side_effect=[
+            _FakeResponse({}, status_code=429, headers={"Retry-After": "0.01"}),
+            _FakeResponse({"messages": [{"id": "wamid.retry"}]}),
+        ]
+    )
+
+    with patch("teleclaude.adapters.whatsapp_adapter.asyncio.sleep", new=AsyncMock()) as sleep_mock:
+        message_id = await adapter.send_message(customer_session, "hello after backoff")
+
+    assert message_id == "wamid.retry"
+    assert adapter._http.post.await_count == 2
+    sleep_mock.assert_awaited_once_with(0.01)
+
+
+@pytest.mark.asyncio
+async def test_send_message_raises_after_exhausting_429_retries(
+    adapter: WhatsAppAdapter, customer_session: Session
+) -> None:
+    adapter._http = AsyncMock()
+    adapter._http.post = AsyncMock(side_effect=[_FakeResponse({}, status_code=429) for _ in range(4)])
+
+    with patch("teleclaude.adapters.whatsapp_adapter.asyncio.sleep", new=AsyncMock()) as sleep_mock:
+        with pytest.raises(RuntimeError, match="HTTP 429"):
+            await adapter.send_message(customer_session, "still throttled")
+
+    assert adapter._http.post.await_count == 4
+    assert sleep_mock.await_count == 3
 
 
 @pytest.mark.asyncio

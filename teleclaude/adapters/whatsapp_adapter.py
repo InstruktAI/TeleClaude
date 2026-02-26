@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 import re
 from datetime import datetime, timedelta, timezone
@@ -30,6 +31,8 @@ class WhatsAppAdapter(UiAdapter):
     ADAPTER_KEY = "whatsapp"
     max_message_size = 4096
     _CAPTION_MAX_CHARS = 1024
+    _MAX_429_RETRIES = 3
+    _BASE_429_BACKOFF_SECONDS = 1.0
 
     def __init__(self, client: "Any") -> None:
         super().__init__(client)
@@ -116,10 +119,36 @@ class WhatsAppAdapter(UiAdapter):
     ) -> dict[str, object]:  # guard: loose-dict - WhatsApp API responses are unstructured JSON.
         if self._http is None:
             raise RuntimeError("WhatsApp adapter is not started")
-        response = await self._http.post(url, json=payload, headers=self._auth_headers())
-        response.raise_for_status()
-        data = response.json()
-        return data if isinstance(data, dict) else {}
+        for attempt in range(self._MAX_429_RETRIES + 1):
+            response = await self._http.post(url, json=payload, headers=self._auth_headers())
+            if response.status_code != 429:
+                response.raise_for_status()
+                data = response.json()
+                return data if isinstance(data, dict) else {}
+
+            if attempt >= self._MAX_429_RETRIES:
+                response.raise_for_status()
+
+            retry_after = self._parse_retry_after_seconds(response.headers.get("Retry-After"))
+            backoff_seconds = retry_after or (self._BASE_429_BACKOFF_SECONDS * (2**attempt))
+            logger.warning(
+                "WhatsApp API rate-limited (429); retrying in %.2fs (attempt %d/%d)",
+                backoff_seconds,
+                attempt + 1,
+                self._MAX_429_RETRIES,
+            )
+            await asyncio.sleep(backoff_seconds)
+        raise RuntimeError("WhatsApp request retry loop exited unexpectedly")
+
+    @staticmethod
+    def _parse_retry_after_seconds(value: str | None) -> float | None:
+        if value is None:
+            return None
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed > 0 else None
 
     @staticmethod
     def _extract_message_id(data: dict[str, object]) -> str:  # guard: loose-dict - API response JSON payload.
