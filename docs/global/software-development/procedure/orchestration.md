@@ -53,7 +53,13 @@ This is a document-quality check, not a code review. The orchestrator does not r
    - Mark phase status using `telec todo mark-phase ... --cwd <project-root>` if applicable
    - **Terminate worker session: `telec sessions end <session_id> --computer <computer>`** ← ORCHESTRATOR OWNS THIS
    - Execute any phase-specific cleanup from the state machine instruction
-4. Invoke the work state machine to continue.
+4. **Suppress no-op chatter.** Do not send no-op follow-up messages (`No new input`, `No further input`, `Remain idle`, `Continue standing by`).
+5. Send `telec sessions send` only when actionable:
+   - gate failure details to fix,
+   - explicit answer to a worker question,
+   - or a user-directed plan change.
+6. If none apply, invoke the state machine again instead of messaging the worker.
+7. Invoke the work state machine to continue.
 
 ### When Timer Expires
 
@@ -67,6 +73,7 @@ This is a document-quality check, not a code review. The orchestrator does not r
 1. Cancel old timer.
 2. Send guidance pointing to docs, not implementation details. Do not attempt to resolve issues by modifying code or tests yourself; always provide guidance via message instead.
 3. Start new timer and continue waiting.
+4. Do not send acknowledgement-only/no-op guidance.
 
 ### Agent Degradation Handling (Orchestrator-Owned)
 

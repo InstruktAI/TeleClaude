@@ -154,6 +154,7 @@ POST_COMPLETION: dict[str, str] = {
    a. Send the builder the failure message (do NOT end the session)
    b. Wait for the builder to report completion again
    c. Repeat from step 2
+6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-bugs-fix": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
@@ -164,6 +165,7 @@ POST_COMPLETION: dict[str, str] = {
    a. Send the builder the failure message (do NOT end the session)
    b. Wait for the builder to report completion again
    c. Repeat from step 2
+6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data to extract verdict
@@ -172,17 +174,20 @@ POST_COMPLETION: dict[str, str] = {
    - If APPROVE: telec todo mark-phase {args} --phase review --status approved --cwd <project-root>
    - If REQUEST CHANGES: telec todo mark-phase {args} --phase review --status changes_requested --cwd <project-root>
 4. Call {next_call}
+5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-fix-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
 2. telec sessions end <session_id>
 3. telec todo mark-phase {args} --phase review --status pending --cwd <project-root>
 4. Call {next_call}
+5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-defer": """WHEN WORKER COMPLETES:
 1. Read worker output. Confirm deferrals_processed in state.yaml
 2. telec sessions end <session_id>
 3. Call {next_call}
+4. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-finalize": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data.
@@ -321,6 +326,14 @@ C) YOU SEND ANOTHER MESSAGE TO THE AGENT BECAUSE IT NEEDS FEEDBACK OR HELP:
    - Start a new 5-minute timer: Bash(command="sleep 300", run_in_background=true)
    - Save the new task_id for the reset timer
 
+D) NO-OP SUPPRESSION (NON-CHATTY ORCHESTRATION):
+   - Never send no-op follow-ups like "No new input", "No further input", "Remain idle", or "Continue standing by".
+   - Only send telec sessions send when there is actionable content:
+     1) concrete gate failure details,
+     2) a direct answer to an explicit worker question, or
+     3) a user-directed change in plan.
+   - If none apply, do not send another worker message; continue the state-machine loop.
+
 {post_completion}
 
 ORCHESTRATION PRINCIPLE: Guide process, don't dictate implementation.
@@ -329,6 +342,7 @@ You are an orchestrator, not a micromanager. Workers have full autonomy.
 - NEVER edit or commit files in worktrees
 - NEVER cd into worktrees — stay in the main repo root
 - ALWAYS end the worker session when its step completes — no exceptions
+- NEVER send no-op acknowledgements/keepalive chatter to workers
 - Trust the process gates (pre-commit hooks, mark_phase clerical checks)
 - If mark_phase rejects, the state machine routes to the fix — do NOT fix it yourself"""
     if note:

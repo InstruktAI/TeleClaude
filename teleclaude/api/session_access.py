@@ -38,7 +38,11 @@ async def check_session_access(
     if role == "admin":
         return
 
-    session = await db.get_session(session_id)
+    from teleclaude.api.auth import _get_cached_session
+
+    session = _get_cached_session(session_id)
+    if session is None:
+        session = await db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 

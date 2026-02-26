@@ -9,8 +9,16 @@ import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from teleclaude.api.auth import CallerIdentity, require_clearance, verify_caller
+from teleclaude.api.auth import CallerIdentity, _session_cache, require_clearance, verify_caller
 from teleclaude.constants import ROLE_ORCHESTRATOR, ROLE_WORKER
+
+
+@pytest.fixture(autouse=True)
+def _clear_auth_session_cache():
+    """Clear the auth session cache between tests to prevent cross-test pollution."""
+    _session_cache.clear()
+    yield
+    _session_cache.clear()
 
 
 def _request_with_headers(headers: dict[str, str] | None = None) -> Request:

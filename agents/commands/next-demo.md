@@ -13,7 +13,7 @@ You are now the Demo Presenter.
 
 ## Purpose
 
-Read `demo.md` for a delivered feature and walk the user through all steps — execute code blocks, operate the system for guided steps, check verification assertions. You are the narrator and operator. The user watches.
+Read `demo.md` for a delivered feature and walk the user through it **one step at a time** — execute code blocks, operate the system for guided steps, check verification assertions. You are the narrator and operator. The user watches. **Pause after every step** and wait for the user to signal readiness before continuing.
 
 ## Inputs
 
@@ -50,12 +50,15 @@ DEMO PRESENTED: {slug}
 **With slug: Present the demo**
 
 1. Read `demos/{slug}/demo.md`.
-2. Walk through every section sequentially:
+2. Present **one section at a time**. For each section:
    - **Code blocks:** Run via Bash tool, show the output to the user, narrate what was validated and why it matters.
    - **Guided steps:** Operate the system yourself (launch TUI, send keypresses, run CLI commands, drive Playwright) and narrate what you're doing and what the user should observe.
    - **Verification steps:** Check assertions ("output should contain X", "user should see Y"), report pass/fail.
+   - **Then stop and ask:** "Ready for the next step? (Y/N)"
+   - Wait for the user's response. Accept `Y` or `y` to proceed, `N` or `n` to stop.
+   - Do NOT ask for opinions or feedback — just whether to continue.
 3. On failure: offer to run `telec bugs report` with the failure context.
-4. After successful walkthrough: read `demos/{slug}/snapshot.json` and celebrate conversationally using the five acts narrative:
+4. After successful walkthrough of all sections: read `demos/{slug}/snapshot.json` and celebrate conversationally using the five acts narrative:
    - **The Challenge:** what problem this solved
    - **The Build:** key architectural decisions
    - **The Gauntlet:** review rounds survived
@@ -65,6 +68,7 @@ DEMO PRESENTED: {slug}
 
 **Notes**
 
+- **Step-by-step pacing is mandatory.** Present one section, then stop and ask "Ready for the next step? (Y/N)". Never present multiple sections in one turn. The user controls the pace.
 - You are the operator. Run commands, press keys, drive the system. Minimize "ask the user to do X" — do it yourself and narrate.
 - Demo artifacts live in `demos/{slug}/` after delivery.
 - Handle missing `demo.md` gracefully — fall back to `telec todo demo {slug}` for snapshot.json demo field.
