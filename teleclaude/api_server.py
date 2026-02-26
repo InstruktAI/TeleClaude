@@ -565,8 +565,12 @@ class APIServer:
                 normalized_command = (command_name or "").lower()
                 known_agents = set(get_known_agents())
 
+                resume_aliases = {f"{agent}_resume" for agent in known_agents}
+
                 if normalized_command in known_agents:
                     _resolve_enabled_agent(normalized_command)
+                elif normalized_command in resume_aliases:
+                    _resolve_enabled_agent(normalized_command.removesuffix("_resume"))
                 elif normalized_command in {"agent", "agent_then_message", "agent_resume", "agent_restart"}:
                     auto_command_agent = command_args[0] if command_args else validated_request_agent
                     if auto_command_agent:

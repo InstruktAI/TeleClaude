@@ -236,7 +236,9 @@ class CommandMapper:
                 native_session_id=native_session_id,
             )
 
-        if cmd_name in {"claude_resume", "gemini_resume", "codex_resume"}:
+        known_agents = set(get_known_agents())
+        resume_aliases = {f"{agent}_resume" for agent in known_agents}
+        if cmd_name in resume_aliases:
             return ResumeAgentCommand(
                 session_id=session_id or "",
                 agent_name=cmd_name.replace("_resume", ""),

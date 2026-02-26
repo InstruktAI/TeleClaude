@@ -435,6 +435,42 @@ def test_create_session_rejects_disabled_agent_inside_auto_command(test_client, 
     mock_command_service.create_session.assert_not_called()
 
 
+def test_create_session_rejects_disabled_agent_resume_alias_in_auto_command(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """Disabled resume alias should be rejected before dispatch."""
+    response = test_client.post(
+        "/sessions",
+        json={
+            "project_path": "/home/user/project",
+            "computer": "local",
+            "auto_command": "codex_resume native-123",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "config.yml:agents.codex.enabled" in response.json()["detail"]
+    mock_command_service.create_session.assert_not_called()
+
+
+def test_create_session_accepts_enabled_agent_resume_alias_in_auto_command(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """Enabled resume alias should continue through session creation."""
+    mock_command_service.create_session.return_value = {
+        "session_id": "sess-123",
+        "tmux_session_name": "tc_123",
+    }
+
+    response = test_client.post(
+        "/sessions",
+        json={
+            "project_path": "/home/user/project",
+            "computer": "local",
+            "auto_command": "gemini_resume native-123",
+        },
+    )
+
+    assert response.status_code == 200
+    mock_command_service.create_session.assert_called_once()
+
+
 def test_create_session_defaults_to_first_enabled_agent(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     """When agent is omitted, create_session should pick the first enabled policy agent."""
     mock_command_service.create_session.return_value = {
