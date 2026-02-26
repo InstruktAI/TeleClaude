@@ -188,6 +188,23 @@ class MLXTTSBackend:
                 logger.error("MLX TTS [%s] CLI produced no audio file (voice=%s)", self._service_name, voice)
                 return False
 
+            # Play audio explicitly (synchronous) while temp dir still exists.
+            # This keeps the playback lock held for the full audio duration,
+            # preventing overlapping playback that would otherwise cause echoes.
+            play_result = subprocess.run(
+                ["afplay", str(audio_file)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if play_result.returncode != 0:
+                logger.error(
+                    "MLX TTS [%s] CLI playback failed: %s",
+                    self._service_name,
+                    (play_result.stderr or play_result.stdout).strip(),
+                )
+                return False
+
         logger.debug("MLX TTS [%s]: spoke %d chars via CLI (voice=%s)", self._service_name, len(text), voice)
         return True
 
@@ -205,7 +222,6 @@ class MLXTTSBackend:
             "--join_audio",
             "--audio_format",
             "wav",
-            "--play",
         ]
 
         if self._cli_bin and _looks_like_python_script(self._cli_bin):
@@ -246,8 +262,13 @@ class MLXTTSBackend:
             if model_type == "voice_design":
                 generate_kwargs["instruct"] = os.getenv("TELECLAUDE_MLX_TTS_INSTRUCT", DEFAULT_VOICE_DESIGN_INSTRUCT)
 
-            # Merge config params (user overrides defaults)
-            generate_kwargs.update(self._params)
+            # Merge config params, but never let user params override the internally-
+            # controlled keys. Overriding `play` would cause double-playback (echo);
+            # overriding `verbose` would leak model output to the daemon TTY.
+            _protected = frozenset(
+                {"play", "verbose", "model", "text", "voice", "file_prefix", "join_audio", "audio_format"}
+            )
+            generate_kwargs.update({k: v for k, v in self._params.items() if k not in _protected})
 
             generate_audio(**generate_kwargs)
 
