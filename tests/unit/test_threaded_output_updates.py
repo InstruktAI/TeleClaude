@@ -1,3 +1,5 @@
+import asyncio
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -138,6 +140,95 @@ async def test_threaded_output_subsequent_update_edits_message(coordinator, mock
         for call in mock_update_session.call_args_list:
             args, kwargs = call
             assert "last_tool_done_at" not in kwargs, "Cursor should NOT be updated during message edits"
+
+
+@pytest.mark.asyncio
+async def test_threaded_output_skips_resend_when_render_digest_unchanged(coordinator, mock_client):
+    """Coordinator should suppress unchanged full-render payloads upstream."""
+    session_id = "session-stable-digest"
+    payload = AgentOutputPayload(
+        session_id="native-123",
+        transcript_path="/path/to/transcript.jsonl",
+        source_computer="macbook",
+        raw={"agent_name": "gemini"},
+    )
+    session = Session(
+        session_id=session_id,
+        computer_name="macbook",
+        tmux_session_name="tmux-123",
+        title="Stable Digest Session",
+        active_agent="gemini",
+        native_log_file="/path/to/transcript.jsonl",
+        adapter_metadata=SessionAdapterMetadata(),
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=True),
+        patch(
+            "teleclaude.core.agent_coordinator.get_assistant_messages_since",
+            return_value=[{"role": "assistant", "content": []}],
+        ),
+        patch("teleclaude.core.agent_coordinator.count_renderable_assistant_blocks", return_value=1),
+        patch("teleclaude.core.agent_coordinator.render_clean_agent_output", return_value=("Stable message", None)),
+        patch("teleclaude.core.agent_coordinator.db.update_session", new_callable=AsyncMock),
+    ):
+        # 1st call: send. 2nd call: digest match, skip.
+        mock_get_session.side_effect = [session, session, session, session]
+        sent_first = await coordinator._maybe_send_incremental_output(session_id, payload)
+        sent_second = await coordinator._maybe_send_incremental_output(session_id, payload)
+
+    assert sent_first is True
+    assert sent_second is False
+    mock_client.send_threaded_output.assert_called_once_with(session, "Stable message", multi_message=False)
+
+
+@pytest.mark.asyncio
+async def test_threaded_output_serializes_concurrent_triggers(coordinator, mock_client):
+    """Concurrent incremental refreshes should emit once for identical render state."""
+    session_id = "session-concurrent-digest"
+    payload = AgentOutputPayload(
+        session_id="native-123",
+        transcript_path="/path/to/transcript.jsonl",
+        source_computer="macbook",
+        raw={"agent_name": "gemini"},
+    )
+    session = Session(
+        session_id=session_id,
+        computer_name="macbook",
+        tmux_session_name="tmux-123",
+        title="Concurrent Digest Session",
+        active_agent="gemini",
+        native_log_file="/path/to/transcript.jsonl",
+        adapter_metadata=SessionAdapterMetadata(),
+    )
+
+    async def slow_send(*_args, **_kwargs):
+        await asyncio.sleep(0.02)
+        return "msg-123"
+
+    mock_client.send_threaded_output.side_effect = slow_send
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=True),
+        patch(
+            "teleclaude.core.agent_coordinator.get_assistant_messages_since",
+            return_value=[{"role": "assistant", "content": []}],
+        ),
+        patch("teleclaude.core.agent_coordinator.count_renderable_assistant_blocks", return_value=1),
+        patch("teleclaude.core.agent_coordinator.render_clean_agent_output", return_value=("Stable message", None)),
+        patch("teleclaude.core.agent_coordinator.db.update_session", new_callable=AsyncMock),
+    ):
+        mock_get_session.return_value = session
+        first, second = await asyncio.gather(
+            coordinator._maybe_send_incremental_output(session_id, payload),
+            coordinator._maybe_send_incremental_output(session_id, payload),
+        )
+
+    assert [first, second].count(True) == 1
+    assert [first, second].count(False) == 1
+    mock_client.send_threaded_output.assert_called_once_with(session, "Stable message", multi_message=False)
 
 
 @pytest.mark.asyncio
@@ -337,6 +428,58 @@ async def test_tool_done_does_not_trigger_direct_incremental_output(coordinator)
         await coordinator.handle_tool_done(context)
 
     mock_incremental.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_turn_break_sets_anchor_cursor_for_threaded_sessions(coordinator, mock_client):
+    """New-turn break should persist a turn anchor to prevent replay loops."""
+    session_id = "session-anchor"
+    old_cursor = datetime(2026, 2, 25, 20, 0, 0, tzinfo=timezone.utc)
+    user_ts = datetime(2026, 2, 25, 20, 0, 5, tzinfo=timezone.utc)
+
+    payload = AgentOutputPayload(
+        session_id="native-anchor",
+        transcript_path="/path/to/transcript.jsonl",
+        source_computer="macbook",
+        raw={"agent_name": "gemini"},
+    )
+    session = Session(
+        session_id=session_id,
+        computer_name="macbook",
+        tmux_session_name="tmux-anchor",
+        title="Anchor Session",
+        active_agent="gemini",
+        native_log_file="/path/to/transcript.jsonl",
+        last_tool_done_at=old_cursor,
+        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(output_message_id="msg_123")),
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch("teleclaude.core.agent_coordinator.db.update_session", new_callable=AsyncMock) as mock_update_session,
+        patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=True),
+        patch(
+            "teleclaude.core.agent_coordinator.extract_last_user_message_with_timestamp",
+            return_value=("user prompt", user_ts),
+        ),
+        patch(
+            "teleclaude.core.agent_coordinator.get_assistant_messages_since",
+            return_value=[{"role": "assistant", "content": []}],
+        ) as mock_get_messages,
+        patch("teleclaude.core.agent_coordinator.count_renderable_assistant_blocks", return_value=1),
+        patch("teleclaude.core.agent_coordinator.render_clean_agent_output", return_value=("Message 2", None)),
+    ):
+        # get_session is called at entry, after break, and again post-send for threaded-active check.
+        mock_get_session.side_effect = [session, session, session]
+
+        await coordinator._maybe_send_incremental_output(session_id, payload)
+
+    mock_client.break_threaded_turn.assert_called_once_with(session)
+    mock_get_messages.assert_called_once()
+    assert mock_get_messages.call_args.kwargs["since_timestamp"] == user_ts
+    assert any(
+        call.kwargs.get("last_tool_done_at") == user_ts.isoformat() for call in mock_update_session.call_args_list
+    ), "Expected turn anchor cursor update to be persisted"
 
 
 # ---------------------------------------------------------------------------

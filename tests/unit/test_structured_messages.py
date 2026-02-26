@@ -167,6 +167,36 @@ class TestExtractStructuredMessages:
         assert len(thinking_msgs) == 1
         assert "consider" in thinking_msgs[0].text
 
+    def test_codex_reasoning_normalized_as_thinking(self, tmp_path: Path) -> None:
+        """Codex response_item reasoning payloads normalize into thinking messages."""
+        entries = [
+            {
+                "type": "response_item",
+                "timestamp": "2026-02-10T10:00:00Z",
+                "payload": {
+                    "type": "reasoning",
+                    "summary": [{"type": "summary_text", "text": "Plan A"}],
+                },
+            },
+            {
+                "type": "response_item",
+                "timestamp": "2026-02-10T10:00:01Z",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Done"}],
+                },
+            },
+        ]
+        path = _write_jsonl(tmp_path / "codex.jsonl", entries)
+        messages = extract_structured_messages(path, AgentName.CODEX, include_thinking=True)
+
+        thinking_msgs = [m for m in messages if m.type == "thinking"]
+        text_msgs = [m for m in messages if m.type == "text"]
+        assert len(thinking_msgs) == 1
+        assert "Plan A" in thinking_msgs[0].text
+        assert any("Done" in m.text for m in text_msgs)
+
     def test_compaction_detection(self, tmp_path: Path) -> None:
         """System entries with parentUuid after index 0 are compaction events."""
         path = _write_jsonl(

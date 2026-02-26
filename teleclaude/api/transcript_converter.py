@@ -10,6 +10,8 @@ import json
 import uuid
 from typing import Iterator
 
+from teleclaude.utils.transcript import normalize_transcript_entry_message
+
 
 def _sse_event(payload: dict[str, object]) -> str:  # guard: loose-dict - SSE payload
     """Format a single SSE data line."""
@@ -160,7 +162,7 @@ def convert_entry(entry: dict[str, object]) -> Iterator[str]:  # guard: loose-di
     Dispatches on the entry's message content blocks. Entries without
     a recognized message structure are silently skipped.
     """
-    message = entry.get("message")
+    message = normalize_transcript_entry_message(entry)
     if not isinstance(message, dict):
         return
 

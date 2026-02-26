@@ -163,7 +163,7 @@ subcommands:
       create:
         description: 'Scaffold bug files for a slug.'
       list:
-        description: 'List in-flight bug fixes with status.'
+        description: 'List in-flight bug fixes with status (prefers worktree state when present).'
   auth:
     description: 'Terminal login identity commands.'
     subcommands:

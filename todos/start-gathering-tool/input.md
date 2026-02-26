@@ -19,7 +19,7 @@ Once the gathering is seeded, **`send_message` is never called again**. The tool
 
 **Everything is turn-based.** All communication flows through the talking piece. No parallel messages, no side conversations. The talking piece IS the communication mechanism. The gathering orchestrator controls which participant is currently allowed to fan out, layering turn enforcement on top of shared-listener fan-out.
 
-This model also requires an update to the **Agent Direct Conversation procedure** (`agent-direct-conversation.md`): step 3 ("Converse") currently instructs agents to exchange messages via `teleclaude__send_message(direct=true)` for every exchange. That must be rewritten to match shared-link reality — the tool is the ignition, not the engine.
+This model also requires an update to the **Agent Direct Conversation procedure** (`agent-direct-conversation.md`): step 3 ("Converse") currently instructs agents to exchange messages via `telec sessions send(direct=true)` for every exchange. That must be rewritten to match shared-link reality — the tool is the ignition, not the engine.
 
 ## Identity and the Seed
 

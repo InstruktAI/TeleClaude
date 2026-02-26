@@ -9,7 +9,7 @@ description: 'Messaging tools for Telegram, Discord, and email delivery — hook
 
 ## What it is
 
-TeleClaude exposes several messaging tools for agents to deliver content to users and external systems. All tools operate through the daemon's Unix socket API (`/tmp/teleclaude-api.sock`) or MCP tool interface.
+TeleClaude exposes several messaging tools for agents to deliver content to users and external systems. These flows operate through the daemon's Unix socket API (`/tmp/teleclaude-api.sock`) and the `telec` CLI command surface.
 
 Use this when you need to:
 
@@ -20,15 +20,15 @@ Use this when you need to:
 
 ## Canonical fields
 
-### MCP messaging tools
+### Messaging command surface
 
-| Tool                        | Purpose                                  | Key params                                   |
-| --------------------------- | ---------------------------------------- | -------------------------------------------- |
-| `teleclaude__send_result`   | Send markdown/html as a separate message | `session_id`, `content`, `output_format`     |
-| `teleclaude__send_file`     | Send a file for download                 | `session_id`, `file_path`, `caption`         |
-| `teleclaude__render_widget` | Render rich UI (forms, tables, actions)  | `session_id`, `data`                         |
-| `teleclaude__escalate`      | Escalate customer to human admin         | `customer_name`, `reason`, `context_summary` |
-| `teleclaude__publish`       | Publish to internal Redis channel        | `channel`, `payload`                         |
+| Command                   | Purpose                                  | Key params                             |
+| ------------------------- | ---------------------------------------- | -------------------------------------- |
+| `telec sessions result`   | Send markdown/html as a separate message | `session_id`, `content`, `--format`    |
+| `telec sessions file`     | Send a file for download                 | `session_id`, `--path`, `--caption`    |
+| `telec sessions widget`   | Render rich UI (forms, tables, actions)  | `session_id`, `--data`                 |
+| `telec sessions escalate` | Escalate customer to human admin         | `session_id`, `--customer`, `--reason` |
+| `telec channels publish`  | Publish to internal Redis channel        | `channel`, `--data`                    |
 
 ### Hook contract API (FastAPI on Unix socket)
 
@@ -108,6 +108,29 @@ curl -s --unix-socket /tmp/teleclaude-api.sock \
 | `expires_at`       | string | read-only | ISO 8601 UTC expiry (computed from `ttl_seconds`)               |
 | `active`           | bool   | read-only | Whether the contract is active                                  |
 | `source`           | string | read-only | Origin: `config`, `api`, `programmatic`                         |
+
+### Transcript normalization (outbound rendering)
+
+Before adapter rendering, transcript entries are normalized into a canonical assistant/user message shape:
+
+- `role`: `user` or `assistant`
+- `content[]` block types:
+  - `text` / `output_text` for user-visible assistant text
+  - `thinking` for model reasoning/thought text
+  - `tool_use` / `tool_result` for tool activity
+
+Source mapping is agent-specific but canonical at render time:
+
+- Claude: native `thinking` blocks map directly.
+- Gemini: `thoughts[].description` maps to `thinking`.
+- Codex: `response_item.payload.type == "reasoning"` maps to `thinking`.
+
+Adapter policy:
+
+- Telegram/Discord/terminal-oriented threaded output renders `thinking` in italics.
+- Web UI may render `thinking` as a dedicated toggle/collapsible reasoning part.
+- Core owns normalization; adapters own presentation.
+- Session message APIs expose canonical block types (`text`, `thinking`, `tool_use`, `tool_result`) without server-side filtering; clients/adapters decide what to render.
 
 ## Allowed values
 

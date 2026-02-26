@@ -1,6 +1,7 @@
 """Markdown formatting utilities for Telegram MarkdownV2."""
 
 import re
+from dataclasses import dataclass
 from typing import Protocol
 
 from telegramify_markdown import markdownify as _markdownify
@@ -22,8 +23,34 @@ class MarkdownifyFn(Protocol):
 markdownify: MarkdownifyFn = _markdownify
 
 
-# (in_code_block, in_inline_code, in_spoiler)
-MarkdownV2State = tuple[bool, bool, bool]
+_STATE_CODE_BLOCK = "code_block"
+_STATE_INLINE_CODE = "inline_code"
+_STATE_SPOILER = "spoiler"
+_STATE_BOLD = "bold"
+_STATE_ITALIC = "italic"
+_STATE_UNDERLINE = "underline"
+_STATE_STRIKETHROUGH = "strikethrough"
+
+
+@dataclass(frozen=True)
+class MarkdownV2State:
+    """Parser state for balanced MarkdownV2 chunking.
+
+    stack:
+        Open entity markers in open order. This preserves close/reopen order
+        for nested entities across chunk boundaries.
+    in_link_text:
+        True when currently scanning ``[link text`` (before ``](``).
+    link_url_depth:
+        Parenthesis depth while scanning ``(link-url)``.
+    """
+
+    stack: tuple[str, ...] = ()
+    in_link_text: bool = False
+    link_url_depth: int = 0
+
+
+MARKDOWN_V2_INITIAL_STATE = MarkdownV2State()
 
 
 def strip_outer_codeblock(text: str) -> str:
@@ -156,46 +183,118 @@ def collapse_fenced_code_blocks(text: str) -> str:
     return re.sub(r"```([A-Za-z0-9_-]*)\n(.*?)```", _replace, text, flags=re.DOTALL)
 
 
-def scan_markdown_v2_state(text: str, initial_state: MarkdownV2State = (False, False, False)) -> MarkdownV2State:
+def _toggle_stack_marker(stack: list[str], marker: str) -> None:
+    """Toggle marker on stack using strict top-of-stack matching."""
+    if stack and stack[-1] == marker:
+        stack.pop()
+        return
+    stack.append(marker)
+
+
+def scan_markdown_v2_state(text: str, initial_state: MarkdownV2State = MARKDOWN_V2_INITIAL_STATE) -> MarkdownV2State:
     """Scan text and return MarkdownV2 parser state after consuming it."""
-    in_code_block, in_inline_code, in_spoiler = initial_state
+    stack = list(initial_state.stack)
+    in_link_text = initial_state.in_link_text
+    link_url_depth = initial_state.link_url_depth
     i = 0
     while i < len(text):
         if text[i] == "\\":
             i += 2
             continue
 
-        if text[i : i + 3] == MARKDOWN_FENCE and not in_inline_code:
-            in_code_block = not in_code_block
+        if link_url_depth > 0:
+            if text[i] == "(":
+                link_url_depth += 1
+            elif text[i] == ")":
+                link_url_depth -= 1
+            i += 1
+            continue
+
+        if in_link_text:
+            if text[i : i + 2] == "](":
+                in_link_text = False
+                link_url_depth = 1
+                i += 2
+                continue
+            if text[i] == "]":
+                in_link_text = False
+                i += 1
+                continue
+            i += 1
+            continue
+
+        in_code_block = bool(stack and stack[-1] == _STATE_CODE_BLOCK)
+        if in_code_block:
+            if text[i : i + 3] == MARKDOWN_FENCE:
+                stack.pop()
+                i += 3
+                continue
+            i += 1
+            continue
+
+        in_inline_code = bool(stack and stack[-1] == _STATE_INLINE_CODE)
+        if in_inline_code:
+            if text[i] == MARKDOWN_INLINE_CODE:
+                stack.pop()
+                i += 1
+                continue
+            i += 1
+            continue
+
+        if text[i : i + 3] == MARKDOWN_FENCE:
+            stack.append(_STATE_CODE_BLOCK)
             i += 3
             continue
 
-        if text[i : i + 2] == "||" and not in_code_block:
-            in_spoiler = not in_spoiler
+        if text[i] == "[":
+            in_link_text = True
+            i += 1
+            continue
+
+        if text[i : i + 2] == "||":
+            _toggle_stack_marker(stack, _STATE_SPOILER)
             i += 2
             continue
 
-        if text[i] == MARKDOWN_INLINE_CODE and not in_code_block:
-            in_inline_code = not in_inline_code
+        if text[i : i + 2] == "__":
+            _toggle_stack_marker(stack, _STATE_UNDERLINE)
+            i += 2
+            continue
+
+        if text[i] == MARKDOWN_INLINE_CODE:
+            stack.append(_STATE_INLINE_CODE)
+            i += 1
+            continue
+
+        if text[i] == "*":
+            _toggle_stack_marker(stack, _STATE_BOLD)
+            i += 1
+            continue
+
+        if text[i] == "_":
+            _toggle_stack_marker(stack, _STATE_ITALIC)
+            i += 1
+            continue
+
+        if text[i] == "~":
+            _toggle_stack_marker(stack, _STATE_STRIKETHROUGH)
             i += 1
             continue
 
         i += 1
 
-    return in_code_block, in_inline_code, in_spoiler
+    return MarkdownV2State(
+        stack=tuple(stack),
+        in_link_text=in_link_text,
+        link_url_depth=link_url_depth,
+    )
 
 
 def continuation_prefix_for_markdown_v2_state(state: MarkdownV2State) -> str:
     """Build opening markers needed to continue a previously closed chunk."""
-    in_code_block, in_inline_code, in_spoiler = state
     parts: list[str] = []
-    if in_spoiler:
-        parts.append("||")
-    if in_code_block:
-        # Use newline to force fenced-code body (not language tag parsing).
-        parts.append(f"{MARKDOWN_FENCE}\n")
-    if in_inline_code:
-        parts.append(MARKDOWN_INLINE_CODE)
+    for marker in state.stack:
+        parts.append(_opening_marker_for_state(marker))
     return "".join(parts)
 
 
@@ -248,6 +347,9 @@ def truncate_markdown_v2_with_consumed(text: str, max_chars: int, suffix: str) -
     """
     if max_chars <= 0:
         return "", 0
+    if len(text) <= max_chars and not suffix:
+        truncated, consumed_chars = _trim_with_balanced_markdown_with_consumed(text, max_chars)
+        return truncated, consumed_chars
     if len(text) <= max_chars:
         return text, len(text)
     if len(suffix) >= max_chars:
@@ -258,12 +360,54 @@ def truncate_markdown_v2_with_consumed(text: str, max_chars: int, suffix: str) -
     return f"{truncated}{suffix}", consumed_chars
 
 
+def leading_balanced_markdown_v2_entity_span(text: str, max_scan_chars: int = 512) -> int:
+    """Return length of the first balanced leading MarkdownV2 entity span.
+
+    Used by threaded chunking to avoid splitting small atomic entities
+    (e.g. links, short styled fragments) across message boundaries.
+    Returns 0 when no leading marker entity is complete within the scan window.
+    """
+    if not text:
+        return 0
+
+    opening_chars = {"[", "*", "_", "~", "`", "|"}
+    if text[0] not in opening_chars:
+        return 0
+
+    saw_marker = False
+    limit = min(len(text), max_scan_chars)
+    for idx in range(1, limit + 1):
+        if text[idx - 1] in opening_chars:
+            saw_marker = True
+        if not saw_marker:
+            continue
+        state = scan_markdown_v2_state(text[:idx])
+        if state == MARKDOWN_V2_INITIAL_STATE:
+            # If we just closed `[text]` and the next char starts a URL
+            # section (`(`), keep scanning so links are treated atomically.
+            if idx < len(text) and text[idx] == "(" and idx > 0 and text[idx - 1] == "]":
+                continue
+            return idx
+
+    return 0
+
+
 def _trim_with_balanced_markdown_with_consumed(text: str, budget: int) -> tuple[str, int]:
     """Trim text and return balanced output plus consumed source chars."""
     current = text[:budget]
     while True:
         if current.endswith("\\"):
             current = current[:-1]
+
+        state = scan_markdown_v2_state(current)
+        # Splitting inside link entities is fragile in MarkdownV2; backtrack
+        # until the boundary is outside any link text/url context.
+        if state.in_link_text or state.link_url_depth > 0:
+            if not current:
+                return "", 0
+            current = current[:-1]
+            continue
+
         closers = _required_markdown_closers(current)
         if len(current) + len(closers) <= budget:
             return f"{current}{closers}", len(current)
@@ -273,19 +417,60 @@ def _trim_with_balanced_markdown_with_consumed(text: str, budget: int) -> tuple[
 
 
 def _required_markdown_closers(text: str) -> str:
-    """Compute closers needed to finish inline/fenced/spoiler entities."""
-    in_code_block, in_inline_code, in_spoiler = scan_markdown_v2_state(text)
+    """Compute closers needed to finish currently open MarkdownV2 entities."""
+    return _required_markdown_closers_from_state(text, scan_markdown_v2_state(text))
+
+
+def _required_markdown_closers_from_state(text: str, state: MarkdownV2State) -> str:
+    """Compute closers from a pre-scanned parser state."""
+    # We intentionally do not auto-close links here; splitter backtracks before
+    # link contexts so chunk boundaries avoid partial link entities.
+    if state.in_link_text or state.link_url_depth > 0:
+        return ""
 
     closers: list[str] = []
-    if in_inline_code:
-        closers.append(MARKDOWN_INLINE_CODE)
-    if in_code_block:
-        if text and not text.endswith("\n"):
-            closers.append("\n")
-        closers.append(MARKDOWN_FENCE)
-    if in_spoiler:
-        closers.append("||")
+    for marker in reversed(state.stack):
+        closers.append(_closing_marker_for_state(marker, text))
     return "".join(closers)
+
+
+def _opening_marker_for_state(marker: str) -> str:
+    """Return opening marker string for a state token."""
+    if marker == _STATE_SPOILER:
+        return "||"
+    if marker == _STATE_CODE_BLOCK:
+        return f"{MARKDOWN_FENCE}\n"
+    if marker == _STATE_INLINE_CODE:
+        return MARKDOWN_INLINE_CODE
+    if marker == _STATE_BOLD:
+        return "*"
+    if marker == _STATE_ITALIC:
+        return "_"
+    if marker == _STATE_UNDERLINE:
+        return "__"
+    if marker == _STATE_STRIKETHROUGH:
+        return "~"
+    return ""
+
+
+def _closing_marker_for_state(marker: str, source_text: str) -> str:
+    """Return closing marker string for a state token."""
+    if marker == _STATE_SPOILER:
+        return "||"
+    if marker == _STATE_INLINE_CODE:
+        return MARKDOWN_INLINE_CODE
+    if marker == _STATE_CODE_BLOCK:
+        prefix = "\n" if source_text and not source_text.endswith("\n") else ""
+        return f"{prefix}{MARKDOWN_FENCE}"
+    if marker == _STATE_BOLD:
+        return "*"
+    if marker == _STATE_ITALIC:
+        return "_"
+    if marker == _STATE_UNDERLINE:
+        return "__"
+    if marker == _STATE_STRIKETHROUGH:
+        return "~"
+    return ""
 
 
 def _tag_plain_opening_fences(text: str) -> str:

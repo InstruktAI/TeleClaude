@@ -137,15 +137,15 @@ sequenceDiagram
 
 ### 5. Hook Event Types Processed
 
-| Event Type           | Payload Fields (selected)                 | Action                                                           |
-| -------------------- | ----------------------------------------- | ---------------------------------------------------------------- |
-| `session_start`      | `session_id`, `transcript_path`           | Initialize/anchor headless lifecycle and capture native identity |
-| `user_prompt_submit` | `session_id`, `prompt`                    | Update last user input for session history                       |
-| `tool_use`           | `session_id`, `transcript_path`           | Control-plane activity/timing signal (no direct output fanout)   |
-| `tool_done`          | `session_id`, `transcript_path`           | Control-plane activity signal (no direct output fanout)          |
-| `agent_stop`         | `session_id`, `transcript_path`, `prompt` | Complete turn handling and downstream summary/notification flow  |
-| `notification`       | `session_id`, `message`                   | Relay permission/notification signals                            |
-| `error`              | `message`, `code`, `details`              | Surface hook receiver/runtime failures                           |
+| Event Type           | Payload Fields (selected)                             | Action                                                                                                                                                                                         |
+| -------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `session_start`      | `session_id`, `transcript_path`                       | Initialize/anchor headless lifecycle and capture native identity                                                                                                                               |
+| `user_prompt_submit` | `session_id`, `prompt`                                | Update last user input for session history                                                                                                                                                     |
+| `tool_use`           | `session_id`, `transcript_path`                       | Control-plane activity/timing signal (no direct output fanout)                                                                                                                                 |
+| `tool_done`          | `session_id`, `transcript_path`                       | Control-plane activity signal (no direct output fanout)                                                                                                                                        |
+| `agent_stop`         | `session_id`, `prompt` (+ optional `transcript_path`) | Complete turn handling and downstream summary/notification flow. For Codex, transcript path may be absent initially and is resolved from `native_session_id`/filename match by daemon binding. |
+| `notification`       | `session_id`, `message`                               | Relay permission/notification signals                                                                                                                                                          |
+| `error`              | `message`, `code`, `details`                          | Surface hook receiver/runtime failures                                                                                                                                                         |
 
 ## Failure modes
 

@@ -474,7 +474,7 @@ At `teleclaude/core/next_machine/core.py:2004-2020`, replace the precondition bl
             return format_error(
                 "NOT_PREPARED",
                 f"todos/{resolved_slug} is missing requirements or implementation plan.",
-                next_call=f'Call teleclaude__next_prepare(slug="{resolved_slug}") to complete preparation.',
+                next_call=f'Call telec todo prepare(slug="{resolved_slug}") to complete preparation.',
             )
 ```
 
@@ -503,7 +503,7 @@ At `teleclaude/core/next_machine/core.py:2052-2067`, modify the build dispatch:
             project=cwd,
             guidance=guidance,
             subfolder=f"trees/{resolved_slug}",
-            next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+            next_call=f'telec todo work(slug="{resolved_slug}")',
         )
 ```
 
@@ -514,8 +514,8 @@ In the `POST_COMPLETION` dict (line 81), add:
 ```python
     "next-bugs-fix": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. teleclaude__end_session(computer="local", session_id="<session_id>")
-3. teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
+2. telec sessions end(session_id="<session_id>")
+3. telec todo mark-phase(slug="{args}", phase="build", status="complete")
 4. Create PR if not already created:
    gh pr create --head fix/{args} --base main --title "fix: {args}" --body "Automated bug fix"
 5. Call {next_call}
@@ -671,7 +671,7 @@ Modify the finalize step in `next_work()` (around line 2128-2147) to pass a flag
         project=cwd,
         guidance=guidance,
         subfolder=f"trees/{resolved_slug}",
-        next_call="teleclaude__next_work()",
+        next_call="telec todo work()",
         note="BUG FIX: Skip deliver_to_delivered — delete todo directory after merge. No delivery log entry." if is_bug else "",
     )
 ```
@@ -743,7 +743,7 @@ Replace the TODO comment in `_handle_bugs_report` with:
                 "thinking_mode": "slow",
                 "message": (
                     f"You are the orchestrator for bug fix '{slug}'. "
-                    f"Run: teleclaude__next_work(slug=\"{slug}\") and follow the output verbatim. "
+                    f"Run: telec todo work(slug=\"{slug}\") and follow the output verbatim. "
                     f"Continue calling next_work after each phase completes until finalize is done."
                 ),
             },
@@ -785,7 +785,7 @@ At line 1953, the state machine checks `slug_in_roadmap()`. For bugs (explicit s
             return format_error(
                 "NOT_PREPARED",
                 f"Item '{slug}' not found in roadmap.",
-                next_call="Check todos/roadmap.yaml or call teleclaude__next_prepare().",
+                next_call="Check todos/roadmap.yaml or call telec todo prepare().",
             )
 ```
 

@@ -100,8 +100,8 @@ Purpose: list user-facing interactions we want covered by a mix of view snapshot
 3. telec send message
 4. telec start session
 5. telec end session
-6. telec docs phase 1 (index output)
-7. telec docs phase 2 (snippet content)
+6. telec docs index (phase 1 output)
+7. telec docs get (phase 2 content)
 8. telec sync --validate-only (no deploy)
 9. telec init (project bootstrap)
 10. shell completion (TELEC_COMPLETE)

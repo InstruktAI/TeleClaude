@@ -4,7 +4,7 @@
 
 ```bash
 # MCP deploy tool is gone
-! grep -q "teleclaude__deploy" teleclaude/mcp/tool_definitions.py
+! grep -q "telec deploy" teleclaude/mcp/tool_definitions.py
 echo "OK: deploy tool removed from definitions"
 ```
 
@@ -31,7 +31,7 @@ echo "OK: no orphaned deploy_service references"
 
 ### Step 1: Removed surfaces
 
-Show that `teleclaude__deploy` is gone from MCP tool definitions, handlers, and
+Show that `telec deploy` is gone from MCP tool definitions, handlers, and
 role_tools. Show that `deploy_service.py` no longer exists.
 
 ### Step 2: Helpful error message

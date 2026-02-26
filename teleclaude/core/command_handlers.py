@@ -21,7 +21,7 @@ from teleclaude.config import WORKING_DIR, config
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core import polling_coordinator, tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
-from teleclaude.core.agents import AgentName, get_agent_command
+from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -32,6 +32,7 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     VoiceEventContext,
 )
+from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.identity import get_identity_resolver
@@ -896,6 +897,11 @@ async def process_message(
             return
         session = adopted
 
+    # Treat every user message as an explicit turn boundary in threaded mode.
+    # This ensures the next assistant output starts in a fresh threaded block.
+    if is_threaded_output_enabled(session.active_agent):
+        await client.break_threaded_turn(session)
+
     await db.update_session(
         session_id,
         last_message_sent=message_text[:200],
@@ -1503,15 +1509,18 @@ async def start_agent(
         args,
         list(config.agents.keys()),
     )
-    agent_config = config.agents.get(agent_name)
-    if not agent_config:
+    try:
+        agent_name = assert_agent_enabled(agent_name)
+    except ValueError as exc:
+        error = str(exc)
         logger.error(
-            "Unknown agent requested: %r (session=%s, available=%s)",
+            "Agent start rejected: %r (session=%s, available=%s, error=%s)",
             agent_name,
             session.session_id[:8],
             list(config.agents.keys()),
+            error,
         )
-        await client.send_message(session, f"Unknown agent: {agent_name}")
+        await client.send_message(session, error)
         return
 
     # Prefer per-session stored thinking_mode if user didn't specify one.
@@ -1616,9 +1625,10 @@ async def resume_agent(
             return
         agent_name = active
 
-    agent_config = config.agents.get(agent_name)
-    if not agent_config:
-        await client.send_message(session, f"Unknown agent: {agent_name}")
+    try:
+        agent_name = assert_agent_enabled(agent_name)
+    except ValueError as exc:
+        await client.send_message(session, str(exc))
         return
 
     thinking_raw = session.thinking_mode
@@ -1738,8 +1748,10 @@ async def agent_restart(
             return False, "Failed to adopt headless session."
         session = adopted
 
-    if not config.agents.get(target_agent):
-        error = f"Unknown agent: {target_agent}"
+    try:
+        target_agent = assert_agent_enabled(target_agent)
+    except ValueError as exc:
+        error = str(exc)
         logger.error(
             "agent_restart blocked (session=%s): %s",
             session.session_id[:8],
@@ -1823,6 +1835,12 @@ async def run_agent_command(
     if not cmd.command:
         logger.warning("run_agent_command called without a command")
         return
+    if session.active_agent:
+        try:
+            assert_agent_enabled(session.active_agent)
+        except ValueError as exc:
+            await client.send_message(session, str(exc))
+            return
     if session.lifecycle_status == "headless" or not session.tmux_session_name:
         adopted = await _ensure_tmux_for_headless(
             session,

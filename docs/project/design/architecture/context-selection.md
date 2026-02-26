@@ -1,5 +1,5 @@
 ---
-description: 'Context selection pipeline that picks relevant docs for MCP get_context.'
+description: 'Context selection pipeline that picks relevant docs for the two-phase context retrieval flow.'
 id: 'project/design/architecture/context-selection'
 scope: 'project'
 type: 'design'
@@ -26,19 +26,19 @@ type: 'design'
 
 ```mermaid
 flowchart TB
-    MCPClient["MCP Client"]
-    Phase1["Phase 1:<br/>get_context(areas)"]
-    Phase2["Phase 2:<br/>get_context(snippet_ids)"]
+    ContextClient["Context Client"]
+    Phase1["Phase 1:<br/>index query (areas)"]
+    Phase2["Phase 2:<br/>content query (snippet_ids)"]
     Index["docs/index.yaml"]
     Files["Snippet MD files"]
 
-    MCPClient -->|areas filter| Phase1
+    ContextClient -->|areas filter| Phase1
     Phase1 -->|read| Index
-    Phase1 -->|return| MCPClient
-    MCPClient -->|selected IDs| Phase2
+    Phase1 -->|return| ContextClient
+    ContextClient -->|selected IDs| Phase2
     Phase2 -->|read| Files
     Phase2 -->|resolve requires| Files
-    Phase2 -->|return| MCPClient
+    Phase2 -->|return| ContextClient
 ```
 
 ## Inputs/Outputs
@@ -73,7 +73,7 @@ sequenceDiagram
     participant Selector
     participant Index
 
-    AI->>Selector: get_context(areas=["policy", "concept"])
+    AI->>Selector: telec docs index --areas policy,concept
     Selector->>Index: Load docs/index.yaml
     Selector->>Selector: Filter by areas
     Selector->>Selector: Build frontmatter list
@@ -88,7 +88,7 @@ sequenceDiagram
     participant Selector
     participant FS
 
-    AI->>Selector: get_context(snippet_ids=["arch/system", "policy/version-control"])
+    AI->>Selector: telec docs get arch/system policy/version-control
     Selector->>Selector: Expand requires transitively
     Selector->>Selector: Deduplicate and order
     loop For each snippet
@@ -101,7 +101,7 @@ sequenceDiagram
 #### Baseline Filtering (Optional)
 
 By default, all snippets including baseline are shown in the phase-1 index.
-`get_context` supports `baseline_only=true` to filter TO only baseline snippets
+`telec docs index --baseline-only` filters to baseline snippets only
 (those referenced in `baseline.md` manifests). This focused view is useful for
 authoring/editing baseline content.
 

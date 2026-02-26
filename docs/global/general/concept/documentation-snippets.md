@@ -21,7 +21,8 @@ Snippets exist in two scopes:
   projects.
 - **Project** — knowledge specific to one repository, living alongside its code.
 
-Agents retrieve snippets on demand via `teleclaude__get_context` rather than loading
+Agents retrieve snippets on demand via `telec docs index` + `telec docs get`
+rather than loading
 everything upfront.
 
 ## Why

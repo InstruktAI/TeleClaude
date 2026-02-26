@@ -42,7 +42,7 @@ Add WhatsApp Business Cloud API as a customer-facing messaging channel for TeleC
 - [ ] Image/document attachments are downloaded to the session workspace and available to the AI agent.
 - [ ] Outbound file/image sending works via `send_file()`.
 - [ ] Customer identity is resolved: known phone numbers map to person records with appropriate roles; unknown numbers get `customer` role.
-- [ ] Escalation via `teleclaude__escalate()` creates a Discord relay thread; admin messages in the relay thread are forwarded to the customer's WhatsApp.
+- [ ] Escalation via `telec sessions escalate()` creates a Discord relay thread; admin messages in the relay thread are forwarded to the customer's WhatsApp.
 - [ ] Messages outside the 24-hour window use template messages instead of free-form text.
 - [ ] WhatsApp adapter metadata persists across daemon restarts (stored in DB via session adapter_metadata).
 - [ ] Adapter starts only when WhatsApp credentials are configured; missing credentials skip startup gracefully.

@@ -84,6 +84,8 @@ Channel provisioning still determines whether an adapter can receive delivery. R
 
 `last_input_origin` records the most recent interaction source for session continuity. It supports direct replies to the origin endpoint.
 
+Current canonical origins are `telegram`, `discord`, `redis`, `api`, and `terminal`.
+
 ### Actor attribution expectations
 
 - Use adapter-provided display names when available.

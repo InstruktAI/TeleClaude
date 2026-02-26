@@ -821,12 +821,10 @@ class TmuxPaneManager:
             if not session or not session.tmux_session_name:
                 continue
 
-            if not session.active_agent:
-                continue
             self._set_pane_background(
                 pane_id,
                 session.tmux_session_name,
-                session.active_agent,
+                session.active_agent or "",
                 is_tree_selected=self._is_tree_selected_session(session_id),
             )
 
@@ -1029,6 +1027,21 @@ class TmuxPaneManager:
             and session_id == self._selected_session_id
         )
 
+    def _apply_no_color_policy(self, tmux_session_name: str) -> None:
+        """Apply NO_COLOR policy for a tmux session based on theme level."""
+        level = theme.get_pane_theming_mode_level()
+        if level <= 1:
+            self._run_tmux("set-environment", "-t", tmux_session_name, "NO_COLOR", "1")
+        else:
+            self._run_tmux("set-environment", "-t", tmux_session_name, "-u", "NO_COLOR")
+
+    def _clear_session_pane_style(self, pane_id: str, tmux_session_name: str) -> None:
+        """Reset pane style to native defaults while keeping embedded status hidden."""
+        self._run_tmux("set", "-pu", "-t", pane_id, "window-style")
+        self._run_tmux("set", "-pu", "-t", pane_id, "window-active-style")
+        self._run_tmux("set", "-t", tmux_session_name, "status", "off")
+        self._apply_no_color_policy(tmux_session_name)
+
     def _set_pane_background(
         self, pane_id: str, tmux_session_name: str, agent: str, *, is_tree_selected: bool = False
     ) -> None:
@@ -1041,8 +1054,13 @@ class TmuxPaneManager:
             is_tree_selected: Use lighter haze when the tree focus selected row matches.
         """
         if not agent:
-            msg = f"_set_pane_background: empty agent for pane {pane_id} (tmux={tmux_session_name})"
-            raise ValueError(msg)
+            logger.debug(
+                "_set_pane_background: missing agent for pane %s (tmux=%s); clearing stale style",
+                pane_id,
+                tmux_session_name,
+            )
+            self._clear_session_pane_style(pane_id, tmux_session_name)
+            return
         if theme.should_apply_paint_pane_theming():
             if is_tree_selected:
                 bg_color = theme.get_agent_pane_selected_background(agent)
@@ -1061,11 +1079,7 @@ class TmuxPaneManager:
 
         # Enforce NO_COLOR for peaceful levels (0, 1) to suppress CLI colors;
         # unset for richer levels (2+) so CLIs can emit full color output.
-        level = theme.get_pane_theming_mode_level()
-        if level <= 1:
-            self._run_tmux("set-environment", "-t", tmux_session_name, "NO_COLOR", "1")
-        else:
-            self._run_tmux("set-environment", "-t", tmux_session_name, "-u", "NO_COLOR")
+        self._apply_no_color_policy(tmux_session_name)
 
         # Override color 236 (message box backgrounds) for specific agents
         # if agent == "codex" and theme.get_current_mode():  # dark mode
@@ -1170,11 +1184,11 @@ class TmuxPaneManager:
                 self._set_doc_pane_background(pane_id)
                 continue
             session = self._session_catalog.get(session_id)
-            if session and session.tmux_session_name and session.active_agent:
+            if session and session.tmux_session_name:
                 self._set_pane_background(
                     pane_id,
                     session.tmux_session_name,
-                    session.active_agent,
+                    session.active_agent or "",
                     is_tree_selected=self._is_tree_selected_session(session_id),
                 )
 

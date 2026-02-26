@@ -4,7 +4,7 @@
   "contract_changes": [
     {
       "surface": "mcp",
-      "item": "teleclaude__new_tool",
+      "item": "telec new-tool",
       "change_type": "added",
       "details": "New MCP tool registered in tool surface manifest"
     },

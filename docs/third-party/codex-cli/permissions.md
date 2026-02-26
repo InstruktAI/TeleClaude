@@ -71,6 +71,33 @@ This command launches Codex in a mode where:
 2.  It cannot touch files outside CWD (`sandbox = true`, `restrict_to_cwd = true`).
 3.  It can search the web (`--search`).
 
+## Reasoning Visibility
+
+Codex CLI exposes separate settings for reasoning effort vs. reasoning display:
+
+- `model_reasoning_effort` controls how much reasoning budget the model uses.
+- `model_reasoning_summary` controls summary verbosity (for models that support summaries).
+- `model_supports_reasoning_summaries` enables summary support hints for configured models.
+- `show_raw_agent_reasoning` enables verbose reasoning traces in Codex CLI output when available.
+- `hide_agent_reasoning` suppresses reasoning output.
+
+Example:
+
+```toml
+model_reasoning_effort = "xhigh"
+model_reasoning_summary = "detailed"
+show_raw_agent_reasoning = true
+```
+
+Important distinction:
+
+- These are client display/config controls.
+- OpenAI reasoning model docs still treat reasoning summaries as the primary exposed artifact and do not expose raw reasoning token streams via the API.
+- TeleClaude now pins these settings at runtime via Codex `--config ...` flags on every start/resume, so visibility does not depend only on ambient `~/.codex/config.toml` state.
+
 ## Sources
 
 - https://openai.com/codex-cli-docs
+- https://developers.openai.com/codex/config-advanced/
+- https://developers.openai.com/codex/config-reference/
+- https://platform.openai.com/docs/guides/reasoning

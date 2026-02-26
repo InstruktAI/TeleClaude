@@ -1,5 +1,7 @@
 """Unit tests for CommandMapper."""
 
+import pytest
+
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.origins import InputOrigin
@@ -77,6 +79,17 @@ def test_map_rest_message():
     assert cmd.session_id == "sess_789"
     assert cmd.text == "REST message"
     assert cmd.origin == InputOrigin.API.value
+
+
+def test_map_api_agent_rejects_when_no_enabled_agents(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("teleclaude.core.command_mapper.get_enabled_agents", lambda: ())
+
+    with pytest.raises(ValueError, match="No enabled agents configured"):
+        CommandMapper.map_api_input(
+            "agent",
+            {"session_id": "sess_789", "args": []},
+            MessageMetadata(origin=InputOrigin.API.value),
+        )
 
 
 # --- R1/R2: Actor attribution parity across adapters ---

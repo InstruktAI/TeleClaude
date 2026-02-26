@@ -4,7 +4,7 @@
 
 **Goal:** Turn TeleClaude into a two-plane help desk platform — customer ingress on any adapter, operator workspace on Discord — with identity-scoped memory, escalation tooling, admin relay channels, internal pub/sub channels, and a standalone operator workspace.
 
-**Architecture:** The platform extends the existing daemon with per-customer memory scoping (identity_key on memory_observations), Discord/Telegram identity resolution, customer-role MCP filtering, an escalation MCP tool (`teleclaude__escalate`), admin relay channels (Discord threads bridging to customer platforms), audience-tagged doc snippets, Redis Stream internal channels, and a standalone operator workspace bootstrapped by `telec init`. Memory extraction runs as an idempotent job with two trigger paths (idle-detected and cron sweep).
+**Architecture:** The platform extends the existing daemon with per-customer memory scoping (identity_key on memory_observations), Discord/Telegram identity resolution, customer-role MCP filtering, an escalation MCP tool (`telec sessions escalate`), admin relay channels (Discord threads bridging to customer platforms), audience-tagged doc snippets, Redis Stream internal channels, and a standalone operator workspace bootstrapped by `telec init`. Memory extraction runs as an idempotent job with two trigger paths (idle-detected and cron sweep).
 
 **Tech Stack:** Python 3.12, SQLAlchemy/SQLModel, Redis Streams, Pydantic config, MCP tools, doc snippet frontmatter YAML, discord.py
 
@@ -265,31 +265,31 @@ In `teleclaude/mcp/role_tools.py`, add after `UNAUTHORIZED_EXCLUDED_TOOLS` (line
 
 ```python
 CUSTOMER_EXCLUDED_TOOLS: set[str] = UNAUTHORIZED_EXCLUDED_TOOLS | {
-    "teleclaude__list_sessions",
-    "teleclaude__list_todos",
+    "telec sessions list",
+    "telec roadmap list",
 }
 ```
 
-This is the superset of `UNAUTHORIZED_EXCLUDED_TOOLS` plus any remaining tools customers should not see. The escalation tool (`teleclaude__escalate`) is explicitly NOT in this set — customers must see it.
+This is the superset of `UNAUTHORIZED_EXCLUDED_TOOLS` plus any remaining tools customers should not see. The escalation tool (`telec sessions escalate`) is explicitly NOT in this set — customers must see it.
 
 **Step 3: Add escalation tool to non-customer exclusion lists**
 
-Add `"teleclaude__escalate"` to these sets so only customer sessions see it:
+Add `"telec sessions escalate"` to these sets so only customer sessions see it:
 
 ```python
 WORKER_EXCLUDED_TOOLS = {
     ...,
-    "teleclaude__escalate",
+    "telec sessions escalate",
 }
 
 MEMBER_EXCLUDED_TOOLS = {
     ...,
-    "teleclaude__escalate",
+    "telec sessions escalate",
 }
 
 UNAUTHORIZED_EXCLUDED_TOOLS = {
     ...,
-    "teleclaude__escalate",
+    "telec sessions escalate",
 }
 ```
 
@@ -306,9 +306,9 @@ if human_role == HUMAN_ROLE_CUSTOMER:
 **Step 5: Write tests**
 
 - `get_excluded_tools(role=None, human_role="customer")` returns CUSTOMER_EXCLUDED_TOOLS
-- `get_excluded_tools(role=None, human_role="customer")` does NOT include `teleclaude__escalate`
-- `get_excluded_tools(role=None, human_role="admin")` DOES include `teleclaude__escalate` (from UNAUTHORIZED? No — admin sees everything). Actually: admin has no exclusions, so `teleclaude__escalate` is visible. But for member/worker/unauthorized, it IS excluded.
-- `get_excluded_tools(role="worker", human_role=None)` includes `teleclaude__escalate`
+- `get_excluded_tools(role=None, human_role="customer")` does NOT include `telec sessions escalate`
+- `get_excluded_tools(role=None, human_role="admin")` DOES include `telec sessions escalate` (from UNAUTHORIZED? No — admin sees everything). Actually: admin has no exclusions, so `telec sessions escalate` is visible. But for member/worker/unauthorized, it IS excluded.
+- `get_excluded_tools(role="worker", human_role=None)` includes `telec sessions escalate`
 
 **Step 6: Run tests and commit**
 
@@ -384,7 +384,7 @@ feat(docs): add audience field to doc snippet frontmatter for role-filtered cont
 
 **Step 1: Thread human_role through to build_context_output()**
 
-In `teleclaude/mcp/handlers.py` `teleclaude__get_context()`, resolve `human_role` from the calling session (already available via `caller_session_id` -> `session.human_role`). Pass as new parameter to `build_context_output()`.
+In `teleclaude/mcp/handlers.py` `telec docs get()`, resolve `human_role` from the calling session (already available via `caller_session_id` -> `session.human_role`). Pass as new parameter to `build_context_output()`.
 
 **Step 2: Filter snippets by audience in \_include_snippet()**
 
@@ -545,7 +545,7 @@ See design doc section "Help Desk Bootstrap Routine -> Template contents" for ex
 Key additions from the escalation design:
 
 - `docs/project/policy/escalation.md` — starter escalation policy: when to escalate (billing, security, low confidence, explicit human request), thresholds
-- `docs/project/procedure/escalation.md` — step-by-step: recognize trigger -> call `teleclaude__escalate` -> inform customer help is on the way -> wait for `@agent` handback
+- `docs/project/procedure/escalation.md` — step-by-step: recognize trigger -> call `telec sessions escalate` -> inform customer help is on the way -> wait for `@agent` handback
 - `docs/project/spec/tools/escalation.md` — tool contract: parameters (`customer_name` required, `reason` required, `context_summary` optional), return value, behavior (creates Discord thread, sets relay, sends notification)
 
 **Step 2: Commit**
@@ -697,8 +697,8 @@ async def consume(channel: str, group: str, consumer: str) -> list[dict]:
 
 **Step 3: Add MCP tools**
 
-- `teleclaude__publish(channel: str, payload: dict)` — publish to a channel
-- `teleclaude__channels_list()` — list channels and their subscriptions from config
+- `telec channels publish(channel: str, payload: dict)` — publish to a channel
+- `telec channels list()` — list channels and their subscriptions from config
 
 **Step 4: Add HTTP API route**
 
@@ -947,10 +947,10 @@ feat(config): add escalation_channel_id to Discord config
 
 **Step 1: Add escalation handler to MCP handlers**
 
-In `teleclaude/mcp/handlers.py`, add after `teleclaude__send_result` (~line 912):
+In `teleclaude/mcp/handlers.py`, add after `telec sessions result` (~line 912):
 
 ```python
-async def teleclaude__escalate(
+async def telec sessions escalate(
     self,
     customer_name: str,
     reason: str,
@@ -1051,7 +1051,7 @@ async def create_escalation_thread(
 **Step 5: Run tests and commit**
 
 ```
-feat(mcp): implement teleclaude__escalate tool with Discord relay activation
+feat(mcp): implement telec sessions escalate tool with Discord relay activation
 ```
 
 ---

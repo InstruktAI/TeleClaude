@@ -27,6 +27,7 @@ from teleclaude.types.commands import (
     ProcessMessageCommand,
     RestartAgentCommand,
     ResumeAgentCommand,
+    RunAgentCommand,
     StartAgentCommand,
 )
 
@@ -1028,7 +1029,10 @@ async def test_handle_agent_start_executes_command_without_extra_args_if_none_pr
         continue_template="",
     )
 
-    with patch.object(command_handlers, "config") as mock_config:
+    with (
+        patch.object(command_handlers, "config") as mock_config,
+        patch.object(command_handlers, "assert_agent_enabled", side_effect=lambda name: name),
+    ):
         mock_config.agents.get.return_value = mock_agent_config
 
         cmd = StartAgentCommand(session_id=mock_session.session_id, agent_name="codex", args=[])
@@ -1097,6 +1101,7 @@ async def test_handle_agent_start_accepts_deep_for_codex(mock_initialized_db):
         patch.object(command_handlers, "config") as mock_config,
         patch.object(command_handlers, "db") as mock_db,
         patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
+        patch.object(command_handlers, "assert_agent_enabled", side_effect=lambda name: name),
     ):
         mock_config.agents.get.return_value = MagicMock()
         mock_db.update_session = AsyncMock()
@@ -1154,6 +1159,39 @@ async def test_handle_agent_start_rejects_deep_for_non_codex(mock_initialized_db
 
 
 @pytest.mark.asyncio
+async def test_handle_agent_start_rejects_disabled_agent(mock_initialized_db):
+    """Disabled agents should be rejected before command assembly/dispatch."""
+
+    mock_session = MagicMock()
+    mock_session.session_id = "disabled-session-001"
+    mock_session.tmux_session_name = "tc_test"
+    mock_session.thinking_mode = "slow"
+    mock_session.lifecycle_status = "active"
+
+    mock_execute = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.send_message = AsyncMock()
+
+    with (
+        patch.object(
+            command_handlers,
+            "assert_agent_enabled",
+            side_effect=ValueError("Agent 'codex' is disabled by `config.yml:agents.codex.enabled`."),
+        ),
+        patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
+    ):
+        cmd = StartAgentCommand(session_id=mock_session.session_id, agent_name="codex", args=[])
+        await command_handlers.start_agent.__wrapped__(mock_session, cmd, mock_client, mock_execute)
+
+    mock_client.send_message.assert_awaited_once_with(
+        mock_session,
+        "Agent 'codex' is disabled by `config.yml:agents.codex.enabled`.",
+    )
+    mock_execute.assert_not_called()
+    mock_get_agent_command.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock_initialized_db):
     """Test that agent_resume uses native_session_id from database and resume template."""
 
@@ -1192,6 +1230,7 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
     with (
         patch.object(command_handlers, "config") as mock_config,
         patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers, "assert_agent_enabled", side_effect=lambda name: name),
     ):
         mock_config.agents.get.return_value = mock_agent_config
         mock_db.update_session = AsyncMock()
@@ -1302,6 +1341,7 @@ async def test_handle_agent_resume_uses_override_session_id_from_args(mock_initi
     with (
         patch.object(command_handlers, "config") as mock_config,
         patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers, "assert_agent_enabled", side_effect=lambda name: name),
     ):
         mock_config.agents.get.return_value = mock_agent_config
         mock_db.update_session = AsyncMock()
@@ -1496,6 +1536,7 @@ async def test_handle_agent_restart_uses_context_payload_for_post_restart_checkp
         patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
         patch.object(command_handlers, "config") as mock_config,
         patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers, "assert_agent_enabled", side_effect=lambda name: name),
         patch.object(command_handlers.asyncio, "sleep", new=AsyncMock()),
         patch.object(command_handlers.asyncio, "create_task", side_effect=_capture_task),
         patch(
@@ -1537,6 +1578,35 @@ async def test_handle_agent_restart_uses_context_payload_for_post_restart_checkp
 
 
 @pytest.mark.asyncio
+async def test_run_agent_command_rejects_disabled_active_agent(mock_initialized_db):
+    """run_agent_command should block when session active agent is disabled in config."""
+
+    mock_session = MagicMock()
+    mock_session.session_id = "run-disabled-001"
+    mock_session.lifecycle_status = "active"
+    mock_session.tmux_session_name = "tc_run_disabled"
+    mock_session.active_agent = "codex"
+
+    cmd = RunAgentCommand(session_id=mock_session.session_id, command="next-build", args="", origin="api")
+    mock_client = MagicMock()
+    mock_client.send_message = AsyncMock()
+    mock_execute = AsyncMock()
+
+    with patch.object(
+        command_handlers,
+        "assert_agent_enabled",
+        side_effect=ValueError("Agent 'codex' is disabled by `config.yml:agents.codex.enabled`."),
+    ):
+        await command_handlers.run_agent_command.__wrapped__(mock_session, cmd, mock_client, mock_execute)
+
+    mock_client.send_message.assert_awaited_once_with(
+        mock_session,
+        "Agent 'codex' is disabled by `config.yml:agents.codex.enabled`.",
+    )
+    mock_execute.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_handle_agent_restart_skips_post_restart_checkpoint_when_no_payload(mock_initialized_db):
     mock_session = MagicMock()
     mock_session.session_id = "restart-session-empty"
@@ -1568,6 +1638,7 @@ async def test_handle_agent_restart_skips_post_restart_checkpoint_when_no_payloa
         patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
         patch.object(command_handlers, "config") as mock_config,
         patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers, "assert_agent_enabled", side_effect=lambda name: name),
         patch.object(command_handlers.asyncio, "sleep", new=AsyncMock()),
         patch.object(command_handlers.asyncio, "create_task", side_effect=_capture_task),
         patch("teleclaude.hooks.checkpoint.get_checkpoint_content", return_value=None),
@@ -1789,6 +1860,55 @@ async def test_process_message_updates_last_input_origin_before_broadcast():
     assert update_idx < broadcast_idx, (
         f"Provenance must be updated before broadcast: update_idx={update_idx}, broadcast_idx={broadcast_idx}"
     )
+
+
+@pytest.mark.asyncio
+async def test_process_message_breaks_threaded_turn_before_broadcast():
+    """Threaded sessions should sever the active output block before reflecting input."""
+    call_order: list[str] = []
+
+    mock_session = MagicMock()
+    mock_session.session_id = "sess-thread-boundary"
+    mock_session.lifecycle_status = "active"
+    mock_session.tmux_session_name = "tc_thread_boundary"
+    mock_session.active_agent = "gemini"
+    mock_session.project_path = "/tmp"
+    mock_session.subdir = None
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=mock_session)
+    mock_db.update_session = AsyncMock()
+    mock_db.update_last_activity = AsyncMock()
+
+    mock_client = AsyncMock()
+
+    async def record_break(*_args, **_kwargs):
+        call_order.append("break_threaded_turn")
+
+    async def record_broadcast(*_args, **_kwargs):
+        call_order.append("broadcast_user_input")
+
+    mock_client.break_threaded_turn = AsyncMock(side_effect=record_break)
+    mock_client.broadcast_user_input = AsyncMock(side_effect=record_broadcast)
+    mock_client.pre_handle_command = AsyncMock()
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(command_handlers, "tmux_io") as mock_tmux_io,
+        patch.object(command_handlers, "polling_coordinator"),
+        patch("teleclaude.core.command_handlers.is_threaded_output_enabled", return_value=True),
+    ):
+        mock_tmux_io.wrap_bracketed_paste.return_value = "hello"
+        mock_tmux_io.process_text = AsyncMock(return_value=True)
+
+        cmd = ProcessMessageCommand(
+            session_id="sess-thread-boundary",
+            text="hello",
+            origin=InputOrigin.TELEGRAM.value,
+        )
+        await command_handlers.process_message(cmd, mock_client, AsyncMock())
+
+    assert call_order == ["break_threaded_turn", "broadcast_user_input"]
 
 
 @pytest.mark.asyncio

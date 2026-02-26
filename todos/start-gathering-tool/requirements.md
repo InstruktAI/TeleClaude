@@ -128,7 +128,7 @@ Human is a named participant with a number. Messages fan out with same attributi
 | File                                 | What changes                                                                         |
 | ------------------------------------ | ------------------------------------------------------------------------------------ |
 | `teleclaude/core/gathering.py`       | New: gathering state model, orchestrator, phase management, heartbeats               |
-| `teleclaude/mcp/handlers.py`         | New `teleclaude__start_gathering` handler                                            |
+| `teleclaude/mcp/handlers.py`         | New `telec sessions start-gathering` handler                                         |
 | `teleclaude/mcp/tool_definitions.py` | New tool definition and schema                                                       |
 | `teleclaude/mcp_server.py`           | Tool dispatch, `ToolName` enum addition                                              |
 | `teleclaude/core/session_links.py`   | Used (or added) — shared listener/link primitive from bidirectional-agent-links todo |

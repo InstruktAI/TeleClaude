@@ -357,7 +357,7 @@ ls /tmp/teleclaude-workspaces/*/
 
 **What happens:**
 
-1. During the AI conversation, the agent determines escalation is needed and calls `teleclaude__escalate()`.
+1. During the AI conversation, the agent determines escalation is needed and calls `telec sessions escalate()`.
 2. A Discord escalation thread is created with conversation context summary.
 3. The session enters relay mode.
 

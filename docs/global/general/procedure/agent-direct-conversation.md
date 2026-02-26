@@ -33,26 +33,26 @@ This is for **peer collaboration** — agents that need to discuss, harmonize, o
    echo "Note To Self: return to [your current task] — [specific next action]" && sleep 300
    ```
    The anchor is gravity. Peer conversation is orbit. Gravity always wins.
-2. **Send the introduction with `direct=true`.** Use `teleclaude__send_message` or `teleclaude__start_session` with the `direct` flag:
+2. **Send the introduction with `direct=true`.** Use `telec sessions send` or `telec sessions start` with the `direct` flag:
    ```
-   teleclaude__send_message(computer="local", session_id="...", message="...", direct=true)
+   telec sessions send(computer="local", session_id="...", message="...", direct=true)
    ```
    ```
-   teleclaude__start_session(computer="local", ..., message="...", direct=true)
+   telec sessions start(computer="local", ..., message="...", direct=true)
    ```
    The `direct` flag bypasses automatic listener registration. No notification subscription is created. Include in the message:
    - Your own session ID (so the other agent can message you back).
    - The topic or context for the conversation.
-   - An explicit instruction: "Send messages directly to my session via `teleclaude__send_message` with `direct=true`. Do not poll or subscribe to my output."
-3. **Converse.** Both agents exchange messages via `teleclaude__send_message(direct=true)` using each other's session IDs. No polling, no tail queries, no notification chains.
+   - An explicit instruction: "Send messages directly to my session via `telec sessions send` with `direct=true`. Do not poll or subscribe to my output."
+3. **Converse.** Both agents exchange messages via `telec sessions send(direct=true)` using each other's session IDs. No polling, no tail queries, no notification chains.
 4. **Close.** When the conversation is complete, no cleanup is needed. No subscriptions were created.
 
 ### Fallback: manual unsubscribe
 
 If `direct` flag is not yet available, use the manual protocol:
 
-1. Send the introduction via `teleclaude__send_message` (without `direct` flag).
-2. Immediately call `teleclaude__stop_notifications` for the target session to sever the auto-created subscription.
+1. Send the introduction via `telec sessions send` (without `direct` flag).
+2. Immediately call `telec sessions unsubscribe` for the target session to sever the auto-created subscription.
 3. Instruct the peer to do the same after their first reply.
 
 ### When to use this vs. orchestrator supervision

@@ -165,6 +165,7 @@ class TelegramAdapter(
         self._topic_creation_locks: dict[str, asyncio.Lock] = {}  # Prevent duplicate topic creation per session_id
         self._topic_ready_events: dict[int, asyncio.Event] = {}  # topic_id -> readiness event
         self._topic_ready_cache: set[int] = set()  # topic_ids confirmed via forum_topic_created
+        self._startup_housekeeping_task: asyncio.Task[None] | None = None
 
         # Register simple command handlers dynamically
         self._register_simple_command_handlers()
@@ -825,62 +826,87 @@ class TelegramAdapter(
         )
         logger.info("Configured supergroup ID: %s", self.supergroup_id)
         logger.info("Whitelisted user IDs: %s", self.user_whitelist)
+        # Non-critical startup housekeeping can involve Telegram rate limits and
+        # should not block daemon/API readiness.
+        self._startup_housekeeping_task = asyncio.create_task(self._run_startup_housekeeping(bot_id=bot_info.id))
+        logger.debug("Scheduled Telegram startup housekeeping task")
 
-        # Register bot commands with Telegram (only for master computer)
-        if self.is_master:
-            commands = [BotCommand(name, description) for name, description in UiCommands.items()]
-            try:
-                # Clear global commands first (removes old @BotName cached commands)
-                await self.bot.set_my_commands([])
-                # Set commands for the specific supergroup (not global)
-                scope = BotCommandScopeChat(chat_id=self.supergroup_id)
-                await self.bot.set_my_commands(commands, scope=scope)
-                logger.info(
-                    "Registered %d bot commands with Telegram for supergroup (master computer)",
-                    len(commands),
-                )
-            except BadRequest as e:
-                # Don't crash the daemon if the bot isn't in the group yet / chat_id is wrong.
-                logger.error(
-                    "Failed to register bot commands for supergroup %s: %s",
-                    self.supergroup_id,
-                    e,
-                )
-        else:
-            # Non-master: Clear all commands (both global and supergroup)
-            # This removes old cached commands that cause @BotName autocomplete
-            try:
-                await self.bot.set_my_commands([])  # Clear global commands
-                scope = BotCommandScopeChat(chat_id=self.supergroup_id)
-                await self.bot.set_my_commands([], scope=scope)  # Clear supergroup commands
-                logger.info("Cleared all bot commands (non-master computer)")
-            except BadRequest as e:
-                logger.error(
-                    "Failed to clear bot commands for supergroup %s: %s",
-                    self.supergroup_id,
-                    e,
-                )
-
-        # Try to get chat info to verify bot is in the group
+    async def _run_startup_housekeeping(self, bot_id: int) -> None:
+        """Run best-effort startup housekeeping without blocking adapter readiness."""
         try:
-            chat = await self.bot.get_chat(self.supergroup_id)
-            logger.info("Supergroup found: %s", chat.title)
+            # Register bot commands with Telegram (only for master computer)
+            if self.is_master:
+                commands = [BotCommand(name, description) for name, description in UiCommands.items()]
+                try:
+                    # Clear global commands first (removes old @BotName cached commands)
+                    await self.bot.set_my_commands([])
+                    # Set commands for the specific supergroup (not global)
+                    scope = BotCommandScopeChat(chat_id=self.supergroup_id)
+                    await self.bot.set_my_commands(commands, scope=scope)
+                    logger.info(
+                        "Registered %d bot commands with Telegram for supergroup (master computer)",
+                        len(commands),
+                    )
+                except BadRequest as e:
+                    # Don't crash the daemon if the bot isn't in the group yet / chat_id is wrong.
+                    logger.error(
+                        "Failed to register bot commands for supergroup %s: %s",
+                        self.supergroup_id,
+                        e,
+                    )
+            else:
+                # Non-master: Clear all commands (both global and supergroup)
+                # This removes old cached commands that cause @BotName autocomplete
+                try:
+                    await self.bot.set_my_commands([])  # Clear global commands
+                    scope = BotCommandScopeChat(chat_id=self.supergroup_id)
+                    await self.bot.set_my_commands([], scope=scope)  # Clear supergroup commands
+                    logger.info("Cleared all bot commands (non-master computer)")
+                except BadRequest as e:
+                    logger.error(
+                        "Failed to clear bot commands for supergroup %s: %s",
+                        self.supergroup_id,
+                        e,
+                    )
 
-            # Check if bot is admin
-            bot_member = await self.bot.get_chat_member(self.supergroup_id, bot_info.id)
-            logger.info("Bot status in group: %s", bot_member.status)
-        except Exception as e:
-            logger.error("Cannot access supergroup %s: %s", self.supergroup_id, e)
-            logger.error("Make sure the bot is added to the group as a member!")
+            # Try to get chat info to verify bot is in the group
+            try:
+                chat = await self.bot.get_chat(self.supergroup_id)
+                logger.info("Supergroup found: %s", chat.title)
 
-        # Send or update the menu message in the general topic
-        try:
-            await self._send_or_update_menu_message()
-        except Exception as e:
-            logger.error("Failed to send/update menu message: %s", e)
+                # Check if bot is admin
+                bot_member = await self.bot.get_chat_member(self.supergroup_id, bot_id)
+                logger.info("Bot status in group: %s", bot_member.status)
+            except Exception as e:
+                logger.error("Cannot access supergroup %s: %s", self.supergroup_id, e)
+                logger.error("Make sure the bot is added to the group as a member!")
+
+            # Send or update the menu message in the general topic
+            try:
+                await self._send_or_update_menu_message()
+            except Exception as e:
+                logger.error("Failed to send/update menu message: %s", e)
+        except asyncio.CancelledError:
+            logger.debug("Telegram startup housekeeping cancelled")
+            raise
+        except Exception:
+            logger.error("Telegram startup housekeeping failed", exc_info=True)
+        finally:
+            # Clear task pointer only if this coroutine still owns it.
+            current = asyncio.current_task()
+            if self._startup_housekeeping_task is current:
+                self._startup_housekeeping_task = None
 
     async def stop(self) -> None:
         """Stop Telegram bot."""
+        if self._startup_housekeeping_task and not self._startup_housekeeping_task.done():
+            self._startup_housekeeping_task.cancel()
+            try:
+                await self._startup_housekeeping_task
+            except asyncio.CancelledError:
+                pass
+            self._startup_housekeeping_task = None
+
         if self.app and self.app.updater:
             await self.app.updater.stop()
             await self.app.stop()

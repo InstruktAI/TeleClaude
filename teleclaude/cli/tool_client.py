@@ -1,8 +1,9 @@
 """Synchronous HTTP client for telec tool subcommands.
 
 One-shot requests to the daemon REST API over the Unix socket.
-Sends dual-factor identity headers on every call:
+Sends identity headers on every call:
   X-Caller-Session-Id: from $TMPDIR/teleclaude_session_id
+  X-Telec-Email:       from TTY-scoped telec login state
   X-Tmux-Session:      from tmux server (unforgeable by agent)
 """
 
@@ -16,6 +17,7 @@ from pathlib import Path
 
 import httpx
 
+from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.constants import API_SOCKET_PATH
 
 
@@ -80,11 +82,14 @@ def tool_api_call(
         SystemExit(1): On any error (daemon unavailable, 4xx/5xx, network).
     """
     session_id = _read_caller_session_id()
+    terminal_email = read_current_session_email()
     tmux_session = _read_tmux_session_name()
 
     headers: dict[str, str] = {}
     if session_id:
         headers["x-caller-session-id"] = session_id
+    if terminal_email:
+        headers["x-telec-email"] = terminal_email
     if tmux_session:
         headers["x-tmux-session"] = tmux_session
 

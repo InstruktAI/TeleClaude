@@ -7,7 +7,7 @@ vs.
 
 Any field present in one path but absent or different in the other
 indicates a serialization gap that would cause the TUI to show
-different data than `telec roadmap --json`.
+different data than `telec roadmap list --json`.
 """
 
 import json

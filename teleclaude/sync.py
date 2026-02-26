@@ -11,8 +11,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-from teleclaude.config.loader import load_project_config
-from teleclaude.docs_index import build_all_indexes
 from teleclaude.paths import REPO_ROOT
 from teleclaude.project_manifest import MANIFEST_PATH, register_project
 from teleclaude.resource_validation import (
@@ -61,6 +59,8 @@ def sync(
         return len(errors) == 0
 
     # Phase 2: Build indexes
+    from teleclaude.docs_index import build_all_indexes
+
     had_project_config = (project_root / "teleclaude.yml").exists()
     written = build_all_indexes(project_root)
     for path in written:
@@ -176,6 +176,8 @@ def _print_warnings(warnings: list[dict[str, str]], *, quiet: bool) -> None:
 
 
 def _register_project_manifest(project_root: Path) -> None:
+    from teleclaude.config.loader import load_project_config
+
     config_path = project_root / "teleclaude.yml"
     if not config_path.exists():
         return

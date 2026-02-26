@@ -80,7 +80,8 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/context-selection
-  description: Context selection pipeline that picks relevant docs for MCP get_context.
+  description: Context selection pipeline that picks relevant docs for the two-phase
+    context retrieval flow.
   type: design
   scope: project
   path: docs/project/design/architecture/context-selection.md
@@ -454,7 +455,7 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/ai-to-ai-operations
-  description: Recommended flow for delegating work using TeleClaude MCP tools.
+  description: Recommended flow for delegating work using TeleClaude CLI/API commands.
   type: procedure
   scope: project
   path: docs/project/procedure/ai-to-ai-operations.md

@@ -1,10 +1,5 @@
 {
   "mcpServers": {
-    "teleclaude": {
-      "type": "stdio",
-      "command": "{{INSTALL_DIR}}/.venv/bin/python",
-      "args": ["{{INSTALL_DIR}}/bin/mcp-wrapper.py"]
-    },
     "context7": {
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp@latest"]

@@ -27,7 +27,12 @@ from teleclaude.api.transcript_converter import (
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.db_models import Session
-from teleclaude.utils.transcript import _iter_claude_entries, _iter_codex_entries, _parse_timestamp
+from teleclaude.utils.transcript import (
+    _iter_claude_entries,
+    _iter_codex_entries,
+    _iter_gemini_entries,
+    _parse_timestamp,
+)
 
 logger = get_logger(__name__)
 
@@ -132,7 +137,8 @@ def _iter_entries_for_file(
         return list(_iter_claude_entries(p))
     if agent_name == AgentName.CODEX:
         return list(_iter_codex_entries(p))
-    # Gemini uses JSON, not JSONL — skip for live tailing
+    if agent_name == AgentName.GEMINI:
+        return list(_iter_gemini_entries(p))
     return list(_iter_claude_entries(p))
 
 

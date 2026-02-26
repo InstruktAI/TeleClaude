@@ -22,6 +22,7 @@ TYPE_SUFFIX = {
 
 # API socket configuration
 API_SOCKET_PATH = "/tmp/teleclaude-api.sock"
+MCP_SOCKET_PATH = "/tmp/teleclaude.sock"
 
 # Internal configuration (not user-configurable)
 DIRECTORY_CHECK_INTERVAL = 5  # Seconds between directory change checks
@@ -358,9 +359,30 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "restricted": "--full-auto --search",
         },
         "model_flags": {
-            "fast": "-m gpt-5.3-codex --config model_reasoning_effort='medium'",
-            "med": "-m gpt-5.3-codex --config model_reasoning_effort='high'",
-            "slow": "-m gpt-5.3-codex --config model_reasoning_effort='xhigh'",
+            "fast": (
+                "-m gpt-5.3-codex"
+                " --config model_reasoning_effort='medium'"
+                " --config model_reasoning_summary='detailed'"
+                " --config model_supports_reasoning_summaries=true"
+                " --config show_raw_agent_reasoning=true"
+                " --config hide_agent_reasoning=false"
+            ),
+            "med": (
+                "-m gpt-5.3-codex"
+                " --config model_reasoning_effort='high'"
+                " --config model_reasoning_summary='detailed'"
+                " --config model_supports_reasoning_summaries=true"
+                " --config show_raw_agent_reasoning=true"
+                " --config hide_agent_reasoning=false"
+            ),
+            "slow": (
+                "-m gpt-5.3-codex"
+                " --config model_reasoning_effort='xhigh'"
+                " --config model_reasoning_summary='detailed'"
+                " --config model_supports_reasoning_summaries=true"
+                " --config show_raw_agent_reasoning=true"
+                " --config hide_agent_reasoning=false"
+            ),
         },
         "exec_subcommand": "exec",
         "interactive_flag": "",

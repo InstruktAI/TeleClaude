@@ -62,7 +62,7 @@ alongside every incompatible change.
 
 ### What this replaces
 
-The current `teleclaude__deploy` MCP tool / `telec deploy` command which
+The current `telec deploy` MCP tool / `telec deploy` command which
 just does `git pull + restart` via Redis transport to all connected computers.
 Both the command and MCP tool are removed when this ships.
 

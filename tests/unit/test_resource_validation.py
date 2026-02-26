@@ -245,6 +245,24 @@ class TestValidateJobsConfig:
         errors = validate_jobs_config(tmp_path)
         assert errors == []
 
+    def test_script_job_with_when_at_passes_without_schedule(self, tmp_path: Path) -> None:
+        jobs_dir = tmp_path / "jobs"
+        jobs_dir.mkdir(parents=True)
+        (jobs_dir / "sample.py").write_text("JOB = object()\n")
+        config = tmp_path / "teleclaude.yml"
+        config.write_text("jobs:\n  sample:\n    when:\n      at: '06:00'\n")
+        errors = validate_jobs_config(tmp_path)
+        assert errors == []
+
+    def test_agent_job_with_when_at_passes_without_schedule(self, tmp_path: Path) -> None:
+        specs_dir = tmp_path / "docs" / "project" / "spec" / "jobs"
+        specs_dir.mkdir(parents=True)
+        (specs_dir / "sample-job.md").write_text("# Sample\n")
+        config = tmp_path / "teleclaude.yml"
+        config.write_text("jobs:\n  sample:\n    when:\n      at: '06:00'\n    type: agent\n    job: sample-job\n")
+        errors = validate_jobs_config(tmp_path)
+        assert errors == []
+
     def test_nonexistent_ref_raises(self, tmp_path: Path) -> None:
         import frontmatter as fm
 

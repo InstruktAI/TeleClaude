@@ -33,7 +33,7 @@ The platform operates on two planes:
 - Customer messages via adapters (Discord forum threads, Telegram, WhatsApp, web)
 - Identity from person config (`~/.teleclaude/people/{name}/teleclaude.yml`) or platform-specific defaults
 - Operator brain (`AGENTS.master.md` in the help desk project) defining persona, interests, and idle routines
-- Role-filtered doc snippets via `get_context` (audience-tagged frontmatter)
+- Role-filtered doc snippets via `telec docs index` + `telec docs get` (audience-tagged frontmatter)
 - Organization-global documentation (`~/.teleclaude/docs/organization/`)
 - Admin messages via Discord relay channels (during escalation)
 
@@ -88,7 +88,7 @@ The `docs/project/` directory holds help-desk-specific documentation — escalat
 The `AGENTS.master.md` compiles into `AGENTS.md` (same as all agent artifacts) and provides:
 
 - Operator persona: help desk operator, not generic assistant
-- Awareness of platform capabilities via `get_context` (role-filtered)
+- Awareness of platform capabilities via `telec docs index` + `telec docs get` (role-filtered)
 - Idle-time routines: inbox processing, log extraction, cleanup
 - Observer interests: what to extract for personal vs. business memory
 - Escalation awareness: when and how to escalate, tool usage
@@ -210,7 +210,7 @@ The `get_excluded_tools()` function gains a branch: `if human_role == "customer"
 
 ### Escalation Tool
 
-A TeleClaude tool (`teleclaude__escalate`) that customer-facing agents call when they need admin assistance. The tool is registered globally in the daemon but role-gated: added to `MEMBER_EXCLUDED_TOOLS`, `WORKER_EXCLUDED_TOOLS`, and `UNAUTHORIZED_EXCLUDED_TOOLS` so only sessions with `human_role: "customer"` see it.
+A TeleClaude tool (`telec sessions escalate`) that customer-facing agents call when they need admin assistance. The tool is registered globally in the daemon but role-gated: added to `MEMBER_EXCLUDED_TOOLS`, `WORKER_EXCLUDED_TOOLS`, and `UNAUTHORIZED_EXCLUDED_TOOLS` so only sessions with `human_role: "customer"` see it.
 
 **Parameters:**
 
@@ -268,7 +268,7 @@ sequenceDiagram
 
     rect rgb(245,230,230)
         Note over AI,Admin: Act 2 — Admin takes over via relay
-        AI->>Daemon: teleclaude__escalate(customer_name, reason)
+        AI->>Daemon: telec sessions escalate(customer_name, reason)
         Daemon->>Discord: Create thread in escalation forum
         Daemon->>Admin: Notification: "Alice needs help"
         Daemon->>Daemon: Set relay_status=active on session
@@ -362,13 +362,13 @@ The operator brain (`AGENTS.master.md`) defines the agent's customer-facing beha
 
 - **Greeting and rapport**: Warm, professional opening that acknowledges returning customers by name (via injected personal memories)
 - **Active listening**: Confirm understanding before acting, summarize customer intent
-- **Knowledge navigation**: Use `get_context` proactively to find answers in organization docs, product specs, and procedures
+- **Knowledge navigation**: Use `telec docs index` + `telec docs get` proactively to find answers in organization docs, product specs, and procedures
 - **Transparency**: Clearly communicate what the AI can and cannot do; never fabricate answers
 - **Escalation judgment**: Recognize when confidence is low, when the customer explicitly requests a human, or when the topic requires authority (billing, security, legal)
 - **Conversation closure**: Summarize what was accomplished, confirm next steps, invite further questions
 - **Tone adaptation**: Match the customer's communication style (formal/casual) as detected via personal memories
 
-The agent starts each session with pre-loaded indexes of its baseline documentation, so it knows immediately what to retrieve and where when the customer asks anything. The `get_context` phase-1 index (snippet IDs and descriptions) is included in the session's baseline context.
+The agent starts each session with pre-loaded indexes of its baseline documentation, so it knows immediately what to retrieve and where when the customer asks anything. The `telec docs index` output (snippet IDs and descriptions) is included in the session's baseline context.
 
 ### Identity-Scoped Memory
 
@@ -445,7 +445,7 @@ sequenceDiagram
     Note over Daemon: Do NOT update last_message_sent
 ```
 
-**Session resumption.** When a customer returns via the same adapter channel (e.g., same Discord thread), the adapter routes to the existing session. The agent has: (a) compacted conversation history, (b) injected personal memories from the most recent extraction, (c) access to `get_context` for platform and org docs.
+**Session resumption.** When a customer returns via the same adapter channel (e.g., same Discord thread), the adapter routes to the existing session. The agent has: (a) compacted conversation history, (b) injected personal memories from the most recent extraction, (c) access to `telec docs index` + `telec docs get` for platform and org docs.
 
 **Bookkeeping.** A `last_memory_extraction_at` timestamp on the session record tracks the high-water mark. The extraction job processes only new conversation since this marker. This makes both idle-triggered and cron-triggered extraction idempotent.
 
@@ -494,7 +494,7 @@ flowchart LR
 
 **Channel naming:** `channel:{project}:{topic}` — e.g., `channel:help-desk:actions`, `channel:engineering:bug-reports`.
 
-**Publishing:** Agents publish via a TeleClaude tool (`teleclaude__publish`) or HTTP API (`POST /api/channels/{name}/publish`). The agent doesn't need to know who subscribes — it folds the mail, puts it in the pipe, and moves on.
+**Publishing:** Agents publish via a TeleClaude tool (`telec channels publish`) or HTTP API (`POST /api/channels/{name}/publish`). The agent doesn't need to know who subscribes — it folds the mail, puts it in the pipe, and moves on.
 
 **Subscribing:** Configured per-project in `teleclaude.yml`. Each subscription maps a channel pattern to an agent command that processes incoming messages:
 
@@ -542,15 +542,15 @@ channels:
 **Tool surface:**
 
 ```
-teleclaude__publish(channel, payload)    # Publish a message to a channel
-teleclaude__channels_list()              # List available channels and their subscribers
+telec channels publish(channel, payload)    # Publish a message to a channel
+telec channels list()              # List available channels and their subscribers
 ```
 
 The publish tool is available to all agents. Channel creation is implicit — publishing to a non-existent channel creates it.
 
 ### Doc Snippet Audience Tagging
 
-Doc snippets gain an `audience` field in frontmatter to control visibility via `get_context`:
+Doc snippets gain an `audience` field in frontmatter to control visibility via `telec docs index` + `telec docs get`:
 
 ```yaml
 ---
@@ -569,7 +569,7 @@ audience: [admin] # default — internal only
 | `help-desk` | Help desk operators (curated subset for customer-facing context) |
 | `public`    | Anyone, including customers directly (future)                    |
 
-The `get_context` tool filters by the calling session's resolved role. The help desk operator, running with operator-level access, sees `admin` + `help-desk` tagged docs. The docs in `help-desk/docs/` are automatically tagged `help-desk`.
+The docs retrieval pipeline behind `telec docs index` + `telec docs get` filters by the calling session's resolved role. The help desk operator, running with operator-level access, sees `admin` + `help-desk` tagged docs. The docs in `help-desk/docs/` are automatically tagged `help-desk`.
 
 **Migration:** All existing doc snippets default to `audience: [admin]`. No change in behavior until explicitly whitelisted.
 
@@ -710,7 +710,7 @@ The operator brain defines the agent's persona, capabilities, and autonomous rou
 
 1. **Identity**: Help desk operator for the organization. Not a generic assistant — an autonomous operator that handles customer interactions with authority.
 
-2. **Knowledge access**: Uses `get_context` for platform documentation (role-filtered). Organization docs flow in via the `organization` domain. Project docs provide help-desk-specific procedures. The agent starts with pre-loaded baseline indexes so it knows immediately what to retrieve.
+2. **Knowledge access**: Uses `telec docs index` + `telec docs get` for platform documentation (role-filtered). Organization docs flow in via the `organization` domain. Project docs provide help-desk-specific procedures. The agent starts with pre-loaded baseline indexes so it knows immediately what to retrieve.
 
 3. **Memory awareness**: Understands that personal memories (identity-scoped) provide customer continuity. Uses the memory API to store observations during interactions.
 
@@ -737,11 +737,11 @@ flowchart TD
     B[Discord identity fix<br/>Person config lookup] --> G[Discord help desk flow<br/>End-to-end customer handling]
     TG[Telegram user_id fix<br/>Persist in adapter metadata] --> E
 
-    C[Frontmatter audience tagging<br/>Role-filtered get_context] --> H[Operator brain<br/>AGENTS.master.md with get_context]
+    C[Frontmatter audience tagging<br/>Role-filtered telec docs index/get] --> H[Operator brain<br/>AGENTS.master.md with telec docs index/get]
     ORG --> H
 
     ROLE[Customer role in tool access<br/>CUSTOMER_EXCLUDED_TOOLS tier] --> G
-    ESC[Escalation tool<br/>teleclaude__escalate] --> RELAY
+    ESC[Escalation tool<br/>telec sessions escalate] --> RELAY
     ROLE --> ESC
 
     RELAY[Admin relay channel<br/>Discord thread + message bridge] --> G
@@ -796,7 +796,7 @@ flowchart TD
 
 14. **`@agent` collects incrementally**: Each `@agent` tag collects messages since the previous `@agent` (or since relay activation). Multiple escalation/handback cycles within one session each get a clean context window.
 
-15. **Escalation tool is customer-scoped**: `teleclaude__escalate` is excluded from all role tiers except customer. Only customer-facing sessions see and can call it.
+15. **Escalation tool is customer-scoped**: `telec sessions escalate` is excluded from all role tiers except customer. Only customer-facing sessions see and can call it.
 
 ## Primary Flows
 
@@ -839,7 +839,7 @@ sequenceDiagram
 
     Customer->>AI: "I need to dispute this charge"
     AI->>AI: Low confidence on billing dispute
-    AI->>Daemon: teleclaude__escalate(customer_name="Alice", reason="Billing dispute")
+    AI->>Daemon: telec sessions escalate(customer_name="Alice", reason="Billing dispute")
     Daemon->>Discord: Create thread "Alice" in escalation forum
     Daemon->>Discord: Post: "Billing dispute — Alice needs help with a charge"
     Daemon->>Admin: Notification via outbox
@@ -884,7 +884,7 @@ sequenceDiagram
     Note over Daemon: last_message_sent NOT updated
 
     Note over Agent: Customer returns later...
-    Agent->>Agent: Has compacted history + injected memories + get_context
+    Agent->>Agent: Has compacted history + injected memories + telec docs index/get
 ```
 
 ### Help Desk Bootstrap

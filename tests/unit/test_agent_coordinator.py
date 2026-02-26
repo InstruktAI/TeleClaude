@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
+from typing import Mapping
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -9,6 +10,7 @@ from teleclaude.core.agent_coordinator import (
     AgentCoordinator,
     _is_checkpoint_prompt,
     _is_codex_synthetic_prompt_event,
+    _resolve_hook_actor_name,
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.core.events import (
@@ -22,6 +24,41 @@ from teleclaude.core.events import (
 from teleclaude.core.models import Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import ProcessMessageCommand
+
+
+def test_resolve_hook_actor_name_prefers_session_metadata_name():
+    session = Session(
+        session_id="sess-meta-name",
+        computer_name="local",
+        tmux_session_name="tmux-meta-name",
+        title="Test Session",
+        session_metadata={"actor_name": "Alice"},
+    )
+
+    assert _resolve_hook_actor_name(session) == "Alice"
+
+
+def test_resolve_hook_actor_name_uses_identity_resolver_for_telegram(monkeypatch):
+    class _Resolver:
+        def resolve(self, origin: str, channel_metadata: Mapping[str, object]):  # type: ignore[override]
+            if origin != InputOrigin.TELEGRAM.value:
+                return None
+            if str(channel_metadata.get("user_id")) != "12345":
+                return None
+            return type("Identity", (), {"person_name": "Morriz"})()
+
+    monkeypatch.setattr("teleclaude.core.agent_coordinator.get_identity_resolver", lambda: _Resolver())
+
+    session = Session(
+        session_id="sess-meta-id",
+        computer_name="local",
+        tmux_session_name="tmux-meta-id",
+        title="Test Session",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+    )
+    session.get_metadata().get_ui().get_telegram().user_id = 12345
+
+    assert _resolve_hook_actor_name(session) == "Morriz"
 
 
 @pytest.fixture(autouse=True)
@@ -43,6 +80,7 @@ def mock_client():
     client.send_message = AsyncMock()
     client.send_threaded_output = AsyncMock(return_value="msg-123")
     client.break_threaded_turn = AsyncMock()
+    client.broadcast_user_input = AsyncMock()
     return client
 
 
@@ -296,11 +334,43 @@ async def test_user_prompt_submit_broadcasts_hook_input_for_non_headless_session
 
     mock_client.broadcast_user_input.assert_awaited_once()
     broadcast_call = mock_client.broadcast_user_input.await_args
-    assert broadcast_call.args == (session, "please continue", InputOrigin.HOOK.value)
+    assert broadcast_call.args == (session, "please continue", InputOrigin.TERMINAL.value)
     assert isinstance(broadcast_call.kwargs.get("actor_id"), str)
     assert broadcast_call.kwargs["actor_id"].endswith(":sess-1")
     assert isinstance(broadcast_call.kwargs.get("actor_name"), str)
     assert broadcast_call.kwargs["actor_name"]
+
+
+@pytest.mark.asyncio
+async def test_user_prompt_submit_skips_duplicate_reflection_for_recent_routed_input(coordinator, mock_client):
+    session = Session(
+        session_id="sess-dup-1",
+        computer_name="macbook",
+        tmux_session_name="tmux-dup-1",
+        title="Active test",
+        active_agent="claude",
+        lifecycle_status="active",
+        last_input_origin=InputOrigin.API.value,
+        last_message_sent="please continue",
+        last_message_sent_at=datetime.now(timezone.utc) - timedelta(seconds=5),
+    )
+    payload = UserPromptSubmitPayload(prompt="please continue", session_id="sess-dup-1")
+    context = AgentEventContext(
+        event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+        session_id="sess-dup-1",
+        data=payload,
+    )
+
+    mock_client.broadcast_user_input = AsyncMock()
+    with patch("teleclaude.core.agent_coordinator.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.set_notification_flag = AsyncMock()
+        mock_db.update_session = AsyncMock()
+        await coordinator.handle_user_prompt_submit(context)
+
+    mock_client.broadcast_user_input.assert_not_awaited()
+    for call in mock_db.update_session.await_args_list:
+        assert "last_message_sent" not in call.kwargs
 
 
 @pytest.mark.asyncio
@@ -343,7 +413,7 @@ async def test_user_prompt_submit_broadcasts_hook_input_for_headless_sessions(co
     assert isinstance(command, ProcessMessageCommand)
     assert command.session_id == "sess-2"
     assert command.text == "please continue"
-    assert command.origin == InputOrigin.HOOK.value
+    assert command.origin == InputOrigin.TERMINAL.value
     assert isinstance(command.actor_id, str)
     assert command.actor_id.endswith(":sess-2")
     assert isinstance(command.actor_name, str)
@@ -567,6 +637,56 @@ async def test_handle_agent_stop_codex_skips_backfill_when_submit_already_record
         emitted_types = [call.args[1] for call in mock_emit.call_args_list]
         assert AgentHookEvents.USER_PROMPT_SUBMIT not in emitted_types
         assert AgentHookEvents.AGENT_STOP in emitted_types
+        coordinator.client.broadcast_user_input.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_handle_agent_stop_codex_backfill_reflects_user_input_to_adapters(coordinator):
+    session_id = "sess-backfill"
+    now = datetime(2026, 2, 13, 19, 31, 27, tzinfo=timezone.utc)
+    payload = AgentStopPayload(
+        session_id="native-1",
+        transcript_path="/tmp/transcript.jsonl",
+        source_computer="local",
+        raw={"agent_name": "codex"},
+    )
+    context = AgentEventContext(event_type=AgentHookEvents.AGENT_STOP, session_id=session_id, data=payload)
+    session = Session(
+        session_id=session_id,
+        computer_name="local",
+        tmux_session_name="tmux-1",
+        title="Test",
+        active_agent="codex",
+        native_log_file="/tmp/transcript.jsonl",
+        lifecycle_status="active",
+        last_message_sent="older prompt",
+        last_message_sent_at=now - timedelta(minutes=5),
+        last_output_at=now - timedelta(seconds=5),
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db") as mock_db,
+        patch.object(coordinator, "_extract_user_input_for_codex", new=AsyncMock(return_value=("new prompt", now))),
+        patch.object(coordinator, "_extract_agent_output", new=AsyncMock(return_value=None)),
+        patch.object(coordinator, "_maybe_send_incremental_output", new=AsyncMock()),
+        patch.object(coordinator, "_maybe_send_headless_snapshot", new=AsyncMock()),
+        patch.object(coordinator, "_notify_session_listener", new=AsyncMock()),
+        patch.object(coordinator, "_forward_stop_to_initiator", new=AsyncMock()),
+        patch.object(coordinator, "_maybe_inject_checkpoint", new=AsyncMock()),
+        patch.object(coordinator, "_emit_activity_event"),
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_session = AsyncMock()
+
+        await coordinator.handle_agent_stop(context)
+
+        coordinator.client.broadcast_user_input.assert_awaited_once()
+        broadcast_call = coordinator.client.broadcast_user_input.await_args
+        assert broadcast_call.args == (session, "new prompt", InputOrigin.TERMINAL.value)
+        assert isinstance(broadcast_call.kwargs.get("actor_name"), str)
+        assert broadcast_call.kwargs["actor_name"] == "operator"
+        assert isinstance(broadcast_call.kwargs.get("actor_id"), str)
+        assert broadcast_call.kwargs["actor_id"].endswith(f":{session_id}")
 
 
 @pytest.mark.asyncio

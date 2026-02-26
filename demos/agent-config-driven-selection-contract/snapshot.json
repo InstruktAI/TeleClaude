@@ -1,0 +1,19 @@
+{
+  "slug": "agent-config-driven-selection-contract",
+  "title": "Requirements \u2014 agent-config-driven-selection-contract",
+  "version": "0.1.0",
+  "delivered_date": "2026-02-26",
+  "merge_commit": "6d201c8e3869dda28c10cef4b3df81bfc4cc5f2f",
+  "metrics": {
+    "implementation_plan_checkboxes_total": 37,
+    "implementation_plan_checkboxes_completed": 37,
+    "demo_validation_blocks": 5
+  },
+  "five_acts": [
+    "Act I \u2014 Config Contract: demonstrate explicit agents policy and fail-closed validation.",
+    "Act II \u2014 Validation Failure Modes: show missing/invalid agent config returns actionable errors.",
+    "Act III \u2014 Dispatch Enforcement: verify API/command paths reject disabled agents before dispatch.",
+    "Act IV \u2014 Guidance Quality: confirm non-blank guidance output and explicit blocking feedback.",
+    "Act V \u2014 TUI Policy Fidelity: validate selectable agents derive from enabled+available policy state."
+  ]
+}

@@ -35,8 +35,8 @@ Run the next-work state machine and execute its instructions verbatim.
 
 ## Steps
 
-- Call `teleclaude__next_work` with the slug if provided.
-- Follow the orchestration loop:
+- Call `telec todo work` with the slug if provided.
+  pfix- Follow the orchestration loop:
   1. Call the state machine.
   2. Dispatch the worker exactly as instructed.
   3. Start the timer and stop.

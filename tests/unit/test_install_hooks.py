@@ -256,6 +256,9 @@ def test_configure_codex_preserves_existing_config(tmp_path, monkeypatch):
     # Override settings applied (settings/codex.json wins over existing values)
     assert data["sandbox_mode"] == "danger-full-access"
     assert data["approval_policy"] == "never"
+    assert data["model_reasoning_summary"] == "detailed"
+    assert data["show_raw_agent_reasoning"] is True
+    assert data["hide_agent_reasoning"] is False
     # New notify hook added
     assert "notify" in data
     assert data["notify"][0].endswith("/teleclaude/hooks/receiver.py")

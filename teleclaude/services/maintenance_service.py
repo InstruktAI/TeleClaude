@@ -11,7 +11,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
 from teleclaude.core.adapter_client import AdapterClient
-from teleclaude.core.agents import get_agent_command
+from teleclaude.core.agents import AgentName, get_agent_command
+from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.models import Session
 from teleclaude.core.output_poller import OutputPoller
@@ -34,10 +35,12 @@ class MaintenanceService:
         client: AdapterClient,
         output_poller: OutputPoller,
         poller_watch_interval_s: float,
+        codex_transcript_watch_interval_s: float = 1.0,
     ) -> None:
         self._client = client
         self._output_poller = output_poller
         self._poller_watch_interval_s = poller_watch_interval_s
+        self._codex_transcript_watch_interval_s = codex_transcript_watch_interval_s
 
     async def periodic_cleanup(self) -> None:
         """Clean up inactive sessions and orphans (runs forever)."""
@@ -71,6 +74,55 @@ class MaintenanceService:
             except Exception as exc:
                 logger.error("Error in poller watch loop: %s", exc, exc_info=True)
             await asyncio.sleep(self._poller_watch_interval_s)
+
+    async def codex_transcript_watch_loop(self) -> None:
+        """Bind Codex sessions to transcript files when hooks lack transcript_path."""
+        while True:
+            try:
+                await self._codex_transcript_watch_iteration()
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.error("Error in codex transcript watch loop: %s", exc, exc_info=True)
+            await asyncio.sleep(self._codex_transcript_watch_interval_s)
+
+    async def _codex_transcript_watch_iteration(self) -> None:
+        sessions = await db.list_sessions(include_headless=True)
+        if not sessions:
+            return
+
+        bound = 0
+        for session in sessions:
+            active_agent = (session.active_agent or "").strip().lower()
+            if active_agent != AgentName.CODEX.value:
+                continue
+
+            native_session_id = (session.native_session_id or "").strip()
+            if not native_session_id:
+                continue
+
+            current_log_file = (session.native_log_file or "").strip()
+            if current_log_file and Path(current_log_file).expanduser().exists():
+                continue
+
+            discovered_path = discover_codex_transcript_path(native_session_id)
+            if not discovered_path:
+                continue
+            if current_log_file == discovered_path:
+                continue
+
+            await db.update_session(session.session_id, native_log_file=discovered_path)
+            bound += 1
+            logger.info(
+                "Codex transcript watcher bound transcript",
+                session_id=session.session_id[:8],
+                native_session_id=native_session_id[:8],
+                previous_path=current_log_file,
+                path=discovered_path,
+            )
+
+        if bound:
+            logger.info("Codex transcript watcher updated %d session(s)", bound)
 
     async def _poller_watch_iteration(self) -> None:
         sessions = await db.get_active_sessions()

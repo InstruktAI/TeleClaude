@@ -107,7 +107,6 @@ def assemble_roadmap(
                 build_status = state.get("build") if isinstance(state.get("build"), str) else "pending"
                 review_status = state.get("review") if isinstance(state.get("review"), str) else "pending"
                 dor = state.get("dor")
-                dor_score = 0
                 if isinstance(dor, dict):
                     raw_score = dor.get("score")
                     if isinstance(raw_score, int):
@@ -125,7 +124,7 @@ def assemble_roadmap(
                 # - build == pending + dor_score < 8 -> pending
                 if build_status != "pending":
                     phase_status = "in_progress"
-                elif dor_score >= 8:
+                elif isinstance(dor_score, int) and dor_score >= 8:
                     phase_status = "ready"
                 else:
                     phase_status = "pending"

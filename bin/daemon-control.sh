@@ -20,6 +20,8 @@ cd "$PROJECT_ROOT"
 PID_FILE="$PROJECT_ROOT/teleclaude.pid"
 LOG_FILE="/var/log/instrukt-ai/teleclaude/teleclaude.log"
 API_SOCKET="/tmp/teleclaude-api.sock"
+# Startup wait window in seconds (number of 1s readiness probes)
+STARTUP_WAIT_SECONDS="${TELECLAUDE_DAEMON_STARTUP_WAIT_S:-15}"
 
 # Platform-specific config
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -54,10 +56,10 @@ log_error() {
 }
 
 # Wait for daemon to come up with retries
-# Args: max_attempts (default 10), old_pid (optional - wait for this PID to die first)
+# Args: max_attempts (default STARTUP_WAIT_SECONDS), old_pid (optional - wait for this PID to die first)
 # Returns 0 if daemon started with new PID, 1 if timeout
 wait_for_daemon() {
-    local max_attempts=${1:-10}
+    local max_attempts=${1:-$STARTUP_WAIT_SECONDS}
     local old_pid=${2:-""}
     local attempt=1
 
@@ -151,8 +153,8 @@ start_daemon() {
         sudo systemctl start "$SERVICE_LABEL"
     fi
 
-    # Wait for daemon to come up (up to 10 seconds)
-    if wait_for_daemon 10; then
+    # Wait for daemon to come up (up to STARTUP_WAIT_SECONDS)
+    if wait_for_daemon "$STARTUP_WAIT_SECONDS"; then
         PID=$(cat "$PID_FILE")
         log_info "Daemon started successfully (PID: $PID)"
         log_info "Service manager will auto-restart if killed"
@@ -161,7 +163,7 @@ start_daemon() {
 
     # If not running after retries, check why
     if is_service_loaded; then
-        log_error "Service loaded but daemon not running after 10 seconds"
+        log_error "Service loaded but daemon not running after ${STARTUP_WAIT_SECONDS} seconds"
         if [ "$PLATFORM" = "macos" ]; then
             log_error "Check status: launchctl list | grep teleclaude"
         else
@@ -276,20 +278,25 @@ PY
     check_api_endpoint() {
         local socket_path="$1"
         local endpoint="$2"
+        local accepted_codes="${3:-200}"
         if command -v curl >/dev/null 2>&1; then
             local status
             status=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 1 --max-time 1 --unix-socket "$socket_path" "http://localhost${endpoint}") || status=""
-            if [ "$status" = "200" ]; then
-                echo "ok"
-            else
-                echo "fail"
-            fi
+            case ",$accepted_codes," in
+                *",$status,"*)
+                    echo "ok"
+                    ;;
+                *)
+                    echo "fail"
+                    ;;
+            esac
             return 0
         fi
         python3 - <<PY 2>/dev/null
-import socket, sys
+import socket
 path = "$socket_path"
 endpoint = "$endpoint"
+accepted = {code.strip() for code in "$accepted_codes".split(",") if code.strip()}
 try:
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.settimeout(1.0)
@@ -303,13 +310,15 @@ try:
             break
         data += chunk
     s.close()
-    first = data.split(b\"\\r\\n\", 1)[0].decode(\"utf-8\", \"ignore\")
-    if \" 200 \" in first or first.endswith(\" 200\"):
-        print(\"ok\")
+    first = data.split(b"\\r\\n", 1)[0].decode("utf-8", "ignore")
+    parts = first.split()
+    status_code = parts[1] if len(parts) >= 2 else ""
+    if status_code in accepted:
+        print("ok")
     else:
-        print(\"fail\")
+        print("fail")
 except Exception:
-    print(\"fail\")
+    print("fail")
 PY
     }
 
@@ -325,7 +334,7 @@ PY
                 log_warn "API /health: FAIL"
                 overall_ok=1
             fi
-            API_READ=$(check_api_endpoint "$API_SOCKET" "/computers" || true)
+            API_READ=$(check_api_endpoint "$API_SOCKET" "/computers" "200,401,403" || true)
             if [ "$API_READ" = "ok" ]; then
                 log_info "API read (/computers): OK"
             else
@@ -383,8 +392,8 @@ restart_daemon() {
         sudo systemctl restart "$SERVICE_LABEL"
     fi
 
-    # Wait for daemon to come up (up to 10 seconds)
-    if wait_for_daemon 10 "$OLD_PID"; then
+    # Wait for daemon to come up (up to STARTUP_WAIT_SECONDS)
+    if wait_for_daemon "$STARTUP_WAIT_SECONDS" "$OLD_PID"; then
         if [ "$PLATFORM" = "macos" ]; then
             PID=$(launchctl print "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
         fi
@@ -394,8 +403,13 @@ restart_daemon() {
         log_info "Daemon restarted successfully (PID: ${PID:-unknown})"
         EXIT_CODE=0
     else
-        log_error "Restart failed. Try: make kill to hard kill the daemon."
-        EXIT_CODE=1
+        log_warn "Restart health check failed after kickstart; falling back to stop/start."
+        if stop_daemon && start_daemon; then
+            EXIT_CODE=0
+        else
+            log_error "Restart failed. Try: make kill to hard kill the daemon."
+            EXIT_CODE=1
+        fi
     fi
 
     # Always run a status check after restart
@@ -434,8 +448,8 @@ kill_daemon() {
         kill "$OLD_PID" 2>/dev/null || true
     fi
 
-    # Wait for service manager to auto-restart (up to 10 seconds)
-    if wait_for_daemon 10 "$OLD_PID"; then
+    # Wait for service manager to auto-restart (up to STARTUP_WAIT_SECONDS)
+    if wait_for_daemon "$STARTUP_WAIT_SECONDS" "$OLD_PID"; then
         log_info "Daemon auto-restarted by service manager"
         return 0
     fi

@@ -150,7 +150,7 @@ class DiscordAdapterMetadata:
     thread_id: Optional[int] = None
     all_sessions_thread_id: Optional[int] = None
     output_message_id: Optional[str] = None
-    thread_topper_message_id: Optional[str] = None
+    thread_topper_message_id: Optional[str] = None  # Starter metadata message in thread
     status_message_id: Optional[str] = None  # Editable status message per thread (R3)
     badge_sent: bool = False
     char_offset: int = 0
@@ -313,6 +313,8 @@ class SessionAdapterMetadata:
                 user_id = str(raw_user_id) if raw_user_id is not None else None
                 raw_output_msg = discord_raw.get("output_message_id")
                 discord_output_message_id = str(raw_output_msg) if raw_output_msg is not None else None
+                raw_topper_msg = discord_raw.get("thread_topper_message_id")
+                discord_topper_message_id = str(raw_topper_msg) if raw_topper_msg is not None else None
                 raw_status_msg = discord_raw.get("status_message_id")
                 discord_status_message_id = str(raw_status_msg) if raw_status_msg is not None else None
                 discord_metadata = DiscordAdapterMetadata(
@@ -322,6 +324,7 @@ class SessionAdapterMetadata:
                     thread_id=_get_int_or_none("thread_id"),
                     all_sessions_thread_id=_get_int_or_none("all_sessions_thread_id"),
                     output_message_id=discord_output_message_id,
+                    thread_topper_message_id=discord_topper_message_id,
                     status_message_id=discord_status_message_id,
                     badge_sent=bool(discord_raw.get("badge_sent", False)),
                     char_offset=int(discord_raw.get("char_offset", 0)),

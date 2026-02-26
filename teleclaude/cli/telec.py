@@ -8,6 +8,7 @@ import time as _t
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 _BOOT = _t.monotonic()
 
@@ -35,8 +36,6 @@ from teleclaude.cli.tool_commands import (  # noqa: E402
     handle_todo_set_deps,
     handle_todo_work,
 )
-from teleclaude.config import config  # noqa: E402
-from teleclaude.config.loader import load_global_config  # noqa: E402
 from teleclaude.constants import ENV_ENABLE, MAIN_MODULE  # noqa: E402
 from teleclaude.logging_config import setup_logging  # noqa: E402
 from teleclaude.project_setup import init_project  # noqa: E402
@@ -45,6 +44,22 @@ from teleclaude.todo_scaffold import create_bug_skeleton, create_todo_skeleton  
 TMUX_ENV_KEY = "TMUX"
 TUI_ENV_KEY = "TELEC_TUI_SESSION"
 TUI_SESSION_NAME = "tc_tui"
+
+
+class _ConfigProxy:
+    """Lazily resolve runtime config on first attribute access.
+
+    This keeps low-dependency commands (for example `telec todo demo validate`)
+    usable even when runtime config loading would fail.
+    """
+
+    def __getattr__(self, name: str) -> Any:
+        from teleclaude.config import config as runtime_config
+
+        return getattr(runtime_config, name)
+
+
+config = _ConfigProxy()
 
 
 class TelecCommand(str, Enum):
@@ -131,7 +146,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Start a new agent session",
                 flags=[
                     _H,
-                    Flag("--computer", desc="Target computer (default: local)"),
+                    Flag("--computer", desc="Target computer (optional; defaults to local)"),
                     Flag("--project", desc="Project directory path"),
                     Flag("--agent", desc="Agent: claude, gemini, codex"),
                     Flag("--mode", desc="Thinking mode: fast, med, slow"),
@@ -164,7 +179,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--args", desc="Command arguments"),
                     Flag("--agent", desc="Agent: claude, gemini, codex"),
                     Flag("--mode", desc="Thinking mode: fast, med, slow"),
-                    Flag("--computer", desc="Target computer (default: local)"),
+                    Flag("--computer", desc="Target computer (optional; defaults to local)"),
                     Flag("--subfolder", desc="Subdirectory within the project"),
                 ],
                 notes=[
@@ -181,7 +196,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "end": CommandDef(
                 desc="End (terminate) a session",
                 args="<session_id>",
-                flags=[_H, Flag("--session", "-s", "Session ID"), Flag("--computer", desc="Target computer")],
+                flags=[
+                    _H,
+                    Flag("--session", "-s", "Session ID"),
+                    Flag("--computer", desc="Target computer (optional; defaults to local)"),
+                ],
             ),
             "unsubscribe": CommandDef(
                 desc="Stop receiving notifications from a session",
@@ -293,15 +312,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
     ),
     "docs": CommandDef(
         desc="Query documentation snippets",
-        args="[IDS...]",
-        flags=[
-            _H,
-            Flag("--baseline-only", "-b", "Show only baseline snippets"),
-            Flag("--third-party", "-t", "Include third-party docs"),
-            Flag("--areas", "-a", "Filter by taxonomy type"),
-            Flag("--domains", "-d", "Filter by domain"),
-            _PROJECT_ROOT,
-        ],
         subcommands={
             "index": CommandDef(
                 desc="List snippet IDs and metadata (phase 1)",
@@ -320,10 +330,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[_H, _PROJECT_ROOT],
             ),
         },
-        standalone=True,
         notes=[
-            "Backward compatible: `telec docs [IDS...]` still works (no subcommand required).",
-            "Example legacy: telec docs software-development/policy/testing",
             "Two-phase flow: use 'telec docs index' to discover IDs, then 'telec docs get <id...>' to fetch content.",
             "Example phase 1: telec docs index --areas policy,procedure --domains software-development",
             "Example phase 2: telec docs get software-development/policy/testing project/spec/command-surface",
@@ -376,7 +383,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "work": CommandDef(
                 desc="Run the Phase B (work) state machine",
                 args="[<slug>]",
-                flags=[_H, Flag("--cwd", desc="Project root directory (required)")],
+                flags=[_H],
             ),
             "maintain": CommandDef(
                 desc="Run the Phase D (maintain) state machine",
@@ -979,11 +986,6 @@ def _complete_subcmd(cmd_name: str, rest: list[str], current: str, is_partial: b
     """Complete commands with subcommands (todo, roadmap, config, etc.)."""
     cmd_def = CLI_SURFACE[cmd_name]
 
-    # Standalone+subcommand commands (e.g., docs) can complete flags/args directly.
-    if cmd_def.standalone and rest and (rest[0].startswith("-") or rest[0] not in cmd_def.subcommands):
-        _complete_flags(cmd_def.flag_tuples, rest, current, is_partial, cmd_def.args)
-        return
-
     # Subcommand completion: no args yet, or partially typing subcommand name
     if not rest or (len(rest) == 1 and is_partial):
         for subcommand, desc in cmd_def.subcmd_tuples:
@@ -1423,76 +1425,9 @@ def _handle_docs(args: list[str]) -> None:
     elif subcommand == "get":
         _handle_docs_get(args[1:])
     else:
-        # Backward-compatible mode: `telec docs [IDS...] [flags]`.
-        from teleclaude.context_selector import build_context_output
-
-        project_root = Path.cwd()
-        baseline_only = False
-        third_party = False
-        areas: list[str] = []
-        domains: list[str] | None = None
-        snippet_ids: list[str] = []
-
-        i = 0
-        while i < len(args):
-            arg = args[i]
-            if arg in ("--project-root", "-p") and i + 1 < len(args):
-                project_root = Path(args[i + 1]).expanduser().resolve()
-                i += 2
-            elif arg in ("--project-root", "-p"):
-                print("Missing value for --project-root.")
-                print(_usage("docs"))
-                raise SystemExit(1)
-            elif arg in ("--baseline-only", "-b"):
-                baseline_only = True
-                i += 1
-            elif arg in ("--third-party", "-t"):
-                third_party = True
-                i += 1
-            elif arg in ("--areas", "-a") and i + 1 < len(args):
-                areas = [a.strip() for a in args[i + 1].split(",") if a.strip()]
-                i += 2
-            elif arg in ("--areas", "-a"):
-                print("Missing value for --areas.")
-                print(_usage("docs"))
-                raise SystemExit(1)
-            elif arg in ("--domains", "-d") and i + 1 < len(args):
-                domains = [d.strip() for d in args[i + 1].split(",") if d.strip()]
-                i += 2
-            elif arg in ("--domains", "-d"):
-                print("Missing value for --domains.")
-                print(_usage("docs"))
-                raise SystemExit(1)
-            elif arg.startswith("-"):
-                print(f"Unknown option: {arg}")
-                print(_usage("docs"))
-                raise SystemExit(1)
-            else:
-                for part in arg.split(","):
-                    part = part.strip()
-                    if part:
-                        snippet_ids.append(part)
-                i += 1
-
-        if snippet_ids:
-            output = build_context_output(
-                areas=[],
-                project_root=project_root,
-                snippet_ids=snippet_ids,
-                baseline_only=False,
-                include_third_party=False,
-                domains=None,
-            )
-        else:
-            output = build_context_output(
-                areas=areas,
-                project_root=project_root,
-                snippet_ids=None,
-                baseline_only=baseline_only,
-                include_third_party=third_party,
-                domains=domains,
-            )
-        print(output)
+        print(f"Unknown docs subcommand: {subcommand}")
+        print(_usage("docs"))
+        raise SystemExit(1)
 
 
 def _handle_computers(args: list[str]) -> None:
@@ -2757,7 +2692,7 @@ def _handle_bugs_report(args: list[str]) -> None:
                 agent="claude",
                 thinking_mode="slow",
                 title=f"Bug fix: {slug}",
-                message=f"Run telec todo work {slug} --cwd . and follow output verbatim until done.",
+                message=f"Run telec todo work {slug} and follow output verbatim until done.",
             )
         finally:
             await api.close()
@@ -2774,7 +2709,7 @@ def _handle_bugs_report(args: list[str]) -> None:
         print("Bug scaffold, branch, and worktree created successfully.")
         print("Start orchestrator manually from worktree directory:")
         print(f"  cd {worktree_path}")
-        print(f"  telec claude 'Run telec todo work {slug} --cwd . and follow output verbatim until done.'")
+        print(f"  telec claude 'Run telec todo work {slug} and follow output verbatim until done.'")
 
 
 def _handle_bugs_list(args: list[str]) -> None:
@@ -2921,6 +2856,10 @@ def _role_for_email(email: str) -> str | None:
     if not normalized:
         return None
     try:
+        # Import lazily so CLI commands that do not require config can start
+        # even when runtime config is invalid or unavailable.
+        from teleclaude.config.loader import load_global_config
+
         global_cfg = load_global_config()
     except Exception:
         return None

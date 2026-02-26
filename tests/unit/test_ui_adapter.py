@@ -14,11 +14,13 @@ from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import Db
 from teleclaude.core.models import (
     CleanupTrigger,
+    DiscordAdapterMetadata,
     MessageMetadata,
     Session,
     SessionAdapterMetadata,
     TelegramAdapterMetadata,
 )
+from teleclaude.utils.markdown import _required_markdown_closers, scan_markdown_v2_state
 
 
 class MockUiAdapter(UiAdapter):
@@ -94,6 +96,24 @@ class MockUiAdapter(UiAdapter):
     def _build_metadata_for_thread(self) -> MessageMetadata:
         """Use MarkdownV2 to exercise escape-aware splitting in tests."""
         return MessageMetadata(parse_mode="MarkdownV2")
+
+
+class MockDiscordUiAdapter(MockUiAdapter):
+    """Concrete UiAdapter test double that uses Discord adapter metadata."""
+
+    ADAPTER_KEY = "discord"
+
+
+class CountingConvertUiAdapter(MockUiAdapter):
+    """Test double that counts markdown conversion invocations."""
+
+    def __init__(self):
+        super().__init__()
+        self.convert_calls = 0
+
+    def _convert_markdown_for_platform(self, text: str) -> str:
+        self.convert_calls += 1
+        return super()._convert_markdown_for_platform(text)
 
 
 @pytest.fixture
@@ -513,8 +533,8 @@ class TestSendThreadedOutput:
         assert len(adapter._edit_calls) == 1
         assert "Updated text" in adapter._edit_calls[0]
 
-    async def test_digest_noop_skips_edit(self, test_db):
-        """Same content digest → returns early without edit."""
+    async def test_threaded_output_ignores_session_digest_dedupe(self, test_db):
+        """Threaded output should not short-circuit on session-level digest."""
         from hashlib import sha256
 
         adapter = MockUiAdapter()
@@ -536,7 +556,8 @@ class TestSendThreadedOutput:
         result = await adapter.send_threaded_output(session, text)
 
         assert result == "msg-789"
-        assert len(adapter._edit_calls) == 0
+        assert len(adapter._edit_calls) == 1
+        assert "Same text" in adapter._edit_calls[0]
         assert len(adapter._send_calls) == 0
 
     async def test_no_active_text_returns_existing_id(self, test_db):
@@ -660,6 +681,77 @@ class TestSendThreadedOutput:
                 if char == ".":
                     assert idx > 0 and chunk[idx - 1] == "\\", f"Found unescaped dot in chunk: {chunk!r}"
 
+    async def test_overflow_keeps_short_leading_link_intact(self, test_db):
+        """Short leading link entities should stay atomic across chunk boundaries."""
+        adapter = MockUiAdapter()
+        adapter.max_message_size = 85
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata())
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        session = await test_db.get_session(session.session_id)
+
+        text = "[docs](https://example.com) " + ("word " * 30)
+        result = await adapter.send_threaded_output(session, text)
+        assert result is not None
+
+        content_chunks = [chunk for chunk, meta in adapter._send_calls if meta and meta.parse_mode == "MarkdownV2"]
+        assert content_chunks
+        assert "[docs](https://example.com)" in content_chunks[0]
+        assert _required_markdown_closers(content_chunks[0]) == ""
+
+    async def test_overflow_forces_progress_on_long_leading_link(self, test_db):
+        """Very long leading entities should still progress via force-split fallback."""
+        adapter = MockUiAdapter()
+        adapter.max_message_size = 85
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata())
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        session = await test_db.get_session(session.session_id)
+
+        long_link = "[docs](https://example.com/" + ("segment-" * 40) + ") tail"
+        result = await adapter.send_threaded_output(session, long_link)
+        assert result is not None
+        assert len(adapter._send_calls) >= 2
+
+        refreshed = await test_db.get_session(session.session_id)
+        assert refreshed.get_metadata().get_ui().get_telegram().char_offset > 0
+
+    async def test_overflow_balances_nested_markdown_entities(self, test_db):
+        """Chunked MarkdownV2 output should keep style markers balanced per chunk."""
+        adapter = MockUiAdapter()
+        adapter.max_message_size = 80
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata())
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        session = await test_db.get_session(session.session_id)
+
+        text = "*bold _italic " + ("segment " * 40)
+        result = await adapter.send_threaded_output(session, text)
+        assert result is not None
+
+        markdown_chunks = [t for t, meta in adapter._send_calls if meta and meta.parse_mode == "MarkdownV2"]
+        assert markdown_chunks, "Expected MarkdownV2 chunks"
+        for chunk in markdown_chunks:
+            assert _required_markdown_closers(chunk) == ""
+            state = scan_markdown_v2_state(chunk)
+            assert not state.in_link_text
+            assert state.link_url_depth == 0
+
     async def test_overflow_reopens_code_block_in_next_chunk(self, test_db):
         """When a chunk is closed for balance, next chunk should reopen the fence."""
         adapter = MockUiAdapter()
@@ -682,6 +774,45 @@ class TestSendThreadedOutput:
         assert len(content_chunks) >= 2
         # Continuation chunks reopen the code fence (structural prefix from MarkdownV2 state)
         assert any(chunk.startswith("```\n") for chunk in content_chunks[1:])
+
+    async def test_overflow_converts_markdown_once_per_cycle(self, test_db):
+        """Threaded recursion should reuse converted text, not re-convert each chunk."""
+        adapter = CountingConvertUiAdapter()
+        adapter.max_message_size = 90
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+        )
+        session.adapter_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata())
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        session = await test_db.get_session(session.session_id)
+
+        long_text = "word " * 40
+        result = await adapter.send_threaded_output(session, long_text)
+
+        assert result is not None
+        assert adapter.convert_calls == 1
+
+    async def test_discord_threaded_output_skips_legacy_badge_message(self, test_db):
+        """Discord threaded mode should rely on thread topper, not legacy badge message."""
+        adapter = MockDiscordUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            last_input_origin=InputOrigin.DISCORD.value,
+            title="Test Session",
+        )
+        session.adapter_metadata = SessionAdapterMetadata(discord=DiscordAdapterMetadata())
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+        session = await test_db.get_session(session.session_id)
+
+        result = await adapter.send_threaded_output(session, "Hello world")
+
+        assert result == "msg-123"
+        adapter.client.send_message.assert_not_awaited()
+        assert any("Hello world" in text for text, _ in adapter._send_calls)
 
 
 @pytest.mark.asyncio

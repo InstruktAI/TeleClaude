@@ -6,7 +6,7 @@ Documentation quality is a function of distance from work context. When docs liv
 
 This creates a foundation for something larger. Once you have a critical mass of granular, correct, code-level documentation that's continuously maintained by proximity:
 
-1. **Self-documenting codebase** — Annotations flow through the scraper into the same `teleclaude__get_context` pipeline agents already use. No new tools to learn, no separate docs to maintain.
+1. **Self-documenting codebase** — Annotations flow through the scraper into the same `telec docs get` pipeline agents already use. No new tools to learn, no separate docs to maintain.
 
 2. **Structured code discovery** — Remote consumers (agents without codebase access) can query `get_context(areas=["code-ref"])` and get accurate, granular answers about what the project does, how it's structured, and what each component is responsible for.
 
@@ -16,11 +16,11 @@ The proximity hypothesis is the enabler. Everything else follows from agents kee
 
 ## Problem
 
-Documentation about code architecture and API surfaces is maintained separately from the code. This creates drift — the docs describe one thing, the code does another. Agents using `teleclaude__get_context` can discover policies, designs, and procedures, but not the code itself. When agents need to understand a module, class, or function, they must grep and read files manually rather than using the structured discovery they already know.
+Documentation about code architecture and API surfaces is maintained separately from the code. This creates drift — the docs describe one thing, the code does another. Agents using `telec docs get` can discover policies, designs, and procedures, but not the code itself. When agents need to understand a module, class, or function, they must grep and read files manually rather than using the structured discovery they already know.
 
 ## Intended Outcome
 
-A self-documenting codebase where source code docstrings contain `@context` annotations that a scraper extracts into documentation snippets. These snippets integrate into the existing `teleclaude__get_context` pipeline, making code discoverable through the same two-phase mechanism agents already use. Agents maintain annotations naturally because the annotations live in the code they're already touching.
+A self-documenting codebase where source code docstrings contain `@context` annotations that a scraper extracts into documentation snippets. These snippets integrate into the existing `telec docs get` pipeline, making code discoverable through the same two-phase mechanism agents already use. Agents maintain annotations naturally because the annotations live in the code they're already touching.
 
 ## Requirements
 
@@ -44,7 +44,7 @@ A self-documenting codebase where source code docstrings contain `@context` anno
 
 - Introduces a new snippet type (`code-ref`) for generated code documentation.
 - The schema supports code-specific sections (signature, module path, related code).
-- Generated snippets appear in `teleclaude__get_context` Phase 1 index like any other snippet.
+- Generated snippets appear in `telec docs get` Phase 1 index like any other snippet.
 - Phase 2 content retrieval works identically to hand-written snippets.
 
 ### 4. Sync Integration

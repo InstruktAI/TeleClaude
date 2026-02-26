@@ -13,7 +13,7 @@ type: 'procedure'
 
 ## Goal
 
-- Send Telegram alerts when the daemon or MCP tools are unavailable.
+- Send Telegram alerts when the daemon or `telec`/API surface is unavailable.
 
 ## Preconditions
 

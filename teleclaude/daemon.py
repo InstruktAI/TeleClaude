@@ -127,6 +127,7 @@ API_RESTART_BACKOFF_S = float(os.getenv("API_RESTART_BACKOFF_S", "1"))
 RESOURCE_SNAPSHOT_INTERVAL_S = float(os.getenv("RESOURCE_SNAPSHOT_INTERVAL_S", "60"))
 LAUNCHD_WATCH_INTERVAL_S = float(os.getenv("LAUNCHD_WATCH_INTERVAL_S", "300"))
 LAUNCHD_WATCH_ENABLED = os.getenv("TELECLAUDE_LAUNCHD_WATCH", "1") == "1"
+CODEX_TRANSCRIPT_WATCH_INTERVAL_S = float(os.getenv("CODEX_TRANSCRIPT_WATCH_INTERVAL_S", "1"))
 
 # Hook outbox worker
 HOOK_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_POLL_INTERVAL_S", "1"))
@@ -277,6 +278,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             client=self.client,
             output_poller=self.output_poller,
             poller_watch_interval_s=5.0,
+            codex_transcript_watch_interval_s=CODEX_TRANSCRIPT_WATCH_INTERVAL_S,
         )
 
         # Initialize AgentCoordinator for agent events and cross-computer orchestration
@@ -339,6 +341,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.hook_outbox_task: asyncio.Task[object] | None = None
         self.notification_outbox_task: asyncio.Task[object] | None = None
         self.todo_watcher_task: asyncio.Task[object] | None = None
+        self.codex_transcript_watch_task: asyncio.Task[object] | None = None
         self.webhook_delivery_task: asyncio.Task[object] | None = None
         self.channel_subscription_worker_task: asyncio.Task[object] | None = None
 
@@ -564,7 +567,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         session = await db.create_headless_session(
             session_id=session_id,
             computer_name=config.computer.name,
-            last_input_origin=InputOrigin.HOOK.value,
+            last_input_origin=InputOrigin.TERMINAL.value,
             title=title,
             active_agent=agent_str,
             native_session_id=str(native_session_id) if native_session_id else None,
@@ -626,8 +629,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 event_type=event_type,
             )
             return
-        elif session.lifecycle_status == "headless" and session.last_input_origin != InputOrigin.HOOK.value:
-            await db.update_session(session_id, last_input_origin=InputOrigin.HOOK.value)
+        elif session.lifecycle_status == "headless" and session.last_input_origin != InputOrigin.TERMINAL.value:
+            await db.update_session(session_id, last_input_origin=InputOrigin.TERMINAL.value)
             session = await db.get_session(session_id) or session
 
         transcript_path = data.get("transcript_path")
@@ -649,12 +652,19 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             if discovered_path:
                 native_log_file = discovered_path
                 data["native_log_file"] = discovered_path
+                data["transcript_path"] = discovered_path
+                transcript_path = discovered_path
+                has_transcript_path = True
                 logger.debug(
                     "Resolved Codex transcript in hook worker",
                     session_id=session_id[:8],
                     native_session_id=native_session_id[:8],
                     path=discovered_path,
                 )
+        elif not has_transcript_path and has_native_log and isinstance(native_log_file, str):
+            transcript_path = native_log_file
+            data["transcript_path"] = native_log_file
+            has_transcript_path = True
 
         update_kwargs = {}
         if normalized_agent_name in AgentName.choices() and session.active_agent != normalized_agent_name:
@@ -1126,7 +1136,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not session:
             return {"status": "error", "message": "Session not found after creation"}
 
-        # Step 1: Wait for output to stabilize (TUI banner + MCP loading complete)
+        # Step 1: Wait for output to stabilize (TUI banner and startup output complete)
         # We integrate the "process running" check into stabilization logic.
         # Gemini gets a longer quiet window to ensure heavy initialization is done.
         logger.debug("agent_then_message: waiting for TUI to stabilize (session=%s)", session_id[:8])
@@ -1603,6 +1613,17 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
             logger.info("Hook outbox worker started")
 
+            if CODEX_TRANSCRIPT_WATCH_INTERVAL_S > 0:
+                self.codex_transcript_watch_task = asyncio.create_task(
+                    self.maintenance_service.codex_transcript_watch_loop()
+                )
+                self.codex_transcript_watch_task.add_done_callback(
+                    self._log_background_task_exception("codex_transcript_watch")
+                )
+                logger.info("Codex transcript watch task started (interval=%.1fs)", CODEX_TRANSCRIPT_WATCH_INTERVAL_S)
+            else:
+                logger.info("Codex transcript watch disabled (interval=%.1fs)", CODEX_TRANSCRIPT_WATCH_INTERVAL_S)
+
             self.notification_outbox_task = asyncio.create_task(
                 NotificationOutboxWorker(
                     db=db,
@@ -1687,6 +1708,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("Hook outbox worker stopped")
+
+        if self.codex_transcript_watch_task:
+            self.codex_transcript_watch_task.cancel()
+            try:
+                await self.codex_transcript_watch_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Codex transcript watch task stopped")
 
         if self.notification_outbox_task:
             self.notification_outbox_task.cancel()

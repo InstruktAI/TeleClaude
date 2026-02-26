@@ -4,11 +4,13 @@ from pathlib import Path
 
 from teleclaude.core.agents import AgentName
 from teleclaude.utils.markdown import (
+    MARKDOWN_V2_INITIAL_STATE,
     _required_markdown_closers,
     collapse_fenced_code_blocks,
     continuation_prefix_for_markdown_v2_state,
     escape_markdown_v2,
     escape_markdown_v2_preformatted,
+    leading_balanced_markdown_v2_entity_span,
     scan_markdown_v2_state,
     strip_outer_codeblock,
     telegramify_markdown,
@@ -218,13 +220,17 @@ class TestMarkdownTruncation:
     def test_scan_markdown_v2_state_and_continuation_prefix_for_code_block(self):
         source = "```python\nprint('hello')"
         state = scan_markdown_v2_state(source)
-        assert state == (True, False, False)
+        assert state.stack == ("code_block",)
+        assert not state.in_link_text
+        assert state.link_url_depth == 0
         assert continuation_prefix_for_markdown_v2_state(state) == "```\n"
 
     def test_scan_markdown_v2_state_and_continuation_prefix_for_inline(self):
         source = "`abc"
         state = scan_markdown_v2_state(source)
-        assert state == (False, True, False)
+        assert state.stack == ("inline_code",)
+        assert not state.in_link_text
+        assert state.link_url_depth == 0
         assert continuation_prefix_for_markdown_v2_state(state) == "`"
 
     def test_truncate_markdown_v2_by_bytes_respects_utf8_budget(self):
@@ -232,6 +238,35 @@ class TestMarkdownTruncation:
         truncated = truncate_markdown_v2_by_bytes(source, max_bytes=3900, suffix="\n\n…")
         assert len(truncated.encode("utf-8")) <= 3900
         assert _required_markdown_closers(truncated) == ""
+
+    def test_truncate_markdown_v2_balances_nested_italic_and_bold(self):
+        source = "*bold _italic section that keeps running without a close"
+        truncated = truncate_markdown_v2(source, max_chars=38, suffix="...")
+        assert _required_markdown_closers(truncated) == ""
+        assert truncated.endswith("_*...")
+
+    def test_continuation_prefix_reopens_nested_style_stack(self):
+        source = "*bold _italic"
+        state = scan_markdown_v2_state(source)
+        assert state.stack == ("bold", "italic")
+        assert continuation_prefix_for_markdown_v2_state(state) == "*_"
+
+    def test_truncate_markdown_v2_avoids_link_mid_entity_split(self):
+        source = "[read more](https://example.com/path_with_underscores/very/long/segment) tail"
+        truncated = truncate_markdown_v2(source, max_chars=34, suffix="...")
+        state = scan_markdown_v2_state(truncated)
+        assert state == MARKDOWN_V2_INITIAL_STATE
+        assert _required_markdown_closers(truncated) == ""
+
+    def test_leading_balanced_entity_span_detects_short_link(self):
+        source = "[docs](https://example.com) and more"
+        span = leading_balanced_markdown_v2_entity_span(source)
+        assert span == len("[docs](https://example.com)")
+
+    def test_leading_balanced_entity_span_returns_zero_for_plain_text(self):
+        source = "prefix [docs](https://example.com)"
+        span = leading_balanced_markdown_v2_entity_span(source)
+        assert span == 0
 
 
 class TestMarkdownFallback:

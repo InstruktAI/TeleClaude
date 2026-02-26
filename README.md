@@ -363,16 +363,16 @@ TeleClaude includes a **Model Context Protocol (MCP) server** that enables Agent
 
 **Available MCP Tools:**
 
-- `teleclaude__list_computers` - List all online computers in the network
-- `teleclaude__list_projects` - List available project directories on a computer
-- `teleclaude__list_sessions` - List active AI-to-AI sessions (defaults to sessions spawned by the caller; set `spawned_by_me=false` to list all)
-- `teleclaude__start_session` - Start AI-to-AI session with remote computer
-- `teleclaude__send_message` - Send message to a session
-- `teleclaude__get_session_data` - Get session transcript data
-- `teleclaude__stop_notifications` - Unsubscribe from session events without ending it
-- `teleclaude__end_session` - Gracefully terminate a session
-- `teleclaude__deploy` - Deploy latest code to remote computers (optional list; default all remotes)
-- `teleclaude__send_file` - Send a file to a session
+- `telec computers list` - List all online computers in the network
+- `telec projects list` - List available project directories on a computer
+- `telec sessions list` - List active AI-to-AI sessions (defaults to sessions spawned by the caller; set `spawned_by_me=false` to list all)
+- `telec sessions start` - Start AI-to-AI session with remote computer
+- `telec sessions send` - Send message to a session
+- `telec sessions tail` - Get session transcript data
+- `telec sessions unsubscribe` - Unsubscribe from session events without ending it
+- `telec sessions end` - Gracefully terminate a session
+- `telec deploy` - Deploy latest code to remote computers (optional list; default all remotes)
+- `telec sessions file` - Send a file to a session
 
 **Example Usage:**
 
@@ -391,10 +391,10 @@ TeleClaude includes a **Model Context Protocol (MCP) server** that enables Agent
 
 ```bash
 # Only sessions spawned by this orchestrator (default)
-> teleclaude__list_sessions {"computer":"local"}
+> telec sessions list {"computer":"local"}
 
 # All sessions on a specific computer
-> teleclaude__list_sessions {"computer":"workstation","spawned_by_me":false}
+> telec sessions list {"computer":"workstation","spawned_by_me":false}
 ```
 
 **For detailed setup instructions, see [docs/multi-computer-setup.md](docs/multi-computer-setup.md)**

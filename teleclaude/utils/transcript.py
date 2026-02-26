@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -123,6 +124,86 @@ def parse_gemini_transcript(
         return f"Error parsing transcript: {e}"
 
 
+def _extract_codex_reasoning_text(
+    payload: Mapping[str, object],  # guard: loose-dict - External payload
+) -> str:
+    """Extract displayable reasoning text from a Codex reasoning payload."""
+    chunks: list[str] = []
+
+    summary = payload.get("summary")
+    if isinstance(summary, list):
+        for item in summary:
+            if isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str) and text.strip():
+                    chunks.append(text.strip())
+            elif isinstance(item, str) and item.strip():
+                chunks.append(item.strip())
+
+    direct_text = payload.get("text")
+    if isinstance(direct_text, str) and direct_text.strip():
+        chunks.append(direct_text.strip())
+
+    content = payload.get("content")
+    if isinstance(content, str) and content.strip():
+        chunks.append(content.strip())
+    elif isinstance(content, list):
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            block_text = block.get("text")
+            if isinstance(block_text, str) and block_text.strip():
+                chunks.append(block_text.strip())
+
+    # Preserve source order, drop exact duplicates.
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for chunk in chunks:
+        if chunk in seen:
+            continue
+        seen.add(chunk)
+        deduped.append(chunk)
+
+    return "\n\n".join(deduped)
+
+
+def normalize_transcript_entry_message(
+    entry: Mapping[str, object],  # guard: loose-dict - External entry
+) -> Optional[dict[str, object]]:  # guard: loose-dict - Normalized message
+    """Normalize transcript entry variants into a message-like dict.
+
+    Supports:
+    - native ``message`` entries
+    - ``response_item`` entries with ``payload.type == "message"``
+    - Codex reasoning payloads mapped to assistant ``thinking`` blocks
+    """
+    message = entry.get("message")
+    if isinstance(message, dict):
+        return cast(dict[str, object], message)  # guard: loose-dict - External message
+
+    if entry.get("type") != "response_item":
+        return None
+
+    payload = entry.get("payload")
+    if not isinstance(payload, dict):
+        return None
+
+    payload_type = payload.get("type")
+    if payload_type == "reasoning":
+        reasoning_text = _extract_codex_reasoning_text(payload)
+        if not reasoning_text.strip():
+            return None
+        return {
+            "role": "assistant",
+            "content": [{"type": "thinking", "thinking": reasoning_text}],
+        }
+
+    if payload_type == "message" or (isinstance(payload.get("role"), str) and "content" in payload):
+        return cast(dict[str, object], payload)  # guard: loose-dict - External payload message
+
+    return None
+
+
 def _should_skip_entry(
     entry: dict[str, object],  # guard: loose-dict - External entry
     since_dt: Optional[datetime],
@@ -168,14 +249,7 @@ def _process_entry(
         entry_dt = _parse_timestamp(entry_timestamp)
     time_prefix = _format_timestamp_prefix(entry_dt) if entry_dt else ""
 
-    message = entry.get("message")
-
-    # Handle Codex/Gemini "response_item" format where message is in payload
-    if not isinstance(message, dict) and entry.get("type") == "response_item":
-        payload = entry.get("payload")
-        if isinstance(payload, dict):
-            message = payload
-
+    message = normalize_transcript_entry_message(entry)
     if not isinstance(message, dict):
         return last_section
 
@@ -429,7 +503,7 @@ def render_clean_agent_output(
         last_user_idx = -1
         for i in range(len(entries) - 1, -1, -1):
             entry = entries[i]
-            message = entry.get("message") or entry.get("payload")
+            message = normalize_transcript_entry_message(entry)
             if isinstance(message, dict) and message.get("role") == "user":
                 last_user_idx = i
                 break
@@ -448,7 +522,7 @@ def render_clean_agent_output(
         if isinstance(entry_ts_str, str):
             last_entry_dt = _parse_timestamp(entry_ts_str)
 
-        message = entry.get("message") or entry.get("payload")
+        message = normalize_transcript_entry_message(entry)
         if not isinstance(message, dict) or message.get("role") != "assistant":
             continue
 
@@ -473,8 +547,8 @@ def render_clean_agent_output(
                 if thinking:
                     if lines:
                         lines.append("")
-                    # Clean thinking: plain text, no headers
-                    lines.append(str(thinking))
+                    formatted = _format_thinking(str(thinking))
+                    lines.append(formatted)
                     emitted = True
             elif block_type == "tool_use":
                 tool_name = str(block.get("name", "unknown"))
@@ -632,6 +706,56 @@ def _format_timestamp_prefix(dt: datetime) -> str:
     return f"{format_local_datetime(dt, include_date=True)} · "
 
 
+_THINKING_HEADING_RE = re.compile(r"^(\s{0,3}#{1,6}\s+)(.+)$")
+_THINKING_LIST_RE = re.compile(r"^(\s{0,6}(?:[-+*]|\d+\.)\s+)(.+)$")
+_THINKING_QUOTE_RE = re.compile(r"^(\s*>+\s?)(.+)$")
+_THINKING_RULE_RE = re.compile(r"^\s*[-*_]{3,}\s*$")
+
+
+def _wrap_thinking_emphasis(text: str) -> str:
+    """Wrap non-empty text in markdown emphasis while preserving surrounding spaces."""
+    if not text.strip():
+        return text
+
+    leading = len(text) - len(text.lstrip())
+    trailing = len(text) - len(text.rstrip())
+    core_start = leading
+    core_end = len(text) - trailing if trailing else len(text)
+    core = text[core_start:core_end]
+    core_stripped = core.strip()
+    if not core_stripped:
+        return text
+
+    # Avoid double wrapping lines that already look emphasized.
+    if (core_stripped.startswith("*") and core_stripped.endswith("*") and len(core_stripped) >= 2) or (
+        core_stripped.startswith("_") and core_stripped.endswith("_") and len(core_stripped) >= 2
+    ):
+        return text
+
+    return f"{text[:core_start]}*{core}*{text[core_end:]}"
+
+
+def _italicize_thinking_line(line: str) -> str:
+    """Italicize a non-code thinking line while preserving markdown structure where possible."""
+    stripped = line.strip()
+    if not stripped:
+        return line
+    if _THINKING_RULE_RE.match(line):
+        return line
+    if stripped.startswith("|") and stripped.endswith("|"):
+        return line
+
+    for pattern in (_THINKING_HEADING_RE, _THINKING_LIST_RE, _THINKING_QUOTE_RE):
+        match = pattern.match(line)
+        if match:
+            prefix, remainder = match.groups()
+            if not remainder.strip():
+                return line
+            return f"{prefix}{_wrap_thinking_emphasis(remainder)}"
+
+    return _wrap_thinking_emphasis(line)
+
+
 def _format_thinking(text: str) -> str:
     """Format thinking block with italics, preserving code blocks.
 
@@ -655,8 +779,7 @@ def _format_thinking(text: str) -> str:
         elif in_code_block or not line.strip():
             result_lines.append(line)
         else:
-            # Plain text thinking, no italics
-            result_lines.append(str(line))
+            result_lines.append(_italicize_thinking_line(str(line)))
 
     # Add blank line after thinking block
     result_lines.append("")
@@ -977,12 +1100,7 @@ def render_agent_output(
         last_user_idx = -1
         for i in range(len(entries) - 1, -1, -1):
             entry = entries[i]
-            message = entry.get("message")
-            if not isinstance(message, dict) and entry.get("type") == "response_item":
-                payload = entry.get("payload")
-                if isinstance(payload, dict):
-                    message = payload
-
+            message = normalize_transcript_entry_message(entry)
             if isinstance(message, dict) and message.get("role") == "user":
                 last_user_idx = i
                 break
@@ -1013,12 +1131,7 @@ def render_agent_output(
         if isinstance(entry_ts_str, str):
             last_entry_dt = _parse_timestamp(entry_ts_str)
 
-        message = entry.get("message")
-        if not isinstance(message, dict) and entry.get("type") == "response_item":
-            payload = entry.get("payload")
-            if isinstance(payload, dict):
-                message = payload
-
+        message = normalize_transcript_entry_message(entry)
         if not isinstance(message, dict) or message.get("role") != "assistant":
             continue
 
@@ -1111,7 +1224,7 @@ def get_assistant_messages_since(
         last_user_idx = -1
         for i in range(len(entries) - 1, -1, -1):
             entry = entries[i]
-            message = entry.get("message") or entry.get("payload")
+            message = normalize_transcript_entry_message(entry)
             if isinstance(message, dict) and message.get("role") == "user":
                 last_user_idx = i
                 break
@@ -1119,7 +1232,7 @@ def get_assistant_messages_since(
 
     assistant_messages = []
     for entry in entries[start_idx:]:
-        msg = entry.get("message") or entry.get("payload")
+        msg = normalize_transcript_entry_message(entry)
         if isinstance(msg, dict) and msg.get("role") == "assistant":
             assistant_messages.append(msg)
 
@@ -1128,11 +1241,7 @@ def get_assistant_messages_since(
 
 def _entry_role(entry: Mapping[str, object]) -> Optional[str]:
     """Return normalized role from an entry's message/payload."""
-    message = entry.get("message")
-    if not isinstance(message, dict) and entry.get("type") == "response_item":
-        payload = entry.get("payload")
-        if isinstance(payload, dict):
-            message = payload
+    message = normalize_transcript_entry_message(entry)
     if isinstance(message, dict):
         role = message.get("role")
         if isinstance(role, str):
@@ -1312,13 +1421,7 @@ def _extract_last_message_by_role(
 
         collected: list[str] = []
         for entry in reversed(entries):
-            message = entry.get("message")
-
-            # Handle Codex "response_item" format where message is in payload
-            if not isinstance(message, dict) and entry.get("type") == "response_item":
-                payload = entry.get("payload")
-                if isinstance(payload, dict):
-                    message = payload
+            message = normalize_transcript_entry_message(entry)
 
             if not isinstance(message, dict):
                 continue
@@ -1372,13 +1475,7 @@ def extract_last_user_message_with_timestamp(
             return None
 
         for entry in reversed(entries):
-            message = entry.get("message")
-
-            # Handle Codex "response_item" format where message is in payload
-            if not isinstance(message, dict) and entry.get("type") == "response_item":
-                payload = entry.get("payload")
-                if isinstance(payload, dict):
-                    message = payload
+            message = normalize_transcript_entry_message(entry)
 
             if not isinstance(message, dict):
                 continue
@@ -1431,11 +1528,7 @@ def collect_transcript_messages(
 
     messages: list[tuple[str, str]] = []
     for entry in entries:
-        message = entry.get("message")
-        if not isinstance(message, dict) and entry.get("type") == "response_item":
-            payload = entry.get("payload")
-            if isinstance(payload, dict):
-                message = payload
+        message = normalize_transcript_entry_message(entry)
         if not isinstance(message, dict):
             continue
         role = message.get("role")
@@ -1755,11 +1848,7 @@ def extract_tool_calls_current_turn(
         if not full_session:
             for i in range(len(entries) - 1, -1, -1):
                 entry = entries[i]
-                message = entry.get("message")
-                if not isinstance(message, dict) and entry.get("type") == "response_item":
-                    payload = entry.get("payload")
-                    if isinstance(payload, dict):
-                        message = payload
+                message = normalize_transcript_entry_message(entry)
                 if isinstance(message, dict) and message.get("role") == "user":
                     if _is_user_tool_result_only_message(message):
                         continue
@@ -1866,11 +1955,7 @@ def extract_tool_calls_current_turn(
                         )
                         continue
 
-            message = entry.get("message")
-            if not isinstance(message, dict) and entry.get("type") == "response_item":
-                payload = entry.get("payload")
-                if isinstance(payload, dict):
-                    message = payload
+            message = normalize_transcript_entry_message(entry)
             if not isinstance(message, dict):
                 continue
 
@@ -2031,11 +2116,7 @@ def extract_structured_messages(
             continue
 
         # Resolve message from entry
-        message = entry.get("message")
-        if not isinstance(message, dict) and entry.get("type") == "response_item":
-            payload = entry.get("payload")
-            if isinstance(payload, dict):
-                message = payload
+        message = normalize_transcript_entry_message(entry)
         if not isinstance(message, dict):
             continue
 

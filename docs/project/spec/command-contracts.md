@@ -31,6 +31,7 @@ description: 'Command contract highlights for session creation, messaging, and a
 
 - `command`: `start_session`, `send_message`, `end_session`, `run_agent_command`, `get_session_data`.
 - `payload.intent`: `user_message`, `system_command`, `agent_control` (where applicable).
+- CLI mapping: `get_session_data` backs `telec sessions tail` in user-facing workflows.
 
 ## Known caveats
 

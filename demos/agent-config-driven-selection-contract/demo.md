@@ -24,14 +24,11 @@ uv run pytest -q \
 ```
 
 ```bash
-# Dispatch/start surface enforcement (API + MCP + command handlers)
+# Dispatch/start surface enforcement (API + command handlers)
 uv run pytest -q \
-  tests/unit/test_mcp_handlers.py \
-  tests/unit/test_mcp_server.py \
   tests/unit/test_command_handlers.py \
   tests/unit/test_api_server.py \
-  tests/integration/test_mcp_tools.py \
-  tests/integration/test_run_agent_command_e2e.py
+  tests/integration/test_command_e2e.py
 ```
 
 ```bash
@@ -47,8 +44,8 @@ uv run pytest -q \
    Observe disabled agents are rejected consistently and enabled agents remain selectable.
 2. Show a failure case by removing `agents:` (or setting all `enabled: false`) in a temporary test config fixture used by tests.  
    Observe actionable error messages that point to `config.yml` keys.
-3. Trigger selection/dispatch flows through MCP/API tests.  
-   Observe deterministic rejection for disabled agents in `start_session`/`run_agent_command` and command-handler paths.
+3. Trigger selection/dispatch flows through API + command tests.  
+   Observe deterministic rejection for disabled agents in session/command-handler paths.
 4. Review guidance output assertions in `test_agent_guidance.py`.  
    Observe no blank per-agent lines and explicit blocking message when no selectable agents exist.
 5. Show TUI behavior from modal/status tests.  

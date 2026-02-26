@@ -43,10 +43,10 @@ Deploy project changes to TeleClaude computers safely and verify health.
    git push origin main
    ```
 
-4. Deploy via MCP:
+4. Deploy via `telec`:
 
-   ```
-   teleclaude__deploy()
+   ```bash
+   telec deploy
    ```
 
    If no computers are specified, deploys to all.
@@ -57,7 +57,7 @@ Deploy project changes to TeleClaude computers safely and verify health.
    make status
    ```
 
-6. If MCP deploy is unavailable, fall back to SSH per computer:
+6. If `telec deploy` is unavailable, fall back to SSH per computer:
 
    ```bash
    ssh -A {user}@{host} 'cd <teleclaude-path> && git pull --ff-only origin main && make restart && make status'

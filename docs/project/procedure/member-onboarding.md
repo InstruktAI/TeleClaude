@@ -94,7 +94,7 @@ Same principle via WhatsApp Business API. The prefilled token text identifies th
 The personal assistant session starts with:
 
 - Identity-scoped memory injection (empty on first visit, builds over time)
-- Organization docs available via `get_context` (the org domain)
+- Organization docs available via `telec docs index` + `telec docs get` (the organization domain)
 - The person's name and role from config
 - A welcome message: "Hi {name}, I'm your personal assistant. What would you like to work on?"
 

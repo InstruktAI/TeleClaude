@@ -1,5 +1,15 @@
 # Delivered work items. Newest first.
 
+- slug: agent-config-driven-selection-contract
+  date: '2026-02-26'
+  commit: 6d201c8e3869dda28c10cef4b3df81bfc4cc5f2f
+- slug: mcp-to-tool-specs
+  date: '2026-02-26'
+  title: 'Group: mcp-to-tool-specs (3 children delivered)'
+  children:
+  - mcp-migration-telec-commands
+  - mcp-migration-agent-config
+  - mcp-migration-delete-mcp
 - slug: mcp-migration-delete-mcp
   date: '2026-02-25'
   title: 'Phase 3: Delete all MCP server code (~3,400 lines), update architecture
