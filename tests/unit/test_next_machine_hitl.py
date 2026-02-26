@@ -556,7 +556,7 @@ def test_format_tool_call_next_call_with_args():
         project="/tmp/project",
         guidance="Mock guidance",
         subfolder="trees/test-slug",
-        next_call='telec todo work test-slug',
+        next_call="telec todo work test-slug",
     )
     assert "Call telec todo work test-slug" in result
     assert "Call telec todo work test-slug()" not in result

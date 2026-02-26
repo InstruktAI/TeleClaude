@@ -142,13 +142,13 @@ sequenceDiagram
 
 ### 4. Worker Dispatch Pattern
 
-| Phase    | Worker Role  | Command Example                                                                          |
-| -------- | ------------ | ---------------------------------------------------------------------------------------- |
-| Prepare  | Orchestrator | `/prime-orchestrator` then route with `telec todo prepare` / `telec todo work` |
-| Build    | Builder      | `/next-build` in worktree                                                                |
-| Review   | Reviewer     | `/next-review` - evaluate against requirements                                           |
-| Fix      | Fixer        | `/next-fix-review` - address findings                                                    |
-| Finalize | Finalizer    | `/next-finalize` - prepare and emit FINALIZE_READY (apply is orchestrator-owned)         |
+| Phase    | Worker Role  | Command Example                                                                  |
+| -------- | ------------ | -------------------------------------------------------------------------------- |
+| Prepare  | Orchestrator | `/prime-orchestrator` then route with `telec todo prepare` / `telec todo work`   |
+| Build    | Builder      | `/next-build` in worktree                                                        |
+| Review   | Reviewer     | `/next-review` - evaluate against requirements                                   |
+| Fix      | Fixer        | `/next-fix-review` - address findings                                            |
+| Finalize | Finalizer    | `/next-finalize` - prepare and emit FINALIZE_READY (apply is orchestrator-owned) |
 
 ## Failure modes
 

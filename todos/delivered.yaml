@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: deployment-versioning
+  date: '2026-02-26'
+  title: 'Phase 1: Runtime __version__, telec version command, pyproject.toml 1.0.0'
+  commit: 1dfcb10291148936d4ccd1bd4e1d430e2e9baae7
+  description: 'Phase 1: Runtime __version__, telec version command, pyproject.toml
+    1.0.0'
 - slug: agent-config-driven-selection-contract
   date: '2026-02-26'
   commit: 6d201c8e3869dda28c10cef4b3df81bfc4cc5f2f

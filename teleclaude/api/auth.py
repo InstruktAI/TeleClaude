@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Final
 
 from fastapi import Depends, Header, HTTPException, Request
 
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 _default_unidentified_human_role = (os.getenv("TELECLAUDE_UNIDENTIFIED_HUMAN_ROLE", HUMAN_ROLE_ADMIN) or "").strip()
 if not _default_unidentified_human_role:
     _default_unidentified_human_role = HUMAN_ROLE_ADMIN
-DEFAULT_UNIDENTIFIED_HUMAN_ROLE = _default_unidentified_human_role
+DEFAULT_UNIDENTIFIED_HUMAN_ROLE: Final[str] = _default_unidentified_human_role
 
 _GLOBAL_CONFIG_PATH = Path("~/.teleclaude/teleclaude.yml").expanduser()
 _email_role_cache: dict[str, str] = {}

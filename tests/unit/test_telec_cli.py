@@ -183,6 +183,45 @@ def test_help_includes_notes_and_examples_for_top_level_leaf_commands() -> None:
         assert "\nExamples:\n" in output
 
 
+def test_version_command_prints_version_channel_and_commit(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    class _Result:
+        returncode = 0
+        stdout = "ea8cc35\n"
+
+    def fake_run(args: list[str], capture_output: bool, text: bool, check: bool) -> _Result:
+        assert args == ["git", "rev-parse", "--short", "HEAD"]
+        assert capture_output is True
+        assert text is True
+        assert check is False
+        return _Result()
+
+    monkeypatch.setattr(telec, "__version__", "1.0.0")
+    monkeypatch.setattr(telec.subprocess, "run", fake_run)
+
+    telec._handle_cli_command(["version"])
+
+    output = capsys.readouterr().out.strip()
+    assert output == "TeleClaude v1.0.0 (channel: alpha, commit: ea8cc35)"
+
+
+def test_version_command_uses_unknown_commit_when_git_unavailable(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fake_run(args: list[str], capture_output: bool, text: bool, check: bool) -> None:
+        _ = (args, capture_output, text, check)
+        raise OSError("git not found")
+
+    monkeypatch.setattr(telec, "__version__", "1.0.0")
+    monkeypatch.setattr(telec.subprocess, "run", fake_run)
+
+    telec._handle_cli_command(["version"])
+
+    output = capsys.readouterr().out.strip()
+    assert output == "TeleClaude v1.0.0 (channel: alpha, commit: unknown)"
+
+
 def test_bugs_list_uses_worktree_state_for_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """bugs list and roadmap list should agree on worktree-owned build status."""
     project_root = tmp_path

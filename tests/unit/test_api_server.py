@@ -1,6 +1,7 @@
 """Unit tests for API server endpoints."""
 
 import uuid
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -49,6 +50,7 @@ def mock_command_service():  # type: ignore[explicit-any, unused-ignore]
     commands.handle_voice = AsyncMock()
     commands.handle_file = AsyncMock()
     commands.restart_agent = AsyncMock()
+    commands.get_session_data = AsyncMock()
     return commands
 
 
@@ -646,6 +648,108 @@ def test_send_message_success(test_client, mock_command_service):  # type: ignor
     assert cmd.text == "Hello AI"
 
 
+def test_send_message_direct_creates_link_and_routes_to_peers(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """Direct send should create/reuse link and deliver to linked peer sessions."""
+    mock_command_service.process_message.return_value = None
+    link = SimpleNamespace(link_id="link-123")
+    members = [SimpleNamespace(session_id="test-session"), SimpleNamespace(session_id="sess-123")]
+    peer = SimpleNamespace(session_id="sess-123", computer_name="local")
+
+    caller_session = MagicMock()
+    caller_session.title = "Caller Session"
+    caller_session.computer_name = "local"
+    target_session = MagicMock()
+    target_session.title = "Target Session"
+    target_session.computer_name = "local"
+
+    with (
+        patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch(
+            "teleclaude.core.session_listeners.resolve_link_for_sender_target", new_callable=AsyncMock
+        ) as mock_resolve,
+        patch("teleclaude.core.session_listeners.create_or_reuse_direct_link", new_callable=AsyncMock) as mock_create,
+        patch("teleclaude.core.session_listeners.get_peer_members", new_callable=AsyncMock) as mock_peers,
+    ):
+        mock_get_session.side_effect = [caller_session, target_session]
+        mock_resolve.side_effect = [None, (link, members)]
+        mock_create.return_value = (link, True)
+        mock_peers.return_value = [peer]
+
+        response = test_client.post(
+            "/sessions/sess-123/message?computer=local",
+            json={"message": "Hello peer", "direct": True},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["mode"] == "direct"
+    assert data["link_id"] == "link-123"
+    assert data["link_state"] == "created"
+    assert data["delivered_to"] == 1
+    assert data["members"] == 2
+
+    assert mock_command_service.process_message.await_count == 1
+    cmd = mock_command_service.process_message.await_args.args[0]
+    assert cmd.session_id == "sess-123"
+    assert cmd.text == "Hello peer"
+
+
+def test_send_message_close_link(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """close_link should return success without sending a message to the target session."""
+    with patch("teleclaude.core.session_listeners.close_link_for_member", new_callable=AsyncMock) as mock_close:
+        mock_close.return_value = "link-closed-1"
+        response = test_client.post(
+            "/sessions/sess-123/message?computer=local",
+            json={"close_link": True},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["mode"] == "direct"
+    assert data["action"] == "closed"
+    assert data["link_id"] == "link-closed-1"
+    mock_command_service.process_message.assert_not_awaited()
+
+
+def test_create_session_direct_establishes_link(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """direct session start should remove listener and establish shared direct link."""
+    mock_command_service.create_session.return_value = {
+        "session_id": "sess-direct-1",
+        "tmux_session_name": "tc_direct_1",
+    }
+    caller_session = MagicMock()
+    caller_session.title = "Caller Session"
+    caller_session.computer_name = "local"
+    target_session = MagicMock()
+    target_session.title = "Direct Peer"
+    target_session.computer_name = "local"
+
+    with (
+        patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch("teleclaude.core.session_listeners.unregister_listener", new_callable=AsyncMock) as mock_unregister,
+        patch("teleclaude.core.session_listeners.create_or_reuse_direct_link", new_callable=AsyncMock) as mock_link,
+    ):
+        mock_get_session.side_effect = [caller_session, target_session]
+        mock_link.return_value = (SimpleNamespace(link_id="link-1"), True)
+        response = test_client.post(
+            "/sessions",
+            json={"project_path": "/home/user/project", "computer": "local", "direct": True},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "success"
+    assert payload["session_id"] == "sess-direct-1"
+
+    mock_unregister.assert_awaited_once_with(
+        target_session_id="sess-direct-1",
+        caller_session_id="test-session",
+    )
+    assert mock_link.await_count == 1
+
+
 def test_revive_session_success(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     """Test revive endpoint restarts session by TeleClaude session ID."""
     mock_session = MagicMock()
@@ -677,6 +781,75 @@ def test_revive_session_not_found_returns_404(test_client, mock_command_service)
     assert response.status_code == 404
     assert "Session not found" in response.json()["detail"]
     mock_command_service.restart_agent.assert_not_called()
+
+
+def test_get_session_messages_returns_structured_chain_messages(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """When transcript files produce entries, /messages should return structured output."""
+    mock_session = MagicMock()
+    mock_session.active_agent = "claude"
+    mock_session.transcript_files = None
+    mock_session.native_log_file = "/tmp/transcript.jsonl"
+
+    raw_messages = [
+        {
+            "role": "assistant",
+            "type": "text",
+            "text": "hello from transcript",
+            "timestamp": "2026-02-26T00:00:00Z",
+            "entry_index": 7,
+            "file_index": 0,
+        }
+    ]
+
+    with (
+        patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock, return_value=mock_session),
+        patch("teleclaude.utils.transcript.extract_messages_from_chain", return_value=raw_messages) as mock_extract,
+    ):
+        response = test_client.get(
+            "/sessions/sess-123/messages?since=2026-02-25T00:00:00Z&include_tools=true&include_thinking=true"
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["session_id"] == "sess-123"
+    assert payload["messages"][0]["text"] == "hello from transcript"
+    assert payload["messages"][0]["entry_index"] == 7
+    assert payload["messages"][0]["file_index"] == 0
+
+    extract_kwargs = mock_extract.call_args.kwargs
+    assert extract_kwargs["since"] == "2026-02-25T00:00:00Z"
+    assert extract_kwargs["include_tools"] is True
+    assert extract_kwargs["include_thinking"] is True
+    mock_command_service.get_session_data.assert_not_awaited()
+
+
+def test_get_session_messages_falls_back_to_unified_session_data(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """When transcript chain is unavailable, /messages should use get_session_data fallback."""
+    mock_session = MagicMock()
+    mock_session.active_agent = "codex"
+    mock_session.transcript_files = None
+    mock_session.native_log_file = None
+    mock_command_service.get_session_data.return_value = {
+        "status": "success",
+        "session_id": "sess-123",
+        "messages": "live tmux tail output",
+    }
+
+    with patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock, return_value=mock_session):
+        response = test_client.get("/sessions/sess-123/messages?tail_chars=1234")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["session_id"] == "sess-123"
+    assert payload["agent"] == "codex"
+    assert len(payload["messages"]) == 1
+    assert payload["messages"][0]["role"] == "assistant"
+    assert payload["messages"][0]["type"] == "text"
+    assert payload["messages"][0]["text"] == "live tmux tail output"
+
+    cmd = mock_command_service.get_session_data.await_args.args[0]
+    assert cmd.session_id == "sess-123"
+    assert cmd.tail_chars == 1234
 
 
 def test_list_computers_success(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]

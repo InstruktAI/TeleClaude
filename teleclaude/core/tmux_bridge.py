@@ -243,12 +243,19 @@ async def _create_tmux_session(
         # The plugin auto-restores the last directory when starting in $HOME unless this var is set.
         effective_env_vars["ZSH_LAST_WORKING_DIRECTORY"] = "1"
 
-        # Prepend TeleClaude bin to PATH so agent-session git/gh wrappers can enforce
-        # version-control guardrails. This is intentionally scoped to tmux agent sessions.
+        # Ensure TeleClaude bin is first in PATH so agent-session git/gh wrappers
+        # enforce version-control guardrails in every tmux-created session.
+        # Always set PATH explicitly for the session; tmux server env can differ
+        # from daemon env, so conditional omission is unsafe.
         teleclaude_bin = str(Path.home() / ".teleclaude" / "bin")
         current_path = os.environ.get("PATH", "/usr/bin:/bin")
-        if teleclaude_bin not in current_path.split(os.pathsep):
+        path_parts = [part for part in current_path.split(os.pathsep) if part]
+        if teleclaude_bin in path_parts:
+            effective_env_vars["PATH"] = current_path
+        elif current_path:
             effective_env_vars["PATH"] = f"{teleclaude_bin}{os.pathsep}{current_path}"
+        else:
+            effective_env_vars["PATH"] = teleclaude_bin
 
         # Enable truecolor for CLI agents.  Without this, CLIs (Gemini, Claude,
         # Codex) fall back to 256-color or plain text because TERM=tmux-256color

@@ -23,7 +23,11 @@ from telegram.error import BadRequest, NetworkError, RetryAfter, TimedOut
 
 from teleclaude.core.models import MessageMetadata
 from teleclaude.utils import command_retry
-from teleclaude.utils.markdown import _required_markdown_closers, truncate_markdown_v2_by_bytes
+from teleclaude.utils.markdown import (
+    _required_markdown_closers_from_state,
+    scan_markdown_v2_state,
+    truncate_markdown_v2_by_bytes,
+)
 
 if TYPE_CHECKING:
     from telegram.ext import ExtBot
@@ -339,7 +343,8 @@ class MessageOperationsMixin:
                 return True
             if "can't parse entities" in str(e).lower():
                 fence_count = text.count("```")
-                closers = _required_markdown_closers(text)
+                state = scan_markdown_v2_state(text)
+                closers = _required_markdown_closers_from_state(text, state)
                 logger.error(
                     "[TELEGRAM %s] Markdown parse diagnostics: len=%d parse_mode=%s fences=%d needs_closers=%s suffix=%r",
                     session.session_id[:8],

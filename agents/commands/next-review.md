@@ -47,5 +47,9 @@ Review code changes against requirements and architecture and produce a verdict.
   - Fix is minimal and targeted
   - Investigation and documentation sections are complete
 - **Otherwise:** Regular todo review. The Orchestrator has verified the clerical state of this build. Trust the state.yaml and implementation plan. Review code changes in the worktree against requirements and architecture.
+- Treat orchestrator-managed planning/state drift as non-blocking review noise:
+  - `todos/roadmap.yaml`
+  - `todos/{slug}/state.yaml`
+- Do not request commits or raise findings solely for those files unless review scope explicitly includes planning/state edits.
 - Update only `## Review Gates (Reviewer)` in `todos/{slug}/quality-checklist.md` (if it exists).
 - Write findings to `todos/{slug}/review-findings.md` with verdict: APPROVE or REQUEST CHANGES.
