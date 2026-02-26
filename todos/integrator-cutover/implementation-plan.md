@@ -1,41 +1,41 @@
 # Implementation Plan: integrator-cutover
 
-## Overview
+## Plan Objective
 
-- Summarize the approach and why it is appropriate.
+Enforce integrator-exclusive canonical main integration after shadow parity signoff.
 
-## Phase 1: Core Changes
+## Phase 1: Authority Enforcement
 
-### Task 1.1:
+### Task 1.1: Add canonical main authorization checks
 
-**File(s):** ``
+**File(s):** `teleclaude/core/integration/authorization.py`, `teleclaude/core/git_ops.py`
 
-- [ ] Complete this task
+- [ ] Enforce integrator-only merge/push for canonical `main`.
+- [ ] Return clear rejection errors for non-integrator callers.
 
-### Task 1.2:
+### Task 1.2: Wire cutover toggles and safety controls
 
-**File(s):** ``
+**File(s):** `teleclaude/core/integration/runtime.py`, `teleclaude/config/schema.py`
 
-- [ ] Complete this task
+- [ ] Add cutover enablement control gated by parity evidence.
+- [ ] Add documented rollback path for incomplete readiness evidence.
 
----
+## Phase 2: Verification
 
-## Phase 2: Validation
+### Task 2.1: Add acceptance and regression coverage
 
-### Task 2.1: Tests
+**File(s):** `tests/integration/test_integrator_cutover.py`
 
-- [ ] Add or update tests for the changed behavior
-- [ ] Run `make test`
+- [ ] Verify non-integrator canonical main push is blocked.
+- [ ] Verify integrator canonical main push still succeeds.
+- [ ] Verify feature-branch pushes remain allowed.
 
-### Task 2.2: Quality Checks
+### Task 2.2: Run quality gates
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
-
----
+- [ ] Run `make test`.
+- [ ] Run `make lint`.
 
 ## Phase 3: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [ ] Confirm all legacy non-integrator canonical main paths are blocked.
+- [ ] Confirm rollback path is documented and test-backed.

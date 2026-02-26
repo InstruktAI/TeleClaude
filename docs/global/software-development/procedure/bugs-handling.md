@@ -14,6 +14,8 @@ periodic maintenance routine handles triage and resolution in a controlled workt
 
 There is no bugs backlog. There is no `bugs.md`. Internal bugs are fixed inline.
 External bugs arrive via GitHub Issues and are processed by the maintenance runner.
+For CLI bug intake, default to `telec bugs report` (scaffold + dispatch); use
+`telec bugs create` only when explicitly requested to stage a bug without dispatch.
 
 ## Track 1: Inline (Internal Discovery)
 

@@ -8,6 +8,7 @@ from teleclaude.config.schema import (
     Subscription,
     SubscriptionNotification,
     TelegramCreds,
+    WhatsAppCreds,
     YoutubeSubscription,
 )
 
@@ -91,6 +92,21 @@ interests: ["ai", "rust"]
     assert config.creds.telegram.chat_id == "123456"
     assert len(config.subscriptions) == 1
     assert "ai" in config.interests
+
+
+def test_person_config_with_whatsapp_creds(tmp_path):
+    config_path = tmp_path / "teleclaude.yml"
+    config_path.write_text(
+        """
+creds:
+  whatsapp:
+    phone_number: "+15550001111"
+""",
+        encoding="utf-8",
+    )
+    config = load_person_config(config_path)
+    assert config.creds.whatsapp is not None
+    assert config.creds.whatsapp.phone_number == "+15550001111"
 
 
 def test_person_config_disallowed_keys(tmp_path):
@@ -249,6 +265,11 @@ def test_telegram_creds_chat_id_optional():
 
     creds_with = TelegramCreds(user_name="alice", user_id=123, chat_id="999")
     assert creds_with.chat_id == "999"
+
+
+def test_whatsapp_creds_phone_number():
+    creds = WhatsAppCreds(phone_number="+15551234567")
+    assert creds.phone_number == "+15551234567"
 
 
 def test_subscription_enabled_toggle():

@@ -170,6 +170,18 @@ class DiscordConfig:
 
 
 @dataclass
+class WhatsAppConfig:
+    enabled: bool = False
+    phone_number_id: str | None = None
+    access_token: str | None = None
+    webhook_secret: str | None = None
+    verify_token: str | None = None
+    api_version: str = "v21.0"
+    template_name: str | None = None
+    template_language: str = "en_US"
+
+
+@dataclass
 class UIConfig:
     """TUI display settings."""
 
@@ -267,8 +279,14 @@ class TelegramCredsConfig:
 
 
 @dataclass
+class WhatsAppCredsConfig:
+    phone_number: str
+
+
+@dataclass
 class CredsConfig:
     telegram: TelegramCredsConfig | None = None
+    whatsapp: WhatsAppCredsConfig | None = None
 
 
 @dataclass
@@ -283,6 +301,7 @@ class Config:
     agents: Dict[str, AgentConfig]
     ui: UIConfig
     terminal: TerminalConfig
+    whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig)
     tts: TTSConfig | None = None
     stt: STTConfig | None = None
     experiments: list[ExperimentConfig] = field(default_factory=list)
@@ -363,8 +382,19 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "general_channel_id": None,
         "categories": None,
     },
+    "whatsapp": {
+        "enabled": False,
+        "phone_number_id": None,
+        "access_token": None,
+        "webhook_secret": None,
+        "verify_token": None,
+        "api_version": "v21.0",
+        "template_name": None,
+        "template_language": "en_US",
+    },
     "creds": {
         "telegram": None,
+        "whatsapp": None,
     },
     "terminal": {
         "strip_ansi": True,
@@ -618,6 +648,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
     redis_raw = raw["redis"]
     tg_raw = raw["telegram"]
     discord_raw = raw.get("discord", {})
+    whatsapp_raw = raw.get("whatsapp", {})
     creds_raw = raw.get("creds", {})
     ui_raw = raw["ui"]
     terminal_raw = raw.get("terminal", {"strip_ansi": True})
@@ -675,6 +706,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
                 )
 
     tg_creds = None
+    whatsapp_creds = None
     if isinstance(creds_raw, dict):
         tg_creds_raw = creds_raw.get("telegram")
         if isinstance(tg_creds_raw, dict):
@@ -682,6 +714,41 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
                 user_name=str(tg_creds_raw["user_name"]),
                 user_id=int(tg_creds_raw["user_id"]),
             )
+        whatsapp_creds_raw = creds_raw.get("whatsapp")
+        if isinstance(whatsapp_creds_raw, dict) and whatsapp_creds_raw.get("phone_number"):
+            whatsapp_creds = WhatsAppCredsConfig(phone_number=str(whatsapp_creds_raw["phone_number"]))
+
+    whatsapp_phone_number_id = None
+    whatsapp_access_token = None
+    whatsapp_webhook_secret = None
+    whatsapp_verify_token = None
+    whatsapp_api_version = "v21.0"
+    whatsapp_template_name = None
+    whatsapp_template_language = "en_US"
+    whatsapp_enabled_flag = False
+
+    if isinstance(whatsapp_raw, dict):
+        whatsapp_phone_number_id = (
+            str(whatsapp_raw.get("phone_number_id")) if whatsapp_raw.get("phone_number_id") else None
+        )
+        whatsapp_access_token = str(whatsapp_raw.get("access_token")) if whatsapp_raw.get("access_token") else None
+        whatsapp_webhook_secret = (
+            str(whatsapp_raw.get("webhook_secret")) if whatsapp_raw.get("webhook_secret") else None
+        )
+        whatsapp_verify_token = str(whatsapp_raw.get("verify_token")) if whatsapp_raw.get("verify_token") else None
+        whatsapp_api_version = str(whatsapp_raw.get("api_version") or "v21.0")
+        whatsapp_template_name = str(whatsapp_raw.get("template_name")) if whatsapp_raw.get("template_name") else None
+        whatsapp_template_language = str(whatsapp_raw.get("template_language") or "en_US")
+        whatsapp_enabled_flag = bool(whatsapp_raw.get("enabled", False))
+
+    whatsapp_phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID") or whatsapp_phone_number_id
+    whatsapp_access_token = os.getenv("WHATSAPP_ACCESS_TOKEN") or whatsapp_access_token
+    whatsapp_webhook_secret = os.getenv("WHATSAPP_WEBHOOK_SECRET") or whatsapp_webhook_secret
+    whatsapp_verify_token = os.getenv("WHATSAPP_VERIFY_TOKEN") or whatsapp_verify_token
+    whatsapp_template_name = os.getenv("WHATSAPP_TEMPLATE_NAME") or whatsapp_template_name
+    whatsapp_template_language = os.getenv("WHATSAPP_TEMPLATE_LANGUAGE") or whatsapp_template_language
+
+    whatsapp_enabled = whatsapp_enabled_flag or bool(whatsapp_phone_number_id and whatsapp_access_token)
 
     return Config(
         database=DatabaseConfig(
@@ -748,7 +815,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
             ),
             categories=(_parse_categories(discord_raw.get("categories")) if isinstance(discord_raw, dict) else None),
         ),
-        creds=CredsConfig(telegram=tg_creds),
+        creds=CredsConfig(telegram=tg_creds, whatsapp=whatsapp_creds),
         agents=agents_registry,
         ui=UIConfig(
             animations_enabled=bool(ui_raw["animations_enabled"]),  # type: ignore[index,misc]
@@ -758,6 +825,16 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
         ),
         terminal=TerminalConfig(
             strip_ansi=bool(terminal_raw.get("strip_ansi", True))  # type: ignore[attr-defined]
+        ),
+        whatsapp=WhatsAppConfig(
+            enabled=whatsapp_enabled,
+            phone_number_id=whatsapp_phone_number_id,
+            access_token=whatsapp_access_token,
+            webhook_secret=whatsapp_webhook_secret,
+            verify_token=whatsapp_verify_token,
+            api_version=whatsapp_api_version,
+            template_name=whatsapp_template_name,
+            template_language=whatsapp_template_language,
         ),
         tts=_parse_tts_config(tts_raw),  # type: ignore[arg-type]
         stt=_parse_stt_config(stt_raw),  # type: ignore[arg-type]

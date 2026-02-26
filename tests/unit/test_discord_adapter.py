@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -787,6 +788,28 @@ async def test_discord_close_channel_deletes_thread() -> None:
 
     assert result is True
     assert thread.deleted is True
+
+
+@pytest.mark.asyncio
+async def test_handle_on_ready_sets_ready_before_slow_bootstrap() -> None:
+    adapter = _make_adapter()
+    adapter._client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+
+    infra_entered = asyncio.Event()
+    infra_release = asyncio.Event()
+
+    async def _slow_infra() -> None:
+        infra_entered.set()
+        await infra_release.wait()
+
+    adapter._ensure_discord_infrastructure = AsyncMock(side_effect=_slow_infra)  # type: ignore[method-assign]
+    adapter._tree = None
+
+    task = asyncio.create_task(adapter._handle_on_ready())
+    await asyncio.wait_for(infra_entered.wait(), timeout=1.0)
+    assert adapter._ready_event.is_set() is True
+    infra_release.set()
+    await task
 
 
 # =========================================================================

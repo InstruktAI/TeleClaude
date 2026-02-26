@@ -16,7 +16,11 @@ from teleclaude.hooks.webhook_models import HookEvent
 logger = get_logger(__name__)
 
 # guard: loose-dict - Inbound payload is dynamic JSON.
-Normalizer = Callable[[dict[str, object], dict[str, str]], HookEvent]
+NormalizerResult = HookEvent | list[HookEvent]
+Normalizer = Callable[
+    [dict[str, object], dict[str, str]],  # guard: loose-dict - Inbound payload JSON is platform-defined.
+    NormalizerResult,
+]
 
 
 class NormalizerRegistry:
@@ -113,13 +117,20 @@ class InboundEndpointRegistry:
                 raise HTTPException(status_code=500, detail="Normalizer not configured")
 
             try:
-                event = self._invoke_normalizer(normalizer, payload, headers)
+                normalized = self._invoke_normalizer(normalizer, payload, headers)
             except Exception as exc:
                 logger.error("Normalization failed: %s error=%s", normalizer_key, exc, exc_info=True)
                 raise HTTPException(status_code=400, detail="Failed to normalize payload") from exc
 
+            events: list[HookEvent]
+            if isinstance(normalized, list):
+                events = normalized
+            else:
+                events = [normalized]
+
             try:
-                await self._dispatch(event)
+                for event in events:
+                    await self._dispatch(event)
             except Exception as exc:
                 logger.error("Dispatch failed for inbound %s: %s", path, exc, exc_info=True)
                 # Return 200 anyway to prevent platform retries
@@ -139,12 +150,12 @@ class InboundEndpointRegistry:
         normalizer: Normalizer,
         payload: dict[str, object],  # guard: loose-dict - Inbound payload is dynamic JSON.
         headers: dict[str, str],
-    ) -> HookEvent:
+    ) -> NormalizerResult:
         """Invoke normalizer, supporting both old and new signatures."""
         try:
             signature = inspect.signature(normalizer)
         except (TypeError, ValueError):
-            normalizer_dynamic = cast(Callable[..., HookEvent], normalizer)
+            normalizer_dynamic = cast(Callable[..., NormalizerResult], normalizer)
             return normalizer_dynamic(payload, headers)
 
         positional_parameters = [
@@ -157,7 +168,7 @@ class InboundEndpointRegistry:
             or len(positional_parameters) >= 2
         )
 
-        normalizer_dynamic = cast(Callable[..., HookEvent], normalizer)
+        normalizer_dynamic = cast(Callable[..., NormalizerResult], normalizer)
 
         if supports_headers:
             return normalizer_dynamic(payload, headers)

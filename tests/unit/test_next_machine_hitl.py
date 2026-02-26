@@ -985,6 +985,10 @@ def test_post_completion_finalize_requires_ready_and_apply():
     assert "todos/.finalize-lock" in instructions
     assert "TELECLAUDE_SESSION_ID" in instructions
     assert "<session_id>" in instructions
+    assert "FINALIZE APPLY SAFETY RE-CHECK" in instructions
+    assert "FINALIZE_PRECONDITION_DIRTY_CANONICAL_MAIN" in instructions
+    assert "FINALIZE_PRECONDITION_MAIN_AHEAD" in instructions
+    assert "FINALIZE_PRECONDITION_GIT_STATE_UNKNOWN" in instructions
     assert 'git -C "$MAIN_REPO" merge {args} --no-edit' in instructions
     assert "telec roadmap deliver {args}" in instructions
     assert 'git -C "$MAIN_REPO" push origin main' in instructions

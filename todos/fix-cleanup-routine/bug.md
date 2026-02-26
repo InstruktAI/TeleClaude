@@ -1,4 +1,4 @@
-# Bug: 
+# Bug:
 
 ## Symptom
 
@@ -6,7 +6,7 @@
 
 f6067144-c181-4504-a1d1-307a628a2c89 MozBook: claude/med (6d ago, closed 6d ago)
 
-I wonder how this is possible. We have a 72 hour cleanup routine. Why does this not get cleaned up? 
+I wonder how this is possible. We have a 72 hour cleanup routine. Why does this not get cleaned up?
 
 ## Discovery Context
 

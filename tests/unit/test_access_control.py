@@ -173,3 +173,34 @@ async def test_create_session_api_with_member_role_is_jailed(mock_db, mock_resol
     _, kwargs = mock_db.create_session.call_args
     assert "help-desk" in kwargs["project_path"]
     assert kwargs["human_role"] == "member"
+
+
+@pytest.mark.asyncio
+async def test_create_session_api_with_member_role_uses_configured_help_desk_path(mock_db, mock_resolver):
+    mock_resolver.return_value.resolve.return_value = None
+
+    cmd = CreateSessionCommand(
+        project_path="/tmp/from-api",
+        launch_intent=SessionLaunchIntent(kind=SessionLaunchKind.AGENT),
+        title="test",
+        origin="api",
+        channel_metadata={"human_role": "member"},
+    )
+
+    mock_session = MagicMock()
+    mock_session.session_id = "123"
+    mock_db.create_session = AsyncMock(return_value=mock_session)
+    configured_help_desk = "/tmp/custom-help-desk"
+
+    with (
+        patch("teleclaude.core.command_handlers.config.computer.help_desk_dir", configured_help_desk),
+        patch("teleclaude.core.command_handlers.resolve_working_dir", return_value="/tmp/from-api"),
+        patch("pathlib.Path.exists", return_value=True),
+        patch("pathlib.Path.is_dir", return_value=True),
+        patch("pathlib.Path.is_absolute", return_value=True),
+    ):
+        await create_session(cmd, AsyncMock())
+
+    _, kwargs = mock_db.create_session.call_args
+    assert kwargs["project_path"] == configured_help_desk
+    assert kwargs["human_role"] == "member"

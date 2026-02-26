@@ -1,5 +1,23 @@
 # Delivered work items. Newest first.
 
+- slug: integration-orchestrator-rollout
+  date: '2026-02-26'
+  title: Parent rollout for event-driven singleton integrator and guarded mainline
+    integration
+  commit: a68b3fe07a008609a5fb43827630bed717fdb23f
+  description: Parent rollout for event-driven singleton integrator and guarded mainline
+    integration
+- slug: integration-safety-gates
+  date: '2026-02-26'
+  title: 'Step 1: add finalize/apply safety gates for dirty/diverged canonical main'
+  commit: 3e306a0a448f48cb1ba56898f7fde04f46c4bab1
+  description: 'Step 1: add finalize/apply safety gates for dirty/diverged canonical
+    main'
+- slug: help-desk-whatsapp
+  date: '2026-02-26'
+  title: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
+  commit: 2bcca366ae3709cfae601deb1c31ef3c7a0cd3bf
+  description: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
 - slug: discord-slash-commands-like-telegram
   date: '2026-02-26'
   title: Add Discord Application Commands (slash commands) mirroring Telegram command

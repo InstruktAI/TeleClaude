@@ -31,7 +31,7 @@ from teleclaude.core.models import (
     SessionAdapterMetadata,
     TelegramAdapterMetadata,
 )
-from teleclaude.daemon import TeleClaudeDaemon
+from teleclaude.daemon import HookOutboxRow, TeleClaudeDaemon
 from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.types.commands import CreateSessionCommand, GetSessionDataCommand
 
@@ -365,6 +365,49 @@ async def test_hook_outbox_requeues_critical_when_capacity_full_of_critical() ->
     assert mock_mark_failed.await_args.kwargs["attempt_count"] == 0
     assert mock_mark_failed.await_args.kwargs["error"] == "backpressure:session_queue_full"
     assert isinstance(mock_mark_failed.await_args.kwargs["next_attempt_at"], str)
+
+
+@pytest.mark.asyncio
+async def test_hook_outbox_duplicate_claim_is_skipped_while_inflight() -> None:
+    """Duplicate claims for an in-flight row must not be re-enqueued."""
+    daemon = _make_hook_queue_daemon()
+    session_id = "sess-inflight-dup"
+    row = {
+        "id": 1,
+        "session_id": session_id,
+        "event_type": AgentHookEvents.AGENT_STOP,
+        "payload": "{}",
+        "attempt_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _block_processing(_row: HookOutboxRow) -> None:
+        started.set()
+        await release.wait()
+
+    with (
+        patch.object(daemon, "_process_outbox_item", new=AsyncMock(side_effect=_block_processing)),
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S", 0.01),
+        patch("teleclaude.daemon.db.mark_hook_outbox_failed", new_callable=AsyncMock) as mock_mark_failed,
+    ):
+        await daemon._enqueue_session_outbox_item(session_id, row)
+        worker = daemon._session_outbox_workers[session_id]
+        await asyncio.wait_for(started.wait(), timeout=0.5)
+
+        await daemon._enqueue_session_outbox_item(session_id, row)
+
+        queue_state = daemon._session_outbox_queues[session_id]
+        assert len(queue_state.pending) == 0
+        assert queue_state.claimed_row_ids == {1}
+        mock_mark_failed.assert_not_awaited()
+
+        release.set()
+        await asyncio.wait_for(worker, timeout=0.5)
+
+    assert session_id not in daemon._session_outbox_queues
 
 
 @pytest.mark.asyncio
@@ -1213,6 +1256,44 @@ async def test_cleanup_skips_already_closed_inactive_sessions_and_normalizes_sta
 
         terminate_session.assert_not_called()
         mock_db.update_session.assert_awaited_once_with("closed-123", lifecycle_status="closed")
+
+
+@pytest.mark.asyncio
+async def test_cleanup_purges_closed_sessions_older_than_72h():
+    """Sessions closed longer than 72h should be deleted from the database."""
+    service = MaintenanceService(client=MagicMock(), output_poller=MagicMock(), poller_watch_interval_s=1.0)
+
+    fixed_now = datetime(2026, 1, 14, 12, 0, 0, tzinfo=timezone.utc)
+    old_closed_session = Session(
+        session_id="old-closed-456",
+        computer_name="TestMac",
+        tmux_session_name="old-closed-tmux",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Old Closed",
+        last_activity=fixed_now - timedelta(days=6),
+        closed_at=fixed_now - timedelta(days=6),
+        lifecycle_status="closed",
+    )
+
+    with (
+        patch("teleclaude.services.maintenance_service.datetime") as mock_datetime,
+        patch("teleclaude.services.maintenance_service.db") as mock_db,
+        patch(
+            "teleclaude.services.maintenance_service.session_cleanup.terminate_session",
+            new_callable=AsyncMock,
+        ) as terminate_session,
+    ):
+        mock_datetime.now.return_value = fixed_now
+        mock_db.list_sessions = AsyncMock(return_value=[old_closed_session])
+
+        await service._cleanup_inactive_sessions()
+
+        terminate_session.assert_awaited_once()
+        args, kwargs = terminate_session.call_args
+        assert args[0] == "old-closed-456"
+        assert kwargs["reason"] == "closed_expired"
+        assert kwargs["delete_db"] is True
+        assert kwargs["kill_tmux"] is False
 
 
 @pytest.mark.asyncio

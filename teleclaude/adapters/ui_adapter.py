@@ -190,6 +190,8 @@ class UiAdapter(BaseAdapter):
             return session.get_metadata().get_ui().get_telegram().badge_sent
         if self.ADAPTER_KEY == "discord":
             return session.get_metadata().get_ui().get_discord().badge_sent
+        if self.ADAPTER_KEY == "whatsapp":
+            return session.get_metadata().get_ui().get_whatsapp().badge_sent
         return False
 
     async def _set_badge_sent(self, session: "Session", value: bool) -> None:
@@ -198,6 +200,8 @@ class UiAdapter(BaseAdapter):
             session.get_metadata().get_ui().get_telegram().badge_sent = value
         elif self.ADAPTER_KEY == "discord":
             session.get_metadata().get_ui().get_discord().badge_sent = value
+        elif self.ADAPTER_KEY == "whatsapp":
+            session.get_metadata().get_ui().get_whatsapp().badge_sent = value
         else:
             return
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
@@ -208,6 +212,8 @@ class UiAdapter(BaseAdapter):
             return session.get_metadata().get_ui().get_telegram().char_offset
         if self.ADAPTER_KEY == "discord":
             return session.get_metadata().get_ui().get_discord().char_offset
+        if self.ADAPTER_KEY == "whatsapp":
+            return session.get_metadata().get_ui().get_whatsapp().char_offset
         return 0
 
     async def _set_char_offset(self, session: "Session", value: int) -> None:
@@ -216,6 +222,8 @@ class UiAdapter(BaseAdapter):
             session.get_metadata().get_ui().get_telegram().char_offset = value
         elif self.ADAPTER_KEY == "discord":
             session.get_metadata().get_ui().get_discord().char_offset = value
+        elif self.ADAPTER_KEY == "whatsapp":
+            session.get_metadata().get_ui().get_whatsapp().char_offset = value
         else:
             return
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)

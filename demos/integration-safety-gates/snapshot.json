@@ -1,0 +1,19 @@
+{
+  "slug": "integration-safety-gates",
+  "title": "Requirements: integration-safety-gates",
+  "version": "1.0.0",
+  "delivered_date": "2026-02-26",
+  "merge_commit": "3e306a0a448f48cb1ba56898f7fde04f46c4bab1",
+  "metrics": {
+    "implementation_plan_checkboxes_total": 15,
+    "implementation_plan_checkboxes_completed": 15,
+    "demo_validation_blocks": 4
+  },
+  "five_acts": [
+    "Act I - Dispatch Guardrail: block /next-finalize dispatch when canonical main preconditions are unsafe.",
+    "Act II - Apply Guardrail: re-check canonical preconditions before finalize apply instructions are consumed.",
+    "Act III - Deterministic Failures: emit stable machine-readable failure codes with explicit operator next actions.",
+    "Act IV - Regression Coverage: prove blocked and allowed branches across next-machine state and HITL contract tests.",
+    "Act V - Orchestrator Confidence: preserve happy-path finalize behavior while reducing unsafe-main regression surface."
+  ]
+}

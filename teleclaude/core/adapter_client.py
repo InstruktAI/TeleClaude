@@ -14,6 +14,7 @@ from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.discord_adapter import DiscordAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.adapters.whatsapp_adapter import WhatsAppAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.models import (
@@ -170,6 +171,18 @@ class AdapterClient:
             await telegram.start()  # Raises if fails → daemon crashes
             self.adapters["telegram"] = telegram  # Register ONLY after success
             logger.info("Started telegram adapter")
+
+        whatsapp_cfg = getattr(config, "whatsapp", None)
+        if (
+            whatsapp_cfg is not None
+            and bool(getattr(whatsapp_cfg, "enabled", False))
+            and getattr(whatsapp_cfg, "phone_number_id", None)
+            and getattr(whatsapp_cfg, "access_token", None)
+        ):
+            whatsapp = WhatsAppAdapter(self)
+            await whatsapp.start()
+            self.adapters["whatsapp"] = whatsapp
+            logger.info("Started whatsapp adapter")
 
         # Redis adapter
         if config.redis.enabled:

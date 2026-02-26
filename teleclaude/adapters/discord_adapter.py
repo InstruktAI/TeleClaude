@@ -1304,6 +1304,8 @@ class DiscordAdapter(UiAdapter):
             return
         user = getattr(self._client, "user", None)
         logger.info("Discord adapter ready as %s", user)
+        # Mark gateway readiness immediately; follow-up bootstrap can be slow.
+        self._ready_event.set()
 
         # Auto-provision Discord infrastructure (category + forums)
         try:
@@ -1336,8 +1338,6 @@ class DiscordAdapter(UiAdapter):
                     await self._post_or_update_launcher(forum_id)
                 except Exception as exc:
                     logger.warning("Failed to post launcher for forum %s: %s", forum_id, exc)
-
-        self._ready_event.set()
 
     async def _handle_discord_dm(self, message: object) -> None:
         """Handle Direct Message (no guild) — invite token binding or bound user messaging."""

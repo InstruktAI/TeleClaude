@@ -1146,6 +1146,11 @@ class APIServer:
             slash command, arguments, project, agent, and thinking mode.
             Requires dual-factor caller identity (X-Caller-Session-Id + X-Tmux-Session).
             """
+            if not identity.session_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="sessions/run requires caller session identity",
+                )
             if not request.command.startswith("/"):
                 raise HTTPException(status_code=400, detail="command must start with '/'")
             if not request.project:
