@@ -50,6 +50,23 @@ def test_validate_event_payload_rejects_missing_and_unexpected_fields() -> None:
     assert any("unexpected fields" in item for item in diagnostics)
 
 
+def test_build_event_reports_correct_event_type_for_received_at_validation() -> None:
+    with pytest.raises(IntegrationEventValidationError) as exc:
+        build_integration_event(
+            "review_approved",
+            {
+                "slug": "demo-slug",
+                "approved_at": "2026-02-26T10:00:00Z",
+                "review_round": 1,
+                "reviewer_session_id": "review-1",
+            },
+            received_at="not-an-iso8601-timestamp",
+        )
+
+    assert exc.value.event_type == "review_approved"
+    assert any("received_at must be valid ISO8601" in item for item in exc.value.diagnostics)
+
+
 def test_event_store_append_is_idempotent_and_collision_safe(tmp_path: Path) -> None:
     store = IntegrationEventStore(event_log_path=tmp_path / "integration-events.jsonl")
     event = build_integration_event(

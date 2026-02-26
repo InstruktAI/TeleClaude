@@ -123,7 +123,7 @@ def build_integration_event(
     validated_payload = validate_event_payload(event_type, payload)
 
     resolved_received_at = (
-        _normalize_iso8601("received_at", received_at)
+        _normalize_iso8601(event_type, "received_at", received_at)
         if received_at is not None
         else datetime.now(tz=UTC).isoformat(timespec="seconds")
     )
@@ -223,7 +223,7 @@ def _validate_field_set(event_type: IntegrationEventType, payload: Mapping[str, 
 
 def _validate_review_approved(payload: Mapping[str, object], diagnostics: list[str]) -> ReviewApprovedPayload:
     slug = _as_non_empty_str(payload, "slug", diagnostics)
-    approved_at = _as_iso8601(payload, "approved_at", diagnostics)
+    approved_at = _as_iso8601("review_approved", payload, "approved_at", diagnostics)
     review_round = _as_positive_int(payload, "review_round", diagnostics)
     reviewer_session_id = _as_non_empty_str(payload, "reviewer_session_id", diagnostics)
     if diagnostics:
@@ -242,7 +242,7 @@ def _validate_finalize_ready(payload: Mapping[str, object], diagnostics: list[st
     sha = _as_non_empty_str(payload, "sha", diagnostics)
     worker_session_id = _as_non_empty_str(payload, "worker_session_id", diagnostics)
     orchestrator_session_id = _as_non_empty_str(payload, "orchestrator_session_id", diagnostics)
-    ready_at = _as_iso8601(payload, "ready_at", diagnostics)
+    ready_at = _as_iso8601("finalize_ready", payload, "ready_at", diagnostics)
     if diagnostics:
         raise IntegrationEventValidationError("finalize_ready", diagnostics)
     return {
@@ -259,7 +259,7 @@ def _validate_branch_pushed(payload: Mapping[str, object], diagnostics: list[str
     branch = _as_non_empty_str(payload, "branch", diagnostics)
     sha = _as_non_empty_str(payload, "sha", diagnostics)
     remote = _as_non_empty_str(payload, "remote", diagnostics)
-    pushed_at = _as_iso8601(payload, "pushed_at", diagnostics)
+    pushed_at = _as_iso8601("branch_pushed", payload, "pushed_at", diagnostics)
     pusher = _as_non_empty_str(payload, "pusher", diagnostics)
     if diagnostics:
         raise IntegrationEventValidationError("branch_pushed", diagnostics)
@@ -285,26 +285,29 @@ def _as_positive_int(payload: Mapping[str, object], field_name: str, diagnostics
     return raw
 
 
-def _as_iso8601(payload: Mapping[str, object], field_name: str, diagnostics: list[str]) -> str:
+def _as_iso8601(
+    event_type: IntegrationEventType, payload: Mapping[str, object], field_name: str, diagnostics: list[str]
+) -> str:
     raw = payload.get(field_name)
     if not isinstance(raw, str) or not raw.strip():
         diagnostics.append(f"{field_name} must be a non-empty ISO8601 string")
         return ""
     try:
-        return _normalize_iso8601(field_name, raw)
+        return _normalize_iso8601(event_type, field_name, raw)
     except IntegrationEventValidationError as exc:
         diagnostics.extend(exc.diagnostics)
         return ""
 
 
-def _normalize_iso8601(field_name: str, raw_value: str) -> str:
+def _normalize_iso8601(event_type: IntegrationEventType, field_name: str, raw_value: str) -> str:
     adjusted = raw_value.replace("Z", "+00:00")
     try:
         parsed = datetime.fromisoformat(adjusted)
     except ValueError as exc:
         raise IntegrationEventValidationError(
-            field_name, [f"{field_name} must be valid ISO8601 (value={raw_value!r})"]
+            event_type,
+            [f"{field_name} must be valid ISO8601 (value={raw_value!r})"],
         ) from exc
     if parsed.tzinfo is None:
-        raise IntegrationEventValidationError(field_name, [f"{field_name} must include timezone offset"])
+        raise IntegrationEventValidationError(event_type, [f"{field_name} must include timezone offset"])
     return parsed.astimezone(UTC).isoformat(timespec="seconds")
