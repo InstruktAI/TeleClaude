@@ -167,3 +167,17 @@ But `queued -> integrated` or `blocked -> queued` are not rejected. Current call
 - I1: Empty reasons on would_block outcome (data loss)
 - I2: Missing constructor validation for non-shadow config (safety invariant)
 - I3-I5, I7: Missing tests for critical safety paths (lease loss, clearance retry, non-shadow push, SUPERSEDED/None readiness)
+
+## Fixes Applied
+
+- C1: Implementation plan checkboxes marked complete in `implementation-plan.md` (`a3a70f74`).
+- C2: Build Gates checkboxes marked complete in `quality-checklist.md` (`5838cbc7`).
+- C3: Clearance probe/classification now excludes the integrator owner session; added regression coverage (`438b9ff6`).
+- C4: Removed incorrect `pytest.mark.integration` usage from `tests/unit/test_integrator_shadow_mode.py` (`aa6c332b`).
+- I1: `ShadowOutcome.reasons` now uses fallback reason when readiness reasons are empty; added test (`85facc42`).
+- I2: Added constructor validation requiring `canonical_main_pusher` when `shadow_mode=False`; added test (`d45cbd3c`).
+- I3: Added lease-loss test ensuring drain aborts on renewal ownership loss (`bb2988c3`).
+- I4: Added clearance retry-loop test covering sleep/retry-until-clear behavior (`b2c68d73`).
+- I5: Added non-shadow-mode test asserting canonical push execution (`fac226cc`).
+- I6: Enforced queue status transition DAG in `_set_status`; added invalid-transition tests (`9627501b`).
+- I7: Added tests for `readiness is None` and `status == "SUPERSEDED"` runtime paths (`19d0fb31`).
