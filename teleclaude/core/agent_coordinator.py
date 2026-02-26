@@ -207,7 +207,7 @@ def _resolve_hook_actor_name(session: "Session") -> str:
         return _coerce_nonempty_str(identity.person_name)
 
     if origin_hint == InputOrigin.TELEGRAM.value and telegram_user_id is not None:
-        telegram_meta: dict[str, str] = {
+        telegram_meta: Mapping[str, object] = {
             "user_id": str(telegram_user_id),
             "telegram_user_id": str(telegram_user_id),
         }
@@ -216,7 +216,7 @@ def _resolve_hook_actor_name(session: "Session") -> str:
             return resolved
 
     if origin_hint == InputOrigin.DISCORD.value and discord_user_id:
-        discord_meta: dict[str, str] = {
+        discord_meta: Mapping[str, object] = {
             "user_id": str(discord_user_id),
             "discord_user_id": str(discord_user_id),
         }

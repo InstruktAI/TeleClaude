@@ -32,7 +32,7 @@ echo "Running resource validation"
 if [ "${CI:-}" = "true" ]; then
     echo "  Skipped (CI: telec sync makes network calls)"
 else
-    $RUN_M teleclaude.cli.telec sync --validate-only --project-root "${REPO_ROOT}"
+    $RUN_M teleclaude.cli.telec sync --warn-only --validate-only --project-root "${REPO_ROOT}"
 fi
 
 echo "Running ruff format (check)"

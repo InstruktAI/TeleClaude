@@ -69,6 +69,8 @@ subcommands:
       --attach: 'Attach to tmux session after revive.'
   init:
     description: 'Initialize docs sync and auto-rebuild watcher.'
+  version:
+    description: 'Print version, channel, and commit hash.'
   sync:
     description: 'Validate refs and build doc artifacts.'
     flags:

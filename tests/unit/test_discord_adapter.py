@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from typing_extensions import TypedDict
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
@@ -76,6 +77,10 @@ class FakeDiscordModule:
     @staticmethod
     def File(file_path: str) -> object:
         return SimpleNamespace(path=file_path)
+
+
+class SessionUpdatedFields(TypedDict):
+    native_session_id: str | None
 
 
 class FakeForumChannel:
@@ -1313,7 +1318,7 @@ def _make_updated_context(
     *,
     native_session_id: str | None = "native-thread-123",
 ) -> SessionUpdatedContext:
-    updated_fields: dict[str, str | None] = {"native_session_id": native_session_id}
+    updated_fields: SessionUpdatedFields = {"native_session_id": native_session_id}
     return SessionUpdatedContext(session_id=session_id, updated_fields=updated_fields)
 
 

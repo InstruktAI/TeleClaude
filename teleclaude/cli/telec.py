@@ -14,6 +14,7 @@ _BOOT = _t.monotonic()
 
 from instrukt_ai_logging import get_logger  # noqa: E402
 
+from teleclaude import __version__  # noqa: E402
 from teleclaude.cli.api_client import APIError, TelecAPIClient  # noqa: E402
 from teleclaude.cli.models import CreateSessionResult  # noqa: E402
 from teleclaude.cli.session_auth import (  # noqa: E402
@@ -71,6 +72,7 @@ class TelecCommand(str, Enum):
     AGENTS = "agents"
     CHANNELS = "channels"
     INIT = "init"
+    VERSION = "version"
     SYNC = "sync"
     WATCH = "watch"
     DOCS = "docs"
@@ -325,6 +327,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         },
     ),
     "init": CommandDef(desc="Initialize docs sync and auto-rebuild watcher"),
+    "version": CommandDef(desc="Print version, channel, and commit"),
     "sync": CommandDef(
         desc="Validate, build indexes, and deploy artifacts",
         flags=[
@@ -803,8 +806,22 @@ def _usage_subcmd(cmd_name: str) -> str:
 
     if cmd.subcommands:
         if cmd.standalone:
-            entry = f"telec {cmd_name}"
+            args_str = f" {cmd.args}" if cmd.args else ""
+            flag_hints = " [options]" if cmd.flags else ""
+            entry = f"telec {cmd_name}{args_str}{flag_hints}"
             lines.append(f"  {entry:<{col}}# {cmd.desc}")
+
+            visible_cmd_flags = [f for f in cmd.flags if f.long != "--help"] if cmd.flags else []
+            if visible_cmd_flags:
+                lines.append("\nOptions:")
+                for f in visible_cmd_flags:
+                    flag_label = f"  {f.short}, {f.long}" if f.short else f"  {f.long}"
+                    lines.append(f"{flag_label:<25s}{f.desc}")
+                examples = _example_commands([cmd_name], cmd.args, visible_cmd_flags)
+                if examples:
+                    lines.append("\nExamples:")
+                    for example in examples:
+                        lines.append(f"  {example}")
 
         for sub_name, sub_cmd in cmd.subcommands.items():
             expanded = HELP_SUBCOMMAND_EXPANSIONS.get(cmd_name, {}).get(sub_name)
@@ -1182,6 +1199,8 @@ def _handle_cli_command(argv: list[str]) -> None:
         handle_channels(args)
     elif cmd_enum is TelecCommand.INIT:
         init_project(Path.cwd())
+    elif cmd_enum is TelecCommand.VERSION:
+        _handle_version()
     elif cmd_enum is TelecCommand.SYNC:
         _handle_sync(args)
     elif cmd_enum is TelecCommand.WATCH:
@@ -1201,6 +1220,31 @@ def _handle_cli_command(argv: list[str]) -> None:
     else:
         print(f"Unknown command: /{cmd}")
         print(_usage())
+
+
+def _git_short_commit_hash() -> str:
+    """Return HEAD short hash, or 'unknown' when unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return "unknown"
+
+    if result.returncode != 0:
+        return "unknown"
+
+    commit_hash = result.stdout.strip()
+    return commit_hash if commit_hash else "unknown"
+
+
+def _handle_version() -> None:
+    """Print runtime version metadata."""
+    commit_hash = _git_short_commit_hash()
+    print(f"TeleClaude v{__version__} (channel: alpha, commit: {commit_hash})")
 
 
 def _maybe_kill_tui_session() -> None:

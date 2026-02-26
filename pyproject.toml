@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "TeleClaude"
-version = "0.1.0"
+version = "1.0.0"
 license = { text = "GPL-3.0-only" }
 authors = [{ name = "Maurice Faber", email = "maurice@instrukt.ai" }]
 description = "Control terminal sessions on multiple computers remotely via Telegram"

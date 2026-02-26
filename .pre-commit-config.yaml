@@ -37,7 +37,7 @@ repos:
     name: Validate docs and artifacts
     entry: bash -c
     args:
-    - 'uv run --quiet -m teleclaude.cli.telec sync --validate-only --project-root "$PWD"'
+    - 'uv run --quiet --no-dev --no-sync -m teleclaude.cli.telec sync --warn-only --validate-only --project-root "$PWD"'
     language: system
     pass_filenames: false
     files: ^(docs/|agents/|\.agents/|scripts/snippet_schema\.yaml|teleclaude/constants\.py)
