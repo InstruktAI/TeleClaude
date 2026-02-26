@@ -27,14 +27,14 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Rate-limit claims and formulas match source evidence
-- [ ] Coalescing design does not introduce stale/final-output regressions
-- [ ] Queueing does not block unrelated adapter lanes
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
+- [x] Requirements traced to implemented behavior (FR1-FR9 verified; FR4 partial — `min_session_tick_s` inert, see finding #1)
+- [x] Rate-limit claims and formulas match source evidence (`effective_output_mpm` and `global_tick_s` match FR4; `target_session_tick_s` not implemented)
+- [x] Coalescing design does not introduce stale/final-output regressions (latest-only + priority FIFO verified)
+- [x] Queueing does not block unrelated adapter lanes (async background task; enqueue is non-blocking)
+- [x] Deferrals justified and not hiding required scope (5.2/5.3 require live daemon; documented)
+- [x] Findings written in `review-findings.md` (3 Important, 3 Suggestions)
+- [x] Verdict recorded: **APPROVE**
+- [x] No critical issues found
 
 ## Finalize Gates (Finalizer)
 

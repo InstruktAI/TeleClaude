@@ -39,6 +39,8 @@ from telegram.ext import (
 )
 from telegram.request import HTTPXRequest
 
+from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
+from teleclaude.adapters.qos.policy import telegram_policy
 from teleclaude.config import config
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
@@ -166,6 +168,10 @@ class TelegramAdapter(
         self._topic_ready_events: dict[int, asyncio.Event] = {}  # topic_id -> readiness event
         self._topic_ready_cache: set[int] = set()  # topic_ids confirmed via forum_topic_created
         self._startup_housekeeping_task: asyncio.Task[None] | None = None
+
+        # Output QoS scheduler: coalesces stale payloads and enforces pacing budget.
+        qos_policy = telegram_policy(config.telegram.qos)
+        self._qos_scheduler: OutputQoSScheduler = OutputQoSScheduler(qos_policy)
 
         # Register simple command handlers dynamically
         self._register_simple_command_handlers()
@@ -734,7 +740,25 @@ class TelegramAdapter(
         )
         builder.request(HTTPXRequest(httpx_kwargs=httpx_kwargs))
         builder.concurrent_updates(True)  # Enable concurrent update processing
+
+        # Enable PTB rate limiter as first-line transport-level flood control.
+        # Requires python-telegram-bot[rate-limiter] (aiolimiter package).
+        # If the dependency is missing, log a warning and continue without it.
+        try:
+            from telegram.ext import AIORateLimiter  # type: ignore[attr-defined]
+
+            builder.rate_limiter(AIORateLimiter())  # type: ignore[misc]
+            logger.info("PTB AIORateLimiter enabled for Telegram transport-level rate control")
+        except (ImportError, AttributeError):
+            logger.warning(
+                "PTB AIORateLimiter not available (install python-telegram-bot[rate-limiter]). "
+                "Continuing without transport-level rate limiter; QoS scheduler remains active."
+            )
+
         self.app = builder.build()
+
+        # Start QoS scheduler (non-blocking background task).
+        self._qos_scheduler.start()
         assert self.app is not None  # Help mypy - app is guaranteed non-None after build()
         assert self.app.updater is not None  # Updater is created by builder
 
@@ -899,6 +923,8 @@ class TelegramAdapter(
 
     async def stop(self) -> None:
         """Stop Telegram bot."""
+        await self._qos_scheduler.stop()
+
         if self._startup_housekeeping_task and not self._startup_housekeeping_task.done():
             self._startup_housekeeping_task.cancel()
             try:
@@ -962,6 +988,82 @@ class TelegramAdapter(
             message_id,
             session.session_id[:8],
         )
+
+    # ==================== Output QoS Integration ====================
+
+    async def send_output_update(  # type: ignore[override]  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        session: "Session",
+        output: str,
+        started_at: float,
+        last_output_changed_at: float,
+        is_final: bool = False,
+        exit_code: Optional[int] = None,
+        render_markdown: bool = False,
+    ) -> Optional[str]:
+        """Route Telegram output update through the QoS scheduler.
+
+        When QoS is off, delegates directly to the parent implementation.
+        When QoS is active, enqueues the payload for paced dispatch and returns None
+        immediately. The scheduler's background loop calls the parent at the computed
+        cadence, storing the output_message_id via _store_output_message_id as usual.
+
+        Final (is_final=True) payloads are placed in the priority queue and dispatched
+        in the next available scheduler slot without bypassing ordering invariants.
+        """
+        from teleclaude.adapters.ui_adapter import UiAdapter
+
+        if self._qos_scheduler._policy.mode == "off":
+            return await UiAdapter.send_output_update(
+                self, session, output, started_at, last_output_changed_at, is_final, exit_code, render_markdown
+            )
+
+        # Capture args for the dispatch closure (coalescing replaces old closures).
+        _self = self
+        _session = session
+        _output = output
+        _started_at = started_at
+        _last_changed = last_output_changed_at
+        _is_final = is_final
+        _exit_code = exit_code
+        _render_md = render_markdown
+
+        async def _dispatch() -> Optional[str]:
+            return await UiAdapter.send_output_update(
+                _self, _session, _output, _started_at, _last_changed, _is_final, _exit_code, _render_md
+            )
+
+        self._qos_scheduler.enqueue(session.session_id, _dispatch, is_final=is_final)
+        return None  # Delivery is deferred; message_id stored asynchronously.
+
+    async def send_threaded_output(  # type: ignore[override]
+        self,
+        session: "Session",
+        text: str,
+        multi_message: bool = False,
+    ) -> Optional[str]:
+        """Route Telegram threaded output through the QoS scheduler.
+
+        Threaded output payloads are coalesced (latest-only) so that only the
+        most recent accumulated text is dispatched per scheduler tick.
+        """
+        from teleclaude.adapters.ui_adapter import UiAdapter
+        from teleclaude.utils.markdown import MARKDOWN_V2_INITIAL_STATE
+
+        if self._qos_scheduler._policy.mode == "off":
+            return await UiAdapter.send_threaded_output(self, session, text, multi_message)
+
+        _self = self
+        _session = session
+        _text = text
+        _multi = multi_message
+
+        async def _dispatch() -> Optional[str]:
+            return await UiAdapter.send_threaded_output(_self, _session, _text, _multi, MARKDOWN_V2_INITIAL_STATE)
+
+        # Threaded output chunks are non-final (the coordinator handles completion separately).
+        self._qos_scheduler.enqueue(session.session_id, _dispatch, is_final=False)
+        return None  # Delivery is deferred.
 
     # ==================== Platform-Specific Parameters ====================
 
