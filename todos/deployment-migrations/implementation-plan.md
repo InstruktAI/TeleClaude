@@ -33,16 +33,16 @@ only. Follows patterns from existing `teleclaude/core/migrations/runner.py`.
 
 **File(s):** `teleclaude/deployment/migration_runner.py`
 
-- [ ] `discover_migrations(from_ver, to_ver)` — scan `migrations/` for version
+- [x] `discover_migrations(from_ver, to_ver)` — scan `migrations/` for version
       dirs in range, return ordered list of (version, script_path) tuples
-- [ ] `run_migrations(from_ver, to_ver, dry_run=False)` — execute in order,
+- [x] `run_migrations(from_ver, to_ver, dry_run=False)` — execute in order,
       skip where `check()` returns True
-- [ ] Dynamic loading via `importlib.util.spec_from_file_location` (same
+- [x] Dynamic loading via `importlib.util.spec_from_file_location` (same
       pattern as `teleclaude/core/migrations/runner.py`)
-- [ ] State: read/write `~/.teleclaude/migration_state.json`
-- [ ] Atomic writes: temp file + `os.rename`
-- [ ] On failure: halt, return error with migration name + traceback
-- [ ] Return result object: `{migrations_run, migrations_skipped, error}`
+- [x] State: read/write `~/.teleclaude/migration_state.json`
+- [x] Atomic writes: temp file + `os.rename`
+- [x] On failure: halt, return error with migration name + traceback
+- [x] Return result object: `{migrations_run, migrations_skipped, error}`
 
 ---
 
