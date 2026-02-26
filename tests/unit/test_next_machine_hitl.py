@@ -116,9 +116,9 @@ async def test_next_prepare_autonomous_dispatch():
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=False)
-        assert "teleclaude__run_agent_command" in result
-        assert f'args="{slug}"' in result
-        assert 'command="/next-prepare-draft"' in result
+        assert "telec sessions run" in result
+        assert f'--args "{slug}"' in result
+        assert '--command "/next-prepare-draft"' in result
 
 
 @pytest.mark.asyncio
@@ -152,8 +152,8 @@ async def test_next_prepare_autonomous_slug_missing_from_roadmap():
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=False)
-        assert "teleclaude__run_agent_command" in result
-        assert f'args="{slug}"' in result
+        assert "telec sessions run" in result
+        assert f'--args "{slug}"' in result
         assert "not in todos/roadmap.yaml" in result
 
 
@@ -510,11 +510,11 @@ def test_format_tool_call_codex_uses_normalized_command():
         project="/tmp/project",
         guidance="Mock guidance",
         subfolder="trees/test-slug",
-        next_call="teleclaude__next_work",
+        next_call="telec todo work",
     )
-    assert 'command="/next-build"' in result
+    assert '--command "/next-build"' in result
     assert "/prompts:" not in result
-    assert "teleclaude__run_agent_command(" in result
+    assert "telec sessions run --computer local" in result
 
 
 def test_format_tool_call_claude_no_prefix():
@@ -525,11 +525,11 @@ def test_format_tool_call_claude_no_prefix():
         project="/tmp/project",
         guidance="Mock guidance",
         subfolder="trees/test-slug",
-        next_call="teleclaude__next_work",
+        next_call="telec todo work",
     )
-    assert 'command="/next-build"' in result
+    assert '--command "/next-build"' in result
     assert "/prompts:" not in result
-    assert "teleclaude__run_agent_command(" in result
+    assert "telec sessions run --computer local" in result
 
 
 def test_format_tool_call_gemini_no_prefix():
@@ -540,9 +540,9 @@ def test_format_tool_call_gemini_no_prefix():
         project="/tmp/project",
         guidance="Mock guidance",
         subfolder="trees/test-slug",
-        next_call="teleclaude__next_work",
+        next_call="telec todo work",
     )
-    assert 'command="/next-review"' in result
+    assert '--command "/next-review"' in result
     assert "/prompts:" not in result
 
 
@@ -554,10 +554,10 @@ def test_format_tool_call_next_call_with_args():
         project="/tmp/project",
         guidance="Mock guidance",
         subfolder="trees/test-slug",
-        next_call='teleclaude__next_work(slug="test-slug")',
+        next_call='telec todo work test-slug',
     )
-    assert 'Call teleclaude__next_work(slug="test-slug")' in result
-    assert 'Call teleclaude__next_work(slug="test-slug")()' not in result
+    assert "Call telec todo work test-slug" in result
+    assert "Call telec todo work test-slug()" not in result
 
 
 # =============================================================================
@@ -728,7 +728,7 @@ async def test_next_work_lazy_marking_no_state_mutation():
         assert state["build"] == "pending"
 
         # Output should contain marking instructions
-        assert "mark_phase" in result
+        assert "mark-phase" in result
         assert "BEFORE DISPATCHING" in result
 
 
@@ -751,9 +751,9 @@ def test_post_completion_finalize_requires_ready_and_apply():
 
 def test_format_build_gate_failure_structure():
     """format_build_gate_failure produces correct instruction structure."""
-    result = format_build_gate_failure("test-slug", "GATE FAILED: make test", "teleclaude__next_work()")
+    result = format_build_gate_failure("test-slug", "GATE FAILED: make test", "telec todo work")
     assert "BUILD GATES FAILED: test-slug" in result
     assert "GATE FAILED: make test" in result
     assert "Send" in result
     assert "Do NOT end" in result
-    assert "mark_phase" in result
+    assert "mark-phase" in result

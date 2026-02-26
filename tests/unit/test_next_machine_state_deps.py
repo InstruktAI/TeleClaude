@@ -3,13 +3,15 @@
 Tests for:
 - resolve_slug() with ready-only mode
 - Dependency tracking and satisfaction logic
-- teleclaude__set_dependencies() validation
+- telec todo set-deps() validation
 - Circular dependency detection
 - next_work() without bug check
 """
 
+import subprocess
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -29,7 +31,7 @@ from teleclaude.core.next_machine import (
     resolve_slug,
     save_roadmap,
 )
-from teleclaude.core.next_machine.core import RoadmapEntry
+from teleclaude.core.next_machine.core import RoadmapEntry, run_build_gates
 
 # =============================================================================
 # Item Readiness Tests
@@ -362,6 +364,113 @@ async def test_next_work_explicit_slug_rejects_pending_items():
 
 
 @pytest.mark.asyncio
+async def test_next_work_explicit_bug_slug_allows_pending_items():
+    """Explicit bug slugs should skip DOR readiness gating."""
+    db = MagicMock(spec=Db)
+    slug = "fix-bug"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        todo_dir = Path(tmpdir) / "todos" / slug
+        todo_dir.mkdir(parents=True, exist_ok=True)
+        (todo_dir / "bug.md").write_text("# Bug\n")
+        (todo_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": null}')
+
+        # Ensure sync paths have a destination to copy bug.md into.
+        (Path(tmpdir) / "trees" / slug).mkdir(parents=True, exist_ok=True)
+
+        with (
+            patch("teleclaude.core.next_machine.core.ensure_worktree_async", new=AsyncMock(return_value=False)),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
+            ),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+        assert "ERROR: ITEM_NOT_READY" not in result
+        assert "next-bugs-fix" in result
+
+
+@pytest.mark.asyncio
+async def test_next_work_explicit_bug_slug_with_worktree_cwd_skips_dor_gate():
+    """Bug start should work when cwd points at trees/{slug} worktree."""
+    db = MagicMock(spec=Db)
+    slug = "fix-bug"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+
+        # Create a real git repo + worktree so cwd normalization can resolve
+        # project root from a worktree path.
+        subprocess.run(["git", "init"], cwd=tmpdir, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "config", "user.email", "tests@example.com"],
+            cwd=tmpdir,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Tests"],
+            cwd=tmpdir,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        (tmp_path / "README.md").write_text("# Test\n")
+        subprocess.run(["git", "add", "README.md"], cwd=tmpdir, check=True, capture_output=True, text=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=tmpdir, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "worktree", "add", f"trees/{slug}", "-b", slug],
+            cwd=tmpdir,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        todo_dir = tmp_path / "todos" / slug
+        todo_dir.mkdir(parents=True, exist_ok=True)
+        (todo_dir / "bug.md").write_text("# Bug\n")
+        (todo_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": null}')
+
+        with (
+            patch("teleclaude.core.next_machine.core.ensure_worktree_async", new=AsyncMock(return_value=False)),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
+            ),
+        ):
+            result = await next_work(db, slug=slug, cwd=str(tmp_path / "trees" / slug))
+
+        assert "ERROR: ITEM_NOT_READY" not in result
+        assert "next-bugs-fix" in result
+
+
+def test_run_build_gates_skips_demo_validation_for_bug(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Bug workflow should not fail build gates for missing demo.md."""
+    slug = "fix-bug"
+    bug_dir = tmp_path / "todos" / slug
+    bug_dir.mkdir(parents=True, exist_ok=True)
+    (bug_dir / "bug.md").write_text("# Bug\n")
+
+    commands: list[list[str]] = []
+
+    def _fake_run(cmd: list[str], **_kwargs: object) -> SimpleNamespace:
+        commands.append(cmd)
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("teleclaude.core.next_machine.core.subprocess.run", _fake_run)
+
+    passed, output = run_build_gates(str(tmp_path), slug)
+
+    assert passed is True
+    assert commands == [["make", "test"]]
+    assert "GATE SKIPPED: demo validate (bug workflow)" in output
+
+
+@pytest.mark.asyncio
 async def test_next_work_review_includes_merge_base_note():
     """Verify next_work review dispatch includes merge-base guard note."""
     db = MagicMock(spec=Db)
@@ -524,9 +633,9 @@ async def test_next_work_finalize_next_call_without_slug():
         ):
             result = await next_work(db, slug=slug, cwd=tmpdir, caller_session_id="orchestrator-session")
 
-    assert 'command="/next-finalize"' in result
-    assert "Call teleclaude__next_work()" in result
-    assert "Call teleclaude__next_work(slug=" not in result
+    assert '--command "/next-finalize"' in result
+    assert "Call telec todo work" in result
+    assert "Call telec todo work(slug=" not in result
     assert "FINALIZE_READY: final-item" in result
     assert "telec roadmap deliver final-item" in result
 

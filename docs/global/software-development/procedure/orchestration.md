@@ -32,7 +32,7 @@ This is a document-quality check, not a code review. The orchestrator does not r
 1. Invoke the work state machine with an optional slug.
 2. Receive instruction block.
 3. Follow instructions verbatim:
-   - Dispatch worker (run_agent_command)
+   - Dispatch worker (`telec sessions run`)
    - Start background timer (sleep 300)
    - Stop and wait
 4. When notification arrives OR timer expires:
@@ -40,13 +40,18 @@ This is a document-quality check, not a code review. The orchestrator does not r
    - Invoke the work state machine again
 5. Repeat until exit condition.
 
+### Container Slug Handling
+
+- If `telec todo prepare <slug>` returns `CONTAINER:` or `todos/{slug}/state.yaml` has non-empty `breakdown.todos`, treat that slug as a grouping container only.
+- Run each child slug via `telec todo work <child> --cwd <project-root>` in dependency order until children complete, and do not dispatch build/review/fix/finalize directly for the container slug.
+
 ### When Notification Arrives
 
 1. **Check for user intervention first.** If the user has sent messages, spoken to the worker directly, or changed direction since the worker was dispatched, pause and confirm with the user before proceeding. The notification's implicit instruction ("continue the loop") may be stale.
 2. Verify output matches intended outcome.
 3. Execute POST_COMPLETION steps (orchestrator responsibility):
-   - Mark phase status using `teleclaude__mark_phase()` if applicable
-   - **Terminate worker session: `teleclaude__end_session(computer, session_id)`** ← ORCHESTRATOR OWNS THIS
+   - Mark phase status using `telec todo mark-phase ... --cwd <project-root>` if applicable
+   - **Terminate worker session: `telec sessions end <session_id> --computer <computer>`** ← ORCHESTRATOR OWNS THIS
    - Execute any phase-specific cleanup from the state machine instruction
 4. Invoke the work state machine to continue.
 
@@ -66,16 +71,16 @@ This is a document-quality check, not a code review. The orchestrator does not r
 ### Agent Degradation Handling (Orchestrator-Owned)
 
 1. If dispatch fails due to quota/rate-limit/provider instability, mark provider status immediately.
-2. Use `teleclaude__mark_agent_status(agent, status, reason, unavailable_until?)`:
+2. Use `telec agents status <agent> --status <status> --reason <reason> [--until <iso8601>]`:
    - `status="degraded"` when the agent should be excluded from automatic fallback selection.
    - `status="unavailable"` for time-bounded outages/rate limits.
-   - `status="available"` when recovered.
-3. Re-run `teleclaude__next_work(...)` after status update.
+   - Use `--clear` when recovered.
+3. Re-run `telec todo work ... --cwd <project-root>` after status update.
 4. Do not delegate this decision to workers; only orchestrator should mutate provider status.
 
 ### Review Round Limit Handling (Orchestrator-Owned)
 
-When `teleclaude__next_work(...)` returns `REVIEW_ROUND_LIMIT`, the orchestrator must close the loop pragmatically instead of punting by default.
+When `telec todo work ... --cwd <project-root>` returns `REVIEW_ROUND_LIMIT`, the orchestrator must close the loop pragmatically instead of punting by default.
 
 1. Inspect current evidence before deciding:
    - `todos/{slug}/review-findings.md`

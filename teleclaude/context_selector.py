@@ -501,7 +501,7 @@ def build_context_output(
         parts.extend(
             [
                 "",
-                "# ⚠️  IMPORTANT: Call teleclaude__get_context again with projects=[...] to browse snippet indexes.",
+                "# ⚠️  IMPORTANT: Call telec docs again to browse snippet indexes for the project(s) you need.",
             ]
         )
         return "\n".join(parts)
@@ -688,7 +688,7 @@ def build_context_output(
         parts.extend(
             [
                 "",
-                "# ⚠️  IMPORTANT: Call teleclaude__get_context again with the snippet IDs of interest!",
+                "# ⚠️  IMPORTANT: Call telec docs again with the snippet IDs of interest!",
             ]
         )
         return "\n".join(parts)

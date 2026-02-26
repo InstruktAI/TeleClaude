@@ -5,30 +5,30 @@ from teleclaude.core.tool_access import filter_tool_names
 
 
 def test_filter_member():
-    tools = ["teleclaude__deploy", "teleclaude__start_session"]
+    tools = ["telec deploy", "telec sessions start"]
     filtered = filter_tool_names(None, tools, human_role=HUMAN_ROLE_MEMBER)
-    assert "teleclaude__deploy" not in filtered
-    assert "teleclaude__start_session" in filtered
+    assert "telec deploy" not in filtered
+    assert "telec sessions start" in filtered
 
 
 def test_filter_admin():
-    tools = ["teleclaude__deploy"]
+    tools = ["telec deploy"]
     filtered = filter_tool_names(None, tools, human_role=HUMAN_ROLE_ADMIN)
-    assert "teleclaude__deploy" in filtered
+    assert "telec deploy" in filtered
 
 
 def test_filter_unauthorized():
-    tools = ["teleclaude__start_session", "teleclaude__get_context"]
+    tools = ["telec sessions start", "telec docs get"]
     filtered = filter_tool_names(None, tools, human_role=None)
-    assert "teleclaude__start_session" not in filtered
-    assert "teleclaude__get_context" in filtered
+    assert "telec sessions start" not in filtered
+    assert "telec docs get" in filtered
 
 
 def test_filter_worker_and_member():
     # Worker role should filter worker tools, Member role should filter member tools.
     # Union of exclusions.
-    tools = ["teleclaude__next_work", "teleclaude__deploy", "teleclaude__get_context"]
+    tools = ["telec todo work", "telec deploy", "telec docs get"]
     filtered = filter_tool_names(ROLE_WORKER, tools, human_role=HUMAN_ROLE_MEMBER)
-    assert "teleclaude__next_work" not in filtered  # Excluded by worker
-    assert "teleclaude__deploy" not in filtered  # Excluded by member
-    assert "teleclaude__get_context" in filtered
+    assert "telec todo work" not in filtered  # Excluded by worker
+    assert "telec deploy" not in filtered  # Excluded by member
+    assert "telec docs get" in filtered

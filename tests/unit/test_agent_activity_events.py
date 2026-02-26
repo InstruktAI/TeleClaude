@@ -299,15 +299,15 @@ async def test_handle_tool_use_prefers_explicit_tool_preview_from_payload(coordi
 
 @pytest.mark.asyncio
 async def test_handle_tool_use_normalizes_legacy_tool_name_and_tree_preview(coordinator):
-    """Legacy teleclaude__ names and tree prefixes should be normalized for UI activity."""
+    """Legacy tool-call names and tree prefixes should be normalized for UI activity."""
     session_id = "sess-preview-legacy"
     payload = AgentOutputPayload(
         session_id="native-1",
         transcript_path="/tmp/transcript.jsonl",
         raw=MappingProxyType(
             {
-                "tool_name": "teleclaude__next_prepare",
-                "tool_preview": "Called └ teleclaude__next_prepare(slug='demo')",
+                "tool_name": "telec todo prepare",
+                "tool_preview": "Called └ telec todo prepare(slug='demo')",
             }
         ),
     )
@@ -327,8 +327,8 @@ async def test_handle_tool_use_normalizes_legacy_tool_name_and_tree_preview(coor
         event: AgentActivityEvent = next(
             c[0][1] for c in mock_event_bus.emit.call_args_list if c[0][0] == TeleClaudeEvents.AGENT_ACTIVITY
         )
-        assert event.tool_name == "next_prepare"
-        assert event.tool_preview == "Called next_prepare(slug='demo')"
+        assert event.tool_name == "telec todo prepare"
+        assert event.tool_preview == "Called telec todo prepare demo"
 
 
 # ---------------------------------------------------------------------------

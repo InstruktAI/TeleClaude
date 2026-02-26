@@ -968,7 +968,7 @@ class TestCodexSyntheticTurnEvents:
         polling_coordinator._cleanup_codex_input_state(session_id)
 
         try:
-            output = "\x1b[2m• \x1b[0m\x1b[1mCalled\x1b[0m\n\x1b[2m└ \x1b[0m teleclaude__next_work(slug='demo')"
+            output = "\x1b[2m• \x1b[0m\x1b[1mCalled\x1b[0m\n\x1b[2m└ \x1b[0m telec todo work(slug='demo')"
             await polling_coordinator._maybe_emit_codex_turn_events(
                 session_id=session_id,
                 active_agent="codex",

@@ -144,7 +144,7 @@ sequenceDiagram
 
 | Phase    | Worker Role  | Command Example                                                                          |
 | -------- | ------------ | ---------------------------------------------------------------------------------------- |
-| Prepare  | Orchestrator | `/prime-orchestrator` then route with `teleclaude__next_prepare`/`teleclaude__next_work` |
+| Prepare  | Orchestrator | `/prime-orchestrator` then route with `telec todo prepare` / `telec todo work` |
 | Build    | Builder      | `/next-build` in worktree                                                                |
 | Review   | Reviewer     | `/next-review` - evaluate against requirements                                           |
 | Fix      | Fixer        | `/next-fix-review` - address findings                                                    |

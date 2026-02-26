@@ -84,19 +84,19 @@ class TestCustomerToolFiltering:
     """Tests for customer role tool exclusions."""
 
     def test_customer_cannot_use_publish(self) -> None:
-        """Customer role excludes teleclaude__publish."""
+        """Customer role excludes telec channels publish."""
         excluded = get_excluded_tools(None, human_role=HUMAN_ROLE_CUSTOMER)
-        assert "teleclaude__publish" in excluded
+        assert "telec channels publish" in excluded
 
     def test_customer_cannot_use_channels_list(self) -> None:
-        """Customer role excludes teleclaude__channels_list."""
+        """Customer role excludes telec channels list."""
         excluded = get_excluded_tools(None, human_role=HUMAN_ROLE_CUSTOMER)
-        assert "teleclaude__channels_list" in excluded
+        assert "telec channels list" in excluded
 
     def test_customer_can_use_escalate(self) -> None:
-        """Customer role allows teleclaude__escalate."""
+        """Customer role allows telec sessions escalate."""
         excluded = get_excluded_tools(None, human_role=HUMAN_ROLE_CUSTOMER)
-        assert "teleclaude__escalate" not in excluded
+        assert "telec sessions escalate" not in excluded
 
     def test_admin_has_all_tools(self) -> None:
         """Admin role has no tool exclusions."""
@@ -104,25 +104,25 @@ class TestCustomerToolFiltering:
         assert len(excluded) == 0
 
     def test_member_cannot_use_escalate(self) -> None:
-        """Member role excludes teleclaude__escalate."""
+        """Member role excludes telec sessions escalate."""
         excluded = get_excluded_tools(None, human_role=HUMAN_ROLE_MEMBER)
-        assert "teleclaude__escalate" in excluded
+        assert "telec sessions escalate" in excluded
 
     def test_customer_filter_applied(self) -> None:
         """filter_tool_names for customer removes internal tools, keeps escalate."""
         all_tools = [
-            "teleclaude__get_context",
-            "teleclaude__escalate",
-            "teleclaude__publish",
-            "teleclaude__channels_list",
-            "teleclaude__deploy",
+            "telec docs get",
+            "telec sessions escalate",
+            "telec channels publish",
+            "telec channels list",
+            "telec deploy",
         ]
         filtered = filter_tool_names(None, all_tools, human_role=HUMAN_ROLE_CUSTOMER)
-        assert "teleclaude__escalate" in filtered
-        assert "teleclaude__get_context" in filtered
-        assert "teleclaude__publish" not in filtered
-        assert "teleclaude__channels_list" not in filtered
-        assert "teleclaude__deploy" not in filtered
+        assert "telec sessions escalate" in filtered
+        assert "telec docs get" in filtered
+        assert "telec channels publish" not in filtered
+        assert "telec channels list" not in filtered
+        assert "telec deploy" not in filtered
 
 
 # =========================================================================

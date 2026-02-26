@@ -107,9 +107,9 @@ async def test_next_prepare_autonomous_input_md_unassessed_breakdown():
         patch("teleclaude.core.next_machine.core.read_breakdown_state", return_value=None),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=False)
-        assert "teleclaude__run_agent_command" in result
-        assert 'command="/next-prepare-draft"' in result
-        assert f'args="{slug}"' in result
+        assert "telec sessions run" in result
+        assert '--command "/next-prepare-draft"' in result
+        assert f'--args "{slug}"' in result
         assert "Assess todos/test-slug/input.md for complexity" in result
 
 

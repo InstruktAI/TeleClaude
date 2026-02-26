@@ -114,7 +114,7 @@ async def test_verify_caller_derives_worker_from_working_slug() -> None:
 
 @pytest.mark.asyncio
 async def test_require_clearance_denies_excluded_tool() -> None:
-    check = require_clearance("teleclaude__start_session")
+    check = require_clearance("telec sessions start")
     identity = CallerIdentity(
         session_id="sess-1",
         system_role=ROLE_WORKER,

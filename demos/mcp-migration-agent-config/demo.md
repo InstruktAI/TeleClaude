@@ -7,7 +7,7 @@ CLI / TUI — agent sessions started via TeleClaude daemon.
 ## What the user observes
 
 1. **Claude session without MCP tools**: Start a Claude session. The agent
-   has `telec` on PATH but no `teleclaude__*` MCP tools. Running
+   has `telec` on PATH but no legacy MCP-prefixed tools. Running
    `telec docs --help` works. MCP tool calls are absent from the session.
 
 2. **Gemini session without MCP tools**: Start a Gemini session. Same
@@ -28,7 +28,7 @@ CLI / TUI — agent sessions started via TeleClaude daemon.
 # 1. Start Claude session and check for MCP tools
 telec start local --project /path/to/project --title "MCP removal test"
 # In the session, ask: "List all available tools containing 'teleclaude'"
-# Expected: no teleclaude__* tools found
+# Expected: no legacy MCP-prefixed tools found
 
 # 2. Verify telec works in session
 # In the session: telec docs --help
@@ -36,7 +36,7 @@ telec start local --project /path/to/project --title "MCP removal test"
 
 # 3. Check Gemini session
 telec start local --project /path --title "Gemini MCP test" --agent gemini
-# Same check: no teleclaude__* tools
+# Same check: no legacy MCP-prefixed tools
 
 # 4. Orchestrator cycle
 telec workflow prepare --slug demo-test

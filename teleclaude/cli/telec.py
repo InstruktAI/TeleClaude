@@ -15,6 +15,12 @@ from instrukt_ai_logging import get_logger  # noqa: E402
 
 from teleclaude.cli.api_client import APIError, TelecAPIClient  # noqa: E402
 from teleclaude.cli.models import CreateSessionResult  # noqa: E402
+from teleclaude.cli.session_auth import (  # noqa: E402
+    clear_current_session_email,
+    get_current_session_context,
+    read_current_session_email,
+    write_current_session_email,
+)
 from teleclaude.cli.tool_commands import (  # noqa: E402
     handle_agents,
     handle_channels,
@@ -29,6 +35,7 @@ from teleclaude.cli.tool_commands import (  # noqa: E402
     handle_todo_work,
 )
 from teleclaude.config import config  # noqa: E402
+from teleclaude.config.loader import load_global_config  # noqa: E402
 from teleclaude.constants import ENV_ENABLE, MAIN_MODULE  # noqa: E402
 from teleclaude.logging_config import setup_logging  # noqa: E402
 from teleclaude.project_setup import init_project  # noqa: E402
@@ -48,7 +55,6 @@ class TelecCommand(str, Enum):
     DEPLOY = "deploy"
     AGENTS = "agents"
     CHANNELS = "channels"
-    REVIVE = "revive"
     INIT = "init"
     SYNC = "sync"
     WATCH = "watch"
@@ -56,6 +62,7 @@ class TelecCommand(str, Enum):
     TODO = "todo"
     ROADMAP = "roadmap"
     BUGS = "bugs"
+    AUTH = "auth"
     CONFIG = "config"
 
 
@@ -164,6 +171,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Example: telec sessions run --command /next-build --args my-slug --project /repo/path",
                 ],
             ),
+            "revive": CommandDef(
+                desc="Revive session by TeleClaude session ID",
+                args="<session_id>",
+                flags=[_H, Flag("--attach", desc="Attach to tmux session after revive")],
+            ),
             "end": CommandDef(
                 desc="End (terminate) a session",
                 args="<session_id>",
@@ -207,12 +219,22 @@ CLI_SURFACE: dict[str, CommandDef] = {
         },
     ),
     "computers": CommandDef(
-        desc="List available computers (local + cached remote)",
-        flags=[_H],
+        desc="Manage computer inventory",
+        subcommands={
+            "list": CommandDef(
+                desc="List available computers (local + cached remote)",
+                flags=[_H],
+            ),
+        },
     ),
     "projects": CommandDef(
-        desc="List projects on local and remote computers",
-        flags=[_H, Flag("--computer", desc="Filter to a specific computer")],
+        desc="Manage project inventory",
+        subcommands={
+            "list": CommandDef(
+                desc="List projects on local and remote computers",
+                flags=[_H, Flag("--computer", desc="Filter to a specific computer")],
+            ),
+        },
     ),
     "deploy": CommandDef(
         desc="Deploy latest code to remote computers",
@@ -251,11 +273,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
         },
     ),
-    "revive": CommandDef(
-        desc="Revive session by TeleClaude session ID",
-        args="<session_id>",
-        flags=[_H, Flag("--attach", desc="Attach to tmux session after revive")],
-    ),
     "init": CommandDef(desc="Initialize docs sync and auto-rebuild watcher"),
     "sync": CommandDef(
         desc="Validate, build indexes, and deploy artifacts",
@@ -272,21 +289,29 @@ CLI_SURFACE: dict[str, CommandDef] = {
         hidden=True,
     ),
     "docs": CommandDef(
-        desc="Query documentation snippets (use --help for details)",
-        args="[IDS...]",
-        flags=[
-            _H,
-            Flag("--baseline-only", "-b", "Show only baseline snippets"),
-            Flag("--third-party", "-t", "Include third-party docs"),
-            Flag("--areas", "-a", "Filter by taxonomy type"),
-            Flag("--domains", "-d", "Filter by domain"),
-            _PROJECT_ROOT,
-        ],
+        desc="Query documentation snippets",
+        subcommands={
+            "index": CommandDef(
+                desc="List snippet IDs and metadata (phase 1)",
+                flags=[
+                    _H,
+                    Flag("--baseline-only", "-b", "Show only baseline snippets"),
+                    Flag("--third-party", "-t", "Include third-party docs"),
+                    Flag("--areas", "-a", "Filter by taxonomy type"),
+                    Flag("--domains", "-d", "Filter by domain"),
+                    _PROJECT_ROOT,
+                ],
+            ),
+            "get": CommandDef(
+                desc="Fetch full snippet content by ID (phase 2)",
+                args="<id> [id...]",
+                flags=[_H, _PROJECT_ROOT],
+            ),
+        },
         notes=[
-            "Phase 1 (index): run without IDs to list snippets and select IDs to retrieve.",
-            "Phase 2 (content): pass one or more IDs to fetch full snippet content.",
-            "Example phase 1: telec docs --areas policy,procedure --domains software-development",
-            "Example phase 2: telec docs software-development/policy/testing project/spec/command-surface",
+            "Two-phase flow: use 'telec docs index' to discover IDs, then 'telec docs get <id...>' to fetch content.",
+            "Example phase 1: telec docs index --areas policy,procedure --domains software-development",
+            "Example phase 2: telec docs get software-development/policy/testing project/spec/command-surface",
         ],
     ),
     "todo": CommandDef(
@@ -314,14 +339,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "demo": CommandDef(
                 desc="Manage and run demo artifacts",
-                args="[validate|run|create] [slug]",
+                args="<list|validate|run|create> [slug]",
                 flags=[_PROJECT_ROOT_LONG],
                 notes=[
-                    "No args: list all available demos.",
+                    "Use 'list' explicitly to list available demos.",
                     "validate <slug>: check todos/{slug}/demo.md has executable bash blocks.",
                     "run <slug>: execute bash blocks from demos/{slug}/demo.md.",
                     "create <slug>: promote todos/{slug}/demo.md to demos/{slug}/demo.md.",
-                    "With slug only: run demo from demos/{slug}/snapshot.json.",
+                    "list: show all available demos.",
                 ],
             ),
             "prepare": CommandDef(
@@ -364,15 +389,17 @@ CLI_SURFACE: dict[str, CommandDef] = {
         },
     ),
     "roadmap": CommandDef(
-        desc="View and manage the work item roadmap",
-        standalone=True,
-        flags=[
-            Flag("--include-icebox", "-i", "Include icebox items"),
-            Flag("--icebox-only", "-o", "Show only icebox items"),
-            Flag("--json", desc="Output as JSON"),
-            _PROJECT_ROOT_LONG,
-        ],
+        desc="Manage the work item roadmap",
         subcommands={
+            "list": CommandDef(
+                desc="List roadmap entries",
+                flags=[
+                    Flag("--include-icebox", "-i", "Include icebox items"),
+                    Flag("--icebox-only", "-o", "Show only icebox items"),
+                    Flag("--json", desc="Output as JSON"),
+                    _PROJECT_ROOT_LONG,
+                ],
+            ),
             "add": CommandDef(
                 desc="Add entry to the roadmap",
                 args="<slug>",
@@ -444,11 +471,29 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
         },
     ),
-    "config": CommandDef(
-        desc="Interactive configuration (or subcommands)",
-        standalone=True,
-        flags=[_H, _PROJECT_ROOT, Flag("--format", "-f", "Output format (yaml or json)")],
+    "auth": CommandDef(
+        desc="Terminal login identity commands",
         subcommands={
+            "login": CommandDef(
+                desc="Set terminal login identity for this TTY",
+                args="<email>",
+                notes=[
+                    "Stores auth state in a TTY-scoped file.",
+                    "Running login again on the same TTY overwrites the existing file.",
+                ],
+            ),
+            "whoami": CommandDef(
+                desc="Show terminal login identity for this TTY",
+            ),
+            "logout": CommandDef(
+                desc="Clear terminal login identity for this TTY",
+            ),
+        },
+    ),
+    "config": CommandDef(
+        desc="Manage configuration",
+        subcommands={
+            "wizard": CommandDef(desc="Open the interactive configuration wizard"),
             "get": CommandDef(desc="Get config values", args="[paths...]"),
             "patch": CommandDef(desc="Patch config values", args="[--yaml '...']"),
             "validate": CommandDef(desc="Full validation"),
@@ -465,24 +510,26 @@ CLI_SURFACE: dict[str, CommandDef] = {
     ),
 }
 
+# Help-only expansion for second-level action groups.
+# This keeps runtime dispatch unchanged while making `telec -h` explicit.
+HELP_SUBCOMMAND_EXPANSIONS: dict[str, dict[str, list[tuple[str, str]]]] = {
+    "config": {
+        "people": [
+            ("list", "List people"),
+            ("add", "Add a person"),
+            ("edit", "Edit a person"),
+            ("remove", "Remove a person"),
+        ],
+        "env": [
+            ("list", "List environment variables"),
+            ("set", "Set environment variables"),
+        ],
+    }
+}
+
 # Derived constants for completion (from schema)
 _COMMANDS = [name for name, cmd in CLI_SURFACE.items() if not cmd.hidden]
 _COMMAND_DESCRIPTIONS = {name: cmd.desc for name, cmd in CLI_SURFACE.items() if not cmd.hidden}
-
-# Value completions for specific flags
-_TAXONOMY_TYPES = [
-    ("principle", "Core principles"),
-    ("concept", "Key concepts"),
-    ("policy", "Rules and policies"),
-    ("procedure", "Step-by-step guides"),
-    ("design", "Architecture docs"),
-    ("spec", "Specifications"),
-]
-_DOMAINS = [
-    ("software-development", "Software dev domain"),
-    ("general", "Cross-domain"),
-]
-
 
 # =============================================================================
 # Help Generation — built from CLI_SURFACE schema
@@ -538,6 +585,12 @@ def _usage_main() -> str:
                 entry = f"telec {name}"
                 lines.append(f"  {entry:<{col}}# {cmd.desc}")
             for sub_name, sub_cmd in cmd.subcommands.items():
+                expanded = HELP_SUBCOMMAND_EXPANSIONS.get(name, {}).get(sub_name)
+                if expanded:
+                    for child_name, child_desc in expanded:
+                        entry = f"telec {name} {sub_name} {child_name}"
+                        lines.append(f"  {entry:<{col}}# {child_desc}")
+                    continue
                 sub_args = f" {sub_cmd.args}" if sub_cmd.args else ""
                 sub_flag_str = " [options]" if sub_cmd.visible_flags else ""
                 entry = f"telec {name} {sub_name}{sub_args}{sub_flag_str}"
@@ -551,6 +604,8 @@ def _usage_main() -> str:
 def _sample_positional_value(token: str) -> str:
     """Return a practical sample value for a positional argument token."""
     key = token.strip("<>[]").rstrip(".,").lower()
+    if "email" in key:
+        return "person@example.com"
     if "session" in key:
         return "sess-123"
     if "slug" in key:
@@ -699,6 +754,12 @@ def _usage_subcmd(cmd_name: str) -> str:
             lines.append(f"  {entry:<{col}}# {cmd.desc}")
 
         for sub_name, sub_cmd in cmd.subcommands.items():
+            expanded = HELP_SUBCOMMAND_EXPANSIONS.get(cmd_name, {}).get(sub_name)
+            if expanded:
+                for child_name, child_desc in expanded:
+                    entry = f"telec {cmd_name} {sub_name} {child_name}"
+                    lines.append(f"  {entry:<{col}}# {child_desc}")
+                continue
             args_str = f" {sub_cmd.args}" if sub_cmd.args else ""
             flag_hints = " [options]" if sub_cmd.flags else ""
             entry = f"telec {cmd_name} {sub_name}{args_str}{flag_hints}"
@@ -742,15 +803,17 @@ def _usage_subcmd(cmd_name: str) -> str:
             for example in examples:
                 lines.append(f"  {example}")
 
-    # Collect notes from subcommands and command
-    all_notes: list[str] = []
-    for _sub_name, sub_cmd in cmd.subcommands.items():
-        all_notes.extend(sub_cmd.notes)
-    all_notes.extend(cmd.notes)
-    if all_notes:
-        lines.append("\nNotes:")
-        for note in all_notes:
-            lines.append(f"  {note}")
+    # Collect notes only for grouped commands (leaf commands already render notes above).
+    if cmd.subcommands:
+        all_notes: list[str] = []
+        for _sub_name, sub_cmd in cmd.subcommands.items():
+            all_notes.extend(sub_cmd.notes)
+        all_notes.extend(cmd.notes)
+        unique_notes = list(dict.fromkeys(all_notes))
+        if unique_notes:
+            lines.append("\nNotes:")
+            for note in unique_notes:
+                lines.append(f"  {note}")
 
     return "\n".join(lines) + "\n"
 
@@ -820,12 +883,10 @@ def _handle_completion() -> None:
         return
 
     # Command-specific completions
-    if cmd == "docs":
-        _complete_docs(rest, current, is_partial)
-    elif cmd in ("sync", "watch", "revive", "computers", "projects", "deploy"):
+    if cmd in ("sync", "watch", "deploy"):
         if cmd in CLI_SURFACE:
             _complete_flags(CLI_SURFACE[cmd].flag_tuples, rest, current, is_partial)
-    elif cmd in ("todo", "roadmap", "config", "sessions", "agents", "channels"):
+    elif cmd in ("todo", "roadmap", "config", "sessions", "agents", "channels", "docs", "computers", "projects", "bugs", "auth"):
         _complete_subcmd(cmd, rest, current, is_partial)
 
 
@@ -848,36 +909,6 @@ def _print_flag(flag_tuple: tuple[str | None, str, str]) -> None:
         _print_completion(f"{short}, {long}", desc)
     else:
         _print_completion(long, desc)
-
-
-def _complete_docs(rest: list[str], current: str, is_partial: bool) -> None:
-    """Complete telec docs arguments."""
-    flags = CLI_SURFACE["docs"].flag_tuples
-    used_flags = set(rest)
-
-    # If completing a flag
-    if is_partial and current.startswith("-"):
-        for flag in flags:
-            if _flag_matches(flag, current) and not _flag_used(flag, used_flags):
-                _print_flag(flag)
-        return
-
-    # After --areas, suggest taxonomy types
-    if rest and rest[-1] in ("--areas", "-a"):
-        for value, desc in _TAXONOMY_TYPES:
-            _print_completion(value, desc)
-        return
-
-    # After --domains, suggest common domains
-    if rest and rest[-1] in ("--domains", "-d"):
-        for value, desc in _DOMAINS:
-            _print_completion(value, desc)
-        return
-
-    # Default: suggest unused flags
-    for flag in flags:
-        if not _flag_used(flag, used_flags):
-            _print_flag(flag)
 
 
 def _complete_flags(
@@ -964,7 +995,10 @@ def main() -> None:
             return
         if argv[0].startswith("/"):
             _handle_cli_command(argv)
-        return
+            return
+        print(f"Unknown command: {argv[0]}")
+        print(_usage())
+        raise SystemExit(1)
 
     # TUI mode - ensure we're in tmux for pane preview
     if not os.environ.get(TMUX_ENV_KEY):
@@ -1061,20 +1095,26 @@ def _handle_cli_command(argv: list[str]) -> None:
     except ValueError:
         cmd_enum = None
 
+    cmd_def = CLI_SURFACE.get(cmd)
+    if cmd_def and cmd_def.subcommands and not cmd_def.standalone and not args:
+        print(_usage(cmd))
+        return
+
     if cmd_enum is TelecCommand.SESSIONS:
-        handle_sessions(args)
+        if args and args[0] == "revive":
+            _handle_revive(args[1:])
+        else:
+            handle_sessions(args)
     elif cmd_enum is TelecCommand.COMPUTERS:
-        handle_computers(args)
+        _handle_computers(args)
     elif cmd_enum is TelecCommand.PROJECTS:
-        handle_projects(args)
+        _handle_projects(args)
     elif cmd_enum is TelecCommand.DEPLOY:
         handle_deploy(args)
     elif cmd_enum is TelecCommand.AGENTS:
         handle_agents(args)
     elif cmd_enum is TelecCommand.CHANNELS:
         handle_channels(args)
-    elif cmd_enum is TelecCommand.REVIVE:
-        _handle_revive(args)
     elif cmd_enum is TelecCommand.INIT:
         init_project(Path.cwd())
     elif cmd_enum is TelecCommand.SYNC:
@@ -1089,6 +1129,8 @@ def _handle_cli_command(argv: list[str]) -> None:
         _handle_roadmap(args)
     elif cmd_enum is TelecCommand.BUGS:
         _handle_bugs(args)
+    elif cmd_enum is TelecCommand.AUTH:
+        _handle_auth(args)
     elif cmd_enum is TelecCommand.CONFIG:
         _handle_config(args)
     else:
@@ -1161,9 +1203,9 @@ def _ensure_tmux_status_hidden_for_tui() -> None:
 
 
 def _handle_revive(args: list[str]) -> None:
-    """Handle telec revive command."""
+    """Handle telec sessions revive command."""
     if not args:
-        print(_usage("revive"))
+        print(_usage("sessions", "revive"))
         return
 
     attach = False
@@ -1176,19 +1218,19 @@ def _handle_revive(args: list[str]) -> None:
             i += 1
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
-            print(_usage("revive"))
+            print(_usage("sessions", "revive"))
             raise SystemExit(1)
         else:
             if session_id is not None:
                 print("Only one session_id is allowed.")
-                print(_usage("revive"))
+                print(_usage("sessions", "revive"))
                 raise SystemExit(1)
             session_id = arg
             i += 1
 
     if not session_id:
         print("Missing required session_id.")
-        print(_usage("revive"))
+        print(_usage("sessions", "revive"))
         raise SystemExit(1)
 
     _revive_session(session_id, attach)
@@ -1294,11 +1336,63 @@ def _handle_watch(args: list[str]) -> None:
 
 
 def _handle_docs(args: list[str]) -> None:
-    """Handle telec docs command.
+    """Handle telec docs commands."""
+    if not args:
+        print(_usage("docs"))
+        return
+    if args[0] in ("-h", "--help"):
+        print(_usage("docs"))
+        return
 
-    Phase 1 (index): telec docs [--baseline-only] [--third-party] [--areas TYPES] [--domains DOMAINS]
-    Phase 2 (content): telec docs id1 id2 id3 (positional args = snippet IDs)
-    """
+    subcommand = args[0]
+    if subcommand == "index":
+        _handle_docs_index(args[1:])
+    elif subcommand == "get":
+        _handle_docs_get(args[1:])
+    else:
+        print(f"Unknown docs subcommand: {subcommand}")
+        print(_usage("docs"))
+        raise SystemExit(1)
+
+
+def _handle_computers(args: list[str]) -> None:
+    """Handle telec computers commands."""
+    if not args:
+        print(_usage("computers"))
+        return
+    if args[0] in ("-h", "--help"):
+        print(_usage("computers"))
+        return
+
+    subcommand = args[0]
+    if subcommand == "list":
+        handle_computers(args[1:])
+    else:
+        print(f"Unknown computers subcommand: {subcommand}")
+        print(_usage("computers"))
+        raise SystemExit(1)
+
+
+def _handle_projects(args: list[str]) -> None:
+    """Handle telec projects commands."""
+    if not args:
+        print(_usage("projects"))
+        return
+    if args[0] in ("-h", "--help"):
+        print(_usage("projects"))
+        return
+
+    subcommand = args[0]
+    if subcommand == "list":
+        handle_projects(args[1:])
+    else:
+        print(f"Unknown projects subcommand: {subcommand}")
+        print(_usage("projects"))
+        raise SystemExit(1)
+
+
+def _handle_docs_index(args: list[str]) -> None:
+    """Handle telec docs index."""
     from teleclaude.context_selector import build_context_output
 
     project_root = Path.cwd()
@@ -1306,17 +1400,17 @@ def _handle_docs(args: list[str]) -> None:
     third_party = False
     areas: list[str] = []
     domains: list[str] | None = None
-    snippet_ids: list[str] = []
 
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg in ("--help", "-h"):
-            print(_usage("docs"))
-            return
         if arg in ("--project-root", "-p") and i + 1 < len(args):
             project_root = Path(args[i + 1]).expanduser().resolve()
             i += 2
+        elif arg in ("--project-root", "-p"):
+            print("Missing value for --project-root.")
+            print(_usage("docs", "index"))
+            raise SystemExit(1)
         elif arg in ("--baseline-only", "-b"):
             baseline_only = True
             i += 1
@@ -1326,29 +1420,77 @@ def _handle_docs(args: list[str]) -> None:
         elif arg in ("--areas", "-a") and i + 1 < len(args):
             areas = [a.strip() for a in args[i + 1].split(",") if a.strip()]
             i += 2
+        elif arg in ("--areas", "-a"):
+            print("Missing value for --areas.")
+            print(_usage("docs", "index"))
+            raise SystemExit(1)
         elif arg in ("--domains", "-d") and i + 1 < len(args):
             domains = [d.strip() for d in args[i + 1].split(",") if d.strip()]
             i += 2
+        elif arg in ("--domains", "-d"):
+            print("Missing value for --domains.")
+            print(_usage("docs", "index"))
+            raise SystemExit(1)
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
-            print(_usage("docs"))
+            print(_usage("docs", "index"))
             raise SystemExit(1)
         else:
-            # Positional argument = snippet ID (may be comma-separated)
+            print(f"Unexpected positional argument for docs index: {arg}")
+            print(_usage("docs", "index"))
+            raise SystemExit(1)
+
+    output = build_context_output(
+        areas=areas,
+        project_root=project_root,
+        snippet_ids=None,
+        baseline_only=baseline_only,
+        include_third_party=third_party,
+        domains=domains,
+    )
+    print(output)
+
+
+def _handle_docs_get(args: list[str]) -> None:
+    """Handle telec docs get."""
+    from teleclaude.context_selector import build_context_output
+
+    project_root = Path.cwd()
+    snippet_ids: list[str] = []
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("--project-root", "-p") and i + 1 < len(args):
+            project_root = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+        elif arg in ("--project-root", "-p"):
+            print("Missing value for --project-root.")
+            print(_usage("docs", "get"))
+            raise SystemExit(1)
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("docs", "get"))
+            raise SystemExit(1)
+        else:
             for part in arg.split(","):
                 part = part.strip()
                 if part:
                     snippet_ids.append(part)
             i += 1
 
-    # If snippet_ids provided, it's phase 2 - ignore filter flags
+    if not snippet_ids:
+        print("At least one snippet ID is required.")
+        print(_usage("docs", "get"))
+        raise SystemExit(1)
+
     output = build_context_output(
-        areas=areas if not snippet_ids else [],
+        areas=[],
         project_root=project_root,
-        snippet_ids=snippet_ids if snippet_ids else None,
-        baseline_only=baseline_only if not snippet_ids else False,
-        include_third_party=third_party if not snippet_ids else False,
-        domains=domains if not snippet_ids else None,
+        snippet_ids=snippet_ids,
+        baseline_only=False,
+        include_third_party=False,
+        domains=None,
     )
     print(output)
 
@@ -1722,14 +1864,19 @@ def _demo_create(slug: str, project_root: Path) -> None:
 
 
 def _handle_todo_demo(args: list[str]) -> None:
-    """Handle telec todo demo subcommands: validate, run, create, or list."""
-    _DEMO_SUBCOMMANDS = {"validate", "run", "create"}
-    subcommand: str | None = None
-    remaining_args = args
+    """Handle telec todo demo subcommands: list, validate, run, create."""
+    _DEMO_SUBCOMMANDS = {"list", "validate", "run", "create"}
+    if not args:
+        print(_usage("todo", "demo"))
+        raise SystemExit(1)
 
-    if args and args[0] in _DEMO_SUBCOMMANDS:
-        subcommand = args[0]
-        remaining_args = args[1:]
+    subcommand = args[0]
+    if subcommand not in _DEMO_SUBCOMMANDS:
+        print(f"Unknown demo subcommand: {subcommand}")
+        print(_usage("todo", "demo"))
+        raise SystemExit(1)
+
+    remaining_args = args[1:]
 
     slug: str | None = None
     project_root = Path.cwd()
@@ -1752,17 +1899,15 @@ def _handle_todo_demo(args: list[str]) -> None:
             slug = arg
             i += 1
 
-    # No subcommand and no slug: list demos
-    if subcommand is None and slug is None:
+    if subcommand == "list":
+        if slug is not None:
+            print("The 'list' subcommand does not take a slug.")
+            print(_usage("todo", "demo"))
+            raise SystemExit(1)
         _demo_list(project_root)
         return
 
-    # No subcommand but has slug: backward compat → run with deprecation
-    if subcommand is None and slug is not None:
-        print(f"Note: 'telec todo demo {slug}' is deprecated. Use 'telec todo demo run {slug}' instead.\n")
-        subcommand = "run"
-
-    # Subcommand requires slug
+    # validate/run/create require slug
     if slug is None:
         print(f"Missing required slug for 'demo {subcommand}'.")
         print(_usage("todo", "demo"))
@@ -1870,11 +2015,13 @@ def _handle_roadmap(args: list[str]) -> None:
     """Handle telec roadmap commands."""
 
     if not args:
-        _handle_roadmap_show(args)
+        print(_usage("roadmap"))
         return
 
     subcommand = args[0]
-    if subcommand == "add":
+    if subcommand == "list":
+        _handle_roadmap_show(args[1:])
+    elif subcommand == "add":
         _handle_roadmap_add(args[1:])
     elif subcommand == "remove":
         _handle_roadmap_remove(args[1:])
@@ -1886,9 +2033,6 @@ def _handle_roadmap(args: list[str]) -> None:
         _handle_roadmap_freeze(args[1:])
     elif subcommand == "deliver":
         _handle_roadmap_deliver(args[1:])
-    elif subcommand.startswith("-"):
-        # Flags passed to show (e.g. --project-root)
-        _handle_roadmap_show(args)
     else:
         print(f"Unknown roadmap subcommand: {subcommand}")
         print(_usage("roadmap"))
@@ -1924,11 +2068,11 @@ def _handle_roadmap_show(args: list[str]) -> None:
             i += 1
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
-            print(_usage("roadmap"))
+            print(_usage("roadmap", "list"))
             raise SystemExit(1)
         else:
             print(f"Unknown argument: {arg}")
-            print(_usage("roadmap"))
+            print(_usage("roadmap", "list"))
             raise SystemExit(1)
 
     todos = assemble_roadmap(
@@ -2470,7 +2614,7 @@ def _handle_bugs_report(args: list[str]) -> None:
                 agent="claude",
                 thinking_mode="slow",
                 title=f"Bug fix: {slug}",
-                message=f'Run teleclaude__next_work(slug="{slug}") and follow output verbatim until done.',
+                message=f'Run telec todo work {slug} --cwd . and follow output verbatim until done.',
             )
         finally:
             await api.close()
@@ -2487,7 +2631,7 @@ def _handle_bugs_report(args: list[str]) -> None:
         print("Bug scaffold, branch, and worktree created successfully.")
         print("Start orchestrator manually from worktree directory:")
         print(f"  cd {worktree_path}")
-        print(f"  telec claude 'Run teleclaude__next_work(slug=\"{slug}\") and follow output verbatim until done.'")
+        print(f"  telec claude 'Run telec todo work {slug} --cwd . and follow output verbatim until done.'")
 
 
 def _handle_bugs_list(args: list[str]) -> None:
@@ -2523,15 +2667,17 @@ def _handle_bugs_list(args: list[str]) -> None:
 
         bug_md = todo_dir / "bug.md"
         state_yaml = todo_dir / "state.yaml"
+        worktree_state = project_root / "trees" / todo_dir.name / "todos" / todo_dir.name / "state.yaml"
+        state_path = worktree_state if worktree_state.exists() else state_yaml
 
         if not bug_md.exists():
             continue
 
         # Read state to determine status
         status = "unknown"
-        if state_yaml.exists():
+        if state_path.exists():
             try:
-                state = yaml.safe_load(state_yaml.read_text())
+                state = yaml.safe_load(state_path.read_text())
                 build = state.get("build", "pending")
                 review = state.get("review", "pending")
 
@@ -2564,20 +2710,25 @@ def _handle_bugs_list(args: list[str]) -> None:
 def _handle_config(args: list[str]) -> None:
     """Handle telec config command.
 
-    No args → interactive menu (TUI). Subcommands (get/patch/validate) → delegate
-    to existing config_cmd handler for daemon config.
+    Requires explicit subcommands. Use `telec config wizard` to open the
+    interactive configuration UI.
     """
 
     if not args:
-        if not sys.stdin.isatty():
-            print("Error: Interactive config requires a terminal.")
-            raise SystemExit(1)
-
-        _run_tui_config_mode(guided=False)
+        print(_usage("config"))
         return
 
     subcommand = args[0]
-    if subcommand in ("get", "patch"):
+    if subcommand == "wizard":
+        if len(args) > 1:
+            print(f"Unexpected arguments for config wizard: {' '.join(args[1:])}")
+            print(_usage("config", "wizard"))
+            raise SystemExit(1)
+        if not sys.stdin.isatty():
+            print("Error: Interactive config requires a terminal.")
+            raise SystemExit(1)
+        _run_tui_config_mode(guided=False)
+    elif subcommand in ("get", "patch"):
         from teleclaude.cli.config_cmd import handle_config_command
 
         handle_config_command(args)
@@ -2589,6 +2740,118 @@ def _handle_config(args: list[str]) -> None:
         print(f"Unknown config subcommand: {subcommand}")
         print(_usage("config"))
         raise SystemExit(1)
+
+
+def _handle_auth(args: list[str]) -> None:
+    """Handle telec auth subcommands."""
+    if os.environ.get(TMUX_ENV_KEY):
+        print("Error: telec auth is unavailable inside tmux sessions.")
+        print("Run it from a plain SSH terminal before starting telec.")
+        raise SystemExit(1)
+
+    if not args:
+        print(_usage("auth"))
+        return
+
+    # Support conversational spelling: "telec auth who am i"
+    if len(args) >= 3 and args[0] == "who" and args[1] == "am" and args[2].lower().rstrip("?") == "i":
+        _handle_whoami(args[3:])
+        return
+
+    subcommand = args[0]
+    sub_args = args[1:]
+
+    if subcommand == "login":
+        _handle_login(sub_args)
+    elif subcommand == "whoami":
+        _handle_whoami(sub_args)
+    elif subcommand == "logout":
+        _handle_logout(sub_args)
+    else:
+        print(f"Unknown auth subcommand: {subcommand}")
+        print(_usage("auth"))
+        raise SystemExit(1)
+
+
+def _role_for_email(email: str) -> str | None:
+    normalized = email.strip().lower()
+    if not normalized:
+        return None
+    try:
+        global_cfg = load_global_config()
+    except Exception:
+        return None
+    for person in global_cfg.people:
+        if person.email.strip().lower() == normalized:
+            return person.role
+    return None
+
+
+def _handle_login(args: list[str]) -> None:
+    """Handle telec auth login <email>."""
+    if not args:
+        print(_usage("auth", "login"))
+        return
+    if len(args) != 1 or args[0].startswith("-"):
+        print("Error: login expects exactly one positional email.")
+        print(_usage("auth", "login"))
+        raise SystemExit(1)
+
+    email = args[0]
+    try:
+        auth_state = write_current_session_email(email)
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        raise SystemExit(1) from exc
+
+    role = _role_for_email(auth_state.email)
+    role_suffix = f" ({role})" if role else ""
+    print(f"Logged in as {auth_state.email}{role_suffix}.")
+    print(f"TTY: {auth_state.context.tty}")
+    print(f"Session auth file updated: {auth_state.context.auth_path}")
+
+
+def _handle_whoami(args: list[str]) -> None:
+    """Handle telec auth whoami."""
+    if args:
+        print(f"Unexpected arguments: {' '.join(args)}")
+        print(_usage("auth", "whoami"))
+        raise SystemExit(1)
+
+    context = get_current_session_context()
+    if context is None:
+        print("Error: no terminal session detected (TTY unavailable).")
+        raise SystemExit(1)
+
+    email = read_current_session_email()
+    if not email:
+        print(f"No login set for current TTY ({context.tty}).")
+        return
+
+    role = _role_for_email(email) or "unresolved"
+    print(f"Email: {email}")
+    print(f"Role: {role}")
+    print(f"TTY: {context.tty}")
+    print(f"Session auth file: {context.auth_path}")
+
+
+def _handle_logout(args: list[str]) -> None:
+    """Handle telec auth logout."""
+    if args:
+        print(f"Unexpected arguments: {' '.join(args)}")
+        print(_usage("auth", "logout"))
+        raise SystemExit(1)
+
+    context = get_current_session_context()
+    if context is None:
+        print("Error: no terminal session detected (TTY unavailable).")
+        raise SystemExit(1)
+
+    removed = clear_current_session_email()
+    if removed:
+        print(f"Cleared login for TTY {context.tty}.")
+    else:
+        print(f"No login file found for TTY {context.tty}.")
 
 
 if __name__ == MAIN_MODULE:

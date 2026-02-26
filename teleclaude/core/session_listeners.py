@@ -395,8 +395,7 @@ async def notify_stop(
     location_part = f" on {computer}" if computer != LOCAL_COMPUTER else ""
     message = (
         f"Session {target_session_id[:8]}{location_part}{title_part} finished its turn. "
-        f"Use teleclaude__get_session_data(computer='{computer}', "
-        f"session_id='{target_session_id}') to inspect."
+        f"Use telec sessions tail {target_session_id} to inspect."
     )
     return await _notify_listeners(target_session_id, message)
 
@@ -418,8 +417,7 @@ async def notify_input_request(
     """
     message = (
         f"Session {target_session_id[:8]} on {computer} needs input: {input_message} "
-        f"Use teleclaude__send_message(computer='{computer}', session_id='{target_session_id}', "
-        f"message='your response') to respond."
+        f"Use telec sessions send {target_session_id} \"your response\" to respond."
     )
     return await _notify_listeners(target_session_id, message)
 

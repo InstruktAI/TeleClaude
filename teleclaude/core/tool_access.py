@@ -13,51 +13,50 @@ from teleclaude.constants import (
 
 # Worker tool access policy.
 WORKER_EXCLUDED_TOOLS = {
-    "teleclaude__next_work",
-    "teleclaude__next_prepare",
-    "teleclaude__mark_phase",
-    "teleclaude__start_session",
-    "teleclaude__send_message",
-    "teleclaude__run_agent_command",
-    "teleclaude__escalate",
+    "telec todo work",
+    "telec todo prepare",
+    "telec todo mark-phase",
+    "telec sessions start",
+    "telec sessions send",
+    "telec sessions run",
+    "telec sessions escalate",
 }
 
 # Member tool access policy.
 MEMBER_EXCLUDED_TOOLS = {
-    "teleclaude__deploy",
-    "teleclaude__end_session",
-    "teleclaude__mark_agent_status",
-    "teleclaude__escalate",
+    "telec deploy",
+    "telec sessions end",
+    "telec agents status",
+    "telec sessions escalate",
 }
 
 # Unauthorized tool access policy (read-only).
 UNAUTHORIZED_EXCLUDED_TOOLS = {
-    "teleclaude__start_session",
-    "teleclaude__run_agent_command",
-    "teleclaude__send_message",
-    "teleclaude__send_file",
-    "teleclaude__deploy",
-    "teleclaude__stop_notifications",
-    "teleclaude__end_session",
-    "teleclaude__next_prepare",
-    "teleclaude__next_work",
-    "teleclaude__next_maintain",
-    "teleclaude__mark_phase",
-    "teleclaude__set_dependencies",
-    "teleclaude__mark_agent_status",
-    "teleclaude__mark_agent_unavailable",
-    "teleclaude__escalate",
+    "telec sessions start",
+    "telec sessions run",
+    "telec sessions send",
+    "telec sessions file",
+    "telec deploy",
+    "telec sessions unsubscribe",
+    "telec sessions end",
+    "telec todo prepare",
+    "telec todo work",
+    "telec todo maintain",
+    "telec todo mark-phase",
+    "telec todo set-deps",
+    "telec agents status",
+    "telec sessions escalate",
 }
 
 CUSTOMER_EXCLUDED_TOOLS: set[str] = (
     UNAUTHORIZED_EXCLUDED_TOOLS
     | {
-        "teleclaude__list_sessions",
-        "teleclaude__list_todos",
-        "teleclaude__publish",
-        "teleclaude__channels_list",
+        "telec sessions list",
+        "telec roadmap list",
+        "telec channels publish",
+        "telec channels list",
     }
-) - {"teleclaude__escalate"}
+) - {"telec sessions escalate"}
 
 
 class ToolSpec(TypedDict, total=False):

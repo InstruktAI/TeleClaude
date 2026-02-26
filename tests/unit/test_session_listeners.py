@@ -112,7 +112,7 @@ async def test_notify_stop_delivers_message(monkeypatch):
     assert count == 1
     assert delivered["session_id"] == "caller-A"
     assert delivered["tmux_session"] == "tc_callerA"
-    assert "teleclaude__get_session_data" in delivered["message"]
+    assert "telec sessions tail" in delivered["message"]
     assert "target-123" in delivered["message"]
 
 

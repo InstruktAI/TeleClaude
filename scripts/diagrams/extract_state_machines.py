@@ -96,7 +96,7 @@ def parse_phase_transitions(
     """Derive phase transitions from POST_COMPLETION mark_phase instructions."""
     status_updates: dict[str, list[tuple[str, str]]] = {}
     update_re: re.Pattern[str] = re.compile(
-        r'teleclaude__mark_phase\(slug="\{args\}", phase="([a-z]+)", status="([a-z_]+)"\)'
+        r'telec todo mark-phase\(slug="\{args\}", phase="([a-z]+)", status="([a-z_]+)"\)'
     )
 
     for command, body in post_completion.items():

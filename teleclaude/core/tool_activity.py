@@ -6,10 +6,38 @@ import re
 from collections.abc import Mapping
 
 TOOL_ACTIVITY_PREVIEW_MAX_CHARS = 70
-_LEGACY_TOOL_PREFIX = "teleclaude__"
-_LEGACY_TOOL_NAME_RE = re.compile(rf"\b{re.escape(_LEGACY_TOOL_PREFIX)}([A-Za-z][A-Za-z0-9_]*)\b")
 _TREE_PREFIX_RE = re.compile(r"^(?:[│┃┆┊|]+\s*|[├└]\s*)+")
 _INLINE_TREE_MARKER_RE = re.compile(r"\s[├└]\s+")
+_NEXT_WORK_CALL_RE = re.compile(r"telec todo work\(\s*slug\s*=\s*([^)]+?)\s*\)")
+_NEXT_PREPARE_CALL_RE = re.compile(r"telec todo prepare\(\s*slug\s*=\s*([^)]+?)\s*\)")
+_NEXT_WORK_EMPTY_CALL_RE = re.compile(r"telec todo work\(\s*\)")
+_NEXT_PREPARE_EMPTY_CALL_RE = re.compile(r"telec todo prepare\(\s*\)")
+_MAPPED_TOOL_NAMES: dict[str, str] = {
+    "next_work": "telec todo work",
+    "next_prepare": "telec todo prepare",
+    "next_maintain": "telec todo maintain",
+    "mark_phase": "telec todo mark-phase",
+    "set_dependencies": "telec todo set-deps",
+    "run_agent_command": "telec sessions run",
+    "get_session_data": "telec sessions tail",
+    "send_message": "telec sessions send",
+    "start_session": "telec sessions start",
+    "end_session": "telec sessions end",
+    "list_sessions": "telec sessions list",
+    "stop_notifications": "telec sessions unsubscribe",
+    "send_result": "telec sessions result",
+    "send_file": "telec sessions file",
+    "render_widget": "telec sessions widget",
+    "escalate": "telec sessions escalate",
+    "list_computers": "telec computers list",
+    "list_projects": "telec projects list",
+    "deploy": "telec deploy",
+    "channels_list": "telec channels list",
+    "publish": "telec channels publish",
+}
+_MAPPED_TOOL_NAME_RE = re.compile(
+    r"\b(" + "|".join(re.escape(name) for name in sorted(_MAPPED_TOOL_NAMES, key=len, reverse=True)) + r")\b"
+)
 
 # Fields checked in priority order for a useful preview snippet.
 _PREVIEW_FIELDS = (
@@ -41,8 +69,27 @@ def _as_non_empty_str(value: object) -> str | None:
 
 
 def _normalize_tool_invocations(text: str) -> str:
-    """Rewrite legacy prefixed tool names to current invocation names."""
-    return _LEGACY_TOOL_NAME_RE.sub(r"\1", text)
+    """Normalize tool invocation snippets to telec CLI command style."""
+
+    def _strip_quotes(value: str) -> str:
+        trimmed = value.strip()
+        if len(trimmed) >= 2 and trimmed[0] == trimmed[-1] and trimmed[0] in {"'", '"'}:
+            return trimmed[1:-1]
+        return trimmed
+
+    def _replace_slug_call(match: re.Match[str], command: str) -> str:
+        slug_expr = _strip_quotes(match.group(1))
+        return f"{command} {slug_expr}".strip()
+
+    normalized = _NEXT_WORK_CALL_RE.sub(lambda m: _replace_slug_call(m, "telec todo work"), text)
+    normalized = _NEXT_PREPARE_CALL_RE.sub(lambda m: _replace_slug_call(m, "telec todo prepare"), normalized)
+    normalized = _NEXT_WORK_EMPTY_CALL_RE.sub("telec todo work", normalized)
+    normalized = _NEXT_PREPARE_EMPTY_CALL_RE.sub("telec todo prepare", normalized)
+
+    def _replace_name(match: re.Match[str]) -> str:
+        return _MAPPED_TOOL_NAMES.get(match.group(1), match.group(1))
+
+    return _MAPPED_TOOL_NAME_RE.sub(_replace_name, normalized)
 
 
 def truncate_tool_preview(text: str | None) -> str | None:

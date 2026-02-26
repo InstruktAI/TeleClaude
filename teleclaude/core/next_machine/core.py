@@ -81,9 +81,9 @@ FINDING_ID_PATTERN = re.compile(r"\bR\d+-F\d+\b")
 POST_COMPLETION: dict[str, str] = {
     "next-build": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
+2. telec todo mark-phase {args} --phase build --status complete --cwd <project-root>
 3. Call {next_call} — this runs build gates (tests + demo validation)
-4. If next_work says gates PASSED: teleclaude__end_session(computer="local", session_id="<session_id>") and continue
+4. If next_work says gates PASSED: telec sessions end <session_id> --computer local and continue
 5. If next_work says BUILD GATES FAILED:
    a. Send the builder the failure message (do NOT end the session)
    b. Wait for the builder to report completion again
@@ -91,9 +91,9 @@ POST_COMPLETION: dict[str, str] = {
 """,
     "next-bugs-fix": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
+2. telec todo mark-phase {args} --phase build --status complete --cwd <project-root>
 3. Call {next_call} — this runs build gates (tests + demo validation)
-4. If next_work says gates PASSED: teleclaude__end_session(computer="local", session_id="<session_id>") and continue
+4. If next_work says gates PASSED: telec sessions end <session_id> --computer local and continue
 5. If next_work says BUILD GATES FAILED:
    a. Send the builder the failure message (do NOT end the session)
    b. Wait for the builder to report completion again
@@ -101,21 +101,21 @@ POST_COMPLETION: dict[str, str] = {
 """,
     "next-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data to extract verdict
-2. teleclaude__end_session(computer="local", session_id="<session_id>")
+2. telec sessions end <session_id> --computer local
 3. Relay verdict to state:
-   - If APPROVE: teleclaude__mark_phase(slug="{args}", phase="review", status="approved")
-   - If REQUEST CHANGES: teleclaude__mark_phase(slug="{args}", phase="review", status="changes_requested")
+   - If APPROVE: telec todo mark-phase {args} --phase review --status approved --cwd <project-root>
+   - If REQUEST CHANGES: telec todo mark-phase {args} --phase review --status changes_requested --cwd <project-root>
 4. Call {next_call}
 """,
     "next-fix-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. teleclaude__end_session(computer="local", session_id="<session_id>")
-3. teleclaude__mark_phase(slug="{args}", phase="review", status="pending")
+2. telec sessions end <session_id> --computer local
+3. telec todo mark-phase {args} --phase review --status pending --cwd <project-root>
 4. Call {next_call}
 """,
     "next-defer": """WHEN WORKER COMPLETES:
 1. Read worker output. Confirm deferrals_processed in state.yaml
-2. teleclaude__end_session(computer="local", session_id="<session_id>")
+2. telec sessions end <session_id> --computer local
 3. Call {next_call}
 """,
     "next-finalize": """WHEN WORKER COMPLETES:
@@ -129,7 +129,7 @@ POST_COMPLETION: dict[str, str] = {
    If any check fails: stop and report FINALIZE_LOCK_MISMATCH (do NOT apply).
 4. Confirm worker reported exactly `FINALIZE_READY: {args}` in session `<session_id>` transcript.
    If missing: send worker feedback to report FINALIZE_READY and stop (do NOT apply).
-5. teleclaude__end_session(computer="local", session_id="<session_id>")
+5. telec sessions end <session_id> --computer local
 6. FINALIZE APPLY (orchestrator-owned, canonical root only — NEVER cd into worktree):
    a. MAIN_REPO="$(git rev-parse --git-common-dir)/.."
    b. git -C "$MAIN_REPO" fetch origin main
@@ -189,7 +189,7 @@ def format_tool_call(
     post_completion = POST_COMPLETION.get(command, "")
     if post_completion:
         next_call_display = next_call.strip()
-        if next_call_display and PAREN_OPEN not in next_call_display:
+        if next_call_display and PAREN_OPEN not in next_call_display and " " not in next_call_display:
             next_call_display = f"{next_call_display}()"
         completion_value = completion_args if completion_args is not None else args
         # Substitute {args} and {next_call} placeholders
@@ -211,15 +211,7 @@ Execute these steps in order (FOLLOW TO THE LETTER!):
 
 Based on the above guidance and the work item details, select the best agent and thinking mode.
 
-teleclaude__run_agent_command(
-  computer="local",
-  command="{formatted_command}",
-  args="{args}",
-  project="{project}",
-  agent="<your selection>",
-  thinking_mode="<your selection>",
-  subfolder="{subfolder}"
-)
+telec sessions run --computer local --command "{formatted_command}" --args "{args}" --project "{project}" --agent "<your selection>" --mode "<your selection>" --subfolder "{subfolder}"
 Save the returned session_id.
 
 STEP 2 - START BACKGROUND TIMER:
@@ -239,7 +231,7 @@ A) NOTIFICATION ARRIVES (worker completed):
 
 B) TIMER COMPLETES (no notification after 5 minutes):
    THIS IS YOUR ACTIVATION TRIGGER. You MUST act immediately:
-   - Check on the session: teleclaude__get_session_data(computer="local", session_id="<session_id>", tail_chars=2000)
+   - Check on the session: telec sessions tail <session_id> --tools --thinking
    - If still running: reset timer (sleep 300, run_in_background=true) and WAIT again
    - If completed/idle: follow WHEN WORKER COMPLETES below
    - If stuck/errored: intervene or escalate to user
@@ -277,14 +269,14 @@ def format_prepared(slug: str) -> str:
     """Format a 'prepared' message indicating work item is ready."""
     return f"""PREPARED: todos/{slug} is ready for work.
 
-DECISION REQUIRED: Continue preparation work, or start the build/review cycle with teleclaude__next_work(slug="{slug}")."""
+DECISION REQUIRED: Continue preparation work, or start the build/review cycle with telec todo work {slug}."""
 
 
 def format_uncommitted_changes(slug: str) -> str:
     """Format instruction for orchestrator to resolve worktree uncommitted changes."""
     return f"""UNCOMMITTED CHANGES in trees/{slug}
 
-NEXT: Resolve these changes according to the commit policy, then call teleclaude__next_work(slug="{slug}") to continue."""
+NEXT: Resolve these changes according to the commit policy, then call telec todo work {slug} to continue."""
 
 
 def format_stash_debt(slug: str, count: int) -> str:
@@ -295,7 +287,7 @@ def format_stash_debt(slug: str, count: int) -> str:
         f"Repository has {count} git stash {noun}. Stash workflows are forbidden for AI orchestration.",
         next_call=(
             "Clear all repository stash entries with maintainer-approved workflow, "
-            f'then call teleclaude__next_work(slug="{slug}") to continue.'
+            f'then call telec todo work {slug} to continue.'
         ),
     )
 
@@ -332,25 +324,28 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
         results.append(f"GATE FAILED: make test (error: {exc})")
 
     # Gate 2: Demo structure validation
-    try:
-        demo_result = subprocess.run(
-            ["telec", "todo", "demo", "validate", slug, "--project-root", worktree_cwd],
-            cwd=worktree_cwd,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if demo_result.returncode != 0:
+    if check_file_exists(worktree_cwd, f"todos/{slug}/bug.md"):
+        results.append("GATE SKIPPED: demo validate (bug workflow)")
+    else:
+        try:
+            demo_result = subprocess.run(
+                ["telec", "todo", "demo", "validate", slug, "--project-root", worktree_cwd],
+                cwd=worktree_cwd,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if demo_result.returncode != 0:
+                all_passed = False
+                results.append(f"GATE FAILED: demo validate (exit {demo_result.returncode})\n{demo_result.stdout}")
+            else:
+                results.append(f"GATE PASSED: demo validate\n{demo_result.stdout.strip()}")
+        except subprocess.TimeoutExpired:
             all_passed = False
-            results.append(f"GATE FAILED: demo validate (exit {demo_result.returncode})\n{demo_result.stdout}")
-        else:
-            results.append(f"GATE PASSED: demo validate\n{demo_result.stdout.strip()}")
-    except subprocess.TimeoutExpired:
-        all_passed = False
-        results.append("GATE FAILED: demo validate (timed out)")
-    except OSError as exc:
-        all_passed = False
-        results.append(f"GATE FAILED: demo validate (error: {exc})")
+            results.append("GATE FAILED: demo validate (timed out)")
+        except OSError as exc:
+            all_passed = False
+            results.append(f"GATE FAILED: demo validate (error: {exc})")
 
     return all_passed, "\n".join(results)
 
@@ -366,12 +361,12 @@ def format_build_gate_failure(slug: str, gate_output: str, next_call: str) -> st
 {gate_output}
 
 INSTRUCTIONS FOR ORCHESTRATOR:
-1. Send the above gate failure details to the builder session via teleclaude__send_message.
+1. Send the above gate failure details to the builder session via telec sessions send <session_id> "<message>".
    Tell the builder which gate(s) failed and include the output.
    Do NOT end the builder session.
 2. Wait for the builder to report completion again.
 3. When the builder reports done:
-   a. teleclaude__mark_phase(slug="{slug}", phase="build", status="complete")
+   a. telec todo mark-phase {slug} --phase build --status complete --cwd <project-root>
    b. Call {next_call}
    If gates fail again, repeat from step 1."""
 
@@ -717,6 +712,35 @@ async def resolve_slug_async(
 def check_file_exists(cwd: str, relative_path: str) -> bool:
     """Check if a file exists relative to cwd."""
     return (Path(cwd) / relative_path).exists()
+
+
+def resolve_canonical_project_root(cwd: str) -> str:
+    """Resolve canonical repository root from cwd.
+
+    Accepts either the project root or a path inside a git worktree. Falls back
+    to the provided cwd when git metadata is unavailable.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        return cwd
+
+    raw_common_dir = result.stdout.strip()
+    if not raw_common_dir:
+        return cwd
+
+    common_dir = Path(raw_common_dir)
+    if not common_dir.is_absolute():
+        common_dir = (Path(cwd) / common_dir).resolve()
+    else:
+        common_dir = common_dir.resolve()
+
+    return str((common_dir / "..").resolve())
 
 
 def slug_in_roadmap(cwd: str, slug: str) -> bool:
@@ -1515,6 +1539,7 @@ def sync_slug_todo_from_worktree_to_main(cwd: str, slug: str) -> None:
         cwd,
         slug,
         [
+            f"{todo_base}/bug.md",
             f"{todo_base}/requirements.md",
             f"{todo_base}/implementation-plan.md",
             f"{todo_base}/state.yaml",
@@ -1540,6 +1565,7 @@ def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> None:
         return
     # Planning artifacts: main always wins.
     for rel in [
+        f"{todo_base}/bug.md",
         f"{todo_base}/input.md",
         f"{todo_base}/requirements.md",
         f"{todo_base}/implementation-plan.md",
@@ -1972,7 +1998,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 guidance=guidance,
                 subfolder="",
                 note="No active preparation work found.",
-                next_call="teleclaude__next_prepare",
+                next_call="telec todo prepare",
             )
 
         # 1.5. Ensure slug exists in roadmap before preparing
@@ -2004,7 +2030,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 guidance=guidance,
                 subfolder="",
                 note=note,
-                next_call="teleclaude__next_prepare",
+                next_call="telec todo prepare",
             )
 
         # 1.6. Check for breakdown assessment
@@ -2028,7 +2054,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 guidance=guidance,
                 subfolder="",
                 note=f"Assess todos/{resolved_slug}/input.md for complexity. Split if needed.",
-                next_call="teleclaude__next_prepare",
+                next_call="telec todo prepare",
             )
 
         # If breakdown assessed and has dependent todos, this one is a container
@@ -2054,7 +2080,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 guidance=guidance,
                 subfolder="",
                 note=f"Discuss until you have enough input. Write todos/{resolved_slug}/requirements.md yourself.",
-                next_call="teleclaude__next_prepare",
+                next_call="telec todo prepare",
             )
 
         # 3. Check implementation plan
@@ -2072,7 +2098,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 guidance=guidance,
                 subfolder="",
                 note=f"Discuss until you have enough input. Write todos/{resolved_slug}/implementation-plan.md yourself.",
-                next_call="teleclaude__next_prepare",
+                next_call="telec todo prepare",
             )
 
         # 4. Both exist - check DOR readiness (no phase mutation; readiness is derived)
@@ -2090,7 +2116,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                         f"but DOR score is below threshold ({DOR_READY_THRESHOLD}). Complete DOR assessment, update "
                         f"todos/{resolved_slug}/dor-report.md and todos/{resolved_slug}/state.yaml.dor "
                         f"with score >= {DOR_READY_THRESHOLD}. Then run /next-prepare-gate {resolved_slug} (separate worker) "
-                        f'and call teleclaude__next_prepare(slug="{resolved_slug}") again.'
+                        f'and call telec todo prepare {resolved_slug} again.'
                     )
 
                 guidance = await compose_agent_guidance(db)
@@ -2104,7 +2130,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                         f"Requirements/plan exist for {resolved_slug}, but DOR score is below threshold. "
                         f"Complete DOR assessment and set state.yaml.dor.score >= {DOR_READY_THRESHOLD}."
                     ),
-                    next_call="teleclaude__next_prepare",
+                    next_call="telec todo prepare",
                 )
         # else: already in_progress or done - no state change needed
         return format_prepared(resolved_slug)
@@ -2127,6 +2153,11 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     Returns:
         Plain text instructions for the orchestrator to execute
     """
+    canonical_cwd = await asyncio.to_thread(resolve_canonical_project_root, cwd)
+    if canonical_cwd != cwd:
+        logger.debug("next_work normalized cwd to canonical project root", requested_cwd=cwd, canonical_cwd=canonical_cwd)
+        cwd = canonical_cwd
+
     # Sweep completed group parents before resolving next slug
     await asyncio.to_thread(sweep_completed_groups, cwd)
 
@@ -2161,15 +2192,15 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             return format_error(
                 "NOT_PREPARED",
                 f"Item '{slug}' not found in roadmap.",
-                next_call="Check todos/roadmap.yaml or call teleclaude__next_prepare().",
+                next_call="Check todos/roadmap.yaml or call telec todo prepare.",
             )
 
         phase = await asyncio.to_thread(get_item_phase, cwd, slug)
-        if phase == ItemPhase.PENDING.value and not await asyncio.to_thread(is_ready_for_work, cwd, slug):
+        if not is_bug and phase == ItemPhase.PENDING.value and not await asyncio.to_thread(is_ready_for_work, cwd, slug):
             return format_error(
                 "ITEM_NOT_READY",
                 f"Item '{slug}' is pending and DOR score is below threshold. Must be ready to start work.",
-                next_call=f"Call teleclaude__next_prepare(slug='{slug}') to prepare it first.",
+                next_call=f"Call telec todo prepare {slug} to prepare it first.",
             )
         if phase == ItemPhase.DONE.value:
             return f"COMPLETE: Item '{slug}' is already done."
@@ -2199,7 +2230,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             return format_error(
                 "NO_READY_ITEMS",
                 "No ready items found in roadmap.",
-                next_call="Call teleclaude__next_prepare() to prepare items first.",
+                next_call="Call telec todo prepare to prepare items first.",
             )
         resolved_slug = found_slug
 
@@ -2227,7 +2258,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             return format_error(
                 "NOT_PREPARED",
                 f"todos/{resolved_slug} is missing requirements or implementation plan.",
-                next_call=f'Call teleclaude__next_prepare(slug="{resolved_slug}") to complete preparation.',
+                next_call=f'Call telec todo prepare {resolved_slug} to complete preparation.',
             )
 
     # 4. Ensure worktree exists
@@ -2269,7 +2300,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             return format_error("NO_AGENTS", str(exc))
 
         # Build pre-dispatch marking instructions
-        pre_dispatch = f'teleclaude__mark_phase(slug="{resolved_slug}", phase="build", status="started")'
+        pre_dispatch = f"telec todo mark-phase {resolved_slug} --phase build --status started --cwd <project-root>"
 
         # Bugs use next-bugs-fix instead of next-build
         is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
@@ -2281,7 +2312,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 project=cwd,
                 guidance=guidance,
                 subfolder=f"trees/{resolved_slug}",
-                next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+                next_call=f'telec todo work {resolved_slug}',
                 pre_dispatch=pre_dispatch,
             )
         else:
@@ -2291,7 +2322,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 project=cwd,
                 guidance=guidance,
                 subfolder=f"trees/{resolved_slug}",
-                next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+                next_call=f'telec todo work {resolved_slug}',
                 pre_dispatch=pre_dispatch,
             )
 
@@ -2304,7 +2335,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         )
         # Sync reset state back to main
         await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
-        next_call = f'teleclaude__next_work(slug="{resolved_slug}")'
+        next_call = f'telec todo work {resolved_slug}'
         return format_build_gate_failure(resolved_slug, gate_output, next_call)
 
     # 8. Check review status
@@ -2321,7 +2352,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 project=cwd,
                 guidance=guidance,
                 subfolder=f"trees/{resolved_slug}",
-                next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+                next_call=f'telec todo work {resolved_slug}',
             )
         # Review not started or still pending
         limit_reached, current_round, max_rounds = _is_review_round_limit_reached(worktree_cwd, resolved_slug)
@@ -2334,7 +2365,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 ),
                 next_call=(
                     f"Apply orchestrator review-round-limit closure for {resolved_slug}, "
-                    f'then call teleclaude__next_work(slug="{resolved_slug}")'
+                    f'then call telec todo work {resolved_slug}'
                 ),
             )
         try:
@@ -2347,7 +2378,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             project=cwd,
             guidance=guidance,
             subfolder=f"trees/{resolved_slug}",
-            next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+            next_call=f'telec todo work {resolved_slug}',
             note=f"{REVIEW_DIFF_NOTE}\n\n{_review_scope_note(worktree_cwd, resolved_slug)}",
         )
 
@@ -2363,7 +2394,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             project=cwd,
             guidance=guidance,
             subfolder=f"trees/{resolved_slug}",
-            next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+            next_call=f'telec todo work {resolved_slug}',
         )
 
     # 9. Review approved - dispatch finalize prepare (serialized via finalize lock)
@@ -2377,7 +2408,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 "bound to the orchestrator lock owner."
             ),
             next_call=(
-                "Call teleclaude__next_work from a wrapper-injected orchestrator session so "
+                "Call telec todo work from a wrapper-injected orchestrator session so "
                 "caller_session_id is present."
             ),
         )
@@ -2401,6 +2432,6 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         project=cwd,
         guidance=guidance,
         subfolder=f"trees/{resolved_slug}",
-        next_call="teleclaude__next_work()",
+        next_call="telec todo work",
         note=note,
     )

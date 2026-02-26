@@ -37,7 +37,7 @@ CALL_MSG = {
     "jsonrpc": "2.0",
     "id": 2,
     "method": "tools/call",
-    "params": {"name": "teleclaude__list_computers", "arguments": {}},
+    "params": {"name": "telec computers list", "arguments": {}},
 }
 
 
@@ -71,7 +71,7 @@ def run_test():
         wrapper.stdin.flush()
 
         # 2. Call Tool (Before Restart)
-        print("Calling teleclaude__list_computers (Pre-Restart)...")
+        print("Calling telec computers list (Pre-Restart)...")
         wrapper.stdin.write(json.dumps(CALL_MSG) + "\n")
         wrapper.stdin.flush()
 
@@ -85,7 +85,7 @@ def run_test():
 
         # 4. Call Tool (Post-Restart)
         # If the wrapper works, this should SUCCEED transparently
-        print("Calling teleclaude__list_computers (Post-Restart)...")
+        print("Calling telec computers list (Post-Restart)...")
 
         # Use a new ID for the second call
         CALL_MSG["id"] = 3

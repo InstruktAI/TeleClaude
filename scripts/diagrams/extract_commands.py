@@ -115,7 +115,7 @@ def _extract_keyword_str(call: ast.Call, keyword_name: str) -> str | None:
 def parse_post_completion_next_calls(tree: ast.Module) -> list[tuple[str, str, str]]:
     """Extract command-to-command re-entry edges from format_tool_call next_call values."""
     edges: list[tuple[str, str, str]] = []
-    tool_call_re: re.Pattern[str] = re.compile(r"teleclaude__([a-z_]+)")
+    tool_call_re: re.Pattern[str] = re.compile(r"telec\s+todo\s+([a-z-]+)")
 
     for node in tree.body:
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -138,8 +138,8 @@ def parse_post_completion_next_calls(tree: ast.Module) -> list[tuple[str, str, s
                 continue
 
             found = cast(list[str], tool_call_re.findall(next_call_value))
-            for tool_name in found:
-                dst_command = tool_name.replace("_", "-")
+            for todo_subcommand in found:
+                dst_command = f"next-{todo_subcommand}"
                 if dst_command.startswith("next-"):
                     edges.append((command_value, dst_command, "post-completion"))
 
