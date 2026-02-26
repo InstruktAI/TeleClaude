@@ -20,7 +20,10 @@ Ownership:
 - [x] Working tree clean
 - [x] Comments/docstrings updated where behavior changed
 
-Manual verification: `telec todo demo run agent-config-driven-selection-contract` passed all 5 executable blocks (config fail-closed behavior, selection/dispatch enforcement, and TUI policy-driven selection).
+Manual verification:
+
+- `telec todo demo validate agent-config-driven-selection-contract` -> `Validation passed: 5 executable block(s) found`.
+- `uv run pytest -q tests/unit/cli/test_tool_commands.py::test_handle_sessions_run_omits_agent_when_not_provided tests/unit/cli/test_tool_commands.py::test_handle_sessions_run_includes_explicit_agent` -> `2 passed`.
 
 ## Review Gates (Reviewer)
 

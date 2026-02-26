@@ -2,14 +2,16 @@
 
 ## Manual Verification Evidence
 
-- Targeted unit tests run:
-  `uv run pytest -q tests/unit/test_agent_config_loading.py tests/unit/test_agent_guidance.py tests/unit/test_agents.py tests/unit/test_api_server.py tests/unit/test_command_handlers.py tests/unit/test_config_experiments_overlay.py tests/unit/test_config_working_dir.py tests/unit/test_next_machine_demo.py tests/unit/test_tui_modal.py`
-  Result: `199 passed, 1 skipped`.
-- Demo contract validation run:
-  `uv run python -m teleclaude.cli.telec todo demo validate agent-config-driven-selection-contract --project-root .`
-  Result: `Validation passed: 5 executable block(s) found`.
-- Concrete behavior trace for API enforcement gap:
-  `POST /sessions` with `{"agent":"codex","auto_command":"agent codex slow"}` returns `200`, and `assert_agent_enabled()` is not called.
+- Targeted contract tests executed:
+  `uv run pytest -q tests/unit/test_agent_config_loading.py tests/unit/test_agents.py tests/unit/test_command_mapper.py tests/unit/test_api_server.py tests/unit/test_command_handlers.py tests/unit/test_tui_modal.py tests/unit/test_next_machine_demo.py tests/unit/test_agent_guidance.py`
+  Result: `212 passed, 1 skipped`.
+- Lint/type checks executed:
+  `make lint`
+  Result: `ruff check` and `pyright` passed.
+- Concrete value trace for fallback path:
+  - `handle_sessions_run(['--command','/next-build','--project','/tmp/project'])` builds request body with `"agent": "claude"` ([teleclaude/cli/tool_commands.py:304](teleclaude/cli/tool_commands.py:304)).
+  - `RunSessionRequest(..., agent='claude')` includes `"agent"` in `model_fields_set`, so API fallback logic is skipped ([teleclaude/api_server.py:1014](teleclaude/api_server.py:1014)).
+  - If `claude` is disabled and `gemini` is enabled, the request is rejected at `assert_agent_enabled("claude")` instead of selecting enabled fallback ([teleclaude/api_server.py:1016](teleclaude/api_server.py:1016)).
 
 ## Critical
 
@@ -17,40 +19,36 @@
 
 ## Important
 
-1. Disabled-agent policy is bypassed in API session creation when `auto_command` is provided.
-   - File: `teleclaude/api_server.py:559`
-   - File: `teleclaude/api_server.py:594`
-   - Why this matters: The new enforcement only runs inside `if not request.auto_command`. A caller can set a disabled agent in `auto_command` and still receive a successful session-creation response, which violates the fail-closed selection contract for API entry points.
-   - Requirement impact: Violates `R3` (enforce before dispatch in API session creation path) and weakens `R1/R6` operator expectations for deterministic rejection.
-   - Fix direction: Validate agent policy even when `auto_command` is present. At minimum, if `request.agent` is set, always call `assert_agent_enabled()`. Prefer parsing/guarding `agent*` auto-commands as well.
-
-2. Command mapping still has a fail-open fallback to `"claude"` when no enabled agents are available.
-   - File: `teleclaude/core/command_mapper.py:41`
-   - Why this matters: `_default_agent_name()` returns `"claude"` when `get_enabled_agents()` is empty instead of raising a blocking configuration error. That reintroduces fallback behavior the contract is trying to remove.
-   - Requirement impact: Conflicts with `R3` fallback policy and the non-functional “no silent fallback” rule.
-   - Fix direction: Replace the fallback with an explicit error (`ValueError` with actionable `config.yml:agents` guidance) and handle it at boundary adapters.
+1. `telec sessions run` default request still hardcodes `claude`, defeating enabled-agent fallback policy.
+   - Severity: Important
+   - Confidence: 98
+   - Files:
+     - `teleclaude/cli/tool_commands.py:304`
+     - `teleclaude/api_server.py:1014`
+   - Why this matters:
+     API-side fallback (`first enabled agent`) only activates when the `agent` field is omitted. The CLI currently always sends `agent=claude`, so with `claude` disabled and another agent enabled, dispatch is rejected instead of selecting an enabled default. This violates the requirement that fallback pickers be config-driven and consistent.
+   - Requirement impact:
+     - Violates R3 fallback-picker implication.
+     - Undermines acceptance criterion 3 for default dispatch surfaces.
+   - Fix direction:
+     In `handle_sessions_run`, omit `"agent"` from the request body unless `--agent` was explicitly provided.
 
 ## Suggestions
 
-1. Add API regression coverage for `POST /sessions` with `auto_command` plus disabled agent to ensure 4xx rejection and no dispatch call.
-2. Add command-mapper coverage for empty enabled-agent sets to assert fail-closed behavior (no implicit `"claude"` fallback).
-3. TUI behavior was validated via unit tests, but interactive/manual TUI verification was not feasible in this review shell.
+1. Add a unit test for `handle_sessions_run` that asserts `agent` is absent from request JSON when `--agent` is not provided.
+2. Add an API integration test proving `/sessions/run` picks first enabled agent when client omits `agent`.
 
 ## Paradigm-Fit Assessment
 
-- Data flow: Mostly aligned (policy helper usage expanded), but API `auto_command` path bypasses policy at the boundary.
-- Component reuse: Good reuse of centralized helpers (`assert_agent_enabled`, `get_enabled_agents`, `get_known_agents`).
-- Pattern consistency: Improved in most dispatch paths, but fail-open mapper default is inconsistent with the new fail-closed contract.
+- Data flow: Mostly aligned, but CLI boundary still injects adapter-specific default (`claude`) instead of using centralized policy-driven fallback.
+- Component reuse: Good reuse of `assert_agent_enabled` and `get_enabled_agents` in core/API.
+- Pattern consistency: Fail-closed behavior is consistent in most paths; this CLI caller remains an outlier.
 
 ## Fixes Applied
 
-1. Issue: Disabled-agent policy bypass in `POST /sessions` when `auto_command` is supplied.
-   Fix: Enforced policy validation before dispatch for explicit `request.agent` and parsed `agent*`/direct-agent `auto_command` targets; added API regression tests for both bypass variants.
-   Commit: `45c56309`
-
-2. Issue: Command mapper fail-open fallback to `"claude"` when no enabled agents exist.
-   Fix: Replaced fallback with explicit fail-closed `ValueError` carrying actionable `config.yml:agents` guidance; added regression coverage for API agent mapping with empty enabled-agent sets.
-   Commit: `a9c17115`
+- `Important-1`: Removed hardcoded `"agent": "claude"` default from `handle_sessions_run`, so CLI omits `agent` unless `--agent` is explicitly provided and API fallback can select the first enabled agent.
+  Added `tests/unit/cli/test_tool_commands.py` coverage for both default-omission and explicit-agent pass-through behavior.
+  Commit: `6772351f`.
 
 ## Verdict
 

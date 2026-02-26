@@ -47,8 +47,8 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
 - [x] Enforce enabled-agent policy before start/resume/restart and worker dispatch.
 - [x] Reject disabled selection in:
   - [x] API session creation path
-  - [x] MCP `teleclaude__start_session`
-  - [x] MCP `teleclaude__run_agent_command`
+  - [x] MCP `telec sessions start`
+  - [x] MCP `telec sessions run`
   - [x] core command handlers (`start_agent`, `resume_agent`, `agent_restart`)
 - [x] Ensure fallback picker logic uses enabled-agent helper.
 
