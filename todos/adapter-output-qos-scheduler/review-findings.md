@@ -66,17 +66,27 @@ During graceful adapter shutdown, a final-update payload may have been enqueued 
 
 **Recommendation:** In `stop()`, drain remaining priority payloads (at minimum) before cancelling the background task. Normal payloads can be safely dropped since the next output update would supersede them.
 
+### 4. `_dispatch_loop` try-except scope is too narrow — unprotected lines can kill the background task permanently
+
+**File:** `teleclaude/adapters/qos/output_scheduler.py:170-185`
+
+In `_dispatch_loop`, `_compute_tick_s()` (line 173) and `_maybe_log_summary()` (line 185) execute outside the try-except block. If either raises an exception, the background task coroutine terminates. Once dead, no watchdog re-arms it — `start()` is only called once at adapter startup and never re-invoked. All subsequent `enqueue()` calls deposit payloads that are never consumed, with no error surfaced.
+
+With default config this is unlikely (`_compute_tick_s` uses validated params, `_maybe_log_summary` is simple logging), but a misconfigured `rounding_ms=0` or a corrupted data structure would trigger permanent silent output freeze.
+
+**Recommendation:** Widen the try-except to cover the full loop body, or add a dead-task check in `enqueue()` that logs a critical alert when payloads are deposited into a dead scheduler.
+
 ---
 
 ## Suggestions
 
-### 4. Expose `mode` accessor on `OutputQoSScheduler`
+### 5. Expose `mode` accessor on `OutputQoSScheduler`
 
 **Files:** `teleclaude/adapters/telegram_adapter.py:1016`, `teleclaude/adapters/discord_adapter.py:859`
 
 Both adapters access `self._qos_scheduler._policy.mode` directly — reaching two levels into private state. A `@property mode` or `is_active` helper on the scheduler would provide a cleaner contract and decouple adapters from the internal `_policy` structure.
 
-### 5. `_dispatch_all_pending` session list construction is unnecessarily verbose
+### 6. `_dispatch_all_pending` session list construction is unnecessarily verbose
 
 **File:** `teleclaude/adapters/qos/output_scheduler.py:204`
 
@@ -90,7 +100,7 @@ Could be simplified to:
 pending_sessions = list(set(self._priority_queues) | set(self._normal_slots))
 ```
 
-### 6. Test coverage gaps worth addressing in follow-up
+### 7. Test coverage gaps worth addressing in follow-up
 
 From the test analysis lane:
 
@@ -118,10 +128,11 @@ All non-deferred tasks (Phases 1-4, 5.1, 6.1, 6.2) are checked `[x]`. Deferred t
 
 The core scheduler implementation is sound — coalescing, round-robin fairness, priority dispatch, dynamic cadence math, and adapter integration all follow correct patterns. The two-layer model (PTB rate limiter + TeleClaude scheduler) is well-designed. Config, policy, and adapter lifecycle follow established project conventions.
 
-The 3 Important findings are real issues but not blockers for the initial rollout:
+The 4 Important findings are real issues but not blockers for the initial rollout:
 
 1. The `min_session_tick_s` gap has no practical impact with default configuration (3.0 < 3.8).
 2. The memory growth is slow and proportional to unique sessions — manageable for current scale.
 3. Payload loss on stop is an edge case during graceful shutdown that can be addressed in follow-up.
+4. The try-except scope issue is unlikely with validated config but should be hardened.
 
 These should be tracked for post-merge refinement.
