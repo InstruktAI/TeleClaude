@@ -142,11 +142,18 @@ async def handle_deployment_event(event: HookEvent) -> None:
 
 
 async def _publish_fanout(version_info: dict) -> None:  # type: ignore[type-arg]
-    """Publish a version_available event to the Redis fan-out stream."""
+    """Publish a version_available event to the Redis fan-out stream.
+
+    The message includes the originating daemon_id so remote consumers can
+    execute the update while the originating daemon skips its own message
+    (it already ran execute_update directly).
+    """
     if _get_redis is None:
         logger.debug("Deployment handler: Redis unavailable, skipping fan-out")
         return
     try:
+        from teleclaude.config import config as _config
+
         redis = await _get_redis()
         fanout_event = HookEvent.now(
             source="deployment",
@@ -155,6 +162,7 @@ async def _publish_fanout(version_info: dict) -> None:  # type: ignore[type-arg]
                 "channel": str(version_info.get("channel", "")),
                 "version": str(version_info.get("version", "")),
                 "from_version": str(version_info.get("from_version", "")),
+                "daemon_id": str(_config.computer.name),
             },
         )
         await redis.xadd(DEPLOYMENT_FANOUT_CHANNEL, {"event": fanout_event.to_json()}, maxlen=1000)

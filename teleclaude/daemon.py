@@ -1740,7 +1740,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         logger.info("Webhook service initialized (%d contracts loaded)", len(contract_registry._cache))
 
     async def _deployment_fanout_consumer(self, dispatcher: HookDispatcher, redis_transport: "RedisTransport") -> None:
-        """Consume deployment version_available events from Redis Stream and dispatch locally."""
+        """Consume deployment version_available events from Redis Stream and dispatch locally.
+
+        Messages published by this daemon carry a daemon_id matching config.computer.name.
+        The consumer skips those to avoid double-executing updates that this daemon already
+        triggered directly (github-source path calls execute_update before publishing).
+        Remote daemons have different daemon_id values and will process the message normally.
+        """
         from teleclaude.hooks.webhook_models import HookEvent as _HookEvent
 
         try:
@@ -1766,6 +1772,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                             event_json = event_json.decode()
                         try:
                             event = _HookEvent.from_json(event_json)
+                            if event.properties.get("daemon_id") == config.computer.name:
+                                logger.debug("Deployment fanout: skipping self-originated message")
+                                continue
                             await dispatcher.dispatch(event)
                         except Exception as exc:  # noqa: BLE001
                             logger.warning("Deployment fanout: dispatch failed: %s", exc)
