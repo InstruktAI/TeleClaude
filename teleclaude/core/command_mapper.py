@@ -42,7 +42,7 @@ def _default_agent_name() -> str:
     enabled_agents = get_enabled_agents()
     if enabled_agents:
         return enabled_agents[0]
-    return "claude"
+    raise ValueError("No enabled agents configured. Set config.yml:agents.<agent>.enabled to true.")
 
 
 class CommandMapper:
