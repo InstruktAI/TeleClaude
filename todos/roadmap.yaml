@@ -1,9 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: deployment-migrations
-  group: mature-deployment
-  description: 'Phase 2: Migration manifest format, runner, version utilities (no
-    CLI — internal library)'
 - slug: deployment-channels
   group: mature-deployment
   after:
