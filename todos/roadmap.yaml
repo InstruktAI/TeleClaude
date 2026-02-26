@@ -1,5 +1,8 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
+- slug: help-desk-startup-command-ordering
+  description: Fix startup ordering race where first help-desk message can interleave
+    with auto-command, contaminating agent startup and producing no reply
 - slug: api-todos-work-stability-hardening
   description: Stabilize `/todos/work` latency by removing redundant worktree prep/sync
     and adding phase-level diagnostics
