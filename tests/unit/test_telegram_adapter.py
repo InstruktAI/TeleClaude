@@ -722,6 +722,48 @@ class TestChannelManagement:
         assert result is True
         assert len(calls) == 1
 
+    @pytest.mark.asyncio
+    async def test_close_channel_missing_topic_is_noop(self, telegram_adapter):
+        """close_channel should be a safe no-op when topic_id is missing."""
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+        telegram_adapter.app.bot.close_forum_topic = AsyncMock()
+
+        mock_session = Session(
+            session_id="123",
+            computer_name="test",
+            tmux_session_name="test-session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=None)),
+            title="Test",
+        )
+
+        result = await telegram_adapter.close_channel(mock_session)
+
+        assert result is False
+        telegram_adapter.app.bot.close_forum_topic.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_channel_missing_topic_is_noop(self, telegram_adapter):
+        """delete_channel should be a safe no-op when topic_id is missing."""
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+        telegram_adapter.app.bot.delete_forum_topic = AsyncMock()
+
+        mock_session = Session(
+            session_id="123",
+            computer_name="test",
+            tmux_session_name="test-session",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=None)),
+            title="Test",
+        )
+
+        result = await telegram_adapter.delete_channel(mock_session)
+
+        assert result is False
+        telegram_adapter.app.bot.delete_forum_topic.assert_not_called()
+
 
 class TestRateLimitHandling:
     """Tests for rate limit handling with retry."""

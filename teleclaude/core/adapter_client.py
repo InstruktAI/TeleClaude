@@ -37,6 +37,7 @@ logger = get_logger(__name__)
 
 _OUTPUT_SUMMARY_MIN_INTERVAL_S = 2.0
 _OUTPUT_SUMMARY_IDLE_THRESHOLD_S = 2.0
+_TERMINAL_SESSION_STATUSES = frozenset({"closing", "closed"})
 
 
 class AdapterClient:
@@ -586,13 +587,23 @@ class AdapterClient:
 
         This keeps direct user experience local while fanning out for admin visibility.
         """
-        default_actor = "TUI" if source.lower() in {InputOrigin.API.value, InputOrigin.HOOK.value} else source.upper()
+        default_actor = (
+            "TUI"
+            if source.lower() in {InputOrigin.API.value, InputOrigin.TERMINAL.value}
+            else source.upper()
+        )
         normalized_actor_name = (actor_name or "").strip() or (actor_id or "").strip() or default_actor
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session
-        final_text = f"{normalized_actor_name} @ {session_to_use.computer_name}:\n\n{text}"
+        final_text = text
 
         source_adapter = source.strip().lower()
+        display_origin_label = "TERMINAL" if source_adapter == InputOrigin.TERMINAL.value else (
+            source_adapter.upper() if source_adapter else "UNKNOWN"
+        )
+        explicit_actor_name = (actor_name or "").strip()
+        is_terminal_actor_reflection = source_adapter == InputOrigin.TERMINAL.value and bool(explicit_actor_name)
+        reflection_header = f"{explicit_actor_name} @ {display_origin_label}:\n\n"
         reflection_metadata = MessageMetadata(
             parse_mode=None,
             reflection_actor_id=(actor_id or "").strip() or None,
@@ -600,12 +611,24 @@ class AdapterClient:
             reflection_actor_avatar_url=(actor_avatar_url or "").strip() or None,
         )
 
+        def render_reflection_text(adapter: UiAdapter, base_text: str) -> str:
+            if not is_terminal_actor_reflection:
+                return base_text
+
+            with_header = base_text if base_text.startswith(reflection_header) else f"{reflection_header}{base_text}"
+            if adapter.ADAPTER_KEY == InputOrigin.TELEGRAM.value:
+                if with_header.endswith("---\n"):
+                    return with_header
+                return f"{with_header}\n\n---\n"
+            return with_header
+
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
+            adapter_text = render_reflection_text(adapter, final_text)
             return cast(
                 Awaitable[object],
                 adapter.send_message(
                     lane_session,
-                    final_text,
+                    adapter_text,
                     metadata=reflection_metadata,
                 ),
             )
@@ -1016,6 +1039,14 @@ class AdapterClient:
             fresh = await db.get_session(session_id)
             if fresh:
                 session = fresh
+
+            if session.closed_at or session.lifecycle_status in _TERMINAL_SESSION_STATUSES:
+                logger.debug(
+                    "Skipping ensure_ui_channels for terminal session %s (status=%s)",
+                    session_id[:8],
+                    session.lifecycle_status,
+                )
+                return session
 
             ui_adapters = self._ui_adapters()
             if not ui_adapters:

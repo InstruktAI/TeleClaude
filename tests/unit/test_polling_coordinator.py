@@ -33,6 +33,47 @@ class TestPollAndSendOutput:
         finally:
             await polling_coordinator._unregister_polling(session_id)
 
+    async def test_schedule_polling_attaches_done_callback_and_consumes_task_exception(self):
+        """Background poller task should consume exceptions via done callback."""
+
+        class FakeTask:
+            def __init__(self) -> None:
+                self._callbacks = []
+
+            def add_done_callback(self, callback) -> None:
+                self._callbacks.append(callback)
+
+            def result(self) -> None:
+                raise RuntimeError("poller crashed")
+
+        session_id = "test-attach-callback"
+        fake_task = FakeTask()
+
+        def _fake_create_task(coro):
+            coro.close()
+            return fake_task
+
+        try:
+            with (
+                patch("teleclaude.core.polling_coordinator.asyncio.create_task", side_effect=_fake_create_task),
+                patch("teleclaude.core.polling_coordinator.logger.error") as mock_log_error,
+            ):
+                scheduled = await polling_coordinator.schedule_polling(
+                    session_id=session_id,
+                    tmux_session_name="tmux",
+                    output_poller=Mock(),
+                    adapter_client=Mock(),
+                    get_output_file=Mock(),
+                )
+
+                assert scheduled is True
+                assert len(fake_task._callbacks) == 1
+
+                fake_task._callbacks[0](fake_task)
+                mock_log_error.assert_called_once()
+        finally:
+            await polling_coordinator._unregister_polling(session_id)
+
     async def test_output_changed_event(self):
         """Test OutputChanged event handling."""
         # Mock session
@@ -939,7 +980,7 @@ class TestCodexSyntheticTurnEvents:
             context = emit.await_args.args[0]
             assert context.event_type == AgentHookEvents.TOOL_USE
             assert context.data.raw.get("tool_name") == "Called"
-            assert context.data.raw.get("tool_preview") == "Called next_work(slug='demo')"
+            assert context.data.raw.get("tool_preview") == "Called telec todo work demo"
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 

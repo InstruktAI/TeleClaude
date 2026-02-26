@@ -5,9 +5,19 @@ business:
     software-development: docs
 
 jobs:
-  youtube_sync_subscriptions:
-    schedule: daily
-    preferred_hour: 6
+  help_desk_intelligence:
+    
+    description: Agentic job to monitor support channels, summarize issues, and suggest fixes.
+    when:
+      at: '06:00'
+
+    agent: claude
+    thinking_mode: fast
+
+  youtube_scraper:
+    description: Daily sync of YouTube subscriptions for content discovery and recommendation.
+    when:
+      at: '06:00'
 
   memory_review:
     schedule: weekly

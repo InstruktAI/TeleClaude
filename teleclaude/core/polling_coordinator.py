@@ -734,6 +734,16 @@ _active_pollers: set[str] = set()
 _poller_lock = asyncio.Lock()
 
 
+def _handle_background_poller_result(task: asyncio.Task[None], session_id: str) -> None:
+    """Consume background poller task exceptions to avoid unretrieved-task noise."""
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        return
+    except Exception:
+        logger.error("Background poller task crashed for session %s", session_id[:8], exc_info=True)
+
+
 async def is_polling(session_id: str) -> bool:
     """Check if a poller task is active for the session (in-memory only)."""
     async with _poller_lock:
@@ -773,7 +783,7 @@ async def schedule_polling(
         )
         return False
 
-    asyncio.create_task(
+    task = asyncio.create_task(
         poll_and_send_output(
             session_id=session_id,
             tmux_session_name=tmux_session_name,
@@ -783,6 +793,7 @@ async def schedule_polling(
             _skip_register=True,
         )
     )
+    task.add_done_callback(lambda t, sid=session_id: _handle_background_poller_result(t, sid))
     return True
 
 

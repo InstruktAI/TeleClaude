@@ -15,6 +15,7 @@ from teleclaude.core.output_poller import (
     OutputPoller,
     ProcessExited,
 )
+from teleclaude.core.models import Session
 
 
 def make_advancing_time_mock(start_time=1000.0, increment=1.0):
@@ -458,3 +459,49 @@ class TestOutputPollerPoll:
                         assert len(dir_events) == 0
                         # Verify get_current_directory never called
                         assert not directory_calls
+
+    async def test_watchdog_close_race_is_not_critical(self, poller, tmp_path):
+        """Watchdog should downgrade expected close-race disappearances."""
+        output_file = tmp_path / "output.txt"
+        closing_session = Session(
+            session_id="test-watchdog-close",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            title="Test session",
+            lifecycle_status="closing",
+        )
+
+        with patch("teleclaude.core.output_poller.tmux_bridge") as mock_terminal:
+            _init_terminal_mock(mock_terminal)
+            mock_terminal.session_exists = AsyncMock(side_effect=[True, False])
+            mock_terminal.capture_pane = AsyncMock(return_value="output\n")
+            with (
+                patch("teleclaude.core.output_poller.db.get_session", new=AsyncMock(return_value=closing_session)),
+                patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock),
+                patch("teleclaude.core.output_poller.logger.critical") as mock_critical,
+            ):
+                events = []
+                async for event in poller.poll("test-watchdog-close", "test-tmux", output_file):
+                    events.append(event)
+
+        assert any(isinstance(event, ProcessExited) for event in events)
+        mock_critical.assert_not_called()
+
+    async def test_capture_pane_called_once_per_alive_poll_iteration(self, poller, tmp_path):
+        """Poll loop should capture pane once per live iteration."""
+        output_file = tmp_path / "output.txt"
+
+        with patch("teleclaude.core.output_poller.tmux_bridge") as mock_terminal:
+            _init_terminal_mock(mock_terminal)
+            mock_terminal.session_exists = AsyncMock(side_effect=[True, False])
+            mock_terminal.capture_pane = AsyncMock(return_value="output\n")
+            with (
+                patch("teleclaude.core.output_poller.db.get_session", new=AsyncMock(return_value=None)),
+                patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock),
+            ):
+                events = []
+                async for event in poller.poll("test-capture-once", "test-tmux", output_file):
+                    events.append(event)
+
+        assert any(isinstance(event, ProcessExited) for event in events)
+        assert mock_terminal.capture_pane.await_count == 1

@@ -12,14 +12,16 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Coroutine, Literal, Optional, TextIO, cast
+from typing import Awaitable, Callable, Coroutine, Literal, Optional, TextIO, cast
 
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
 
+from teleclaude.channels.worker import run_subscription_worker
 from teleclaude.config import config, config_path  # config.py loads .env at import time
+from teleclaude.config.loader import load_project_config
 from teleclaude.config.runtime_settings import RuntimeSettings
-from teleclaude.constants import UI_MESSAGE_MAX_CHARS
+from teleclaude.constants import MCP_SOCKET_PATH, UI_MESSAGE_MAX_CHARS
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_coordinator import AgentCoordinator
@@ -56,12 +58,23 @@ from teleclaude.core.session_utils import (
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todo_watcher import TodoWatcher
 from teleclaude.core.voice_assignment import get_voice_env_vars
+from teleclaude.hooks.api_routes import set_contract_registry
+from teleclaude.hooks.bridge import EventBusBridge
+from teleclaude.hooks.config import load_hooks_config
+from teleclaude.hooks.delivery import WebhookDeliveryWorker
+from teleclaude.hooks.dispatcher import HookDispatcher
+from teleclaude.hooks.handlers import HandlerRegistry
+from teleclaude.hooks.inbound import InboundEndpointRegistry, NormalizerRegistry
+from teleclaude.hooks.normalizers import register_builtin_normalizers
+from teleclaude.hooks.registry import ContractRegistry
 from teleclaude.logging_config import setup_logging
+from teleclaude.mcp_server import TeleClaudeMCPServer
 from teleclaude.notifications import NotificationOutboxWorker
 from teleclaude.services.deploy_service import DeployService
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.services.monitoring_service import MonitoringService
+from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ResumeAgentCommand, StartAgentCommand
 
@@ -105,6 +118,17 @@ DEFAULT_LOG_LEVEL = "INFO"
 # Startup retry configuration
 STARTUP_MAX_RETRIES = 3
 STARTUP_RETRY_DELAYS = [10, 20, 40]  # Exponential backoff in seconds
+
+# MCP server health monitoring
+MCP_WATCH_INTERVAL_S = float(os.getenv("MCP_WATCH_INTERVAL_S", "2"))
+MCP_WATCH_FAILURE_THRESHOLD = int(os.getenv("MCP_WATCH_FAILURE_THRESHOLD", "3"))
+MCP_WATCH_RESTART_MAX = int(os.getenv("MCP_WATCH_RESTART_MAX", "3"))
+MCP_WATCH_RESTART_WINDOW_S = float(os.getenv("MCP_WATCH_RESTART_WINDOW_S", "60"))
+MCP_WATCH_RESTART_TIMEOUT_S = float(os.getenv("MCP_WATCH_RESTART_TIMEOUT_S", "2"))
+MCP_SOCKET_HEALTH_TIMEOUT_S = float(os.getenv("MCP_SOCKET_HEALTH_TIMEOUT_S", "0.5"))
+MCP_SOCKET_HEALTH_PROBE_INTERVAL_S = float(os.getenv("MCP_SOCKET_HEALTH_PROBE_INTERVAL_S", "10"))
+MCP_SOCKET_HEALTH_ACCEPT_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_ACCEPT_GRACE_S", "5"))
+MCP_SOCKET_HEALTH_STARTUP_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_STARTUP_GRACE_S", "5"))
 
 # API server restart policy (centralized in lifecycle)
 API_RESTART_MAX = int(os.getenv("API_RESTART_MAX", "5"))
@@ -165,7 +189,7 @@ AGENT_START_OUTPUT_POLL_INTERVAL_S = 0.2
 AGENT_START_OUTPUT_CHANGE_TIMEOUT_S = 2.5
 AGENT_START_ENTER_INTER_DELAY_S = 0.2
 AGENT_START_POST_INJECT_DELAY_S = 1.0
-AGENT_START_STABILIZE_TIMEOUT_S = 10.0  # Max wait for output to stop changing
+AGENT_START_STABILIZE_TIMEOUT_S = 10.0  # Max wait for output to stop changing (MCP loading)
 AGENT_START_STABILIZE_QUIET_S = 1.0  # How long output must be quiet to be "stable"
 AGENT_START_POST_STABILIZE_DELAY_S = 0.5  # Safety buffer after stabilization
 GEMINI_START_EXTRA_DELAY_S = float(os.getenv("GEMINI_START_EXTRA_DELAY_S", "3"))
@@ -308,6 +332,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Note: Adapters are loaded in client.start(), not here
 
+        # Initialize MCP server (required)
+        self.mcp_server: TeleClaudeMCPServer = TeleClaudeMCPServer(
+            adapter_client=self.client,
+            tmux_bridge=tmux_bridge,
+        )
+        logger.info("MCP server object created successfully")
+
         # Shutdown event for graceful termination
         self.shutdown_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task[object]] = set()
@@ -324,6 +355,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.launchd_watch_task: asyncio.Task[object] | None = None
         self._start_time = time.time()
         self._shutdown_reason: str | None = None
+        self._mcp_restart_lock = asyncio.Lock()
+        self._mcp_restart_attempts = 0
+        self._mcp_restart_window_start = 0.0
+        self._last_mcp_probe_at = 0.0
+        self._last_mcp_probe_ok: bool | None = None
+        self._last_mcp_restart_at = 0.0
         self.hook_outbox_task: asyncio.Task[object] | None = None
         self.notification_outbox_task: asyncio.Task[object] | None = None
         self.todo_watcher_task: asyncio.Task[object] | None = None
@@ -333,10 +370,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.lifecycle = DaemonLifecycle(
             client=self.client,
             cache=self.cache,
+            mcp_server=self.mcp_server,
             shutdown_event=self.shutdown_event,
             task_registry=self.task_registry,
             runtime_settings=self.runtime_settings,
             log_background_task_exception=self._log_background_task_exception,
+            handle_mcp_task_done=self._handle_mcp_task_done,
+            mcp_watch_factory=lambda: asyncio.create_task(self._mcp_watch_loop()),
+            set_last_mcp_restart_at=self._set_last_mcp_restart_at,
             init_voice_handler=init_voice_handler,
             api_restart_max=API_RESTART_MAX,
             api_restart_window_s=API_RESTART_WINDOW_S,
@@ -345,6 +386,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         self.monitoring_service = MonitoringService(
             lifecycle=self.lifecycle,
+            mcp_server=self.mcp_server,
             task_registry=self.task_registry,
             shutdown_event=self.shutdown_event,
             start_time=self._start_time,
@@ -380,6 +422,300 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 logger.error("Background task failed (%s): %s", label, exc, exc_info=True)
 
         task.add_done_callback(_on_done)
+
+    @property
+    def mcp_task(self) -> asyncio.Task[object] | None:
+        lifecycle = cast(DaemonLifecycle | None, getattr(self, "lifecycle", None))
+        if lifecycle:
+            return lifecycle.mcp_task
+        return cast(asyncio.Task[object] | None, getattr(self, "_mcp_task", None))
+
+    @mcp_task.setter
+    def mcp_task(self, value: asyncio.Task[object] | None) -> None:
+        lifecycle = cast(DaemonLifecycle | None, getattr(self, "lifecycle", None))
+        if lifecycle:
+            lifecycle.mcp_task = value
+        else:
+            setattr(self, "_mcp_task", value)
+
+    @property
+    def mcp_watch_task(self) -> asyncio.Task[object] | None:
+        lifecycle = cast(DaemonLifecycle | None, getattr(self, "lifecycle", None))
+        if lifecycle:
+            return lifecycle.mcp_watch_task
+        return cast(asyncio.Task[object] | None, getattr(self, "_mcp_watch_task", None))
+
+    @mcp_watch_task.setter
+    def mcp_watch_task(self, value: asyncio.Task[object] | None) -> None:
+        lifecycle = cast(DaemonLifecycle | None, getattr(self, "lifecycle", None))
+        if lifecycle:
+            lifecycle.mcp_watch_task = value
+        else:
+            setattr(self, "_mcp_watch_task", value)
+
+    def _set_last_mcp_restart_at(self, value: float) -> None:
+        self._last_mcp_restart_at = value
+
+    def _handle_mcp_task_done(self, task: asyncio.Task[object]) -> None:
+        """Restart MCP server if task exits unexpectedly."""
+        if self.shutdown_event.is_set():
+            return
+        try:
+            task.result()
+            logger.error("MCP server task exited unexpectedly; restarting")
+        except asyncio.CancelledError:
+            return
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("MCP server task crashed: %s; restarting", e, exc_info=True)
+        self._schedule_mcp_restart("mcp_task_done")
+
+    def _schedule_mcp_restart(self, reason: str) -> None:
+        """Schedule an MCP server restart from sync contexts."""
+        if self.shutdown_event.is_set():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.error("No running event loop to restart MCP server (%s)", reason)
+            self.shutdown_event.set()
+            return
+        loop.create_task(self._restart_mcp_server(reason))
+
+    async def _restart_mcp_server(self, reason: str) -> bool:
+        """Restart the MCP server task in-process with backoff limits."""
+        if not self.mcp_server:
+            logger.error("MCP server not initialized; shutting down daemon")
+            self.shutdown_event.set()
+            return False
+        async with self._mcp_restart_lock:
+            now = asyncio.get_running_loop().time()
+            if (
+                self._mcp_restart_window_start == 0.0
+                or (now - self._mcp_restart_window_start) > MCP_WATCH_RESTART_WINDOW_S
+            ):
+                self._mcp_restart_window_start = now
+                self._mcp_restart_attempts = 0
+
+            self._mcp_restart_attempts += 1
+            if self._mcp_restart_attempts > MCP_WATCH_RESTART_MAX:
+                logger.error(
+                    "MCP restart limit exceeded; shutting down daemon",
+                    reason=reason,
+                    attempts=self._mcp_restart_attempts,
+                )
+                self.shutdown_event.set()
+                return False
+
+            logger.warning(
+                "Restarting MCP server",
+                reason=reason,
+                attempt=self._mcp_restart_attempts,
+                window_s=MCP_WATCH_RESTART_WINDOW_S,
+            )
+
+            try:
+                await asyncio.wait_for(self.mcp_server.stop(), timeout=MCP_WATCH_RESTART_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                logger.warning("Timed out stopping MCP server listener", timeout_s=MCP_WATCH_RESTART_TIMEOUT_S)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.warning("MCP server stop failed: %s", exc, exc_info=True)
+
+            if self.mcp_task:
+                self.mcp_task.cancel()
+                try:
+                    await asyncio.wait_for(self.mcp_task, timeout=MCP_WATCH_RESTART_TIMEOUT_S)
+                except asyncio.TimeoutError:
+                    logger.warning("Timed out cancelling MCP server task", timeout_s=MCP_WATCH_RESTART_TIMEOUT_S)
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    logger.warning("MCP server task error during cancel: %s", exc, exc_info=True)
+
+            self.mcp_task = asyncio.create_task(self.mcp_server.start())
+            self.mcp_task.add_done_callback(self._log_background_task_exception("mcp_server"))
+            self.mcp_task.add_done_callback(self._handle_mcp_task_done)
+            self._last_mcp_restart_at = asyncio.get_running_loop().time()
+            logger.warning("MCP server restarted")
+            return True
+
+    async def _probe_mcp_socket(self, socket_path: str) -> bool:
+        try:
+            connect_awaitable = cast(
+                Awaitable[tuple[asyncio.StreamReader, asyncio.StreamWriter]],
+                asyncio.open_unix_connection(socket_path),
+            )  # pyright: ignore[reportUnnecessaryCast]
+            _reader, writer = await asyncio.wait_for(
+                connect_awaitable,
+                timeout=MCP_SOCKET_HEALTH_TIMEOUT_S,
+            )
+        except (FileNotFoundError, ConnectionRefusedError, asyncio.TimeoutError, OSError) as exc:
+            logger.warning("MCP socket health check failed: %s", exc)
+            return False
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
+        return True
+
+    async def _check_mcp_socket_health(self) -> bool:
+        now = asyncio.get_running_loop().time()
+        if self._mcp_restart_lock.locked():
+            return True
+        if (now - self._last_mcp_restart_at) < MCP_SOCKET_HEALTH_STARTUP_GRACE_S:
+            return True
+
+        socket_path = Path(os.path.expandvars(MCP_SOCKET_PATH))
+        snapshot = None
+        if self.mcp_server and hasattr(self.mcp_server, "health_snapshot"):
+            try:
+                snapshot = await self.mcp_server.health_snapshot(socket_path)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.warning("MCP health snapshot failed: %s", exc, exc_info=True)
+
+        if snapshot:
+            server_present = bool(snapshot.get("server_present", True))
+            is_serving = bool(snapshot.get("is_serving"))
+            socket_exists = bool(snapshot.get("socket_exists"))
+            active_connections = int(snapshot.get("active_connections") or 0)
+            last_accept_age = snapshot.get("last_accept_age_s")
+
+            if not socket_exists:
+                logger.warning(
+                    "MCP socket missing",
+                    server_present=server_present,
+                    is_serving=is_serving,
+                    socket_exists=socket_exists,
+                    active_connections=active_connections,
+                    last_accept_age_s=last_accept_age,
+                )
+                return False
+
+            if not server_present:
+                logger.warning(
+                    "MCP server reference missing",
+                    server_present=server_present,
+                    is_serving=is_serving,
+                    socket_exists=socket_exists,
+                    active_connections=active_connections,
+                    last_accept_age_s=last_accept_age,
+                )
+                return False
+
+            if not is_serving:
+                if (now - self._last_mcp_probe_at) < MCP_SOCKET_HEALTH_PROBE_INTERVAL_S:
+                    return self._last_mcp_probe_ok is not False
+                logger.debug(
+                    "MCP server not reporting is_serving; probing",
+                    active_connections=active_connections,
+                    last_accept_age_s=last_accept_age,
+                )
+                self._last_mcp_probe_at = now
+                probe_ok = await self._probe_mcp_socket(str(socket_path))
+                self._last_mcp_probe_ok = probe_ok
+                if probe_ok:
+                    logger.debug(
+                        "MCP socket probe ok despite is_serving=False",
+                        active_connections=active_connections,
+                        last_accept_age_s=last_accept_age,
+                    )
+                    return True
+                logger.info(
+                    "MCP socket precheck failed",
+                    server_present=server_present,
+                    is_serving=is_serving,
+                    socket_exists=socket_exists,
+                    active_connections=active_connections,
+                    last_accept_age_s=last_accept_age,
+                )
+                return False
+
+            if last_accept_age is not None and last_accept_age <= MCP_SOCKET_HEALTH_ACCEPT_GRACE_S:
+                logger.debug(
+                    "MCP socket healthy (recent accept)",
+                    last_accept_age_s=last_accept_age,
+                )
+                return True
+            if active_connections > 0:
+                if (now - self._last_mcp_probe_at) < MCP_SOCKET_HEALTH_PROBE_INTERVAL_S:
+                    return self._last_mcp_probe_ok is not False
+                logger.debug(
+                    "MCP socket accept stale; probing",
+                    active_connections=active_connections,
+                    last_accept_age_s=last_accept_age,
+                    accept_grace_s=MCP_SOCKET_HEALTH_ACCEPT_GRACE_S,
+                )
+                self._last_mcp_probe_at = now
+                probe_ok = await self._probe_mcp_socket(str(socket_path))
+                self._last_mcp_probe_ok = probe_ok
+                if probe_ok:
+                    logger.debug(
+                        "MCP socket probe ok after stale accept",
+                        active_connections=active_connections,
+                        last_accept_age_s=last_accept_age,
+                    )
+                else:
+                    logger.warning(
+                        "MCP socket probe failed after stale accept",
+                        active_connections=active_connections,
+                        last_accept_age_s=last_accept_age,
+                        socket_path=str(socket_path),
+                    )
+                return probe_ok
+            if (now - self._last_mcp_probe_at) < MCP_SOCKET_HEALTH_PROBE_INTERVAL_S:
+                return self._last_mcp_probe_ok is not False
+
+        if (now - self._last_mcp_probe_at) < MCP_SOCKET_HEALTH_PROBE_INTERVAL_S:
+            return self._last_mcp_probe_ok is not False
+
+        self._last_mcp_probe_at = now
+        probe_ok = await self._probe_mcp_socket(str(socket_path))
+        self._last_mcp_probe_ok = probe_ok
+        return probe_ok
+
+    async def _mcp_watch_loop(self) -> None:
+        failures = 0
+        while not self.shutdown_event.is_set():
+            await asyncio.sleep(MCP_WATCH_INTERVAL_S)
+
+            if not self.mcp_task:
+                logger.error("MCP server task missing; shutting down daemon")
+                self.shutdown_event.set()
+                return
+
+            if self.mcp_task.done():
+                await self._restart_mcp_server("mcp_task_done")
+                failures = 0
+                continue
+
+            healthy = await self._check_mcp_socket_health()
+            if healthy:
+                if failures > 0:
+                    logger.debug(
+                        "MCP socket health recovered",
+                        previous_failures=failures,
+                    )
+                failures = 0
+                continue
+
+            failures += 1
+            if failures < MCP_WATCH_FAILURE_THRESHOLD:
+                logger.info(
+                    "MCP socket health check failed (monitoring)",
+                    failures=failures,
+                    threshold=MCP_WATCH_FAILURE_THRESHOLD,
+                )
+            else:
+                logger.warning(
+                    "MCP socket unhealthy; restarting MCP server",
+                    failures=failures,
+                    threshold=MCP_WATCH_FAILURE_THRESHOLD,
+                )
+            if failures >= MCP_WATCH_FAILURE_THRESHOLD:
+                ok = await self._restart_mcp_server("socket_unhealthy")
+                failures = 0
+                if not ok:
+                    return
 
     @staticmethod
     def _classify_hook_event(event_type: str) -> Literal["critical", "bursty"]:
@@ -678,8 +1014,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 retryable=retryable if isinstance(retryable, bool) else False,
                 code=code if isinstance(code, str) else None,
             )
-            self.agent_coordinator._cancel_stall_task(session_id)
-            self.agent_coordinator._emit_status_event(session_id, "error", "agent_error")
             event_bus.emit(TeleClaudeEvents.ERROR, context)
         else:
             context = AgentEventContext(
@@ -950,7 +1284,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
         polling_coordinator._cleanup_codex_input_state(ctx.session_id)
-        self.agent_coordinator._cancel_stall_task(ctx.session_id)
 
         logger.info("Handling session_closed for %s", ctx.session_id[:8])
         await session_cleanup.terminate_session(
@@ -1117,7 +1450,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not session:
             return {"status": "error", "message": "Session not found after creation"}
 
-        # Step 1: Wait for output to stabilize (TUI banner and startup noise complete)
+        # Step 1: Wait for output to stabilize (TUI banner + MCP loading complete)
         # We integrate the "process running" check into stabilization logic.
         # Gemini gets a longer quiet window to ensure heavy initialization is done.
         logger.debug("agent_then_message: waiting for TUI to stabilize (session=%s)", session_id[:8])
@@ -1485,18 +1818,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     async def _init_webhook_service(self) -> None:
         """Initialize the webhook service subsystem (contracts, handlers, dispatcher, bridge, delivery)."""
-        from teleclaude.channels.worker import run_subscription_worker
-        from teleclaude.config.loader import load_project_config
-        from teleclaude.hooks.api_routes import set_contract_registry
-        from teleclaude.hooks.bridge import EventBusBridge
-        from teleclaude.hooks.config import load_hooks_config
-        from teleclaude.hooks.delivery import WebhookDeliveryWorker
-        from teleclaude.hooks.dispatcher import HookDispatcher
-        from teleclaude.hooks.handlers import HandlerRegistry
-        from teleclaude.hooks.inbound import InboundEndpointRegistry, NormalizerRegistry
-        from teleclaude.hooks.normalizers import register_builtin_normalizers
-        from teleclaude.hooks.registry import ContractRegistry
-        from teleclaude.transport.redis_transport import RedisTransport
 
         contract_registry = ContractRegistry()
         handler_registry = HandlerRegistry()

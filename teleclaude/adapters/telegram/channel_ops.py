@@ -162,7 +162,11 @@ class ChannelOperationsMixin:
 
         topic_id = session.get_metadata().get_ui().get_telegram().topic_id
         if topic_id is None:
-            raise AdapterError("Session missing telegram topic_id")
+            logger.debug(
+                "Skipping Telegram close_channel for session %s: topic_id missing",
+                session.session_id[:8],
+            )
+            return False
 
         try:
             await self._close_forum_topic_with_retry(topic_id)
@@ -204,7 +208,11 @@ class ChannelOperationsMixin:
 
         topic_id = session.get_metadata().get_ui().get_telegram().topic_id
         if topic_id is None:
-            raise AdapterError("Session missing telegram topic_id")
+            logger.debug(
+                "Skipping Telegram delete_channel for session %s: topic_id missing",
+                session.session_id[:8],
+            )
+            return False
 
         try:
             await self._delete_forum_topic_with_retry(topic_id)

@@ -37,12 +37,14 @@ class DummyTelegramAdapter(UiAdapter):
         self._error = error
         self._error_sequence = list(error_sequence) if error_sequence else []
         self.sent_messages: list[str] = []
+        self.sent_metadatas: list[object | None] = []
         self.deleted_channels: list[str] = []
         if send_message_return is not None:
 
             async def record_send_message(_session, _text, *, metadata=None, multi_message=False) -> str:  # type: ignore[override]
                 _ = (metadata, multi_message)
                 self.sent_messages.append(_text)
+                self.sent_metadatas.append(metadata)
                 return send_message_return
 
             self.send_message = record_send_message  # type: ignore[assignment]
@@ -111,6 +113,10 @@ class DummyTelegramAdapter(UiAdapter):
         if "message thread not found" not in msg and "topic_deleted" not in msg:
             raise error
         return await task_factory(self, session)
+
+
+class DummySlackAdapter(DummyTelegramAdapter):
+    ADAPTER_KEY = "slack"
 
 
 class DummyFailingAdapter(UiAdapter):
@@ -975,16 +981,20 @@ async def test_broadcast_user_input_includes_origin_attribution():
     mock_db = AsyncMock()
     mock_db.get_session = AsyncMock(return_value=fresh_session)
     with patch("teleclaude.core.adapter_client.db", mock_db):
-        await client.broadcast_user_input(session, "test input", InputOrigin.HOOK.value)
+        await client.broadcast_user_input(session, "test input", InputOrigin.TERMINAL.value)
 
     assert len(telegram.sent_messages) == 1
     assert len(slack.sent_messages) == 1
     msg = telegram.sent_messages[0]
     other_msg = slack.sent_messages[0]
-    assert "TUI" in msg
-    assert "TUI" in other_msg
-    assert "test input" in msg
-    assert "test input" in other_msg
+    assert msg == "test input"
+    assert other_msg == "test input"
+    tg_meta = telegram.sent_metadatas[0]
+    slack_meta = slack.sent_metadatas[0]
+    assert tg_meta is not None
+    assert slack_meta is not None
+    assert getattr(tg_meta, "reflection_actor_name", None) == "TUI"
+    assert getattr(slack_meta, "reflection_actor_name", None) == "TUI"
 
 
 @pytest.mark.asyncio
@@ -1012,8 +1022,44 @@ async def test_broadcast_user_input_reflects_redis_input():
 
     assert len(telegram.sent_messages) == 1
     assert len(slack.sent_messages) == 1
-    assert "REDIS" in telegram.sent_messages[0]
-    assert "redis input" in telegram.sent_messages[0]
+    assert telegram.sent_messages[0] == "redis input"
+    tg_meta = telegram.sent_metadatas[0]
+    assert tg_meta is not None
+    assert getattr(tg_meta, "reflection_actor_name", None) == "REDIS"
+
+
+@pytest.mark.asyncio
+async def test_broadcast_user_input_hook_actor_header_and_telegram_suffix():
+    """Hook reflections prepend actor @ TERMINAL when actor_name is explicit."""
+    client = AdapterClient()
+
+    telegram = DummyTelegramAdapter(client, send_message_return="tg-msg")
+    slack = DummySlackAdapter(client, send_message_return="slack-msg")
+    client.register_adapter("telegram", telegram)
+    client.register_adapter("slack", slack)
+
+    session = Session(
+        session_id="session-operator-reflection",
+        computer_name="test",
+        tmux_session_name="tc_operator_reflection",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+    )
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=session)
+    with patch("teleclaude.core.adapter_client.db", mock_db):
+        await client.broadcast_user_input(
+            session,
+            "hello from operator",
+            InputOrigin.TERMINAL.value,
+            actor_name="Morriz",
+        )
+
+    assert len(telegram.sent_messages) == 1
+    assert len(slack.sent_messages) == 1
+    assert telegram.sent_messages[0] == "Morriz @ TERMINAL:\n\nhello from operator\n\n---\n"
+    assert slack.sent_messages[0] == "Morriz @ TERMINAL:\n\nhello from operator"
 
 
 # --- R3: Single provisioning funnel tests ---
@@ -1086,6 +1132,33 @@ async def test_ensure_ui_channels_called_before_send_output_update():
         await client.send_output_update(session, "output", 0.0, 0.0)
 
     assert len(ensure_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_ensure_ui_channels_skips_provisioning_for_terminal_sessions():
+    """ensure_ui_channels should not provision channels for closing/closed sessions."""
+    client = AdapterClient()
+    telegram = DummyTelegramAdapter(client)
+    client.register_adapter("telegram", telegram)
+
+    closing_session = Session(
+        session_id="session-closing",
+        computer_name="test",
+        tmux_session_name="tc_closing",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Test Session",
+        lifecycle_status="closing",
+    )
+
+    with (
+        patch("teleclaude.core.adapter_client.db") as mock_db,
+        patch.object(telegram, "ensure_channel", new=AsyncMock(return_value=closing_session)) as mock_ensure_channel,
+    ):
+        mock_db.get_session = AsyncMock(return_value=closing_session)
+        refreshed = await client.ensure_ui_channels(closing_session)
+
+    assert refreshed is closing_session
+    mock_ensure_channel.assert_not_awaited()
 
 
 @pytest.mark.asyncio

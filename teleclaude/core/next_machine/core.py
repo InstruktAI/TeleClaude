@@ -719,35 +719,6 @@ def check_file_exists(cwd: str, relative_path: str) -> bool:
     return (Path(cwd) / relative_path).exists()
 
 
-def resolve_canonical_project_root(cwd: str) -> str:
-    """Resolve canonical repository root from cwd.
-
-    Accepts either the project root or a path inside a git worktree. Falls back
-    to the provided cwd when git metadata is unavailable.
-    """
-    try:
-        result = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "--git-common-dir"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except (subprocess.CalledProcessError, OSError):
-        return cwd
-
-    raw_common_dir = result.stdout.strip()
-    if not raw_common_dir:
-        return cwd
-
-    common_dir = Path(raw_common_dir)
-    if not common_dir.is_absolute():
-        common_dir = (Path(cwd) / common_dir).resolve()
-    else:
-        common_dir = common_dir.resolve()
-
-    return str((common_dir / "..").resolve())
-
-
 def slug_in_roadmap(cwd: str, slug: str) -> bool:
     """Check if a slug exists in todos/roadmap.yaml."""
     return slug in load_roadmap_slugs(cwd)
@@ -2156,11 +2127,6 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     Returns:
         Plain text instructions for the orchestrator to execute
     """
-    canonical_cwd = await asyncio.to_thread(resolve_canonical_project_root, cwd)
-    if canonical_cwd != cwd:
-        logger.debug("next_work normalized cwd to canonical project root", requested_cwd=cwd, canonical_cwd=canonical_cwd)
-        cwd = canonical_cwd
-
     # Sweep completed group parents before resolving next slug
     await asyncio.to_thread(sweep_completed_groups, cwd)
 
@@ -2199,7 +2165,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             )
 
         phase = await asyncio.to_thread(get_item_phase, cwd, slug)
-        if not is_bug and phase == ItemPhase.PENDING.value and not await asyncio.to_thread(is_ready_for_work, cwd, slug):
+        if phase == ItemPhase.PENDING.value and not await asyncio.to_thread(is_ready_for_work, cwd, slug):
             return format_error(
                 "ITEM_NOT_READY",
                 f"Item '{slug}' is pending and DOR score is below threshold. Must be ready to start work.",

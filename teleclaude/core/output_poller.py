@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 _CONFIG_FOR_TESTS = config
 IDLE_SUMMARY_INTERVAL_S = 60.0
 PROCESS_START_GRACE_S = 3.0
+_TERMINAL_SESSION_STATUSES = frozenset({"closing", "closed"})
 
 
 @dataclass
@@ -135,10 +136,6 @@ class OutputPoller:
                 poll_iteration += 1
 
                 session_exists_now = await tmux_bridge.session_exists(tmux_session_name, log_missing=False)
-                if session_exists_now:
-                    captured_output = await tmux_bridge.capture_pane(tmux_session_name)
-                else:
-                    captured_output = ""
 
                 # WATCHDOG: Detect session disappearing between polls
                 if session_existed_last_poll and not session_exists_now:
@@ -154,9 +151,18 @@ class OutputPoller:
                             tmux_session_name,
                             session_id[:8],
                         )
+                    elif session.closed_at or session.lifecycle_status in _TERMINAL_SESSION_STATUSES:
+                        logger.info(
+                            "Session %s disappeared during close transition "
+                            "(watchdog close race) session=%s status=%s",
+                            tmux_session_name,
+                            session_id[:8],
+                            session.lifecycle_status,
+                        )
                     else:
                         # Unexpected death - log as critical with diagnostics
-                        age_seconds = time.time() - started_at
+                        baseline = started_at if started_at is not None else time.time()
+                        age_seconds = time.time() - baseline
                         logger.critical(
                             "Session %s disappeared between polls (watchdog triggered) "
                             "session=%s age=%.2fs poll_iteration=%d seconds_since_last_poll=%.1f",
@@ -229,7 +235,8 @@ class OutputPoller:
                     if output_sent_at_least_once:
                         should_send = pending_output
                     else:
-                        should_send = True
+                        # Suppress blank initial pane captures until real output appears.
+                        should_send = pending_output and bool(current_cleaned.strip())
 
                     if should_send:
                         # Send rendered TUI snapshot to UI
@@ -252,7 +259,7 @@ class OutputPoller:
                     elif pending_output and not output_sent_at_least_once:
                         # Suppress empty initial output until something real appears.
                         pending_output = False
-                if pending_idle_flush and (current_time - last_output_changed_at) >= 3.0:
+                if pending_idle_flush and (current_time - last_output_changed_at) >= 3.0 and current_cleaned.strip():
                     yield OutputChanged(
                         session_id=session_id,
                         output=current_cleaned,
@@ -265,6 +272,8 @@ class OutputPoller:
                     pending_idle_flush = False
                     last_yield_time = current_time
                     did_yield = True
+                elif pending_idle_flush and not output_sent_at_least_once and not current_cleaned.strip():
+                    pending_idle_flush = False
                 else:
                     # Skip per-tick logging; summarized in idle summaries.
                     pass

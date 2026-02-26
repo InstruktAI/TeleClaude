@@ -19,7 +19,7 @@ from teleclaude.config import config
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionLifecycleContext, SessionStatusContext
+from teleclaude.core.events import SessionLifecycleContext, SessionStatusContext, SessionUpdatedContext
 from teleclaude.core.models import SessionAdapterMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
@@ -52,6 +52,7 @@ class DiscordAdapter(UiAdapter):
 
     ADAPTER_KEY = "discord"
     max_message_size = 2000
+    _TRUNCATION_SUFFIX = "\n[...truncated...]"
 
     def __init__(self, client: "AdapterClient", *, task_registry: "TaskRegistry | None" = None) -> None:
         super().__init__(client)
@@ -683,6 +684,37 @@ class DiscordAdapter(UiAdapter):
                 exc,
             )
 
+    async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
+        """Handle generic updates plus Discord topper refresh on native ID binding."""
+        await super()._handle_session_updated(_event, context)
+
+        updated_fields = context.updated_fields or {}
+        if "native_session_id" not in updated_fields:
+            return
+
+        session = await db.get_session(context.session_id)
+        if not session or not session.native_session_id:
+            return
+
+        discord_meta = session.get_metadata().get_ui().get_discord()
+        if discord_meta.thread_id is None:
+            return
+
+        topper_message_id = discord_meta.thread_topper_message_id
+        if not topper_message_id:
+            topper_message_id = str(discord_meta.thread_id)
+            discord_meta.thread_topper_message_id = topper_message_id
+            await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+
+        topper = self._build_thread_topper(session)
+        edited = await self.edit_message(session, topper_message_id, topper)
+        if not edited:
+            logger.debug(
+                "Discord topper refresh failed for session %s (msg=%s)",
+                session.session_id[:8],
+                topper_message_id,
+            )
+
     async def create_channel(self, session: "Session", title: str, metadata: "ChannelMetadata") -> str:
         _ = metadata
         if self._client is None:
@@ -702,9 +734,10 @@ class DiscordAdapter(UiAdapter):
                 raise AdapterError(f"Discord channel {target_forum_id} is not a Forum Channel")
 
             topper = self._build_thread_topper(session)
-            thread_id = await self._create_forum_thread(forum, title=title, content=topper)
+            thread_id, topper_message_id = await self._create_forum_thread(forum, title=title, content=topper)
             discord_meta.channel_id = target_forum_id
             discord_meta.thread_id = thread_id
+            discord_meta.thread_topper_message_id = topper_message_id
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
             return str(thread_id)
 
@@ -805,8 +838,9 @@ class DiscordAdapter(UiAdapter):
                 content = text[len(prefix) : -1]
                 computer_name = config.computer.name
                 # Bold header, plain content (no italics), bottom dash
-                text = f'**DISCORD @ {computer_name}:**\n\n"{content}"\n---'
+                text = f'**DISCORD@{computer_name}:**\n\n"{content}"\n'
 
+        text = self._fit_message_text(text, context="send_message")
         logger.debug("[DISCORD SEND] text=%r", text[:100])
 
         destination = await self._resolve_destination_channel(session, metadata=metadata)
@@ -843,6 +877,7 @@ class DiscordAdapter(UiAdapter):
             return None
 
         send_fn = self._require_async_callable(getattr(webhook, "send", None), label="Discord webhook send")
+        text = self._fit_message_text(text, context="reflection_webhook")
         try:
             if thread is not None and metadata.reflection_actor_avatar_url:
                 sent = await send_fn(
@@ -935,6 +970,7 @@ class DiscordAdapter(UiAdapter):
         *,
         metadata: "MessageMetadata | None" = None,
     ) -> bool:
+        text = self._fit_message_text(text, context="edit_message")
         logger.debug("[DISCORD EDIT] text=%r", text[:100])
         try:
             message = await self._fetch_destination_message(session, message_id, metadata=metadata)
@@ -974,11 +1010,32 @@ class DiscordAdapter(UiAdapter):
         destination = await self._resolve_destination_channel(session, metadata=metadata)
         send_fn = self._require_async_callable(getattr(destination, "send", None), label="Discord channel send")
         discord_file = self._discord.File(file_path)
-        sent = await send_fn(content=caption, file=discord_file)
+        safe_caption = self._fit_message_text(caption, context="send_file_caption") if caption else None
+        sent = await send_fn(content=safe_caption, file=discord_file)
         message_id = getattr(sent, "id", None)
         if message_id is None:
             raise AdapterError("Discord send_file returned message without id")
         return str(message_id)
+
+    def _fit_message_text(self, text: str, *, context: str) -> str:
+        """Clamp message text to Discord's hard message-size limit."""
+        if len(text) <= self.max_message_size:
+            return text
+
+        suffix = self._TRUNCATION_SUFFIX
+        reserve = max(self.max_message_size - len(suffix), 0)
+        if reserve == 0:
+            clipped = text[: self.max_message_size]
+        else:
+            clipped = f"{text[:reserve]}{suffix}"
+
+        logger.debug(
+            "Truncated Discord %s content from %d to %d characters",
+            context,
+            len(text),
+            len(clipped),
+        )
+        return clipped
 
     def _build_metadata_for_thread(self) -> "MessageMetadata":
         from teleclaude.core.models import MessageMetadata
@@ -1715,6 +1772,7 @@ class DiscordAdapter(UiAdapter):
             discord_meta.thread_id = None
             discord_meta.channel_id = None
             discord_meta.output_message_id = None
+            discord_meta.thread_topper_message_id = None
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
             raise AdapterError(f"Discord channel {destination_id} not found (metadata cleared)")
         return channel
@@ -1754,7 +1812,7 @@ class DiscordAdapter(UiAdapter):
 
     async def _create_forum_thread(
         self, forum_channel: object, *, title: str, content: str = "Initializing Help Desk session..."
-    ) -> int:
+    ) -> tuple[int, str]:
         create_thread_fn = self._require_async_callable(
             getattr(forum_channel, "create_thread", None), label="Discord forum create_thread"
         )
@@ -1762,17 +1820,22 @@ class DiscordAdapter(UiAdapter):
         # Discord channel names must be 1-100 characters
         if len(title) > 100:
             title = title[:97] + "..."
-        result = await create_thread_fn(name=title, content=content)
+        result = await create_thread_fn(name=title, content=self._fit_message_text(content, context="thread_starter"))
         thread = getattr(result, "thread", None)
+        starter_message = getattr(result, "message", None)
         if thread is None and isinstance(result, tuple) and result:
             thread = result[0]
+            if len(result) > 1:
+                starter_message = result[1]
         if thread is None:
             thread = result
 
         thread_id = self._parse_optional_int(getattr(thread, "id", None))
         if thread_id is None:
             raise AdapterError("Discord create_thread() returned invalid thread id")
-        return thread_id
+        starter_message_id_raw = getattr(starter_message, "id", None)
+        starter_message_id = str(starter_message_id_raw) if starter_message_id_raw is not None else str(thread_id)
+        return thread_id, starter_message_id
 
     async def create_escalation_thread(
         self,
@@ -1798,7 +1861,8 @@ class DiscordAdapter(UiAdapter):
             body += f"\n\n**Context:** {context_summary}"
         body += f"\n\n*Session: {session_id}*"
 
-        return await self._create_forum_thread(forum, title=customer_name, content=body)
+        thread_id, _topper_message_id = await self._create_forum_thread(forum, title=customer_name, content=body)
+        return thread_id
 
     @staticmethod
     def _is_forum_channel(channel: object) -> bool:

@@ -169,11 +169,11 @@ class DaemonLifecycle:
 
     async def shutdown(self) -> None:
         """Stop core components in a defined order."""
+        if self.api_server:
+            await self.api_server.stop()
         for adapter_name, adapter in self.client.adapters.items():
             logger.info("Stopping %s adapter...", adapter_name)
             await adapter.stop()
-        if self.api_server:
-            await self.api_server.stop()
 
         await db.close()
 

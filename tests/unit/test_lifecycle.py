@@ -53,3 +53,37 @@ async def test_warm_local_sessions_cache_seeds_cache(monkeypatch: pytest.MonkeyP
 
     assert mock_list.call_args == ((), {"computer_name": "test-computer"})
     assert lifecycle.cache.update_session.call_args is not None
+
+
+@pytest.mark.asyncio
+async def test_shutdown_stops_api_before_adapters() -> None:
+    """Shutdown should stop API server before adapters to prevent new inbound work during teardown."""
+    client = MagicMock()
+    lifecycle = DaemonLifecycle(
+        client=client,
+        cache=DaemonCache(),
+        shutdown_event=asyncio.Event(),
+        task_registry=MagicMock(),
+        log_background_task_exception=lambda _name: lambda _task: None,
+        init_voice_handler=lambda: None,
+        api_restart_max=1,
+        api_restart_window_s=1.0,
+        api_restart_backoff_s=0.1,
+    )
+
+    order: list[str] = []
+    api_server = MagicMock()
+    api_server.stop = AsyncMock(side_effect=lambda: order.append("api"))
+    lifecycle.api_server = api_server
+
+    adapter_a = MagicMock()
+    adapter_a.stop = AsyncMock(side_effect=lambda: order.append("adapter:a"))
+    adapter_b = MagicMock()
+    adapter_b.stop = AsyncMock(side_effect=lambda: order.append("adapter:b"))
+    client.adapters = {"a": adapter_a, "b": adapter_b}
+
+    with patch("teleclaude.core.lifecycle.db.close", new_callable=AsyncMock) as mock_db_close:
+        await lifecycle.shutdown()
+
+    assert order == ["api", "adapter:a", "adapter:b"]
+    mock_db_close.assert_awaited_once()

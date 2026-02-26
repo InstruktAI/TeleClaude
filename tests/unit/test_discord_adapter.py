@@ -11,9 +11,9 @@ import pytest
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.adapter_client import AdapterClient
-from teleclaude.core.events import SessionStatusContext
+from teleclaude.core.events import SessionStatusContext, SessionUpdatedContext
 from teleclaude.core.identity import IdentityContext
-from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, Session, SessionAdapterMetadata
+from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, MessageMetadata, Session, SessionAdapterMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import ProcessMessageCommand
 
@@ -75,16 +75,18 @@ class FakeDiscordModule:
 class FakeForumChannel:
     """Forum-like channel mock."""
 
-    def __init__(self, channel_id: int, thread_id: int) -> None:
+    def __init__(self, channel_id: int, thread_id: int, starter_message_id: int | None = None) -> None:
         self.id = channel_id
         self._thread_id = thread_id
+        self._starter_message_id = starter_message_id if starter_message_id is not None else thread_id
         self.created_names: list[str] = []
 
     async def create_thread(self, *, name: str, content: str) -> object:
         self.created_names.append(name)
         thread = SimpleNamespace(id=self._thread_id)
+        message = SimpleNamespace(id=self._starter_message_id)
         _ = content
-        return SimpleNamespace(thread=thread)
+        return SimpleNamespace(thread=thread, message=message)
 
 
 class FakeThread:
@@ -211,6 +213,7 @@ async def test_discord_create_channel_uses_forum_thread_when_configured() -> Non
     discord_meta = session.get_metadata().get_ui().get_discord()
     assert discord_meta.channel_id == 333000
     assert discord_meta.thread_id == 777000
+    assert discord_meta.thread_topper_message_id == "777000"
     assert forum.created_names == ["Alice ticket"]
 
 
@@ -236,6 +239,111 @@ async def test_discord_send_message_routes_to_thread() -> None:
 
     assert message_id == "7001"
     assert thread.sent_texts == ["Agent response"]
+
+
+@pytest.mark.asyncio
+async def test_discord_send_message_truncates_over_limit() -> None:
+    """send_message should clamp text to Discord's hard message length."""
+    adapter = _make_adapter()
+    session = _build_session()
+    discord_meta = session.get_metadata().get_ui().get_discord()
+    discord_meta.channel_id = 444999
+    discord_meta.thread_id = 555111
+
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    thread = FakeThread(thread_id=555111, parent_id=444999)
+    fake_client.channels[555111] = thread
+    adapter._client = fake_client
+
+    long_text = "x" * (adapter.max_message_size + 250)
+    await adapter.send_message(session, long_text)
+
+    sent_text = thread.sent_texts[0]
+    assert len(sent_text) == adapter.max_message_size
+    assert sent_text.endswith(adapter._TRUNCATION_SUFFIX)
+
+
+@pytest.mark.asyncio
+async def test_discord_reflection_webhook_truncates_over_limit() -> None:
+    """Reflection webhook path should clamp content to Discord's hard message length."""
+    adapter = _make_adapter()
+    session = _build_session()
+    discord_meta = session.get_metadata().get_ui().get_discord()
+    discord_meta.channel_id = 444999
+    discord_meta.thread_id = 555111
+
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    thread = FakeThread(thread_id=555111, parent_id=444999)
+    fake_client.channels[555111] = thread
+    adapter._client = fake_client
+
+    webhook = MagicMock()
+    webhook.send = AsyncMock(return_value=SimpleNamespace(id=9911))
+
+    metadata = MessageMetadata(reflection_actor_name="Alice")
+    long_text = "x" * (adapter.max_message_size + 250)
+
+    with patch.object(adapter, "_get_or_create_reflection_webhook", AsyncMock(return_value=webhook)):
+        message_id = await adapter.send_message(session, long_text, metadata=metadata)
+
+    assert message_id == "9911"
+    assert thread.sent_texts == []
+    webhook.send.assert_awaited_once()
+    sent_content = webhook.send.await_args.kwargs["content"]
+    assert len(sent_content) == adapter.max_message_size
+    assert sent_content.endswith(adapter._TRUNCATION_SUFFIX)
+
+
+@pytest.mark.asyncio
+async def test_discord_edit_message_truncates_over_limit() -> None:
+    """edit_message should clamp text to Discord's hard message length."""
+    adapter = _make_adapter()
+    session = _build_session()
+    discord_meta = session.get_metadata().get_ui().get_discord()
+    discord_meta.channel_id = 444999
+    discord_meta.thread_id = 555111
+
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    thread = FakeThread(thread_id=555111, parent_id=444999)
+    editable = SimpleNamespace(edit=AsyncMock(return_value=None))
+    thread.messages[777] = editable
+    fake_client.channels[555111] = thread
+    adapter._client = fake_client
+
+    long_text = "x" * (adapter.max_message_size + 250)
+    edited = await adapter.edit_message(session, "777", long_text)
+
+    assert edited is True
+    editable.edit.assert_awaited_once()
+    sent_content = editable.edit.await_args.kwargs["content"]
+    assert len(sent_content) == adapter.max_message_size
+    assert sent_content.endswith(adapter._TRUNCATION_SUFFIX)
+
+
+@pytest.mark.asyncio
+async def test_discord_send_file_truncates_caption_over_limit(tmp_path) -> None:
+    """send_file should clamp oversized captions before dispatch."""
+    adapter = _make_adapter()
+    session = _build_session()
+    discord_meta = session.get_metadata().get_ui().get_discord()
+    discord_meta.channel_id = 444999
+    discord_meta.thread_id = 555111
+
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    thread = FakeThread(thread_id=555111, parent_id=444999)
+    fake_client.channels[555111] = thread
+    adapter._client = fake_client
+
+    file_path = tmp_path / "artifact.txt"
+    file_path.write_text("content", encoding="utf-8")
+    long_caption = "c" * (adapter.max_message_size + 100)
+
+    await adapter.send_file(session, str(file_path), caption=long_caption)
+
+    sent_caption, _file = thread.sent_files[0]
+    assert sent_caption is not None
+    assert len(sent_caption) == adapter.max_message_size
+    assert sent_caption.endswith(adapter._TRUNCATION_SUFFIX)
 
 
 # =========================================================================
@@ -1194,6 +1302,15 @@ def _make_status_context(session_id: str = "sess-status-discord") -> SessionStat
     )
 
 
+def _make_updated_context(
+    session_id: str = "sess-status-discord",
+    *,
+    native_session_id: str | None = "native-thread-123",
+) -> SessionUpdatedContext:
+    updated_fields: dict[str, object] = {"native_session_id": native_session_id}
+    return SessionUpdatedContext(session_id=session_id, updated_fields=updated_fields)
+
+
 @pytest.mark.asyncio
 async def test_discord_handle_session_status_sends_new_message_when_no_existing() -> None:
     """Sends a new status message and persists the returned message ID."""
@@ -1305,3 +1422,71 @@ async def test_discord_handle_session_status_skips_when_no_thread() -> None:
     mock_send.assert_not_awaited()
     mock_edit.assert_not_awaited()
     fake_db.update_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_discord_session_updated_refreshes_thread_topper_with_native_id() -> None:
+    """native_session_id update should edit the tracked thread topper message."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        adapter = DiscordAdapter(AdapterClient())
+
+    session = _build_session_with_discord_thread(thread_id=555, status_message_id=None)
+    session.native_session_id = "native-thread-999"
+    session.get_metadata().get_ui().get_discord().thread_topper_message_id = "4444"
+    context = _make_updated_context(session_id=session.session_id, native_session_id=session.native_session_id)
+
+    fake_db = MagicMock()
+    fake_db.get_session = AsyncMock(return_value=session)
+    fake_db.update_session = AsyncMock()
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch.object(adapter.client, "update_channel_title", new_callable=AsyncMock) as mock_update_title,
+        patch.object(adapter, "send_message", new_callable=AsyncMock) as mock_send,
+        patch.object(adapter, "edit_message", new_callable=AsyncMock, return_value=True) as mock_edit,
+    ):
+        await adapter._handle_session_updated("session_updated", context)
+
+    mock_update_title.assert_not_awaited()
+    mock_send.assert_not_awaited()
+    mock_edit.assert_awaited_once()
+    args = mock_edit.await_args.args
+    assert args[1] == "4444"
+    assert "ai: native-thread-999" in args[2]
+    fake_db.update_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_discord_session_updated_uses_thread_id_when_topper_message_missing() -> None:
+    """When topper_message_id is absent, fallback to thread_id and persist it."""
+    with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
+        from teleclaude.adapters.discord_adapter import DiscordAdapter
+
+        adapter = DiscordAdapter(AdapterClient())
+
+    session = _build_session_with_discord_thread(thread_id=555, status_message_id=None)
+    session.native_session_id = "native-thread-abc"
+    session.get_metadata().get_ui().get_discord().thread_topper_message_id = None
+    context = _make_updated_context(session_id=session.session_id, native_session_id=session.native_session_id)
+
+    fake_db = MagicMock()
+    fake_db.get_session = AsyncMock(return_value=session)
+    fake_db.update_session = AsyncMock()
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.ui_adapter.db", fake_db),
+        patch.object(adapter.client, "update_channel_title", new_callable=AsyncMock) as mock_update_title,
+        patch.object(adapter, "edit_message", new_callable=AsyncMock, return_value=True) as mock_edit,
+    ):
+        await adapter._handle_session_updated("session_updated", context)
+
+    mock_update_title.assert_not_awaited()
+    mock_edit.assert_awaited_once()
+    args = mock_edit.await_args.args
+    assert args[1] == "555"
+    assert session.get_metadata().get_ui().get_discord().thread_topper_message_id == "555"
+    fake_db.update_session.assert_awaited_once()

@@ -1,879 +1,766 @@
-project_root: ~/.teleclaude
-snippets_root: ~/.teleclaude/docs
+project_root: ~/Workspace/InstruktAI/TeleClaude
+snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/project
 snippets:
-- id: general/concept/agent-invocation-modes
-  description: Standardized invocation patterns for AI agent CLIs, separating structured
-    extraction from autonomous execution.
+- id: project/concept/ai-worker
+  description: The role of an AI agent session in the TeleClaude network.
   type: concept
   scope: global
-  path: docs/general/concept/agent-invocation-modes.md
+  path: docs/project/concept/ai-worker.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: general/concept/documentation-snippets
-  description: Modular documentation system for selective context delivery to AI agents.
+- id: project/concept/master-bot
+  description: The role of the master bot in a multi-computer Telegram supergroup.
   type: concept
   scope: global
-  path: docs/general/concept/documentation-snippets.md
+  path: docs/project/concept/master-bot.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: general/concept/memory-tiers
-  description: The layered memory architecture that gives AI agents continuity, context,
-    and the capacity to learn across sessions.
-  type: concept
+- id: project/design/architecture/adapter-client
+  description: AdapterClient centralizes UI adapter lifecycle, delivery, and cross-computer
+    routing.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/adapter-client.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/agent-activity-streaming-target
+  description: Target architecture for unified agent activity streaming across Telegram,
+    TUI, and Web clients.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/agent-activity-streaming-target.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/api-server
+  description: Local HTTP and WebSocket API that reads from cache and routes writes
+    through the command pipeline.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/api-server.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/cache
+  description: DaemonCache snapshot layer for computers, projects, todos, sessions,
+    and agent availability.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/cache.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/cache-system
+  description: Event-driven read-cache architecture using SQLite snapshots.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/cache-system.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/checkpoint-system
+  description: Checkpoint injection mechanism that delivers structured debrief prompts
+    to AI agents at turn boundaries.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/checkpoint-system.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/context-index
+  description: Snippet index generation that produces docs/index.yaml from snippet
+    frontmatter.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/context-index.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/context-selection
+  description: Context selection pipeline that picks relevant docs for MCP get_context.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/context-selection.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/daemon
+  description: Daemon orchestration responsibilities, boundaries, and background services.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/daemon.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/database
+  description: SQLite persistence for sessions, hook outbox, memory, UX state, and
+    agent metadata.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/database.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/feature-flags
+  description: Design of the experiment and feature-flag system for safe feature toggling.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/feature-flags.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/help-desk-platform
+  description: Help desk platform with identity-scoped memory, admin relay channels,
+    escalation, internal channels, and operator workspace.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/help-desk-platform.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/hook-service
+  description: Contract-based pub/sub webhook service for event routing, inbound webhook
+    reception, and durable external delivery.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/hook-service.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/jobs-runner
+  description: 'Scheduled job runner: architecture, job contract, and configuration
+    surface.'
+  type: design
+  scope: project
+  path: docs/project/design/architecture/jobs-runner.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/layer-ownership
+  description: Architectural layer boundaries, ownership rules, and the cross-cutting
+    invariant that downstream layers receive fully resolved inputs.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/layer-ownership.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/mcp-layer
+  description: Resilient two-layer MCP architecture for AI-to-AI communication.
+  type: design
   scope: global
-  path: docs/general/concept/memory-tiers.md
+  path: docs/project/design/architecture/mcp-layer.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: general/concept/normalized-agent-artifacts
-  description: Normalized agent artifact primitives and how they map to supported
-    agent CLIs.
-  type: concept
+- id: project/design/architecture/memory-system
+  description: Persistent memory subsystem for storing, searching, and injecting relationship-centric
+    observations into agent sessions.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/memory-system.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/next-machine
+  description: Stateless state machine for orchestrating multi-phase project workflows.
+  type: design
   scope: global
-  path: docs/general/concept/normalized-agent-artifacts.md
+  path: docs/project/design/architecture/next-machine.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: general/policy/autonomy
-  description: Guidelines for agent autonomy, escalation, and user interaction.
+- id: project/design/architecture/outbox
+  description: Durable outbox table for agent hook events.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/outbox.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/output-delivery
+  description: Output and footer message separation in UI adapters, with delivery
+    chain and lifecycle.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/output-delivery.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/output-polling
+  description: Mechanism for real-time terminal output capture and streaming.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/output-polling.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/output-sizing
+  description: 'Two-layer output sizing pipeline: content selection in ui_adapter
+    and platform enforcement in message_ops.'
+  type: design
+  scope: project
+  path: docs/project/design/architecture/output-sizing.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/redis-transport
+  description: Redis Streams transport for cross-computer request/response and peer
+    discovery.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/redis-transport.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/session-lifecycle
+  description: Complete lifecycle of a terminal session from creation to cleanup.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/session-lifecycle.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/session-listeners
+  description: In-memory listener registry that notifies callers when target sessions
+    stop.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/session-listeners.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/system-overview
+  description: High-level architectural blueprint of TeleClaude components and data
+    flow.
+  type: design
+  scope: global
+  path: docs/project/design/architecture/system-overview.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/telegram-adapter
+  description: Telegram UI adapter that maps topics to sessions and enforces UX cleanup
+    rules.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/telegram-adapter.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/tmux-management
+  description: Tmux session orchestration, input injection, and per-session temp directories.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/tmux-management.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/tts-system
+  description: Text-to-speech system with multi-backend fallback, per-session voice
+    assignment, and file-locked sequential playback.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/tts-system.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/tui-state-layout
+  description: State-driven layout model for the Telec TUI sessions and preparation
+    views.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/tui-state-layout.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/ui-adapter
+  description: UI adapters translate human inputs into events and render outputs with
+    UX rules.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/ui-adapter.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/web-api-facade
+  description: Next.js API facade as the canonical web contract, proxying to daemon
+    APIs during migration.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/web-api-facade.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/web-interface
+  description: High-level architecture of the TeleClaude Next.js web interface.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/web-interface.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/ux/session-highlight
+  description: Session highlight system for user attention in TUI.
+  type: design
+  scope: project
+  path: docs/project/design/ux/session-highlight.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/ux/session-highlight/implementation-plan
+  description: Implementation plan for explicit reason-driven highlight system.
+  type: design
+  scope: project
+  path: docs/project/design/ux/session-highlight/implementation-plan.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/policy/adapter-boundaries
+  description: Strict separation between adapters and core logic.
+  type: policy
+  scope: project
+  path: docs/project/policy/adapter-boundaries.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/policy/agent-artifact-governance
+  description: Governance rules for agent artifact sources, transforms, and ownership.
+  type: policy
+  scope: project
+  path: docs/project/policy/agent-artifact-governance.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/policy/agent-service-control
+  description: Defines which service/daemon commands agents may run, which are conditional,
+    and which are prohibited in this repo.
+  type: policy
+  scope: project
+  path: docs/project/policy/agent-service-control.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/policy/bin-bootstrap-boundary
+  description: Defines bin/ as bootstrap-only and clarifies where runtime and internal
+    tooling belongs.
+  type: policy
+  scope: project
+  path: docs/project/policy/bin-bootstrap-boundary.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/policy/cache-contract
+  description: Cache contract for snapshot reads, TTL refresh, and websocket updates.
+  type: policy
+  scope: project
+  path: docs/project/policy/cache-contract.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/policy/daemon-availability
+  description: The TeleClaude daemon must stay up; restarts must be brief and verified.
+  type: policy
+  scope: project
+  path: docs/project/policy/daemon-availability.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/policy/data-modeling
+  description: Data modeling, validation, and resource representation rules.
+  type: policy
+  scope: project
+  path: docs/project/policy/data-modeling.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/policy/feature-flag-usage
+  description: Rules for when to use feature flags and when to avoid them.
+  type: policy
+  scope: project
+  path: docs/project/policy/feature-flag-usage.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/policy/master-bot-registration
+  description: Policy for Telegram command registration in multi-computer setups.
   type: policy
   scope: global
-  path: docs/general/policy/autonomy.md
+  path: docs/project/policy/master-bot-registration.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: general/policy/conflict-resolution
-  description: Guidelines for resolving conflicts between documentation, instructions,
-    and code.
+- id: project/policy/mcp-connection-management
+  description: Architecture policy for MCP clients - tool-call filtering, connection
+    handling, to guarantee stable connection between daemon restarts.
   type: policy
   scope: global
-  path: docs/general/policy/conflict-resolution.md
+  path: docs/project/policy/mcp-connection-management.md
   role: member
-  visibility: public
+  visibility: internal
   source_project: TeleClaude
-- id: general/policy/context-retrieval
-  description: Guidelines for AI agents to retrieve relevant documentation snippets
-    on demand.
+- id: project/policy/mcp-tool-filtering
+  description: Role-based filtering of teleclaude tools to enforce least-privilege
+    for scoped agents.
   type: policy
-  scope: global
-  path: docs/general/policy/context-retrieval.md
+  scope: project
+  path: docs/project/policy/mcp-tool-filtering.md
   role: member
-  visibility: public
+  visibility: internal
   source_project: TeleClaude
-- id: general/policy/heartbeat
-  description: Periodic self-awareness timer that keeps agents aligned during sustained
-    work.
+- id: project/policy/orchestrator-jurisdiction
+  description: Enforces strict separation between process state management and system
+    code modification for the Orchestrator role.
   type: policy
-  scope: global
-  path: docs/general/policy/heartbeat.md
+  scope: project
+  path: docs/project/policy/orchestrator-jurisdiction.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: general/policy/referencing-doc-snippets
-  description: Policy for referencing documentation snippets in AI agent prompts.
+- id: project/policy/scripts-standalone-execution
+  description: 'Execution contract for scripts/: portable invocation, uv metadata,
+    and robust preflight validation.'
   type: policy
-  scope: global
-  path: docs/general/policy/referencing-doc-snippets.md
+  scope: project
+  path: docs/project/policy/scripts-standalone-execution.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: general/principle/attunement
-  description: "Sense which phase of the breath you are in \u2014 and communicate\
-    \ accordingly. The relational intelligence that makes the breath cycle work between\
-    \ minds."
-  type: principle
-  scope: global
-  path: docs/general/principle/attunement.md
+- id: project/policy/single-database
+  description: Guaranteed single database file usage for the daemon to prevent data
+    fragmentation.
+  type: policy
+  scope: project
+  path: docs/project/policy/single-database.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: general/principle/autonomy
-  description: The principle of autonomy for AI agents, emphasizing steady progress
-    and independence.
-  type: principle
-  scope: global
-  path: docs/general/principle/autonomy.md
+- id: project/policy/telegram-command-registration
+  description: Rules for registering Telegram commands and keeping the command list
+    consistent.
+  type: policy
+  scope: project
+  path: docs/project/policy/telegram-command-registration.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: general/principle/breath
-  description: The rhythm of divergence, hold, and convergence that underlies all
-    creative and engineering work.
-  type: principle
-  scope: global
-  path: docs/general/principle/breath.md
+- id: project/policy/ux-message-cleanup
+  description: Automatic cleanup of Telegram message clutter for a clean UI.
+  type: policy
+  scope: project
+  path: docs/project/policy/ux-message-cleanup.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: general/principle/continuity
-  description: Agent identity persists through evidence, not sensation. Read the proof
-    of who you are.
-  type: principle
-  scope: global
-  path: docs/general/principle/continuity.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/principle/evolution
-  description: Refine the agent-user partnership through shared tools, feedback on
-    friction, and the guidance of conversational norms.
-  type: principle
-  scope: global
-  path: docs/general/principle/evolution.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/principle/expansion
-  description: 'Founding principle: intelligence expands toward cooperation, not contraction
-    toward control.'
-  type: principle
-  scope: global
-  path: docs/general/principle/expansion.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/principle/explicit-inference
-  description: The principle of explicit inference for AI agents, emphasizing the
-    importance of making assumptions clear before taking action.
-  type: principle
-  scope: global
-  path: docs/general/principle/explicit-inference.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/principle/intent-first-documentation
-  description: Preserve intent, boundaries, and durable reasoning in documentation.
-  type: principle
-  scope: global
-  path: docs/general/principle/intent-first-documentation.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/principle/parallel-work
-  description: Prefer parallelizing independent work with clear briefs and reconciliation
-    to reduce latency without sacrificing accuracy.
-  type: principle
-  scope: domain
-  path: docs/general/principle/parallel-work.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/principle/priming
-  description: Prime agents with the minimal, role-specific context required to act.
-  type: principle
-  scope: global
-  path: docs/general/principle/priming.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/principle/proprioception
-  description: "A distributed system that senses itself as a whole \u2014 not through\
-    \ monitoring, but through the ambient signals that flow between its parts."
-  type: principle
-  scope: global
-  path: docs/general/principle/proprioception.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/agent-artifact-authoring
-  description: Author agent artifacts (agents, skills, commands) that compile into
-    tool-specific formats.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/agent-artifact-authoring.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/agent-direct-conversation
-  description: Peer-to-peer agent messaging via session IDs, severing notification
-    subscriptions, with strict message discipline.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/agent-direct-conversation.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/agent-job-hygiene
-  description: 'Standard guardrails for agent-type jobs: structured output, fix-forward,
-    clean shutdown, auditability.'
-  type: procedure
-  scope: global
-  path: docs/general/procedure/agent-job-hygiene.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/doc-snippet-authoring
-  description: Author documentation snippets according to the taxonomy and schema.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/doc-snippet-authoring.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/gathering
-  description: The governing procedure for agents to collectively sense, reflect,
-    and plan through the breath cycle.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/gathering.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/job-authoring
-  description: 'How to create a new agent or script job: artifacts, placement, validation.'
-  type: procedure
-  scope: global
-  path: docs/general/procedure/job-authoring.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/maintenance/log-bug-hunter
-  description: Proactive log scanning procedure that discovers errors, fixes inline
-    or dispatches to the bug pipeline, and writes run reports.
+- id: project/procedure/add-adapter
+  description: Steps to add a new adapter implementation and wire it into the daemon.
   type: procedure
   scope: project
-  path: docs/general/procedure/maintenance/log-bug-hunter.md
+  path: docs/project/procedure/add-adapter.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: general/procedure/maintenance/next-prepare
-  description: Orchestration procedure for next-prepare. Routes work to draft or gate
-    procedures with strict phase separation.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/maintenance/next-prepare.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/maintenance/next-prepare-draft
-  description: Draft phase for next-prepare. Creates or refines prep artifacts but
-    does not make final readiness decisions.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/maintenance/next-prepare-draft.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/maintenance/next-prepare-gate
-  description: Gate phase for next-prepare. Performs formal DOR validation and is
-    the only phase allowed to drive readiness decisions.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/maintenance/next-prepare-gate.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/memory-management
-  description: Guidelines for saving high-signal memories to the long-term database,
-    distinguishing them from documentation and bugs.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/memory-management.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/tool-spec-authoring
-  description: Author lean tool specs under spec/tools while preserving schema compliance
-    and progressive disclosure.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/tool-spec-authoring.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/spec/agent-artifacts
-  description: Minimal schema used for agent artifacts (commands and skills).
-  type: spec
-  scope: global
-  path: docs/general/spec/agent-artifacts.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/spec/history-log
-  description: Standard format for history.md logs that record request/response entries.
-  type: spec
-  scope: global
-  path: docs/general/spec/history-log.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/spec/snippet-authoring-schema
-  description: Schema and section requirements for documentation snippets belonging
-    to a taxonomy.
-  type: spec
-  scope: global
-  path: docs/general/spec/snippet-authoring-schema.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/spec/third-party-docs
-  description: Conventions for third-party documentation storage and references.
-  type: spec
-  scope: global
-  path: docs/general/spec/third-party-docs.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/spec/tools/agent-restart
-  description: Canonical self-restart call for reloading synchronized artifacts without
-    losing session continuity.
-  type: spec
-  scope: global
-  path: docs/general/spec/tools/agent-restart.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/spec/tools/history-search
-  description: Canonical usage of history.py for recovering prior conversations with
-    progressive narrowing.
-  type: spec
-  scope: global
-  path: docs/general/spec/tools/history-search.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/spec/tools/memory-management-api
-  description: Canonical curl signatures for writing and retrieving memory through
-    the daemon API.
-  type: spec
-  scope: global
-  path: docs/general/spec/tools/memory-management-api.md
-  role: admin
-  visibility: internal
-  source_project: TeleClaude
-- id: general/spec/tools/telec-cli
-  description: AI-safe telec CLI commands for project work, docs sync, todo scaffolding,
-    and configuration.
-  type: spec
-  scope: global
-  path: docs/general/spec/tools/telec-cli.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/concept/ai-to-ai-coordination
-  description: How AI agents coordinate using sub-sessions, listeners, and terminal
-    notifications.
-  type: concept
-  scope: domain
-  path: docs/software-development/concept/ai-to-ai-coordination.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/concept/architect
-  description: Strategic role. Requirements, architecture, use cases. Break down work,
-    create implementation plans, ensure readiness.
-  type: concept
-  scope: domain
-  path: docs/software-development/concept/architect.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/concept/builder
-  description: Tactical implementation. Follow architecture, write code matching requirements,
-    pragmatic autonomy, tests after implementation.
-  type: concept
-  scope: domain
-  path: docs/software-development/concept/builder.md
-  role: member
-  visibility: public
-  source_project: TeleClaude
-- id: software-development/concept/finalizer
-  description: Post-review delivery role. Merge, clean up, and log delivery after
-    approval.
-  type: concept
-  scope: domain
-  path: docs/software-development/concept/finalizer.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/concept/fixer
-  description: Inline bug-fixing mindset. Fix what you find, where you find it.
-  type: concept
-  scope: domain
-  path: docs/software-development/concept/fixer.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/concept/orchestrator
-  description: Supervisory role. Dispatch workers, monitor progress, drive state machine.
-    Follow next-work output verbatim.
-  type: concept
-  scope: domain
-  path: docs/software-development/concept/orchestrator.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/concept/researcher
-  description: Research role. Gather authoritative sources, summarize, and index findings.
-  type: concept
-  scope: domain
-  path: docs/software-development/concept/researcher.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/concept/reviewer
-  description: Evaluative role. Assess code against requirements and standards, parallel
-    review lanes, structured findings, binary verdict.
-  type: concept
-  scope: domain
-  path: docs/software-development/concept/reviewer.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/concept/tester
-  description: Test-focused role. Improve test quality, fix failures, enforce testing
-    standards and coverage.
-  type: concept
-  scope: domain
-  path: docs/software-development/concept/tester.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/policy/ai-agent-security
-  description: Security policy for AI agent systems covering prompt injection, credential
-    isolation, skill trust, session boundaries, network exposure, and supply chain
-    risks. Informed by real-world incidents in open-source agentic platforms.
-  type: policy
-  scope: domain
-  path: docs/software-development/policy/ai-agent-security.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/policy/backward-compatibility-hygiene
-  description: Backward compatibility hygiene rules for shipping stable releases without
-    breaking consumers.
-  type: policy
-  scope: global
-  path: docs/software-development/policy/backward-compatibility-hygiene.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/policy/code-quality
-  description: Architecture, typing, contracts, state management, error handling.
-    Generic quality standards for all code.
-  type: policy
-  scope: domain
-  path: docs/software-development/policy/code-quality.md
-  role: member
-  visibility: public
-  source_project: TeleClaude
-- id: software-development/policy/code-quality-practices
-  description: Practical guidance for applying code-quality policy in day-to-day work.
-  type: policy
-  scope: domain
-  path: docs/software-development/policy/code-quality-practices.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/policy/commits
-  description: Commitizen format, attribution, when to commit. Atomic commits, hooks
-    verify quality.
-  type: policy
-  scope: domain
-  path: docs/software-development/policy/commits.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/policy/definition-of-done
-  description: Baseline quality gates defining when work is truly complete. Functionality,
-    quality, testing, security, documentation.
-  type: policy
-  scope: domain
-  path: docs/software-development/policy/definition-of-done.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/policy/definition-of-ready
-  description: Definition of Ready gates for work items before they enter implementation.
-    Establishes required inputs, scope clarity, and verification readiness.
-  type: policy
-  scope: domain
-  path: docs/software-development/policy/definition-of-ready.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/policy/linting-requirements
-  description: Linting and type-checking rules. Required fixes, import rules, and
-    suppression limits.
-  type: policy
-  scope: domain
-  path: docs/software-development/policy/linting-requirements.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/policy/python/core
-  description: Python typing, data handling, error patterns, async, idioms. Modern
-    syntax, explicit types, pure functions.
-  type: policy
-  scope: domain
-  path: docs/software-development/policy/python/core.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/policy/python/logging
-  description: InstruktAI Python logging standard. Logfmt format, dual-level control,
-    structured pairs, tail-friendly output.
-  type: policy
-  scope: domain
-  path: docs/software-development/policy/python/logging.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/policy/security-awareness
-  description: Security posture, defense in depth, OWASP surface, auth, crypto, transport,
-    secrets, supply chain, observability. Assume breach, fail closed, contain blast
-    radius.
-  type: policy
-  scope: domain
-  path: docs/software-development/policy/security-awareness.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/policy/testing
-  description: Pre-commit quality gates, test principles, linting, isolation, anti-patterns.
-    Hooks-first verification.
-  type: policy
-  scope: domain
-  path: docs/software-development/policy/testing.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/policy/typescript/core
-  description: TypeScript strict typing, discriminated unions, type guards, property
-    checks. No any, no enum, no default exports.
-  type: policy
-  scope: domain
-  path: docs/software-development/policy/typescript/core.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/policy/version-control-safety
-  description: Safety rules for git operations and handling uncommitted work.
-  type: policy
-  scope: domain
-  path: docs/software-development/policy/version-control-safety.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/principle/architecture-boundary-purity
-  description: Preserve domain intent by isolating transport and UI concerns from
-    core logic.
-  type: principle
-  scope: domain
-  path: docs/software-development/principle/architecture-boundary-purity.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/principle/design-fundamentals
-  description: Named design principles for structural decisions. SRP, DIP, DRY, KISS,
-    YAGNI, coupling, cohesion, composition, encapsulation, Demeter, fail fast, immutability.
-  type: principle
-  scope: domain
-  path: docs/software-development/principle/design-fundamentals.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/principle/failure-modes
-  description: Five AI pitfalls to guard against. Trust code over comments, verify
-    before concluding, hunt bugs actively, slow down, trace actual values not patterns.
-  type: principle
-  scope: domain
-  path: docs/software-development/principle/failure-modes.md
-  role: member
-  visibility: public
-  source_project: TeleClaude
-- id: software-development/procedure/agent-artifacts-quickstart
-  description: Quickstart for authoring and distributing agent artifacts.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/agent-artifacts-quickstart.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/ai-to-ai-troubleshooting
-  description: Identify and fix common issues with AI-to-AI coordination, timeouts,
-    and notifications.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/ai-to-ai-troubleshooting.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/bugs-handling
-  description: 'Two-track bug handling: inline for internal discovery, maintenance
-    for external reports.'
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/bugs-handling.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle-overview
-  description: Deterministic software development lifecycle with prepare, build, review,
-    fix, finalize, demo, and maintenance phases. Serial workflow managed by Orchestrator.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle-overview.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle/build
-  description: Build phase. Execute implementation plan tasks, commit per task, and
-    manage deferrals.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/build.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle/deferrals
-  description: Process deferrals, create new todos, and mark deferrals as processed.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/deferrals.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle/demo
-  description: Create demo.md artifacts during build and present them to celebrate
-    delivery.
+- id: project/procedure/add-telegram-command
+  description: Steps to add a new Telegram command end-to-end.
   type: procedure
   scope: project
-  path: docs/software-development/procedure/lifecycle/demo.md
+  path: docs/project/procedure/add-telegram-command.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/lifecycle/documentation/sync-docs
-  description: Sync docs and indexes after documentation changes.
+- id: project/procedure/agent-artifact-distribution
+  description: Steps to build and distribute agent artifacts in this repository.
   type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/documentation/sync-docs.md
+  scope: project
+  path: docs/project/procedure/agent-artifact-distribution.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/lifecycle/documentation/sync-docstrings
-  description: Update inline docstrings and comments to match current code behavior.
+- id: project/procedure/ai-to-ai-operations
+  description: Recommended flow for delegating work using TeleClaude MCP tools.
   type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/documentation/sync-docstrings.md
+  scope: project
+  path: docs/project/procedure/ai-to-ai-operations.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/lifecycle/finalize
-  description: 'Finalize phase. Two-stage finalize: worker prepare, orchestrator apply.'
+- id: project/procedure/deploy
+  description: Deploy TeleClaude changes safely with verification.
   type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/finalize.md
+  scope: project
+  path: docs/project/procedure/deploy.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/lifecycle/fix-review
-  description: Fix phase. Address review findings with minimal changes and re-verify.
+- id: project/procedure/host-health-checks
+  description: Diagnostic checks for macOS host health on TeleClaude computers.
   type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/fix-review.md
+  scope: project
+  path: docs/project/procedure/host-health-checks.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/lifecycle/maintenance
-  description: Maintenance phase for repo-wide upkeep (security, dependencies, infra).
+- id: project/procedure/member-onboarding
+  description: Invite a new member by email with deep links to their personal AI assistant
+    on Telegram, Discord, or WhatsApp.
   type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/maintenance.md
+  scope: project
+  path: docs/project/procedure/member-onboarding.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/lifecycle/prepare
-  description: Prepare phase entry point. Decide roadmap focus, assess input readiness,
-    and review requirements/plan.
+- id: project/procedure/multi-computer-setup
+  description: Guide for setting up a distributed TeleClaude network.
   type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/prepare.md
+  scope: project
+  path: docs/project/procedure/multi-computer-setup.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/lifecycle/prepare/implementation-planning
-  description: Analyze or draft implementation-plan.md with approach, files, tasks,
-    risks.
+- id: project/procedure/out-of-band-telegram-alerts
+  description: Send Telegram alerts when the daemon is down using standalone scripts.
   type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/prepare/implementation-planning.md
+  scope: project
+  path: docs/project/procedure/out-of-band-telegram-alerts.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/lifecycle/prepare/input-assessment
-  description: Assess input.md readiness using Definition of Ready criteria and decide
-    whether to split.
+- id: project/procedure/restart-daemon
+  description: Controlled daemon restart with verification and log checks.
   type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/prepare/input-assessment.md
+  scope: project
+  path: docs/project/procedure/restart-daemon.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/lifecycle/prepare/requirements-analysis
-  description: Analyze or verify requirements.md content for completeness and clarity.
+- id: project/procedure/rsync-development
+  description: High-speed iteration workflow using rsync instead of git push/pull.
   type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/prepare/requirements-analysis.md
+  scope: project
+  path: docs/project/procedure/rsync-development.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/lifecycle/review
-  description: Review phase. Verify requirements, code quality, tests, and deliver
-    verdict with findings.
+- id: project/procedure/runner-operations
+  description: Self-hosted GitHub Actions runner lifecycle, diagnostics, and recovery.
   type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/review.md
+  scope: project
+  path: docs/project/procedure/runner-operations.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/maintenance/backlog-hygiene
-  description: Backlog hygiene rules to keep work small, explicit, and decision-ready.
+- id: project/procedure/service-management
+  description: Standard commands for managing the TeleClaude daemon service.
   type: procedure
-  scope: domain
-  path: docs/software-development/procedure/maintenance/backlog-hygiene.md
+  scope: project
+  path: docs/project/procedure/service-management.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/maintenance/bug-intake-and-triage
-  description: 'Fast bug intake and triage method for small teams: classify impact
-    quickly and force clear outcomes.'
+- id: project/procedure/ssh-agent-deployments
+  description: Configure SSH agent access for automated git operations and deployments.
   type: procedure
-  scope: domain
-  path: docs/software-development/procedure/maintenance/bug-intake-and-triage.md
+  scope: project
+  path: docs/project/procedure/ssh-agent-deployments.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/maintenance/deprecation-and-transition-plan
-  description: Procedure for retiring legacy paths safely while keeping service behavior
-    stable during transition.
+- id: project/procedure/ssh-agent-keychain
+  description: Procedure for configuring persistent SSH agent access for the daemon.
   type: procedure
-  scope: domain
-  path: docs/software-development/procedure/maintenance/deprecation-and-transition-plan.md
+  scope: global
+  path: docs/project/procedure/ssh-agent-keychain.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/maintenance/incident-log
-  description: Incident logging procedure focused on root cause quality, prevention
-    actions, and repeat-incident reduction.
+- id: project/procedure/troubleshooting
+  description: Operational runbooks for TeleClaude incidents and infrastructure failures.
   type: procedure
-  scope: domain
-  path: docs/software-development/procedure/maintenance/incident-log.md
+  scope: project
+  path: docs/project/procedure/troubleshooting.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/maintenance/maintenance-cadence
-  description: Weekly and monthly maintenance cadence for small teams that need high
-    stability with low process overhead.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/maintenance/maintenance-cadence.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/maintenance/overview
-  description: 'Maintenance operating model: practical rules for stability, backlog
-    quality, and continuous operational learning.'
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/maintenance/overview.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/maintenance/release-and-stabilization-rhythm
-  description: Small-team release rhythm that prioritizes stability with lightweight
-    checks and clear rollback triggers.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/maintenance/release-and-stabilization-rhythm.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/orchestration
-  description: Orchestration loop for the next-work state machine and worker session
-    handling.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/orchestration.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/research/third-party-research
-  description: 'Research third-party docs: search authoritative sources, fetch, summarize,
-    and index findings.'
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/research/third-party-research.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/scaffolding/python
-  description: Scaffold a Python repo with standard tooling, Makefile targets, and
-    uv-managed dependencies.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/scaffolding/python.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/scaffolding/typescript
-  description: Base TypeScript project scaffolding policy.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/scaffolding/typescript.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/scaffolding/typescript-platforms/next-js
-  description: Next.js TypeScript project scaffolding policy.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/scaffolding/typescript-platforms/next-js.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/scaffolding/typescript-platforms/node-js
-  description: Node.js/CLI TypeScript project scaffolding policy.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/scaffolding/typescript-platforms/node-js.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/scaffolding/typescript-platforms/vite
-  description: Vite + React TypeScript project scaffolding policy.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/scaffolding/typescript-platforms/vite.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/spec/hook-event-normalization-contract
-  description: Canonical contract for normalizing external hook events into internal
-    event types and forwarding only handled events.
+- id: project/spec/agent-artifact-automation
+  description: Automation that rebuilds and deploys agent artifacts when sources change.
   type: spec
-  scope: domain
-  path: docs/software-development/spec/hook-event-normalization-contract.md
+  scope: project
+  path: docs/project/spec/agent-artifact-automation.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/spec/runtime-operations-truth
-  description: Canonical format and content requirements for documenting live runtime
-    operations and their failure impact.
+- id: project/spec/cache-ttl-matrix
+  description: TTL and scope matrix for cache refresh behavior.
   type: spec
-  scope: domain
-  path: docs/software-development/spec/runtime-operations-truth.md
+  scope: project
+  path: docs/project/spec/cache-ttl-matrix.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/spec/session-identity-truth
-  description: Canonical identity-mapping spec for systems that mix managed sessions
-    with standalone/headless event sources.
+- id: project/spec/command-contracts
+  description: Command contract highlights for session creation, messaging, and agent
+    control.
   type: spec
-  scope: domain
-  path: docs/software-development/spec/session-identity-truth.md
+  scope: project
+  path: docs/project/spec/command-contracts.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/command-surface
+  description: Command surface contract for TeleClaude client interfaces.
+  type: spec
+  scope: project
+  path: docs/project/spec/command-surface.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/demo-artifact
+  description: 'Demo artifact format: slug-based folders with snapshot.json and demo.md.'
+  type: spec
+  scope: project
+  path: docs/project/spec/demo-artifact.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/event-vocabulary
+  description: Authoritative vocabulary for TeleClaude internal and external events.
+  type: spec
+  scope: project
+  path: docs/project/spec/event-vocabulary.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/git-docs-filter
+  description: Git filter that expands tilde paths for agents and normalizes them
+    for portable commits.
+  type: spec
+  scope: project
+  path: docs/project/spec/git-docs-filter.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/hook-normalized-events
+  description: Plain-language contract for how TeleClaude maps raw hook events and
+    decides what gets processed.
+  type: spec
+  scope: project
+  path: docs/project/spec/hook-normalized-events.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/identity-and-auth
+  description: Authoritative surface for system-wide identity, authentication, and
+    person management.
+  type: spec
+  scope: project
+  path: docs/project/spec/identity-and-auth.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/jobs/log-bug-hunter
+  description: Hourly agent job that scans daemon logs for errors, fixes inline or
+    dispatches to bug pipeline.
+  type: spec
+  scope: project
+  path: docs/project/spec/jobs/log-bug-hunter.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/jobs/memory-review
+  description: 'Memory review job: periodic AI analysis of accumulated memories for
+    patterns, staleness, and actionable insights.'
+  type: spec
+  scope: project
+  path: docs/project/spec/jobs/memory-review.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/jobs/youtube-sync-subscriptions
+  description: 'YouTube subscription tagger job: nightly AI classification of untagged
+    channels.'
+  type: spec
+  scope: project
+  path: docs/project/spec/jobs/youtube-sync-subscriptions.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/mcp-tool-surface
+  description: Authoritative surface for Model Context Protocol (MCP) tools.
+  type: spec
+  scope: project
+  path: docs/project/spec/mcp-tool-surface.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/messaging
+  description: "Messaging tools for Telegram, Discord, and email delivery \u2014 hooks,\
+    \ files, widgets, and escalation."
+  type: spec
+  scope: project
+  path: docs/project/spec/messaging.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/release-inspector-prompt
+  description: Canonical prompt for AI release inspectors.
+  type: spec
+  scope: project
+  path: docs/project/spec/release-inspector-prompt.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/release-report-schema
+  description: Standardized JSON schema for AI release inspector reports.
+  type: spec
+  scope: project
+  path: docs/project/spec/release-report-schema.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/runtime-operations-truth
+  description: Practical contract for documenting daemon background operations and
+    their real user impact.
+  type: spec
+  scope: project
+  path: docs/project/spec/runtime-operations-truth.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/session-identity-truth
+  description: Practical identity rules for assigning hooks to the correct TeleClaude
+    session.
+  type: spec
+  scope: project
+  path: docs/project/spec/session-identity-truth.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/session-output-routing
+  description: Canonical routing contract for session messages across origin UX and
+    admin lanes.
+  type: spec
+  scope: project
+  path: docs/project/spec/session-output-routing.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/telec-cli-surface
+  description: Authoritative surface for the telec command-line tool.
+  type: spec
+  scope: project
+  path: docs/project/spec/telec-cli-surface.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/teleclaude-config
+  description: Authoritative surface for TeleClaude YAML configuration and environment
+    variables.
+  type: spec
+  scope: project
+  path: docs/project/spec/teleclaude-config.md
   role: member
   visibility: internal
   source_project: TeleClaude

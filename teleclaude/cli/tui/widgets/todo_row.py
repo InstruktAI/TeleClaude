@@ -185,10 +185,8 @@ class TodoRow(TelecMixin, Widget):
             line.append("\u25a0", style=self._status_style())
         line.append(" ")
 
-        # Slug — muted when required planning artifacts are missing.
-        # Bug items intentionally use bug.md instead of requirements/plan.
-        is_bug = any(name.lower() == "bug.md" for name in self.todo.files)
-        missing_artifacts = not is_bug and (not self.todo.has_requirements or not self.todo.has_impl_plan)
+        # Slug — muted when missing artifacts, reverse when selected
+        missing_artifacts = not self.todo.has_requirements or not self.todo.has_impl_plan
         if is_selected:
             slug_style = Style(reverse=True)
         elif missing_artifacts:
