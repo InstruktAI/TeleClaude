@@ -11,15 +11,15 @@ from canonical signals only.
 
 **File(s):** `teleclaude/core/integration/events.py`, `teleclaude/core/integration/event_store.py`
 
-- [ ] Define typed event models and required field validation.
-- [ ] Persist accepted events in append-only storage with idempotency keys.
+- [x] Define typed event models and required field validation.
+- [x] Persist accepted events in append-only storage with idempotency keys.
 
 ### Task 1.2: Build readiness projection and supersession rules
 
 **File(s):** `teleclaude/core/integration/readiness_projection.py`
 
-- [ ] Compute readiness for `(slug, branch, sha)` from canonical events.
-- [ ] Implement supersession for older slug candidates.
+- [x] Compute readiness for `(slug, branch, sha)` from canonical events.
+- [x] Implement supersession for older slug candidates.
 
 ## Phase 2: Integration and Diagnostics
 
@@ -27,8 +27,8 @@ from canonical signals only.
 
 **File(s):** `teleclaude/core/integration/service.py`
 
-- [ ] Update projection on event append/replay.
-- [ ] Emit diagnostics for rejected or superseded candidates.
+- [x] Update projection on event append/replay.
+- [x] Emit diagnostics for rejected or superseded candidates.
 
 ### Task 2.2: Add tests and quality checks
 
