@@ -554,16 +554,21 @@ async def test_executor_make_install_failure_halts_update(tmp_path, monkeypatch)
 
 @pytest.mark.asyncio
 async def test_executor_make_install_timeout_halts_update(tmp_path, monkeypatch):
-    """make install timeout should abort before restart."""
+    """make install timeout should abort before restart and kill the orphaned process."""
     import teleclaude.deployment.executor as executor_mod
 
     monkeypatch.setattr(executor_mod, "_REPO_ROOT", tmp_path)
     (tmp_path / "pyproject.toml").write_text('[project]\nversion = "1.2.3"\n', encoding="utf-8")
 
+    install_proc: list[MagicMock] = []
+
     async def _git_ok(*args: Any, **kwargs: Any) -> Any:
         proc = MagicMock()
         proc.returncode = 0
         proc.communicate = AsyncMock(return_value=(b"ok", b""))
+        proc.wait = AsyncMock(return_value=None)
+        if args[0] == "make":
+            install_proc.append(proc)
         return proc
 
     async def _timeout(*args: Any, **kwargs: Any) -> Any:  # noqa: ASYNC109
@@ -581,6 +586,10 @@ async def test_executor_make_install_timeout_halts_update(tmp_path, monkeypatch)
 
         await execute_update("alpha", {"from_version": "1.0.0", "version": ""})
         mock_exit.assert_not_called()
+
+    assert len(install_proc) == 1, "make install process should have been created"
+    install_proc[0].kill.assert_called_once()
+    install_proc[0].wait.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

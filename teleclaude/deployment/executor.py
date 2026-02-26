@@ -158,6 +158,11 @@ async def execute_update(
         try:
             _, install_err = await asyncio.wait_for(install.communicate(), timeout=60.0)
         except asyncio.TimeoutError:
+            try:
+                install.kill()
+                await install.wait()
+            except ProcessLookupError:
+                pass
             logger.error("Deploy: make install timed out after 60s")
             await update_status({"status": "update_failed", "error": "make install timed out"})
             return
