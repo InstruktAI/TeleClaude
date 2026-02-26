@@ -361,7 +361,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "work": CommandDef(
                 desc="Run the Phase B (work) state machine",
                 args="[<slug>]",
-                flags=[_H, Flag("--cwd", desc="Project root directory (required)")],
+                flags=[_H],
             ),
             "maintain": CommandDef(
                 desc="Run the Phase D (maintain) state machine",
@@ -886,7 +886,19 @@ def _handle_completion() -> None:
     if cmd in ("sync", "watch", "deploy"):
         if cmd in CLI_SURFACE:
             _complete_flags(CLI_SURFACE[cmd].flag_tuples, rest, current, is_partial)
-    elif cmd in ("todo", "roadmap", "config", "sessions", "agents", "channels", "docs", "computers", "projects", "bugs", "auth"):
+    elif cmd in (
+        "todo",
+        "roadmap",
+        "config",
+        "sessions",
+        "agents",
+        "channels",
+        "docs",
+        "computers",
+        "projects",
+        "bugs",
+        "auth",
+    ):
         _complete_subcmd(cmd, rest, current, is_partial)
 
 
@@ -2614,7 +2626,7 @@ def _handle_bugs_report(args: list[str]) -> None:
                 agent="claude",
                 thinking_mode="slow",
                 title=f"Bug fix: {slug}",
-                message=f'Run telec todo work {slug} --cwd . and follow output verbatim until done.',
+                message=f"Run telec todo work {slug} and follow output verbatim until done.",
             )
         finally:
             await api.close()
@@ -2631,7 +2643,7 @@ def _handle_bugs_report(args: list[str]) -> None:
         print("Bug scaffold, branch, and worktree created successfully.")
         print("Start orchestrator manually from worktree directory:")
         print(f"  cd {worktree_path}")
-        print(f"  telec claude 'Run telec todo work {slug} --cwd . and follow output verbatim until done.'")
+        print(f"  telec claude 'Run telec todo work {slug} and follow output verbatim until done.'")
 
 
 def _handle_bugs_list(args: list[str]) -> None:

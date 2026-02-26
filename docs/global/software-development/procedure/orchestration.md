@@ -43,7 +43,7 @@ This is a document-quality check, not a code review. The orchestrator does not r
 ### Container Slug Handling
 
 - If `telec todo prepare <slug>` returns `CONTAINER:` or `todos/{slug}/state.yaml` has non-empty `breakdown.todos`, treat that slug as a grouping container only.
-- Run each child slug via `telec todo work <child> --cwd <project-root>` in dependency order until children complete, and do not dispatch build/review/fix/finalize directly for the container slug.
+- Run each child slug via `telec todo work <child>` in dependency order until children complete, and do not dispatch build/review/fix/finalize directly for the container slug.
 
 ### When Notification Arrives
 
@@ -75,12 +75,12 @@ This is a document-quality check, not a code review. The orchestrator does not r
    - `status="degraded"` when the agent should be excluded from automatic fallback selection.
    - `status="unavailable"` for time-bounded outages/rate limits.
    - Use `--clear` when recovered.
-3. Re-run `telec todo work ... --cwd <project-root>` after status update.
+3. Re-run `telec todo work ...` after status update.
 4. Do not delegate this decision to workers; only orchestrator should mutate provider status.
 
 ### Review Round Limit Handling (Orchestrator-Owned)
 
-When `telec todo work ... --cwd <project-root>` returns `REVIEW_ROUND_LIMIT`, the orchestrator must close the loop pragmatically instead of punting by default.
+When `telec todo work ...` returns `REVIEW_ROUND_LIMIT`, the orchestrator must close the loop pragmatically instead of punting by default.
 
 1. Inspect current evidence before deciding:
    - `todos/{slug}/review-findings.md`
