@@ -30,7 +30,7 @@ Pure wiring task: register WhatsApp env vars in the adapter registry, fix the co
 
 **File(s):** `teleclaude/cli/tui/config_components/guidance.py`
 
-- [ ] Add guidance entries in `_populate_defaults()` after the Discord entries (line ~62), following the same `FieldGuidance` pattern:
+- [x] Add guidance entries in `_populate_defaults()` after the Discord entries (line ~62), following the same `FieldGuidance` pattern:
   - `adapters.whatsapp.phone_number_id` — steps: create Meta Business app, add WhatsApp product, get phone number ID from dashboard
   - `adapters.whatsapp.access_token` — steps: create system user in Business Manager, generate token with whatsapp_business_messaging permission
   - `adapters.whatsapp.webhook_secret` — steps: find App Secret in Meta App Dashboard > Settings > Basic
