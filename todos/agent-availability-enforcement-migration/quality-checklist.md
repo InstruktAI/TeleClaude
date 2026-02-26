@@ -22,7 +22,8 @@ Ownership:
 
 Build verification notes:
 
-- `make test`: PASS (`2255 passed, 106 skipped`)
+- Targeted migration suite: PASS (`321 passed, 1 skipped`)
+- `make test`: PASS (`2260 passed, 106 skipped`)
 - `make lint`: PASS (`ruff`, `pyright`, guardrails)
 - `telec todo demo validate agent-availability-enforcement-migration`: PASS (`6 executable block(s)`)
 - `instrukt-ai-logs teleclaude --since 15m --grep "agent routing|availability|rejected"`: executed successfully (exit 0)
