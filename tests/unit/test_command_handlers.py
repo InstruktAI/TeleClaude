@@ -214,6 +214,47 @@ async def test_create_session_inherits_parent_origin(mock_initialized_db):
 
 
 @pytest.mark.asyncio
+async def test_create_session_registers_listener_for_initiator(mock_initialized_db):
+    """AI-to-AI session creation should register a stop listener for the initiator."""
+    mock_client = MagicMock()
+    mock_client.create_channel = AsyncMock()
+    mock_client.send_message = AsyncMock()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with (
+            patch.object(command_handlers, "config") as mock_config,
+            patch.object(command_handlers, "db") as mock_db,
+            patch("teleclaude.core.session_listeners.register_listener", new_callable=AsyncMock) as mock_register,
+        ):
+            mock_config.computer.name = "TestComputer"
+            mock_config.computer.default_working_dir = tmpdir
+            mock_db.create_session = mock_initialized_db.create_session
+            mock_db.get_session = mock_initialized_db.get_session
+
+            parent = await mock_initialized_db.create_session(
+                computer_name="TestComputer",
+                tmux_session_name="tc_parent",
+                last_input_origin=InputOrigin.TELEGRAM.value,
+                title="Parent Session",
+            )
+
+            cmd = CreateSessionCommand(
+                project_path=tmpdir,
+                title="Child Session",
+                origin=InputOrigin.TELEGRAM.value,
+                initiator_session_id=parent.session_id,
+            )
+            result = await command_handlers.create_session(cmd, mock_client)
+
+    assert result["session_id"]
+    mock_register.assert_awaited_once()
+    kwargs = mock_register.await_args.kwargs
+    assert kwargs["target_session_id"] == result["session_id"]
+    assert kwargs["caller_session_id"] == parent.session_id
+    assert kwargs["caller_tmux_session"] == "tc_parent"
+
+
+@pytest.mark.asyncio
 async def test_create_session_stores_resolved_user_role(mock_initialized_db):
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()

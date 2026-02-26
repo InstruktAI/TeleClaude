@@ -54,8 +54,10 @@ Execute the build phase for the slug and verify completion.
   - Build Gates section fully checked in `quality-checklist.md`
   - tests passing
   - lint passing
-  - clean working tree for build-scope changes; pre-existing orchestrator-synced planning drift is allowed:
+  - clean working tree for build-scope changes; pre-existing orchestrator-managed planning/state drift is allowed:
     - `todos/roadmap.yaml`
-  - if only those files are dirty, report completion and note it explicitly
+    - `todos/{slug}/state.yaml`
+  - do not commit those orchestrator-managed drift files unless this build explicitly requires planning/state edits
+  - if only those files are dirty, continue to completion without extra escalation about cleanliness
 - End with: `Ready for review.`
 - Summarize results in the completion report.

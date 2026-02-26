@@ -490,6 +490,7 @@ async def test_next_work_explicit_bug_slug_allows_pending_items():
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(10)
 async def test_next_work_explicit_bug_slug_with_worktree_cwd_skips_dor_gate():
     """Bug start should work when cwd points at trees/{slug} worktree."""
     db = MagicMock(spec=Db)

@@ -10,3 +10,4 @@ class InputOrigin(str, Enum):
     REDIS = "redis"
     API = "api"
     TERMINAL = "terminal"
+    HOOK = "hook"

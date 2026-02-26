@@ -133,6 +133,7 @@ def handle_sessions_start(args: list[str]) -> None:
                                 [--mode fast|med|slow]
                                 [--message <text>]
                                 [--title <text>]
+                                [--direct]
 
     Creates a new TeleClaude agent session on the specified computer in the
     given project directory. The agent starts immediately.
@@ -169,6 +170,9 @@ def handle_sessions_start(args: list[str]) -> None:
         elif args[i] == "--title" and i + 1 < len(args):
             body["title"] = args[i + 1]
             i += 2
+        elif args[i] == "--direct":
+            body["direct"] = True
+            i += 1
         else:
             i += 1
 
@@ -183,16 +187,18 @@ def handle_sessions_start(args: list[str]) -> None:
 def handle_sessions_send(args: list[str]) -> None:
     """Send a message to a running session.
 
-    Usage: telec sessions send <session_id> <message>
-                               OR
-           telec sessions send --session <session_id> --message <text>
+    Usage: telec sessions send <session_id> [<message>] [--direct]
+           telec sessions send <session_id> --close-link
+           telec sessions send --session <session_id> --message <text> [--direct]  # compatibility
 
-    Delivers a text message to the agent running in the target session.
-    The agent will process the message as user input.
+    Delivers a message to the target session.
+    With --direct, create/reuse a shared conversation link.
+    With --close-link, sever a shared conversation link.
 
     Examples:
       telec sessions send abc123 "Please implement feature X"
-      telec sessions send --session abc123 --message "Please review this code"
+      telec sessions send abc123 "Let's discuss the architecture" --direct
+      telec sessions send abc123 --close-link
     """
     if "--help" in args or "-h" in args:
         print(handle_sessions_send.__doc__ or "")
@@ -200,31 +206,60 @@ def handle_sessions_send(args: list[str]) -> None:
 
     session_id: str | None = None
     message: str | None = None
+    direct = False
+    close_link = False
+    positional_message_parts: list[str] = []
 
-    # Positional: telec sessions send <session_id> <message>
-    if args and not args[0].startswith("-"):
+    positional_mode = bool(args and not args[0].startswith("-"))
+    if positional_mode:
         session_id = args[0]
-        message = " ".join(args[1:]) if len(args) > 1 else None
-    else:
-        i = 0
-        while i < len(args):
-            if args[i] in ("--session", "-s") and i + 1 < len(args):
-                session_id = args[i + 1]
-                i += 2
-            elif args[i] == "--message" and i + 1 < len(args):
-                message = args[i + 1]
-                i += 2
-            else:
-                i += 1
+        args = args[1:]
+
+    i = 0
+    while i < len(args):
+        if args[i] in ("--session", "-s") and i + 1 < len(args):
+            if positional_mode:
+                print("Error: do not combine positional session_id with --session", file=sys.stderr)
+                raise SystemExit(1)
+            session_id = args[i + 1]
+            i += 2
+        elif args[i] in ("--message", "-m") and i + 1 < len(args):
+            message = args[i + 1]
+            i += 2
+        elif args[i] == "--direct":
+            direct = True
+            i += 1
+        elif args[i] in ("--close-link", "--close_link"):
+            close_link = True
+            i += 1
+        elif positional_mode:
+            positional_message_parts.append(args[i])
+            i += 1
+        else:
+            i += 1
+
+    if positional_message_parts:
+        if message is not None:
+            print("Error: do not combine positional message with --message", file=sys.stderr)
+            raise SystemExit(1)
+        message = " ".join(positional_message_parts)
 
     if not session_id:
         print("Error: session_id required", file=sys.stderr)
         raise SystemExit(1)
-    if not message:
+    if not close_link and not message:
         print("Error: message required", file=sys.stderr)
         raise SystemExit(1)
 
-    data = tool_api_call("POST", f"/sessions/{session_id}/message", json_body={"message": message})
+    body: dict[str, str | bool] = {}
+    if message:
+        body["message"] = message
+    if direct:
+        body["direct"] = True
+    if close_link:
+        body["close_link"] = True
+
+    data = tool_api_call("POST", f"/sessions/{session_id}/message", json_body=body)
     print_json(data)
 
 

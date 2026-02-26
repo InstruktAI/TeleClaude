@@ -406,6 +406,39 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
         emit_session_started=False,
     )
 
+    # AI-to-AI starts should register a one-shot stop listener so the initiator
+    # receives completion notifications for the spawned child session.
+    if initiator_session_id and initiator_session_id != session_id:
+        caller_tmux = parent_session.tmux_session_name if parent_session else None
+        if caller_tmux:
+            try:
+                from teleclaude.core.session_listeners import register_listener
+
+                await register_listener(
+                    target_session_id=session_id,
+                    caller_session_id=initiator_session_id,
+                    caller_tmux_session=caller_tmux,
+                )
+            except RuntimeError:
+                logger.debug(
+                    "Listener registration skipped (db unavailable): caller=%s target=%s",
+                    initiator_session_id[:8],
+                    session_id[:8],
+                )
+            except Exception as exc:  # noqa: BLE001 - listener failure should not block session creation
+                logger.warning(
+                    "Listener registration failed: caller=%s target=%s error=%s",
+                    initiator_session_id[:8],
+                    session_id[:8],
+                    exc,
+                )
+        else:
+            logger.debug(
+                "Listener registration skipped: initiator missing or has no tmux session (caller=%s target=%s)",
+                initiator_session_id[:8],
+                session_id[:8],
+            )
+
     # Persist platform user_id on adapter metadata for derive_identity_key()
     if identity and identity.platform == "telegram" and identity.platform_user_id:
         try:

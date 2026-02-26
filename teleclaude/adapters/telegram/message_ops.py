@@ -343,7 +343,8 @@ class MessageOperationsMixin:
                 return True
             if "can't parse entities" in str(e).lower():
                 fence_count = text.count("```")
-                closers = _required_markdown_closers_from_state(text, scan_markdown_v2_state(text))
+                state = scan_markdown_v2_state(text)
+                closers = _required_markdown_closers_from_state(text, state)
                 logger.error(
                     "[TELEGRAM %s] Markdown parse diagnostics: len=%d parse_mode=%s fences=%d needs_closers=%s suffix=%r",
                     session.session_id[:8],

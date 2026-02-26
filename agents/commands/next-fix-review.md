@@ -42,4 +42,8 @@ Address review findings and prepare the work for re-review.
 
 - Address findings in `todos/{slug}/review-findings.md`, prioritizing by severity.
 - Commit per fix.
+- Treat orchestrator-managed planning/state drift as non-blocking:
+  - `todos/roadmap.yaml`
+  - `todos/{slug}/state.yaml`
+- Do not commit those orchestrator-managed drift files unless the fix explicitly requires planning/state edits.
 - Verify tests and lint pass before reporting completion.

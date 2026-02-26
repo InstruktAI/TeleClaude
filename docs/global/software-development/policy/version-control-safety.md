@@ -14,6 +14,11 @@ description: 'Safety rules for git operations and handling uncommitted work.'
 - Dirty `main` is allowed. Agents may continue work in files required by the active task.
 - Unrelated local changes may be reported for awareness, but they are non-blocking and must not change task execution.
 - Only treat local changes as blockers when they overlap current task scope or create a concrete data-loss risk.
+- In worker worktrees, treat orchestrator-managed planning/state drift as non-blocking:
+  - `todos/roadmap.yaml`
+  - `todos/{slug}/state.yaml`
+- Do not commit those orchestrator-managed drift files unless the active task explicitly requires planning/state edits.
+- Do not repeatedly report expected orchestrator-managed drift; only escalate cleanliness issues for additional dirty files outside this allowlist.
 - Only modify files required by the request.
 - Complete task changes in a commit before reporting done.
 - Avoid surgical staging by default; prefer straightforward task-scoped commits.

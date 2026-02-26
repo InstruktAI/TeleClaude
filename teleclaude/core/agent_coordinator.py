@@ -212,7 +212,7 @@ def _resolve_hook_actor_name(session: "Session") -> str:
         return _coerce_nonempty_str(identity.person_name)
 
     if origin_hint == InputOrigin.TELEGRAM.value and telegram_user_id is not None:
-        telegram_meta: dict[str, object] = {  # guard: loose-dict - Identity resolver channel metadata is dynamic.
+        telegram_meta: Mapping[str, object] = {
             "user_id": str(telegram_user_id),
             "telegram_user_id": str(telegram_user_id),
         }
@@ -221,7 +221,7 @@ def _resolve_hook_actor_name(session: "Session") -> str:
             return resolved
 
     if origin_hint == InputOrigin.DISCORD.value and discord_user_id:
-        discord_meta: dict[str, object] = {  # guard: loose-dict - Identity resolver channel metadata is dynamic.
+        discord_meta: Mapping[str, object] = {
             "user_id": str(discord_user_id),
             "discord_user_id": str(discord_user_id),
         }
@@ -891,7 +891,7 @@ class AgentCoordinator:
         input_update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
         feedback_update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
         emit_codex_submit_backfill = False
-        input_text: str | None = None
+        recovered_input_text: str | None = None
 
         # For Codex: recover last user input from transcript (no native prompt hook).
         codex_input = await self._extract_user_input_for_codex(session_id, payload)
@@ -906,6 +906,7 @@ class AgentCoordinator:
                 input_update_kwargs["last_message_sent_at"] = input_timestamp.isoformat()
             if input_text.strip() and not _is_codex_input_already_recorded(session, input_text):
                 emit_codex_submit_backfill = True
+                recovered_input_text = input_text
         elif codex_input:
             logger.debug(
                 "Ignoring malformed codex input tuple for session %s",
@@ -923,11 +924,11 @@ class AgentCoordinator:
             # Safety net: when Codex prompt polling misses a live submit marker,
             # mirror the recovered user input to adapters so Discord/Telegram
             # still show the user turn.
-            if session and session.lifecycle_status != "headless" and input_text:
+            if session and session.lifecycle_status != "headless" and recovered_input_text:
                 hook_actor_name = _resolve_hook_actor_name(session)
                 await self.client.broadcast_user_input(
                     session,
-                    input_text,
+                    recovered_input_text,
                     InputOrigin.TERMINAL.value,
                     actor_id=f"terminal:{config.computer.name}:{session_id}",
                     actor_name=hook_actor_name,

@@ -26,7 +26,7 @@ subcommands:
       send:
         description: 'Send a message to a running session.'
       tail:
-        description: 'Retrieve session messages.'
+        description: 'Retrieve session messages (transcript chain with unified tmux/session-data fallback).'
       run:
         description: 'Run an agent command in a new session.'
       end:
@@ -69,6 +69,8 @@ subcommands:
       --attach: 'Attach to tmux session after revive.'
   init:
     description: 'Initialize docs sync and auto-rebuild watcher.'
+  version:
+    description: 'Print version, channel, and commit hash.'
   sync:
     description: 'Validate refs and build doc artifacts.'
     flags:
@@ -163,14 +165,16 @@ subcommands:
       list:
         description: 'List in-flight bug fixes with status (prefers worktree state when present).'
   auth:
-    description: 'Session-scoped authentication helpers.'
+    description: 'Terminal login identity commands.'
     subcommands:
       login:
-        description: 'Associate the current TTY session with an email.'
+        args:
+          - email: 'string'
+        description: 'Set terminal login identity for this TTY.'
       whoami:
-        description: 'Show current session auth identity.'
+        description: 'Show terminal login identity for this TTY.'
       logout:
-        description: 'Clear current session auth identity.'
+        description: 'Clear terminal login identity for this TTY.'
   config:
     description: 'Interactive configuration (or get/patch/validate subcommands).'
     subcommands:
