@@ -871,6 +871,7 @@ class AgentCoordinator:
         recovered_input_text: str | None = None
 
         # For Codex: recover last user input from transcript (no native prompt hook).
+        input_text = ""
         codex_input = await self._extract_user_input_for_codex(session_id, payload)
         if isinstance(codex_input, tuple) and len(codex_input) == 2:
             input_text, input_timestamp = codex_input

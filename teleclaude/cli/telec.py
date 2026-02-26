@@ -1975,13 +1975,16 @@ def _demo_create(slug: str, project_root: Path) -> None:
 def _handle_todo_demo(args: list[str]) -> None:
     """Handle telec todo demo subcommands: list, validate, run, create."""
     _DEMO_SUBCOMMANDS = {"list", "validate", "run", "create"}
+    # Backward compatibility:
+    # - `telec todo demo` lists demos
+    # - `telec todo demo <slug>` runs demo for slug
     project_root = Path.cwd()
     if not args:
-        _demo_list(project_root)
-        return
-
-    subcommand = args[0]
-    remaining_args = args[1:]
+        subcommand = "list"
+        remaining_args: list[str] = []
+    else:
+        subcommand = args[0]
+        remaining_args = args[1:]
     slug: str | None = None
 
     # Backward compatibility: `telec todo demo <slug>` behaves like

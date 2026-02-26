@@ -1,0 +1,1 @@
+"""Discord adapter helper package."""
