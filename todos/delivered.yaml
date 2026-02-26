@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: api-todos-work-stability-hardening
+  date: '2026-02-26'
+  title: Stabilize `/todos/work` latency by removing redundant worktree prep/sync
+    and adding phase-level diagnostics
+  description: Stabilize `/todos/work` latency by removing redundant worktree prep/sync
+    and adding phase-level diagnostics
 - slug: integration-orchestrator-rollout
   date: '2026-02-26'
   title: Parent rollout for event-driven singleton integrator and guarded mainline
