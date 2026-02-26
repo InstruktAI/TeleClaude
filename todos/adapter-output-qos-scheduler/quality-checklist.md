@@ -10,30 +10,20 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [x] Requirements implemented according to scope
-- [x] Implementation-plan task checkboxes all `[x]`
-- [x] PTB rate-limiter integration is active and verified in runtime logs
-- [x] Scheduler applies to both Telegram output paths (legacy + threaded)
-- [x] Final updates are not starved by normal updates
-- [x] Dynamic cadence math is covered by tests
-- [x] Fairness and coalescing behavior validated under multi-session load
-- [x] Tests pass (`make test` or targeted suite with rationale)
-- [x] Lint passes (`make lint`)
-- [x] No silent deferrals in implementation plan
-- [x] Runtime smoke checks completed (`make restart`, `make status`, relevant log grep)
-- [x] Working tree clean
-- [x] Comments/docstrings updated where behavior changed
-- [x] Docs updated for tuning knobs and behavior
-
-Manual verification:
-
-- `make test` passed on 2026-02-26 (`2246 passed, 106 skipped`), including scheduler, adapter, and regression coverage.
-- `make lint` passed on 2026-02-26 (`ruff format/check`, guardrails, markdown validation, and `pyright` all clean).
-- `telec todo demo validate adapter-output-qos-scheduler` passed with `3 executable block(s) found`.
-- `make restart` and `make status` both reported healthy daemon/API status (`launchd state: running`, `/health: OK`).
-- `instrukt-ai-logs teleclaude --since 15m --grep "Output cadence summary|Rate limited|qos|scheduler"` returned scheduler cadence lines and `reason=final` cadence summaries during completion.
-- `todos/adapter-output-qos-scheduler/demo.md` and `demos/adapter-output-qos-scheduler/demo.md` are in sync (`diff -q` clean).
-- Build-scope files are committed in this phase; remaining local drift (`todos/roadmap.yaml`, `todos/adapter-output-qos-scheduler/state.yaml`, `todos/adapter-output-qos-scheduler/review-findings.md`) is orchestrator/review flow state and outside builder code scope.
+- [ ] Requirements implemented according to scope
+- [ ] Implementation-plan task checkboxes all `[x]`
+- [ ] PTB rate-limiter integration is active and verified in runtime logs
+- [ ] Scheduler applies to both Telegram output paths (legacy + threaded)
+- [ ] Final updates are not starved by normal updates
+- [ ] Dynamic cadence math is covered by tests
+- [ ] Fairness and coalescing behavior validated under multi-session load
+- [ ] Tests pass (`make test` or targeted suite with rationale)
+- [ ] Lint passes (`make lint`)
+- [ ] No silent deferrals in implementation plan
+- [ ] Runtime smoke checks completed (`make restart`, `make status`, relevant log grep)
+- [ ] Working tree clean
+- [ ] Comments/docstrings updated where behavior changed
+- [ ] Docs updated for tuning knobs and behavior
 
 ## Review Gates (Reviewer)
 
