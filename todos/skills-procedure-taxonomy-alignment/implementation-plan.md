@@ -67,6 +67,8 @@ This follows existing artifact conventions (`## Required reads`, snippet schema,
 
 ### Task 3: Align in-scope skill wrappers
 
+- [x] Task complete
+
 **Files:**
 
 - `agents/skills/brainstorming/SKILL.md`

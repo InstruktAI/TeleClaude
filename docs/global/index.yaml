@@ -1,5 +1,5 @@
-project_root: /Users/Morriz/.teleclaude
-snippets_root: /Users/Morriz/.teleclaude/docs
+project_root: ~/.teleclaude
+snippets_root: ~/.teleclaude/docs
 snippets:
 - id: general/concept/agent-invocation-modes
   description: Standardized invocation patterns for AI agent CLIs, separating structured
@@ -33,6 +33,15 @@ snippets:
   type: concept
   scope: global
   path: docs/general/concept/normalized-agent-artifacts.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: general/concept/skill-taxonomy
+  description: Breath-aware taxonomy for agent skills defining exploratory, disciplinary,
+    and creative lanes to guide procedure extraction and wrapper alignment.
+  type: concept
+  scope: global
+  path: docs/general/concept/skill-taxonomy.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -274,12 +283,31 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: general/procedure/socratic-design-refinement
+  description: Refine ideas into explicit, approved designs through focused questioning
+    and trade-off analysis before writing implementation code.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/socratic-design-refinement.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/procedure/tool-spec-authoring
   description: Author lean tool specs under spec/tools while preserving schema compliance
     and progressive disclosure.
   type: procedure
   scope: global
   path: docs/general/procedure/tool-spec-authoring.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: general/procedure/youtube-research
+  description: Access YouTube channels, personal watch history, subscriptions, and
+    video transcripts for research and information gathering using the youtube_helper
+    script.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/youtube-research.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -800,12 +828,31 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: software-development/procedure/research/tech-stack-documentation
+  description: Research and index official documentation for project dependencies
+    as reusable internal snippets stored under ~/.teleclaude/docs/third-party/ or
+    docs/third-party/.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/research/tech-stack-documentation.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: software-development/procedure/research/third-party-research
   description: 'Research third-party docs: search authoritative sources, fetch, summarize,
     and index findings.'
   type: procedure
   scope: domain
   path: docs/software-development/procedure/research/third-party-research.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/root-cause-debugging
+  description: 'Four-phase root cause debugging methodology: reproduce, bisect, isolate,
+    and fix. Find root cause before proposing fixes.'
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/root-cause-debugging.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -847,6 +894,15 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/scaffolding/typescript-platforms/vite.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/silent-failure-audit
+  description: Audit error handling paths to identify silent failures, inadequate
+    logging, and inappropriate fallback behavior.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/silent-failure-audit.md
   role: member
   visibility: internal
   source_project: TeleClaude
