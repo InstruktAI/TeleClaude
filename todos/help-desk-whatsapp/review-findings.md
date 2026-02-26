@@ -64,6 +64,7 @@ None.
 3. Important #3 (live manual WhatsApp verification missing)
    - Status: blocked in this environment; no externally reachable webhook endpoint and no provisioned WhatsApp Cloud API account/token pair were available to execute live callback/delivery verification.
    - Clarification: revalidated on February 26, 2026 by checking runtime environment/config prerequisites; WhatsApp Cloud credentials and a publicly reachable webhook target remain unavailable in this workspace.
+   - Commit: `14eaf257` (documentation-only blocker clarification; no product code change)
 
 ## Verdict
 
