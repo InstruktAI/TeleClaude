@@ -44,8 +44,8 @@ updates. Redis fan-out via EventBusBridge ensures all daemons respond.
 
 **File(s):** `teleclaude/daemon.py` (in `_init_webhook_service()`)
 
-- [ ] Register handler: `handler_registry.register("deployment_update", handle_deployment_event)`
-- [ ] Register GitHub contract:
+- [x] Register handler: `handler_registry.register("deployment_update", handle_deployment_event)`
+- [x] Register GitHub contract:
   ```python
   Contract(
       id="deployment-github",
@@ -55,7 +55,7 @@ updates. Redis fan-out via EventBusBridge ensures all daemons respond.
       source="programmatic",
   )
   ```
-- [ ] Register fan-out contract:
+- [x] Register fan-out contract:
   ```python
   Contract(
       id="deployment-fanout",
