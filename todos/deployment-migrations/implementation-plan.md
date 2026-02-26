@@ -61,7 +61,7 @@ only. Follows patterns from existing `teleclaude/core/migrations/runner.py`.
 
 ### Task 2.2: Quality Checks
 
-- [ ] Run `make lint`
+- [x] Run `make lint`
 
 ---
 
