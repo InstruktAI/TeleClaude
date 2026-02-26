@@ -78,3 +78,68 @@ def test_candidate_transitions_from_not_ready_to_ready(tmp_path: Path) -> None:
     assert candidate is not None
     assert candidate.status == "READY"
     assert candidate.reasons == ()
+
+
+@pytest.mark.integration
+def test_replay_restores_readiness_after_restart(tmp_path: Path) -> None:
+    event_log_path = tmp_path / "integration-events.jsonl"
+    initial = IntegrationEventService.with_file_store(
+        event_log_path=event_log_path,
+        reachability_checker=lambda _branch, _sha, _remote: True,
+        integrated_checker=lambda _sha, _main_ref: False,
+    )
+
+    assert (
+        initial.ingest(
+            "review_approved",
+            {
+                "slug": "integration-events-model",
+                "approved_at": "2026-02-26T10:01:00Z",
+                "review_round": 1,
+                "reviewer_session_id": "review-1",
+            },
+        ).status
+        == "APPENDED"
+    )
+    assert (
+        initial.ingest(
+            "finalize_ready",
+            {
+                "slug": "integration-events-model",
+                "branch": "worktree/integration-events-model",
+                "sha": "abc123",
+                "worker_session_id": "worker-1",
+                "orchestrator_session_id": "orch-1",
+                "ready_at": "2026-02-26T10:00:00Z",
+            },
+        ).status
+        == "APPENDED"
+    )
+    assert (
+        initial.ingest(
+            "branch_pushed",
+            {
+                "branch": "worktree/integration-events-model",
+                "sha": "abc123",
+                "remote": "origin",
+                "pushed_at": "2026-02-26T10:02:00Z",
+                "pusher": "worker-1",
+            },
+        ).status
+        == "APPENDED"
+    )
+
+    restarted = IntegrationEventService.with_file_store(
+        event_log_path=event_log_path,
+        reachability_checker=lambda _branch, _sha, _remote: True,
+        integrated_checker=lambda _sha, _main_ref: False,
+    )
+    restarted.replay()
+
+    restored = restarted.get_candidate(
+        slug="integration-events-model",
+        branch="worktree/integration-events-model",
+        sha="abc123",
+    )
+    assert restored is not None
+    assert restored.status == "READY"
