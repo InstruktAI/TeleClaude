@@ -86,8 +86,8 @@ Verification:
 
 ### Task 4.1: Artifact validation
 
-- [ ] Run `telec todo demo validate integration-orchestrator-rollout`.
-- [ ] Verify parent and child preparation docs are internally consistent.
+- [x] Run `telec todo demo validate integration-orchestrator-rollout`.
+- [x] Verify parent and child preparation docs are internally consistent.
 - [ ] Verify no unchecked required tasks remain in this plan.
 
 ### Task 4.2: Dispatch readiness
