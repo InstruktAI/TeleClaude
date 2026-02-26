@@ -10,7 +10,7 @@ Four governance doc edits, each adding targeted wording to close the config-surf
 
 **File(s):** `docs/global/software-development/policy/definition-of-done.md`
 
-- [ ] In section "### 6. Documentation", add a new checklist item after the CLI help text item:
+- [x] In section "### 6. Documentation", add a new checklist item after the CLI help text item:
       `- [ ] If new configuration surface introduced (config keys, env vars, YAML sections): config wizard updated, config.sample.yml updated, teleclaude-config spec updated`
 
 ### Task 1.2: Strengthen DOR Gate 6 with config enumeration requirement
