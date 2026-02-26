@@ -60,6 +60,11 @@ def _is_within_pinned_minor(version: str, pinned_minor: str) -> bool:
         return False
 
 
+def _log_execute_update_task_exception(task: asyncio.Task) -> None:  # type: ignore[type-arg]
+    if not task.cancelled() and (exc := task.exception()):
+        logger.error("Deploy: execute_update task failed: %s", exc, exc_info=exc)
+
+
 async def handle_deployment_event(event: HookEvent) -> None:
     """Handle GitHub push/release events and deployment fan-out events.
 
@@ -147,7 +152,8 @@ async def handle_deployment_event(event: HookEvent) -> None:
     from teleclaude.deployment.executor import execute_update
 
     logger.info("Deployment handler: triggering update (channel=%s)", channel)
-    asyncio.create_task(execute_update(channel, version_info, get_redis=_get_redis))
+    task = asyncio.create_task(execute_update(channel, version_info, get_redis=_get_redis))
+    task.add_done_callback(_log_execute_update_task_exception)
 
 
 async def _publish_fanout(version_info: dict) -> None:  # type: ignore[type-arg]
