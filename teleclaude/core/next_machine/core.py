@@ -83,7 +83,7 @@ POST_COMPLETION: dict[str, str] = {
 1. Read worker output via get_session_data
 2. telec todo mark-phase {args} --phase build --status complete --cwd <project-root>
 3. Call {next_call} — this runs build gates (tests + demo validation)
-4. If next_work says gates PASSED: telec sessions end <session_id> --computer local and continue
+4. If next_work says gates PASSED: telec sessions end <session_id> and continue
 5. If next_work says BUILD GATES FAILED:
    a. Send the builder the failure message (do NOT end the session)
    b. Wait for the builder to report completion again
@@ -93,7 +93,7 @@ POST_COMPLETION: dict[str, str] = {
 1. Read worker output via get_session_data
 2. telec todo mark-phase {args} --phase build --status complete --cwd <project-root>
 3. Call {next_call} — this runs build gates (tests + demo validation)
-4. If next_work says gates PASSED: telec sessions end <session_id> --computer local and continue
+4. If next_work says gates PASSED: telec sessions end <session_id> and continue
 5. If next_work says BUILD GATES FAILED:
    a. Send the builder the failure message (do NOT end the session)
    b. Wait for the builder to report completion again
@@ -101,7 +101,7 @@ POST_COMPLETION: dict[str, str] = {
 """,
     "next-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data to extract verdict
-2. telec sessions end <session_id> --computer local
+2. telec sessions end <session_id>
 3. Relay verdict to state:
    - If APPROVE: telec todo mark-phase {args} --phase review --status approved --cwd <project-root>
    - If REQUEST CHANGES: telec todo mark-phase {args} --phase review --status changes_requested --cwd <project-root>
@@ -109,13 +109,13 @@ POST_COMPLETION: dict[str, str] = {
 """,
     "next-fix-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. telec sessions end <session_id> --computer local
+2. telec sessions end <session_id>
 3. telec todo mark-phase {args} --phase review --status pending --cwd <project-root>
 4. Call {next_call}
 """,
     "next-defer": """WHEN WORKER COMPLETES:
 1. Read worker output. Confirm deferrals_processed in state.yaml
-2. telec sessions end <session_id> --computer local
+2. telec sessions end <session_id>
 3. Call {next_call}
 """,
     "next-finalize": """WHEN WORKER COMPLETES:
@@ -129,7 +129,7 @@ POST_COMPLETION: dict[str, str] = {
    If any check fails: stop and report FINALIZE_LOCK_MISMATCH (do NOT apply).
 4. Confirm worker reported exactly `FINALIZE_READY: {args}` in session `<session_id>` transcript.
    If missing: send worker feedback to report FINALIZE_READY and stop (do NOT apply).
-5. telec sessions end <session_id> --computer local
+5. telec sessions end <session_id>
 6. FINALIZE APPLY (orchestrator-owned, canonical root only — NEVER cd into worktree):
    a. MAIN_REPO="$(git rev-parse --git-common-dir)/.."
    b. git -C "$MAIN_REPO" fetch origin main
@@ -211,7 +211,7 @@ Execute these steps in order (FOLLOW TO THE LETTER!):
 
 Based on the above guidance and the work item details, select the best agent and thinking mode.
 
-telec sessions run --computer local --command "{formatted_command}" --args "{args}" --project "{project}" --agent "<your selection>" --mode "<your selection>" --subfolder "{subfolder}"
+telec sessions run --command "{formatted_command}" --args "{args}" --project "{project}" --agent "<your selection>" --mode "<your selection>" --subfolder "{subfolder}"
 Save the returned session_id.
 
 STEP 2 - START BACKGROUND TIMER:

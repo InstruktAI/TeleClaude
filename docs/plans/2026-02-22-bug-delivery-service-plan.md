@@ -514,7 +514,7 @@ In the `POST_COMPLETION` dict (line 81), add:
 ```python
     "next-bugs-fix": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. telec sessions end(computer="local", session_id="<session_id>")
+2. telec sessions end(session_id="<session_id>")
 3. telec todo mark-phase(slug="{args}", phase="build", status="complete")
 4. Create PR if not already created:
    gh pr create --head fix/{args} --base main --title "fix: {args}" --body "Automated bug fix"

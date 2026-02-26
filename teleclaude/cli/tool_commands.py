@@ -127,7 +127,8 @@ def handle_sessions_list(args: list[str]) -> None:
 def handle_sessions_start(args: list[str]) -> None:
     """Start a new agent session.
 
-    Usage: telec sessions start --computer <name> --project <path>
+    Usage: telec sessions start --project <path>
+                                [--computer <name>]
                                 [--agent claude|gemini|codex]
                                 [--mode fast|med|slow]
                                 [--message <text>]
@@ -137,9 +138,10 @@ def handle_sessions_start(args: list[str]) -> None:
     given project directory. The agent starts immediately.
 
     Examples:
-      telec sessions start --computer local --project /path/to/project
-      telec sessions start --computer local --project /path/to/project --agent claude --mode slow
-      telec sessions start --computer local --project /p/to/p --message "Implement feature X"
+      telec sessions start --project /path/to/project
+      telec sessions start --project /path/to/project --agent claude --mode slow
+      telec sessions start --project /p/to/p --message "Implement feature X"
+      telec sessions start --project /path/to/project --computer remote-macbook
     """
     if "--help" in args or "-h" in args:
         print(handle_sessions_start.__doc__ or "")
@@ -288,7 +290,7 @@ def handle_sessions_run(args: list[str]) -> None:
                               [--args <args>]
                               [--agent claude|gemini|codex]
                               [--mode fast|med|slow]
-                              [--computer local]
+                              [--computer <name>]
 
     Creates a new session and immediately runs the given slash command with the
     specified arguments. Useful for dispatching worker commands like /next-build.
@@ -299,7 +301,7 @@ def handle_sessions_run(args: list[str]) -> None:
       --args <args>      Command arguments (e.g. "my-slug")
       --agent <name>     Agent to use (default: claude)
       --mode <mode>      Thinking mode: fast, med, slow (default: slow)
-      --computer <name>  Target computer (default: local)
+      --computer <name>  Target computer (optional; defaults to local)
       --subfolder <dir>  Subdirectory within the project
 
     Examples:
@@ -356,14 +358,14 @@ def handle_sessions_run(args: list[str]) -> None:
 def handle_sessions_end(args: list[str]) -> None:
     """End (terminate) a session.
 
-    Usage: telec sessions end <session_id> [--computer local]
+    Usage: telec sessions end <session_id> [--computer <name>]
 
     Gracefully terminates the session: kills the tmux session, deletes the
     session record, and cleans up all resources (listeners, workspace dirs).
 
     Examples:
       telec sessions end abc123
-      telec sessions end abc123 --computer local
+      telec sessions end abc123 --computer remote-macbook
     """
     if "--help" in args or "-h" in args:
         print(handle_sessions_end.__doc__ or "")

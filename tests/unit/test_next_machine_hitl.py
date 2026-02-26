@@ -514,7 +514,8 @@ def test_format_tool_call_codex_uses_normalized_command():
     )
     assert '--command "/next-build"' in result
     assert "/prompts:" not in result
-    assert "telec sessions run --computer local" in result
+    assert 'telec sessions run --command "/next-build"' in result
+    assert "telec sessions run --computer " not in result
 
 
 def test_format_tool_call_claude_no_prefix():
@@ -529,7 +530,8 @@ def test_format_tool_call_claude_no_prefix():
     )
     assert '--command "/next-build"' in result
     assert "/prompts:" not in result
-    assert "telec sessions run --computer local" in result
+    assert 'telec sessions run --command "/next-build"' in result
+    assert "telec sessions run --computer " not in result
 
 
 def test_format_tool_call_gemini_no_prefix():

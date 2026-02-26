@@ -129,7 +129,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Start a new agent session",
                 flags=[
                     _H,
-                    Flag("--computer", desc="Target computer (default: local)"),
+                    Flag("--computer", desc="Target computer (optional; defaults to local)"),
                     Flag("--project", desc="Project directory path"),
                     Flag("--agent", desc="Agent: claude, gemini, codex"),
                     Flag("--mode", desc="Thinking mode: fast, med, slow"),
@@ -162,7 +162,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--args", desc="Command arguments"),
                     Flag("--agent", desc="Agent: claude, gemini, codex"),
                     Flag("--mode", desc="Thinking mode: fast, med, slow"),
-                    Flag("--computer", desc="Target computer (default: local)"),
+                    Flag("--computer", desc="Target computer (optional; defaults to local)"),
                     Flag("--subfolder", desc="Subdirectory within the project"),
                 ],
                 notes=[
@@ -179,7 +179,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "end": CommandDef(
                 desc="End (terminate) a session",
                 args="<session_id>",
-                flags=[_H, Flag("--session", "-s", "Session ID"), Flag("--computer", desc="Target computer")],
+                flags=[
+                    _H,
+                    Flag("--session", "-s", "Session ID"),
+                    Flag("--computer", desc="Target computer (optional; defaults to local)"),
+                ],
             ),
             "unsubscribe": CommandDef(
                 desc="Stop receiving notifications from a session",
