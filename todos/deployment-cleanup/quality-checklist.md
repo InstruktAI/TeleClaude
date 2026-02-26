@@ -10,24 +10,24 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [x] Requirements implemented according to scope
-- [x] Implementation-plan task checkboxes all `[x]`
-- [x] Tests pass (`make test`) — 2349 passed, 106 skipped
-- [x] Lint passes (`make lint`) — 0 errors
-- [x] No silent deferrals in implementation plan — MCP already removed (N/A), no deferrals
-- [x] Code committed — 2 commits: refactor(deploy) + docs(deploy)
-- [x] Demo validated (`telec todo demo validate deployment-cleanup`) — 4 executable blocks found
-- [x] Working tree clean
-- [x] Comments/docstrings updated where behavior changed — no behavior remaining to document
+- [ ] Requirements implemented according to scope
+- [ ] Implementation-plan task checkboxes all `[x]`
+- [ ] Tests pass (`make test`)
+- [ ] Lint passes (`make lint`)
+- [ ] No silent deferrals in implementation plan
+- [ ] Code committed
+- [ ] Demo validated (`telec todo demo deployment-cleanup` exits 0, or exception noted)
+- [ ] Working tree clean
+- [ ] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior
+- [x] Deferrals justified and not hiding required scope — no deferrals
+- [x] Findings written in `review-findings.md` — Round 2 appended
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES (Round 2)
+- [x] Critical issues resolved or explicitly blocked — 2 Important findings (1 carried from R1)
+- [x] Test coverage and regression risk assessed — low regression risk
 
 ## Finalize Gates (Finalizer)
 
