@@ -24,6 +24,8 @@ This follows existing artifact conventions (`## Required reads`, snippet schema,
 
 ### Task 1: Define exploratory scope and taxonomy source of truth
 
+- [x] Task complete
+
 **Files:**
 
 - `docs/global/general/concept/skill-taxonomy.md`
