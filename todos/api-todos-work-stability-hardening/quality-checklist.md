@@ -10,23 +10,15 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [x] Requirements implemented according to scope
-- [x] Implementation-plan task checkboxes all `[x]`
-- [x] Tests pass (`make test`)
-- [x] Lint passes (`make lint`)
-- [x] No silent deferrals in implementation plan
-- [x] Code committed
-- [x] Demo validated (`telec todo demo validate api-todos-work-stability-hardening` exits 0, or exception noted)
-- [x] Working tree clean
-- [x] Comments/docstrings updated where behavior changed
-
-Manual verification notes (2026-02-26):
-
-- Targeted next-machine coverage: `pytest -q tests/unit/test_next_machine_worktree_prep.py tests/unit/test_next_machine_hitl.py` -> `54 passed`.
-- Lint gate: `make lint` -> passed (`ruff format/check`, `pyright` clean).
-- Test gate: `make test` -> `2209 passed, 106 skipped, 5 warnings`.
-- Demo structure: `telec todo demo validate api-todos-work-stability-hardening --project-root .` -> `Validation passed: 3 executable block(s) found`.
-- Runtime `/todos/work` verification attempt: `telec todo work api-todos-work-stability-hardening --project-root .` -> blocked by worker-role policy (`permission denied — role 'worker' is not permitted`), so direct in-session phase-log proof is not available from this worker context.
+- [ ] Requirements implemented according to scope
+- [ ] Implementation-plan task checkboxes all `[x]`
+- [ ] Tests pass (`make test`)
+- [ ] Lint passes (`make lint`)
+- [ ] No silent deferrals in implementation plan
+- [ ] Code committed
+- [ ] Demo validated (`telec todo demo validate api-todos-work-stability-hardening` exits 0, or exception noted)
+- [ ] Working tree clean
+- [ ] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 

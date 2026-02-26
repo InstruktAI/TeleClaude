@@ -1,17 +1,11 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: integration-orchestrator-rollout
-  description: Parent rollout for event-driven singleton integrator and guarded mainline
-    integration
-- slug: integration-safety-gates
-  group: integration-orchestrator-rollout
-  description: 'Step 1: add finalize/apply safety gates for dirty/diverged canonical
-    main'
+- slug: help-desk-startup-command-ordering
+  description: Fix startup ordering race where first help-desk message can interleave
+    with auto-command, contaminating agent startup and producing no reply
 - slug: api-todos-work-stability-hardening
   description: Stabilize `/todos/work` latency by removing redundant worktree prep/sync
     and adding phase-level diagnostics
-- slug: help-desk-whatsapp
-  description: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
 - slug: deployment-migrations
   group: mature-deployment
   description: 'Phase 2: Migration manifest format, runner, version utilities (no
@@ -52,3 +46,20 @@
   - integrator-cutover
   description: 'Step 5: emit integration_blocked flow with follow-up todo creation
     and resume UX'
+- slug: skills-procedure-taxonomy-alignment
+  description: Extract procedure logic from agents/skills into docs procedures and
+    align skill wrappers with breath-aware taxonomy (exploratory, skills-only scope).
+- slug: config-wizard-whatsapp-wiring
+  description: Wire WhatsApp env vars, guidance, and config.sample into the config
+    wizard
+- slug: config-wizard-governance
+  description: Add config wizard integration gates to DoD, DOR, add-adapter procedure,
+    and teleclaude-config spec
+- slug: config-wizard-redesign
+  after:
+  - config-wizard-whatsapp-wiring
+  description: Major visual and interaction redesign of the config wizard — card layout,
+    inline editing, guided onboarding, progress indicators
+- slug: adapter-output-qos-scheduler
+  description: Adapter-aware output QoS system to prevent Telegram flood-control churn
+    under high concurrency

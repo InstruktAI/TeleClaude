@@ -45,13 +45,23 @@
   - Same slug in different repos serialized (`elapsed=0.532s`)
   - Different slugs in different repos ran in parallel (`elapsed=0.271s`)
 
-## Fixes Applied
-
-1. Single-flight locking leaks across project boundaries because lock key omits `cwd`.
-   - Fix: `_get_slug_single_flight_lock` now canonicalizes `cwd` via `resolve_canonical_project_root` before keying the in-process lock map, enforcing repo-root + slug isolation even when callers provide non-canonical paths.
-   - Regression coverage: added `test_next_work_concurrent_same_slug_different_repos_do_not_serialize_prep` proving same-slug `next_work` prep runs concurrently across two repos.
-   - Commit: `e7257f20`
-
 ## Verdict
 
 REQUEST CHANGES
+
+## Orchestrator Round-Cap Closure (2026-02-26)
+
+- Trigger: `REVIEW_ROUND_LIMIT` reached (`review_round=3`, `max_review_rounds=3`).
+- Decision: `APPROVE` for lifecycle progression.
+- Critical status: no unresolved Critical findings.
+- Evidence of fix for the prior Important finding (repo-boundary lock scope):
+  - `d6c12894 fix(next-machine): scope single-flight locks per project`
+  - `e7257f20 fix(next-machine): isolate single-flight by canonical repo root`
+  - `6aa99863` and `619d57ca` regression coverage for cross-repo same-slug concurrency
+  - Current implementation keys `_SINGLE_FLIGHT_LOCKS` by `(canonical_cwd, slug)` in
+    `teleclaude/core/next_machine/core.py`.
+- Residual follow-up (non-blocking):
+  - One orchestrator gate run observed a timeout/flaky failure in
+    `tests/unit/test_next_machine_hitl.py::test_next_work_concurrent_same_slug_different_repos_do_not_serialize_prep`.
+  - Recent builder verification reran full gates with passing results; monitor for recurrence and
+    open a dedicated flake-stability todo if the timeout reappears.
