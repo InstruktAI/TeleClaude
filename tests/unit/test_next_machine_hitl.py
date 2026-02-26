@@ -1,5 +1,6 @@
 import asyncio
 import os
+import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -803,16 +804,32 @@ async def test_next_work_concurrent_same_slug_single_flight_prep():
     slug = "single-flight"
 
     with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        subprocess.run(["git", "init"], cwd=tmpdir, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "config", "user.email", "tests@example.com"], cwd=tmpdir, check=True, capture_output=True, text=True
+        )
+        subprocess.run(["git", "config", "user.name", "Tests"], cwd=tmpdir, check=True, capture_output=True, text=True)
+
         _write_roadmap_yaml(tmpdir, [slug])
 
-        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir = tmp_path / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Req")
         (item_dir / "implementation-plan.md").write_text("# Plan")
         (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
-        worktree_todo = Path(tmpdir) / "trees" / slug / "todos" / slug
-        worktree_todo.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "add", "todos"], cwd=tmpdir, check=True, capture_output=True, text=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=tmpdir, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "worktree", "add", f"trees/{slug}", "-b", slug],
+            cwd=tmpdir,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        worktree_todo = tmp_path / "trees" / slug / "todos" / slug
         (worktree_todo / "state.yaml").write_text('{"build":"pending","review":"pending"}')
 
         prep_calls = 0
@@ -823,7 +840,6 @@ async def test_next_work_concurrent_same_slug_single_flight_prep():
             time.sleep(0.1)
 
         with (
-            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
             patch("teleclaude.core.next_machine.core._prepare_worktree", side_effect=_slow_prepare),
             patch(
                 "teleclaude.core.next_machine.core.compose_agent_guidance",
@@ -838,6 +854,7 @@ async def test_next_work_concurrent_same_slug_single_flight_prep():
         assert "next-build" in result_a
         assert "next-build" in result_b
         assert prep_calls == 1
+        assert (tmp_path / "trees" / slug / ".teleclaude" / "worktree-prep-state.json").exists()
 
 
 def test_post_completion_finalize_includes_make_restart():
