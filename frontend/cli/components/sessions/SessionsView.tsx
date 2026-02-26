@@ -185,7 +185,12 @@ export function SessionsView({
     [selectedAgent, tmux],
   );
 
-  const { handlePress } = useDoublePress(handlePreview, handleToggleSticky);
+  const handleClearPreview = useCallback(() => {
+    dispatch({ type: "CLEAR_PREVIEW" });
+    tmux.hidePreview();
+  }, [dispatch, tmux]);
+
+  const { handlePress } = useDoublePress(handlePreview, handleToggleSticky, handleClearPreview);
 
   // -- Collapse/expand helpers -----------------------------------------------
 

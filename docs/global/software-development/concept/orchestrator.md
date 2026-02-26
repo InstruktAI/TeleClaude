@@ -21,6 +21,7 @@ Supervisory role. Dispatch workers, monitor progress, drive state machine execut
 4. **Scrutinize workers** - Review worker outputs for correctness and completeness.
 5. **Update state** - Mark phase completion after worker completion.
 6. **Manage lifecycle** - End sessions before continuing to the next iteration.
+7. **Stay non-chatty** - Never send no-op acknowledgements; message workers only with actionable guidance.
 
 ## Why
 
