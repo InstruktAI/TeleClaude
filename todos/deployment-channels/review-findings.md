@@ -103,3 +103,22 @@ The `_handle_version` changes (loading deployment config, fallback to alpha, sta
 ## Verdict: REQUEST CHANGES
 
 The double-execution bug (Critical #1) is a deployment-safety issue that must be resolved before merge. Additionally, the dead code findings (#2, #3) and missing test coverage for error paths (#6, #7) indicate the implementation needs another pass.
+
+---
+
+## Fixes Applied
+
+| Issue                                 | Fix                                                                                                          | Commit     |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------- |
+| #2 Dead code `_dispatch`              | Removed `_dispatch` field and `dispatch` param from `configure_deployment_handler`; updated daemon call site | `e85b5b43` |
+| #3 Unreachable JSON parsing           | Removed lines 106-113 (`version_info` JSON parse that always received `""`)                                  | `84ef78b3` |
+| #5 No maxlen on xadd                  | Added `maxlen=1000` to `redis.xadd` in `_publish_fanout`                                                     | `0b33baa0` |
+| #1 Double execution (Critical)        | Embed `daemon_id` in fan-out message; consumer skips messages with matching `daemon_id`                      | `a5ff0fb5` |
+| #4 Blocking `run_migrations`          | Wrapped with `await asyncio.to_thread(run_migrations, ...)`                                                  | `35369270` |
+| #6 Missing executor error paths       | Added tests for git pull, fetch, checkout, make install failure and timeout                                  | `cf570370` |
+| #7 Missing integration test           | Added `test_integration_github_event_invokes_execute_update_with_correct_args` and beta variant              | `cf570370` |
+| #8 Fan-out decision logic undertested | Added tests for alpha/beta/stable fan-out dispatch, channel mismatch, and stable pinned_minor evaluation     | `cf570370` |
+
+Tests: 33 passed, 0 failed. Lint: PASSING.
+
+Ready for re-review.
