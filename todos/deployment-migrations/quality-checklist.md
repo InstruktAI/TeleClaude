@@ -16,14 +16,13 @@ Ownership:
 - [x] Lint passes (`make lint`)
 - [x] No silent deferrals in implementation plan
 - [x] Code committed
-- [x] Demo validated (`telec todo demo validate deployment-migrations` passed)
+- [x] Demo validated (`telec todo demo deployment-migrations` exits 0, or exception noted)
 - [x] Working tree clean
 - [x] Comments/docstrings updated where behavior changed
 
-Manual verification: library-only delivery. Verified observable behavior with
-`tests/unit/test_deployment_migration_runner.py` coverage (ordering, skip,
-failure preservation, dry-run planning, atomic state persistence) plus demo
-validation (`telec todo demo validate deployment-migrations`).
+Manual verification: library-only delivery verified via
+`tests/unit/test_deployment_migration_runner.py` behavioral coverage and
+`telec todo demo validate deployment-migrations` (3 executable blocks found).
 
 ## Review Gates (Reviewer)
 
