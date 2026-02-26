@@ -59,6 +59,20 @@ def adapter() -> WhatsAppAdapter:
 
 
 @pytest.mark.asyncio
+async def test_stop_stops_qos_before_closing_http_client(adapter: WhatsAppAdapter) -> None:
+    call_order: list[str] = []
+    adapter._http = AsyncMock()
+    adapter._http.aclose = AsyncMock(side_effect=lambda: call_order.append("http"))  # type: ignore[method-assign]
+    adapter._stop_output_scheduler = AsyncMock(side_effect=lambda: call_order.append("qos"))  # type: ignore[method-assign]
+
+    await adapter.stop()
+
+    adapter._stop_output_scheduler.assert_awaited_once()  # type: ignore[attr-defined]
+    assert call_order[:2] == ["qos", "http"]
+    assert adapter._http is None
+
+
+@pytest.mark.asyncio
 async def test_send_message_posts_text_payload(adapter: WhatsAppAdapter, customer_session: Session) -> None:
     adapter._http = AsyncMock()
     adapter._http.post = AsyncMock(return_value=_FakeResponse({"messages": [{"id": "wamid.123"}]}))

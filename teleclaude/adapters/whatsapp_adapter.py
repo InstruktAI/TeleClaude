@@ -63,6 +63,7 @@ class WhatsAppAdapter(UiAdapter):
         self._http = httpx.AsyncClient(timeout=15.0)
 
     async def stop(self) -> None:
+        await self._stop_output_scheduler()
         if self._http is not None:
             await self._http.aclose()
             self._http = None

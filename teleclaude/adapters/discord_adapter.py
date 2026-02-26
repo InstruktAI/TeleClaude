@@ -126,6 +126,7 @@ class DiscordAdapter(UiAdapter):
         """Stop Discord client and gateway task."""
         self._tree = None
         self._launcher_registration_view = None
+        await self._stop_output_scheduler()
         if self._client is not None:
             await self._client.close()
         if self._gateway_task and not self._gateway_task.done():

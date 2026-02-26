@@ -413,6 +413,14 @@ class UiAdapter(BaseAdapter):
             return
         self._output_scheduler.record_retry_after(session_id)
 
+    async def _stop_output_scheduler(self) -> None:
+        """Stop adapter-local QoS scheduler and clear reference."""
+        scheduler = self._output_scheduler
+        self._output_scheduler = None
+        if scheduler is None:
+            return
+        await scheduler.stop()
+
     async def _dispatch_with_output_qos(
         self,
         session: "Session",

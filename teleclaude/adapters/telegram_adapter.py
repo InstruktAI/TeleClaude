@@ -932,6 +932,8 @@ class TelegramAdapter(
                 pass
             self._startup_housekeeping_task = None
 
+        await self._stop_output_scheduler()
+
         if self.app and self.app.updater:
             await self.app.updater.stop()
             await self.app.stop()

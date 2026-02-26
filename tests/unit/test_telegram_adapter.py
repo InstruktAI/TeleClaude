@@ -83,6 +83,37 @@ class TestInitialization:
         with pytest.raises(AdapterError, match="not started"):
             telegram_adapter._ensure_started()
 
+    @pytest.mark.asyncio
+    async def test_stop_stops_qos_before_telegram_transport(self, telegram_adapter):
+        call_order: list[str] = []
+
+        async def _record_qos_stop() -> None:
+            call_order.append("qos")
+
+        async def _record_updater_stop() -> None:
+            call_order.append("updater")
+
+        async def _record_app_stop() -> None:
+            call_order.append("app")
+
+        async def _record_app_shutdown() -> None:
+            call_order.append("shutdown")
+
+        telegram_adapter._stop_output_scheduler = AsyncMock(side_effect=_record_qos_stop)  # type: ignore[method-assign]
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.updater = MagicMock()
+        telegram_adapter.app.updater.stop = AsyncMock(side_effect=_record_updater_stop)
+        telegram_adapter.app.stop = AsyncMock(side_effect=_record_app_stop)
+        telegram_adapter.app.shutdown = AsyncMock(side_effect=_record_app_shutdown)
+
+        await telegram_adapter.stop()
+
+        telegram_adapter._stop_output_scheduler.assert_awaited_once()  # type: ignore[attr-defined]
+        telegram_adapter.app.updater.stop.assert_awaited_once()
+        telegram_adapter.app.stop.assert_awaited_once()
+        telegram_adapter.app.shutdown.assert_awaited_once()
+        assert call_order[:4] == ["qos", "updater", "app", "shutdown"]
+
 
 class TestCommandHandlerFilters:
     """Tests for command handler update filters."""

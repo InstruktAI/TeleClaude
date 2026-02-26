@@ -791,6 +791,29 @@ async def test_discord_close_channel_deletes_thread() -> None:
 
 
 @pytest.mark.asyncio
+async def test_discord_stop_stops_qos_before_closing_client() -> None:
+    adapter = _make_adapter()
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    call_order: list[str] = []
+
+    async def _record_qos_stop() -> None:
+        call_order.append("qos")
+
+    async def _record_client_close() -> None:
+        call_order.append("client")
+
+    adapter._client = fake_client
+    adapter._stop_output_scheduler = AsyncMock(side_effect=_record_qos_stop)  # type: ignore[method-assign]
+    fake_client.close = AsyncMock(side_effect=_record_client_close)  # type: ignore[method-assign]
+
+    await adapter.stop()
+
+    adapter._stop_output_scheduler.assert_awaited_once()  # type: ignore[attr-defined]
+    fake_client.close.assert_awaited_once()  # type: ignore[attr-defined]
+    assert call_order[:2] == ["qos", "client"]
+
+
+@pytest.mark.asyncio
 async def test_handle_on_ready_sets_ready_before_slow_bootstrap() -> None:
     adapter = _make_adapter()
     adapter._client = FakeDiscordClient(intents=FakeDiscordIntents.default())
