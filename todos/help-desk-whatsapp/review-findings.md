@@ -46,12 +46,6 @@ None.
    - `pyright teleclaude/adapters/whatsapp_adapter.py teleclaude/hooks/whatsapp_handler.py teleclaude/hooks/normalizers/whatsapp.py teleclaude/core/identity.py teleclaude/core/models.py`
    - Result: pass (`0 errors`).
 5. Live WhatsApp Cloud API verification is blocked in this environment (no externally reachable webhook endpoint and no provisioned account/token pair for end-to-end calls).
-6. Executed on February 26, 2026:
-   - `pytest -q tests/unit/test_access_control.py tests/unit/test_whatsapp_adapter.py tests/integration/test_whatsapp_flow.py`
-   - Result: pass (`22 passed`).
-7. Executed on February 26, 2026:
-   - `ruff check teleclaude/adapters/whatsapp_adapter.py teleclaude/hooks/whatsapp_handler.py teleclaude/core/command_handlers.py tests/unit/test_access_control.py tests/unit/test_whatsapp_adapter.py tests/integration/test_whatsapp_flow.py`
-   - Result: pass.
 
 ## Fixes Applied
 
@@ -63,8 +57,6 @@ None.
    - Commit: `a12be752`
 3. Important #3 (live manual WhatsApp verification missing)
    - Status: blocked in this environment; no externally reachable webhook endpoint and no provisioned WhatsApp Cloud API account/token pair were available to execute live callback/delivery verification.
-   - Clarification: revalidated on February 26, 2026 by checking runtime environment/config prerequisites; WhatsApp Cloud credentials and a publicly reachable webhook target remain unavailable in this workspace.
-   - Commit: `14eaf257` (documentation-only blocker clarification; no product code change)
 
 ## Verdict
 
