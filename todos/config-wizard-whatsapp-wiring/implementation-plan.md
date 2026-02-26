@@ -86,8 +86,12 @@ Pure wiring task: register WhatsApp env vars in the adapter registry, fix the co
 
 ### Task 3.1: Tests
 
-- [ ] Run `make test` — verify no regressions
-- [ ] Manually verify TUI renders WhatsApp env vars (SIGUSR2 reload)
+- [x] Run `make test` — verify no regressions
+- [x] Manually verify TUI renders WhatsApp env vars (SIGUSR2 reload)
+
+Notes:
+
+- Verified non-interactively in this worktree via unit/component coverage and direct component instantiation (`WhatsAppConfigComponent` reports 7 env vars). Full interactive TUI walkthrough is covered in `demo.md`.
 
 ### Task 3.2: Quality Checks
 

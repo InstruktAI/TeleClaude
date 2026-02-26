@@ -791,6 +791,7 @@ async def test_discord_close_channel_deletes_thread() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(5)
 async def test_handle_on_ready_sets_ready_before_slow_bootstrap() -> None:
     adapter = _make_adapter()
     adapter._client = FakeDiscordClient(intents=FakeDiscordIntents.default())
@@ -926,6 +927,7 @@ async def test_post_or_update_launcher_pins_new_message() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(5)
 async def test_post_or_update_launcher_pins_existing_message() -> None:
     adapter = _make_adapter()
     adapter._client = FakeDiscordClient(intents=FakeDiscordIntents.default())
