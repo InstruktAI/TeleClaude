@@ -274,3 +274,56 @@ def test_service_breaks_equal_ready_at_ties_deterministically(tmp_path: Path) ->
     assert candidate_a.status == "SUPERSEDED"
     assert candidate_a.superseded_by == candidate_z.key
     assert candidate_z.status == "READY"
+
+
+def test_service_replays_history_on_init(tmp_path: Path) -> None:
+    event_log_path = tmp_path / "integration-events.jsonl"
+    first = _new_service(event_log_path)
+    assert (
+        first.ingest(
+            "review_approved",
+            {
+                "slug": "integration-events-model",
+                "approved_at": "2026-02-26T10:00:00Z",
+                "review_round": 1,
+                "reviewer_session_id": "review-1",
+            },
+        ).status
+        == "APPENDED"
+    )
+    assert (
+        first.ingest(
+            "branch_pushed",
+            {
+                "branch": "worktree/integration-events-model",
+                "sha": "abc123",
+                "remote": "origin",
+                "pushed_at": "2026-02-26T10:01:00Z",
+                "pusher": "worker-1",
+            },
+        ).status
+        == "APPENDED"
+    )
+    assert (
+        first.ingest(
+            "finalize_ready",
+            {
+                "slug": "integration-events-model",
+                "branch": "worktree/integration-events-model",
+                "sha": "abc123",
+                "worker_session_id": "worker-1",
+                "orchestrator_session_id": "orch-1",
+                "ready_at": "2026-02-26T10:02:00Z",
+            },
+        ).status
+        == "APPENDED"
+    )
+
+    restarted = _new_service(event_log_path)
+    candidate = restarted.get_candidate(
+        slug="integration-events-model",
+        branch="worktree/integration-events-model",
+        sha="abc123",
+    )
+    assert candidate is not None
+    assert candidate.status == "READY"

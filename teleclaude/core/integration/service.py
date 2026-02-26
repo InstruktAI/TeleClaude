@@ -43,6 +43,8 @@ class IntegrationEventService:
         self._store = store
         self._projection = projection
         self._last_update = ProjectionUpdate(transitioned_to_ready=(), transitioned_to_superseded=(), diagnostics=())
+        # Keep projection consistent with durable history from the first read.
+        self.replay()
 
     @classmethod
     def with_file_store(
