@@ -2711,25 +2711,99 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     if current_phase == ItemPhase.PENDING.value:
         await asyncio.to_thread(set_item_phase, worktree_cwd, resolved_slug, ItemPhase.IN_PROGRESS.value)
 
-    # 7. Check build status (from state.yaml in worktree)
-    # mark_phase(build, started) is deferred to the orchestrator via pre_dispatch
-    # to avoid orphaned "build: started" when the orchestrator decides not to dispatch.
-    if not await asyncio.to_thread(is_build_complete, worktree_cwd, resolved_slug):
+    # 7. Route from worktree-owned build/review state.
+    # Review is authoritative: once approved, never regress back to build because
+    # of clerical build-state drift.
+    state = await asyncio.to_thread(read_phase_state, worktree_cwd, resolved_slug)
+    build_value = state.get(PhaseName.BUILD.value)
+    build_status = build_value if isinstance(build_value, str) else PhaseStatus.PENDING.value
+    review_value = state.get(PhaseName.REVIEW.value)
+    review_status = review_value if isinstance(review_value, str) else PhaseStatus.PENDING.value
+
+    # Repair contradictory state: review approved implies build complete.
+    if review_status == PhaseStatus.APPROVED.value and build_status != PhaseStatus.COMPLETE.value:
+        repair_started = perf_counter()
+        await asyncio.to_thread(
+            mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.COMPLETE.value
+        )
+        await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
+        build_status = PhaseStatus.COMPLETE.value
+        _log_next_work_phase(
+            phase_slug,
+            "state_repair",
+            repair_started,
+            "run",
+            "approved_review_implies_build_complete",
+        )
+
+    # Guard stale review approvals: if new commits landed after approval baseline,
+    # route back through review instead of proceeding to finalize.
+    if review_status == PhaseStatus.APPROVED.value:
+        baseline_raw = state.get("review_baseline_commit")
+        baseline = baseline_raw if isinstance(baseline_raw, str) else ""
+        head_sha = await asyncio.to_thread(_get_head_commit, worktree_cwd)
+        if baseline and head_sha and baseline != head_sha:
+            repair_started = perf_counter()
+            await asyncio.to_thread(
+                mark_phase, worktree_cwd, resolved_slug, PhaseName.REVIEW.value, PhaseStatus.PENDING.value
+            )
+            await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
+            review_status = PhaseStatus.PENDING.value
+            _log_next_work_phase(
+                phase_slug,
+                "state_repair",
+                repair_started,
+                "run",
+                "review_approval_stale_baseline",
+            )
+
+    # If review requested changes, continue fix loop regardless of build-state drift.
+    if review_status == PhaseStatus.CHANGES_REQUESTED.value:
         try:
             guidance = await compose_agent_guidance(db)
         except RuntimeError as exc:
             _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
             return format_error("NO_AGENTS", str(exc))
+        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_fix_review")
+        return format_tool_call(
+            command="next-fix-review",
+            args=resolved_slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder=f"trees/{resolved_slug}",
+            next_call=f"telec todo work {resolved_slug}",
+        )
 
-        # Build pre-dispatch marking instructions
-        pre_dispatch = f"telec todo mark-phase {resolved_slug} --phase build --status started --cwd <project-root>"
+    # Pending review still requires build completion + gates before dispatching review.
+    if review_status != PhaseStatus.APPROVED.value:
+        # mark_phase(build, started) is deferred to the orchestrator via pre_dispatch
+        # to avoid orphaned "build: started" when the orchestrator decides not to dispatch.
+        if build_status != PhaseStatus.COMPLETE.value:
+            try:
+                guidance = await compose_agent_guidance(db)
+            except RuntimeError as exc:
+                _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
+                return format_error("NO_AGENTS", str(exc))
 
-        # Bugs use next-bugs-fix instead of next-build
-        is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
-        if is_bug:
-            _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_bugs_fix")
+            # Build pre-dispatch marking instructions
+            pre_dispatch = f"telec todo mark-phase {resolved_slug} --phase build --status started --cwd <project-root>"
+
+            # Bugs use next-bugs-fix instead of next-build
+            is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
+            if is_bug:
+                _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_bugs_fix")
+                return format_tool_call(
+                    command="next-bugs-fix",
+                    args=resolved_slug,
+                    project=cwd,
+                    guidance=guidance,
+                    subfolder=f"trees/{resolved_slug}",
+                    next_call=f"telec todo work {resolved_slug}",
+                    pre_dispatch=pre_dispatch,
+                )
+            _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_build")
             return format_tool_call(
-                command="next-bugs-fix",
+                command="next-build",
                 args=resolved_slug,
                 project=cwd,
                 guidance=guidance,
@@ -2737,51 +2811,23 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 next_call=f"telec todo work {resolved_slug}",
                 pre_dispatch=pre_dispatch,
             )
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_build")
-        return format_tool_call(
-            command="next-build",
-            args=resolved_slug,
-            project=cwd,
-            guidance=guidance,
-            subfolder=f"trees/{resolved_slug}",
-            next_call=f"telec todo work {resolved_slug}",
-            pre_dispatch=pre_dispatch,
-        )
 
-    # 7.5 Build gates: verify tests and demo structure before allowing review
-    gate_started = perf_counter()
-    gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, resolved_slug)
-    if not gates_passed:
-        _log_next_work_phase(phase_slug, "gate_execution", gate_started, "error", "build_gates_failed")
-        # Reset build to started so the builder can fix and try again
-        await asyncio.to_thread(
-            mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
-        )
-        # Sync reset state back to main
-        await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
-        next_call = f"telec todo work {resolved_slug}"
-        return format_build_gate_failure(resolved_slug, gate_output, next_call)
-    _log_next_work_phase(phase_slug, "gate_execution", gate_started, "run", "build_gates_passed")
-
-    # 8. Check review status
-    if not await asyncio.to_thread(is_review_approved, worktree_cwd, resolved_slug):
-        # Check if review hasn't started yet or needs fixes
-        if await asyncio.to_thread(is_review_changes_requested, worktree_cwd, resolved_slug):
-            try:
-                guidance = await compose_agent_guidance(db)
-            except RuntimeError as exc:
-                _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
-                return format_error("NO_AGENTS", str(exc))
-            _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_fix_review")
-            return format_tool_call(
-                command="next-fix-review",
-                args=resolved_slug,
-                project=cwd,
-                guidance=guidance,
-                subfolder=f"trees/{resolved_slug}",
-                next_call=f"telec todo work {resolved_slug}",
+        # Build gates: verify tests and demo structure before allowing review.
+        gate_started = perf_counter()
+        gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, resolved_slug)
+        if not gates_passed:
+            _log_next_work_phase(phase_slug, "gate_execution", gate_started, "error", "build_gates_failed")
+            # Reset build to started so the builder can fix and try again
+            await asyncio.to_thread(
+                mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
             )
-        # Review not started or still pending
+            # Sync reset state back to main
+            await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
+            next_call = f"telec todo work {resolved_slug}"
+            return format_build_gate_failure(resolved_slug, gate_output, next_call)
+        _log_next_work_phase(phase_slug, "gate_execution", gate_started, "run", "build_gates_passed")
+
+        # Review not started or still pending.
         limit_reached, current_round, max_rounds = _is_review_round_limit_reached(worktree_cwd, resolved_slug)
         if limit_reached:
             _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "review_round_limit")

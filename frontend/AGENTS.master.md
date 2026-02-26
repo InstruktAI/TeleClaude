@@ -2,9 +2,47 @@
 
 # TeleClaude Frontend — Project Overview & Instructions
 
-This directory contains the Next.js (TypeScript) web interface for TeleClaude. It provides a real-time chat experience, session management, and a unified design system that mirrors the TeleClaude TUI.
+This directory is a **Next.js web application**. It is NOT a terminal UI and must NOT contain terminal, TUI, or Python TUI concepts.
 
-## 🚀 Building and Running
+## Architecture Boundary — MANDATORY
+
+The TeleClaude project has two separate UIs with completely different architectures:
+
+|                 | Python TUI                             | This Frontend                          |
+| --------------- | -------------------------------------- | -------------------------------------- |
+| **Location**    | `teleclaude/cli/tui/`                  | `frontend/`                            |
+| **Framework**   | Python Textual + tmux                  | Next.js + React                        |
+| **Runs in**     | Terminal                               | Browser                                |
+| **State**       | Dataclass + reducer                    | React state / server state             |
+| **Layout**      | Tmux pane splits                       | CSS / responsive web layout            |
+| **Interaction** | Keyboard-driven, double-press gestures | Standard web UX (click, hover, modals) |
+
+**These are independent applications. There is no shared architecture between them.**
+
+### What MUST NOT exist in this frontend
+
+- Tmux concepts: panes, splits, pane IDs, layout grids, `execSync("tmux ...")`
+- Ink (React terminal renderer) components or imports
+- State machines ported from the Python TUI (`reduce_state`, `TreeInteractionState`)
+- Double-press gesture detection or terminal interaction patterns
+- "Sticky sessions" as a layout concept (this is a tmux pane grid pattern)
+- SSH/remote tmux attachment logic
+- Any file with comments like "Ported from", "Source: \*.py", or "Faithful port"
+- Any import from a `cli/` subdirectory into `app/` or `components/`
+
+### What belongs here
+
+- Next.js App Router pages and API routes
+- React Server Components and Client Components following Next.js conventions
+- Standard web UI patterns: modals, sidebars, responsive layouts, navigation
+- API calls to the TeleClaude daemon via HTTP/WebSocket proxy
+- Web-native state management (React state, server state, URL state)
+
+**If you are building a feature and find yourself referencing the Python TUI as a source, STOP. Design the web UX from scratch using web-native patterns. The Python TUI solves terminal constraints that do not exist in a browser.**
+
+---
+
+## Building and Running
 
 ### Prerequisites
 
@@ -35,7 +73,7 @@ pnpm db:studio # Open Drizzle Studio to inspect data
 
 ---
 
-## 🎨 Design System & Theming
+## Design System & Theming
 
 The frontend uses a **Master Source** architecture to keep colors consistent across all interfaces.
 
@@ -46,7 +84,7 @@ The frontend uses a **Master Source** architecture to keep colors consistent acr
 
 ---
 
-## 🛠 Development Conventions
+## Development Conventions
 
 ### Message Pipeline
 
@@ -73,7 +111,7 @@ The frontend does not communicate directly with external services. Instead, it p
 
 ---
 
-## 📂 Key Directory Structure
+## Key Directory Structure
 
 - `/app`: Next.js App Router (pages, API routes, layout).
 - `/components`: Shared React components (Assistant, Parts, Sidebar).

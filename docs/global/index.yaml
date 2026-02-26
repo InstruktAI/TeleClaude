@@ -36,6 +36,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: general/concept/skill-taxonomy
+  description: Breath-aware taxonomy for agent skills defining exploratory, disciplinary,
+    and creative lanes to guide procedure extraction and wrapper alignment.
+  type: concept
+  scope: global
+  path: docs/general/concept/skill-taxonomy.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/policy/autonomy
   description: Guidelines for agent autonomy, escalation, and user interaction.
   type: policy
