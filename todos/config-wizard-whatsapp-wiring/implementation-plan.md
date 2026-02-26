@@ -59,7 +59,7 @@ Pure wiring task: register WhatsApp env vars in the adapter registry, fix the co
 
 **File(s):** `docs/project/spec/teleclaude-config.md`
 
-- [ ] Add to `config_keys` section:
+- [x] Add to `config_keys` section:
   ```yaml
   whatsapp:
     enabled: boolean
@@ -71,7 +71,7 @@ Pure wiring task: register WhatsApp env vars in the adapter registry, fix the co
     template_name: string
     template_language: string
   ```
-- [ ] Add to `environment_variables` list:
+- [x] Add to `environment_variables` list:
   - `WHATSAPP_PHONE_NUMBER_ID`
   - `WHATSAPP_ACCESS_TOKEN`
   - `WHATSAPP_WEBHOOK_SECRET`
