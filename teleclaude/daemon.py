@@ -145,6 +145,7 @@ HOOK_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_BASE_BACKOFF_S"
 HOOK_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_MAX_BACKOFF_S", "60"))
 HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S: float = float(os.getenv("HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S", "5"))
 HOOK_OUTBOX_SESSION_MAX_PENDING: int = int(os.getenv("HOOK_OUTBOX_SESSION_MAX_PENDING", "32"))
+HOOK_OUTBOX_SESSION_CRITICAL_RESERVE: int = int(os.getenv("HOOK_OUTBOX_SESSION_CRITICAL_RESERVE", "8"))
 HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK: int = int(
     os.getenv(
         "HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK",
@@ -167,6 +168,10 @@ if HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK > HOOK_OUTBOX_SESSION_MAX_PENDING:
     HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK = HOOK_OUTBOX_SESSION_MAX_PENDING  # pyright: ignore[reportConstantRedefinition]
 if HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK >= HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK:
     HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK = max(0, HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK - 1)  # pyright: ignore[reportConstantRedefinition]
+if HOOK_OUTBOX_SESSION_CRITICAL_RESERVE < 0:
+    HOOK_OUTBOX_SESSION_CRITICAL_RESERVE = 0  # pyright: ignore[reportConstantRedefinition]
+if HOOK_OUTBOX_SESSION_CRITICAL_RESERVE > HOOK_OUTBOX_SESSION_MAX_PENDING:
+    HOOK_OUTBOX_SESSION_CRITICAL_RESERVE = HOOK_OUTBOX_SESSION_MAX_PENDING  # pyright: ignore[reportConstantRedefinition]
 
 HOOK_EVENT_CLASS_CRITICAL: frozenset[str] = frozenset(
     {
@@ -462,6 +467,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             if item.classification == "bursty":
                 return idx
         return None
+
+    @staticmethod
+    def _bursty_item_count(pending: list[_HookOutboxQueueItem]) -> int:
+        return sum(1 for item in pending if item.classification == "bursty")
+
+    @staticmethod
+    def _bursty_capacity_limit() -> int:
+        return max(0, HOOK_OUTBOX_SESSION_MAX_PENDING - HOOK_OUTBOX_SESSION_CRITICAL_RESERVE)
 
     async def _session_outbox_depth(self, session_id: str) -> int:
         """Return outstanding per-session depth including in-flight items."""
@@ -866,7 +879,21 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     if row_id:
                         claimed_row_ids.add(row_id)
                 else:
-                    if len(pending) >= HOOK_OUTBOX_SESSION_MAX_PENDING:
+                    bursty_limit = self._bursty_capacity_limit()
+                    if bursty_limit == 0:
+                        dropped_rows.append(row)
+                        enqueued = False
+                    else:
+                        while self._bursty_item_count(pending) >= bursty_limit:
+                            drop_idx = self._find_oldest_bursty_index(pending)
+                            if drop_idx is None:
+                                break
+                            dropped_row = pending.pop(drop_idx).row
+                            dropped_row_id = int(dropped_row.get("id") or 0)
+                            dropped_rows.append(dropped_row)
+                            if dropped_row_id:
+                                claimed_row_ids.discard(dropped_row_id)
+                    if enqueued and len(pending) >= HOOK_OUTBOX_SESSION_MAX_PENDING:
                         drop_idx = self._find_oldest_bursty_index(pending)
                         if drop_idx is not None:
                             dropped_row = pending.pop(drop_idx).row

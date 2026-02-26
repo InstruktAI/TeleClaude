@@ -47,6 +47,7 @@ flowchart LR
 - **Stable Panes Across Tabs**: Switching tabs must not hide or reflow panes.
 - **No View-Local Pane Calls**: Views emit intents only; layout is applied centrally.
 - **Sticky Is Authoritative**: Sticky panes persist until explicitly removed.
+- **Un-Sticky Transitions to Preview**: When a sticky session is removed (double-press), that session becomes the active preview. Any previously active preview is dismissed. This preserves the user's focus on the session they just interacted with and minimizes layout disruption.
 - **Local-Only State**: TUI state is local UI state; core session state remains owned by the daemon.
 - **Pane Style Transition Contract**: Session pane foreground remains constant across focus changes; focus/inactive transitions are represented by background only (terminal default for active, computed haze for inactive).
 
@@ -129,6 +130,7 @@ flowchart TD
 - `child_session_id = child_of(preview.session_id)` **only if** `preview.show_child`
 - `sticky_session_ids = [s.session_id for s in sticky]`
 - If `preview.session_id` is sticky, reducer clears preview (no duplication)
+- If a sticky is removed, the removed session becomes the active preview (un-sticky → preview transition)
 
 ### Interaction mapping (Sessions)
 
@@ -179,6 +181,7 @@ flowchart TD
 - **Missing tmux session**: intent still emitted; side-effect handler reports error and leaves state unchanged.
 - **Missing file**: `ViewFile/EditFile` ignored with user notice; state unchanged.
 - **Sticky + Preview conflict**: reducer clears preview when sticky is set for same session.
+- **Un-sticky transition**: removing a sticky sets that session as the active preview, dismissing any previous preview. See `@docs/project/design/ux/session-preview-sticky.md`.
 - **Tab switching**: `SelectTab(view_id)` must not alter preview or sticky.
 
 ## Failure modes
