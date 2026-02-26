@@ -72,101 +72,33 @@ When a GitHub event arrives, the handler publishes a fan-out message AND execute
 
 #### 14. `_is_within_pinned_minor` accepts wrong minor versions via prefix match
 
-**File:** `handler.py:46-51`
-
-```python
-expected_prefix = f"{pinned_minor}."
-return version.startswith(expected_prefix) and version.count(".") == 2
-```
-
-`"1.20.0".startswith("1.2.")` is `True`. A stable node pinned to `1.2` would accept a `1.20.x` release. This is a real logic bug — the existing `parse_version` helper in `teleclaude/deployment/__init__.py` already validates proper integer parts and should be used instead:
-
-```python
-def _is_within_pinned_minor(version: str, pinned_minor: str) -> bool:
-    if not version or not pinned_minor:
-        return False
-    try:
-        from teleclaude.deployment import parse_version
-        parts = pinned_minor.split(".")
-        if len(parts) != 2 or not all(p.isdigit() for p in parts):
-            return False
-        pin_major, pin_minor = int(parts[0]), int(parts[1])
-        v_major, v_minor, _ = parse_version(version)
-        return v_major == pin_major and v_minor == pin_minor
-    except ValueError:
-        return False
-```
+**Status:** RESOLVED in `f48323b4` — replaced string `startswith` with `parse_version` integer comparison.
 
 #### 15. `make install` subprocess not killed on timeout
 
-**File:** `executor.py:158-163`
-
-`asyncio.wait_for` cancels the `communicate()` coroutine but does not terminate the underlying OS process. After the `TimeoutError` is caught and `execute_update` returns, the `make install` subprocess continues running in the background — consuming resources, potentially completing a partial install, and holding file locks.
-
-```python
-except asyncio.TimeoutError:
-    try:
-        install.kill()
-        await install.wait()
-    except ProcessLookupError:
-        pass
-    logger.error("Deploy: make install timed out after 60s")
-    await update_status({"status": "update_failed", "error": "make install timed out"})
-    return
-```
+**Status:** RESOLVED in `68299f24` — added `install.kill()` + `await install.wait()` after `TimeoutError`.
 
 ### Important
 
 #### 16. Fire-and-forget `execute_update` task with no done callback
 
-**File:** `handler.py:141`
-
-```python
-asyncio.create_task(execute_update(channel, version_info, get_redis=_get_redis))
-```
-
-Every other background task in the daemon attaches `add_done_callback(self._log_background_task_exception(...))` (daemon.py lines 1678, 1732, 1738). This task is created without storage or callback. If the task raises `CancelledError` during shutdown or an exception escapes the outer handler, it is silently swallowed by asyncio.
-
-```python
-def _log_task_exception(task: asyncio.Task) -> None:
-    if not task.cancelled() and (exc := task.exception()):
-        logger.error("Deploy: execute_update task failed: %s", exc, exc_info=exc)
-
-task = asyncio.create_task(execute_update(channel, version_info, get_redis=_get_redis))
-task.add_done_callback(_log_task_exception)
-```
+**Status:** RESOLVED in `43e06e81` — added `_log_execute_update_task_exception` callback via `add_done_callback`.
 
 #### 17. Beta fan-out accepted by stable node — channel mismatch not filtered
 
-**File:** `handler.py:113`
-
-```python
-elif channel in ("beta", "stable") and version_info.get("channel") in ("beta", "stable"):
-```
-
-A stable node receiving a beta fan-out enters this branch. If the beta release version happens to match the stable node's pinned minor (e.g. beta publishes `1.2.4`, stable pins `1.2`), the stable node will deploy a beta release. Per the decision matrix, stable nodes should only act on stable-channel releases.
-
-Fix: match `channel == fan_channel`:
-
-```python
-elif channel in ("beta", "stable") and version_info.get("channel") == channel:
-```
+**Status:** RESOLVED in `21f188e7` — changed condition to `version_info.get("channel") == channel`.
 
 #### 18. Fanout consumer dies permanently on Redis startup failure
 
-**File:** `daemon.py:1752-1756`
+**Status:** RESOLVED in `3924e009` — moved `_get_redis()` call inside the retry loop.
 
-When `redis_transport._get_redis()` raises at consumer startup, the consumer logs and returns — permanently. No restart is attempted. The in-loop error handler (line 1783) retries with a 5s backoff for transient Redis errors, but the startup failure exits before entering the loop.
-
-Fix: move Redis connection acquisition inside the loop with retry logic.
-
-### Suggestions
+### Suggestions (Round 2)
 
 #### 19. Dead code: `if not version_info:` guard always True
 
-**File:** `handler.py:107`
+**File:** `handler.py:121`
 
-`version_info` is `{}` at line 80 and only populated inside the `github` branch. When the `deployment` branch is entered, the guard is always True. Remove the guard for clarity.
+`version_info` is `{}` at line 94 and only populated inside the `github` branch. When the `deployment` branch is entered, the guard is always True. Remove the guard for clarity.
 
 #### 20. `_read_version_from_pyproject` silent fallback to "0.0.0"
 
@@ -176,32 +108,60 @@ The `except` block returns "0.0.0" with no log message. This value feeds into `r
 
 #### 21. Exit code 42 should be a named constant
 
-**File:** `executor.py:175`
+**File:** `executor.py:180`
 
 Replace magic number with `_RESTART_EXIT_CODE = 42` and add a comment referencing launchd `KeepAlive`.
 
 #### 22. Test: `test_handler_deployment_source_does_not_publish_fanout` leaks task
 
-**File:** `tests/unit/test_deployment_channels.py:275`
-
-The test does not patch `asyncio.create_task`. The alpha fan-out event triggers `execute_update`, scheduling the real coroutine. Add `patch("asyncio.create_task", side_effect=_create_task_closing_coro)` to match other tests.
-
-Suggestions #9-13 from round 1 remain open and are carried forward.
+**Status:** RESOLVED — `_create_task_closing_coro` added at test line 282.
 
 ---
 
-## Fixes Applied (Round 2 findings)
+## Round 3 — Re-review of Round 2 Fixes
 
-| #   | Issue                                                      | Fix                                                                         | Commit     |
-| --- | ---------------------------------------------------------- | --------------------------------------------------------------------------- | ---------- |
-| 14  | `_is_within_pinned_minor` prefix match accepts wrong minor | Replaced string `startswith` with `parse_version` integer compare           | `f48323b4` |
-| 15  | `make install` subprocess not killed on timeout            | Added `install.kill()` + `await install.wait()` after `TimeoutError`        | `68299f24` |
-| 16  | `execute_update` task fire-and-forget, no done callback    | Added `_log_execute_update_task_exception` callback via `add_done_callback` | `43e06e81` |
-| 17  | Beta fan-out accepted by stable node                       | Changed condition to `version_info.get("channel") == channel`               | `21f188e7` |
-| 18  | Fanout consumer dies permanently on Redis startup failure  | Moved `_get_redis()` call inside the retry loop                             | `3924e009` |
+### Paradigm-Fit Assessment
+
+1. **Data flow**: All round 2 fixes maintain the hooks framework patterns. `_is_within_pinned_minor` now uses `parse_version` from the shared deployment helpers — correct data layer reuse. The `install.kill()` + `await install.wait()` follows standard subprocess cleanup. The fan-out consumer's Redis reconnection inside the loop follows the same error-recovery pattern used by the consumer's inner error handler. No paradigm violations.
+2. **Component reuse**: Fix #14 properly reuses `parse_version` from `teleclaude/deployment/__init__.py` instead of reimplementing version comparison. Fix #16 follows the established `create_task` + `add_done_callback` pattern used by `_deployment_fanout_task`, `webhook_delivery_task`, and `_contract_sweep_task` in daemon.py.
+3. **Pattern consistency**: All fixes are minimal and targeted — each addresses exactly the described issue without introducing new abstractions or side effects.
+
+### Critical
+
+None.
+
+### Important
+
+None.
+
+### Suggestions
+
+Suggestions #9, #10, #11, #12, #13, #19, #20, #21 remain open from earlier rounds. These are test coverage improvements and code clarity items, not functional gaps.
+
+#### 23. RuntimeWarning in `test_handler_deployment_source_beta_on_stable_node_skips`
+
+**File:** `tests/unit/test_deployment_channels.py:749`
+
+The test patches `asyncio.create_task` without `_create_task_closing_coro` side effect. When the handler correctly skips the update (beta fan-out on stable node), `create_task` is never called, so the plain mock is fine. However, pytest reports a `RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited` from mock internals. Harmless but noisy — adding the side effect defensively would silence it.
+
+### Fix Verification Evidence
+
+| #   | Issue                            | Fix verified                                                                                    | Regression test                                                                                                                |
+| --- | -------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 14  | Prefix match accepts wrong minor | `_is_within_pinned_minor` uses `parse_version` integer compare (handler.py:51-58)               | `test_is_within_pinned_minor_rejects_different_minor` asserts `"1.20.0"` against `"1.2"` returns False (line 419)              |
+| 15  | Subprocess not killed on timeout | `install.kill()` + `await install.wait()` with `ProcessLookupError` guard (executor.py:161-165) | `test_executor_make_install_timeout_halts_update` asserts `kill()` called once and `wait()` awaited once (lines 590-592)       |
+| 16  | Task without done callback       | `_log_execute_update_task_exception` callback added (handler.py:63-65, 155-156)                 | No direct test — verified by code inspection that pattern matches daemon.py:1675-1678                                          |
+| 17  | Channel mismatch in fan-out      | Condition changed to `== channel` (handler.py:127)                                              | `test_handler_deployment_source_beta_on_stable_node_skips` (line 749)                                                          |
+| 18  | Consumer dies on Redis startup   | `_get_redis()` moved inside while loop (daemon.py:1756)                                         | No direct test — verified by code inspection that failure falls into the existing `except Exception` retry handler (line 1778) |
+
+### Why No Blocking Issues
+
+1. **Paradigm-fit verified**: All 5 fixes follow established patterns — `parse_version` reuse, subprocess cleanup, `add_done_callback` pattern, channel equality, and in-loop retry. No copy-paste duplication found. No new abstractions introduced.
+2. **Requirements validated**: All round 2 findings (2 Critical, 3 Important) are properly resolved. Each fix is minimal, targeted, and addresses the exact issue. The `_is_within_pinned_minor` fix uses integer comparison, eliminating the prefix match class of bugs entirely. The subprocess kill on timeout follows POSIX best practices.
+3. **Test coverage assessed**: 2235 tests pass (39 deployment-specific). Regression tests added for fixes #14, #15, #17. Fixes #16 and #18 verified by code inspection — their correctness follows directly from established daemon patterns. Remaining gaps (suggestions #9-13, #19-21, #23) are test coverage and code clarity improvements, not functional holes.
 
 ---
 
-## Verdict: REQUEST CHANGES
+## Verdict: APPROVE
 
-Round 1 findings (1 Critical, 7 Important) are all resolved. However, deeper analysis reveals 2 new Critical bugs (#14: prefix match accepts wrong minor versions; #15: orphaned subprocess on timeout) and 3 Important issues (#16-18). These should be fixed before merge.
+All round 2 findings (2 Critical, 3 Important) are properly resolved. Fixes are minimal, targeted, and verified by regression tests where applicable. 2235 tests pass. Implementation is correct and follows established codebase patterns. Remaining suggestions are test hardening and code clarity items suitable for follow-up work.
