@@ -22,7 +22,6 @@ TYPE_SUFFIX = {
 
 # API socket configuration
 API_SOCKET_PATH = "/tmp/teleclaude-api.sock"
-MCP_SOCKET_PATH = "/tmp/teleclaude-mcp.sock"
 
 # Internal configuration (not user-configurable)
 DIRECTORY_CHECK_INTERVAL = 5  # Seconds between directory change checks

@@ -145,3 +145,40 @@ async def test_create_tmux_session_scopes_wrapper_path_to_agent_session(tmp_path
     path_env = [arg for arg in called_args if isinstance(arg, str) and arg.startswith("PATH=")]
     assert len(path_env) == 1
     assert path_env[0].startswith(f"PATH={tmp_path}/.teleclaude/bin:")
+
+
+@pytest.mark.asyncio
+async def test_create_tmux_session_preserves_existing_wrapper_path_without_dup(tmp_path, monkeypatch):
+    """Ensure PATH is still injected when wrapper path already exists."""
+    from teleclaude.core import tmux_bridge
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    existing_path = f"{tmp_path}/.teleclaude/bin:/usr/local/bin:/usr/bin"
+    monkeypatch.setenv("PATH", existing_path)
+
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.communicate = AsyncMock(return_value=(b"", b""))
+    proc_opt = MagicMock()
+    proc_opt.returncode = 0
+    proc_opt.communicate = AsyncMock(return_value=(b"", b""))
+    proc_hook = MagicMock()
+    proc_hook.returncode = 0
+    proc_hook.communicate = AsyncMock(return_value=(b"", b""))
+
+    with patch.object(
+        tmux_bridge.asyncio,
+        "create_subprocess_exec",
+        new=AsyncMock(side_effect=[proc, proc_opt, proc_hook]),
+    ) as mock_exec:
+        ok = await tmux_bridge._create_tmux_session(
+            name="tc_test",
+            working_dir=str(tmp_path),
+            session_id="sid",
+        )
+
+    assert ok is True
+    called_args = mock_exec.call_args_list[0][0]
+    path_env = [arg for arg in called_args if isinstance(arg, str) and arg.startswith("PATH=")]
+    assert len(path_env) == 1
+    assert path_env[0] == f"PATH={existing_path}"
