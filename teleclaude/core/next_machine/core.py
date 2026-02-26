@@ -2026,7 +2026,7 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
     logger.info("No worktree preparation targets found for %s", slug)
 
 
-def is_main_ahead(cwd: str, slug: str) -> bool:
+def is_main_ahead(cwd: str, slug: str) -> bool | None:
     """Check if local main has commits not in the worktree branch.
 
     Args:
@@ -2034,24 +2034,25 @@ def is_main_ahead(cwd: str, slug: str) -> bool:
         slug: Work item slug (worktree is at trees/{slug})
 
     Returns:
-        True if main is ahead of HEAD for the worktree, False otherwise.
+        True if main is ahead of HEAD for the worktree, False if not ahead,
+        or None when ahead-state cannot be determined.
     """
     worktree_path = Path(cwd) / "trees" / slug
     if not worktree_path.exists():
-        return False
+        return None
 
     try:
         repo = Repo(worktree_path)
         ahead_count_raw = repo.git.rev_list("--count", "HEAD..main")  # type: ignore[misc]
         if not isinstance(ahead_count_raw, str):
-            return False
+            return None
         ahead_count = ahead_count_raw.strip()
         if not ahead_count.isdigit():
-            return False
+            return None
         return int(ahead_count) > 0
     except (InvalidGitRepositoryError, GitCommandError, ValueError):
         logger.warning("Cannot determine main ahead status for %s", worktree_path)
-        return False
+        return None
 
 
 def get_finalize_canonical_dirty_paths(cwd: str) -> list[str] | None:
@@ -2094,7 +2095,14 @@ def check_finalize_preconditions(cwd: str, slug: str) -> str | None:
             next_call=f"Commit or clean canonical main changes, then call telec todo work {slug} again.",
         )
 
-    if is_main_ahead(cwd, slug):
+    main_ahead = is_main_ahead(cwd, slug)
+    if main_ahead is None:
+        return format_error(
+            "FINALIZE_PRECONDITION_GIT_STATE_UNKNOWN",
+            "Cannot determine whether canonical main is ahead of the finalize branch.",
+            next_call=f"Restore git access/health, then call telec todo work {slug} again.",
+        )
+    if main_ahead:
         return format_error(
             "FINALIZE_PRECONDITION_MAIN_AHEAD",
             (f"Canonical main has commits not present on branch '{slug}', so deterministic finalize apply is blocked."),
