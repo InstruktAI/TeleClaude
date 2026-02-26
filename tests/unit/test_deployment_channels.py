@@ -746,6 +746,24 @@ async def test_handler_deployment_source_stable_within_pinned_minor_triggers_upd
 
 
 @pytest.mark.asyncio
+async def test_handler_deployment_source_beta_on_stable_node_skips():
+    """Beta fan-out received on a stable node must not trigger update (#17 regression)."""
+    event = _deployment_fanout_event("beta", "1.2.4")
+    cfg = _make_project_config_raw("stable", "1.2")
+
+    with (
+        patch("teleclaude.config.loader.load_project_config", return_value=cfg),
+        patch("teleclaude.deployment.handler.resolve_project_config_path", return_value=Path("/fake")),
+        patch("teleclaude.deployment.handler._get_redis", None),
+        patch("asyncio.create_task") as mock_task,
+    ):
+        from teleclaude.deployment.handler import handle_deployment_event
+
+        await handle_deployment_event(event)
+        assert not mock_task.called
+
+
+@pytest.mark.asyncio
 async def test_handler_deployment_source_stable_outside_pinned_minor_skips():
     """Stable fan-out with version outside pinned minor does not trigger update."""
     event = _deployment_fanout_event("stable", "1.3.0")

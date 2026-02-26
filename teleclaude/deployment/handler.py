@@ -124,7 +124,7 @@ async def handle_deployment_event(event: HookEvent) -> None:
         # Re-evaluate should_update based on own channel config.
         if channel == "alpha" and version_info.get("channel") == "alpha":
             should_update = True
-        elif channel in ("beta", "stable") and version_info.get("channel") in ("beta", "stable"):
+        elif channel in ("beta", "stable") and version_info.get("channel") == channel:
             target_ver = str(version_info.get("version", ""))
             if channel == "beta":
                 should_update = bool(target_ver)
