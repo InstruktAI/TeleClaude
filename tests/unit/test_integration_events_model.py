@@ -13,6 +13,7 @@ from teleclaude.core.integration import (
     build_integration_event,
     validate_event_payload,
 )
+from teleclaude.core.integration.events import integration_event_from_record
 
 pytestmark = pytest.mark.timeout(5)
 
@@ -65,6 +66,28 @@ def test_build_event_reports_correct_event_type_for_received_at_validation() -> 
 
     assert exc.value.event_type == "review_approved"
     assert any("received_at must be valid ISO8601" in item for item in exc.value.diagnostics)
+
+
+def test_integration_event_from_record_accepts_valid_string_fields() -> None:
+    event = integration_event_from_record(
+        {
+            "event_id": "evt-123",
+            "event_type": "branch_pushed",
+            "payload": {
+                "branch": "worktree/integration-events-model",
+                "sha": "abc123",
+                "remote": "origin",
+                "pushed_at": "2026-02-26T10:00:00Z",
+                "pusher": "worker-1",
+            },
+            "received_at": "2026-02-26T10:01:00Z",
+            "idempotency_key": "idem-123",
+        }
+    )
+
+    assert event.event_id == "evt-123"
+    assert event.received_at == "2026-02-26T10:01:00+00:00"
+    assert event.idempotency_key == "idem-123"
 
 
 def test_event_store_append_is_idempotent_and_collision_safe(tmp_path: Path) -> None:

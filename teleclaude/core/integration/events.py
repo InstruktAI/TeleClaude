@@ -197,12 +197,16 @@ def integration_event_from_record(record: Mapping[str, object]) -> IntegrationEv
     if diagnostics:
         raise IntegrationEventValidationError(event_type, diagnostics)
 
+    resolved_event_id = cast(str, event_id)
+    resolved_received_at = cast(str, received_at)
+    resolved_idempotency_key = cast(str, idempotency_key)
+
     return build_integration_event(
         event_type,
         payload,
-        idempotency_key=idempotency_key,
-        event_id=event_id,
-        received_at=received_at,
+        idempotency_key=resolved_idempotency_key,
+        event_id=resolved_event_id,
+        received_at=resolved_received_at,
     )
 
 
