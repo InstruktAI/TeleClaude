@@ -19,6 +19,11 @@ def test_experiments_yml_overlay_loading(tmp_path, monkeypatch):
         "database": {"path": "/tmp/test.db"},
         "redis": {"enabled": False},
         "telegram": {"trusted_bots": []},
+        "agents": {
+            "claude": {"enabled": True},
+            "gemini": {"enabled": True},
+            "codex": {"enabled": True},
+        },
         "ui": {"animations_enabled": True, "animations_periodic_interval": 60, "animations_subset": []},
     }
 

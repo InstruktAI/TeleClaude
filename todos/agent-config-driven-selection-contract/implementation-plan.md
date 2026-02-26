@@ -111,4 +111,4 @@ Note: MCP runtime/tool modules are no longer present in this codebase; enforceme
 - [x] Config fails closed when agent policy is invalid.
 - [x] All dispatch/select surfaces use centralized enabled-agent policy.
 - [x] No blank agent-guidance lines.
-- [ ] Tests cover fail-closed contract and pass in CI.
+- [x] Tests cover fail-closed contract and pass in CI.
