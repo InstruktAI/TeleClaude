@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -12,7 +13,19 @@ import pytest
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.hooks.normalizers.whatsapp import normalize_whatsapp_webhook
 from teleclaude.hooks.webhook_models import HookEvent
-from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
+from teleclaude.hooks.whatsapp_handler import download_whatsapp_media, handle_whatsapp_event
+
+
+class _FakeHttpResponse:
+    def __init__(self, *, payload: Mapping[str, object] | None = None, content: bytes = b"") -> None:
+        self._payload = dict(payload or {})
+        self.content = content
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> Mapping[str, object]:
+        return self._payload
 
 
 def test_normalize_whatsapp_webhook_batches_messages() -> None:
@@ -53,6 +66,38 @@ def test_normalize_whatsapp_webhook_batches_messages() -> None:
     assert events[0].properties["message_id"] == "wamid.1"
     assert events[1].type == "message.voice"
     assert events[1].properties["media_id"] == "media-audio-1"
+
+
+@pytest.mark.asyncio
+async def test_download_whatsapp_media_stores_in_session_workspace(tmp_path: Path) -> None:
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(
+        side_effect=[
+            _FakeHttpResponse(payload={"url": "https://media.example.com/file"}),
+            _FakeHttpResponse(content=b"audio-bytes"),
+        ]
+    )
+    mock_http_context = AsyncMock()
+    mock_http_context.__aenter__.return_value = mock_client
+    mock_http_context.__aexit__.return_value = None
+
+    with (
+        patch("teleclaude.hooks.whatsapp_handler.httpx.AsyncClient", return_value=mock_http_context),
+        patch("teleclaude.hooks.whatsapp_handler.get_session_output_dir", return_value=tmp_path / "session-1"),
+        patch("teleclaude.hooks.whatsapp_handler.config.whatsapp.access_token", "test-token"),
+        patch("teleclaude.hooks.whatsapp_handler.config.whatsapp.api_version", "v1"),
+    ):
+        output_path = await download_whatsapp_media(
+            "media-123",
+            "application/pdf",
+            "15550001111",
+            session_id="session-1",
+            event_type="message.document",
+        )
+
+    assert output_path.parent == (tmp_path / "session-1" / "files")
+    assert output_path.exists()
+    assert output_path.read_bytes() == b"audio-bytes"
 
 
 @pytest.mark.asyncio
@@ -161,7 +206,6 @@ async def test_handle_whatsapp_event_routes_voice_to_transcription() -> None:
     with TemporaryDirectory() as tmp_dir:
         with (
             patch("teleclaude.hooks.whatsapp_handler.get_command_service", return_value=mock_service),
-            patch("teleclaude.hooks.whatsapp_handler.config.computer.help_desk_dir", tmp_dir),
             patch(
                 "teleclaude.hooks.whatsapp_handler.db.get_sessions_by_adapter_metadata", new=AsyncMock(return_value=[])
             ),

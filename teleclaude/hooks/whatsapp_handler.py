@@ -16,6 +16,7 @@ from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.hooks.webhook_models import HookEvent
 from teleclaude.types.commands import CreateSessionCommand, HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
@@ -74,8 +75,15 @@ async def _update_whatsapp_session_metadata(
         logger.debug("Failed to persist WhatsApp metadata for session", exc_info=True)
 
 
-async def download_whatsapp_media(media_id: str, mime_type: str | None, phone_number: str) -> Path:
-    """Download WhatsApp media to help-desk workspace and return local file path."""
+async def download_whatsapp_media(
+    media_id: str,
+    mime_type: str | None,
+    phone_number: str,
+    *,
+    session_id: str,
+    event_type: str,
+) -> Path:
+    """Download inbound WhatsApp media into the session workspace and return local path."""
     if not config.whatsapp.access_token:
         raise RuntimeError("WHATSAPP_ACCESS_TOKEN is required to download media")
 
@@ -93,7 +101,13 @@ async def download_whatsapp_media(media_id: str, mime_type: str | None, phone_nu
         media_response = await client.get(media_url, headers=headers)
         media_response.raise_for_status()
 
-    media_dir = Path(config.computer.help_desk_dir) / "incoming" / "whatsapp"
+    if event_type in {"message.voice", "message.audio"}:
+        media_subdir = "voice"
+    elif event_type == "message.image" or (mime_type and mime_type.startswith("image/")):
+        media_subdir = "photos"
+    else:
+        media_subdir = "files"
+    media_dir = get_session_output_dir(session_id) / media_subdir
     media_dir.mkdir(parents=True, exist_ok=True)
 
     extension = mimetypes.guess_extension(mime_type or "") or ".bin"
@@ -178,7 +192,13 @@ async def handle_whatsapp_event(event: HookEvent) -> None:
         return
 
     mime_type = str(event.properties.get("mime_type") or "") or None
-    local_path = await download_whatsapp_media(media_id, mime_type, phone_number)
+    local_path = await download_whatsapp_media(
+        media_id,
+        mime_type,
+        phone_number,
+        session_id=session_id,
+        event_type=event.type,
+    )
 
     if event.type in {"message.voice", "message.audio"}:
         cmd = HandleVoiceCommand(
