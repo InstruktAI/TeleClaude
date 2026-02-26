@@ -83,6 +83,10 @@ _PREP_INPUT_FILES = (
     "requirements-dev.txt",
     "poetry.lock",
 )
+_PREP_ROOT_INPUT_FILES = (
+    "config.yml",
+    "tools/worktree-prepare.sh",
+)
 _SINGLE_FLIGHT_GUARD = threading.Lock()
 _SINGLE_FLIGHT_LOCKS: dict[str, asyncio.Lock] = {}
 
@@ -1972,9 +1976,9 @@ def _compute_prep_inputs_digest(cwd: str, slug: str) -> str:
     worktree_root = project_root / "trees" / slug
     digest = hashlib.sha256()
 
-    candidates: list[tuple[str, Path]] = [
-        ("root:tools/worktree-prepare.sh", project_root / "tools" / "worktree-prepare.sh")
-    ]
+    candidates: list[tuple[str, Path]] = []
+    for rel in _PREP_ROOT_INPUT_FILES:
+        candidates.append((f"root:{rel}", project_root / rel))
     for rel in _PREP_INPUT_FILES:
         candidates.append((f"worktree:{rel}", worktree_root / rel))
 

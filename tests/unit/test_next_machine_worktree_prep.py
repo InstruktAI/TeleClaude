@@ -7,7 +7,12 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from teleclaude.core.next_machine import _prepare_worktree, ensure_worktree, ensure_worktree_with_policy
-from teleclaude.core.next_machine.core import WorktreePrepDecision
+from teleclaude.core.next_machine.core import (
+    WorktreePrepDecision,
+    _compute_prep_inputs_digest,
+    _read_worktree_prep_state,
+    _write_worktree_prep_state,
+)
 
 
 class TestEnsureWorktreePrepPolicy:
@@ -84,6 +89,29 @@ class TestEnsureWorktreePrepPolicy:
         assert repo.git.worktree.call_args is not None
         assert mock_prepare.call_args == ((str(tmp_path), "test-slug"), {})
         assert mock_write_state.call_args is not None
+
+    @patch("teleclaude.core.next_machine.core._prepare_worktree")
+    def test_runs_preparation_when_root_config_changes(self, mock_prepare: Mock, tmp_path: Path) -> None:
+        """Root config changes should invalidate prep state and rerun preparation."""
+        slug = "test-slug"
+        worktree_dir = tmp_path / "trees" / slug
+        worktree_dir.mkdir(parents=True)
+        config_path = tmp_path / "config.yml"
+        config_path.write_text("database:\n  path: teleclaude.db\n", encoding="utf-8")
+        initial_digest = _compute_prep_inputs_digest(str(tmp_path), slug)
+        _write_worktree_prep_state(str(tmp_path), slug, initial_digest)
+
+        config_path.write_text("database:\n  path: teleclaude-next.db\n", encoding="utf-8")
+
+        result = ensure_worktree_with_policy(str(tmp_path), slug)
+
+        assert result.created is False
+        assert result.prepared is True
+        assert result.prep_reason == "prep_inputs_changed"
+        mock_prepare.assert_called_once_with(str(tmp_path), slug)
+        saved_state = _read_worktree_prep_state(str(tmp_path), slug)
+        assert saved_state is not None
+        assert saved_state["inputs_digest"] == _compute_prep_inputs_digest(str(tmp_path), slug)
 
 
 class TestPrepareWorktreeConventions:
