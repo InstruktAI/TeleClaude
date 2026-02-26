@@ -32,11 +32,13 @@ if str(_REPO_ROOT) not in sys.path:
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config as app_config
 from teleclaude.core.agents import get_enabled_agents, is_agent_enabled
 from teleclaude.helpers.agent_types import AgentName, ThinkingMode
 from teleclaude.runtime.binaries import resolve_agent_binary
 
 logger = get_logger(__name__)
+_APP_CONFIG_COMPAT = app_config
 
 # ---------------------------------------------------------------------------
 # One-shot CLI protocol — self-contained, not shared with interactive sessions.
