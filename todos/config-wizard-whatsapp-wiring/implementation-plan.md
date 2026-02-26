@@ -95,14 +95,18 @@ Notes:
 
 ### Task 3.2: Quality Checks
 
-- [ ] Run `make lint`
-- [ ] Verify `telec config validate` reports WhatsApp env vars
-- [ ] Verify no unchecked implementation tasks remain
+- [x] Run `make lint`
+- [x] Verify `telec config validate` reports WhatsApp env vars
+- [x] Verify no unchecked implementation tasks remain
 
 ---
 
 ## Phase 4: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)
+
+Notes:
+
+- No deferrals were needed for this todo.

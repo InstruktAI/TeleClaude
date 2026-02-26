@@ -10,15 +10,23 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate config-wizard-whatsapp-wiring` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate config-wizard-whatsapp-wiring` exits 0, or exception noted)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+Build verification notes:
+
+- `make test`: PASS (`2286 passed, 106 skipped`).
+- `make lint`: PASS (ruff, pyright, markdown/resource guardrails).
+- `telec config validate | grep -i whatsapp`: PASS (all 7 WhatsApp env vars reported when unset).
+- Interactive TUI manual walkthrough is not runnable in this non-interactive build environment; verified render wiring via unit/component tests and direct component instantiation, and captured user-flow in `demo.md`.
+- Remaining working tree drift is non-build scope: orchestrator-managed `todos/config-wizard-whatsapp-wiring/state.yaml` and pre-existing untracked `.teleclaude/`.
 
 ## Review Gates (Reviewer)
 
