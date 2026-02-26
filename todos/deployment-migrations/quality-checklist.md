@@ -20,7 +20,10 @@ Ownership:
 - [x] Working tree clean
 - [x] Comments/docstrings updated where behavior changed
 
-Manual verification: library-only delivery. Verified behavior by executing migration tests (run, skip, failure, dry-run, atomic state write) and demo validation blocks.
+Manual verification: library-only delivery. Verified observable behavior with
+`tests/unit/test_deployment_migration_runner.py` coverage (ordering, skip,
+failure preservation, dry-run planning, atomic state persistence) plus demo
+validation (`telec todo demo validate deployment-migrations`).
 
 ## Review Gates (Reviewer)
 
