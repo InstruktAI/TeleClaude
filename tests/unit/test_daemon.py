@@ -313,6 +313,127 @@ async def test_hook_outbox_drops_bursty_when_capacity_full_of_critical() -> None
 
 
 @pytest.mark.asyncio
+async def test_hook_outbox_bursty_capacity_reserve_caps_bursty_backlog() -> None:
+    """Bursty rows should be capped before full queue to reserve slots for critical rows."""
+    daemon = _make_hook_queue_daemon()
+    session_id = "sess-reserve-bursty"
+    worker = MagicMock()
+    worker.done.return_value = False
+    daemon._session_outbox_workers[session_id] = worker
+
+    rows = [
+        {
+            "id": 1,
+            "session_id": session_id,
+            "event_type": "bursty_one",
+            "payload": "{}",
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        {
+            "id": 2,
+            "session_id": session_id,
+            "event_type": "bursty_two",
+            "payload": "{}",
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        {
+            "id": 3,
+            "session_id": session_id,
+            "event_type": "bursty_three",
+            "payload": "{}",
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+    ]
+
+    with (
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_MAX_PENDING", 4),
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_CRITICAL_RESERVE", 2),
+        patch("teleclaude.daemon.db.mark_hook_outbox_delivered", new_callable=AsyncMock) as mock_mark_delivered,
+    ):
+        await daemon._enqueue_session_outbox_item(session_id, rows[0])
+        await daemon._enqueue_session_outbox_item(session_id, rows[1])
+        await daemon._enqueue_session_outbox_item(session_id, rows[2])
+
+    queue_state = daemon._session_outbox_queues[session_id]
+    assert [item.row["id"] for item in queue_state.pending] == [2, 3]
+    assert daemon._hook_outbox_coalesced_count == 1
+    mock_mark_delivered.assert_awaited_once()
+    assert mock_mark_delivered.await_args.args[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_hook_outbox_critical_uses_reserved_capacity_before_requeue() -> None:
+    """Critical enqueue should evict bursty rows and avoid requeue when reserve is available."""
+    daemon = _make_hook_queue_daemon()
+    session_id = "sess-reserve-critical"
+    worker = MagicMock()
+    worker.done.return_value = False
+    daemon._session_outbox_workers[session_id] = worker
+
+    rows = [
+        {
+            "id": 1,
+            "session_id": session_id,
+            "event_type": "bursty_one",
+            "payload": "{}",
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        {
+            "id": 2,
+            "session_id": session_id,
+            "event_type": "bursty_two",
+            "payload": "{}",
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        {
+            "id": 3,
+            "session_id": session_id,
+            "event_type": AgentHookEvents.AGENT_STOP,
+            "payload": "{}",
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        {
+            "id": 4,
+            "session_id": session_id,
+            "event_type": AgentHookEvents.USER_PROMPT_SUBMIT,
+            "payload": '{"prompt":"x"}',
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        {
+            "id": 5,
+            "session_id": session_id,
+            "event_type": AgentHookEvents.AGENT_SESSION_END,
+            "payload": "{}",
+            "attempt_count": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+    ]
+
+    with (
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_MAX_PENDING", 4),
+        patch("teleclaude.daemon.HOOK_OUTBOX_SESSION_CRITICAL_RESERVE", 2),
+        patch("teleclaude.daemon.db.mark_hook_outbox_delivered", new_callable=AsyncMock) as mock_mark_delivered,
+        patch("teleclaude.daemon.db.mark_hook_outbox_failed", new_callable=AsyncMock) as mock_mark_failed,
+    ):
+        for row in rows:
+            await daemon._enqueue_session_outbox_item(session_id, row)
+
+    queue_state = daemon._session_outbox_queues[session_id]
+    assert [item.row["id"] for item in queue_state.pending] == [2, 3, 4, 5]
+    assert daemon._hook_outbox_coalesced_count == 1
+    mock_mark_delivered.assert_awaited_once()
+    assert mock_mark_delivered.await_args.args[0] == 1
+    mock_mark_failed.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_hook_outbox_requeues_critical_when_capacity_full_of_critical() -> None:
     """Critical overflow should stay bounded in-memory and be retried from DB."""
     daemon = _make_hook_queue_daemon()
