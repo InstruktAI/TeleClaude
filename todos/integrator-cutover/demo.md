@@ -7,7 +7,7 @@ telec todo validate integrator-cutover
 ```
 
 ```bash
-rg -n "integrator|canonical `main`|rollback|feature branches" todos/integrator-cutover/requirements.md
+rg -n 'integrator|canonical `main`|rollback|feature branches' todos/integrator-cutover/requirements.md
 ```
 
 ## Guided Presentation

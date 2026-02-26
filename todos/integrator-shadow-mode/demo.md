@@ -7,7 +7,7 @@ telec todo validate integrator-shadow-mode
 ```
 
 ```bash
-rg -n "shadow|lease|queue|no canonical `main`" todos/integrator-shadow-mode/requirements.md
+rg -n 'shadow|lease|queue|no canonical `main`' todos/integrator-shadow-mode/requirements.md
 ```
 
 ## Guided Presentation
