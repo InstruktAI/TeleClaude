@@ -331,6 +331,53 @@ def test_shadow_runtime_raises_when_lease_lost_during_drain(tmp_path: Path) -> N
     assert queued.status == "queued"
 
 
+def test_shadow_runtime_retries_clearance_until_blockers_clear(tmp_path: Path) -> None:
+    lease_store = IntegrationLeaseStore(state_path=tmp_path / "integration-lease.json")
+    queue = IntegrationQueue(state_path=tmp_path / "integration-queue.json")
+    key = CandidateKey(slug="retry", branch="worktree/retry", sha="ddd444")
+    queue.enqueue(key=key, ready_at="2026-02-26T12:01:00+00:00")
+
+    readiness = CandidateReadiness(
+        key=key,
+        ready_at="2026-02-26T12:01:00+00:00",
+        status="READY",
+        reasons=(),
+        superseded_by=None,
+    )
+
+    blocked_checks_remaining = 2
+    sleep_calls: list[float] = []
+
+    def _sleep(seconds: float) -> None:
+        nonlocal blocked_checks_remaining
+        sleep_calls.append(seconds)
+        blocked_checks_remaining -= 1
+
+    probe = MainBranchClearanceProbe(
+        sessions_provider=lambda: (SessionSnapshot(session_id="solo", initiator_session_id=None),),
+        session_tail_provider=lambda _session_id: (
+            "git switch main && git commit -m 'wip'" if blocked_checks_remaining > 0 else "idle - waiting for input"
+        ),
+        dirty_tracked_paths_provider=lambda: (),
+    )
+
+    runtime = IntegratorShadowRuntime(
+        lease_store=lease_store,
+        queue=queue,
+        readiness_lookup=lambda _candidate_key: readiness,
+        clearance_probe=probe,
+        outcome_sink=lambda _outcome: None,
+        checkpoint_path=tmp_path / "integration-checkpoint.json",
+        clearance_retry_seconds=0.25,
+        sleep_fn=_sleep,
+    )
+
+    result = runtime.drain_ready_candidates(owner_session_id="integrator-1")
+    assert result.lease_acquired is True
+    assert [outcome.outcome for outcome in result.outcomes] == ["would_integrate"]
+    assert sleep_calls == [0.25, 0.25]
+
+
 def test_clearance_probe_excludes_orchestrator_worker_pairs_and_ignores_idle_standalone() -> None:
     sessions = (
         SessionSnapshot(session_id="orchestrator", initiator_session_id=None),
