@@ -43,6 +43,8 @@ This follows existing artifact conventions (`## Required reads`, snippet schema,
 
 ### Task 2: Extract procedures for each in-scope exploratory skill
 
+- [x] Task complete
+
 **Files:**
 
 - `docs/global/general/procedure/socratic-design-refinement.md` (from brainstorming)
