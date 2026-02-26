@@ -50,14 +50,14 @@ only. Follows patterns from existing `teleclaude/core/migrations/runner.py`.
 
 ### Task 2.1: Tests
 
-- [ ] Unit test: `parse_version` handles "1.2.3", "v1.2.3", edge cases
-- [ ] Unit test: `discover_migrations` finds correct version range
-- [ ] Unit test: migrations run in correct order (version, then script number)
-- [ ] Unit test: `check()` skips already-applied migrations
-- [ ] Unit test: failure halts and preserves state
-- [ ] Unit test: atomic state write
-- [ ] Unit test: `dry_run` returns plan without executing
-- [ ] Run `make test`
+- [x] Unit test: `parse_version` handles "1.2.3", "v1.2.3", edge cases
+- [x] Unit test: `discover_migrations` finds correct version range
+- [x] Unit test: migrations run in correct order (version, then script number)
+- [x] Unit test: `check()` skips already-applied migrations
+- [x] Unit test: failure halts and preserves state
+- [x] Unit test: atomic state write
+- [x] Unit test: `dry_run` returns plan without executing
+- [x] Run `make test`
 
 ### Task 2.2: Quality Checks
 
