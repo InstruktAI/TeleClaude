@@ -1,4 +1,4 @@
-# Bug:
+# Bug: Sticky removal causes layout confusion and sessions not fully removed
 
 ## Symptom
 
@@ -67,7 +67,7 @@ visual impression that some sessions weren't fully removed.
 
 ## Fix Applied
 
-Three changes committed together:
+Three changes committed in `849c3a22`:
 
 1. **`frontend/cli/lib/tmux/layout.ts` — `getLayoutSignature`**
    Compute an `effectivePreviewId` that is `null` when `previewId` is already
