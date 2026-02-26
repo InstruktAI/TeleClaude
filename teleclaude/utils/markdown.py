@@ -416,7 +416,7 @@ def _trim_with_balanced_markdown_with_consumed(text: str, budget: int) -> tuple[
         current = current[:-1]
 
 
-def _required_markdown_closers(text: str) -> str:
+def _required_markdown_closers(text: str) -> str:  # pyright: ignore[reportUnusedFunction]
     """Compute closers needed to finish currently open MarkdownV2 entities."""
     return _required_markdown_closers_from_state(text, scan_markdown_v2_state(text))
 

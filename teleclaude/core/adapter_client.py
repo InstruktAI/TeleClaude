@@ -14,6 +14,7 @@ from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.discord_adapter import DiscordAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.adapters.whatsapp_adapter import WhatsAppAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.models import (
@@ -170,6 +171,18 @@ class AdapterClient:
             await telegram.start()  # Raises if fails → daemon crashes
             self.adapters["telegram"] = telegram  # Register ONLY after success
             logger.info("Started telegram adapter")
+
+        whatsapp_cfg = getattr(config, "whatsapp", None)
+        if (
+            whatsapp_cfg is not None
+            and bool(getattr(whatsapp_cfg, "enabled", False))
+            and getattr(whatsapp_cfg, "phone_number_id", None)
+            and getattr(whatsapp_cfg, "access_token", None)
+        ):
+            whatsapp = WhatsAppAdapter(self)
+            await whatsapp.start()
+            self.adapters["whatsapp"] = whatsapp
+            logger.info("Started whatsapp adapter")
 
         # Redis adapter
         if config.redis.enabled:
@@ -588,9 +601,7 @@ class AdapterClient:
         This keeps direct user experience local while fanning out for admin visibility.
         """
         default_actor = (
-            "TUI"
-            if source.lower() in {InputOrigin.API.value, InputOrigin.TERMINAL.value}
-            else source.upper()
+            "TUI" if source.lower() in {InputOrigin.API.value, InputOrigin.TERMINAL.value} else source.upper()
         )
         normalized_actor_name = (actor_name or "").strip() or (actor_id or "").strip() or default_actor
         fresh_session = await db.get_session(session.session_id)
@@ -598,8 +609,10 @@ class AdapterClient:
         final_text = text
 
         source_adapter = source.strip().lower()
-        display_origin_label = "TERMINAL" if source_adapter == InputOrigin.TERMINAL.value else (
-            source_adapter.upper() if source_adapter else "UNKNOWN"
+        display_origin_label = (
+            "TERMINAL"
+            if source_adapter == InputOrigin.TERMINAL.value
+            else (source_adapter.upper() if source_adapter else "UNKNOWN")
         )
         explicit_actor_name = (actor_name or "").strip()
         is_terminal_actor_reflection = source_adapter == InputOrigin.TERMINAL.value and bool(explicit_actor_name)

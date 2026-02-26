@@ -121,15 +121,21 @@ class DiscordCreds(BaseModel):
     user_id: str  # Discord user IDs are snowflakes (strings)
 
 
+class WhatsAppCreds(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    phone_number: str
+
+
 class CredsConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
     telegram: Optional[TelegramCreds] = None
     discord: Optional[DiscordCreds] = None
+    whatsapp: Optional[WhatsAppCreds] = None
 
 
 class SubscriptionNotification(BaseModel):
     model_config = ConfigDict(extra="allow")
-    preferred_channel: Literal["telegram", "discord", "email"] = "telegram"
+    preferred_channel: Literal["telegram", "discord", "whatsapp", "email"] = "telegram"
     email: str | None = None
 
 

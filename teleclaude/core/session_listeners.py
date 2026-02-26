@@ -417,7 +417,7 @@ async def notify_input_request(
     """
     message = (
         f"Session {target_session_id[:8]} on {computer} needs input: {input_message} "
-        f"Use telec sessions send {target_session_id} \"your response\" to respond."
+        f'Use telec sessions send {target_session_id} "your response" to respond.'
     )
     return await _notify_listeners(target_session_id, message)
 

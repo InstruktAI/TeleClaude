@@ -828,9 +828,7 @@ class TelegramAdapter(
         logger.info("Whitelisted user IDs: %s", self.user_whitelist)
         # Non-critical startup housekeeping can involve Telegram rate limits and
         # should not block daemon/API readiness.
-        self._startup_housekeeping_task = asyncio.create_task(
-            self._run_startup_housekeeping(bot_id=bot_info.id)
-        )
+        self._startup_housekeeping_task = asyncio.create_task(self._run_startup_housekeeping(bot_id=bot_info.id))
         logger.debug("Scheduled Telegram startup housekeeping task")
 
     async def _run_startup_housekeeping(self, bot_id: int) -> None:

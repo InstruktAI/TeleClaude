@@ -408,6 +408,10 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         except (ValueError, TypeError):
             pass
+    if identity and identity.platform == "whatsapp" and identity.platform_user_id:
+        wa_meta = session.get_metadata().get_ui().get_whatsapp()
+        wa_meta.phone_number = identity.platform_user_id
+        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
 
     # NOTE: tmux creation + auto-command execution are handled asynchronously
     # by the daemon bootstrap task. Channel creation is deferred to UI lanes

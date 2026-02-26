@@ -162,6 +162,15 @@ subcommands:
         description: 'Scaffold bug files for a slug.'
       list:
         description: 'List in-flight bug fixes with status (prefers worktree state when present).'
+  auth:
+    description: 'Session-scoped authentication helpers.'
+    subcommands:
+      login:
+        description: 'Associate the current TTY session with an email.'
+      whoami:
+        description: 'Show current session auth identity.'
+      logout:
+        description: 'Clear current session auth identity.'
   config:
     description: 'Interactive configuration (or get/patch/validate subcommands).'
     subcommands:

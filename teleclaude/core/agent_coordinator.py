@@ -169,7 +169,11 @@ def _is_codex_synthetic_prompt_event(raw_payload: object) -> bool:
 def _has_active_output_message(session: "Session") -> bool:
     """Check if any adapter has an active output message in metadata."""
     meta = session.get_metadata().get_ui()
-    return bool(meta.get_telegram().output_message_id or meta.get_discord().output_message_id)
+    return bool(
+        meta.get_telegram().output_message_id
+        or meta.get_discord().output_message_id
+        or meta.get_whatsapp().output_message_id
+    )
 
 
 def _is_pasted_content_placeholder(prompt: str) -> bool:
@@ -196,6 +200,7 @@ def _resolve_hook_actor_name(session: "Session") -> str:
     ui_meta = session.get_metadata().get_ui()
     telegram_user_id = ui_meta.get_telegram().user_id
     discord_user_id = ui_meta.get_discord().user_id
+    whatsapp_phone = _coerce_nonempty_str(ui_meta.get_whatsapp().phone_number)
 
     origin_hint = (session.last_input_origin or "").strip().lower()
     resolver = get_identity_resolver()
@@ -207,7 +212,7 @@ def _resolve_hook_actor_name(session: "Session") -> str:
         return _coerce_nonempty_str(identity.person_name)
 
     if origin_hint == InputOrigin.TELEGRAM.value and telegram_user_id is not None:
-        telegram_meta: dict[str, object] = {
+        telegram_meta: dict[str, object] = {  # guard: loose-dict - Identity resolver channel metadata is dynamic.
             "user_id": str(telegram_user_id),
             "telegram_user_id": str(telegram_user_id),
         }
@@ -216,11 +221,19 @@ def _resolve_hook_actor_name(session: "Session") -> str:
             return resolved
 
     if origin_hint == InputOrigin.DISCORD.value and discord_user_id:
-        discord_meta: dict[str, object] = {
+        discord_meta: dict[str, object] = {  # guard: loose-dict - Identity resolver channel metadata is dynamic.
             "user_id": str(discord_user_id),
             "discord_user_id": str(discord_user_id),
         }
         resolved = _resolve_identity_name(InputOrigin.DISCORD.value, discord_meta)
+        if resolved:
+            return resolved
+
+    if origin_hint == InputOrigin.WHATSAPP.value and whatsapp_phone:
+        whatsapp_meta: dict[str, object] = {  # guard: loose-dict - Identity resolver channel metadata is dynamic.
+            "phone_number": whatsapp_phone
+        }
+        resolved = _resolve_identity_name(InputOrigin.WHATSAPP.value, whatsapp_meta)
         if resolved:
             return resolved
 
@@ -242,6 +255,12 @@ def _resolve_hook_actor_name(session: "Session") -> str:
         if resolved:
             return resolved
 
+    if whatsapp_phone:
+        whatsapp_meta = {"phone_number": whatsapp_phone}
+        resolved = _resolve_identity_name(InputOrigin.WHATSAPP.value, whatsapp_meta)
+        if resolved:
+            return resolved
+
     human_email = _coerce_nonempty_str(session.human_email)
     if human_email:
         return human_email
@@ -255,10 +274,14 @@ def _resolve_hook_actor_name(session: "Session") -> str:
         return f"telegram:{telegram_user_id}"
     if origin_hint == InputOrigin.DISCORD.value and discord_user_id:
         return f"discord:{discord_user_id}"
+    if origin_hint == InputOrigin.WHATSAPP.value and whatsapp_phone:
+        return f"whatsapp:{whatsapp_phone}"
     if telegram_user_id is not None:
         return f"telegram:{telegram_user_id}"
     if discord_user_id:
         return f"discord:{discord_user_id}"
+    if whatsapp_phone:
+        return f"whatsapp:{whatsapp_phone}"
 
     return "operator"
 
@@ -868,6 +891,7 @@ class AgentCoordinator:
         input_update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
         feedback_update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
         emit_codex_submit_backfill = False
+        input_text: str | None = None
 
         # For Codex: recover last user input from transcript (no native prompt hook).
         codex_input = await self._extract_user_input_for_codex(session_id, payload)
@@ -899,7 +923,7 @@ class AgentCoordinator:
             # Safety net: when Codex prompt polling misses a live submit marker,
             # mirror the recovered user input to adapters so Discord/Telegram
             # still show the user turn.
-            if session and session.lifecycle_status != "headless":
+            if session and session.lifecycle_status != "headless" and input_text:
                 hook_actor_name = _resolve_hook_actor_name(session)
                 await self.client.broadcast_user_input(
                     session,
