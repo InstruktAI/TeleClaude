@@ -56,8 +56,8 @@ request path deterministic for unchanged slugs.
 
 **File(s):** `docs/project/design/architecture/next-machine.md`
 
-- [ ] Document conditional prep/sync policy and single-flight behavior.
-- [ ] Document new phase timing log contract for `/todos/work`.
+- [x] Document conditional prep/sync policy and single-flight behavior.
+- [x] Document new phase timing log contract for `/todos/work`.
 - Requirements: `R1`, `R2`, `R3`, `R4`
 
 ---
@@ -66,13 +66,13 @@ request path deterministic for unchanged slugs.
 
 ### Task 2.1: Tests
 
-- [ ] Update `tests/unit/test_next_machine_worktree_prep.py` to replace
+- [x] Update `tests/unit/test_next_machine_worktree_prep.py` to replace
       "always prep" assertions with conditional decision assertions.
-- [ ] Add/extend tests for concurrent same-slug calls to verify single-flight
+- [x] Add/extend tests for concurrent same-slug calls to verify single-flight
       prep behavior.
-- [ ] Add/extend sync tests to verify safe skip on unchanged inputs and re-sync
+- [x] Add/extend sync tests to verify safe skip on unchanged inputs and re-sync
       on changes.
-- [ ] Validate no regression in build gate/reset and dispatch behavior.
+- [x] Validate no regression in build gate/reset and dispatch behavior.
 - Requirements: `R2`, `R3`, `R4`, `R5`, `R6`
 
 ### Task 2.2: Quality Checks
