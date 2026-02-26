@@ -188,3 +188,89 @@ def test_service_marks_older_finalize_candidate_as_superseded(tmp_path: Path) ->
         sha="bbb222",
     )
     assert new_candidate.status == "READY"
+
+
+def test_service_breaks_equal_ready_at_ties_deterministically(tmp_path: Path) -> None:
+    service = _new_service(tmp_path / "integration-events.jsonl")
+
+    assert (
+        service.ingest(
+            "review_approved",
+            {
+                "slug": "integration-events-model",
+                "approved_at": "2026-02-26T10:00:00Z",
+                "review_round": 1,
+                "reviewer_session_id": "review-1",
+            },
+        ).status
+        == "APPENDED"
+    )
+    assert (
+        service.ingest(
+            "branch_pushed",
+            {
+                "branch": "worktree/integration-events-model-a",
+                "sha": "aaa111",
+                "remote": "origin",
+                "pushed_at": "2026-02-26T10:01:00Z",
+                "pusher": "worker-1",
+            },
+        ).status
+        == "APPENDED"
+    )
+    assert (
+        service.ingest(
+            "branch_pushed",
+            {
+                "branch": "worktree/integration-events-model-z",
+                "sha": "bbb222",
+                "remote": "origin",
+                "pushed_at": "2026-02-26T10:01:30Z",
+                "pusher": "worker-2",
+            },
+        ).status
+        == "APPENDED"
+    )
+
+    assert (
+        service.ingest(
+            "finalize_ready",
+            {
+                "slug": "integration-events-model",
+                "branch": "worktree/integration-events-model-a",
+                "sha": "aaa111",
+                "worker_session_id": "worker-1",
+                "orchestrator_session_id": "orch-1",
+                "ready_at": "2026-02-26T10:02:00Z",
+            },
+        ).status
+        == "APPENDED"
+    )
+    second_finalize = service.ingest(
+        "finalize_ready",
+        {
+            "slug": "integration-events-model",
+            "branch": "worktree/integration-events-model-z",
+            "sha": "bbb222",
+            "worker_session_id": "worker-2",
+            "orchestrator_session_id": "orch-1",
+            "ready_at": "2026-02-26T10:02:00Z",
+        },
+    )
+    assert second_finalize.status == "APPENDED"
+
+    candidate_a = service.get_candidate(
+        slug="integration-events-model",
+        branch="worktree/integration-events-model-a",
+        sha="aaa111",
+    )
+    candidate_z = service.get_candidate(
+        slug="integration-events-model",
+        branch="worktree/integration-events-model-z",
+        sha="bbb222",
+    )
+    assert candidate_a is not None
+    assert candidate_z is not None
+    assert candidate_a.status == "SUPERSEDED"
+    assert candidate_a.superseded_by == candidate_z.key
+    assert candidate_z.status == "READY"

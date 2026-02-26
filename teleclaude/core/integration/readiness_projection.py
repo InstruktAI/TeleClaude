@@ -53,6 +53,10 @@ class _CandidateFinalize:
     ready_at: datetime
     ready_at_raw: str
 
+    def supersession_rank(self) -> tuple[datetime, str, str]:
+        """Stable winner ordering for candidates within one slug."""
+        return (self.ready_at, self.key.branch, self.key.sha)
+
 
 class ReadinessProjection:
     """Compute integration readiness for `(slug, branch, sha)` candidates."""
@@ -159,14 +163,14 @@ class ReadinessProjection:
         latest_by_slug: dict[str, _CandidateFinalize] = {}
         for candidate in self._finalize_by_key.values():
             current = latest_by_slug.get(candidate.key.slug)
-            if current is None or candidate.ready_at > current.ready_at:
+            if current is None or candidate.supersession_rank() > current.supersession_rank():
                 latest_by_slug[candidate.key.slug] = candidate
 
         next_readiness: dict[CandidateKey, CandidateReadiness] = {}
         for key, finalize in self._finalize_by_key.items():
             latest = latest_by_slug.get(key.slug)
             superseded_by: CandidateKey | None = None
-            if latest is not None and latest.key != key and latest.ready_at > finalize.ready_at:
+            if latest is not None and latest.key != key and latest.supersession_rank() >= finalize.supersession_rank():
                 superseded_by = latest.key
 
             if superseded_by is not None:
