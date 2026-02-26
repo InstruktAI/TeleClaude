@@ -11,11 +11,22 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from typing_extensions import TypedDict
 
 from teleclaude.config.schema import JobScheduleConfig
 from teleclaude.cron import runner
 from teleclaude.helpers import agent_cli
 from teleclaude.helpers.agent_types import AgentName
+
+
+class _CreateSessionArgs(TypedDict, total=False):
+    computer: str
+    agent: str | None
+    thinking_mode: str
+    title: str
+    human_role: str
+    message: str
+
 
 # ---------------------------------------------------------------------------
 # run_job() builds correct CLI flags
@@ -116,7 +127,7 @@ def test_run_agent_job_creates_session_via_api(monkeypatch: pytest.MonkeyPatch) 
     """_run_agent_job() sends create_session to daemon via TelecAPIClient."""
     from types import SimpleNamespace
 
-    call_args: dict = {}
+    call_args: _CreateSessionArgs = {}
 
     class FakeClient:
         async def connect(self) -> None:
@@ -139,7 +150,7 @@ def test_run_agent_job_creates_session_via_api(monkeypatch: pytest.MonkeyPatch) 
 
     assert result is True
     assert call_args["computer"] == "TestHost"
-    assert call_args["agent"] == "claude"
+    assert call_args["agent"] is None
     assert call_args["thinking_mode"] == "fast"
     assert call_args["title"] == "Job: memory_review"
     assert call_args["human_role"] == "admin"
