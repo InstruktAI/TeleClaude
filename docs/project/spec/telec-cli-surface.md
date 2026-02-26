@@ -45,8 +45,6 @@ subcommands:
     description: 'List available computers in the network.'
   projects:
     description: 'List available project directories.'
-  deploy:
-    description: 'Deploy latest code to remote computers.'
   agents:
     description: 'Manage agent dispatch status and availability.'
     subcommands:

@@ -2,74 +2,60 @@
 id: 'project/procedure/deploy'
 type: 'procedure'
 scope: 'project'
-description: 'Deploy TeleClaude changes safely with verification.'
+description: 'How TeleClaude updates propagate to computers via the automated deployment pipeline.'
 ---
 
 # Deploy — Procedure
 
 ## Goal
 
-Deploy project changes to TeleClaude computers safely and verify health.
+Understand how code updates reach TeleClaude computers via the automated
+webhook-driven deployment pipeline.
 
-## Preconditions
+## Overview
 
-- You are in the TeleClaude repository.
-- Working tree has no unresolved in-scope deploy changes.
-- Remote access to target computers is configured.
+Deployment is fully automated. Computers subscribe to GitHub events
+(push to main, release published) and self-update based on their configured
+deployment channel. No manual `telec deploy` command is needed.
 
-## Steps
+## Deployment Channels
 
-1. Check for local changes:
+Each computer declares a channel in `config.yml`:
 
-   ```bash
-   git status --porcelain
-   ```
+| Channel  | Trigger                            | Notes                             |
+| -------- | ---------------------------------- | --------------------------------- |
+| `alpha`  | Every push to `main`               | Latest code, may be unstable      |
+| `beta`   | GitHub release published           | Tagged releases only              |
+| `stable` | Release within pinned minor series | Requires `pinned_minor` in config |
 
-   If the working tree is dirty, assess scope:
-   - If dirty files overlap deploy intent (release/deploy/config changes), stop and report.
-   - If dirty files are unrelated, continue deployment and report that unrelated drift was ignored.
-   - Do not auto-commit unrelated files.
+## How It Works
 
-2. Pull updates safely:
+1. A GitHub webhook fires on push or release event.
+2. The daemon's webhook handler evaluates the event against the computer's channel config.
+3. If the event matches, `execute_update` runs: `git pull --ff-only`, migrations, daemon restart.
+4. For `alpha` and `beta`, the daemon also publishes a fan-out event to Redis
+   (`deployment:version_available`) so remote computers on the same channel also update.
 
-   ```bash
-   git fetch origin
-   git pull --ff-only origin main
-   ```
+## Monitoring
 
-3. Push commits if needed:
-
-   ```bash
-   git push origin main
-   ```
-
-4. Deploy via `telec`:
-
-   ```bash
-   telec deploy
-   ```
-
-   If no computers are specified, deploys to all.
-
-5. Verify each target reports healthy:
-
-   ```bash
-   make status
-   ```
-
-6. If `telec deploy` is unavailable, fall back to SSH per computer:
-
-   ```bash
-   ssh -A {user}@{host} 'cd <teleclaude-path> && git pull --ff-only origin main && make restart && make status'
-   ```
-
-(See `config.yml` for computer list, their host names and teleclaude paths.)
-
-## Outputs
-
-- Deployment status per target computer.
+After a push or release, verify computers updated via `make status` or by
+checking the daemon version: `telec version`.
 
 ## Recovery
 
-- If any step fails, stop and report the error.
-- Do not continue with partial deployment.
+If auto-update fails on a computer, fall back to SSH:
+
+```bash
+ssh -A {user}@{host} 'cd <teleclaude-path> && git pull --ff-only origin main && make restart && make status'
+```
+
+(See `config.yml` for computer list, host names, and teleclaude paths.)
+
+## Outputs
+
+- Automatic daemon restart with updated code on all subscribed computers.
+
+## See Also
+
+- `docs/project/design/architecture/deployment-pipeline.md` — full architecture
+- `docs/project/spec/teleclaude-config.md` — deployment channel configuration
