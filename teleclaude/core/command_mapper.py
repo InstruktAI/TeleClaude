@@ -307,6 +307,10 @@ class CommandMapper:
         session_id = str(payload.get("session_id", ""))
 
         if command_name == "new_session":
+            skip_listener_registration_raw = payload.get("skip_listener_registration")
+            skip_listener_registration = (
+                skip_listener_registration_raw if isinstance(skip_listener_registration_raw, bool) else False
+            )
             return CreateSessionCommand(
                 project_path=metadata.project_path or "",
                 title=metadata.title,
@@ -316,6 +320,7 @@ class CommandMapper:
                 launch_intent=metadata.launch_intent,
                 auto_command=metadata.auto_command,
                 session_metadata=metadata.session_metadata,
+                skip_listener_registration=skip_listener_registration,
             )
 
         if command_name == "message":

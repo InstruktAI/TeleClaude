@@ -412,7 +412,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
 
     # AI-to-AI starts should register a one-shot stop listener so the initiator
     # receives completion notifications for the spawned child session.
-    if initiator_session_id and initiator_session_id != session_id:
+    if initiator_session_id and initiator_session_id != session_id and not cmd.skip_listener_registration:
         caller_tmux = parent_session.tmux_session_name if parent_session else None
         if caller_tmux:
             try:
@@ -442,6 +442,12 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
                 initiator_session_id[:8],
                 session_id[:8],
             )
+    elif initiator_session_id and initiator_session_id != session_id and cmd.skip_listener_registration:
+        logger.debug(
+            "Listener registration skipped by command flag (caller=%s target=%s)",
+            initiator_session_id[:8],
+            session_id[:8],
+        )
 
     # Persist platform user_id on adapter metadata for derive_identity_key()
     if identity and identity.platform == "telegram" and identity.platform_user_id:

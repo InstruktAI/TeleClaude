@@ -12,12 +12,6 @@
   - deployment-channels
   description: 'Phase 4: Remove deploy_service, MCP tool (if still present), update
     docs, write pipeline doc'
-- slug: integration-events-model
-  group: integration-orchestrator-rollout
-  after:
-  - integration-safety-gates
-  description: 'Step 2: persist review_approved/finalize_ready/branch_pushed events
-    and readiness projection'
 - slug: integrator-shadow-mode
   group: integration-orchestrator-rollout
   after:
