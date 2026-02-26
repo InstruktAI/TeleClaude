@@ -102,6 +102,7 @@ export function SessionList() {
   }
 
   if (error) {
+    console.error("SessionList query error:", error);
     return (
       <div className="p-3">
         <p className="text-xs text-destructive">

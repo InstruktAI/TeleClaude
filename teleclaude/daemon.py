@@ -1125,13 +1125,32 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # TTS session_start is triggered via event_bus (SESSION_STARTED event)
         await self._start_polling_for_session(session_id, session.tmux_session_name)
 
+        # Run auto-command BEFORE transitioning to active so that process_message
+        # callers waiting on the initializing gate see the transition only after
+        # the startup command has been dispatched into tmux.
+        auto_command_result: dict[str, str] | None = None
+        if auto_command:
+            try:
+                auto_command_result = await self._execute_auto_command(session_id, auto_command)
+            except Exception:
+                logger.error(
+                    "Bootstrap auto-command failed for session %s",
+                    session_id[:8],
+                    exc_info=True,
+                )
+                auto_command_result = {"status": "error"}
+
         # Transition non-headless sessions to active so they appear in listings.
         # Headless sessions stay "headless" until explicitly adopted by a UI adapter.
         if session.lifecycle_status != "headless":
             await db.update_session(session_id, lifecycle_status="active")
 
-        if auto_command:
-            await self._execute_auto_command(session_id, auto_command)
+        logger.info(
+            "Bootstrap complete for session %s: auto_command=%s result=%s",
+            session_id[:8],
+            bool(auto_command),
+            auto_command_result.get("status") if auto_command_result else "n/a",
+        )
 
     async def _handle_agent_then_message(self, session_id: str, args: list[str]) -> dict[str, str]:
         """Start agent, wait for TUI to stabilize, then inject message."""
