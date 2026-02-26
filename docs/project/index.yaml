@@ -322,6 +322,14 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: project/design/ux/session-preview-sticky
+  description: Preview and sticky session interaction model for TUI pane management.
+  type: design
+  scope: project
+  path: docs/project/design/ux/session-preview-sticky.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: project/policy/adapter-boundaries
   description: Strict separation between adapters and core logic.
   type: policy
