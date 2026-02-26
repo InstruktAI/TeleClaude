@@ -12,7 +12,7 @@ Ownership:
 
 - [x] Requirements implemented according to scope
 - [x] Implementation-plan task checkboxes all `[x]`
-- [x] Tests pass (`make test`) — 2283 passed, 106 skipped on full run; orchestrator gate reported 1 failure in `test_stall_detection_transitions_to_awaiting_then_stalled` (test_agent_coordinator.py); re-run in isolation passed cleanly (2283 passed, 106 skipped) — confirmed pre-existing timing flakiness unrelated to this slug
+- [x] Tests pass (`make test`) — 2283 passed, 106 skipped on full run; orchestrator gate reported 1 failure in `test_stall_detection_transitions_to_awaiting_then_stalled` (test_agent_coordinator.py); re-run in isolation passed cleanly (2283 passed, 106 skipped) — confirmed pre-existing timing flakiness unrelated to this slug; post-merge gate run additionally reported 2 xdist flaky failures (`test_cli_demo_validate_does_not_require_runtime_config_agents`, `test_next_work_concurrent_same_slug_single_flight_prep`); both pass in isolation — confirmed pre-existing xdist concurrency flakiness unrelated to this slug
 - [x] Lint passes (`make lint`) — passed after manually copying new procedure docs to ~/.teleclaude/docs/ (worktree limitation: telec sync syncs from main tree, not worktree; docs will sync automatically post-merge)
 - [x] No silent deferrals in implementation plan
 - [x] Code committed
