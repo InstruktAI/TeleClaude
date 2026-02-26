@@ -1,8 +1,10 @@
 """Unit tests for canonical integration event model behavior."""
 
+import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 from teleclaude.core.integration import (
     CandidateKey,
@@ -13,7 +15,7 @@ from teleclaude.core.integration import (
     build_integration_event,
     validate_event_payload,
 )
-from teleclaude.core.integration.events import integration_event_from_record
+from teleclaude.core.integration.events import _REQUIRED_FIELDS, integration_event_from_record
 
 pytestmark = pytest.mark.timeout(5)
 
@@ -88,6 +90,19 @@ def test_integration_event_from_record_accepts_valid_string_fields() -> None:
     assert event.event_id == "evt-123"
     assert event.received_at == "2026-02-26T10:01:00+00:00"
     assert event.idempotency_key == "idem-123"
+
+
+def test_required_fields_contract_matches_integration_spec() -> None:
+    spec_path = Path(__file__).resolve().parents[2] / "docs/project/spec/integration-orchestrator.md"
+    spec_text = spec_path.read_text(encoding="utf-8")
+    yaml_block_match = re.search(r"```yaml\n(.*?)\n```", spec_text, re.DOTALL)
+    assert yaml_block_match is not None
+
+    parsed = yaml.safe_load(yaml_block_match.group(1))
+    required_event_fields = parsed["integrator"]["required_event_fields"]
+    spec_contract = {event_type: tuple(fields) for event_type, fields in required_event_fields.items()}
+
+    assert spec_contract == dict(_REQUIRED_FIELDS)
 
 
 def test_event_store_append_is_idempotent_and_collision_safe(tmp_path: Path) -> None:
