@@ -1,0 +1,19 @@
+{
+  "slug": "agent-availability-enforcement-migration",
+  "title": "Requirements: agent-availability-enforcement-migration",
+  "version": "1.0.0",
+  "delivered_date": "2026-02-26",
+  "merge_commit": "7132da8d791bcfd29c3d95691fd73788d06890ce",
+  "metrics": {
+    "implementation_plan_checkboxes_total": 30,
+    "implementation_plan_checkboxes_completed": 1,
+    "demo_validation_blocks": 6
+  },
+  "five_acts": [
+    "Act I - Regression Trigger: runtime agent routing could still launch unavailable agents through explicit and implicit paths.",
+    "Act II - Canonical Policy: added a shared core resolver for known/enabled/availability/degraded enforcement.",
+    "Act III - Surface Migration: API, daemon, command handlers, adapters, cron, and mapper paths were moved onto the same routing contract.",
+    "Act IV - Fail-Closed Hardening: review uncovered fail-open behavior on availability lookup errors and the fix enforced fail-closed routing.",
+    "Act V - Delivery Evidence: targeted and full test gates plus demo validation passed before finalize and logging cleanup."
+  ]
+}
