@@ -172,7 +172,7 @@ class FakeForumPostThread:
 
 
 class FakeForumChannel:
-    """Forum-like channel mock."""
+    """Forum-like channel mock with discord.py create_thread contract."""
 
     def __init__(self, channel_id: int, thread_id: int, starter_message_id: int | None = None) -> None:
         self.id = channel_id
@@ -180,7 +180,6 @@ class FakeForumChannel:
         self._starter_message_id = starter_message_id if starter_message_id is not None else thread_id
         self.created_names: list[str] = []
         self.created_threads: list[FakeForumPostThread] = []
-        self.sent_messages: dict[int, object] = {}
 
     async def create_thread(self, *, name: str, content: str, view: object | None = None) -> object:
         self.created_names.append(name)
@@ -188,24 +187,6 @@ class FakeForumChannel:
         message = thread.add_message(self._starter_message_id, content=content, view=view)
         self.created_threads.append(thread)
         return SimpleNamespace(thread=thread, message=message)
-
-    async def send(self, text: str, *, view: object | None = None) -> object:
-        message_id = len(self.sent_messages) + 1000
-        message = SimpleNamespace(
-            id=message_id,
-            content=text,
-            view=view,
-            edit=AsyncMock(return_value=None),
-            pin=AsyncMock(return_value=None),
-        )
-        self.sent_messages[message_id] = message
-        return message
-
-    async def fetch_message(self, message_id: int) -> object:
-        message = self.sent_messages.get(message_id)
-        if message is None:
-            raise RuntimeError("message not found")
-        return message
 
 
 class FakeThread:
@@ -889,6 +870,13 @@ async def test_post_or_update_launcher_pins_new_message() -> None:
     with patch("teleclaude.adapters.discord_adapter.db", fake_db):
         await adapter._post_or_update_launcher(600)
 
+    fake_db.get_system_setting.assert_has_awaits(
+        [
+            call("discord_launcher:600:thread_id"),
+            call("discord_launcher:600:message_id"),
+            call("discord_launcher:600"),
+        ]
+    )
     assert forum.created_names == ["Start a session"]
     assert len(forum.created_threads) == 1
     starter = await forum.created_threads[0].fetch_message(700)
@@ -921,6 +909,12 @@ async def test_post_or_update_launcher_pins_existing_message() -> None:
     with patch("teleclaude.adapters.discord_adapter.db", fake_db):
         await adapter._post_or_update_launcher(600)
 
+    fake_db.get_system_setting.assert_has_awaits(
+        [
+            call("discord_launcher:600:thread_id"),
+            call("discord_launcher:600:message_id"),
+        ]
+    )
     existing.edit.assert_awaited_once()
     existing.pin.assert_awaited_once()
     assert forum.created_threads == []
