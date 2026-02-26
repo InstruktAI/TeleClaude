@@ -1,5 +1,24 @@
 {
   "slug": "deployment-versioning",
   "title": "deployment-versioning",
-  "version": "1.0.0"
+  "version": "",
+  "delivered_date": "2026-02-26",
+  "merge_commit": "1dfcb10291148936d4ccd1bd4e1d430e2e9baae7",
+  "metrics": {
+    "tasks_completed": 17,
+    "commits_made": 1,
+    "tests": {
+      "status": "passing",
+      "passed": 2180,
+      "skipped": 106
+    },
+    "lint": "passing"
+  },
+  "narrative": {
+    "challenge": "Establish a canonical runtime version contract and CLI visibility as the first mature-deployment milestone.",
+    "build": "Added package-level __version__ fallback logic, introduced telec version output with channel and commit, and bumped the project baseline to 1.0.0.",
+    "gauntlet": "Build verification, review approval, and finalize-prepare completed before canonical apply on main.",
+    "numbers": "Build report recorded 17 completed tasks, 1 build commit, full lint pass, and green test suite coverage for the change.",
+    "whats_next": "Subsequent mature-deployment slugs can now rely on stable version introspection for channels, migrations, and auto-update behavior."
+  }
 }
