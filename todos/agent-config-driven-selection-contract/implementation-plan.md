@@ -15,11 +15,11 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
 
 ## Phase 1 — Config Contract and Validation
 
-- [ ] Require explicit `agents` section in effective config load path.
-- [ ] Validate allowed keys and reject unknown agent keys.
-- [ ] Enforce at least one enabled agent.
-- [ ] Return precise, actionable validation errors referencing `config.yml` paths.
-- [ ] Update config spec docs to match enforced contract.
+- [x] Require explicit `agents` section in effective config load path.
+- [x] Validate allowed keys and reject unknown agent keys.
+- [x] Enforce at least one enabled agent.
+- [x] Return precise, actionable validation errors referencing `config.yml` paths.
+- [x] Update config spec docs to match enforced contract.
 
 ### Files (expected)
 
@@ -29,13 +29,13 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
 
 ## Phase 2 — Central Agent Policy Surface
 
-- [ ] Add/standardize canonical known-agent constant(s) in one module.
-- [ ] Add helper APIs:
-  - [ ] `get_known_agents()`
-  - [ ] `get_enabled_agents()`
-  - [ ] `is_agent_enabled(name)`
-  - [ ] rejection helper for disabled agent selection
-- [ ] Ensure helpers are import-safe and reusable across core/API/TUI/MCP.
+- [x] Add/standardize canonical known-agent constant(s) in one module.
+- [x] Add helper APIs:
+  - [x] `get_known_agents()`
+  - [x] `get_enabled_agents()`
+  - [x] `is_agent_enabled(name)`
+  - [x] rejection helper for disabled agent selection
+- [x] Ensure helpers are import-safe and reusable across core/API/TUI/MCP.
 
 ### Files (expected)
 
@@ -44,13 +44,15 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
 
 ## Phase 3 — Enforce in Dispatch/Start Paths
 
-- [ ] Enforce enabled-agent policy before start/resume/restart and worker dispatch.
-- [ ] Reject disabled selection in:
-  - [ ] API session creation path
-  - [ ] MCP `telec sessions start`
-  - [ ] MCP `telec sessions run`
-  - [ ] core command handlers (`start_agent`, `resume_agent`, `agent_restart`)
-- [ ] Ensure fallback picker logic uses enabled-agent helper.
+- [x] Enforce enabled-agent policy before start/resume/restart and worker dispatch.
+- [x] Reject disabled selection in:
+  - [x] API session creation path
+  - [x] MCP `telec sessions start`
+  - [x] MCP `telec sessions run`
+  - [x] core command handlers (`start_agent`, `resume_agent`, `agent_restart`)
+- [x] Ensure fallback picker logic uses enabled-agent helper.
+
+Note: MCP runtime/tool modules are no longer present in this codebase; enforcement for equivalent dispatch surfaces is implemented in `/sessions/run` and command dispatch handlers.
 
 ### Files (expected)
 
@@ -62,10 +64,10 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
 
 ## Phase 4 — Next-Machine Guidance and UX Behavior
 
-- [ ] Replace blank guidance content with explicit placeholders when strengths/avoid are unset.
-- [ ] Ensure next-machine guidance lists only enabled+available agents.
-- [ ] TUI agent lists and selectors derive from policy helpers (no fixed lists for selection logic).
-- [ ] Add explicit blocking feedback for zero-enabled configuration.
+- [x] Replace blank guidance content with explicit placeholders when strengths/avoid are unset.
+- [x] Ensure next-machine guidance lists only enabled+available agents.
+- [x] TUI agent lists and selectors derive from policy helpers (no fixed lists for selection logic).
+- [x] Add explicit blocking feedback for zero-enabled configuration.
 
 ### Files (expected)
 
@@ -77,11 +79,11 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
 
 ## Phase 5 — Tests
 
-- [ ] Config validation tests for missing `agents`, all-disabled, unknown keys.
-- [ ] Unit tests for centralized helper behavior.
-- [ ] API/MCP path tests for disabled-agent rejection.
-- [ ] Next-machine guidance tests for non-blank output semantics.
-- [ ] TUI/tests for selectable agent behavior from policy-driven source.
+- [x] Config validation tests for missing `agents`, all-disabled, unknown keys.
+- [x] Unit tests for centralized helper behavior.
+- [x] API/MCP path tests for disabled-agent rejection.
+- [x] Next-machine guidance tests for non-blank output semantics.
+- [x] TUI/tests for selectable agent behavior from policy-driven source.
 
 ### Files (expected)
 
@@ -98,15 +100,15 @@ Implement fail-closed, config-driven agent selection and enforcement. Remove har
 
 ## Verification Plan
 
-- [ ] `uv run pytest -q tests/unit/test_agent_config_loading.py tests/unit/test_config.py tests/unit/test_config_schema.py`
-- [ ] `uv run pytest -q tests/unit/test_agent_guidance.py tests/unit/test_agent_cli.py tests/unit/test_agents.py`
-- [ ] `uv run pytest -q tests/unit/test_mcp_handlers.py tests/unit/test_mcp_server.py tests/unit/test_command_handlers.py tests/unit/test_api_server.py`
-- [ ] `uv run pytest -q tests/unit/test_tui_modal.py tests/unit/test_tui_agent_status.py`
-- [ ] `uv run pytest -q tests/integration/test_mcp_tools.py tests/integration/test_run_agent_command_e2e.py`
+- [x] `uv run pytest -q tests/unit/test_agent_config_loading.py tests/unit/test_config.py tests/unit/test_config_schema.py`
+- [x] `uv run pytest -q tests/unit/test_agent_guidance.py tests/unit/test_agent_cli.py tests/unit/test_agents.py`
+- [x] `uv run pytest -q tests/unit/test_mcp_handlers.py tests/unit/test_mcp_server.py tests/unit/test_command_handlers.py tests/unit/test_api_server.py` _(adapted to existing files: `uv run pytest -q tests/unit/test_command_handlers.py tests/unit/test_api_server.py`; MCP unit test files are not present in this repository)._
+- [x] `uv run pytest -q tests/unit/test_tui_modal.py tests/unit/test_tui_agent_status.py`
+- [x] `uv run pytest -q tests/integration/test_mcp_tools.py tests/integration/test_run_agent_command_e2e.py` _(no matching files in this repository; equivalent command-dispatch integration validated with `uv run pytest -q tests/integration/test_command_e2e.py`)._
 
 ## Definition of Done
 
-- [ ] Config fails closed when agent policy is invalid.
-- [ ] All dispatch/select surfaces use centralized enabled-agent policy.
-- [ ] No blank agent-guidance lines.
-- [ ] Tests cover fail-closed contract and pass in CI.
+- [x] Config fails closed when agent policy is invalid.
+- [x] All dispatch/select surfaces use centralized enabled-agent policy.
+- [x] No blank agent-guidance lines.
+- [x] Tests cover fail-closed contract and pass in CI.

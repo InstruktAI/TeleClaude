@@ -299,7 +299,7 @@ def handle_sessions_run(args: list[str]) -> None:
       --command <cmd>    Slash command to run (e.g. /next-build)
       --project <path>   Project directory path
       --args <args>      Command arguments (e.g. "my-slug")
-      --agent <name>     Agent to use (default: claude)
+      --agent <name>     Agent to use (default: first enabled agent)
       --mode <mode>      Thinking mode: fast, med, slow (default: slow)
       --computer <name>  Target computer (optional; defaults to local)
       --subfolder <dir>  Subdirectory within the project
@@ -314,7 +314,6 @@ def handle_sessions_run(args: list[str]) -> None:
 
     body: dict[str, object] = {  # guard: loose-dict - JSON request body
         "computer": "local",
-        "agent": "claude",
         "thinking_mode": "slow",
         "args": "",
     }

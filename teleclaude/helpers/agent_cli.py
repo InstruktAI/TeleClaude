@@ -33,10 +33,12 @@ if str(_REPO_ROOT) not in sys.path:
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config as app_config
+from teleclaude.core.agents import get_enabled_agents, is_agent_enabled
 from teleclaude.helpers.agent_types import AgentName, ThinkingMode
 from teleclaude.runtime.binaries import resolve_agent_binary
 
 logger = get_logger(__name__)
+_APP_CONFIG_COMPAT = app_config
 
 # ---------------------------------------------------------------------------
 # One-shot CLI protocol — self-contained, not shared with interactive sessions.
@@ -234,21 +236,18 @@ def _pick_agent(preferred: AgentName | None) -> AgentName:
         return False
 
     def agent_usable(agent: AgentName) -> bool:
-        cfg = app_config.agents.get(agent.value)
-        if cfg and not cfg.enabled:
-            return False
-        return binary_available(agent) and db_available(agent)
+        return is_agent_enabled(agent.value) and binary_available(agent) and db_available(agent)
 
     if preferred:
-        cfg = app_config.agents.get(preferred.value)
-        if cfg and not cfg.enabled:
+        if not is_agent_enabled(preferred.value):
             raise SystemExit(f"ERROR: configured agent {preferred.value} is disabled in config.yml")
         if not binary_available(preferred):
             raise SystemExit(f"ERROR: configured binary for {preferred.value} is not available")
         if not db_available(preferred):
             raise SystemExit(f"ERROR: configured agent {preferred.value} is marked unavailable or degraded")
         return preferred
-    for candidate in (AgentName.CLAUDE, AgentName.CODEX, AgentName.GEMINI):
+    for candidate_name in get_enabled_agents():
+        candidate = AgentName.from_str(candidate_name)
         if agent_usable(candidate):
             return candidate
     raise SystemExit("ERROR: no available agent CLI found for runtime policy")

@@ -88,6 +88,7 @@ from teleclaude.api_models import (
 from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core import command_handlers
+from teleclaude.core.agents import assert_agent_enabled, get_enabled_agents, get_known_agents
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
@@ -100,6 +101,7 @@ from teleclaude.core.events import (
     SessionStatusContext,
     SessionUpdatedContext,
     TeleClaudeEvents,
+    parse_command_string,
 )
 from teleclaude.core.models import (
     MessageMetadata,
@@ -538,8 +540,47 @@ class APIServer:
                 title = request.message
             title = title or "Untitled"
 
-            effective_agent = request.agent or "claude"
             effective_thinking_mode = request.thinking_mode or "slow"
+
+            def _resolve_enabled_agent(requested_agent: str | None) -> str:
+                if requested_agent:
+                    try:
+                        return assert_agent_enabled(requested_agent)
+                    except ValueError as exc:
+                        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+                enabled_agents = get_enabled_agents()
+                if not enabled_agents:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="No enabled agents configured. Set config.yml:agents.<agent>.enabled to true.",
+                    )
+                return enabled_agents[0]
+
+            validated_request_agent: str | None = None
+            if request.agent:
+                validated_request_agent = _resolve_enabled_agent(request.agent)
+
+            if request.auto_command:
+                command_name, command_args = parse_command_string(request.auto_command)
+                normalized_command = (command_name or "").lower()
+                known_agents = set(get_known_agents())
+
+                resume_aliases = {f"{agent}_resume" for agent in known_agents}
+
+                if normalized_command in known_agents:
+                    _resolve_enabled_agent(normalized_command)
+                elif normalized_command in resume_aliases:
+                    _resolve_enabled_agent(normalized_command.removesuffix("_resume"))
+                elif normalized_command in {"agent", "agent_then_message", "agent_resume", "agent_restart"}:
+                    auto_command_agent = command_args[0] if command_args else validated_request_agent
+                    if auto_command_agent:
+                        _resolve_enabled_agent(auto_command_agent)
+
+            def _effective_launch_agent() -> str:
+                if validated_request_agent:
+                    return validated_request_agent
+                return _resolve_enabled_agent(None)
 
             launch_intent = None
             if not request.auto_command:
@@ -552,15 +593,17 @@ class APIServer:
                 elif launch_kind == SessionLaunchKind.AGENT_RESUME:
                     if not request.agent:
                         raise HTTPException(status_code=400, detail="agent required for agent_resume")
+                    effective_agent = validated_request_agent or _resolve_enabled_agent(request.agent)
                     launch_intent = SessionLaunchIntent(
                         kind=SessionLaunchKind.AGENT_RESUME,
-                        agent=request.agent,
+                        agent=effective_agent,
                         thinking_mode=effective_thinking_mode,
                         native_session_id=request.native_session_id,
                     )
                 elif launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
                     if request.message is None:
                         raise HTTPException(status_code=400, detail="message required for agent_then_message")
+                    effective_agent = _effective_launch_agent()
                     launch_intent = SessionLaunchIntent(
                         kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
                         agent=effective_agent,
@@ -568,6 +611,7 @@ class APIServer:
                         message=request.message,
                     )
                 else:
+                    effective_agent = _effective_launch_agent()
                     launch_intent = SessionLaunchIntent(
                         kind=SessionLaunchKind.AGENT,
                         agent=effective_agent,
@@ -867,7 +911,7 @@ class APIServer:
                     status="success",
                     session_id=session_id,
                     tmux_session_name=tmux_session_name,
-                    agent=session.active_agent if session.active_agent in {"claude", "gemini", "codex"} else None,
+                    agent=session.active_agent if session.active_agent in get_known_agents() else None,
                 )
             except HTTPException:
                 raise
@@ -970,11 +1014,25 @@ class APIServer:
             if not request.project:
                 raise HTTPException(status_code=400, detail="project required")
 
+            if "agent" in request.model_fields_set:
+                try:
+                    effective_agent = assert_agent_enabled(request.agent)
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+            else:
+                enabled_agents = get_enabled_agents()
+                if not enabled_agents:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="No enabled agents configured. Set config.yml:agents.<agent>.enabled to true.",
+                    )
+                effective_agent = enabled_agents[0]
+
             normalized_cmd = request.command.lstrip("/")
             normalized_args = request.args.strip()
             full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
             quoted_command = shlex.quote(full_command)
-            auto_command = f"agent_then_message {request.agent} {request.thinking_mode} {quoted_command}"
+            auto_command = f"agent_then_message {effective_agent} {request.thinking_mode} {quoted_command}"
 
             working_slug: str | None = None
             if normalized_cmd in WORKER_LIFECYCLE_COMMANDS:
@@ -1008,7 +1066,7 @@ class APIServer:
                     status="success",
                     session_id=str(session_id),
                     tmux_session_name=str(tmux_session_name),
-                    agent=request.agent,
+                    agent=effective_agent,
                 )
             except HTTPException:
                 raise
@@ -1360,10 +1418,9 @@ class APIServer:
             """Get agent availability."""
             from teleclaude.core.db import db
 
-            agents: list[Literal["claude", "gemini", "codex"]] = ["claude", "gemini", "codex"]
             result: dict[str, AgentAvailabilityDTO] = {}
 
-            for agent in agents:
+            for agent in get_known_agents():
                 cfg = config.agents.get(agent)
                 if cfg and not cfg.enabled:
                     result[agent] = AgentAvailabilityDTO(

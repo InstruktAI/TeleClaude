@@ -1534,10 +1534,10 @@ async def compose_agent_guidance(db: Db) -> str:
 
         listed_count += 1
         lines.append(f"- {name.upper()}{status_note}:")
-        if cfg.strengths:
-            lines.append(f"  Strengths: {cfg.strengths}")
-        if cfg.avoid:
-            lines.append(f"  Avoid: {cfg.avoid}")
+        strengths_text = cfg.strengths.strip() or "Not configured (set config.yml:agents.<name>.strengths)."
+        avoid_text = cfg.avoid.strip() or "Not configured (set config.yml:agents.<name>.avoid)."
+        lines.append(f"  Strengths: {strengths_text}")
+        lines.append(f"  Avoid: {avoid_text}")
 
     if listed_count == 0:
         raise RuntimeError("No agents are currently enabled and available.")

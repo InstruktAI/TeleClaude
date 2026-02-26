@@ -8,6 +8,7 @@ import time as _t
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 _BOOT = _t.monotonic()
 
@@ -34,7 +35,6 @@ from teleclaude.cli.tool_commands import (  # noqa: E402
     handle_todo_set_deps,
     handle_todo_work,
 )
-from teleclaude.config import config  # noqa: E402
 from teleclaude.config.loader import load_global_config  # noqa: E402
 from teleclaude.constants import ENV_ENABLE, MAIN_MODULE  # noqa: E402
 from teleclaude.logging_config import setup_logging  # noqa: E402
@@ -44,6 +44,22 @@ from teleclaude.todo_scaffold import create_bug_skeleton, create_todo_skeleton  
 TMUX_ENV_KEY = "TMUX"
 TUI_ENV_KEY = "TELEC_TUI_SESSION"
 TUI_SESSION_NAME = "tc_tui"
+
+
+class _ConfigProxy:
+    """Lazily resolve runtime config on first attribute access.
+
+    This keeps low-dependency commands (for example `telec todo demo validate`)
+    usable even when runtime config loading would fail.
+    """
+
+    def __getattr__(self, name: str) -> Any:
+        from teleclaude.config import config as runtime_config
+
+        return getattr(runtime_config, name)
+
+
+config = _ConfigProxy()
 
 
 class TelecCommand(str, Enum):

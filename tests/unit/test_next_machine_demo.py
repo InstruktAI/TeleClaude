@@ -1,6 +1,9 @@
 """Unit tests for demo artifacts and CLI runner."""
 
 import json
+import os
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -483,6 +486,43 @@ def test_validate_exits_zero_on_no_demo_marker(tmp_path: Path, capsys):
     captured = capsys.readouterr()
     assert "no-demo marker" in captured.out.lower()
     assert "infrastructure change" in captured.out.lower()
+
+
+def test_cli_demo_validate_does_not_require_runtime_config_agents(tmp_path: Path):
+    """`telec todo demo validate` should work even if runtime config is invalid."""
+    slug = "test-slug"
+    demo_dir = tmp_path / "todos" / slug
+    demo_dir.mkdir(parents=True)
+    (demo_dir / "demo.md").write_text("# Demo\n\n```bash\necho ok\n```\n", encoding="utf-8")
+
+    invalid_config = tmp_path / "invalid-config.yml"
+    invalid_config.write_text("computer:\n  name: test\n", encoding="utf-8")
+
+    repo_root = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    env["TELECLAUDE_CONFIG_PATH"] = str(invalid_config)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "teleclaude.cli.telec",
+            "todo",
+            "demo",
+            "validate",
+            slug,
+            "--project-root",
+            str(tmp_path),
+        ],
+        cwd=repo_root,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Validation passed" in result.stdout
 
 
 # =============================================================================

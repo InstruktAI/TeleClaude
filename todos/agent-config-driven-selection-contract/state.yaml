@@ -1,13 +1,13 @@
 phase: in_progress
-build: started
+build: complete
 review: pending
 deferrals_processed: false
 breakdown:
   assessed: false
   todos: []
-review_round: 0
+review_round: 4
 max_review_rounds: 3
-review_baseline_commit: ''
+review_baseline_commit: 2140860702a68511db8cc6864025fe890373eb44
 unresolved_findings: []
 resolved_findings: []
 dor:

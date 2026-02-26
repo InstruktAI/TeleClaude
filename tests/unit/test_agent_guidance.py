@@ -78,6 +78,17 @@ async def test_compose_guidance_all_available(mock_db, mock_config):
     assert "THINKING MODES:" in guidance
 
 
+async def test_compose_guidance_uses_placeholders_for_empty_fields(mock_db, mock_config):
+    mock_config.agents["claude"].strengths = ""
+    mock_config.agents["claude"].avoid = ""
+    mock_db.get_agent_availability.side_effect = lambda agent: {"available": True, "status": "available"}
+
+    guidance = await compose_agent_guidance(mock_db)
+
+    assert "Strengths: Not configured (set config.yml:agents.<name>.strengths)." in guidance
+    assert "Avoid: Not configured (set config.yml:agents.<name>.avoid)." in guidance
+
+
 async def test_compose_guidance_agent_degraded(mock_db, mock_config):
     def get_avail(agent):
         if agent == "claude":
