@@ -10,8 +10,8 @@ Pure wiring task: register WhatsApp env vars in the adapter registry, fix the co
 
 **File(s):** `teleclaude/cli/config_handlers.py`
 
-- [x] Add `"whatsapp"` key to `_ADAPTER_ENV_VARS` dict (after the `"redis"` entry, line ~148)
-- [x] Register these `EnvVarInfo` entries:
+- [ ] Add `"whatsapp"` key to `_ADAPTER_ENV_VARS` dict (after the `"redis"` entry, line ~148)
+- [ ] Register these `EnvVarInfo` entries:
   - `WHATSAPP_PHONE_NUMBER_ID` / `"whatsapp"` / `"Business phone number ID from Meta"` / `"123456789012345"`
   - `WHATSAPP_ACCESS_TOKEN` / `"whatsapp"` / `"System user token (long-lived)"` / `"EAAx..."`
   - `WHATSAPP_WEBHOOK_SECRET` / `"whatsapp"` / `"App secret for webhook signature verification"` / `"abc123..."`
@@ -24,13 +24,13 @@ Pure wiring task: register WhatsApp env vars in the adapter registry, fix the co
 
 **File(s):** `teleclaude/cli/tui/config_components/adapters.py`
 
-- [x] Change line 148: `super().__init__(callback, "adapters.whatsapp", "WhatsApp", [])` → `super().__init__(callback, "adapters.whatsapp", "WhatsApp", ["whatsapp"])`
+- [ ] Change line 148: `super().__init__(callback, "adapters.whatsapp", "WhatsApp", [])` → `super().__init__(callback, "adapters.whatsapp", "WhatsApp", ["whatsapp"])`
 
 ### Task 1.3: Add WhatsApp setup guidance
 
 **File(s):** `teleclaude/cli/tui/config_components/guidance.py`
 
-- [x] Add guidance entries in `_populate_defaults()` after the Discord entries (line ~62), following the same `FieldGuidance` pattern:
+- [ ] Add guidance entries in `_populate_defaults()` after the Discord entries (line ~62), following the same `FieldGuidance` pattern:
   - `adapters.whatsapp.phone_number_id` — steps: create Meta Business app, add WhatsApp product, get phone number ID from dashboard
   - `adapters.whatsapp.access_token` — steps: create system user in Business Manager, generate token with whatsapp_business_messaging permission
   - `adapters.whatsapp.webhook_secret` — steps: find App Secret in Meta App Dashboard > Settings > Basic
@@ -42,7 +42,7 @@ Pure wiring task: register WhatsApp env vars in the adapter registry, fix the co
 
 **File(s):** `config.sample.yml`
 
-- [x] Add `whatsapp:` section after the `discord:` block (before `redis:`), containing:
+- [ ] Add `whatsapp:` section after the `discord:` block (before `redis:`), containing:
   ```yaml
   whatsapp:
     enabled: false
@@ -59,7 +59,7 @@ Pure wiring task: register WhatsApp env vars in the adapter registry, fix the co
 
 **File(s):** `docs/project/spec/teleclaude-config.md`
 
-- [x] Add to `config_keys` section:
+- [ ] Add to `config_keys` section:
   ```yaml
   whatsapp:
     enabled: boolean
@@ -71,7 +71,7 @@ Pure wiring task: register WhatsApp env vars in the adapter registry, fix the co
     template_name: string
     template_language: string
   ```
-- [x] Add to `environment_variables` list:
+- [ ] Add to `environment_variables` list:
   - `WHATSAPP_PHONE_NUMBER_ID`
   - `WHATSAPP_ACCESS_TOKEN`
   - `WHATSAPP_WEBHOOK_SECRET`
@@ -86,27 +86,19 @@ Pure wiring task: register WhatsApp env vars in the adapter registry, fix the co
 
 ### Task 3.1: Tests
 
-- [x] Run `make test` — verify no regressions
-- [x] Manually verify TUI renders WhatsApp env vars (SIGUSR2 reload)
-
-Notes:
-
-- Verified non-interactively in this worktree via unit/component coverage and direct component instantiation (`WhatsAppConfigComponent` reports 7 env vars). Full interactive TUI walkthrough is covered in `demo.md`.
+- [ ] Run `make test` — verify no regressions
+- [ ] Manually verify TUI renders WhatsApp env vars (SIGUSR2 reload)
 
 ### Task 3.2: Quality Checks
 
-- [x] Run `make lint`
-- [x] Verify `telec config validate` reports WhatsApp env vars
-- [x] Verify no unchecked implementation tasks remain
+- [ ] Run `make lint`
+- [ ] Verify `telec config validate` reports WhatsApp env vars
+- [ ] Verify no unchecked implementation tasks remain
 
 ---
 
 ## Phase 4: Review Readiness
 
-- [x] Confirm requirements are reflected in code changes
-- [x] Confirm implementation tasks are all marked `[x]`
-- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)
-
-Notes:
-
-- No deferrals were needed for this todo.
+- [ ] Confirm requirements are reflected in code changes
+- [ ] Confirm implementation tasks are all marked `[x]`
+- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
