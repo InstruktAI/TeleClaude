@@ -6,7 +6,6 @@ import asyncio
 import contextlib
 import importlib
 import os
-import sys
 import tempfile
 from pathlib import Path
 from types import ModuleType
@@ -480,9 +479,6 @@ class DiscordAdapter(UiAdapter):
         return thread, starter_message
 
     def _build_session_launcher_view(self) -> object:
-        # Reuse the adapter-loaded discord module to avoid slow imports during
-        # readiness handling in timeout-sensitive environments.
-        sys.modules.setdefault("discord", self._discord)
         from teleclaude.adapters.discord.session_launcher import SessionLauncherView
 
         return SessionLauncherView(enabled_agents=self._get_enabled_agents(), on_launch=self._handle_launcher_click)
