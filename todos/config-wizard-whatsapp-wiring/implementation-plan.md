@@ -24,7 +24,7 @@ Pure wiring task: register WhatsApp env vars in the adapter registry, fix the co
 
 **File(s):** `teleclaude/cli/tui/config_components/adapters.py`
 
-- [ ] Change line 148: `super().__init__(callback, "adapters.whatsapp", "WhatsApp", [])` → `super().__init__(callback, "adapters.whatsapp", "WhatsApp", ["whatsapp"])`
+- [x] Change line 148: `super().__init__(callback, "adapters.whatsapp", "WhatsApp", [])` → `super().__init__(callback, "adapters.whatsapp", "WhatsApp", ["whatsapp"])`
 
 ### Task 1.3: Add WhatsApp setup guidance
 
