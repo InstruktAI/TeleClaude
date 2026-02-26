@@ -658,7 +658,11 @@ class APIServer:
             metadata.title = title
             metadata.launch_intent = launch_intent
             metadata.auto_command = auto_command
-            cmd = CommandMapper.map_api_input("new_session", {}, metadata)
+            cmd = CommandMapper.map_api_input(
+                "new_session",
+                {"skip_listener_registration": request.skip_listener_registration},
+                metadata,
+            )
 
             try:
                 data = await get_command_service().create_session(cmd)
