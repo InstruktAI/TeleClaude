@@ -27,18 +27,18 @@ updates. Redis fan-out via EventBusBridge ensures all daemons respond.
 
 **File(s):** `teleclaude/deployment/__init__.py`, `teleclaude/deployment/handler.py`
 
-- [ ] Create `teleclaude/deployment/` package with `__init__.py`
-- [ ] Create async handler: `async def handle_deployment_event(event: HookEvent) -> None`
-- [ ] Read channel config via `load_project_config()`
-- [ ] Decision logic based on event properties:
+- [x] Create `teleclaude/deployment/` package with `__init__.py`
+- [x] Create async handler: `async def handle_deployment_event(event: HookEvent) -> None`
+- [x] Read channel config via `load_project_config()`
+- [x] Decision logic based on event properties:
   - Alpha: `event.type == "push"` and `ref == "refs/heads/main"` → update
   - Beta: `event.type == "release"` and `action == "published"` → update
   - Stable: same as beta but version within pinned minor → update
   - Otherwise → skip (log at debug level)
-- [ ] Fan-out: if `event.source == "github"` (direct webhook), publish
+- [x] Fan-out: if `event.source == "github"` (direct webhook), publish
       `HookEvent.now(source="deployment", type="version_available", ...)`
       to internal event bus for Redis broadcast to other daemons
-- [ ] If `event.source == "deployment"` (Redis fan-out), only execute locally
+- [x] If `event.source == "deployment"` (Redis fan-out), only execute locally
 
 ### Task 1.3: Contract and handler registration at daemon startup
 
@@ -70,16 +70,16 @@ updates. Redis fan-out via EventBusBridge ensures all daemons respond.
 
 **File(s):** `teleclaude/deployment/executor.py`
 
-- [ ] `async def execute_update(channel: str, version_info: dict) -> None`
-- [ ] Sequence:
+- [x] `async def execute_update(channel: str, version_info: dict) -> None`
+- [x] Sequence:
   1. Log update start, set Redis status `"updating"`
   2. Alpha: `git pull --ff-only origin main`
   3. Beta/Stable: `git fetch --tags && git checkout v{version}`
   4. Set Redis status `"migrating"`, run `migration_runner.run_migrations()`
   5. Set Redis status `"installing"`, run `make install` (60s timeout)
   6. Set Redis status `"restarting"`, trigger `os._exit(42)`
-- [ ] On failure: log error, set Redis status `"update_failed"`, do NOT restart
-- [ ] Redis key: `system_status:{computer_name}:deploy` (matches deploy_service.py)
+- [x] On failure: log error, set Redis status `"update_failed"`, do NOT restart
+- [x] Redis key: `system_status:{computer_name}:deploy` (matches deploy_service.py)
 
 ### Task 1.5: Update `telec version`
 
