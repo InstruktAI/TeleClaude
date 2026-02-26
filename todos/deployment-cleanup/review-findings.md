@@ -101,3 +101,16 @@ No change from Round 1. Tests correctly updated, regression risk low.
 Verdict: **REQUEST CHANGES**
 
 Fix: Remove lines 42-44 from `docs/global/general/spec/tools/telec-cli.md` and update the stale comment at `redis_transport.py:1038`. Optionally clean up the suggestion-level docstring references.
+
+---
+
+## Fixes Applied
+
+| #   | Severity   | Finding                                                                                | Fix                                                                                | Commit     |
+| --- | ---------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------- |
+| 1   | Important  | Orphaned `telec deploy` section in `docs/global/general/spec/tools/telec-cli.md:42-44` | Removed `### telec deploy` heading and `<!-- @exec: telec deploy -h -->` directive | `21e96338` |
+| 2   | Important  | Stale comment referencing deploy commands at `redis_transport.py:1038`                 | Updated comment to reference restart pattern instead of deploy                     | `554e53a7` |
+| 3   | Suggestion | Stale "deploy" in `send_system_command` docstring (`redis_transport.py:1863,1867`)     | Updated examples to `restart, health_check` and example command to `health_check`  | `554e53a7` |
+| 4   | Suggestion | Stale "deploy" in `_handle_system_command` docstring (`daemon.py:1122`)                | Updated to `restart, health_check, etc.`                                           | `554e53a7` |
+
+All findings addressed. Ready for re-review.
