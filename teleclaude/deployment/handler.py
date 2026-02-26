@@ -157,7 +157,7 @@ async def _publish_fanout(version_info: dict) -> None:  # type: ignore[type-arg]
                 "from_version": str(version_info.get("from_version", "")),
             },
         )
-        await redis.xadd(DEPLOYMENT_FANOUT_CHANNEL, {"event": fanout_event.to_json()})
+        await redis.xadd(DEPLOYMENT_FANOUT_CHANNEL, {"event": fanout_event.to_json()}, maxlen=1000)
         logger.info("Deployment handler: published version_available to %s", DEPLOYMENT_FANOUT_CHANNEL)
     except Exception as exc:  # noqa: BLE001 - fan-out is best-effort
         logger.warning("Deployment handler: fan-out publish failed: %s", exc)
