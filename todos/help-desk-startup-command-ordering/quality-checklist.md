@@ -22,12 +22,12 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior
+- [x] Deferrals justified and not hiding required scope — no deferrals needed
+- [x] Findings written in `review-findings.md`
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — APPROVE
+- [x] Critical issues resolved or explicitly blocked — 0 critical/important findings
+- [x] Test coverage and regression risk assessed — 6 tests covering success, timeout, bypass, ordering, error resilience, and payload integrity
 
 ## Finalize Gates (Finalizer)
 
@@ -41,6 +41,6 @@ Ownership:
 
 ## Todo-Specific Gates
 
-- [ ] Session does not transition `initializing` to `active` before auto-command dispatch attempt.
-- [ ] First inbound help-desk message is never concatenated with startup command line.
-- [ ] Timeout path is explicit (user-visible + logs) and does not write to tmux.
+- [x] Session does not transition `initializing` to `active` before auto-command dispatch attempt.
+- [x] First inbound help-desk message is never concatenated with startup command line.
+- [x] Timeout path is explicit (user-visible + logs) and does not write to tmux.
