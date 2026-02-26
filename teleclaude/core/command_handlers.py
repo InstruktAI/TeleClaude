@@ -323,7 +323,12 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
 
     # Enforce jail only for explicit non-admin role assignments.
     # Missing role means unrestricted fallback ("god mode") for local/TUI/API flows.
-    configured_help_desk_path = config.computer.help_desk_dir or os.path.join(WORKING_DIR, "help-desk")
+    raw_help_desk_path = getattr(config.computer, "help_desk_dir", None)
+    configured_help_desk_path = (
+        raw_help_desk_path
+        if isinstance(raw_help_desk_path, str) and raw_help_desk_path.strip()
+        else os.path.join(WORKING_DIR, "help-desk")
+    )
     if human_role and human_role != HUMAN_ROLE_ADMIN:
         logger.info(
             "Restricted session attempt from origin=%s role=%s. Jailing to help-desk.",
