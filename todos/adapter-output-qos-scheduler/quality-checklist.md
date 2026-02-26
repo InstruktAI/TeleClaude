@@ -27,9 +27,10 @@ Ownership:
 
 Manual verification:
 
-- `make restart` and `make status` returned healthy daemon/API state.
-- `instrukt-ai-logs teleclaude --since 15m --grep "Output cadence summary|Rate limited|qos|scheduler"` showed live rate-limit and cadence events.
-- `telec todo demo validate adapter-output-qos-scheduler` passed with 3 executable blocks.
+- `make restart` completed with daemon recovery and healthy API (`launchd state: running`, `/health: OK`).
+- `make status` passed after restart settled (`Daemon health: HEALTHY`).
+- `instrukt-ai-logs teleclaude --since 15m --grep "Output cadence summary|Rate limited|qos|scheduler"` showed live cadence summaries and rate-limit retries, including `reason=final` cadence entries during completion.
+- `telec todo demo validate adapter-output-qos-scheduler` passed with `3 executable block(s) found`.
 
 ## Review Gates (Reviewer)
 
