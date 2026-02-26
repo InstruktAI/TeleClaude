@@ -2,11 +2,16 @@
 
 ## Validation
 
-<!-- Bash code blocks that prove the feature works. -->
-<!-- Blocks are validated by `telec todo demo validate integrator-cutover` (structural check) during build. -->
-<!-- Execution (`telec todo demo run integrator-cutover`) happens on main after merge. -->
+```bash
+telec todo validate integrator-cutover
+```
+
+```bash
+rg -n "integrator|canonical `main`|rollback|feature branches" todos/integrator-cutover/requirements.md
+```
 
 ## Guided Presentation
 
-<!-- Walk through the delivery step by step. For each step: what to do, what to observe, why it matters. -->
-<!-- The AI presenter reads this top-to-bottom and executes. Write it as a continuous sequence. -->
+1. Show exclusive authority requirements for canonical `main`.
+2. Show cutover preconditions and rollback containment requirements.
+3. Show acceptance tests that prove blocked vs allowed push paths.

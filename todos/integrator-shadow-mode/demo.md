@@ -2,11 +2,16 @@
 
 ## Validation
 
-<!-- Bash code blocks that prove the feature works. -->
-<!-- Blocks are validated by `telec todo demo validate integrator-shadow-mode` (structural check) during build. -->
-<!-- Execution (`telec todo demo run integrator-shadow-mode`) happens on main after merge. -->
+```bash
+telec todo validate integrator-shadow-mode
+```
+
+```bash
+rg -n "shadow|lease|queue|no canonical `main`" todos/integrator-shadow-mode/requirements.md
+```
 
 ## Guided Presentation
 
-<!-- Walk through the delivery step by step. For each step: what to do, what to observe, why it matters. -->
-<!-- The AI presenter reads this top-to-bottom and executes. Write it as a continuous sequence. -->
+1. Walk through singleton lease and durable FIFO queue requirements.
+2. Show shadow-mode constraints that prevent canonical `main` push.
+3. Show planned tests for lease collision and restart recovery.

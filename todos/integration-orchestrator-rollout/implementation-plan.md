@@ -35,9 +35,15 @@ Verification:
 
 **File(s):** `todos/integration-events-model/*`, `todos/integrator-shadow-mode/*`, `todos/integrator-cutover/*`, `todos/integration-blocked-flow/*`
 
-- [ ] Run `next-prepare-draft` for each active child slice in dependency order.
-- [ ] Ensure each child has concrete `requirements.md`, `implementation-plan.md`,
+- [x] Run `next-prepare-draft` for each active child slice in dependency order.
+- [x] Ensure each child has concrete `requirements.md`, `implementation-plan.md`,
       `demo.md`, and draft `dor-report.md`.
+
+Notes:
+
+1. `telec sessions run --command /next-prepare-draft ...` is blocked for this role
+   (`permission denied`). Equivalent draft artifacts were produced directly in this
+   builder session for each child slug.
 
 ### Task 2.2: Gate active child slices in separate worker sessions
 
