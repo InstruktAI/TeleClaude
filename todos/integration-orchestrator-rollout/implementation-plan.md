@@ -72,8 +72,8 @@ Verification:
 
 **File(s):** `todos/integration-orchestrator-rollout/dor-report.md`
 
-- [ ] Summarize per-slice prep/gate status and unresolved blockers.
-- [ ] Explicitly map blockers to DOR gates and remediation actions.
+- [x] Summarize per-slice prep/gate status and unresolved blockers.
+- [x] Explicitly map blockers to DOR gates and remediation actions.
 
 ### Task 3.2: Draft go/no-go policy for cutover entry
 
