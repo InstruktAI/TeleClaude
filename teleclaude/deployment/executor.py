@@ -133,7 +133,7 @@ async def execute_update(
         # Run migrations
         await update_status({"status": "migrating", "timestamp": time.time()})
         logger.info("Deploy: running migrations from %s to %s", from_version, target_version)
-        migration_result = run_migrations(from_version, target_version)
+        migration_result = await asyncio.to_thread(run_migrations, from_version, target_version)
         if migration_result.get("error"):
             err = migration_result["error"]
             logger.error("Deploy: migration failed: %s", err)
