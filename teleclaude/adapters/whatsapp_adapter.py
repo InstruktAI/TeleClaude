@@ -29,6 +29,7 @@ class WhatsAppAdapter(UiAdapter):
     """UI adapter for WhatsApp Business Cloud API."""
 
     ADAPTER_KEY = "whatsapp"
+    ENABLE_OUTPUT_QOS = True
     max_message_size = 4096
     _CAPTION_MAX_CHARS = 1024
     _MAX_429_RETRIES = 3

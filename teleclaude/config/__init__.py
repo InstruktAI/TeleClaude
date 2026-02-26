@@ -151,8 +151,27 @@ class RedisConfig:
 
 
 @dataclass
+class TelegramQoSConfig:
+    enabled: bool = True
+    group_mpm: int = 20
+    output_budget_ratio: float = 0.8
+    reserve_mpm: int = 4
+    min_session_tick_s: float = 3.0
+    max_session_tick_s: float | None = None
+    active_emitter_window_s: float = 10.0
+    active_emitter_ema_alpha: float = 0.2
+    rounding_ms: int = 100
+
+
+@dataclass
 class TelegramConfig:
     trusted_bots: list[str]
+    qos: TelegramQoSConfig = field(default_factory=TelegramQoSConfig)
+
+
+@dataclass
+class AdapterQoSModeConfig:
+    mode: str = "off"
 
 
 @dataclass
@@ -167,6 +186,7 @@ class DiscordConfig:
     announcements_channel_id: int | None = None
     general_channel_id: int | None = None
     categories: dict[str, int] | None = None
+    qos: AdapterQoSModeConfig = field(default_factory=lambda: AdapterQoSModeConfig(mode="coalesce_only"))
 
 
 @dataclass
@@ -179,6 +199,7 @@ class WhatsAppConfig:
     api_version: str = "v21.0"
     template_name: str | None = None
     template_language: str = "en_US"
+    qos: AdapterQoSModeConfig = field(default_factory=AdapterQoSModeConfig)
 
 
 @dataclass
@@ -369,6 +390,17 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
     },
     "telegram": {
         "trusted_bots": [],
+        "qos": {
+            "enabled": True,
+            "group_mpm": 20,
+            "output_budget_ratio": 0.8,
+            "reserve_mpm": 4,
+            "min_session_tick_s": 3.0,
+            "max_session_tick_s": None,
+            "active_emitter_window_s": 10.0,
+            "active_emitter_ema_alpha": 0.2,
+            "rounding_ms": 100,
+        },
     },
     "discord": {
         "enabled": False,
@@ -381,6 +413,9 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "announcements_channel_id": None,
         "general_channel_id": None,
         "categories": None,
+        "qos": {
+            "mode": "coalesce_only",
+        },
     },
     "whatsapp": {
         "enabled": False,
@@ -391,6 +426,9 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "api_version": "v21.0",
         "template_name": None,
         "template_language": "en_US",
+        "qos": {
+            "mode": "off",
+        },
     },
     "creds": {
         "telegram": None,
@@ -640,6 +678,13 @@ def _parse_optional_int(value: object) -> int | None:
     return None
 
 
+def _parse_qos_mode(value: object, default: str) -> str:
+    mode = str(value).strip().lower() if value is not None else default
+    if mode in {"off", "coalesce_only", "strict"}:
+        return mode
+    return default
+
+
 def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML deserialization input
     """Build typed Config from raw dict with proper type conversion."""
     db_raw = raw["database"]
@@ -750,6 +795,10 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
 
     whatsapp_enabled = whatsapp_enabled_flag or bool(whatsapp_phone_number_id and whatsapp_access_token)
 
+    tg_qos_raw = tg_raw.get("qos", {}) if isinstance(tg_raw, dict) else {}
+    discord_qos_raw = discord_raw.get("qos", {}) if isinstance(discord_raw, dict) else {}
+    whatsapp_qos_raw = whatsapp_raw.get("qos", {}) if isinstance(whatsapp_raw, dict) else {}
+
     return Config(
         database=DatabaseConfig(
             _configured_path=str(db_raw["path"]),  # type: ignore[index,misc]
@@ -782,6 +831,31 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
         ),
         telegram=TelegramConfig(
             trusted_bots=list(tg_raw["trusted_bots"]),  # type: ignore[index,misc]
+            qos=TelegramQoSConfig(
+                enabled=bool(tg_qos_raw.get("enabled", True)) if isinstance(tg_qos_raw, dict) else True,
+                group_mpm=int(tg_qos_raw.get("group_mpm", 20)) if isinstance(tg_qos_raw, dict) else 20,
+                output_budget_ratio=(
+                    float(tg_qos_raw.get("output_budget_ratio", 0.8)) if isinstance(tg_qos_raw, dict) else 0.8
+                ),
+                reserve_mpm=int(tg_qos_raw.get("reserve_mpm", 4)) if isinstance(tg_qos_raw, dict) else 4,
+                min_session_tick_s=(
+                    float(tg_qos_raw.get("min_session_tick_s", 3.0)) if isinstance(tg_qos_raw, dict) else 3.0
+                ),
+                max_session_tick_s=(
+                    float(tg_qos_raw["max_session_tick_s"])
+                    if isinstance(tg_qos_raw, dict)
+                    and "max_session_tick_s" in tg_qos_raw
+                    and tg_qos_raw.get("max_session_tick_s") is not None
+                    else None
+                ),
+                active_emitter_window_s=(
+                    float(tg_qos_raw.get("active_emitter_window_s", 10.0)) if isinstance(tg_qos_raw, dict) else 10.0
+                ),
+                active_emitter_ema_alpha=(
+                    float(tg_qos_raw.get("active_emitter_ema_alpha", 0.2)) if isinstance(tg_qos_raw, dict) else 0.2
+                ),
+                rounding_ms=int(tg_qos_raw.get("rounding_ms", 100)) if isinstance(tg_qos_raw, dict) else 100,
+            ),
         ),
         discord=DiscordConfig(
             enabled=bool(discord_raw.get("enabled", False)) if isinstance(discord_raw, dict) else False,
@@ -814,6 +888,13 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
                 _parse_optional_int(discord_raw.get("general_channel_id")) if isinstance(discord_raw, dict) else None
             ),
             categories=(_parse_categories(discord_raw.get("categories")) if isinstance(discord_raw, dict) else None),
+            qos=AdapterQoSModeConfig(
+                mode=(
+                    _parse_qos_mode(discord_qos_raw.get("mode"), "coalesce_only")
+                    if isinstance(discord_qos_raw, dict)
+                    else "coalesce_only"
+                )
+            ),
         ),
         creds=CredsConfig(telegram=tg_creds, whatsapp=whatsapp_creds),
         agents=agents_registry,
@@ -835,6 +916,13 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
             api_version=whatsapp_api_version,
             template_name=whatsapp_template_name,
             template_language=whatsapp_template_language,
+            qos=AdapterQoSModeConfig(
+                mode=(
+                    _parse_qos_mode(whatsapp_qos_raw.get("mode"), "off")
+                    if isinstance(whatsapp_qos_raw, dict)
+                    else "off"
+                )
+            ),
         ),
         tts=_parse_tts_config(tts_raw),  # type: ignore[arg-type]
         stt=_parse_stt_config(stt_raw),  # type: ignore[arg-type]

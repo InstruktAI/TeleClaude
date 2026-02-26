@@ -57,6 +57,7 @@ class DiscordAdapter(UiAdapter):
     """Discord bot adapter using discord.py."""
 
     ADAPTER_KEY = "discord"
+    ENABLE_OUTPUT_QOS = True
     max_message_size = 2000
     _TRUNCATION_SUFFIX = "\n[...truncated...]"
 

@@ -87,6 +87,13 @@ TelegramApp = Application[  # type: ignore[misc]
 logger = get_logger(__name__)
 
 
+def _load_ptb_rate_limiter_cls() -> type[object]:
+    """Load PTB AIORateLimiter class lazily to surface missing extras at startup."""
+    from telegram.ext import AIORateLimiter
+
+    return cast(type[object], AIORateLimiter)
+
+
 class TelegramAdapter(
     InputHandlersMixin,
     CommandHandlersMixin,
@@ -98,6 +105,7 @@ class TelegramAdapter(
     """Telegram bot adapter using python-telegram-bot."""
 
     ADAPTER_KEY = "telegram"
+    ENABLE_OUTPUT_QOS = True
     COMMAND_HANDLER_OVERRIDES = {
         "agent_resume": "_handle_agent_resume_command",
         "cancel": "_handle_cancel_command",
@@ -592,6 +600,22 @@ class TelegramAdapter(
         if not self.app:
             raise AdapterError("Telegram adapter not started - call start() first")
 
+    def _create_ptb_rate_limiter(self) -> object:
+        """Create PTB rate limiter with clear diagnostics when optional extra is missing."""
+        try:
+            limiter_cls = _load_ptb_rate_limiter_cls()
+        except Exception as exc:  # noqa: BLE001 - dependency import path varies by PTB versions
+            raise RuntimeError(
+                "Telegram rate limiter dependency missing. Install `python-telegram-bot[rate-limiter]`."
+            ) from exc
+
+        try:
+            return limiter_cls()
+        except Exception as exc:  # noqa: BLE001 - constructor surfaces missing aiolimiter at runtime
+            raise RuntimeError(
+                "Failed to initialize Telegram AIORateLimiter. Install `python-telegram-bot[rate-limiter]` and restart."
+            ) from exc
+
     @property
     def bot(self) -> ExtBot[None]:
         """Get bot instance (guaranteed non-None after start).
@@ -733,6 +757,7 @@ class TelegramAdapter(
             {"transport": httpx.AsyncHTTPTransport(local_address="0.0.0.0")},
         )
         builder.request(HTTPXRequest(httpx_kwargs=httpx_kwargs))
+        builder.rate_limiter(self._create_ptb_rate_limiter())
         builder.concurrent_updates(True)  # Enable concurrent update processing
         self.app = builder.build()
         assert self.app is not None  # Help mypy - app is guaranteed non-None after build()

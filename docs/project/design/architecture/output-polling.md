@@ -57,6 +57,50 @@ sequenceDiagram
 - Process exit detection and final status
 - Turn completion signals for AI sessions
 
+## Adapter Output QoS
+
+TeleClaude output delivery now has two layers:
+
+1. Transport safety (Telegram SDK): PTB `AIORateLimiter` on bot API calls.
+2. Product behavior (TeleClaude scheduler): per-session latest-only coalescing,
+   fair dispatch, and dynamic pacing from active emitter count.
+
+Scheduler behavior by adapter:
+
+- Telegram: `strict` (paced + coalesced, final updates high-priority)
+- Discord: `coalesce_only` (latest-only without hard pacing cap)
+- WhatsApp: `off` (stub only until limits are validated)
+
+Telegram pacing formula:
+
+- `effective_output_mpm = max(1, min(group_mpm - reserve_mpm, floor(group_mpm * output_budget_ratio)))`
+- `global_tick_s = ceil_to_100ms(60 / effective_output_mpm)`
+- `target_session_tick_s = ceil_to_100ms(max(min_session_tick_s, global_tick_s * active_emitting_sessions))`
+
+Where `active_emitting_sessions` includes sessions with pending payloads plus sessions
+that emitted within `active_emitter_window_s`, with EMA smoothing via
+`active_emitter_ema_alpha`.
+
+### Tuning knobs
+
+- `telegram.qos.enabled`
+- `telegram.qos.group_mpm`
+- `telegram.qos.output_budget_ratio`
+- `telegram.qos.reserve_mpm`
+- `telegram.qos.min_session_tick_s`
+- `telegram.qos.max_session_tick_s` (optional)
+- `telegram.qos.active_emitter_window_s`
+- `telegram.qos.active_emitter_ema_alpha`
+- `telegram.qos.rounding_ms`
+- `discord.qos.mode` (`off|coalesce_only|strict`)
+- `whatsapp.qos.mode` (`off` default)
+
+### Multi-process caveat
+
+QoS state is in-process. If multiple daemon processes share one Telegram bot token,
+scheduler fairness and pacing are not coordinated across processes. A shared
+token-bucket backend (e.g., Redis) is the planned follow-up.
+
 ## Invariants
 
 - **One Poller Per Session**: Each active session has exactly one poller instance; no duplicates.
@@ -64,6 +108,8 @@ sequenceDiagram
 - **Diff-Only Emission**: Only new lines since last poll are emitted; no duplicate output.
 - **Deterministic cadence**: Output cadence is config-driven (`polling.output_cadence_s`, default `1.0`).
 - **No Blocking**: Polling runs in async task; never blocks main event loop or command execution.
+- **No shared-path sleeps for QoS**: Adapter fanout path does not sleep for pacing;
+  delayed dispatch is handled by per-adapter scheduler workers.
 - **Graceful Stop**: Poller cleanup completes before session marked fully closed.
 
 ## Primary flows

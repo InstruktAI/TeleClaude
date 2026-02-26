@@ -324,6 +324,9 @@ class MessageOperationsMixin:
             )
             return True
         except RetryAfter as e:
+            record_retry_after = getattr(self, "_record_retry_after", None)
+            if callable(record_retry_after):
+                record_retry_after(session.session_id)
             logger.debug(
                 "[TELEGRAM %s] Rate limited, edit_message deferred: %s",
                 session.session_id[:8],
@@ -413,6 +416,9 @@ class MessageOperationsMixin:
             logger.warning("Failed to delete message %s: %s", message_id, e)
             return False
         except RetryAfter as e:
+            record_retry_after = getattr(self, "_record_retry_after", None)
+            if callable(record_retry_after):
+                record_retry_after(session.session_id)
             logger.debug("Rate limited deleting message %s: %s", message_id, e)
             return False
         except (NetworkError, TimedOut, ConnectionError, TimeoutError) as e:
@@ -530,6 +536,9 @@ class MessageOperationsMixin:
             self._last_edit_hash[message_id] = content_hash
             return True
         except RetryAfter as e:
+            record_retry_after = getattr(self, "_record_retry_after", None)
+            if callable(record_retry_after):
+                record_retry_after("general")
             logger.debug(
                 "Rate limited editing general message %s; keeping existing id and retrying later: %s",
                 message_id,

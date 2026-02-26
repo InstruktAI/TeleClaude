@@ -51,6 +51,8 @@ type: 'design'
 - **Idempotent Processing**: Handlers tolerate duplicate delivery if lock expires during processing.
 - **Control-plane hooks**: `tool_use` / `tool_done` do not directly fan out adapter output.
   Transcript polling is the output data plane.
+- **Output pacing boundary**: Adapter output QoS applies at UI delivery time
+  (scheduler + SDK limiter), not at outbox ingestion.
 - **Bounded burst handling**: per-session in-memory queue is bounded; bursty hook classes
   are coalesced latest-wins within the current non-critical segment.
 - **Critical preservation**: critical classes are never dropped; queue pressure evicts bursty
@@ -156,3 +158,6 @@ sequenceDiagram
 - **Corrupted Payload**: JSON decode failure is marked delivered with error immediately (no retry loop).
 - **Stale Locks**: Rows locked >30s are reclaimed. Prevents stuck rows from blocking queue indefinitely.
 - **Outbox Table Growth**: Delivered rows accumulate. Periodic cleanup required (e.g., prune rows >7 days old).
+- **Cross-process token sharing**: Outbox processing is safe, but adapter QoS pacing is process-local.
+  Multiple daemons with the same Telegram token can still exceed aggregate limits without
+  shared coordination (future: Redis token bucket).

@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
+from teleclaude.adapters.qos import OutputPriority, OutputScheduler, build_output_policy
 from teleclaude.config import config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
@@ -65,6 +66,7 @@ class UiAdapter(BaseAdapter):
 
     # Adapter key for metadata storage (subclasses MUST override)
     ADAPTER_KEY: str = "unknown"
+    ENABLE_OUTPUT_QOS: bool = False
 
     # Optional command handler overrides: command -> handler method name
     COMMAND_HANDLER_OVERRIDES: dict[str, str] = {}
@@ -99,6 +101,12 @@ class UiAdapter(BaseAdapter):
         # Register event listeners
         event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
         event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._handle_session_status)
+        self._output_scheduler: OutputScheduler | None = None
+        if self.ENABLE_OUTPUT_QOS:
+            self._output_scheduler = OutputScheduler(
+                adapter_key=self.ADAPTER_KEY,
+                policy=build_output_policy(self.ADAPTER_KEY),
+            )
 
     # === Adapter Metadata Helpers ===
 
@@ -399,6 +407,29 @@ class UiAdapter(BaseAdapter):
         """Check if text fits within both char and byte budgets."""
         return len(text.encode("utf-8")) <= max_bytes
 
+    def _record_retry_after(self, session_id: str) -> None:
+        """Record retry-after events for output QoS instrumentation."""
+        if self._output_scheduler is None:
+            return
+        self._output_scheduler.record_retry_after(session_id)
+
+    async def _dispatch_with_output_qos(
+        self,
+        session: "Session",
+        priority: OutputPriority,
+        dispatch: Callable[[], Awaitable[Optional[str]]],
+    ) -> Optional[str]:
+        """Run output dispatch through adapter QoS scheduler when enabled."""
+        if self._output_scheduler is None:
+            return await dispatch()
+
+        result = await self._output_scheduler.submit(session.session_id, priority, dispatch)
+        if result is not None:
+            return result
+
+        # Queued payload hasn't dispatched yet; return current tracked message id.
+        return await self._get_output_message_id(session)
+
     async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         self,
         session: "Session",
@@ -476,8 +507,12 @@ class UiAdapter(BaseAdapter):
 
         # Platform-specific metadata (inline keyboards, etc.)
         metadata = self._build_output_metadata(session, is_truncated)
+        priority = OutputPriority.HIGH if is_final else OutputPriority.NORMAL
 
-        return await self._deliver_output(session, display_output, metadata, status_line=status_line)
+        async def _dispatch() -> Optional[str]:
+            return await self._deliver_output(session, display_output, metadata, status_line=status_line)
+
+        return await self._dispatch_with_output_qos(session, priority, _dispatch)
 
     async def send_threaded_output(
         self,
@@ -491,24 +526,27 @@ class UiAdapter(BaseAdapter):
         if not is_threaded_output_enabled(session.active_agent, adapter=self.ADAPTER_KEY):
             return None
 
-        lock = self._get_output_delivery_lock(session.session_id)
-        async with lock:
-            # Re-sync from DB so stale callers cannot replay already-consumed chunks.
-            fresh = await db.get_session(session.session_id)
-            if fresh:
-                session.adapter_metadata = fresh.adapter_metadata
-                session.output_message_id = fresh.output_message_id
-                session.last_output_digest = fresh.last_output_digest
+        async def _dispatch() -> Optional[str]:
+            lock = self._get_output_delivery_lock(session.session_id)
+            async with lock:
+                # Re-sync from DB so stale callers cannot replay already-consumed chunks.
+                fresh = await db.get_session(session.session_id)
+                if fresh:
+                    session.adapter_metadata = fresh.adapter_metadata
+                    session.output_message_id = fresh.output_message_id
+                    session.last_output_digest = fresh.last_output_digest
 
-            # Convert once per render cycle. Telegram markdown conversion is not
-            # idempotent; re-converting recursively can corrupt escape balance.
-            converted_text = self._convert_markdown_for_platform(text)
-            return await self._send_threaded_output_unlocked(
-                session,
-                converted_text,
-                multi_message=multi_message,
-                _continuation_state=_continuation_state,
-            )
+                # Convert once per render cycle. Telegram markdown conversion is not
+                # idempotent; re-converting recursively can corrupt escape balance.
+                converted_text = self._convert_markdown_for_platform(text)
+                return await self._send_threaded_output_unlocked(
+                    session,
+                    converted_text,
+                    multi_message=multi_message,
+                    _continuation_state=_continuation_state,
+                )
+
+        return await self._dispatch_with_output_qos(session, OutputPriority.NORMAL, _dispatch)
 
     async def _send_threaded_output_unlocked(
         self,

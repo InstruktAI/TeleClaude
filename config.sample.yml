@@ -35,6 +35,15 @@ telegram:
     - teleclaude_workstation_bot
     - teleclaude_server_bot
     # Add other computer bot usernames here
+  qos:
+    enabled: true
+    group_mpm: 20
+    output_budget_ratio: 0.8
+    reserve_mpm: 4
+    min_session_tick_s: 3.0
+    active_emitter_window_s: 10.0
+    active_emitter_ema_alpha: 0.2
+    rounding_ms: 100
 
 discord:
   enabled: false
@@ -45,6 +54,13 @@ discord:
   # All channel/category IDs below are auto-provisioned on startup.
   # The bot creates the full structure (categories, forums, text channels)
   # and persists IDs here. Do not edit manually.
+  qos:
+    mode: coalesce_only # off|coalesce_only|strict
+
+whatsapp:
+  enabled: false
+  qos:
+    mode: off # kept disabled until adapter-specific limits are validated
 
 # Agent binaries are resolved internally by platform policy:
 # macOS: ~/Applications/{Claude,Gemini,Codex}Launcher.app/...
