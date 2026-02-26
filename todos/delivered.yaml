@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: skills-procedure-taxonomy-alignment
+  date: '2026-02-26'
+  title: Extract procedure logic from agents/skills into docs procedures and align
+    skill wrappers with breath-aware taxonomy (exploratory, skills-only scope).
+  commit: 40830d507bcaf414590b9c45741ed0a6cb261524
+  description: Extract procedure logic from agents/skills into docs procedures and
+    align skill wrappers with breath-aware taxonomy (exploratory, skills-only scope).
 - slug: deployment-migrations
   date: '2026-02-26'
   title: 'Phase 2: Migration manifest format, runner, version utilities (no CLI —

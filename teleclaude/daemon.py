@@ -2057,7 +2057,7 @@ async def main() -> None:
 
 if __name__ == "__main__":
     try:
-        import uvloop
+        import uvloop  # type: ignore[import-not-found]
 
         uvloop.run(main())
     except ImportError:

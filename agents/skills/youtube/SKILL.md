@@ -5,6 +5,10 @@ description: Search YouTube channels for videos, browse personal watch history a
 
 # YouTube Search, Watch History & Transcripts
 
+## Required reads
+
+- @~/.teleclaude/docs/general/procedure/youtube-research.md
+
 ## Purpose
 
 Provide a single interface to search YouTube channels, retrieve watch history and subscriptions, and extract transcripts and metadata for analysis.
@@ -39,12 +43,7 @@ Limitations: HTML parsing may break if YouTube changes page structure. Channel s
 
 ## Procedure
 
-1. Export YouTube cookies to `~/.config/youtube/cookies.txt` in Netscape format (use a browser extension like "Get cookies.txt LOCALLY"). The helper script auto-detects this path.
-2. Run the helper script directly via the global helpers path.
-3. Choose a mode: `search`, `transcripts`, `history`, or `subscriptions` and pass the relevant flags.
-4. Circuit breaker: if YouTube returns HTTP 429/403/401, the script enforces a 10-minute backoff using `~/.config/youtube/.backoff`.
-
-Channel handles must use `@` prefix. Multiple channels are comma-separated. Timestamps in transcripts use `[123s]` format. Use `--char-cap` to limit total output size for LLM context management.
+Follow the YouTube research procedure. Full mode details, flag reference, and circuit breaker handling are in the required reads above.
 
 ## Examples
 
