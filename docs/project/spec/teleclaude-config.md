@@ -53,6 +53,10 @@ environment_variables:
   - EMAIL_FROM
 ```
 
+## Maintenance
+
+This spec must be updated whenever config keys or env vars are added, renamed, or removed. The config wizard, `_ADAPTER_ENV_VARS` registry, and `GuidanceRegistry` must stay in sync with this spec.
+
 ## Constraints
 
 - `config.yml:agents` is required; startup fails if it is missing.

@@ -35,7 +35,7 @@ Four governance doc edits, each adding targeted wording to close the config-surf
 
 **File(s):** `docs/project/spec/teleclaude-config.md`
 
-- [ ] Add a "## Maintenance" section before "## Constraints" with the text:
+- [x] Add a "## Maintenance" section before "## Constraints" with the text:
       "This spec must be updated whenever config keys or env vars are added, renamed, or removed. The config wizard, `_ADAPTER_ENV_VARS` registry, and `GuidanceRegistry` must stay in sync with this spec."
 
 ---
