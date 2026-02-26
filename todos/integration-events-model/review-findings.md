@@ -1,129 +1,111 @@
 # Review Findings: integration-events-model
 
-**Review round:** 1
-**Scope:** `git diff $(git merge-base HEAD main)..HEAD` — 9 changed files, 1143 insertions
+**Review round:** 2
+**Scope:** `git diff $(git merge-base HEAD main)..HEAD` — 14 changed files, 1593 insertions
+
+## Round 1 Fix Verification
+
+All 9 Important findings from round 1 have been verified as correctly resolved:
+
+| #   | Finding                        | Fix commit | Verified                                                                                                                                                         |
+| --- | ------------------------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Supersession tie-break         | `cd0a19c6` | `supersession_rank()` returns `(ready_at, branch, sha)` with deterministic ordering. Test `test_service_breaks_equal_ready_at_ties_deterministically` validates. |
+| 2   | Auto-replay on init            | `f4dd8a8b` | `__init__` calls `self.replay()` at service.py:47. Test `test_service_replays_history_on_init` validates.                                                        |
+| 3   | \_normalize_iso8601 event_type | `ab5697db` | Accepts `event_type: IntegrationEventType` at events.py:306. Test `test_build_event_reports_correct_event_type_for_received_at_validation` validates.            |
+| 4   | Reuse compute_idempotency_key  | `7e95d517` | event_store.py imports and calls `compute_idempotency_key` at lines 55, 108. No duplicate.                                                                       |
+| 5   | cast in from_record            | `efa9cd04` | events.py:200-202 uses `cast(str, ...)` after diagnostic guard.                                                                                                  |
+| 6   | Replay durability test         | `b713bfdd` | Unit `test_service_replays_history_on_init` + integration `test_replay_restores_readiness_after_restart`.                                                        |
+| 7   | Contract tests                 | `76261828` | `test_required_fields_contract_matches_integration_spec` asserts `_REQUIRED_FIELDS` == spec YAML.                                                                |
+| 8   | ingest_raw tests               | `02dfcbe6` | `test_service_ingest_raw_accepts_valid_event_type` + `test_service_ingest_raw_rejects_unknown_event_type`.                                                       |
+| 9   | Checker exports                | `2bc35e06` | `ReachabilityChecker` and `IntegratedChecker` in `__init__.py` `__all__`. Test `test_public_api_exports_checker_type_aliases` validates.                         |
 
 ## Paradigm-Fit Assessment
 
-1. **Data flow:** Implementation follows the established domain-core pattern. All types are domain-level (`IntegrationEvent`, `CandidateReadiness`, etc.) with no transport or UI coupling. File-backed persistence is behind a clean store abstraction. Boundary purity is maintained.
-2. **Component reuse:** No copy-paste of existing codebase components detected. The `_event_digest` / `compute_idempotency_key` duplication is internal to this feature (see Important #4).
-3. **Pattern consistency:** Follows project conventions: frozen dataclasses for immutable domain objects, TypedDict for serialization contracts, Literal types for closed sets, explicit validation at boundaries. Naming is domain-semantic.
+1. **Data flow:** Domain-core pattern maintained. All types express domain meaning (`IntegrationEvent`, `CandidateReadiness`, `ReadinessStatus`). File-backed persistence behind `IntegrationEventStore` abstraction. No transport or UI coupling. Boundary purity preserved.
+2. **Component reuse:** Round 1's `_event_digest` duplication (Important #4) resolved. No copy-paste of existing codebase components detected.
+3. **Pattern consistency:** Frozen dataclasses for immutable domain objects, TypedDict for serialization contracts, Literal for closed sets, explicit validation at boundaries. Naming is domain-semantic throughout.
 
 ## Contract Fidelity (FR1)
 
 Verified against `docs/project/spec/integration-orchestrator.md`:
 
-- `review_approved` fields: match exactly
-- `finalize_ready` fields: match exactly
-- `branch_pushed` fields: match exactly
-- Readiness predicate conditions 1-6: all implemented in `_recompute()`
-- `worktree dirty -> clean` correctly excluded (not referenced anywhere)
+- `review_approved` fields: match exactly (slug, approved_at, review_round, reviewer_session_id)
+- `finalize_ready` fields: match exactly (slug, branch, sha, worker_session_id, orchestrator_session_id, ready_at)
+- `branch_pushed` fields: match exactly (branch, sha, remote, pushed_at, pusher)
+- Readiness predicate: all conditions implemented in `_recompute()` including reachability and already-integrated checks
+- `worktree dirty -> clean` correctly excluded (no reference in projection logic)
+- Contract regression test (`test_required_fields_contract_matches_integration_spec`) guards spec-code parity
+
+## Requirements Traceability
+
+| Requirement                       | Implementation                                                 | Test coverage                                                                                                                                      |
+| --------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR1: Event fidelity               | events.py `_REQUIRED_FIELDS`, `validate_event_payload`         | `test_validate_event_payload_rejects_missing_and_unexpected_fields`, `test_required_fields_contract_matches_integration_spec`                      |
+| FR2: Durable idempotent ingestion | event_store.py `append()` with fsync + idempotency key         | `test_event_store_append_is_idempotent_and_collision_safe`, `test_service_replays_history_on_init`, `test_replay_restores_readiness_after_restart` |
+| FR3: Readiness projection         | readiness_projection.py `_recompute()`                         | `test_candidate_transitions_from_not_ready_to_ready`                                                                                               |
+| FR4: Supersession                 | readiness_projection.py `supersession_rank()` + `_recompute()` | `test_service_marks_older_finalize_candidate_as_superseded`, `test_service_breaks_equal_ready_at_ties_deterministically`                           |
 
 ## Important
 
-### 1. Supersession tie-breaking undefined for equal `ready_at` timestamps
+### 1. FR3.2 reachability/already-integrated failure paths untested
 
-**File:** `teleclaude/core/integration/readiness_projection.py:159-163,169`
+**File:** `readiness_projection.py:195-199`, all test files
 
-Two `finalize_ready` events for the same slug with identical `ready_at` timestamps (within the same second, since normalization uses `timespec="seconds"`) both remain active. Neither is marked `SUPERSEDED`.
+The projection correctly implements FR3.2's reachability and not-already-integrated checks:
 
-The `latest_by_slug` selection uses strict `>` (line 162), so the first-inserted candidate wins the tie. The supersession check (line 169) also uses strict `>`, so the other candidate is not superseded. Result: two `READY` candidates for the same slug, violating FR4's single-winner invariant.
+```python
+if branch_pushed and not self._reachability_checker(key.branch, key.sha, self._remote):
+    reasons.append(f"sha {key.sha} is not reachable from {self._remote}/{key.branch}")
 
-**Fix:** Use `>=` in the supersession check (line 169) and add a deterministic secondary tie-break key (e.g., lexicographic `(branch, sha)`) in the `latest_by_slug` selection (line 162).
+if self._integrated_checker(key.sha, f"{self._remote}/main"):
+    reasons.append(f"sha {key.sha} already reachable from {self._remote}/main")
+```
 
-### 2. No guard or auto-replay on service initialization
+However, no test exercises either negative path. All tests use `_always_reachable` and `_never_integrated` stubs. A regression in these branches would go undetected.
 
-**File:** `teleclaude/core/integration/service.py:42-68`
+Missing test cases:
 
-`IntegrationEventService.__init__` (and `with_file_store`) does not call `replay()`. The store lazy-loads events from disk, but the projection stays empty until `replay()` is explicitly called. If a caller ingests new events without calling `replay()` first, the projection only reflects the new event — not the durable history.
+- Candidate where `reachability_checker` returns `False` after `branch_pushed` exists -> status `NOT_READY` with reachability reason.
+- Candidate where `integrated_checker` returns `True` -> status `NOT_READY` with already-integrated reason.
 
-This means `get_candidate()` and `all_candidates()` return silently wrong results after a restart if the caller forgets to call `replay()`.
-
-**Fix:** Either auto-replay in the constructor, or add a `_replayed` guard that raises on read operations before `replay()` is called, or document the constraint with an explicit protocol note.
-
-### 3. `_normalize_iso8601` misattributes `event_type` in validation errors
-
-**File:** `teleclaude/core/integration/events.py:300-310`
-
-`_normalize_iso8601` raises `IntegrationEventValidationError(field_name, [...])`, passing a field name (e.g., `"received_at"`) where the constructor expects an event type. When the error propagates from `build_integration_event` (line 127), `exc.event_type` will be `"received_at"` instead of the actual event type.
-
-**Fix:** Accept the event type as a parameter to `_normalize_iso8601`, or catch and re-raise with the correct event type in `build_integration_event`.
-
-### 4. `_event_digest` duplicates `compute_idempotency_key`
-
-**File:** `teleclaude/core/integration/event_store.py:119-126` vs `events.py:103-111`
-
-Both functions compute an identical SHA-256 hash from `{"event_type": ..., "payload": ...}` with the same JSON serialization settings. The store should import and call `compute_idempotency_key(event.event_type, event.payload)` instead.
-
-### 5. `integration_event_from_record` type narrowing gap
-
-**File:** `teleclaude/core/integration/events.py:188-206`
-
-Variables `event_id`, `received_at`, `idempotency_key` retain `object | None` type after isinstance checks (the checks append diagnostics but don't reassign). After the guard, they're passed to `build_integration_event` expecting `str | None`. Correct at runtime due to the diagnostic guard, but would fail strict mypy/pyright.
-
-**Fix:** Use `cast(str, ...)` after the guard or restructure with early assignment.
-
-### 6. Missing test coverage for replay/durability path (FR2)
-
-**File:** `tests/unit/test_integration_events_model.py`, `tests/integration/test_integration_readiness_projection.py`
-
-Neither test file covers the restart scenario: ingest events, construct a NEW service instance on the same event log, call `replay()`, and verify readiness state is restored. This is the core durability claim of FR2 and has no regression coverage.
-
-### 7. Missing contract tests (Verification Requirement #3)
-
-**File:** `todos/integration-events-model/requirements.md` — VR3
-
-The requirements explicitly state: "Contract tests asserting payload fields match spec." No test asserts that the `_REQUIRED_FIELDS` mapping matches the spec's `required_event_fields` YAML. If the spec evolves and the code doesn't track, there is no regression guard.
-
-### 8. `service.ingest_raw()` untested
-
-**File:** `teleclaude/core/integration/service.py:71-85`
-
-The public boundary entry point for raw (string) event types is never exercised through any test. This is the path external callers will use.
-
-### 9. `ReachabilityChecker` and `IntegratedChecker` missing from public API
-
-**File:** `teleclaude/core/integration/__init__.py`
-
-These Callable type aliases are required by any caller constructing an `IntegrationEventService` (via `with_file_store`) or `ReadinessProjection`, but they are not exported in `__all__`. Consumers must reach into `readiness_projection` directly to import them.
-
-**Fix:** Add both to `__init__.py` imports and `__all__`.
+**Impact:** The code is correct and the logic is straightforward (two if-conditions appending reasons). The explicit Verification Requirements (VR1-VR3) are all met. This gap affects secondary coverage for injected checker callbacks, not a contract violation.
 
 ## Suggestions
 
-### S1. `event_id` whitespace inconsistency
+### S1. Redundant `replay()` in integration test
 
-`build_integration_event` (line 130) doesn't strip `event_id` before the empty check, but `integration_event_from_record` (line 189) does. An `event_id=" "` would pass the build path.
+**File:** `tests/integration/test_integration_readiness_projection.py:137`
 
-### S2. Redundant diagnostics for missing fields
+`test_replay_restores_readiness_after_restart` calls `restarted.replay()` explicitly, but `__init__` now auto-replays (Fix #2). The explicit call makes the test pass even if constructor-replay regresses. The unit test `test_service_replays_history_on_init` correctly relies on constructor-only replay, so the path IS covered — this is a test hygiene issue, not a coverage gap. Either remove the call or add a comment explaining intentional double-replay idempotency testing.
 
-When a field is missing, both `_validate_field_set` ("missing required fields: ['slug']") and `_as_non_empty_str` ("slug must be a non-empty string") report the same root cause, producing duplicate messages.
+### S2. `event_id` whitespace inconsistency (carried from round 1 S1)
 
-### S3. No diagnostic for mismatched-remote `branch_pushed`
+`build_integration_event` (events.py:130) doesn't strip `event_id` before the empty check, but `integration_event_from_record` (events.py:189) does. An `event_id=" "` would pass the build path but fail round-trip through persistence.
+
+### S3. Redundant diagnostics for missing fields (carried from round 1 S2)
+
+When a field is missing, both `_validate_field_set` and `_as_non_empty_str` report the same root cause, producing duplicate diagnostic messages.
+
+### S4. No diagnostic for mismatched-remote `branch_pushed` (carried from round 1 S3)
 
 A push with `remote="upstream"` is silently ignored when the projection expects `remote="origin"`. An explicit diagnostic would aid operator debugging.
 
-### S4. Unrelated `test_discord_adapter.py` change
+## Why No Critical or Blocking Issues
 
-The mock addition at line 807-808 is orthogonal to this feature and would be cleaner in a separate commit.
+1. **Paradigm-fit verified:** Domain-core pattern, no transport coupling, clean store abstraction. No copy-paste duplication.
+2. **All FR1-FR4 requirements implemented correctly:** Traced through code with concrete values. Supersession tie-breaking, auto-replay, ISO8601 validation, idempotency, and contract fidelity all verified.
+3. **All 9 round 1 Important fixes verified:** Each fix traced to its commit, code change, and test evidence.
+4. **All explicit Verification Requirements met:** VR1 (unit tests for validation/idempotency/supersession), VR2 (integration test for NOT_READY -> READY), VR3 (contract tests matching spec YAML).
+5. **Important #1 above is a test coverage gap for injected checker callbacks, not a logic defect.** The code is correct, the branches are simple, and the risk is low. The explicit VR list is satisfied.
 
-## Verdict: REQUEST CHANGES
+## Verdict: APPROVE
 
 **Rationale:**
 
-- Important #1 (supersession tie-break) is a logic defect in FR4 that can produce two READY candidates for the same slug.
-- Important #6-8 (test coverage) leave FR2 durability untested and Verification Requirement #3 (contract tests) unmet.
-- Important #2 (no replay guard) creates a silent failure path for warm-start consumers.
-- Important #9 (missing public exports) blocks external consumers from type-safe construction.
-
-## Fixes Applied
-
-- Important #1: deterministic supersession ordering with equal `ready_at` timestamps plus tie regression test. Commit: `cd0a19c6`
-- Important #2: replay durable history during `IntegrationEventService` initialization with restart coverage. Commit: `f4dd8a8b`
-- Important #3: pass canonical event type through ISO8601 normalization errors with attribution test. Commit: `ab5697db`
-- Important #4: remove duplicate event digest implementation and reuse `compute_idempotency_key`. Commit: `7e95d517`
-- Important #5: explicitly narrow persisted record identifiers to `str` before build path, with deserialize coverage. Commit: `efa9cd04`
-- Important #6: add integration replay/durability restart test calling `replay()` on a new service instance. Commit: `b713bfdd`
-- Important #7: add contract test asserting `_REQUIRED_FIELDS` parity with spec YAML `required_event_fields`. Commit: `76261828`
-- Important #8: add unit coverage for `service.ingest_raw()` accepted and rejected raw event types. Commit: `02dfcbe6`
-- Important #9: export `ReachabilityChecker` and `IntegratedChecker` from package public API, with export-surface test. Commit: `2bc35e06`
+- All 9 Important findings from round 1 are verified as correctly resolved with corresponding commits and test evidence.
+- FR1-FR4 are fully implemented and traceable to tests.
+- All three explicit Verification Requirements (VR1-VR3) are met.
+- Contract fidelity confirmed against `docs/project/spec/integration-orchestrator.md`.
+- Paradigm-fit assessment shows clean domain-core patterns with no transport coupling.
+- One Important finding (FR3.2 checker failure paths untested) is recorded for follow-up but is not blocking: the code is correct, the logic is straightforward, and the explicit VR list is satisfied.
+- Carried suggestions (S2-S4) from round 1 remain non-blocking.
