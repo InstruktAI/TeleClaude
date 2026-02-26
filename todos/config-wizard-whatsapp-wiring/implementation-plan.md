@@ -42,7 +42,7 @@ Pure wiring task: register WhatsApp env vars in the adapter registry, fix the co
 
 **File(s):** `config.sample.yml`
 
-- [ ] Add `whatsapp:` section after the `discord:` block (before `redis:`), containing:
+- [x] Add `whatsapp:` section after the `discord:` block (before `redis:`), containing:
   ```yaml
   whatsapp:
     enabled: false
