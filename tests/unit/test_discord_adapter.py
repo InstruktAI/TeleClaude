@@ -804,6 +804,8 @@ async def test_handle_on_ready_sets_ready_before_slow_bootstrap() -> None:
 
     adapter._ensure_discord_infrastructure = AsyncMock(side_effect=_slow_infra)  # type: ignore[method-assign]
     adapter._tree = None
+    # Isolate readiness sequencing; this test does not exercise view-construction imports.
+    adapter._build_session_launcher_view = MagicMock(return_value=object())  # type: ignore[method-assign]
 
     task = asyncio.create_task(adapter._handle_on_ready())
     await asyncio.wait_for(infra_entered.wait(), timeout=1.0)

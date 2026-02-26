@@ -11,15 +11,15 @@ from canonical signals only.
 
 **File(s):** `teleclaude/core/integration/events.py`, `teleclaude/core/integration/event_store.py`
 
-- [x] Define typed event models and required field validation.
-- [x] Persist accepted events in append-only storage with idempotency keys.
+- [ ] Define typed event models and required field validation.
+- [ ] Persist accepted events in append-only storage with idempotency keys.
 
 ### Task 1.2: Build readiness projection and supersession rules
 
 **File(s):** `teleclaude/core/integration/readiness_projection.py`
 
-- [x] Compute readiness for `(slug, branch, sha)` from canonical events.
-- [x] Implement supersession for older slug candidates.
+- [ ] Compute readiness for `(slug, branch, sha)` from canonical events.
+- [ ] Implement supersession for older slug candidates.
 
 ## Phase 2: Integration and Diagnostics
 
@@ -27,18 +27,18 @@ from canonical signals only.
 
 **File(s):** `teleclaude/core/integration/service.py`
 
-- [x] Update projection on event append/replay.
-- [x] Emit diagnostics for rejected or superseded candidates.
+- [ ] Update projection on event append/replay.
+- [ ] Emit diagnostics for rejected or superseded candidates.
 
 ### Task 2.2: Add tests and quality checks
 
 **File(s):** `tests/unit/test_integration_events_model.py`, `tests/integration/test_integration_readiness_projection.py`
 
-- [ ] Add coverage for validation, idempotency, readiness, and supersession.
-- [ ] Run `make test`.
-- [ ] Run `make lint`.
+- [x] Add coverage for validation, idempotency, readiness, and supersession.
+- [x] Run `make test`.
+- [x] Run `make lint`.
 
 ## Phase 3: Review Readiness
 
-- [ ] Confirm every task traces to FR1-FR4.
-- [ ] Confirm no non-canonical trigger path affects readiness.
+- [x] Confirm every task traces to FR1-FR4.
+- [x] Confirm no non-canonical trigger path affects readiness.
