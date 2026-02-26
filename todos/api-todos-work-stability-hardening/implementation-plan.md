@@ -12,43 +12,43 @@ request path deterministic for unchanged slugs.
 
 **File(s):** `teleclaude/core/next_machine/core.py`, `teleclaude/api_server.py` (if request correlation is needed)
 
-- [ ] Add structured timing logs around major `next_work(...)` phases
+- [x] Add structured timing logs around major `next_work(...)` phases
       (slug resolution, precondition checks, ensure/prep, sync, gate execution,
       dispatch decision).
-- [ ] Include slug and stable phase identifiers so operations can grep a single
+- [x] Include slug and stable phase identifiers so operations can grep a single
       `/todos/work` path without stack traces.
-- [ ] Ensure logs encode decision reason for skip/run outcomes.
+- [x] Ensure logs encode decision reason for skip/run outcomes.
 - Requirements: `R1`
 
 ### Task 1.2: Replace always-prep behavior with conditional prep policy
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] Introduce explicit prep-decision helper(s) for existing worktrees.
-- [ ] Require prep on new worktree creation and when prep-state/drift checks
+- [x] Introduce explicit prep-decision helper(s) for existing worktrees.
+- [x] Require prep on new worktree creation and when prep-state/drift checks
       indicate worktree is stale.
-- [ ] Skip prep when worktree is unchanged and known-good.
-- [ ] Preserve existing prep failure contract (`WORKTREE_PREP_FAILED` path).
+- [x] Skip prep when worktree is unchanged and known-good.
+- [x] Preserve existing prep failure contract (`WORKTREE_PREP_FAILED` path).
 - Requirements: `R2`, `R5`
 
 ### Task 1.3: Add per-slug single-flight protection for prep
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] Add per-slug lock/single-flight coordination around ensure/prep execution.
-- [ ] Ensure only one same-slug call runs prep at a time; followers reuse the
+- [x] Add per-slug lock/single-flight coordination around ensure/prep execution.
+- [x] Ensure only one same-slug call runs prep at a time; followers reuse the
       completed state.
-- [ ] Avoid cross-slug serialization (no global worktree prep lock).
+- [x] Avoid cross-slug serialization (no global worktree prep lock).
 - Requirements: `R3`, `R5`
 
 ### Task 1.4: Make sync operations conditional where safe
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] Add change-detection checks for `sync_main_to_worktree(...)` and
+- [x] Add change-detection checks for `sync_main_to_worktree(...)` and
       `sync_slug_todo_from_main_to_worktree(...)`.
-- [ ] Skip sync when tracked source artifacts are unchanged.
-- [ ] Preserve state seeding/repair behavior when destination files are missing
+- [x] Skip sync when tracked source artifacts are unchanged.
+- [x] Preserve state seeding/repair behavior when destination files are missing
       or source has changed.
 - Requirements: `R4`, `R5`
 

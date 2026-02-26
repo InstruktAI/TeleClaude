@@ -6,25 +6,84 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from teleclaude.core.next_machine import _prepare_worktree, ensure_worktree
+from teleclaude.core.next_machine import _prepare_worktree, ensure_worktree, ensure_worktree_with_policy
+from teleclaude.core.next_machine.core import WorktreePrepDecision
 
 
-class TestEnsureWorktreeAlwaysPrepares:
-    """Tests for ensure_worktree always running preparation."""
+class TestEnsureWorktreePrepPolicy:
+    """Tests for conditional prep policy in ensure_worktree."""
 
     @patch("teleclaude.core.next_machine.core._prepare_worktree")
-    def test_always_runs_preparation_when_worktree_exists(self, mock_prepare: Mock, tmp_path: Path) -> None:
-        """Test that preparation always runs when worktree exists (idempotent)."""
-        # Setup - create worktree dir
+    @patch("teleclaude.core.next_machine.core._decide_worktree_prep")
+    def test_skips_preparation_when_worktree_is_unchanged(
+        self,
+        mock_decide: Mock,
+        mock_prepare: Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Existing worktree should skip prep when policy says known-good."""
         worktree_dir = tmp_path / "trees" / "test-slug"
         worktree_dir.mkdir(parents=True)
+        mock_decide.return_value = WorktreePrepDecision(
+            should_prepare=False,
+            reason="unchanged_known_good",
+            inputs_digest="abc",
+        )
 
-        # Execute
         result = ensure_worktree(str(tmp_path), "test-slug")
 
-        # Verify - preparation always runs (idempotent, catches drift)
-        assert result is False  # Worktree already existed
+        assert result is False
+        mock_prepare.assert_not_called()
+
+    @patch("teleclaude.core.next_machine.core._write_worktree_prep_state")
+    @patch("teleclaude.core.next_machine.core._prepare_worktree")
+    @patch("teleclaude.core.next_machine.core._decide_worktree_prep")
+    def test_runs_preparation_when_policy_detects_stale_inputs(
+        self,
+        mock_decide: Mock,
+        mock_prepare: Mock,
+        mock_write_state: Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Existing worktree should prepare when prep inputs changed."""
+        worktree_dir = tmp_path / "trees" / "test-slug"
+        worktree_dir.mkdir(parents=True)
+        mock_decide.return_value = WorktreePrepDecision(
+            should_prepare=True,
+            reason="prep_inputs_changed",
+            inputs_digest="new-digest",
+        )
+
+        result = ensure_worktree_with_policy(str(tmp_path), "test-slug")
+
+        assert result.created is False
+        assert result.prepared is True
+        assert result.prep_reason == "prep_inputs_changed"
         assert mock_prepare.call_args == ((str(tmp_path), "test-slug"), {})
+        assert mock_write_state.call_args == ((str(tmp_path), "test-slug", "new-digest"), {})
+
+    @patch("teleclaude.core.next_machine.core._write_worktree_prep_state")
+    @patch("teleclaude.core.next_machine.core._prepare_worktree")
+    @patch("teleclaude.core.next_machine.core.Repo")
+    def test_new_worktree_is_created_and_prepared(
+        self,
+        mock_repo_cls: Mock,
+        mock_prepare: Mock,
+        mock_write_state: Mock,
+        tmp_path: Path,
+    ) -> None:
+        """New worktrees should always run prep and return created=True."""
+        repo = MagicMock()
+        mock_repo_cls.return_value = repo
+
+        result = ensure_worktree_with_policy(str(tmp_path), "test-slug")
+
+        assert result.created is True
+        assert result.prepared is True
+        assert result.prep_reason == "worktree_created"
+        assert repo.git.worktree.call_args is not None
+        assert mock_prepare.call_args == ((str(tmp_path), "test-slug"), {})
+        assert mock_write_state.call_args is not None
 
 
 class TestPrepareWorktreeConventions:

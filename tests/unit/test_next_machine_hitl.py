@@ -1,5 +1,7 @@
+import asyncio
 import os
 import tempfile
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -20,6 +22,7 @@ from teleclaude.core.next_machine import (
     mark_phase,
     next_prepare,
     read_phase_state,
+    sync_main_to_worktree,
     sync_slug_todo_from_main_to_worktree,
     sync_slug_todo_from_worktree_to_main,
     write_phase_state,
@@ -431,6 +434,65 @@ def test_sync_slug_todo_from_main_to_worktree_overwrites_planning_files():
         assert "Updated" in final
 
 
+def test_sync_main_to_worktree_skips_when_inputs_unchanged():
+    """Main planning sync should skip file copy when source and destination match."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        slug = "test-slug"
+        main_root = Path(tmpdir)
+        worktree_root = main_root / "trees" / slug
+        worktree_root.mkdir(parents=True, exist_ok=True)
+        (main_root / "todos").mkdir(parents=True, exist_ok=True)
+        (worktree_root / "todos").mkdir(parents=True, exist_ok=True)
+        (main_root / "todos" / "roadmap.yaml").write_text("- slug: test-slug\n", encoding="utf-8")
+        (worktree_root / "todos" / "roadmap.yaml").write_text("- slug: test-slug\n", encoding="utf-8")
+
+        copied = sync_main_to_worktree(tmpdir, slug)
+
+        assert copied == 0
+
+
+def test_sync_main_to_worktree_copies_when_inputs_changed():
+    """Main planning sync should copy roadmap when content differs."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        slug = "test-slug"
+        main_root = Path(tmpdir)
+        worktree_root = main_root / "trees" / slug
+        worktree_root.mkdir(parents=True, exist_ok=True)
+        (main_root / "todos").mkdir(parents=True, exist_ok=True)
+        (worktree_root / "todos").mkdir(parents=True, exist_ok=True)
+        (main_root / "todos" / "roadmap.yaml").write_text("- slug: changed\n", encoding="utf-8")
+        (worktree_root / "todos" / "roadmap.yaml").write_text("- slug: stale\n", encoding="utf-8")
+
+        copied = sync_main_to_worktree(tmpdir, slug)
+
+        assert copied == 1
+        assert "changed" in (worktree_root / "todos" / "roadmap.yaml").read_text(encoding="utf-8")
+
+
+def test_sync_slug_todo_from_main_to_worktree_skips_when_inputs_unchanged():
+    """Slug artifact sync should report zero copied files when everything is unchanged."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        slug = "test-slug"
+        main_todo = Path(tmpdir) / "todos" / slug
+        worktree_todo = Path(tmpdir) / "trees" / slug / "todos" / slug
+        main_todo.mkdir(parents=True, exist_ok=True)
+        worktree_todo.mkdir(parents=True, exist_ok=True)
+
+        for name, content in (
+            ("requirements.md", "# Requirements\n"),
+            ("implementation-plan.md", "# Plan\n"),
+            ("quality-checklist.md", "# Checklist\n"),
+        ):
+            (main_todo / name).write_text(content, encoding="utf-8")
+            (worktree_todo / name).write_text(content, encoding="utf-8")
+        (main_todo / "state.yaml").write_text("build: pending\n", encoding="utf-8")
+        (worktree_todo / "state.yaml").write_text("build: complete\n", encoding="utf-8")
+
+        copied = sync_slug_todo_from_main_to_worktree(tmpdir, slug)
+
+        assert copied == 0
+
+
 def test_mark_phase_review_approved_clears_unresolved_findings():
     """Review approved should clear unresolved findings and carry to resolved."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -732,6 +794,50 @@ async def test_next_work_lazy_marking_no_state_mutation():
         # Output should contain marking instructions
         assert "mark-phase" in result
         assert "BEFORE DISPATCHING" in result
+
+
+@pytest.mark.asyncio
+async def test_next_work_concurrent_same_slug_single_flight_prep():
+    """Concurrent same-slug calls should run expensive prep at most once."""
+    db = MagicMock(spec=Db)
+    slug = "single-flight"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Req")
+        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+
+        worktree_todo = Path(tmpdir) / "trees" / slug / "todos" / slug
+        worktree_todo.mkdir(parents=True, exist_ok=True)
+        (worktree_todo / "state.yaml").write_text('{"build":"pending","review":"pending"}')
+
+        prep_calls = 0
+
+        def _slow_prepare(*_args, **_kwargs):
+            nonlocal prep_calls
+            prep_calls += 1
+            time.sleep(0.1)
+
+        with (
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree", side_effect=_slow_prepare),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="guidance"),
+            ),
+        ):
+            result_a, result_b = await asyncio.gather(
+                next_work(db, slug=slug, cwd=tmpdir),
+                next_work(db, slug=slug, cwd=tmpdir),
+            )
+
+        assert "next-build" in result_a
+        assert "next-build" in result_b
+        assert prep_calls == 1
 
 
 def test_post_completion_finalize_includes_make_restart():

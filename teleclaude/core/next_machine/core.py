@@ -9,15 +9,18 @@ for the orchestrator AI to execute literally.
 """
 
 import asyncio
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
+import threading
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timezone
 from enum import Enum
 from pathlib import Path
+from time import perf_counter
 from typing import TypedDict, cast
 
 import yaml
@@ -65,6 +68,63 @@ REVIEW_APPROVE_MARKER = "[x] APPROVE"
 PAREN_OPEN = "("
 DEFAULT_MAX_REVIEW_ROUNDS = 3
 FINDING_ID_PATTERN = re.compile(r"\bR\d+-F\d+\b")
+NEXT_WORK_PHASE_LOG = "NEXT_WORK_PHASE"
+_PREP_STATE_VERSION = 1
+_WORKTREE_PREP_STATE_REL = ".teleclaude/worktree-prep-state.json"
+_PREP_INPUT_FILES = (
+    "Makefile",
+    "package.json",
+    "pnpm-lock.yaml",
+    "package-lock.json",
+    "yarn.lock",
+    "pyproject.toml",
+    "uv.lock",
+    "requirements.txt",
+    "requirements-dev.txt",
+    "poetry.lock",
+)
+_SINGLE_FLIGHT_GUARD = threading.Lock()
+_SINGLE_FLIGHT_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+@dataclass(frozen=True)
+class WorktreePrepDecision:
+    should_prepare: bool
+    reason: str
+    inputs_digest: str
+
+
+@dataclass(frozen=True)
+class EnsureWorktreeResult:
+    created: bool
+    prepared: bool
+    prep_reason: str
+
+
+async def _get_slug_single_flight_lock(slug: str) -> asyncio.Lock:
+    """Return per-slug lock so same-slug prep/sync runs single-flight."""
+    with _SINGLE_FLIGHT_GUARD:
+        lock = _SINGLE_FLIGHT_LOCKS.get(slug)
+        if lock is None:
+            lock = asyncio.Lock()
+            _SINGLE_FLIGHT_LOCKS[slug] = lock
+    return lock
+
+
+def _log_next_work_phase(slug: str, phase: str, started_at: float, decision: str, reason: str) -> None:
+    """Emit grep-friendly phase timing logs for /todos/work."""
+    elapsed_ms = int((perf_counter() - started_at) * 1000)
+    phase_slug = slug or "<auto>"
+    logger.info(
+        "%s slug=%s phase=%s decision=%s reason=%s duration_ms=%d",
+        NEXT_WORK_PHASE_LOG,
+        phase_slug,
+        phase,
+        decision,
+        reason,
+        elapsed_ms,
+    )
+
 
 # Post-completion instructions for each command (used in format_tool_call)
 # These tell the orchestrator what to do AFTER a worker completes.
@@ -1582,22 +1642,51 @@ def _sync_file(src_root: Path, dst_root: Path, relative_path: str) -> bool:
     dst = dst_root / relative_path
     if not src.exists():
         return False
+    if dst.exists() and _file_contents_match(src, dst):
+        return False
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
     return True
 
 
-def sync_main_to_worktree(cwd: str, slug: str, extra_files: list[str] | None = None) -> None:
+def _file_sha256(path: Path) -> str:
+    """Return sha256 digest for a file."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8192), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _file_contents_match(src: Path, dst: Path) -> bool:
+    """Return True when src and dst bytes are identical."""
+    try:
+        src_stat = src.stat()
+        dst_stat = dst.stat()
+    except OSError:
+        return False
+    if src_stat.st_size != dst_stat.st_size:
+        return False
+    try:
+        return _file_sha256(src) == _file_sha256(dst)
+    except OSError:
+        return False
+
+
+def sync_main_to_worktree(cwd: str, slug: str, extra_files: list[str] | None = None) -> int:
     """Copy orchestrator-owned planning files from main repo into a slug worktree."""
     main_root = Path(cwd)
     worktree_root = Path(cwd) / "trees" / slug
     if not worktree_root.exists():
-        return
+        return 0
     files = ["todos/roadmap.yaml"]
     if extra_files:
         files.extend(extra_files)
+    copied = 0
     for rel in files:
-        _sync_file(main_root, worktree_root, rel)
+        if _sync_file(main_root, worktree_root, rel):
+            copied += 1
+    return copied
 
 
 def sync_main_planning_to_all_worktrees(cwd: str) -> None:
@@ -1639,7 +1728,7 @@ def sync_slug_todo_from_worktree_to_main(cwd: str, slug: str) -> None:
     )
 
 
-def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> None:
+def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> int:
     """Copy canonical todo artifacts for a slug from main into worktree.
 
     Planning artifacts are copied unconditionally (main is source of truth).
@@ -1650,8 +1739,9 @@ def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> None:
     main_root = Path(cwd)
     worktree_root = Path(cwd) / "trees" / slug
     if not worktree_root.exists():
-        return
+        return 0
     # Planning artifacts: main always wins.
+    copied = 0
     for rel in [
         f"{todo_base}/bug.md",
         f"{todo_base}/input.md",
@@ -1663,7 +1753,8 @@ def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> None:
         f"{todo_base}/breakdown.md",
         f"{todo_base}/dor-report.md",
     ]:
-        _sync_file(main_root, worktree_root, rel)
+        if _sync_file(main_root, worktree_root, rel):
+            copied += 1
     # state.yaml: seed only — worktree owns build/review progress.
     state_rel = f"{todo_base}/state.yaml"
     src = main_root / state_rel
@@ -1671,6 +1762,8 @@ def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> None:
     if src.exists() and not dst.exists():
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
+        copied += 1
+    return copied
 
 
 def _dirty_paths(repo: Repo) -> list[str]:
@@ -1868,51 +1961,114 @@ def get_finalize_lock_holder(cwd: str) -> dict[str, str] | None:
         return None
 
 
-def ensure_worktree(cwd: str, slug: str) -> bool:
-    """Ensure worktree exists and is prepared, creating/preparing as needed.
+def _worktree_prep_state_path(cwd: str, slug: str) -> Path:
+    """Get prep-state marker path inside worktree."""
+    return Path(cwd) / "trees" / slug / _WORKTREE_PREP_STATE_REL
 
-    Creates: git worktree add trees/{slug} -b {slug}
-    Then calls project-owned preparation hook to make worktree ready for work.
 
-    Always runs preparation when worktree exists - this is safe because:
-    - uv sync / pip install are idempotent (fast no-op if deps are current)
-    - Catches any drift, new dependencies added mid-work, or partial installations
-    - config.yml and .env symlink are also idempotent
+def _compute_prep_inputs_digest(cwd: str, slug: str) -> str:
+    """Compute hash of dependency-installation inputs that impact prep."""
+    project_root = Path(cwd)
+    worktree_root = project_root / "trees" / slug
+    digest = hashlib.sha256()
 
-    Args:
-        cwd: Project root directory
-        slug: Work item slug
+    candidates: list[tuple[str, Path]] = [
+        ("root:tools/worktree-prepare.sh", project_root / "tools" / "worktree-prepare.sh")
+    ]
+    for rel in _PREP_INPUT_FILES:
+        candidates.append((f"worktree:{rel}", worktree_root / rel))
 
-    Returns:
-        True if a new worktree was created, False if it already existed
+    for label, path in sorted(candidates, key=lambda item: item[0]):
+        digest.update(label.encode("utf-8"))
+        exists = path.exists()
+        digest.update((b"1" if exists else b"0"))
+        if not exists:
+            continue
+        is_executable = os.access(path, os.X_OK)
+        digest.update((b"1" if is_executable else b"0"))
+        if path.is_file():
+            digest.update(_file_sha256(path).encode("utf-8"))
+    return digest.hexdigest()
 
-    Raises:
-        RuntimeError: If preparation hook not found or fails
-    """
-    worktree_path = Path(cwd) / "trees" / slug
-    if worktree_path.exists():
-        # Always run preparation - it's idempotent and catches any drift
-        logger.info("Worktree %s exists, ensuring preparation is current", slug)
-        _prepare_worktree(cwd, slug)
-        return False
 
+def _read_worktree_prep_state(cwd: str, slug: str) -> dict[str, str] | None:
+    """Read prep-state marker written after successful prep."""
+    state_path = _worktree_prep_state_path(cwd, slug)
+    if not state_path.exists():
+        return None
     try:
-        repo = Repo(cwd)
-        # Ensure trees directory exists
+        raw = json.loads(state_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    version = raw.get("version")
+    digest = raw.get("inputs_digest")
+    if not isinstance(version, int) or version != _PREP_STATE_VERSION:
+        return None
+    if not isinstance(digest, str) or not digest:
+        return None
+    return {"inputs_digest": digest}
+
+
+def _write_worktree_prep_state(cwd: str, slug: str, inputs_digest: str) -> None:
+    """Persist prep-state marker after successful preparation."""
+    state_path = _worktree_prep_state_path(cwd, slug)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": _PREP_STATE_VERSION,
+        "inputs_digest": inputs_digest,
+        "prepared_at": datetime.now(timezone.utc).isoformat(),
+    }
+    state_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _decide_worktree_prep(cwd: str, slug: str, created: bool) -> WorktreePrepDecision:
+    """Decide whether prep is required for a slug worktree."""
+    inputs_digest = _compute_prep_inputs_digest(cwd, slug)
+    if created:
+        return WorktreePrepDecision(should_prepare=True, reason="worktree_created", inputs_digest=inputs_digest)
+    state = _read_worktree_prep_state(cwd, slug)
+    if state is None:
+        return WorktreePrepDecision(should_prepare=True, reason="prep_state_missing", inputs_digest=inputs_digest)
+    if state.get("inputs_digest") != inputs_digest:
+        return WorktreePrepDecision(should_prepare=True, reason="prep_inputs_changed", inputs_digest=inputs_digest)
+    return WorktreePrepDecision(should_prepare=False, reason="unchanged_known_good", inputs_digest=inputs_digest)
+
+
+def ensure_worktree_with_policy(cwd: str, slug: str) -> EnsureWorktreeResult:
+    """Ensure worktree exists and run prep only when policy says it's stale."""
+    worktree_path = Path(cwd) / "trees" / slug
+    created = False
+    if not worktree_path.exists():
+        try:
+            repo = Repo(cwd)
+        except InvalidGitRepositoryError:
+            logger.error("Cannot create worktree: %s is not a git repository", cwd)
+            raise
         trees_dir = Path(cwd) / "trees"
         trees_dir.mkdir(exist_ok=True)
-
-        # Create worktree with new branch
         repo.git.worktree("add", str(worktree_path), "-b", slug)
         logger.info("Created worktree at %s", worktree_path)
+        created = True
 
-        # Call preparation hook to make worktree ready for work
+    prep_decision = _decide_worktree_prep(cwd, slug, created=created)
+    if prep_decision.should_prepare:
         _prepare_worktree(cwd, slug)
+        _write_worktree_prep_state(cwd, slug, prep_decision.inputs_digest)
+        return EnsureWorktreeResult(created=created, prepared=True, prep_reason=prep_decision.reason)
+    return EnsureWorktreeResult(created=created, prepared=False, prep_reason=prep_decision.reason)
 
-        return True
-    except InvalidGitRepositoryError:
-        logger.error("Cannot create worktree: %s is not a git repository", cwd)
-        raise
+
+def ensure_worktree(cwd: str, slug: str) -> bool:
+    """Compatibility wrapper returning whether a worktree was newly created."""
+    result = ensure_worktree_with_policy(cwd, slug)
+    return result.created
+
+
+async def ensure_worktree_with_policy_async(cwd: str, slug: str) -> EnsureWorktreeResult:
+    """Async wrapper to ensure worktree with prep decision policy."""
+    return await asyncio.to_thread(ensure_worktree_with_policy, cwd, slug)
 
 
 async def ensure_worktree_async(cwd: str, slug: str) -> bool:
@@ -2261,6 +2417,9 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 if finalize_done:
                     release_finalize_lock(cwd, caller_session_id)
 
+    phase_slug = slug or "<auto>"
+    slug_resolution_started = perf_counter()
+
     # 1. Resolve slug - only ready items when no explicit slug
     # Prefer worktree-local planning state when explicit slug worktree exists.
     deps_cwd = cwd
@@ -2280,26 +2439,37 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             if holder_child:
                 slug = holder_child
             elif holder_reason == "complete":
+                _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "holder_complete")
                 return f"COMPLETE: Holder '{slug}' has no remaining child work."
             elif holder_reason == "deps_unsatisfied":
+                _log_next_work_phase(
+                    phase_slug, "slug_resolution", slug_resolution_started, "error", "holder_deps_unsatisfied"
+                )
                 return format_error(
                     "DEPS_UNSATISFIED",
                     f"Holder '{slug}' has children, but none are currently runnable due to unsatisfied dependencies.",
                     next_call="Complete dependency items first, or check todos/roadmap.yaml.",
                 )
             elif holder_reason == "item_not_ready":
+                _log_next_work_phase(
+                    phase_slug, "slug_resolution", slug_resolution_started, "error", "holder_not_ready"
+                )
                 return format_error(
                     "ITEM_NOT_READY",
                     f"Holder '{slug}' has children, but none are ready to start work.",
                     next_call=f"Call telec todo prepare on the child items for '{slug}' first.",
                 )
             elif holder_reason == "children_not_in_roadmap":
+                _log_next_work_phase(
+                    phase_slug, "slug_resolution", slug_resolution_started, "error", "holder_children_missing"
+                )
                 return format_error(
                     "NOT_PREPARED",
                     f"Holder '{slug}' has child todos, but none are in roadmap.",
                     next_call="Check todos/roadmap.yaml or call telec todo prepare.",
                 )
             else:
+                _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "slug_missing")
                 return format_error(
                     "NOT_PREPARED",
                     f"Item '{slug}' not found in roadmap.",
@@ -2312,16 +2482,19 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             and phase == ItemPhase.PENDING.value
             and not await asyncio.to_thread(is_ready_for_work, cwd, slug)
         ):
+            _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "item_not_ready")
             return format_error(
                 "ITEM_NOT_READY",
                 f"Item '{slug}' is pending and DOR score is below threshold. Must be ready to start work.",
                 next_call=f"Call telec todo prepare {slug} to prepare it first.",
             )
         if phase == ItemPhase.DONE.value:
+            _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "item_done")
             return f"COMPLETE: Item '{slug}' is already done."
 
         # Item is ready or in_progress - check dependencies
         if not await asyncio.to_thread(check_dependencies_satisfied, cwd, slug, deps):
+            _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "deps_unsatisfied")
             return format_error(
                 "DEPS_UNSATISFIED",
                 f"Item '{slug}' has unsatisfied dependencies.",
@@ -2337,11 +2510,15 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             has_ready_items, _, _ = await resolve_slug_async(cwd, None, True)
 
             if has_ready_items:
+                _log_next_work_phase(
+                    phase_slug, "slug_resolution", slug_resolution_started, "error", "ready_but_deps_unsatisfied"
+                )
                 return format_error(
                     "DEPS_UNSATISFIED",
                     "Ready items exist but all have unsatisfied dependencies.",
                     next_call="Complete dependency items first, or check todos/roadmap.yaml.",
                 )
+            _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "no_ready_items")
             return format_error(
                 "NO_READY_ITEMS",
                 "No ready items found in roadmap.",
@@ -2349,9 +2526,15 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             )
         resolved_slug = found_slug
 
+    phase_slug = resolved_slug
+    _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "run", "resolved")
+
+    preconditions_started = perf_counter()
+
     # 2. Guardrail: stash debt is forbidden for AI orchestration
     stash_entries = await asyncio.to_thread(get_stash_entries, cwd)
     if stash_entries:
+        _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "stash_debt")
         return format_stash_debt(resolved_slug, len(stash_entries))
 
     # 3. Validate preconditions
@@ -2370,32 +2553,57 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         has_requirements = check_file_exists(precondition_root, f"todos/{resolved_slug}/requirements.md")
         has_impl_plan = check_file_exists(precondition_root, f"todos/{resolved_slug}/implementation-plan.md")
         if not (has_requirements and has_impl_plan):
+            _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "not_prepared")
             return format_error(
                 "NOT_PREPARED",
                 f"todos/{resolved_slug} is missing requirements or implementation plan.",
                 next_call=f"Call telec todo prepare {resolved_slug} to complete preparation.",
             )
+    _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "run", "validated")
 
-    # 4. Ensure worktree exists
+    worktree_cwd = str(Path(cwd) / "trees" / resolved_slug)
+    ensure_started = perf_counter()
+    slug_lock = await _get_slug_single_flight_lock(resolved_slug)
+    if slug_lock.locked():
+        logger.info(
+            "%s slug=%s phase=ensure_prepare decision=wait reason=single_flight_in_progress duration_ms=0",
+            NEXT_WORK_PHASE_LOG,
+            phase_slug,
+        )
+
+    # 4. Ensure worktree exists + conditional prep + conditional sync in single-flight window.
     try:
-        worktree_created = await ensure_worktree_async(cwd, resolved_slug)
-        if worktree_created:
-            logger.info("Created new worktree for %s", resolved_slug)
+        async with slug_lock:
+            ensure_result = await ensure_worktree_with_policy_async(cwd, resolved_slug)
+            if ensure_result.created:
+                logger.info("Created new worktree for %s", resolved_slug)
+            ensure_decision = "run" if ensure_result.prepared else "skip"
+            _log_next_work_phase(
+                phase_slug, "ensure_prepare", ensure_started, ensure_decision, ensure_result.prep_reason
+            )
+
+            sync_started = perf_counter()
+            main_sync_copied = await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
+            slug_sync_copied = await asyncio.to_thread(sync_slug_todo_from_main_to_worktree, cwd, resolved_slug)
+            total_synced = main_sync_copied + slug_sync_copied
+            sync_decision = "run" if total_synced > 0 else "skip"
+            sync_reason = (
+                f"copied main={main_sync_copied} slug={slug_sync_copied}" if total_synced > 0 else "unchanged_inputs"
+            )
+            _log_next_work_phase(phase_slug, "sync", sync_started, sync_decision, sync_reason)
     except RuntimeError as exc:
+        _log_next_work_phase(phase_slug, "ensure_prepare", ensure_started, "error", "prep_failed")
         return format_error(
             "WORKTREE_PREP_FAILED",
             str(exc),
             next_call="Add tools/worktree-prepare.sh or fix its execution, then retry.",
         )
 
-    worktree_cwd = str(Path(cwd) / "trees" / resolved_slug)
-
-    # Always sync main → worktree so the worktree starts with current files.
-    await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
-    await asyncio.to_thread(sync_slug_todo_from_main_to_worktree, cwd, resolved_slug)
+    dispatch_started = perf_counter()
 
     # 5. Check uncommitted changes
     if has_uncommitted_changes(cwd, resolved_slug):
+        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "uncommitted_changes")
         return format_uncommitted_changes(resolved_slug)
 
     # 6. Claim the item (pending → in_progress) — safe to do here since it's
@@ -2412,6 +2620,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         try:
             guidance = await compose_agent_guidance(db)
         except RuntimeError as exc:
+            _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
             return format_error("NO_AGENTS", str(exc))
 
         # Build pre-dispatch marking instructions
@@ -2419,8 +2628,8 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
 
         # Bugs use next-bugs-fix instead of next-build
         is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
-
         if is_bug:
+            _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_bugs_fix")
             return format_tool_call(
                 command="next-bugs-fix",
                 args=resolved_slug,
@@ -2430,20 +2639,22 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 next_call=f"telec todo work {resolved_slug}",
                 pre_dispatch=pre_dispatch,
             )
-        else:
-            return format_tool_call(
-                command="next-build",
-                args=resolved_slug,
-                project=cwd,
-                guidance=guidance,
-                subfolder=f"trees/{resolved_slug}",
-                next_call=f"telec todo work {resolved_slug}",
-                pre_dispatch=pre_dispatch,
-            )
+        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_build")
+        return format_tool_call(
+            command="next-build",
+            args=resolved_slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder=f"trees/{resolved_slug}",
+            next_call=f"telec todo work {resolved_slug}",
+            pre_dispatch=pre_dispatch,
+        )
 
     # 7.5 Build gates: verify tests and demo structure before allowing review
+    gate_started = perf_counter()
     gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, resolved_slug)
     if not gates_passed:
+        _log_next_work_phase(phase_slug, "gate_execution", gate_started, "error", "build_gates_failed")
         # Reset build to started so the builder can fix and try again
         await asyncio.to_thread(
             mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
@@ -2452,6 +2663,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
         next_call = f"telec todo work {resolved_slug}"
         return format_build_gate_failure(resolved_slug, gate_output, next_call)
+    _log_next_work_phase(phase_slug, "gate_execution", gate_started, "run", "build_gates_passed")
 
     # 8. Check review status
     if not await asyncio.to_thread(is_review_approved, worktree_cwd, resolved_slug):
@@ -2460,7 +2672,9 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             try:
                 guidance = await compose_agent_guidance(db)
             except RuntimeError as exc:
+                _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
                 return format_error("NO_AGENTS", str(exc))
+            _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_fix_review")
             return format_tool_call(
                 command="next-fix-review",
                 args=resolved_slug,
@@ -2472,6 +2686,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         # Review not started or still pending
         limit_reached, current_round, max_rounds = _is_review_round_limit_reached(worktree_cwd, resolved_slug)
         if limit_reached:
+            _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "review_round_limit")
             return format_error(
                 "REVIEW_ROUND_LIMIT",
                 (
@@ -2486,7 +2701,9 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         try:
             guidance = await compose_agent_guidance(db)
         except RuntimeError as exc:
+            _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
             return format_error("NO_AGENTS", str(exc))
+        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_review")
         return format_tool_call(
             command="next-review",
             args=resolved_slug,
@@ -2502,7 +2719,9 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         try:
             guidance = await compose_agent_guidance(db)
         except RuntimeError as exc:
+            _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
             return format_error("NO_AGENTS", str(exc))
+        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_defer")
         return format_tool_call(
             command="next-defer",
             args=resolved_slug,
@@ -2514,8 +2733,10 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
 
     # 9. Review approved - dispatch finalize prepare (serialized via finalize lock)
     if has_uncommitted_changes(cwd, resolved_slug):
+        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "uncommitted_changes")
         return format_uncommitted_changes(resolved_slug)
     if not caller_session_id:
+        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "caller_session_missing")
         return format_error(
             "CALLER_SESSION_REQUIRED",
             (
@@ -2529,17 +2750,19 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     session_id = caller_session_id
     lock_error = acquire_finalize_lock(cwd, resolved_slug, session_id)
     if lock_error:
+        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "finalize_lock_held")
         return lock_error
     try:
         guidance = await compose_agent_guidance(db)
     except RuntimeError as exc:
         release_finalize_lock(cwd, session_id)
+        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
         return format_error("NO_AGENTS", str(exc))
 
     # Bugs skip delivered.yaml bookkeeping and are removed from todos entirely
     is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
     note = "BUG FIX: Skip delivered.yaml bookkeeping. Delete todo directory after merge." if is_bug else ""
-
+    _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_finalize")
     return format_tool_call(
         command="next-finalize",
         args=resolved_slug,
