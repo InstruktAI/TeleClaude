@@ -2596,13 +2596,14 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 "Call telec todo work from a wrapper-injected orchestrator session so caller_session_id is present."
             ),
         )
-    finalize_precondition_error = await asyncio.to_thread(check_finalize_preconditions, cwd, resolved_slug)
-    if finalize_precondition_error:
-        return finalize_precondition_error
     session_id = caller_session_id
     lock_error = acquire_finalize_lock(cwd, resolved_slug, session_id)
     if lock_error:
         return lock_error
+    finalize_precondition_error = await asyncio.to_thread(check_finalize_preconditions, cwd, resolved_slug)
+    if finalize_precondition_error:
+        release_finalize_lock(cwd, session_id)
+        return finalize_precondition_error
     try:
         guidance = await compose_agent_guidance(db)
     except RuntimeError as exc:
