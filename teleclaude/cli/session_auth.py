@@ -5,11 +5,16 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from teleclaude.constants import ENV_ENABLE
+
 SESSION_AUTH_DIR = Path("~/.local/state/telec/session-auth").expanduser()
+TUI_SESSION_ENV_KEY = "TELEC_TUI_SESSION"
+TUI_AUTH_EMAIL_ENV_KEY = "TELEC_AUTH_EMAIL"
 
 
 @dataclass(frozen=True)
@@ -32,6 +37,35 @@ class TerminalAuthState:
 def in_tmux_context() -> bool:
     """Return True when running inside tmux."""
     return bool((os.environ.get("TMUX") or "").strip())
+
+
+def _in_telec_tui_context() -> bool:
+    """Return True for the trusted tc_tui tmux session created by telec."""
+    return in_tmux_context() and (os.environ.get(TUI_SESSION_ENV_KEY) or "").strip() == ENV_ENABLE
+
+
+def _read_bridged_tui_email() -> str | None:
+    raw = os.environ.get(TUI_AUTH_EMAIL_ENV_KEY)
+    if not raw:
+        return None
+    email = _normalize_email(raw)
+    return email or None
+
+
+def _read_tmux_session_name() -> str | None:
+    try:
+        result = subprocess.run(
+            ["tmux", "display-message", "-p", "#S"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
 
 
 def _normalize_email(value: str) -> str:
@@ -77,6 +111,10 @@ def get_current_session_context() -> TerminalSessionContext | None:
 def read_current_session_email() -> str | None:
     """Read login email for current TTY session."""
     if in_tmux_context():
+        if _in_telec_tui_context():
+            session_name = _read_tmux_session_name()
+            if session_name and session_name == "tc_tui":
+                return _read_bridged_tui_email()
         return None
 
     context = _session_context()

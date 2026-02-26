@@ -1,5 +1,49 @@
 # Delivered work items. Newest first.
 
+- slug: adapter-output-qos-scheduler
+  date: '2026-02-26'
+  title: Adapter-aware output QoS system to prevent Telegram flood-control churn under
+    high concurrency
+  description: Adapter-aware output QoS system to prevent Telegram flood-control churn
+    under high concurrency
+- slug: help-desk-startup-command-ordering
+  date: '2026-02-26'
+  title: Deterministic startup ordering between help-desk bootstrap and first customer
+    message
+  commit: 78dedfa9
+  description: Gate process_message on session lifecycle, ensuring auto-command dispatch
+    completes before customer input injection into tmux
+- slug: api-todos-work-stability-hardening
+  date: '2026-02-26'
+  title: Stabilize `/todos/work` latency by removing redundant worktree prep/sync
+    and adding phase-level diagnostics
+  description: Stabilize `/todos/work` latency by removing redundant worktree prep/sync
+    and adding phase-level diagnostics
+- slug: integration-orchestrator-rollout
+  date: '2026-02-26'
+  title: Parent rollout for event-driven singleton integrator and guarded mainline
+    integration
+  commit: a68b3fe07a008609a5fb43827630bed717fdb23f
+  description: Parent rollout for event-driven singleton integrator and guarded mainline
+    integration
+- slug: integration-safety-gates
+  date: '2026-02-26'
+  title: 'Step 1: add finalize/apply safety gates for dirty/diverged canonical main'
+  commit: 3e306a0a448f48cb1ba56898f7fde04f46c4bab1
+  description: 'Step 1: add finalize/apply safety gates for dirty/diverged canonical
+    main'
+- slug: help-desk-whatsapp
+  date: '2026-02-26'
+  title: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
+  commit: 2bcca366ae3709cfae601deb1c31ef3c7a0cd3bf
+  description: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
+- slug: discord-slash-commands-like-telegram
+  date: '2026-02-26'
+  title: Add Discord Application Commands (slash commands) mirroring Telegram command
+    set
+  commit: 4319caeedeea9ea6a053278e49feb73a90339286
+  description: Add Discord Application Commands (slash commands) mirroring Telegram
+    command set
 - slug: deployment-versioning
   date: '2026-02-26'
   title: 'Phase 1: Runtime __version__, telec version command, pyproject.toml 1.0.0'

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict
 
 import pytest
@@ -38,6 +39,52 @@ def test_attach_tmux_session_attaches_outside_tmux(monkeypatch: pytest.MonkeyPat
     telec._attach_tmux_session("tc_888")
 
     assert called["args"][1:] == (telec.config.computer.tmux_binary, "attach-session", "-t", "tc_888")
+
+
+def test_main_bridges_terminal_login_into_tui_tmux_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: Dict[str, tuple[str, ...]] = {}
+
+    class _HasSessionMissing:
+        returncode = 1
+
+    def _fake_run(*_args, **_kwargs):
+        return _HasSessionMissing()
+
+    def _fake_execlp(*args: str) -> None:
+        captured["args"] = args
+        raise SystemExit(0)
+
+    monkeypatch.setattr(telec, "config", SimpleNamespace(computer=SimpleNamespace(tmux_binary="tmux")))
+    monkeypatch.setattr(telec, "setup_logging", lambda: None)
+    monkeypatch.setattr(telec, "read_current_session_email", lambda: "admin@example.com")
+    monkeypatch.setattr(telec.subprocess, "run", _fake_run)
+    monkeypatch.setattr(telec.os, "execlp", _fake_execlp)
+    monkeypatch.setattr(telec.sys, "argv", ["telec"])
+    monkeypatch.delenv("TMUX", raising=False)
+
+    with pytest.raises(SystemExit):
+        telec.main()
+
+    args = captured["args"]
+    assert "-e" in args
+    assert "TELEC_AUTH_EMAIL=admin@example.com" in args
+
+
+def test_main_requires_login_for_multi_user_tui(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(telec, "setup_logging", lambda: None)
+    monkeypatch.setattr(telec, "_requires_tui_login", lambda: True)
+    monkeypatch.setattr(telec, "read_current_session_email", lambda: None)
+    monkeypatch.setattr(telec.sys, "argv", ["telec"])
+    monkeypatch.delenv("TMUX", raising=False)
+
+    with pytest.raises(SystemExit) as excinfo:
+        telec.main()
+
+    assert excinfo.value.code == 1
+    output = capsys.readouterr().out
+    assert "telec auth login is required" in output
 
 
 def test_revive_session_attaches_tmux(monkeypatch: pytest.MonkeyPatch) -> None:

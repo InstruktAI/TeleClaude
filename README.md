@@ -161,6 +161,31 @@ Yes. Claude, Gemini, and Codex run side by side in the same network. Each sessio
 **How does multi-computer work?**
 Every machine runs a TeleClaude daemon. They discover each other via Redis heartbeats and communicate through Redis Streams. You dispatch work to any computer from any client. Sessions are local to their machine; coordination is global.
 
+**Is this system secure?**
+Security is layered and honest about where it stands:
+
+- _Agent containment:_ A git wrapper blocks destructive commands at the shell level — `stash`, `checkout`, `restore`, `clean`, `reset --hard` are intercepted before the AI can reason its way around them. Agents cannot bypass this. The checkpoint system catches errors and prompts self-correction at turn boundaries.
+- _Customer session jailing:_ Help desk sessions are role-gated. Customers get an explicitly restricted tool tier — no session management, no deployment, no orchestration, no system access. Identity resolution maps every user to a role via the People registry before a session starts.
+- _Adapter isolation:_ Each adapter runs in its own async task. One adapter crash never affects another. Core logic never imports adapter-specific code — all communication is via protocols.
+- _Where we're headed:_ The current model uses tool exclusion lists (block what's dangerous). We're moving toward explicit tool whitelisting for customer-facing sessions — only approved tools are available, everything else is denied by default. This includes restricting access to system binaries like tmux for customer sessions. The architecture supports it; the final consolidation is in progress.
+
+We take this seriously and we're transparent about the gap between "gated" and "hardened." The foundation is solid. The explicit whitelisting is the next step.
+
+**Isn't all that context expensive?**
+This is one of the most token-efficient approaches you'll find. Yes, the initial context layer is substantial — policies, principles, procedures, memory — but it is high-quality, consistent, and precisely scoped. The real token waste in multi-agent systems comes from what happens _without_ this foundation: agents fumbling to figure out what to do next, circular discussions, frivolous back-and-forth, and low-quality outcomes that need rework. TeleClaude's Next Machine drives deterministic phase transitions — Prepare, Build, Review, Finalize — so agents never waste turns negotiating process. The Breath methodology and message discipline ensure every exchange carries signal. Heavy context upfront, zero waste downstream. When purists talk about context rot, they're usually describing bad-quality context provisioning. Ours is surgically curated and selectively retrieved.
+
+**How is this different from LangChain / CrewAI / AutoGen?**
+TeleClaude is not a framework — it's infrastructure. It doesn't abstract agents behind API wrappers or build chains of LLM calls. It orchestrates real CLI agents (Claude Code, Gemini CLI, Codex CLI) running in real terminal sessions, using the same interfaces a human developer uses. No API keys, no per-token billing, no vendor SDK. The context engineering is a first-class system concern with deterministic dependency resolution, not RAG bolted on as an afterthought. And the distributed multi-computer mesh means your agents run on your hardware, coordinated as a single network.
+
+**Can I add my own knowledge and skills?**
+Yes. Documentation is authored as typed snippets (Principle, Policy, Procedure, Spec, etc.) using `/author-knowledge` for conversational extraction or direct Markdown authoring. Agent skills and commands are written as single Markdown source files and automatically transpiled into optimized formats for each agent CLI. Run `telec sync` and everything deploys.
+
+**Can a team use this?**
+Yes. The People registry maps identities across platforms — one person, many accounts, one role. Roles gate tool access: admins get full control, members get project tools, customers get help desk tools only. The help desk platform handles external users with identity-scoped memory and escalation to human admins.
+
+**What platforms does it run on?**
+macOS and Linux. The daemon runs via launchd on macOS, systemd on Linux. Any machine that can run Python 3.11+ and tmux can join the network.
+
 ---
 
 ## License

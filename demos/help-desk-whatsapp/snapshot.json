@@ -1,0 +1,18 @@
+{
+  "slug": "help-desk-whatsapp",
+  "title": "Requirements: help-desk-whatsapp",
+  "version": "1.0.0",
+  "delivered_date": "2026-02-26",
+  "merge_commit": "2bcca366ae3709cfae601deb1c31ef3c7a0cd3bf",
+  "metrics": {
+    "implementation_plan_checkboxes_total": 67,
+    "implementation_plan_checkboxes_completed": 67
+  },
+  "five_acts": [
+    "Act I - Account Setup: provision the Meta app, WhatsApp product, test recipient, and long-lived access token prerequisites.",
+    "Act II - TeleClaude Configuration: install WhatsApp credentials, optional known-customer identity mapping, and approved template settings in config.",
+    "Act III - Webhook Wiring: verify callback challenge flow and subscription setup so inbound WhatsApp events reach TeleClaude reliably.",
+    "Act IV - Functional Validation: walk through first-message routing, voice transcription, media handling, escalation relay, 24-hour template fallback, and identity resolution.",
+    "Act V - Teardown and Handover: clean test credentials/config and leave an operator checklist for repeatable production rollout."
+  ]
+}

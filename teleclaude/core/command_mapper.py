@@ -81,10 +81,14 @@ class CommandMapper:
             source_user_id = channel_metadata.get("discord_user_id")
         if source_user_id is None and source == InputOrigin.TELEGRAM.value:
             source_user_id = channel_metadata.get("telegram_user_id")
+        if source_user_id is None and source == InputOrigin.WHATSAPP.value:
+            source_user_id = channel_metadata.get("phone_number")
         if source == InputOrigin.DISCORD.value and source_user_id is not None:
             actor_id = actor_id or CommandMapper._normalize_actor_id("discord", source_user_id) or ""
         elif source == InputOrigin.TELEGRAM.value and source_user_id is not None:
             actor_id = actor_id or CommandMapper._normalize_actor_id("telegram", source_user_id) or ""
+        elif source == InputOrigin.WHATSAPP.value and source_user_id is not None:
+            actor_id = actor_id or CommandMapper._normalize_actor_id("whatsapp", source_user_id) or ""
 
         source_name_obj = channel_metadata.get("user_name") or channel_metadata.get("display_name")
         source_name = str(source_name_obj).strip() if source_name_obj is not None else ""

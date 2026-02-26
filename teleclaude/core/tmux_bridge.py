@@ -956,7 +956,7 @@ async def send_arrow_key(session_name: str, direction: str, count: int = 1) -> b
         return False
 
 
-async def capture_pane(session_name: str) -> str:
+async def capture_pane(session_name: str, *, capture_lines: int | None = None) -> str:
     """Capture pane output from tmux session.
 
     Args:
@@ -967,9 +967,10 @@ async def capture_pane(session_name: str) -> str:
     """
     try:
         # -p = print to stdout
-        # -S - = capture entire scrollback buffer (from beginning to end)
+        # -S -N = capture from the last N lines of scrollback.
         # -J = preserve trailing spaces (better for capturing exact output)
         # -e = include escape sequences (ANSI codes for styling detection)
+        window_lines = capture_lines if isinstance(capture_lines, int) and capture_lines > 0 else UI_MESSAGE_MAX_CHARS
         cmd = [
             config.computer.tmux_binary,
             "capture-pane",
@@ -979,7 +980,7 @@ async def capture_pane(session_name: str) -> str:
             "-J",
             "-e",
             "-S",
-            f"-{UI_MESSAGE_MAX_CHARS}",
+            f"-{window_lines}",
         ]
 
         result = await asyncio.create_subprocess_exec(

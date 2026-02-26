@@ -1,0 +1,20 @@
+{
+  "slug": "integration-orchestrator-rollout",
+  "title": "Requirements: integration-orchestrator-rollout",
+  "version": "1.0.0",
+  "delivered_date": "2026-02-26",
+  "merge_commit": "a68b3fe07a008609a5fb43827630bed717fdb23f",
+  "metrics": {
+    "plan_phases": 4,
+    "plan_tasks": 8,
+    "child_slices": 4,
+    "required_readiness_score": 8
+  },
+  "five_acts": {
+    "act_1_setup": "Established the rollout contract, scope boundaries, and authoritative readiness/event model.",
+    "act_2_decomposition": "Decomposed the rollout into ordered child slices with explicit dependency sequencing.",
+    "act_3_preparation": "Prepared and gated each active child slice with measurable DOR evidence.",
+    "act_4_readiness": "Consolidated rollout readiness and cutover go/no-go criteria into parent evidence artifacts.",
+    "act_5_delivery": "Advanced to approved finalize flow with orchestrator-owned merge/apply and delivery bookkeeping."
+  }
+}

@@ -409,7 +409,7 @@ class APIServer:
             has_identity = any(h in _IDENTITY_HEADERS for h in request.headers)
             if has_identity:
                 client_host = request.client.host if request.client else None
-                is_trusted = client_host in _TRUSTED_HOSTS
+                is_trusted = client_host in _TRUSTED_HOSTS or client_host is None or client_host == ""
                 if not is_trusted:
                     logger.warning(
                         "Rejected identity headers from untrusted source: %s",
@@ -1146,6 +1146,11 @@ class APIServer:
             slash command, arguments, project, agent, and thinking mode.
             Requires dual-factor caller identity (X-Caller-Session-Id + X-Tmux-Session).
             """
+            if not identity.session_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="sessions/run requires caller session identity",
+                )
             if not request.command.startswith("/"):
                 raise HTTPException(status_code=400, detail="command must start with '/'")
             if not request.project:

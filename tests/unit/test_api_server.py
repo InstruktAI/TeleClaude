@@ -517,6 +517,35 @@ def test_run_session_sets_initiator_session_id(test_client, mock_command_service
     assert cmd.channel_metadata.get("working_slug") == "my-slug"
 
 
+def test_run_session_requires_caller_session_identity(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """sessions/run must fail closed when auth context lacks caller session id."""
+
+    async def _anonymous_tmux_identity() -> CallerIdentity:
+        return CallerIdentity(
+            session_id="",
+            system_role=None,
+            human_role="admin",
+            tmux_session_name="tc_tui",
+        )
+
+    test_client.app.dependency_overrides[verify_caller] = _anonymous_tmux_identity
+    try:
+        response = test_client.post(
+            "/sessions/run",
+            json={
+                "command": "/next-build",
+                "project": "/tmp/project",
+                "args": "my-slug",
+            },
+        )
+    finally:
+        _install_admin_auth_override(test_client)
+
+    assert response.status_code == 400
+    assert "requires caller session identity" in response.json()["detail"]
+    mock_command_service.create_session.assert_not_called()
+
+
 def test_run_session_rejects_disabled_agent(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     response = test_client.post(
         "/sessions/run",

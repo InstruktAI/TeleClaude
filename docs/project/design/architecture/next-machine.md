@@ -64,6 +64,11 @@ stateDiagram-v2
 - **Phase Ordering**: Phases progress sequentially; no phase skipping.
 - **Git Requirement**: All work items must be in git for worktree accessibility.
 - **Finalize Serialization**: Only one finalize may run at a time across all orchestrators, enforced by a session-bound file lock (`todos/.finalize-lock`).
+- **Conditional Prep**: Worktree prep is required on new worktree creation or prep-input drift; unchanged known-good worktrees skip prep.
+- **Per-Repo+Slug Single-Flight**: Concurrent `/todos/work` calls for the same slug share one ensure/prep/sync critical section only within the same project root.
+- **Conditional Sync**: Main-to-worktree and slug-artifact sync copy only changed files; unchanged files are skipped.
+- **Phase Observability**: `/todos/work` emits per-phase timing logs with stable `NEXT_WORK_PHASE` markers.
+- **Finalize Safety Gates**: Finalize dispatch/apply are blocked unless canonical `main` is clean (except lock file), git state is inspectable, and canonical `main` is not ahead of the slug branch.
 
 ## Primary flows
 
@@ -112,6 +117,44 @@ flowchart TD
     Fix --> DispatchFixer[Dispatch fixer AI]
 ```
 
+### Worktree Prep and Sync Policy
+
+For each `/todos/work` request, Next Machine applies deterministic prep/sync decisions:
+
+1. **Ensure worktree exists**
+   - If missing: create `trees/{slug}` and branch.
+2. **Prep decision**
+   - Run prep when:
+     - worktree was newly created
+     - prep-state marker is missing/corrupt
+     - prep input digest changed (`tools/worktree-prepare.sh`, dependency manifests/lockfiles)
+   - Skip prep when inputs are unchanged and previous prep succeeded.
+3. **Single-flight**
+   - Ensure/prep/sync is guarded by a per-repo+slug async lock.
+   - Same-slug concurrent calls in the same repo wait and reuse resulting ready state.
+   - Same-slug calls in different repos run independently.
+4. **Sync decision**
+   - `sync_main_to_worktree` and `sync_slug_todo_from_main_to_worktree` compare source/destination file contents.
+   - Copy happens only when destination is missing or content differs.
+   - `state.yaml` remains seed-only (copied from main only when missing in worktree).
+
+### `/todos/work` Phase Logs
+
+`next_work(...)` logs timing for major phases with a grep-stable marker:
+
+- `NEXT_WORK_PHASE slug=<slug> phase=slug_resolution ...`
+- `NEXT_WORK_PHASE slug=<slug> phase=preconditions ...`
+- `NEXT_WORK_PHASE slug=<slug> phase=ensure_prepare ...`
+- `NEXT_WORK_PHASE slug=<slug> phase=sync ...`
+- `NEXT_WORK_PHASE slug=<slug> phase=gate_execution ...`
+- `NEXT_WORK_PHASE slug=<slug> phase=dispatch_decision ...`
+
+Each entry includes:
+
+- `decision` (`run`, `skip`, `error`, `wait`)
+- `reason` (deterministic reason code)
+- `duration_ms` (phase duration)
+
 ### Finalize Lock
 
 Multiple orchestrators may reach the finalize step concurrently for different slugs. A session-bound file lock (`todos/.finalize-lock`) serializes merges to main:
@@ -121,6 +164,16 @@ Multiple orchestrators may reach the finalize step concurrently for different sl
 - **Release (session death)**: `cleanup_session_resources()` releases the lock if the dying session holds it.
 - **Release (stale)**: If the lock is older than 30 minutes, `acquire_finalize_lock()` breaks it as a safety valve.
 - **Concurrency safety**: The lock file contains `session_id`; only the holding session can release it.
+
+### Finalize Safety Gate Contract
+
+Before `/next-finalize` dispatch, `next_work()` enforces canonical apply preconditions and fails fast with deterministic errors:
+
+- `FINALIZE_PRECONDITION_DIRTY_CANONICAL_MAIN`: canonical root has uncommitted changes other than `todos/.finalize-lock`.
+- `FINALIZE_PRECONDITION_MAIN_AHEAD`: canonical `main` has commits not present on the slug branch.
+- `FINALIZE_PRECONDITION_GIT_STATE_UNKNOWN`: canonical git state cannot be inspected reliably.
+
+The same preconditions are re-checked in finalize apply instructions immediately before canonical merge/push steps. This keeps dispatch/apply behavior aligned and prevents unsafe canonical apply attempts.
 
 ### 3. Dependency Resolution
 
@@ -162,3 +215,6 @@ sequenceDiagram
 - **Phase Mark Failure**: mark_phase tool fails due to uncommitted changes. Worker must commit before marking.
 - **Finalize Lock Contention**: Another orchestrator holds the finalize lock. Returns `FINALIZE_LOCKED` with holder info. Orchestrator waits and retries.
 - **Stale Finalize Lock**: Holding session died without cleanup. Lock broken after 30 minutes by the next acquire attempt.
+- **Finalize Safety Gate: Dirty Canonical Main**: Returns `FINALIZE_PRECONDITION_DIRTY_CANONICAL_MAIN` and blocks finalize until canonical root is cleaned.
+- **Finalize Safety Gate: Main Ahead**: Returns `FINALIZE_PRECONDITION_MAIN_AHEAD` and blocks finalize until slug is updated with current `main`.
+- **Finalize Safety Gate: Unknown Git State**: Returns `FINALIZE_PRECONDITION_GIT_STATE_UNKNOWN` and blocks finalize until git state inspection is restored.

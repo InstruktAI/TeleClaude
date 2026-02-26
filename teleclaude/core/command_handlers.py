@@ -73,6 +73,10 @@ from teleclaude.utils.transcript import (
 
 logger = get_logger(__name__)
 
+# Startup gate: bounded wait for session to exit "initializing" before tmux injection.
+STARTUP_GATE_TIMEOUT_S = float(os.getenv("STARTUP_GATE_TIMEOUT_S", "15"))
+STARTUP_GATE_POLL_INTERVAL_S = float(os.getenv("STARTUP_GATE_POLL_INTERVAL_S", "0.25"))
+
 
 # Result from end_session
 class EndSessionHandlerResult(TypedDict):
@@ -323,13 +327,19 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
 
     # Enforce jail only for explicit non-admin role assignments.
     # Missing role means unrestricted fallback ("god mode") for local/TUI/API flows.
+    raw_help_desk_path = getattr(config.computer, "help_desk_dir", None)
+    configured_help_desk_path = (
+        raw_help_desk_path
+        if isinstance(raw_help_desk_path, str) and raw_help_desk_path.strip()
+        else os.path.join(WORKING_DIR, "help-desk")
+    )
     if human_role and human_role != HUMAN_ROLE_ADMIN:
         logger.info(
             "Restricted session attempt from origin=%s role=%s. Jailing to help-desk.",
             origin,
             human_role,
         )
-        project_path = os.path.join(WORKING_DIR, "help-desk")
+        project_path = configured_help_desk_path
         Path(project_path).mkdir(parents=True, exist_ok=True)
         subfolder = None
         working_slug = None
@@ -340,7 +350,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
                 "Session creation missing project_path from origin=%s; defaulting to help-desk.",
                 origin,
             )
-            project_path = os.path.join(WORKING_DIR, "help-desk")
+            project_path = configured_help_desk_path
             Path(project_path).mkdir(parents=True, exist_ok=True)
             subfolder = None
             working_slug = None
@@ -441,6 +451,10 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
         except (ValueError, TypeError):
             pass
+    if identity and identity.platform == "whatsapp" and identity.platform_user_id:
+        wa_meta = session.get_metadata().get_ui().get_whatsapp()
+        wa_meta.phone_number = identity.platform_user_id
+        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
 
     # NOTE: tmux creation + auto-command execution are handled asynchronously
     # by the daemon bootstrap task. Channel creation is deferred to UI lanes
@@ -656,8 +670,9 @@ async def get_session_data(
         if not isinstance(tmux_session_name, str) or not tmux_session_name.strip():
             return None
 
+        tail = cmd.tail_chars if cmd.tail_chars > 0 else 2000
         try:
-            pane_output = await tmux_bridge.capture_pane(tmux_session_name)
+            pane_output = await tmux_bridge.capture_pane(tmux_session_name, capture_lines=tail)
         except Exception as exc:
             logger.warning(
                 "Tmux fallback capture failed for session %s (%s): %s",
@@ -667,7 +682,6 @@ async def get_session_data(
             )
             return None
 
-        tail = cmd.tail_chars if cmd.tail_chars > 0 else 2000
         # Strip ANSI before truncation so tail slicing cannot split escape codes.
         sanitized_output = strip_ansi_codes(pane_output)
         messages = sanitized_output[-tail:] if len(sanitized_output) > tail else sanitized_output
@@ -904,6 +918,40 @@ async def handle_file(
     )
 
 
+async def _wait_for_session_ready(session_id: str) -> Session | None:
+    """Wait for session lifecycle to exit ``initializing`` with a bounded timeout.
+
+    Returns the refreshed session once ready, or ``None`` on timeout.
+    """
+    import time
+
+    deadline = time.monotonic() + STARTUP_GATE_TIMEOUT_S
+    logger.debug(
+        "Startup gate: waiting for session %s to exit initializing (timeout=%.1fs)",
+        session_id[:8],
+        STARTUP_GATE_TIMEOUT_S,
+    )
+    while time.monotonic() < deadline:
+        session = await db.get_session(session_id)
+        if not session:
+            return None
+        if session.lifecycle_status != "initializing":
+            logger.debug(
+                "Startup gate: session %s ready (status=%s)",
+                session_id[:8],
+                session.lifecycle_status,
+            )
+            return session
+        await asyncio.sleep(STARTUP_GATE_POLL_INTERVAL_S)
+
+    logger.warning(
+        "Startup gate: timeout waiting for session %s to exit initializing after %.1fs",
+        session_id[:8],
+        STARTUP_GATE_TIMEOUT_S,
+    )
+    return None
+
+
 async def process_message(
     cmd: ProcessMessageCommand,
     client: "AdapterClient",
@@ -919,6 +967,27 @@ async def process_message(
     if not session:
         logger.warning("Session %s not found", session_id)
         return
+
+    # Gate: if bootstrap is still running, wait for it to finish before injecting
+    # user text into tmux.  This prevents the first customer message from being
+    # concatenated with the startup command line.
+    if session.lifecycle_status == "initializing":
+        session = await _wait_for_session_ready(session_id)
+        if not session:
+            logger.warning(
+                "Startup gate timeout for session %s; skipping tmux injection",
+                session_id[:8],
+            )
+            # Re-fetch for feedback — session may still exist even if gate timed out.
+            feedback_session = await db.get_session(session_id)
+            if feedback_session:
+                await client.send_message(
+                    feedback_session,
+                    "Session startup timed out. Please try again.",
+                    metadata=MessageMetadata(),
+                )
+            return
+
     if session.lifecycle_status == "headless" or not session.tmux_session_name:
         adopted = await _ensure_tmux_for_headless(
             session,

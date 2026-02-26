@@ -1,5 +1,5 @@
-project_root: ~/Workspace/InstruktAI/TeleClaude/trees/deployment-versioning
-snippets_root: ~/Workspace/InstruktAI/TeleClaude/trees/deployment-versioning/docs/project
+project_root: ~/Workspace/InstruktAI/TeleClaude
+snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/project
 snippets:
 - id: project/concept/ai-worker
   description: The role of an AI agent session in the TeleClaude network.
@@ -632,6 +632,15 @@ snippets:
   type: spec
   scope: project
   path: docs/project/spec/identity-and-auth.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/integration-orchestrator
+  description: Event-driven singleton integrator contract for serial branch-to-main
+    delivery.
+  type: spec
+  scope: project
+  path: docs/project/spec/integration-orchestrator.md
   role: member
   visibility: internal
   source_project: TeleClaude
