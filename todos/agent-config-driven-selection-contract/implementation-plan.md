@@ -104,7 +104,7 @@ Note: MCP runtime/tool modules are no longer present in this codebase; enforceme
 - [x] `uv run pytest -q tests/unit/test_agent_guidance.py tests/unit/test_agent_cli.py tests/unit/test_agents.py`
 - [x] `uv run pytest -q tests/unit/test_mcp_handlers.py tests/unit/test_mcp_server.py tests/unit/test_command_handlers.py tests/unit/test_api_server.py` _(adapted to existing files: `uv run pytest -q tests/unit/test_command_handlers.py tests/unit/test_api_server.py`; MCP unit test files are not present in this repository)._
 - [x] `uv run pytest -q tests/unit/test_tui_modal.py tests/unit/test_tui_agent_status.py`
-- [ ] `uv run pytest -q tests/integration/test_mcp_tools.py tests/integration/test_run_agent_command_e2e.py`
+- [x] `uv run pytest -q tests/integration/test_mcp_tools.py tests/integration/test_run_agent_command_e2e.py` _(no matching files in this repository; equivalent command-dispatch integration validated with `uv run pytest -q tests/integration/test_command_e2e.py`)._
 
 ## Definition of Done
 
