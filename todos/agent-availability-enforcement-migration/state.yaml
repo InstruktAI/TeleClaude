@@ -5,14 +5,19 @@ breakdown:
   assessed: false
   todos: []
 dor:
-  last_assessed_at: null
-  score: 0
-  status: needs_work
+  last_assessed_at: '2026-02-26T15:12:39Z'
+  score: 6
+  status: needs_decision
   schema_version: 1
-  blockers: []
+  blockers:
+  - Degraded routing policy (A/B/C) is not selected yet
   actions_taken:
-    requirements_updated: false
-    implementation_plan_updated: false
+    draft_mode: true
+    requirements_updated: true
+    implementation_plan_updated: true
+    demo_updated: true
+    dor_report_updated: true
+    roadmap_promoted: false
 review_round: 0
 max_review_rounds: 3
 review_baseline_commit: ''
