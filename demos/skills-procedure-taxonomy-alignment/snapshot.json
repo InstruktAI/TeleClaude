@@ -1,0 +1,21 @@
+{
+  "slug": "skills-procedure-taxonomy-alignment",
+  "title": "Skills Procedure Taxonomy Alignment",
+  "version": "1.0.0",
+  "delivered_date": "2026-02-26",
+  "merge_commit": "40830d507bcaf414590b9c45741ed0a6cb261524",
+  "metrics": {
+    "tasks_completed": 4,
+    "files_changed": 7,
+    "skills_thinned": 5,
+    "procedure_docs_created": 5,
+    "taxonomy_docs_created": 1
+  },
+  "five_acts": {
+    "the_problem": "Five exploratory skills (brainstorming, systematic-debugging, next-silent-failure-hunter, tech-stack-docs, youtube) contained their full procedure inline, making skill wrappers heavy and preventing reuse of the underlying procedures as standalone documentation.",
+    "the_insight": "Skills should be thin invocation wrappers that point to authoritative procedure docs. The procedures themselves belong in the shared doc layer where any agent or human can reference them independently.",
+    "the_work": "Defined a skill taxonomy concept doc, extracted 5 procedures into docs/global/general/procedure/, thinned each skill wrapper to a '## Required reads' pointer section, and validated all 5 wrappers reference the correct procedure doc.",
+    "the_outcome": "Skills are now thin and composable. Procedures live in the shared doc layer with canonical IDs. Any agent can retrieve the procedure directly without loading the full skill wrapper. All 6 requirements met, review APPROVED with 0 critical findings.",
+    "the_celebration": "The skills are free. No more monolithic wrappers — just clean pointers to authoritative procedures. The taxonomy is documented, the pattern is established, and future skills can follow the same structure from day one."
+  }
+}
