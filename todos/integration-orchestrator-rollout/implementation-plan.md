@@ -79,8 +79,8 @@ Verification:
 
 **File(s):** `todos/integration-orchestrator-rollout/dor-report.md`
 
-- [ ] Document minimum evidence required to move from shadow mode to cutover.
-- [ ] Document containment path if cutover readiness evidence is incomplete.
+- [x] Document minimum evidence required to move from shadow mode to cutover.
+- [x] Document containment path if cutover readiness evidence is incomplete.
 
 ## Phase 4: Validation and Review Readiness
 
