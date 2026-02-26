@@ -32,6 +32,25 @@ async def test_resolve_routable_agent_rejects_explicit_unavailable(monkeypatch: 
 
 
 @pytest.mark.asyncio
+async def test_resolve_routable_agent_rejects_explicit_when_availability_lookup_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(agent_routing, "config", _mock_enabled_config("claude"))
+    monkeypatch.setattr(agent_routing, "normalize_agent_name", lambda value: value.strip().lower())
+    monkeypatch.setattr(agent_routing, "get_enabled_agents", lambda: ("claude",))
+    monkeypatch.setattr(
+        agent_routing.db,
+        "get_agent_availability",
+        AsyncMock(side_effect=RuntimeError("db down")),
+    )
+
+    with pytest.raises(agent_routing.AgentRoutingError) as exc_info:
+        await agent_routing.resolve_routable_agent("claude", source="test.explicit.lookup_error")
+
+    assert exc_info.value.code == "unavailable"
+
+
+@pytest.mark.asyncio
 async def test_resolve_routable_agent_rejects_explicit_degraded(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(agent_routing, "config", _mock_enabled_config("claude"))
     monkeypatch.setattr(agent_routing, "normalize_agent_name", lambda value: value.strip().lower())
@@ -82,6 +101,24 @@ async def test_resolve_routable_agent_implicit_rejects_when_no_routable_agents(
 
     with pytest.raises(agent_routing.AgentRoutingError) as exc_info:
         await agent_routing.resolve_routable_agent(None, source="test.implicit")
+
+    assert exc_info.value.code == "no_routable_agent"
+
+
+@pytest.mark.asyncio
+async def test_resolve_routable_agent_implicit_rejects_when_availability_lookup_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(agent_routing, "config", _mock_enabled_config("claude"))
+    monkeypatch.setattr(agent_routing, "get_enabled_agents", lambda: ("claude",))
+    monkeypatch.setattr(
+        agent_routing.db,
+        "get_agent_availability",
+        AsyncMock(side_effect=RuntimeError("db down")),
+    )
+
+    with pytest.raises(agent_routing.AgentRoutingError) as exc_info:
+        await agent_routing.resolve_routable_agent(None, source="test.implicit.lookup_error")
 
     assert exc_info.value.code == "no_routable_agent"
 

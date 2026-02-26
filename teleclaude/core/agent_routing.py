@@ -67,14 +67,14 @@ def _disabled_message(agent: str) -> str:
 async def _availability_status(agent: str, *, source: str) -> Literal["available", "unavailable", "degraded"]:
     try:
         availability = await db.get_agent_availability(agent)
-    except Exception as exc:  # noqa: BLE001 - keep routing resilient when DB is temporarily unavailable.
+    except Exception as exc:  # noqa: BLE001 - routing must fail closed when availability cannot be resolved.
         logger.warning(
-            "agent routing availability lookup failed; assuming available",
+            "agent routing availability lookup failed; treating as unavailable",
             source=source,
             agent=agent,
             error=str(exc),
         )
-        return "available"
+        return "unavailable"
 
     if not availability:
         return "available"
