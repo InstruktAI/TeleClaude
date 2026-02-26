@@ -40,6 +40,7 @@ DEFAULT_UNIDENTIFIED_HUMAN_ROLE: Final[str] = _default_unidentified_human_role
 _GLOBAL_CONFIG_PATH = Path("~/.teleclaude/teleclaude.yml").expanduser()
 _email_role_cache: dict[str, str] = {}
 _email_role_cache_mtime_ns: int | None = None
+_registered_people_count_cache: int = 0
 
 
 def _normalize_email(value: object) -> str | None:
@@ -51,13 +52,14 @@ def _normalize_email(value: object) -> str | None:
 
 def _load_email_role_map() -> dict[str, str]:
     """Load email->role map from global config with mtime-based cache."""
-    global _email_role_cache, _email_role_cache_mtime_ns
+    global _email_role_cache, _email_role_cache_mtime_ns, _registered_people_count_cache
 
     try:
         mtime_ns = _GLOBAL_CONFIG_PATH.stat().st_mtime_ns
     except OSError:
         _email_role_cache = {}
         _email_role_cache_mtime_ns = None
+        _registered_people_count_cache = 0
         return _email_role_cache
 
     if _email_role_cache_mtime_ns == mtime_ns:
@@ -69,7 +71,9 @@ def _load_email_role_map() -> dict[str, str]:
     except Exception:
         return _email_role_cache
 
+    _registered_people_count_cache = 0
     for person in global_cfg.people:
+        _registered_people_count_cache += 1
         email = _normalize_email(person.email)
         role = (person.role or "").strip().lower()
         if not email or role not in HUMAN_ROLES:
@@ -86,6 +90,12 @@ def _resolve_terminal_role(email_header: str | None) -> str | None:
     if not email:
         return None
     return _load_email_role_map().get(email)
+
+
+def _requires_terminal_login() -> bool:
+    """Return True when global config has multiple registered users."""
+    _load_email_role_map()
+    return _registered_people_count_cache > 1
 
 
 def _derive_session_system_role(session: "Session") -> str | None:
@@ -139,17 +149,28 @@ async def verify_caller(
     """
     if not x_caller_session_id:
         # Terminal/TUI mode without daemon session marker:
-        # - tmux contexts get the default unidentified role
+        # - tmux contexts may use telec login email mapping (tc_tui bridge)
+        # - multi-user mode requires login for tmux callers without session_id
+        # - otherwise tmux falls back to default unidentified role
         # - non-tmux contexts may use telec login email mapping
         # - otherwise reject as unauthorized
+        terminal_role = _resolve_terminal_role(x_telec_email)
         if x_tmux_session:
+            if terminal_role:
+                return CallerIdentity(
+                    session_id="",
+                    system_role=None,
+                    human_role=terminal_role,
+                    tmux_session_name=x_tmux_session,
+                )
+            if _requires_terminal_login():
+                raise HTTPException(status_code=401, detail="terminal login required in multi-user mode")
             return CallerIdentity(
                 session_id="",
                 system_role=None,
                 human_role=DEFAULT_UNIDENTIFIED_HUMAN_ROLE,
                 tmux_session_name=x_tmux_session,
             )
-        terminal_role = _resolve_terminal_role(x_telec_email)
         if terminal_role:
             return CallerIdentity(
                 session_id="",
