@@ -8,10 +8,15 @@ from threading import Barrier, Lock, Thread
 
 import pytest
 
-from teleclaude.core.integration.lease import IntegrationLeaseStore
+from teleclaude.core.integration.lease import IntegrationLeaseStore, LeaseRenewResult
 from teleclaude.core.integration.queue import IntegrationQueue, IntegrationQueueError
 from teleclaude.core.integration.readiness_projection import CandidateKey, CandidateReadiness
-from teleclaude.core.integration.runtime import IntegratorShadowRuntime, MainBranchClearanceProbe, SessionSnapshot
+from teleclaude.core.integration.runtime import (
+    IntegrationRuntimeError,
+    IntegratorShadowRuntime,
+    MainBranchClearanceProbe,
+    SessionSnapshot,
+)
 
 
 def test_lease_acquire_is_single_holder_under_concurrency(tmp_path: Path) -> None:
@@ -264,6 +269,66 @@ def test_shadow_runtime_would_block_sets_fallback_reason_when_readiness_reasons_
     assert blocked is not None
     assert blocked.status == "blocked"
     assert blocked.status_reason == "candidate failed readiness recheck"
+
+
+def test_shadow_runtime_raises_when_lease_lost_during_drain(tmp_path: Path) -> None:
+    class _LeaseStoreLosesRenewal(IntegrationLeaseStore):
+        def __init__(self, *, state_path: Path) -> None:
+            super().__init__(state_path=state_path)
+            self._renew_calls = 0
+
+        def renew(
+            self,
+            *,
+            key: str,
+            owner_session_id: str,
+            lease_token: str,
+            ttl_seconds: int | None = None,
+            now: datetime | None = None,
+        ) -> LeaseRenewResult:
+            self._renew_calls += 1
+            if self._renew_calls >= 2:
+                return LeaseRenewResult(status="stolen", lease=None)
+            return super().renew(
+                key=key,
+                owner_session_id=owner_session_id,
+                lease_token=lease_token,
+                ttl_seconds=ttl_seconds,
+                now=now,
+            )
+
+    key = CandidateKey(slug="lease-loss", branch="worktree/lease-loss", sha="ccc333")
+    queue = IntegrationQueue(state_path=tmp_path / "integration-queue.json")
+    queue.enqueue(key=key, ready_at="2026-02-26T12:01:00+00:00")
+
+    readiness = CandidateReadiness(
+        key=key,
+        ready_at="2026-02-26T12:01:00+00:00",
+        status="READY",
+        reasons=(),
+        superseded_by=None,
+    )
+
+    runtime = IntegratorShadowRuntime(
+        lease_store=_LeaseStoreLosesRenewal(state_path=tmp_path / "integration-lease.json"),
+        queue=queue,
+        readiness_lookup=lambda _key: readiness,
+        clearance_probe=MainBranchClearanceProbe(
+            sessions_provider=lambda: (),
+            session_tail_provider=lambda _session_id: "",
+            dirty_tracked_paths_provider=lambda: (),
+        ),
+        outcome_sink=lambda _outcome: None,
+        checkpoint_path=tmp_path / "integration-checkpoint.json",
+        clearance_retry_seconds=0.001,
+    )
+
+    with pytest.raises(IntegrationRuntimeError, match="lost integration lease during runtime: status=stolen"):
+        runtime.drain_ready_candidates(owner_session_id="integrator-1")
+
+    queued = queue.get(key=key)
+    assert queued is not None
+    assert queued.status == "queued"
 
 
 def test_clearance_probe_excludes_orchestrator_worker_pairs_and_ignores_idle_standalone() -> None:
