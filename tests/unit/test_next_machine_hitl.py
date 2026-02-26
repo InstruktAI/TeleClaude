@@ -2,6 +2,7 @@ import asyncio
 import os
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -856,6 +857,85 @@ async def test_next_work_concurrent_same_slug_single_flight_prep():
         assert "next-build" in result_b
         assert prep_calls == 1
         assert (tmp_path / "trees" / slug / ".teleclaude" / "worktree-prep-state.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_next_work_concurrent_same_slug_different_repos_do_not_serialize_prep():
+    """Same slug in separate repos should not block each other's prep phase."""
+    db = MagicMock(spec=Db)
+    slug = "same-slug"
+
+    def _init_repo(root: Path) -> None:
+        subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "config", "user.email", "tests@example.com"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(["git", "config", "user.name", "Tests"], cwd=root, check=True, capture_output=True, text=True)
+        _write_roadmap_yaml(str(root), [slug])
+
+        item_dir = root / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Req")
+        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
+
+        subprocess.run(["git", "add", "todos"], cwd=root, check=True, capture_output=True, text=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=root, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "worktree", "add", f"trees/{slug}", "-b", slug],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        (root / "trees" / slug / "todos" / slug / "state.yaml").write_text('{"build":"pending","review":"pending"}')
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        repo_a = tmp_path / "repo-a"
+        repo_b = tmp_path / "repo-b"
+        repo_a.mkdir(parents=True, exist_ok=True)
+        repo_b.mkdir(parents=True, exist_ok=True)
+        _init_repo(repo_a)
+        _init_repo(repo_b)
+
+        prep_calls = 0
+        active_preps = 0
+        max_active_preps = 0
+        prep_counter_guard = threading.Lock()
+
+        def _slow_prepare(*_args, **_kwargs):
+            nonlocal prep_calls, active_preps, max_active_preps
+            with prep_counter_guard:
+                prep_calls += 1
+                active_preps += 1
+                max_active_preps = max(max_active_preps, active_preps)
+            time.sleep(0.1)
+            with prep_counter_guard:
+                active_preps -= 1
+
+        with (
+            patch("teleclaude.core.next_machine.core._prepare_worktree", side_effect=_slow_prepare),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="guidance"),
+            ),
+        ):
+            result_a, result_b = await asyncio.gather(
+                next_work(db, slug=slug, cwd=str(repo_a)),
+                next_work(db, slug=slug, cwd=str(repo_b)),
+            )
+
+        assert "next-build" in result_a
+        assert "next-build" in result_b
+        assert prep_calls == 2
+        assert max_active_preps == 2
+        assert (repo_a / "trees" / slug / ".teleclaude" / "worktree-prep-state.json").exists()
+        assert (repo_b / "trees" / slug / ".teleclaude" / "worktree-prep-state.json").exists()
 
 
 @pytest.mark.asyncio

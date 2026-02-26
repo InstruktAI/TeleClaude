@@ -106,8 +106,9 @@ class EnsureWorktreeResult:
 
 
 async def _get_slug_single_flight_lock(cwd: str, slug: str) -> asyncio.Lock:
-    """Return repo-scoped slug lock so single-flight isolation stays per project."""
-    key = (cwd, slug)
+    """Return repo+slug lock keyed by canonical project root for strict isolation."""
+    canonical_cwd = await asyncio.to_thread(resolve_canonical_project_root, cwd)
+    key = (canonical_cwd, slug)
     with _SINGLE_FLIGHT_GUARD:
         lock = _SINGLE_FLIGHT_LOCKS.get(key)
         if lock is None:
