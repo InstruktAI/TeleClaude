@@ -1259,6 +1259,44 @@ async def test_cleanup_skips_already_closed_inactive_sessions_and_normalizes_sta
 
 
 @pytest.mark.asyncio
+async def test_cleanup_purges_closed_sessions_older_than_72h():
+    """Sessions closed longer than 72h should be deleted from the database."""
+    service = MaintenanceService(client=MagicMock(), output_poller=MagicMock(), poller_watch_interval_s=1.0)
+
+    fixed_now = datetime(2026, 1, 14, 12, 0, 0, tzinfo=timezone.utc)
+    old_closed_session = Session(
+        session_id="old-closed-456",
+        computer_name="TestMac",
+        tmux_session_name="old-closed-tmux",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Old Closed",
+        last_activity=fixed_now - timedelta(days=6),
+        closed_at=fixed_now - timedelta(days=6),
+        lifecycle_status="closed",
+    )
+
+    with (
+        patch("teleclaude.services.maintenance_service.datetime") as mock_datetime,
+        patch("teleclaude.services.maintenance_service.db") as mock_db,
+        patch(
+            "teleclaude.services.maintenance_service.session_cleanup.terminate_session",
+            new_callable=AsyncMock,
+        ) as terminate_session,
+    ):
+        mock_datetime.now.return_value = fixed_now
+        mock_db.list_sessions = AsyncMock(return_value=[old_closed_session])
+
+        await service._cleanup_inactive_sessions()
+
+        terminate_session.assert_awaited_once()
+        args, kwargs = terminate_session.call_args
+        assert args[0] == "old-closed-456"
+        assert kwargs["reason"] == "closed_expired"
+        assert kwargs["delete_db"] is True
+        assert kwargs["kill_tmux"] is False
+
+
+@pytest.mark.asyncio
 async def test_ensure_tmux_session_recreates_when_missing():
     service = MaintenanceService(client=MagicMock(), output_poller=MagicMock(), poller_watch_interval_s=1.0)
 
