@@ -57,6 +57,3 @@
   - config-wizard-whatsapp-wiring
   description: Major visual and interaction redesign of the config wizard — card layout,
     inline editing, guided onboarding, progress indicators
-- slug: adapter-output-qos-scheduler
-  description: Adapter-aware output QoS system to prevent Telegram flood-control churn
-    under high concurrency

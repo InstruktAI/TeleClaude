@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: adapter-output-qos-scheduler
+  date: '2026-02-26'
+  title: Adapter-aware output QoS system to prevent Telegram flood-control churn under
+    high concurrency
+  description: Adapter-aware output QoS system to prevent Telegram flood-control churn
+    under high concurrency
 - slug: help-desk-startup-command-ordering
   date: '2026-02-26'
   title: Deterministic startup ordering between help-desk bootstrap and first customer
