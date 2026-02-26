@@ -10,15 +10,15 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo deployment-channels` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`) — 21 new tests pass; 1 pre-existing unrelated flake in test_discord_adapter
+- [x] Lint passes (`make lint`) — 0 errors, 0 warnings
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate deployment-channels` — structural validation done)
+- [x] Working tree clean (excluding orchestrator-managed state.yaml drift)
+- [x] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 

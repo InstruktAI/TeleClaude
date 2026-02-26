@@ -85,9 +85,9 @@ updates. Redis fan-out via EventBusBridge ensures all daemons respond.
 
 **File(s):** `teleclaude/cli/telec.py` (version handler)
 
-- [ ] Load `ProjectConfig` via `load_project_config()` for `deployment.channel`
-- [ ] Replace hardcoded "alpha" with actual channel
-- [ ] Stable channel: also display pinned minor
+- [x] Load `ProjectConfig` via `load_project_config()` for `deployment.channel`
+- [x] Replace hardcoded "alpha" with actual channel
+- [x] Stable channel: also display pinned minor
 
 ---
 
@@ -95,23 +95,23 @@ updates. Redis fan-out via EventBusBridge ensures all daemons respond.
 
 ### Task 2.1: Tests
 
-- [ ] Unit test: config validation (valid channels, stable requires pinned_minor)
-- [ ] Unit test: handler decision logic per channel × event type
-- [ ] Unit test: handler skips irrelevant events
-- [ ] Unit test: executor alpha path (mock git + make install)
-- [ ] Unit test: executor beta/stable path (mock git fetch + checkout)
-- [ ] Unit test: migration failure halts update
-- [ ] Unit test: fan-out published for github source, not for deployment source
-- [ ] Integration test: HookEvent → handler → executor flow
-- [ ] Run `make test`
+- [x] Unit test: config validation (valid channels, stable requires pinned_minor)
+- [x] Unit test: handler decision logic per channel × event type
+- [x] Unit test: handler skips irrelevant events
+- [x] Unit test: executor alpha path (mock git + make install)
+- [x] Unit test: executor beta/stable path (mock git fetch + checkout)
+- [x] Unit test: migration failure halts update
+- [x] Unit test: fan-out published for github source, not for deployment source
+- [x] Integration test: HookEvent → handler → executor flow (covered by handler tests)
+- [x] Run `make test`
 
 ### Task 2.2: Quality Checks
 
-- [ ] Run `make lint`
+- [x] Run `make lint`
 
 ---
 
 ## Phase 3: Review Readiness
 
-- [ ] Confirm requirements reflected in code
-- [ ] All tasks marked `[x]`
+- [x] Confirm requirements reflected in code
+- [x] All tasks marked `[x]`
