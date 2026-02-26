@@ -886,7 +886,19 @@ def _handle_completion() -> None:
     if cmd in ("sync", "watch", "deploy"):
         if cmd in CLI_SURFACE:
             _complete_flags(CLI_SURFACE[cmd].flag_tuples, rest, current, is_partial)
-    elif cmd in ("todo", "roadmap", "config", "sessions", "agents", "channels", "docs", "computers", "projects", "bugs", "auth"):
+    elif cmd in (
+        "todo",
+        "roadmap",
+        "config",
+        "sessions",
+        "agents",
+        "channels",
+        "docs",
+        "computers",
+        "projects",
+        "bugs",
+        "auth",
+    ):
         _complete_subcmd(cmd, rest, current, is_partial)
 
 
@@ -2614,7 +2626,7 @@ def _handle_bugs_report(args: list[str]) -> None:
                 agent="claude",
                 thinking_mode="slow",
                 title=f"Bug fix: {slug}",
-                message=f'Run telec todo work {slug} --cwd . and follow output verbatim until done.',
+                message=f"Run telec todo work {slug} --cwd . and follow output verbatim until done.",
             )
         finally:
             await api.close()

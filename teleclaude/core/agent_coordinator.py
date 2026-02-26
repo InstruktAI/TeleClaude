@@ -207,7 +207,7 @@ def _resolve_hook_actor_name(session: "Session") -> str:
         return _coerce_nonempty_str(identity.person_name)
 
     if origin_hint == InputOrigin.TELEGRAM.value and telegram_user_id is not None:
-        telegram_meta: dict[str, object] = {
+        telegram_meta: dict[str, str] = {
             "user_id": str(telegram_user_id),
             "telegram_user_id": str(telegram_user_id),
         }
@@ -216,7 +216,7 @@ def _resolve_hook_actor_name(session: "Session") -> str:
             return resolved
 
     if origin_hint == InputOrigin.DISCORD.value and discord_user_id:
-        discord_meta: dict[str, object] = {
+        discord_meta: dict[str, str] = {
             "user_id": str(discord_user_id),
             "discord_user_id": str(discord_user_id),
         }
@@ -870,6 +870,7 @@ class AgentCoordinator:
         emit_codex_submit_backfill = False
 
         # For Codex: recover last user input from transcript (no native prompt hook).
+        input_text = ""
         codex_input = await self._extract_user_input_for_codex(session_id, payload)
         if isinstance(codex_input, tuple) and len(codex_input) == 2:
             input_text, input_timestamp = codex_input

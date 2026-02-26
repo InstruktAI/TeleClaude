@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
+from typing import Mapping
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -39,7 +40,7 @@ def test_resolve_hook_actor_name_prefers_session_metadata_name():
 
 def test_resolve_hook_actor_name_uses_identity_resolver_for_telegram(monkeypatch):
     class _Resolver:
-        def resolve(self, origin: str, channel_metadata: dict[str, object]):  # type: ignore[override]
+        def resolve(self, origin: str, channel_metadata: Mapping[str, object]):  # type: ignore[override]
             if origin != InputOrigin.TELEGRAM.value:
                 return None
             if str(channel_metadata.get("user_id")) != "12345":

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,10 +13,12 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.events import SessionStatusContext, SessionUpdatedContext
-from teleclaude.core.identity import IdentityContext
-from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, MessageMetadata, Session, SessionAdapterMetadata
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, Session, SessionAdapterMetadata
 from teleclaude.core.origins import InputOrigin
-from teleclaude.types.commands import ProcessMessageCommand
+from teleclaude.types.commands import KeysCommand, ProcessMessageCommand
+
+if TYPE_CHECKING:
+    from teleclaude.adapters.discord_adapter import DiscordAdapter
 
 
 class FakeDiscordIntents:
@@ -40,6 +43,7 @@ class FakeDiscordClient:
         self.channels: dict[int, object] = {}
         self.started_token: str | None = None
         self.closed = False
+        self.views: list[object] = []
 
     def event(self, coro):
         setattr(self, coro.__name__, coro)
@@ -60,16 +64,83 @@ class FakeDiscordClient:
     async def fetch_channel(self, channel_id: int) -> object | None:
         return self.channels.get(channel_id)
 
+    def add_view(self, view: object) -> None:
+        self.views.append(view)
+
+
+class FakeCommand:
+    """Minimal app command."""
+
+    def __init__(self, *, name: str, description: str, callback: object) -> None:
+        self.name = name
+        self.description = description
+        self.callback = callback
+
+
+class FakeCommandTree:
+    """Minimal app command tree."""
+
+    def __init__(self, client: object) -> None:
+        self.client = client
+        self.commands: list[tuple[object, object | None]] = []
+
+    def add_command(self, command: object, guild: object | None = None) -> None:
+        self.commands.append((command, guild))
+
+    async def sync(self, *, guild: object | None = None) -> list[object]:
+        _ = guild
+        return []
+
+
+class FakeAppCommands:
+    """Container for discord.app_commands API."""
+
+    CommandTree = FakeCommandTree
+    Command = FakeCommand
+
+
+class FakeButtonStyle:
+    primary = 1
+
+
+class FakeButton:
+    def __init__(self, *, label: str, custom_id: str, style: int) -> None:
+        self.label = label
+        self.custom_id = custom_id
+        self.style = style
+        self.callback = None
+
+
+class FakeView:
+    def __init__(self, *, timeout: float | None = None) -> None:
+        self.timeout = timeout
+        self.children: list[object] = []
+
+    def add_item(self, item: object) -> None:
+        self.children.append(item)
+
+
+class FakeUI:
+    View = FakeView
+    Button = FakeButton
+
 
 class FakeDiscordModule:
     """Minimal discord module replacement for tests."""
 
     Intents = FakeDiscordIntents
     Client = FakeDiscordClient
+    app_commands = FakeAppCommands
+    ButtonStyle = FakeButtonStyle
+    ui = FakeUI
 
     @staticmethod
     def File(file_path: str) -> object:
         return SimpleNamespace(path=file_path)
+
+    @staticmethod
+    def Object(*, id: int) -> object:
+        return SimpleNamespace(id=id)
 
 
 class FakeForumChannel:
@@ -80,6 +151,7 @@ class FakeForumChannel:
         self._thread_id = thread_id
         self._starter_message_id = starter_message_id if starter_message_id is not None else thread_id
         self.created_names: list[str] = []
+        self.sent_messages: dict[int, object] = {}
 
     async def create_thread(self, *, name: str, content: str) -> object:
         self.created_names.append(name)
@@ -87,6 +159,23 @@ class FakeForumChannel:
         message = SimpleNamespace(id=self._starter_message_id)
         _ = content
         return SimpleNamespace(thread=thread, message=message)
+
+    async def send(self, text: str, *, view: object | None = None) -> object:
+        message_id = len(self.sent_messages) + 1000
+        message = SimpleNamespace(
+            id=message_id,
+            content=text,
+            view=view,
+            edit=AsyncMock(return_value=None),
+        )
+        self.sent_messages[message_id] = message
+        return message
+
+    async def fetch_message(self, message_id: int) -> object:
+        message = self.sent_messages.get(message_id)
+        if message is None:
+            raise RuntimeError("message not found")
+        return message
 
 
 class FakeThread:
@@ -707,6 +796,53 @@ def _make_adapter() -> "DiscordAdapter":
         return DiscordAdapter(client)
 
 
+def test_get_enabled_agents_filters_disabled_entries() -> None:
+    adapter = _make_adapter()
+    with patch("teleclaude.adapters.discord_adapter.config") as mock_config:
+        mock_config.agents = {
+            "claude": SimpleNamespace(enabled=True),
+            "gemini": SimpleNamespace(enabled=False),
+            "codex": SimpleNamespace(enabled=True),
+        }
+        assert adapter._get_enabled_agents() == ["claude", "codex"]
+        assert adapter._multi_agent is True
+        assert adapter._default_agent == "claude"
+
+
+def test_resolve_project_from_forum_returns_matching_path() -> None:
+    adapter = _make_adapter()
+    adapter._forum_project_map = {200: "/home/user/proj"}
+    assert adapter._resolve_project_from_forum(200) == "/home/user/proj"
+    assert adapter._resolve_project_from_forum(999) is None
+
+
+@pytest.mark.asyncio
+async def test_session_launcher_view_builds_buttons_for_enabled_agents() -> None:
+    import importlib as py_importlib
+
+    real_import_module = py_importlib.import_module
+
+    def _fake_import_module(name: str, package: str | None = None):
+        if name == "discord":
+            return FakeDiscordModule
+        return real_import_module(name, package)
+
+    with patch("importlib.import_module", side_effect=_fake_import_module):
+        from teleclaude.adapters.discord import session_launcher as launcher_module
+
+        launcher_module = py_importlib.reload(launcher_module)
+        launch_callback = AsyncMock()
+        view = launcher_module.SessionLauncherView(enabled_agents=["claude", "gemini"], on_launch=launch_callback)
+
+    assert view.timeout is None
+    assert [child.label for child in view.children] == ["Claude", "Gemini"]
+    assert [child.custom_id for child in view.children] == ["launch:claude", "launch:gemini"]
+
+    interaction = SimpleNamespace()
+    await view.children[1].callback(interaction)
+    launch_callback.assert_awaited_once_with(interaction, "gemini")
+
+
 def _build_session_with(*, human_role: str | None = None, project_path: str | None = None, **kwargs) -> Session:
     return Session(
         session_id="sess-routing",
@@ -1121,7 +1257,7 @@ def test_resolve_forum_context_unknown_defaults_to_help_desk() -> None:
 
 @pytest.mark.asyncio
 async def test_create_session_for_project_forum_uses_resolved_role() -> None:
-    """Project forum messages create sessions with resolved identity role, not 'customer'."""
+    """Project forum messages create operator sessions without customer role."""
     with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
         from teleclaude.adapters.discord_adapter import DiscordAdapter
 
@@ -1144,11 +1280,6 @@ async def test_create_session_for_project_forum_uses_resolved_role() -> None:
     fake_command_service.create_session = AsyncMock(return_value={"session_id": session.session_id})
     fake_command_service.process_message = AsyncMock()
 
-    # Identity resolves to "admin" role
-    fake_identity = SimpleNamespace(person_name="Alice", person_role="admin")
-    fake_resolver = MagicMock()
-    fake_resolver.resolve = MagicMock(return_value=fake_identity)
-
     # Message from a project forum thread (parent_id=600 matches _project_forum_map)
     thread = FakeThread(thread_id=700, parent_id=600)
     message = SimpleNamespace(
@@ -1163,14 +1294,13 @@ async def test_create_session_for_project_forum_uses_resolved_role() -> None:
         patch("teleclaude.adapters.discord_adapter.db", fake_db),
         patch("teleclaude.adapters.ui_adapter.db", fake_db),
         patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
-        patch("teleclaude.core.identity.get_identity_resolver", return_value=fake_resolver),
     ):
         await adapter._handle_on_message(message)
 
     fake_command_service.create_session.assert_awaited_once()
     create_cmd = fake_command_service.create_session.await_args.args[0]
-    assert create_cmd.channel_metadata["human_role"] == "admin"
     assert create_cmd.project_path == "/home/user/proj"
+    assert "human_role" not in create_cmd.channel_metadata
 
 
 @pytest.mark.asyncio
@@ -1221,7 +1351,7 @@ async def test_create_session_for_help_desk_still_uses_customer_role() -> None:
 
 @pytest.mark.asyncio
 async def test_create_session_project_forum_defaults_member_when_unresolved() -> None:
-    """Project forum messages default to 'member' when identity cannot be resolved."""
+    """Project forum messages do not inject customer/member role metadata."""
     with patch("teleclaude.adapters.discord_adapter.importlib.import_module", return_value=FakeDiscordModule):
         from teleclaude.adapters.discord_adapter import DiscordAdapter
 
@@ -1244,14 +1374,6 @@ async def test_create_session_project_forum_defaults_member_when_unresolved() ->
     fake_command_service.create_session = AsyncMock(return_value={"session_id": session.session_id})
     fake_command_service.process_message = AsyncMock()
 
-    # Identity resolver returns customer context with no person_name (unknown/unregistered user)
-    fake_resolver = MagicMock()
-    fake_resolver.resolve = MagicMock(
-        return_value=IdentityContext(
-            person_role="customer", person_name=None, platform="discord", platform_user_id="999001"
-        )
-    )
-
     thread = FakeThread(thread_id=700, parent_id=600)
     message = SimpleNamespace(
         id=12345,
@@ -1265,12 +1387,82 @@ async def test_create_session_project_forum_defaults_member_when_unresolved() ->
         patch("teleclaude.adapters.discord_adapter.db", fake_db),
         patch("teleclaude.adapters.ui_adapter.db", fake_db),
         patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
-        patch("teleclaude.core.identity.get_identity_resolver", return_value=fake_resolver),
     ):
         await adapter._handle_on_message(message)
 
     create_cmd = fake_command_service.create_session.await_args.args[0]
-    assert create_cmd.channel_metadata["human_role"] == "member"
+    assert "human_role" not in create_cmd.channel_metadata
+
+
+@pytest.mark.asyncio
+async def test_create_session_for_message_uses_forum_derived_project() -> None:
+    adapter = _make_adapter()
+    adapter._forum_project_map = {600: "/home/user/proj-a"}
+    adapter._get_enabled_agents = MagicMock(return_value=["codex"])  # type: ignore[method-assign]
+
+    session = _build_session()
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": session.session_id})
+    fake_db = MagicMock()
+    fake_db.get_session = AsyncMock(return_value=session)
+
+    message = SimpleNamespace(
+        author=SimpleNamespace(id=999001, display_name="Alice", name="alice"),
+        channel=FakeThread(thread_id=700, parent_id=600),
+    )
+
+    with (
+        patch("teleclaude.adapters.discord_adapter.db", fake_db),
+        patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+    ):
+        await adapter._create_session_for_message(message, "999001", forum_type="project", project_path=None)
+
+    create_cmd = fake_command_service.create_session.await_args.args[0]
+    assert create_cmd.project_path == "/home/user/proj-a"
+    assert create_cmd.auto_command == "agent codex"
+    assert "human_role" not in create_cmd.channel_metadata
+
+
+@pytest.mark.asyncio
+async def test_handle_cancel_slash_returns_error_when_no_session_found() -> None:
+    adapter = _make_adapter()
+    adapter._find_session = AsyncMock(return_value=None)  # type: ignore[method-assign]
+
+    interaction = SimpleNamespace(
+        channel=SimpleNamespace(id=444),
+        user=SimpleNamespace(id=999001),
+        response=SimpleNamespace(send_message=AsyncMock()),
+    )
+
+    await adapter._handle_cancel_slash(interaction)
+
+    interaction.response.send_message.assert_awaited_once_with("No active session in this thread.", ephemeral=True)
+
+
+@pytest.mark.asyncio
+async def test_handle_cancel_slash_dispatches_keys_when_session_exists() -> None:
+    adapter = _make_adapter()
+    session = _build_session()
+    session.session_id = "sess-cancel"
+    adapter._find_session = AsyncMock(return_value=session)  # type: ignore[method-assign]
+
+    fake_command_service = MagicMock()
+    fake_command_service.keys = AsyncMock()
+    interaction = SimpleNamespace(
+        channel=SimpleNamespace(id=444),
+        user=SimpleNamespace(id=999001),
+        response=SimpleNamespace(send_message=AsyncMock()),
+    )
+
+    with patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service):
+        await adapter._handle_cancel_slash(interaction)
+
+    interaction.response.send_message.assert_awaited_once_with("Sent CTRL+C", ephemeral=True)
+    fake_command_service.keys.assert_awaited_once()
+    cmd = fake_command_service.keys.await_args.args[0]
+    assert isinstance(cmd, KeysCommand)
+    assert cmd.session_id == "sess-cancel"
+    assert cmd.key == "cancel"
 
 
 # ---------------------------------------------------------------------------
@@ -1307,7 +1499,7 @@ def _make_updated_context(
     *,
     native_session_id: str | None = "native-thread-123",
 ) -> SessionUpdatedContext:
-    updated_fields: dict[str, object] = {"native_session_id": native_session_id}
+    updated_fields: dict[str, str | None] = {"native_session_id": native_session_id}
     return SessionUpdatedContext(session_id=session_id, updated_fields=updated_fields)
 
 

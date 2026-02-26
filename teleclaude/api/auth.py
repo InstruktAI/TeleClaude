@@ -32,13 +32,14 @@ if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 
-DEFAULT_UNIDENTIFIED_HUMAN_ROLE = (os.getenv("TELECLAUDE_UNIDENTIFIED_HUMAN_ROLE", HUMAN_ROLE_ADMIN) or "").strip()
-if not DEFAULT_UNIDENTIFIED_HUMAN_ROLE:
-    DEFAULT_UNIDENTIFIED_HUMAN_ROLE = HUMAN_ROLE_ADMIN
+_default_unidentified_human_role = (os.getenv("TELECLAUDE_UNIDENTIFIED_HUMAN_ROLE", HUMAN_ROLE_ADMIN) or "").strip()
+if not _default_unidentified_human_role:
+    _default_unidentified_human_role = HUMAN_ROLE_ADMIN
+DEFAULT_UNIDENTIFIED_HUMAN_ROLE = _default_unidentified_human_role
 
 _GLOBAL_CONFIG_PATH = Path("~/.teleclaude/teleclaude.yml").expanduser()
-_EMAIL_ROLE_CACHE: dict[str, str] = {}
-_EMAIL_ROLE_CACHE_MTIME_NS: int | None = None
+_email_role_cache: dict[str, str] = {}
+_email_role_cache_mtime_ns: int | None = None
 
 
 def _normalize_email(value: object) -> str | None:
@@ -50,23 +51,23 @@ def _normalize_email(value: object) -> str | None:
 
 def _load_email_role_map() -> dict[str, str]:
     """Load email->role map from global config with mtime-based cache."""
-    global _EMAIL_ROLE_CACHE, _EMAIL_ROLE_CACHE_MTIME_NS
+    global _email_role_cache, _email_role_cache_mtime_ns
 
     try:
         mtime_ns = _GLOBAL_CONFIG_PATH.stat().st_mtime_ns
     except OSError:
-        _EMAIL_ROLE_CACHE = {}
-        _EMAIL_ROLE_CACHE_MTIME_NS = None
-        return _EMAIL_ROLE_CACHE
+        _email_role_cache = {}
+        _email_role_cache_mtime_ns = None
+        return _email_role_cache
 
-    if _EMAIL_ROLE_CACHE_MTIME_NS == mtime_ns:
-        return _EMAIL_ROLE_CACHE
+    if _email_role_cache_mtime_ns == mtime_ns:
+        return _email_role_cache
 
     role_map: dict[str, str] = {}
     try:
         global_cfg = load_global_config(_GLOBAL_CONFIG_PATH)
     except Exception:
-        return _EMAIL_ROLE_CACHE
+        return _email_role_cache
 
     for person in global_cfg.people:
         email = _normalize_email(person.email)
@@ -75,9 +76,9 @@ def _load_email_role_map() -> dict[str, str]:
             continue
         role_map[email] = role
 
-    _EMAIL_ROLE_CACHE = role_map
-    _EMAIL_ROLE_CACHE_MTIME_NS = mtime_ns
-    return _EMAIL_ROLE_CACHE
+    _email_role_cache = role_map
+    _email_role_cache_mtime_ns = mtime_ns
+    return _email_role_cache
 
 
 def _resolve_terminal_role(email_header: str | None) -> str | None:
