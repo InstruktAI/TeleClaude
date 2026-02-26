@@ -1942,8 +1942,7 @@ def acquire_finalize_lock(cwd: str, slug: str, session_id: str) -> str | None:
                         f"FINALIZE_LOCKED\n"
                         f"Another finalize is in progress: slug={holding_slug}, "
                         f"session={holding_session[:8]}, age={age_minutes:.0f}m.\n"
-                        f"Wait 1 minute and retry (up to 3 times), then check whether "
-                        f"the session is still alive."
+                        f"Wait for it to complete or check if the session is still alive."
                     )
             except (ValueError, TypeError):
                 # Unparseable timestamp — stale
