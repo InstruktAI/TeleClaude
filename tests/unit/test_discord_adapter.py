@@ -167,6 +167,7 @@ class FakeForumChannel:
             content=text,
             view=view,
             edit=AsyncMock(return_value=None),
+            pin=AsyncMock(return_value=None),
         )
         self.sent_messages[message_id] = message
         return message
@@ -843,6 +844,51 @@ async def test_session_launcher_view_builds_buttons_for_enabled_agents() -> None
     launch_callback.assert_awaited_once_with(interaction, "gemini")
 
 
+@pytest.mark.asyncio
+async def test_post_or_update_launcher_pins_new_message() -> None:
+    adapter = _make_adapter()
+    adapter._client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    adapter._get_enabled_agents = MagicMock(return_value=["claude", "gemini"])  # type: ignore[method-assign]
+
+    forum = FakeForumChannel(channel_id=600, thread_id=700)
+    adapter._client.channels[600] = forum
+
+    fake_db = MagicMock()
+    fake_db.get_system_setting = AsyncMock(return_value=None)
+    fake_db.set_system_setting = AsyncMock()
+
+    with patch("teleclaude.adapters.discord_adapter.db", fake_db):
+        await adapter._post_or_update_launcher(600)
+
+    assert len(forum.sent_messages) == 1
+    sent = next(iter(forum.sent_messages.values()))
+    sent.pin.assert_awaited_once()
+    fake_db.set_system_setting.assert_awaited_once_with("discord_launcher:600", str(sent.id))
+
+
+@pytest.mark.asyncio
+async def test_post_or_update_launcher_pins_existing_message() -> None:
+    adapter = _make_adapter()
+    adapter._client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    adapter._get_enabled_agents = MagicMock(return_value=["claude", "gemini"])  # type: ignore[method-assign]
+
+    forum = FakeForumChannel(channel_id=600, thread_id=700)
+    existing = SimpleNamespace(id=12345, edit=AsyncMock(return_value=None), pin=AsyncMock(return_value=None))
+    forum.sent_messages[12345] = existing
+    adapter._client.channels[600] = forum
+
+    fake_db = MagicMock()
+    fake_db.get_system_setting = AsyncMock(return_value="12345")
+    fake_db.set_system_setting = AsyncMock()
+
+    with patch("teleclaude.adapters.discord_adapter.db", fake_db):
+        await adapter._post_or_update_launcher(600)
+
+    existing.edit.assert_awaited_once()
+    existing.pin.assert_awaited_once()
+    fake_db.set_system_setting.assert_not_awaited()
+
+
 def _build_session_with(*, human_role: str | None = None, project_path: str | None = None, **kwargs) -> Session:
     return Session(
         session_id="sess-routing",
@@ -1463,6 +1509,23 @@ async def test_handle_cancel_slash_dispatches_keys_when_session_exists() -> None
     assert isinstance(cmd, KeysCommand)
     assert cmd.session_id == "sess-cancel"
     assert cmd.key == "cancel"
+
+
+@pytest.mark.asyncio
+async def test_handle_cancel_slash_rejects_non_thread_channel() -> None:
+    adapter = _make_adapter()
+    adapter._find_session = AsyncMock(return_value=_build_session())  # type: ignore[method-assign]
+
+    interaction = SimpleNamespace(
+        channel=SimpleNamespace(id=444),
+        user=SimpleNamespace(id=999001),
+        response=SimpleNamespace(send_message=AsyncMock()),
+    )
+
+    await adapter._handle_cancel_slash(interaction)
+
+    interaction.response.send_message.assert_awaited_once_with("No active session in this thread.", ephemeral=True)
+    adapter._find_session.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
