@@ -2,16 +2,14 @@
 
 - slug: agent-availability-enforcement-migration
   description: Enforce agent availability on all session and worker launch paths,
-    replacing enabled-only and hardcoded-agent selection with one canonical routable-agent policy
+    replacing enabled-only and hardcoded-agent selection with one canonical routable-agent
+    policy
 - slug: integration-orchestrator-rollout
   description: Parent rollout for event-driven singleton integrator and guarded mainline
     integration
 - slug: api-todos-work-stability-hardening
   description: Stabilize `/todos/work` latency by removing redundant worktree prep/sync
     and adding phase-level diagnostics
-- slug: adapter-output-qos-scheduler
-  description: Adapter-aware output QoS scheduler with PTB Telegram rate limiting
-    plus per-session coalescing/fairness for high-concurrency output
 - slug: deployment-migrations
   group: mature-deployment
   description: 'Phase 2: Migration manifest format, runner, version utilities (no

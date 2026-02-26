@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: adapter-output-qos-scheduler
+  date: '2026-02-26'
+  title: Adapter-aware output QoS scheduler with PTB Telegram rate limiting plus per-session
+    coalescing/fairness for high-concurrency output
+  commit: 1004161d4bec11c697a286117a8f80c3b501bc72
+  description: Adapter-aware output QoS scheduler with PTB Telegram rate limiting
+    plus per-session coalescing/fairness for high-concurrency output
 - slug: integration-safety-gates
   date: '2026-02-26'
   title: 'Step 1: add finalize/apply safety gates for dirty/diverged canonical main'
