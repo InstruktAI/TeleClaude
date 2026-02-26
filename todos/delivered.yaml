@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: integration-events-model
+  date: '2026-02-27'
+  title: 'Step 2: persist review_approved/finalize_ready/branch_pushed events and
+    readiness projection'
+  commit: 3a2b0b8c47cf9c68fb61f4d08d91453465f09d7a
+  description: 'Step 2: persist review_approved/finalize_ready/branch_pushed events
+    and readiness projection'
 - slug: skills-procedure-taxonomy-alignment
   date: '2026-02-26'
   title: Extract procedure logic from agents/skills into docs procedures and align

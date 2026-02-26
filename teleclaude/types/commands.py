@@ -47,6 +47,7 @@ class CreateSessionCommand(InternalCommand):
     subdir: Optional[str] = None
     working_slug: Optional[str] = None
     initiator_session_id: Optional[str] = None
+    skip_listener_registration: bool = False
     channel_metadata: Optional[Dict[str, object]] = None
     launch_intent: Optional["SessionLaunchIntent"] = None
     auto_command: Optional[str] = None
@@ -61,6 +62,7 @@ class CreateSessionCommand(InternalCommand):
         subdir: Optional[str] = None,
         working_slug: Optional[str] = None,
         initiator_session_id: Optional[str] = None,
+        skip_listener_registration: bool = False,
         channel_metadata: Optional[Dict[str, object]] = None,
         launch_intent: Optional["SessionLaunchIntent"] = None,
         auto_command: Optional[str] = None,
@@ -74,6 +76,7 @@ class CreateSessionCommand(InternalCommand):
         self.subdir = subdir
         self.working_slug = working_slug
         self.initiator_session_id = initiator_session_id
+        self.skip_listener_registration = skip_listener_registration
         self.channel_metadata = channel_metadata
         self.launch_intent = launch_intent
         self.auto_command = auto_command
