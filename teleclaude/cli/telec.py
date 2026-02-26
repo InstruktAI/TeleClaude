@@ -35,7 +35,6 @@ from teleclaude.cli.tool_commands import (  # noqa: E402
     handle_todo_set_deps,
     handle_todo_work,
 )
-from teleclaude.config.loader import load_global_config  # noqa: E402
 from teleclaude.constants import ENV_ENABLE, MAIN_MODULE  # noqa: E402
 from teleclaude.logging_config import setup_logging  # noqa: E402
 from teleclaude.project_setup import init_project  # noqa: E402
@@ -2810,6 +2809,10 @@ def _role_for_email(email: str) -> str | None:
     if not normalized:
         return None
     try:
+        # Import lazily so CLI commands that do not require config can start
+        # even when runtime config is invalid or unavailable.
+        from teleclaude.config.loader import load_global_config
+
         global_cfg = load_global_config()
     except Exception:
         return None
