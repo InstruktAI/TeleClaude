@@ -61,6 +61,26 @@ async def test_next_prepare_hitl_assessed_breakdown_with_todos_container():
 
 
 @pytest.mark.asyncio
+async def test_next_prepare_non_roadmap_holder_with_group_children_returns_container():
+    """next_prepare should treat non-roadmap holder slugs as containers when children are discoverable."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "holder-item"
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=["child-1", "child-2"]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=False),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
+
+    assert "CONTAINER:" in result
+    assert slug in result
+    assert "child-1" in result
+    assert "child-2" in result
+    assert "Work on those first" in result
+
+
+@pytest.mark.asyncio
 async def test_next_prepare_hitl_assessed_breakdown_empty_todos_proceeds():
     """next_prepare with assessed breakdown and empty todos proceeds to requirements."""
     db = MagicMock(spec=Db)

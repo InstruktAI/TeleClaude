@@ -287,7 +287,7 @@ def format_stash_debt(slug: str, count: int) -> str:
         f"Repository has {count} git stash {noun}. Stash workflows are forbidden for AI orchestration.",
         next_call=(
             "Clear all repository stash entries with maintainer-approved workflow, "
-            f'then call telec todo work {slug} to continue.'
+            f"then call telec todo work {slug} to continue."
         ),
     )
 
@@ -642,6 +642,92 @@ def has_pending_deferrals(cwd: str, slug: str) -> bool:
 
     state = read_phase_state(cwd, slug)
     return state.get("deferrals_processed") is not True
+
+
+def resolve_holder_children(cwd: str, holder_slug: str) -> list[str]:
+    """Resolve container/holder child slugs in deterministic order.
+
+    Resolution sources:
+    - roadmap group mapping (`group == holder_slug`)
+    - holder breakdown state (`state.yaml.breakdown.todos`)
+
+    Roadmap order is authoritative when present. Breakdown-only children are
+    appended in their declared order.
+    """
+    entries = load_roadmap(cwd)
+    grouped_children = [entry.slug for entry in entries if entry.group == holder_slug]
+
+    breakdown_state = read_breakdown_state(cwd, holder_slug)
+    breakdown_children: list[str] = []
+    if breakdown_state:
+        raw_children = breakdown_state.get("todos")
+        if isinstance(raw_children, list):
+            breakdown_children = [child for child in raw_children if isinstance(child, str) and child]
+
+    if not grouped_children and not breakdown_children:
+        return []
+
+    ordered_children = list(grouped_children)
+    seen = set(ordered_children)
+    for child in breakdown_children:
+        if child not in seen:
+            ordered_children.append(child)
+            seen.add(child)
+    return ordered_children
+
+
+def resolve_first_runnable_holder_child(
+    cwd: str,
+    holder_slug: str,
+    dependencies: dict[str, list[str]],
+) -> tuple[str | None, str]:
+    """Resolve first runnable child for a holder slug.
+
+    Returns:
+        (child_slug, reason)
+        - reason == "ok" when child_slug is selected
+        - reason in {"not_holder", "children_not_in_roadmap", "complete",
+          "deps_unsatisfied", "item_not_ready"} otherwise
+    """
+    children = resolve_holder_children(cwd, holder_slug)
+    if not children:
+        return None, "not_holder"
+
+    has_children_in_roadmap = False
+    has_incomplete_children = False
+    has_deps_blocked = False
+    has_not_ready = False
+
+    for child in children:
+        if not slug_in_roadmap(cwd, child):
+            continue
+
+        has_children_in_roadmap = True
+        phase = get_item_phase(cwd, child)
+        if phase == ItemPhase.DONE.value:
+            continue
+
+        has_incomplete_children = True
+        is_ready = phase == ItemPhase.IN_PROGRESS.value or is_ready_for_work(cwd, child)
+        if not is_ready:
+            has_not_ready = True
+            continue
+
+        if not check_dependencies_satisfied(cwd, child, dependencies):
+            has_deps_blocked = True
+            continue
+
+        return child, "ok"
+
+    if not has_children_in_roadmap:
+        return None, "children_not_in_roadmap"
+    if not has_incomplete_children:
+        return None, "complete"
+    if has_deps_blocked:
+        return None, "deps_unsatisfied"
+    if has_not_ready:
+        return None, "item_not_ready"
+    return None, "item_not_ready"
 
 
 def resolve_slug(
@@ -2001,6 +2087,10 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 next_call="telec todo prepare",
             )
 
+        holder_children = await asyncio.to_thread(resolve_holder_children, cwd, resolved_slug)
+        if holder_children:
+            return f"CONTAINER: {resolved_slug} was split into: {', '.join(holder_children)}. Work on those first."
+
         # 1.5. Ensure slug exists in roadmap before preparing
         if not await asyncio.to_thread(slug_in_roadmap, cwd, resolved_slug):
             has_requirements = check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md")
@@ -2057,13 +2147,6 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 next_call="telec todo prepare",
             )
 
-        # If breakdown assessed and has dependent todos, this one is a container
-        if breakdown_state and breakdown_state.get("todos"):
-            dep_todos = breakdown_state["todos"]
-            if isinstance(dep_todos, list):
-                return f"CONTAINER: {resolved_slug} was split into: {', '.join(dep_todos)}. Work on those first."
-            return f"CONTAINER: {resolved_slug} was split. Check state.yaml for dependent todos."
-
         # 2. Check requirements
         if not check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md"):
             if hitl:
@@ -2116,7 +2199,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                         f"but DOR score is below threshold ({DOR_READY_THRESHOLD}). Complete DOR assessment, update "
                         f"todos/{resolved_slug}/dor-report.md and todos/{resolved_slug}/state.yaml.dor "
                         f"with score >= {DOR_READY_THRESHOLD}. Then run /next-prepare-gate {resolved_slug} (separate worker) "
-                        f'and call telec todo prepare {resolved_slug} again.'
+                        f"and call telec todo prepare {resolved_slug} again."
                     )
 
                 guidance = await compose_agent_guidance(db)
@@ -2155,7 +2238,9 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     """
     canonical_cwd = await asyncio.to_thread(resolve_canonical_project_root, cwd)
     if canonical_cwd != cwd:
-        logger.debug("next_work normalized cwd to canonical project root", requested_cwd=cwd, canonical_cwd=canonical_cwd)
+        logger.debug(
+            "next_work normalized cwd to canonical project root", requested_cwd=cwd, canonical_cwd=canonical_cwd
+        )
         cwd = canonical_cwd
 
     # Sweep completed group parents before resolving next slug
@@ -2189,14 +2274,42 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         # Bugs bypass the roadmap check (they're not in the roadmap)
         is_bug = await asyncio.to_thread(is_bug_todo, cwd, slug)
         if not is_bug and not await asyncio.to_thread(slug_in_roadmap, cwd, slug):
-            return format_error(
-                "NOT_PREPARED",
-                f"Item '{slug}' not found in roadmap.",
-                next_call="Check todos/roadmap.yaml or call telec todo prepare.",
-            )
+            holder_child, holder_reason = await asyncio.to_thread(resolve_first_runnable_holder_child, cwd, slug, deps)
+            if holder_child:
+                slug = holder_child
+            elif holder_reason == "complete":
+                return f"COMPLETE: Holder '{slug}' has no remaining child work."
+            elif holder_reason == "deps_unsatisfied":
+                return format_error(
+                    "DEPS_UNSATISFIED",
+                    f"Holder '{slug}' has children, but none are currently runnable due to unsatisfied dependencies.",
+                    next_call="Complete dependency items first, or check todos/roadmap.yaml.",
+                )
+            elif holder_reason == "item_not_ready":
+                return format_error(
+                    "ITEM_NOT_READY",
+                    f"Holder '{slug}' has children, but none are ready to start work.",
+                    next_call=f"Call telec todo prepare on the child items for '{slug}' first.",
+                )
+            elif holder_reason == "children_not_in_roadmap":
+                return format_error(
+                    "NOT_PREPARED",
+                    f"Holder '{slug}' has child todos, but none are in roadmap.",
+                    next_call="Check todos/roadmap.yaml or call telec todo prepare.",
+                )
+            else:
+                return format_error(
+                    "NOT_PREPARED",
+                    f"Item '{slug}' not found in roadmap.",
+                    next_call="Check todos/roadmap.yaml or call telec todo prepare.",
+                )
 
         phase = await asyncio.to_thread(get_item_phase, cwd, slug)
-        if not is_bug and phase == ItemPhase.PENDING.value and not await asyncio.to_thread(is_ready_for_work, cwd, slug):
+        if (
+            not is_bug
+            and phase == ItemPhase.PENDING.value
+            and not await asyncio.to_thread(is_ready_for_work, cwd, slug)
+        ):
             return format_error(
                 "ITEM_NOT_READY",
                 f"Item '{slug}' is pending and DOR score is below threshold. Must be ready to start work.",
@@ -2258,7 +2371,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             return format_error(
                 "NOT_PREPARED",
                 f"todos/{resolved_slug} is missing requirements or implementation plan.",
-                next_call=f'Call telec todo prepare {resolved_slug} to complete preparation.',
+                next_call=f"Call telec todo prepare {resolved_slug} to complete preparation.",
             )
 
     # 4. Ensure worktree exists
@@ -2312,7 +2425,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 project=cwd,
                 guidance=guidance,
                 subfolder=f"trees/{resolved_slug}",
-                next_call=f'telec todo work {resolved_slug}',
+                next_call=f"telec todo work {resolved_slug}",
                 pre_dispatch=pre_dispatch,
             )
         else:
@@ -2322,7 +2435,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 project=cwd,
                 guidance=guidance,
                 subfolder=f"trees/{resolved_slug}",
-                next_call=f'telec todo work {resolved_slug}',
+                next_call=f"telec todo work {resolved_slug}",
                 pre_dispatch=pre_dispatch,
             )
 
@@ -2335,7 +2448,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         )
         # Sync reset state back to main
         await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
-        next_call = f'telec todo work {resolved_slug}'
+        next_call = f"telec todo work {resolved_slug}"
         return format_build_gate_failure(resolved_slug, gate_output, next_call)
 
     # 8. Check review status
@@ -2352,7 +2465,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 project=cwd,
                 guidance=guidance,
                 subfolder=f"trees/{resolved_slug}",
-                next_call=f'telec todo work {resolved_slug}',
+                next_call=f"telec todo work {resolved_slug}",
             )
         # Review not started or still pending
         limit_reached, current_round, max_rounds = _is_review_round_limit_reached(worktree_cwd, resolved_slug)
@@ -2365,7 +2478,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 ),
                 next_call=(
                     f"Apply orchestrator review-round-limit closure for {resolved_slug}, "
-                    f'then call telec todo work {resolved_slug}'
+                    f"then call telec todo work {resolved_slug}"
                 ),
             )
         try:
@@ -2378,7 +2491,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             project=cwd,
             guidance=guidance,
             subfolder=f"trees/{resolved_slug}",
-            next_call=f'telec todo work {resolved_slug}',
+            next_call=f"telec todo work {resolved_slug}",
             note=f"{REVIEW_DIFF_NOTE}\n\n{_review_scope_note(worktree_cwd, resolved_slug)}",
         )
 
@@ -2394,7 +2507,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             project=cwd,
             guidance=guidance,
             subfolder=f"trees/{resolved_slug}",
-            next_call=f'telec todo work {resolved_slug}',
+            next_call=f"telec todo work {resolved_slug}",
         )
 
     # 9. Review approved - dispatch finalize prepare (serialized via finalize lock)
@@ -2408,8 +2521,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 "bound to the orchestrator lock owner."
             ),
             next_call=(
-                "Call telec todo work from a wrapper-injected orchestrator session so "
-                "caller_session_id is present."
+                "Call telec todo work from a wrapper-injected orchestrator session so caller_session_id is present."
             ),
         )
     session_id = caller_session_id
