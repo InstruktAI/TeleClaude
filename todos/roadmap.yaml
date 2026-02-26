@@ -3,15 +3,14 @@
 - slug: integration-orchestrator-rollout
   description: Parent rollout for event-driven singleton integrator and guarded mainline
     integration
-- slug: integration-safety-gates
-  group: integration-orchestrator-rollout
-  description: 'Step 1: add finalize/apply safety gates for dirty/diverged canonical
-    main'
 - slug: api-todos-work-stability-hardening
   description: Stabilize `/todos/work` latency by removing redundant worktree prep/sync
     and adding phase-level diagnostics
 - slug: help-desk-whatsapp
   description: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
+- slug: adapter-output-qos-scheduler
+  description: Adapter-aware output QoS scheduler with PTB Telegram rate limiting
+    plus per-session coalescing/fairness for high-concurrency output
 - slug: deployment-migrations
   group: mature-deployment
   description: 'Phase 2: Migration manifest format, runner, version utilities (no

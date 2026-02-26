@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: integration-safety-gates
+  date: '2026-02-26'
+  title: 'Step 1: add finalize/apply safety gates for dirty/diverged canonical main'
+  commit: 3e306a0a448f48cb1ba56898f7fde04f46c4bab1
+  description: 'Step 1: add finalize/apply safety gates for dirty/diverged canonical
+    main'
 - slug: help-desk-whatsapp
   date: '2026-02-26'
   title: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
