@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.hooks.normalizers.whatsapp import normalize_whatsapp_webhook
 from teleclaude.hooks.webhook_models import HookEvent
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
@@ -89,6 +90,46 @@ async def test_handle_whatsapp_event_creates_session_and_processes_text() -> Non
 
     mock_service.create_session.assert_awaited_once()
     mock_service.process_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_whatsapp_event_uses_adapter_dispatch_for_text() -> None:
+    event = HookEvent.now(
+        source="whatsapp",
+        type="message.text",
+        properties={
+            "phone_number": "15550001111",
+            "message_id": "wamid.dispatch",
+            "text": "Need dispatch",
+        },
+        payload={},
+    )
+    mock_session = SimpleNamespace(
+        session_id="session-1",
+        adapter_metadata=None,
+        lifecycle_status="active",
+        get_metadata=lambda: None,
+    )
+    mock_whatsapp_adapter = AsyncMock(spec=UiAdapter)
+    mock_whatsapp_adapter._dispatch_command = AsyncMock()
+    mock_service = SimpleNamespace(
+        create_session=AsyncMock(return_value={"session_id": "session-1"}),
+        process_message=AsyncMock(),
+        handle_file=AsyncMock(),
+        handle_voice=AsyncMock(),
+        client=SimpleNamespace(adapters={"whatsapp": mock_whatsapp_adapter}),
+    )
+
+    with (
+        patch("teleclaude.hooks.whatsapp_handler.get_command_service", return_value=mock_service),
+        patch("teleclaude.hooks.whatsapp_handler.db.get_sessions_by_adapter_metadata", new=AsyncMock(return_value=[])),
+        patch("teleclaude.hooks.whatsapp_handler.db.get_session", new=AsyncMock(return_value=mock_session)),
+        patch("teleclaude.hooks.whatsapp_handler.db.update_session", new=AsyncMock()),
+    ):
+        await handle_whatsapp_event(event)
+
+    mock_whatsapp_adapter._dispatch_command.assert_awaited_once()
+    mock_service.process_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio

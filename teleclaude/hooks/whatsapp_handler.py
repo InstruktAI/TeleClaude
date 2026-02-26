@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import mimetypes
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
 from instrukt_ai_logging import get_logger
 
+from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
+from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.hooks.webhook_models import HookEvent
 from teleclaude.types.commands import CreateSessionCommand, HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
@@ -101,6 +104,33 @@ async def download_whatsapp_media(media_id: str, mime_type: str | None, phone_nu
     return output_path
 
 
+async def _dispatch_whatsapp_command(
+    *,
+    session: object,
+    message_id: str | None,
+    command_name: str,
+    payload: dict[str, object],  # guard: loose-dict - Command payload mirrors typed command .to_payload().
+    handler: Callable[[], Awaitable[object]],
+) -> None:
+    command_service = get_command_service()
+    client = getattr(command_service, "client", None)
+    adapters = getattr(client, "adapters", None)
+    if not isinstance(adapters, dict):
+        await handler()
+        return
+
+    adapter = adapters.get(InputOrigin.WHATSAPP.value)
+    if not isinstance(adapter, UiAdapter):
+        await handler()
+        return
+
+    metadata = MessageMetadata(
+        origin=InputOrigin.WHATSAPP.value,
+        channel_metadata={"message_id": message_id} if message_id else None,
+    )
+    await adapter._dispatch_command(session, message_id, metadata, command_name, payload, handler)  # type: ignore[arg-type]
+
+
 async def handle_whatsapp_event(event: HookEvent) -> None:
     """Handle normalized WhatsApp message events."""
     phone_number = _normalize_phone_number(str(event.properties.get("phone_number") or ""))
@@ -124,19 +154,22 @@ async def handle_whatsapp_event(event: HookEvent) -> None:
         timestamp=event.timestamp,
     )
 
-    command_service = get_command_service()
-
     if event.type == "message.text":
         text = str(event.properties.get("text") or "")
         if text:
-            await command_service.process_message(
-                ProcessMessageCommand(
-                    session_id=session_id,
-                    text=text,
-                    origin=InputOrigin.WHATSAPP.value,
-                    actor_id=phone_number,
-                    actor_name=f"whatsapp:{phone_number}",
-                )
+            cmd = ProcessMessageCommand(
+                session_id=session_id,
+                text=text,
+                origin=InputOrigin.WHATSAPP.value,
+                actor_id=phone_number,
+                actor_name=f"whatsapp:{phone_number}",
+            )
+            await _dispatch_whatsapp_command(
+                session=session,
+                message_id=message_id or None,
+                command_name="process_message",
+                payload=cmd.to_payload(),
+                handler=lambda: get_command_service().process_message(cmd),
             )
         return
 
@@ -148,23 +181,33 @@ async def handle_whatsapp_event(event: HookEvent) -> None:
     local_path = await download_whatsapp_media(media_id, mime_type, phone_number)
 
     if event.type in {"message.voice", "message.audio"}:
-        await command_service.handle_voice(
-            HandleVoiceCommand(
-                session_id=session_id,
-                file_path=str(local_path),
-                origin=InputOrigin.WHATSAPP.value,
-                message_id=message_id or None,
-                actor_id=phone_number,
-                actor_name=f"whatsapp:{phone_number}",
-            )
+        cmd = HandleVoiceCommand(
+            session_id=session_id,
+            file_path=str(local_path),
+            origin=InputOrigin.WHATSAPP.value,
+            message_id=message_id or None,
+            actor_id=phone_number,
+            actor_name=f"whatsapp:{phone_number}",
+        )
+        await _dispatch_whatsapp_command(
+            session=session,
+            message_id=message_id or None,
+            command_name="handle_voice",
+            payload=cmd.to_payload(),
+            handler=lambda: get_command_service().handle_voice(cmd),
         )
         return
 
-    await command_service.handle_file(
-        HandleFileCommand(
-            session_id=session_id,
-            file_path=str(local_path),
-            filename=local_path.name,
-            file_size=local_path.stat().st_size,
-        )
+    cmd = HandleFileCommand(
+        session_id=session_id,
+        file_path=str(local_path),
+        filename=local_path.name,
+        file_size=local_path.stat().st_size,
+    )
+    await _dispatch_whatsapp_command(
+        session=session,
+        message_id=message_id or None,
+        command_name="handle_file",
+        payload=cmd.to_payload(),
+        handler=lambda: get_command_service().handle_file(cmd),
     )
