@@ -5,14 +5,18 @@ breakdown:
   assessed: false
   todos: []
 dor:
-  last_assessed_at: null
-  score: 0
-  status: needs_work
+  last_assessed_at: '2026-02-26T15:08:00Z'
+  score: 8
+  status: pass
   schema_version: 1
   blockers: []
   actions_taken:
+    draft_mode: false
     requirements_updated: false
     implementation_plan_updated: false
+    demo_updated: false
+    dor_report_updated: true
+    roadmap_promoted: false
 review_round: 0
 max_review_rounds: 3
 review_baseline_commit: ''

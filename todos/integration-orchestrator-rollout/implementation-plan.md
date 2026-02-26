@@ -1,41 +1,82 @@
 # Implementation Plan: integration-orchestrator-rollout
 
-## Overview
+## Plan Objective
 
-- Summarize the approach and why it is appropriate.
+Prepare and govern the rollout as a dependency-driven program so the
+event-driven singleton integrator can be introduced incrementally without
+destabilizing canonical `main`.
 
-## Phase 1: Core Changes
+## Phase 1: Parent Rollout Contract
 
-### Task 1.1:
+### Task 1.1: Align parent requirements with canonical orchestrator spec
 
-**File(s):** ``
+**File(s):** `todos/integration-orchestrator-rollout/requirements.md`, `docs/project/spec/integration-orchestrator.md`
 
-- [ ] Complete this task
+- [ ] Confirm the parent requirements reflect authoritative event, readiness,
+      lease, and queue semantics from spec.
+- [ ] Confirm parent scope stays at rollout-governance level (not child implementation details).
 
-### Task 1.2:
+### Task 1.2: Record decomposition and active child dependency graph
 
-**File(s):** ``
+**File(s):** `todos/roadmap.yaml`, `todos/integration-orchestrator-rollout/state.yaml`
 
-- [ ] Complete this task
+- [ ] Confirm active child slice order remains:
+      `integration-events-model -> integrator-shadow-mode -> integrator-cutover -> integration-blocked-flow`.
+- [ ] Mark parent breakdown as assessed with child todo list.
 
----
+Verification:
 
-## Phase 2: Validation
+1. `rg -n "integration-orchestrator-rollout|integration-events-model|integrator-shadow-mode|integrator-cutover|integration-blocked-flow|after:|group:" todos/roadmap.yaml`
+2. `sed -n '1,200p' todos/integration-orchestrator-rollout/state.yaml`
 
-### Task 2.1: Tests
+## Phase 2: Child Preparation and Gate Dispatch
 
-- [ ] Add or update tests for the changed behavior
-- [ ] Run `make test`
+### Task 2.1: Draft active child preparation artifacts
 
-### Task 2.2: Quality Checks
+**File(s):** `todos/integration-events-model/*`, `todos/integrator-shadow-mode/*`, `todos/integrator-cutover/*`, `todos/integration-blocked-flow/*`
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
+- [ ] Run `next-prepare-draft` for each active child slice in dependency order.
+- [ ] Ensure each child has concrete `requirements.md`, `implementation-plan.md`,
+      `demo.md`, and draft `dor-report.md`.
 
----
+### Task 2.2: Gate active child slices in separate worker sessions
 
-## Phase 3: Review Readiness
+**File(s):** same as Task 2.1
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [ ] Dispatch `next-prepare-gate` for each child using separate worker sessions.
+- [ ] Ensure each child `state.yaml.dor.score >= 8` before build dispatch.
+- [ ] Capture unresolved blockers on any child that returns `needs_work` or `needs_decision`.
+
+Verification:
+
+1. For each child, check `dor-report.md` includes a gate verdict.
+2. For each child, check `state.yaml` has `dor.status` and `dor.score` populated.
+
+## Phase 3: Rollout Readiness Evidence
+
+### Task 3.1: Build rollout-level readiness matrix
+
+**File(s):** `todos/integration-orchestrator-rollout/dor-report.md`
+
+- [ ] Summarize per-slice prep/gate status and unresolved blockers.
+- [ ] Explicitly map blockers to DOR gates and remediation actions.
+
+### Task 3.2: Draft go/no-go policy for cutover entry
+
+**File(s):** `todos/integration-orchestrator-rollout/dor-report.md`
+
+- [ ] Document minimum evidence required to move from shadow mode to cutover.
+- [ ] Document containment path if cutover readiness evidence is incomplete.
+
+## Phase 4: Validation and Review Readiness
+
+### Task 4.1: Artifact validation
+
+- [ ] Run `telec todo demo validate integration-orchestrator-rollout`.
+- [ ] Verify parent and child preparation docs are internally consistent.
+- [ ] Verify no unchecked required tasks remain in this plan.
+
+### Task 4.2: Dispatch readiness
+
+- [ ] Confirm parent remains a rollout container (not direct build work).
+- [ ] Confirm next actionable work is the first dependency-satisfied child slice.
