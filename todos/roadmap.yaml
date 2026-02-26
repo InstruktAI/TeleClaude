@@ -1,11 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: deployment-channels
-  group: mature-deployment
-  after:
-  - deployment-versioning
-  - deployment-migrations
-  description: 'Phase 3: Channel config, webhook handler, update executor, Redis fan-out'
 - slug: deployment-cleanup
   group: mature-deployment
   after:
