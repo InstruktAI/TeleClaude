@@ -20,7 +20,7 @@ Ownership:
 - [x] Working tree clean
 - [x] Comments/docstrings updated where behavior changed
 
-Manual verification note: No end-user UI/CLI behavior change beyond deterministic finalize guardrail messaging; behavior validated through targeted and full test suite execution.
+Manual verification note: No user-facing UI changes in this scope; finalize safety-gate behavior and deterministic error surfaces were verified through targeted and full unit test execution.
 
 ## Review Gates (Reviewer)
 
