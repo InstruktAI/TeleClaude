@@ -1651,7 +1651,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Built-in deployment channel handler.
         redis_transport = self.client.adapters.get("redis")
         _get_redis_fn = redis_transport._get_redis if isinstance(redis_transport, RedisTransport) else None
-        configure_deployment_handler(dispatcher.dispatch, _get_redis_fn)
+        configure_deployment_handler(_get_redis_fn)
         handler_registry.register("deployment_update", handle_deployment_event)
         await contract_registry.register(
             Contract(

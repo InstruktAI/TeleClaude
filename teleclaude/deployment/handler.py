@@ -22,17 +22,14 @@ DEPLOYMENT_FANOUT_CHANNEL = "deployment:version_available"
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Module-level state injected by daemon at startup.
-_dispatch: Callable[[HookEvent], Awaitable[None]] | None = None
 _get_redis: Callable[[], Awaitable["Redis"]] | None = None
 
 
 def configure_deployment_handler(
-    dispatch: Callable[[HookEvent], Awaitable[None]],
     get_redis: Callable[[], Awaitable["Redis"]] | None = None,
 ) -> None:
-    """Inject dispatcher and Redis accessor at daemon startup."""
-    global _dispatch, _get_redis
-    _dispatch = dispatch
+    """Inject Redis accessor at daemon startup."""
+    global _get_redis
     _get_redis = get_redis
 
 
