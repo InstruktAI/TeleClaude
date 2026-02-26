@@ -457,6 +457,27 @@ class DiscordAdapter(UiAdapter):
     def _resolve_project_from_forum(self, forum_id: int) -> str | None:
         return self._forum_project_map.get(forum_id)
 
+    def _resolve_parent_forum_id(self, channel: object | None) -> int | None:
+        if channel is None:
+            return None
+        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
+        if parent_id is not None:
+            return parent_id
+        parent = getattr(channel, "parent", None)
+        return self._parse_optional_int(getattr(parent, "id", None))
+
+    @staticmethod
+    def _extract_forum_thread_result(create_result: object) -> tuple[object | None, object | None]:
+        thread = getattr(create_result, "thread", None)
+        starter_message = getattr(create_result, "message", None)
+        if thread is None and isinstance(create_result, tuple) and create_result:
+            thread = create_result[0]
+            if len(create_result) > 1:
+                starter_message = create_result[1]
+        if thread is None:
+            thread = create_result
+        return thread, starter_message
+
     def _build_session_launcher_view(self) -> object:
         from teleclaude.adapters.discord.session_launcher import SessionLauncherView
 
@@ -471,41 +492,95 @@ class DiscordAdapter(UiAdapter):
             logger.warning("Cannot post launcher for forum %s: channel not found", forum_id)
             return
 
-        setting_key = f"discord_launcher:{forum_id}"
+        if not self._is_forum_channel(forum_channel):
+            logger.warning("Cannot post launcher for forum %s: channel is not a forum", forum_id)
+            return
+
+        setting_prefix = f"discord_launcher:{forum_id}"
+        legacy_message_key = setting_prefix
+        thread_key = f"{setting_prefix}:thread_id"
+        message_key = f"{setting_prefix}:message_id"
+        launcher_title = "Start a session"
         launcher_text = "Start a session"
-        existing_message_id = await db.get_system_setting(setting_key)
-        if existing_message_id and existing_message_id.isdigit():
-            fetch_fn = getattr(forum_channel, "fetch_message", None)
-            if callable(fetch_fn):
+        existing_thread_id = await db.get_system_setting(thread_key)
+        existing_message_id = await db.get_system_setting(message_key)
+        if existing_message_id is None:
+            existing_message_id = await db.get_system_setting(legacy_message_key)
+
+        if (
+            existing_thread_id
+            and existing_thread_id.isdigit()
+            and existing_message_id
+            and existing_message_id.isdigit()
+        ):
+            launcher_thread = await self._get_channel(int(existing_thread_id))
+            if launcher_thread is not None and self._resolve_parent_forum_id(launcher_thread) == forum_id:
                 try:
-                    message = await self._require_async_callable(fetch_fn, label="Discord forum fetch_message")(
-                        int(existing_message_id)
+                    fetch_fn = self._require_async_callable(
+                        getattr(launcher_thread, "fetch_message", None),
+                        label="Discord thread fetch_message",
                     )
+                    message = await fetch_fn(int(existing_message_id))
                     edit_fn = self._require_async_callable(getattr(message, "edit", None), label="Discord message edit")
                     await edit_fn(content=launcher_text, view=self._build_session_launcher_view())
                     await self._pin_launcher_message(message, forum_id=forum_id)
                     return
                 except Exception as exc:
                     logger.warning(
-                        "Failed to update Discord launcher message %s in forum %s: %s",
+                        "Failed to update Discord launcher message %s in forum %s (thread %s): %s",
                         existing_message_id,
                         forum_id,
+                        existing_thread_id,
                         exc,
                     )
 
-        send_fn = getattr(forum_channel, "send", None)
-        if not callable(send_fn):
-            logger.warning("Forum channel %s does not support send(); launcher not posted", forum_id)
+        create_thread_fn = getattr(forum_channel, "create_thread", None)
+        if not callable(create_thread_fn):
+            logger.warning("Forum channel %s does not support create_thread(); launcher not posted", forum_id)
             return
 
-        sent = await self._require_async_callable(send_fn, label="Discord forum send")(
-            launcher_text,
+        created = await self._require_async_callable(create_thread_fn, label="Discord forum create_thread")(
+            name=launcher_title,
+            content=launcher_text,
             view=self._build_session_launcher_view(),
         )
-        await self._pin_launcher_message(sent, forum_id=forum_id)
-        launcher_message_id = getattr(sent, "id", None)
-        if launcher_message_id is not None:
-            await db.set_system_setting(setting_key, str(launcher_message_id))
+        launcher_thread, launcher_message = self._extract_forum_thread_result(created)
+        launcher_thread_id = self._parse_optional_int(getattr(launcher_thread, "id", None))
+        if launcher_thread_id is None:
+            logger.warning("Discord launcher create_thread returned invalid thread id for forum %s", forum_id)
+            return
+
+        launcher_message_id_raw = getattr(launcher_message, "id", None)
+        launcher_message_id = self._parse_optional_int(launcher_message_id_raw)
+        if launcher_message is not None:
+            await self._pin_launcher_message(launcher_message, forum_id=forum_id)
+        if launcher_message_id is None:
+            launcher_message_id = launcher_thread_id
+
+        await db.set_system_setting(thread_key, str(launcher_thread_id))
+        await db.set_system_setting(message_key, str(launcher_message_id))
+        await db.set_system_setting(legacy_message_key, str(launcher_message_id))
+
+    async def _resolve_interaction_forum_id(self, interaction: object) -> int | None:
+        channel = getattr(interaction, "channel", None)
+        parent_forum_id = self._resolve_parent_forum_id(channel)
+        if parent_forum_id is not None:
+            return parent_forum_id
+
+        interaction_channel_id = self._parse_optional_int(getattr(interaction, "channel_id", None))
+        if interaction_channel_id is None:
+            return None
+
+        if channel is not None and self._is_forum_channel(channel):
+            return interaction_channel_id
+
+        resolved_channel = await self._get_channel(interaction_channel_id)
+        resolved_parent_forum_id = self._resolve_parent_forum_id(resolved_channel)
+        if resolved_parent_forum_id is not None:
+            return resolved_parent_forum_id
+        if resolved_channel is not None and self._is_forum_channel(resolved_channel):
+            return interaction_channel_id
+        return interaction_channel_id
 
     async def _pin_launcher_message(self, message: object, *, forum_id: int) -> None:
         message_id = getattr(message, "id", None)
@@ -1828,7 +1903,7 @@ class DiscordAdapter(UiAdapter):
                 ephemeral=True
             )
 
-        forum_id = self._parse_optional_int(getattr(interaction, "channel_id", None))
+        forum_id = await self._resolve_interaction_forum_id(interaction)
         project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
         if project_path is None:
             followup = getattr(interaction, "followup", None)
@@ -2048,14 +2123,7 @@ class DiscordAdapter(UiAdapter):
         if len(title) > 100:
             title = title[:97] + "..."
         result = await create_thread_fn(name=title, content=self._fit_message_text(content, context="thread_starter"))
-        thread = getattr(result, "thread", None)
-        starter_message = getattr(result, "message", None)
-        if thread is None and isinstance(result, tuple) and result:
-            thread = result[0]
-            if len(result) > 1:
-                starter_message = result[1]
-        if thread is None:
-            thread = result
+        thread, starter_message = self._extract_forum_thread_result(result)
 
         thread_id = self._parse_optional_int(getattr(thread, "id", None))
         if thread_id is None:

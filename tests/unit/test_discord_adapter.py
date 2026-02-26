@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -143,6 +143,34 @@ class FakeDiscordModule:
         return SimpleNamespace(id=id)
 
 
+class FakeForumPostThread:
+    """Forum post thread mock."""
+
+    def __init__(self, thread_id: int, parent_id: int) -> None:
+        self.id = thread_id
+        self.parent = SimpleNamespace(id=parent_id)
+        self.parent_id = parent_id
+        self.messages: dict[int, object] = {}
+
+    def add_message(self, message_id: int, *, content: str, view: object | None) -> object:
+        message = SimpleNamespace(id=message_id, content=content, view=view)
+
+        async def _edit(*, content: str, view: object | None = None) -> None:
+            message.content = content
+            message.view = view
+
+        message.edit = AsyncMock(side_effect=_edit)
+        message.pin = AsyncMock(return_value=None)
+        self.messages[message_id] = message
+        return message
+
+    async def fetch_message(self, message_id: int) -> object:
+        message = self.messages.get(message_id)
+        if message is None:
+            raise RuntimeError("message not found")
+        return message
+
+
 class FakeForumChannel:
     """Forum-like channel mock."""
 
@@ -151,13 +179,14 @@ class FakeForumChannel:
         self._thread_id = thread_id
         self._starter_message_id = starter_message_id if starter_message_id is not None else thread_id
         self.created_names: list[str] = []
+        self.created_threads: list[FakeForumPostThread] = []
         self.sent_messages: dict[int, object] = {}
 
-    async def create_thread(self, *, name: str, content: str) -> object:
+    async def create_thread(self, *, name: str, content: str, view: object | None = None) -> object:
         self.created_names.append(name)
-        thread = SimpleNamespace(id=self._thread_id)
-        message = SimpleNamespace(id=self._starter_message_id)
-        _ = content
+        thread = FakeForumPostThread(thread_id=self._thread_id, parent_id=self.id)
+        message = thread.add_message(self._starter_message_id, content=content, view=view)
+        self.created_threads.append(thread)
         return SimpleNamespace(thread=thread, message=message)
 
     async def send(self, text: str, *, view: object | None = None) -> object:
@@ -860,10 +889,17 @@ async def test_post_or_update_launcher_pins_new_message() -> None:
     with patch("teleclaude.adapters.discord_adapter.db", fake_db):
         await adapter._post_or_update_launcher(600)
 
-    assert len(forum.sent_messages) == 1
-    sent = next(iter(forum.sent_messages.values()))
-    sent.pin.assert_awaited_once()
-    fake_db.set_system_setting.assert_awaited_once_with("discord_launcher:600", str(sent.id))
+    assert forum.created_names == ["Start a session"]
+    assert len(forum.created_threads) == 1
+    starter = await forum.created_threads[0].fetch_message(700)
+    starter.pin.assert_awaited_once()
+    fake_db.set_system_setting.assert_has_awaits(
+        [
+            call("discord_launcher:600:thread_id", "700"),
+            call("discord_launcher:600:message_id", "700"),
+            call("discord_launcher:600", "700"),
+        ]
+    )
 
 
 @pytest.mark.asyncio
@@ -873,12 +909,13 @@ async def test_post_or_update_launcher_pins_existing_message() -> None:
     adapter._get_enabled_agents = MagicMock(return_value=["claude", "gemini"])  # type: ignore[method-assign]
 
     forum = FakeForumChannel(channel_id=600, thread_id=700)
-    existing = SimpleNamespace(id=12345, edit=AsyncMock(return_value=None), pin=AsyncMock(return_value=None))
-    forum.sent_messages[12345] = existing
+    existing_thread = FakeForumPostThread(thread_id=700, parent_id=600)
+    existing = existing_thread.add_message(12345, content="Start a session", view=None)
     adapter._client.channels[600] = forum
+    adapter._client.channels[700] = existing_thread
 
     fake_db = MagicMock()
-    fake_db.get_system_setting = AsyncMock(return_value="12345")
+    fake_db.get_system_setting = AsyncMock(side_effect=["700", "12345"])
     fake_db.set_system_setting = AsyncMock()
 
     with patch("teleclaude.adapters.discord_adapter.db", fake_db):
@@ -886,6 +923,7 @@ async def test_post_or_update_launcher_pins_existing_message() -> None:
 
     existing.edit.assert_awaited_once()
     existing.pin.assert_awaited_once()
+    assert forum.created_threads == []
     fake_db.set_system_setting.assert_not_awaited()
 
 
@@ -1467,6 +1505,30 @@ async def test_create_session_for_message_uses_forum_derived_project() -> None:
     assert create_cmd.project_path == "/home/user/proj-a"
     assert create_cmd.auto_command == "agent codex"
     assert "human_role" not in create_cmd.channel_metadata
+
+
+@pytest.mark.asyncio
+async def test_handle_launcher_click_uses_parent_forum_project_mapping() -> None:
+    adapter = _make_adapter()
+    adapter._forum_project_map = {600: "/home/user/proj-a"}
+
+    fake_command_service = MagicMock()
+    fake_command_service.create_session = AsyncMock(return_value={"session_id": "sess-1"})
+    interaction = SimpleNamespace(
+        channel=FakeForumPostThread(thread_id=700, parent_id=600),
+        channel_id=700,
+        response=SimpleNamespace(defer=AsyncMock()),
+        followup=SimpleNamespace(send=AsyncMock()),
+    )
+
+    with patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service):
+        await adapter._handle_launcher_click(interaction, "codex")
+
+    interaction.response.defer.assert_awaited_once_with(ephemeral=True)
+    create_cmd = fake_command_service.create_session.await_args.args[0]
+    assert create_cmd.project_path == "/home/user/proj-a"
+    assert create_cmd.auto_command == "agent codex"
+    interaction.followup.send.assert_awaited_once_with("Starting codex...", ephemeral=True)
 
 
 @pytest.mark.asyncio
