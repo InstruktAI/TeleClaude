@@ -817,6 +817,125 @@ async def test_next_work_finalize_blocks_when_main_ahead():
 
 
 @pytest.mark.asyncio
+async def test_next_work_finalize_blocks_on_unknown_canonical_git_state():
+    """Finalize dispatch should fail when canonical git state cannot be inspected."""
+    db = MagicMock(spec=Db)
+    slug = "final-item-git-unknown"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Requirements\n")
+        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "approved"}')
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
+            patch("teleclaude.core.next_machine.core.acquire_finalize_lock", return_value=None),
+            patch("teleclaude.core.next_machine.core.release_finalize_lock") as release_lock,
+            patch("teleclaude.core.next_machine.core.get_finalize_canonical_dirty_paths", return_value=None),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
+            ),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir, caller_session_id="orchestrator-session")
+
+    assert "ERROR: FINALIZE_PRECONDITION_GIT_STATE_UNKNOWN" in result
+    release_lock.assert_called_once_with(tmpdir, "orchestrator-session")
+
+
+@pytest.mark.asyncio
+async def test_next_work_finalize_blocks_on_unknown_main_ahead_state():
+    """Finalize dispatch should fail when main-ahead state cannot be determined."""
+    db = MagicMock(spec=Db)
+    slug = "final-item-main-ahead-unknown"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Requirements\n")
+        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "approved"}')
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
+            patch("teleclaude.core.next_machine.core.acquire_finalize_lock", return_value=None),
+            patch("teleclaude.core.next_machine.core.release_finalize_lock") as release_lock,
+            patch("teleclaude.core.next_machine.core.get_finalize_canonical_dirty_paths", return_value=[]),
+            patch("teleclaude.core.next_machine.core.is_main_ahead", return_value=None),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
+            ),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir, caller_session_id="orchestrator-session")
+
+    assert "ERROR: FINALIZE_PRECONDITION_GIT_STATE_UNKNOWN" in result
+    release_lock.assert_called_once_with(tmpdir, "orchestrator-session")
+
+
+@pytest.mark.asyncio
+async def test_next_work_finalize_returns_locked_before_preconditions():
+    """Finalize lock contention should short-circuit canonical precondition checks."""
+    db = MagicMock(spec=Db)
+    slug = "final-item-locked"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Requirements\n")
+        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "approved"}')
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
+            patch(
+                "teleclaude.core.next_machine.core.acquire_finalize_lock",
+                return_value="FINALIZE_LOCKED\nAnother finalize is in progress.",
+            ),
+            patch(
+                "teleclaude.core.next_machine.core.check_finalize_preconditions",
+                side_effect=AssertionError("preconditions must not run when finalize lock is already held"),
+            ),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
+            ),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir, caller_session_id="orchestrator-session")
+
+    assert "FINALIZE_LOCKED" in result
+
+
+@pytest.mark.asyncio
 async def test_next_work_finalize_requires_caller_session_id():
     """Finalize dispatch must require caller session identity for lock ownership."""
     db = MagicMock(spec=Db)
