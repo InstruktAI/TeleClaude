@@ -28,9 +28,6 @@
   - deployment-channels
   description: 'Phase 4: Remove deploy_service, MCP tool (if still present), update
     docs, write pipeline doc'
-- slug: discord-slash-commands-like-telegram
-  description: Add Discord Application Commands (slash commands) mirroring Telegram
-    command set
 - slug: integration-events-model
   group: integration-orchestrator-rollout
   after:

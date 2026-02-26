@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: discord-slash-commands-like-telegram
+  date: '2026-02-26'
+  title: Add Discord Application Commands (slash commands) mirroring Telegram command
+    set
+  commit: 4319caeedeea9ea6a053278e49feb73a90339286
+  description: Add Discord Application Commands (slash commands) mirroring Telegram
+    command set
 - slug: deployment-versioning
   date: '2026-02-26'
   title: 'Phase 1: Runtime __version__, telec version command, pyproject.toml 1.0.0'
