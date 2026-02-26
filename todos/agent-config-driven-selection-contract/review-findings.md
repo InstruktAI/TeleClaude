@@ -3,15 +3,16 @@
 ## Manual Verification Evidence
 
 - Targeted contract tests executed:
-  `uv run pytest -q tests/unit/test_agent_config_loading.py tests/unit/test_agents.py tests/unit/test_command_mapper.py tests/unit/test_api_server.py tests/unit/test_command_handlers.py tests/unit/test_tui_modal.py tests/unit/test_next_machine_demo.py tests/unit/test_agent_guidance.py`
-  Result: `212 passed, 1 skipped`.
+  `uv run pytest -q tests/unit/test_agent_config_loading.py tests/unit/test_agents.py tests/unit/test_command_mapper.py tests/unit/test_api_server.py tests/unit/test_command_handlers.py tests/unit/test_tui_modal.py tests/unit/test_next_machine_demo.py tests/unit/test_agent_guidance.py tests/unit/cli/test_tool_commands.py`
+  Result: `214 passed, 1 skipped`.
 - Lint/type checks executed:
   `make lint`
   Result: `ruff check` and `pyright` passed.
-- Concrete value trace for fallback path:
-  - `handle_sessions_run(['--command','/next-build','--project','/tmp/project'])` builds request body with `"agent": "claude"` ([teleclaude/cli/tool_commands.py:304](teleclaude/cli/tool_commands.py:304)).
-  - `RunSessionRequest(..., agent='claude')` includes `"agent"` in `model_fields_set`, so API fallback logic is skipped ([teleclaude/api_server.py:1014](teleclaude/api_server.py:1014)).
-  - If `claude` is disabled and `gemini` is enabled, the request is rejected at `assert_agent_enabled("claude")` instead of selecting enabled fallback ([teleclaude/api_server.py:1016](teleclaude/api_server.py:1016)).
+- Manual CLI verification executed:
+  `TELECLAUDE_CONFIG_PATH=<invalid-config> uv run python -m teleclaude.cli.telec todo demo validate test-slug --project-root <tmp>`
+  Result: exits 0 with `Validation passed`.
+- Concrete disabled-agent bypass trace (API):
+  With `TELECLAUDE_CONFIG_PATH=tests/integration/config.yml` (`codex.enabled=false`), a `POST /sessions` with `{"auto_command":"codex_resume abc123"}` returns `200` and calls `create_session` instead of returning `400`.
 
 ## Critical
 
@@ -19,36 +20,32 @@
 
 ## Important
 
-1. `telec sessions run` default request still hardcodes `claude`, defeating enabled-agent fallback policy.
+1. API `create_session` auto-command validation misses `*_resume` aliases, allowing disabled-agent bypass of pre-dispatch rejection.
    - Severity: Important
    - Confidence: 98
    - Files:
-     - `teleclaude/cli/tool_commands.py:304`
-     - `teleclaude/api_server.py:1014`
+     - `teleclaude/api_server.py:563`
+     - `teleclaude/api_server.py:570`
+     - `teleclaude/core/command_mapper.py:239`
+     - `tests/unit/test_api_server.py:405`
    - Why this matters:
-     API-side fallback (`first enabled agent`) only activates when the `agent` field is omitted. The CLI currently always sends `agent=claude`, so with `claude` disabled and another agent enabled, dispatch is rejected instead of selecting an enabled default. This violates the requirement that fallback pickers be config-driven and consistent.
+     The route validates `agent`, direct agent commands, and `agent*` forms, but not `claude_resume|gemini_resume|codex_resume`. Those aliases are accepted and mapped later, so a disabled agent can pass create-time checks and still produce a successful session creation response.
    - Requirement impact:
-     - Violates R3 fallback-picker implication.
-     - Undermines acceptance criterion 3 for default dispatch surfaces.
+     - Violates R3 (reject disabled agent selection before dispatch in session-creation entrypoints).
+     - Fails acceptance criterion 4 for deterministic disabled-agent rejection on API surface.
    - Fix direction:
-     In `handle_sessions_run`, omit `"agent"` from the request body unless `--agent` was explicitly provided.
+     Extend `request.auto_command` validation in `create_session` to include `*_resume` aliases (or centralize command-to-agent extraction in one helper shared with `CommandMapper`), and add a regression test asserting `codex_resume` returns `400` when `codex` is disabled.
 
 ## Suggestions
 
-1. Add a unit test for `handle_sessions_run` that asserts `agent` is absent from request JSON when `--agent` is not provided.
-2. Add an API integration test proving `/sessions/run` picks first enabled agent when client omits `agent`.
+1. Add explicit API tests for `auto_command` aliases: `claude_resume`, `gemini_resume`, `codex_resume`.
+2. Replace ad-hoc command-name branching in `create_session` with a single parser/helper that extracts target agent for all command syntaxes.
 
 ## Paradigm-Fit Assessment
 
-- Data flow: Mostly aligned, but CLI boundary still injects adapter-specific default (`claude`) instead of using centralized policy-driven fallback.
-- Component reuse: Good reuse of `assert_agent_enabled` and `get_enabled_agents` in core/API.
-- Pattern consistency: Fail-closed behavior is consistent in most paths; this CLI caller remains an outlier.
-
-## Fixes Applied
-
-- `Important-1`: Removed hardcoded `"agent": "claude"` default from `handle_sessions_run`, so CLI omits `agent` unless `--agent` is explicitly provided and API fallback can select the first enabled agent.
-  Added `tests/unit/cli/test_tool_commands.py` coverage for both default-omission and explicit-agent pass-through behavior.
-  Commit: `6772351f`.
+- Data flow: Mostly aligned with centralized helpers (`assert_agent_enabled`, `get_enabled_agents`), but auto-command alias parsing in API duplicates command-shape knowledge and diverges from mapper behavior.
+- Component reuse: Good reuse across API/core/TUI paths; this alias branch is the remaining non-reused seam.
+- Pattern consistency: Fail-closed behavior is consistent for direct `agent` paths; inconsistent for `*_resume` aliases.
 
 ## Verdict
 
