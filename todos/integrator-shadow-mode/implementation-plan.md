@@ -10,15 +10,15 @@ Stand up a production-like integrator runtime in non-destructive shadow mode.
 
 **File(s):** `teleclaude/core/integration/lease.py`
 
-- [x] Implement atomic acquire/renew/release for `integration/main`.
-- [x] Implement stale-lease break behavior when TTL expires.
+- [ ] Implement atomic acquire/renew/release for `integration/main`.
+- [ ] Implement stale-lease break behavior when TTL expires.
 
 ### Task 1.2: Implement durable queue processing
 
 **File(s):** `teleclaude/core/integration/queue.py`, `teleclaude/core/integration/runtime.py`
 
-- [x] Process candidates FIFO by `ready_at`.
-- [x] Record auditable status transitions.
+- [ ] Process candidates FIFO by `ready_at`.
+- [ ] Record auditable status transitions.
 
 ## Phase 2: Shadow Runtime Behavior
 
@@ -26,18 +26,18 @@ Stand up a production-like integrator runtime in non-destructive shadow mode.
 
 **File(s):** `teleclaude/core/integration/runtime.py`
 
-- [x] Re-check readiness before each candidate apply.
-- [x] Emit `would_integrate` or `would_block` without pushing canonical `main`.
+- [ ] Re-check readiness before each candidate apply.
+- [ ] Emit `would_integrate` or `would_block` without pushing canonical `main`.
 
 ### Task 2.2: Tests and quality checks
 
 **File(s):** `tests/unit/test_integrator_shadow_mode.py`, `tests/integration/test_integrator_shadow_mode.py`
 
-- [x] Add concurrency, lease-expiry, FIFO, and restart coverage.
-- [x] Run `make test`.
-- [x] Run `make lint`.
+- [ ] Add concurrency, lease-expiry, FIFO, and restart coverage.
+- [ ] Run `make test`.
+- [ ] Run `make lint`.
 
 ## Phase 3: Review Readiness
 
-- [x] Confirm shadow mode cannot push canonical `main` under any path.
-- [x] Confirm runtime remains resumable after restart.
+- [ ] Confirm shadow mode cannot push canonical `main` under any path.
+- [ ] Confirm runtime remains resumable after restart.
