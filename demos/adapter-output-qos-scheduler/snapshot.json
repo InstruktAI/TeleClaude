@@ -1,0 +1,19 @@
+{
+  "slug": "adapter-output-qos-scheduler",
+  "title": "Requirements: adapter-output-qos-scheduler",
+  "version": "1.0.0",
+  "delivered_date": "2026-02-26",
+  "merge_commit": "1004161d4bec11c697a286117a8f80c3b501bc72",
+  "metrics": {
+    "implementation_plan_checkboxes_total": 40,
+    "implementation_plan_checkboxes_completed": 40,
+    "demo_validation_blocks": 3
+  },
+  "five_acts": [
+    "Act I - QoS Contract: introduced adapter-aware policy interfaces so output pacing behavior is explicit per transport.",
+    "Act II - Scheduler Core: added coalescing, fairness, and dynamic cadence control to reduce flood-control churn under concurrency.",
+    "Act III - Adapter Wiring: integrated QoS into Telegram, Discord, and WhatsApp output paths while preserving final-message correctness.",
+    "Act IV - Operational Guardrails: added PTB limiter wiring plus queue/cadence/retry observability for runtime diagnosis.",
+    "Act V - Validation Gauntlet: landed with full build/review loops, targeted regressions fixed, and demo blocks ready for post-merge execution."
+  ]
+}
