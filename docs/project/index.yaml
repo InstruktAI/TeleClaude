@@ -200,6 +200,16 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: project/design/architecture/performance-tuning
+  description: Performance tuning decisions for the daemon under sustained API load,
+    covering connection pooling, caching layers, event loop policy, and background
+    worker pressure.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/performance-tuning.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: project/design/architecture/redis-transport
   description: Redis Streams transport for cross-computer request/response and peer
     discovery.
