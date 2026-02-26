@@ -1826,12 +1826,17 @@ def has_uncommitted_changes(cwd: str, slug: str) -> bool:
         # planning state into worktrees. The slug todo subtree can also appear
         # as untracked on older worktree branches before the first commit.
         ignored = {
+            ".teleclaude",
+            ".teleclaude/",
+            _WORKTREE_PREP_STATE_REL,
             "todos/roadmap.yaml",
             f"todos/{slug}",
             f"todos/{slug}/",
         }
         for path in dirty_paths:
             normalized = path.replace("\\", "/")
+            if normalized.startswith(".teleclaude/"):
+                continue
             if normalized in ignored or normalized.startswith(f"todos/{slug}/"):
                 continue
             if normalized not in ignored:

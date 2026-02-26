@@ -275,7 +275,7 @@ def test_has_uncommitted_changes_ignores_orchestrator_control_files():
         worktree.mkdir(parents=True, exist_ok=True)
 
         repo_mock = MagicMock()
-        repo_mock.git.status.return_value = " M todos/roadmap.yaml\n"
+        repo_mock.git.status.return_value = " M todos/roadmap.yaml\n?? .teleclaude/\n"
 
         with patch("teleclaude.core.next_machine.core.Repo", return_value=repo_mock):
             assert has_uncommitted_changes(tmpdir, "test-slug") is False
