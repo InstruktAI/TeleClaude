@@ -172,9 +172,16 @@ class MLXTTSBackend:
                 file_prefix=prefix,
             )
 
-            # Pass config params as CLI flags
+            # Pass config params as CLI flags, excluding internally-controlled keys.
+            # `play` would re-add async playback (the exact bug this fix removes);
+            # `model`, `text`, `voice`, `file_prefix`, `join_audio`, `audio_format`
+            # are already set by _build_cli_command and must not be doubled.
+            _protected = frozenset(
+                {"play", "verbose", "model", "text", "voice", "file_prefix", "join_audio", "audio_format"}
+            )
             for key, val in self._params.items():
-                cmd.extend([f"--{key}", str(val)])
+                if key not in _protected:
+                    cmd.extend([f"--{key}", str(val)])
 
             result = subprocess.run(cmd, check=False, capture_output=True, text=True)
             if result.returncode != 0:
