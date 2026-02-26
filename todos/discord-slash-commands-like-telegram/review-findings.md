@@ -2,51 +2,43 @@
 
 ## Critical
 
-- `/cancel` is not thread-scoped and can interrupt a session from a non-thread forum channel.
-  - Requirement mismatch: `/cancel` must work in session threads only and return an ephemeral error outside session threads.
-  - Code path: [`teleclaude/adapters/discord_adapter.py:1847`](teleclaude/adapters/discord_adapter.py:1847) + channel-level fallback in [`teleclaude/adapters/discord_adapter.py:1783`](teleclaude/adapters/discord_adapter.py:1783).
-  - Concrete trace: with `interaction.channel.id=600` (non-thread forum channel) and `_find_session` returning a session, `_handle_cancel_slash` sends `"Sent CTRL+C"` and dispatches `KeysCommand(key="cancel")` instead of rejecting context.
-  - Risk: users can interrupt the wrong session from outside its thread.
-  - Fix: add an explicit non-thread guard in `_handle_cancel_slash` before lookup (`No active session in this thread.`), and avoid channel-level fallback for this slash path.
+- None.
 
 ## Important
 
-- Launcher lifecycle does not pin the launcher message.
-  - Requirement mismatch: success criteria requires a pinned launcher message in project forums.
-  - Code path: launcher create/update only edits/sends and stores message ID in [`teleclaude/adapters/discord_adapter.py:465`](teleclaude/adapters/discord_adapter.py:465); no `pin()` call exists in launcher flow.
-  - Risk: launcher discoverability and persistence expectations are not met.
-  - Fix: pin on create/update (with permission-safe error handling) and add a regression test.
-
-- Test coverage misses the thread-only `/cancel` contract and launcher pinning behavior.
-  - Existing tests validate only "session found/not found" outcomes without enforcing thread context: [`tests/unit/test_discord_adapter.py:1427`](tests/unit/test_discord_adapter.py:1427), [`tests/unit/test_discord_adapter.py:1443`](tests/unit/test_discord_adapter.py:1443).
-  - No launcher pin behavior assertion exists in the new launcher lifecycle tests.
-  - Risk: the two requirement regressions above can pass unit tests undetected.
-  - Fix: add tests for non-thread `/cancel` rejection and message pin/update pin behavior.
+- None.
 
 ## Suggestions
 
-- Manual verification gap: Discord UI behavior (button interactions in real forums, slash registration visibility, and persistence after daemon restart) was not validated against a live Discord guild in this review environment.
+- Manual verification gap: live Discord validation was not possible in this environment. Run a manual smoke pass in a real guild for launcher post pinning visibility, `/cancel` command discoverability, and restart persistence.
 
 ## Paradigm-Fit Assessment
 
-- Data flow: implementation mostly follows existing adapter boundaries (`CreateSessionCommand`, `KeysCommand`, command service dispatch) without bypassing core data paths.
-- Component reuse: launcher and slash flows are integrated into existing `DiscordAdapter` lifecycle patterns; no copy-paste component forks observed.
-- Pattern consistency: coding style and routing conventions are largely consistent with adjacent adapter code; findings above are behavioral contract gaps rather than architecture breaks.
+- Data flow: implementation keeps adapter concerns in `discord_adapter.py` and uses existing command boundaries (`CreateSessionCommand`, `KeysCommand`, command service dispatch) without bypassing core layers.
+- Component reuse: launcher UI is encapsulated in `teleclaude/adapters/discord/session_launcher.py` and reused by startup/post-update paths instead of duplicating button wiring.
+- Pattern consistency: new Discord behavior follows existing adapter lifecycle (`start` registration, `on_ready` sync/provision, per-message/session resolution) and existing metadata/session update patterns.
 
-## Fixes Applied
+## Why No Issues
 
-- Issue: `/cancel` is not thread-scoped and can interrupt sessions from non-thread forum channels (Critical).
-  - Fix: added explicit non-thread rejection in `_handle_cancel_slash` before any session lookup; retained thread-only success flow.
-  - Commit: `1a767f8c`
+- Pattern checks completed: verified routing/session creation flow, slash-command registration/sync flow, and forum launcher lifecycle against existing adapter patterns; no paradigm bypasses or copy-paste detours identified.
+- Requirement checks completed with evidence:
+  - Multi-agent launcher and button behavior implemented and covered by unit tests (`test_session_launcher_view_builds_buttons_for_enabled_agents`, launcher post/update tests).
+  - Forum-to-project mapping and operator session path fix implemented and covered (`test_resolve_project_from_forum_returns_matching_path`, `test_create_session_for_message_uses_forum_derived_project`).
+  - `/cancel` behavior in-thread vs non-thread and command dispatch covered (`test_handle_cancel_slash_*` tests).
+  - Startup/persistence mechanics validated via code path inspection (`_handle_on_ready`, `_post_or_update_launcher`, persisted `discord_launcher:{forum_id}:*` keys).
+- Duplication check: no copy-paste component forks detected where parameterized reuse was expected.
 
-- Issue: launcher lifecycle does not pin launcher message (Important).
-  - Fix: added `_pin_launcher_message` helper and invoked pin on both launcher update and create paths with permission-safe logging.
-  - Commit: `0d12d664`
+## Manual Verification Evidence
 
-- Issue: test coverage misses thread-only `/cancel` and launcher pinning contracts (Important).
-  - Fix: added regression tests for non-thread `/cancel` rejection, launcher pin on create/update, and updated slash tests to use thread context.
-  - Commit: `e98e088e`
+- Automated verification executed:
+  - `make lint` passed.
+  - `make test` passed (`2152 passed`, `106 skipped`).
+  - Targeted tests passed: `tests/unit/test_discord_adapter.py`, `tests/unit/test_agent_coordinator.py`.
+- Not manually verified in a live Discord guild from this environment:
+  - Visual forum behavior of pinned launcher post in Discord client UI.
+  - Slash command propagation/visibility latency in guild command UI.
+  - Post-restart persistence behavior against live Discord API state.
 
 ## Verdict
 
-REQUEST CHANGES
+APPROVE
