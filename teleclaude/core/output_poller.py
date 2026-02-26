@@ -153,15 +153,14 @@ class OutputPoller:
                         )
                     elif session.closed_at or session.lifecycle_status in _TERMINAL_SESSION_STATUSES:
                         logger.info(
-                            "Session %s disappeared during close transition "
-                            "(watchdog close race) session=%s status=%s",
+                            "Session %s disappeared during close transition (watchdog close race) session=%s status=%s",
                             tmux_session_name,
                             session_id[:8],
                             session.lifecycle_status,
                         )
                     else:
                         # Unexpected death - log as critical with diagnostics
-                        baseline = started_at if started_at is not None else time.time()
+                        baseline = started_at
                         age_seconds = time.time() - baseline
                         logger.critical(
                             "Session %s disappeared between polls (watchdog triggered) "

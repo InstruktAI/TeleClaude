@@ -287,7 +287,7 @@ def format_stash_debt(slug: str, count: int) -> str:
         f"Repository has {count} git stash {noun}. Stash workflows are forbidden for AI orchestration.",
         next_call=(
             "Clear all repository stash entries with maintainer-approved workflow, "
-            f'then call telec todo work {slug} to continue.'
+            f"then call telec todo work {slug} to continue."
         ),
     )
 
@@ -2116,7 +2116,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                         f"but DOR score is below threshold ({DOR_READY_THRESHOLD}). Complete DOR assessment, update "
                         f"todos/{resolved_slug}/dor-report.md and todos/{resolved_slug}/state.yaml.dor "
                         f"with score >= {DOR_READY_THRESHOLD}. Then run /next-prepare-gate {resolved_slug} (separate worker) "
-                        f'and call telec todo prepare {resolved_slug} again.'
+                        f"and call telec todo prepare {resolved_slug} again."
                     )
 
                 guidance = await compose_agent_guidance(db)
@@ -2155,7 +2155,9 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     """
     canonical_cwd = await asyncio.to_thread(resolve_canonical_project_root, cwd)
     if canonical_cwd != cwd:
-        logger.debug("next_work normalized cwd to canonical project root", requested_cwd=cwd, canonical_cwd=canonical_cwd)
+        logger.debug(
+            "next_work normalized cwd to canonical project root", requested_cwd=cwd, canonical_cwd=canonical_cwd
+        )
         cwd = canonical_cwd
 
     # Sweep completed group parents before resolving next slug
@@ -2196,7 +2198,11 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             )
 
         phase = await asyncio.to_thread(get_item_phase, cwd, slug)
-        if not is_bug and phase == ItemPhase.PENDING.value and not await asyncio.to_thread(is_ready_for_work, cwd, slug):
+        if (
+            not is_bug
+            and phase == ItemPhase.PENDING.value
+            and not await asyncio.to_thread(is_ready_for_work, cwd, slug)
+        ):
             return format_error(
                 "ITEM_NOT_READY",
                 f"Item '{slug}' is pending and DOR score is below threshold. Must be ready to start work.",
@@ -2258,7 +2264,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             return format_error(
                 "NOT_PREPARED",
                 f"todos/{resolved_slug} is missing requirements or implementation plan.",
-                next_call=f'Call telec todo prepare {resolved_slug} to complete preparation.',
+                next_call=f"Call telec todo prepare {resolved_slug} to complete preparation.",
             )
 
     # 4. Ensure worktree exists
@@ -2312,7 +2318,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 project=cwd,
                 guidance=guidance,
                 subfolder=f"trees/{resolved_slug}",
-                next_call=f'telec todo work {resolved_slug}',
+                next_call=f"telec todo work {resolved_slug}",
                 pre_dispatch=pre_dispatch,
             )
         else:
@@ -2322,7 +2328,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 project=cwd,
                 guidance=guidance,
                 subfolder=f"trees/{resolved_slug}",
-                next_call=f'telec todo work {resolved_slug}',
+                next_call=f"telec todo work {resolved_slug}",
                 pre_dispatch=pre_dispatch,
             )
 
@@ -2335,7 +2341,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         )
         # Sync reset state back to main
         await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
-        next_call = f'telec todo work {resolved_slug}'
+        next_call = f"telec todo work {resolved_slug}"
         return format_build_gate_failure(resolved_slug, gate_output, next_call)
 
     # 8. Check review status
@@ -2352,7 +2358,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 project=cwd,
                 guidance=guidance,
                 subfolder=f"trees/{resolved_slug}",
-                next_call=f'telec todo work {resolved_slug}',
+                next_call=f"telec todo work {resolved_slug}",
             )
         # Review not started or still pending
         limit_reached, current_round, max_rounds = _is_review_round_limit_reached(worktree_cwd, resolved_slug)
@@ -2365,7 +2371,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 ),
                 next_call=(
                     f"Apply orchestrator review-round-limit closure for {resolved_slug}, "
-                    f'then call telec todo work {resolved_slug}'
+                    f"then call telec todo work {resolved_slug}"
                 ),
             )
         try:
@@ -2378,7 +2384,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             project=cwd,
             guidance=guidance,
             subfolder=f"trees/{resolved_slug}",
-            next_call=f'telec todo work {resolved_slug}',
+            next_call=f"telec todo work {resolved_slug}",
             note=f"{REVIEW_DIFF_NOTE}\n\n{_review_scope_note(worktree_cwd, resolved_slug)}",
         )
 
@@ -2394,7 +2400,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             project=cwd,
             guidance=guidance,
             subfolder=f"trees/{resolved_slug}",
-            next_call=f'telec todo work {resolved_slug}',
+            next_call=f"telec todo work {resolved_slug}",
         )
 
     # 9. Review approved - dispatch finalize prepare (serialized via finalize lock)
@@ -2408,8 +2414,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 "bound to the orchestrator lock owner."
             ),
             next_call=(
-                "Call telec todo work from a wrapper-injected orchestrator session so "
-                "caller_session_id is present."
+                "Call telec todo work from a wrapper-injected orchestrator session so caller_session_id is present."
             ),
         )
     session_id = caller_session_id

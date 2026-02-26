@@ -13,6 +13,7 @@ _BOOT = _t.monotonic()
 
 from instrukt_ai_logging import get_logger  # noqa: E402
 
+from teleclaude import __version__  # noqa: E402
 from teleclaude.cli.api_client import APIError, TelecAPIClient  # noqa: E402
 from teleclaude.cli.models import CreateSessionResult  # noqa: E402
 from teleclaude.cli.session_auth import (  # noqa: E402
@@ -56,6 +57,7 @@ class TelecCommand(str, Enum):
     AGENTS = "agents"
     CHANNELS = "channels"
     INIT = "init"
+    VERSION = "version"
     SYNC = "sync"
     WATCH = "watch"
     DOCS = "docs"
@@ -274,6 +276,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         },
     ),
     "init": CommandDef(desc="Initialize docs sync and auto-rebuild watcher"),
+    "version": CommandDef(desc="Print version, channel, and commit"),
     "sync": CommandDef(
         desc="Validate, build indexes, and deploy artifacts",
         flags=[
@@ -886,7 +889,19 @@ def _handle_completion() -> None:
     if cmd in ("sync", "watch", "deploy"):
         if cmd in CLI_SURFACE:
             _complete_flags(CLI_SURFACE[cmd].flag_tuples, rest, current, is_partial)
-    elif cmd in ("todo", "roadmap", "config", "sessions", "agents", "channels", "docs", "computers", "projects", "bugs", "auth"):
+    elif cmd in (
+        "todo",
+        "roadmap",
+        "config",
+        "sessions",
+        "agents",
+        "channels",
+        "docs",
+        "computers",
+        "projects",
+        "bugs",
+        "auth",
+    ):
         _complete_subcmd(cmd, rest, current, is_partial)
 
 
@@ -1117,6 +1132,8 @@ def _handle_cli_command(argv: list[str]) -> None:
         handle_channels(args)
     elif cmd_enum is TelecCommand.INIT:
         init_project(Path.cwd())
+    elif cmd_enum is TelecCommand.VERSION:
+        _handle_version()
     elif cmd_enum is TelecCommand.SYNC:
         _handle_sync(args)
     elif cmd_enum is TelecCommand.WATCH:
@@ -1136,6 +1153,31 @@ def _handle_cli_command(argv: list[str]) -> None:
     else:
         print(f"Unknown command: /{cmd}")
         print(_usage())
+
+
+def _git_short_commit_hash() -> str:
+    """Return HEAD short hash, or 'unknown' when unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return "unknown"
+
+    if result.returncode != 0:
+        return "unknown"
+
+    commit_hash = result.stdout.strip()
+    return commit_hash if commit_hash else "unknown"
+
+
+def _handle_version() -> None:
+    """Print runtime version metadata."""
+    commit_hash = _git_short_commit_hash()
+    print(f"TeleClaude v{__version__} (channel: alpha, commit: {commit_hash})")
 
 
 def _maybe_kill_tui_session() -> None:
@@ -2614,7 +2656,7 @@ def _handle_bugs_report(args: list[str]) -> None:
                 agent="claude",
                 thinking_mode="slow",
                 title=f"Bug fix: {slug}",
-                message=f'Run telec todo work {slug} --cwd . and follow output verbatim until done.',
+                message=f"Run telec todo work {slug} --cwd . and follow output verbatim until done.",
             )
         finally:
             await api.close()

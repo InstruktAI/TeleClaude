@@ -386,7 +386,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         self.monitoring_service = MonitoringService(
             lifecycle=self.lifecycle,
-            mcp_server=self.mcp_server,
             task_registry=self.task_registry,
             shutdown_event=self.shutdown_event,
             start_time=self._start_time,

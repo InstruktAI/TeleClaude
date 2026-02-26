@@ -6,18 +6,18 @@ business:
 
 jobs:
   help_desk_intelligence:
-    
     description: Agentic job to monitor support channels, summarize issues, and suggest fixes.
-    when:
-      at: '06:00'
-
+    schedule: daily
+    preferred_hour: 6
+    script: jobs/help_desk_intelligence.py
     agent: claude
     thinking_mode: fast
 
   youtube_scraper:
     description: Daily sync of YouTube subscriptions for content discovery and recommendation.
-    when:
-      at: '06:00'
+    schedule: daily
+    preferred_hour: 6
+    script: jobs/youtube_sync_subscriptions.py
 
   memory_review:
     schedule: weekly

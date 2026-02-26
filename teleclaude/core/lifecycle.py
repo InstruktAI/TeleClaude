@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import time
+from contextlib import suppress
 from typing import TYPE_CHECKING, Callable
 
 from instrukt_ai_logging import get_logger
@@ -21,6 +22,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.task_registry import TaskRegistry
+    from teleclaude.mcp_server import TeleClaudeMCPServer
 
 logger = get_logger(__name__)
 
@@ -33,10 +35,14 @@ class DaemonLifecycle:
         *,
         client: "AdapterClient",
         cache: "DaemonCache",
+        mcp_server: "TeleClaudeMCPServer | None" = None,
         shutdown_event: asyncio.Event,
         task_registry: "TaskRegistry",
         runtime_settings: "RuntimeSettings | None" = None,
         log_background_task_exception: Callable[[str], Callable[[asyncio.Task[object]], None]],
+        handle_mcp_task_done: Callable[[asyncio.Task[object]], None] | None = None,
+        mcp_watch_factory: Callable[[], asyncio.Task[object]] | None = None,
+        set_last_mcp_restart_at: Callable[[float], None] | None = None,
         init_voice_handler: Callable[[], None],
         api_restart_max: int,
         api_restart_window_s: float,
@@ -44,11 +50,17 @@ class DaemonLifecycle:
     ) -> None:
         self.client = client
         self.cache = cache
+        self.mcp_server = mcp_server
         self.runtime_settings = runtime_settings
         self.shutdown_event = shutdown_event
         self.task_registry = task_registry
         self._log_background_task_exception = log_background_task_exception
+        self._handle_mcp_task_done = handle_mcp_task_done
+        self._mcp_watch_factory = mcp_watch_factory
+        self._set_last_mcp_restart_at = set_last_mcp_restart_at
         self._init_voice_handler = init_voice_handler
+        self.mcp_task: asyncio.Task[object] | None = None
+        self.mcp_watch_task: asyncio.Task[object] | None = None
 
         self._api_restart_lock = asyncio.Lock()
         self._api_restart_attempts = 0
@@ -72,6 +84,17 @@ class DaemonLifecycle:
         await self._warm_local_projects_cache()
 
         await self.client.start()
+
+        if self.mcp_server is not None:
+            self.mcp_task = asyncio.create_task(self.mcp_server.start())
+            self.mcp_task.add_done_callback(self._log_background_task_exception("mcp_server"))
+            if self._handle_mcp_task_done is not None:
+                self.mcp_task.add_done_callback(self._handle_mcp_task_done)
+            if self._set_last_mcp_restart_at is not None:
+                self._set_last_mcp_restart_at(asyncio.get_running_loop().time())
+            if self._mcp_watch_factory is not None:
+                self.mcp_watch_task = self._mcp_watch_factory()
+                self.mcp_watch_task.add_done_callback(self._log_background_task_exception("mcp_watch"))
 
         self.api_server = APIServer(
             self.client,
@@ -169,6 +192,22 @@ class DaemonLifecycle:
 
     async def shutdown(self) -> None:
         """Stop core components in a defined order."""
+        if self.mcp_watch_task is not None:
+            self.mcp_watch_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self.mcp_watch_task
+            self.mcp_watch_task = None
+
+        if self.mcp_task is not None:
+            self.mcp_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self.mcp_task
+            self.mcp_task = None
+
+        if self.mcp_server is not None:
+            with suppress(Exception):
+                await self.mcp_server.stop()
+
         if self.api_server:
             await self.api_server.stop()
         for adapter_name, adapter in self.client.adapters.items():

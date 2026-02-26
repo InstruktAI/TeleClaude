@@ -9,13 +9,13 @@ import pytest
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
+from teleclaude.core.models import Session
 from teleclaude.core.output_poller import (
     DirectoryChanged,
     OutputChanged,
     OutputPoller,
     ProcessExited,
 )
-from teleclaude.core.models import Session
 
 
 def make_advancing_time_mock(start_time=1000.0, increment=1.0):

@@ -1,10 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: rolling-session-titles
-  description: Re-summarize session titles based on the last 3 user inputs instead
-    of only the first. Use a dedicated rolling prompt that captures session direction.
-    Reset the output message on any title change so the telegram title feedback floats
-    to the top in Telegram.
 - slug: help-desk-whatsapp
   description: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
 - slug: deployment-versioning

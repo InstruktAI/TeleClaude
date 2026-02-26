@@ -150,6 +150,7 @@ class DiscordAdapterMetadata:
     thread_id: Optional[int] = None
     all_sessions_thread_id: Optional[int] = None
     output_message_id: Optional[str] = None
+    thread_topper_message_id: Optional[str] = None
     status_message_id: Optional[str] = None  # Editable status message per thread (R3)
     badge_sent: bool = False
     char_offset: int = 0
