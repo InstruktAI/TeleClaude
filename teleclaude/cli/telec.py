@@ -2523,15 +2523,17 @@ def _handle_bugs_list(args: list[str]) -> None:
 
         bug_md = todo_dir / "bug.md"
         state_yaml = todo_dir / "state.yaml"
+        worktree_state = project_root / "trees" / todo_dir.name / "todos" / todo_dir.name / "state.yaml"
+        state_path = worktree_state if worktree_state.exists() else state_yaml
 
         if not bug_md.exists():
             continue
 
         # Read state to determine status
         status = "unknown"
-        if state_yaml.exists():
+        if state_path.exists():
             try:
-                state = yaml.safe_load(state_yaml.read_text())
+                state = yaml.safe_load(state_path.read_text())
                 build = state.get("build", "pending")
                 review = state.get("review", "pending")
 
