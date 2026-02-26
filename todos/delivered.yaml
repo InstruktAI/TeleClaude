@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: help-desk-startup-command-ordering
+  date: '2026-02-26'
+  title: Deterministic startup ordering between help-desk bootstrap and first customer
+    message
+  commit: 78dedfa9
+  description: Gate process_message on session lifecycle, ensuring auto-command dispatch
+    completes before customer input injection into tmux
 - slug: api-todos-work-stability-hardening
   date: '2026-02-26'
   title: Stabilize `/todos/work` latency by removing redundant worktree prep/sync
