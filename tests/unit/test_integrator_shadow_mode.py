@@ -418,6 +418,77 @@ def test_shadow_runtime_calls_canonical_main_pusher_when_shadow_mode_disabled(tm
     assert integrated.status == "integrated"
 
 
+def test_shadow_runtime_marks_candidate_blocked_when_readiness_missing(tmp_path: Path) -> None:
+    lease_store = IntegrationLeaseStore(state_path=tmp_path / "integration-lease.json")
+    queue = IntegrationQueue(state_path=tmp_path / "integration-queue.json")
+    key = CandidateKey(slug="missing", branch="worktree/missing", sha="fff666")
+    queue.enqueue(key=key, ready_at="2026-02-26T12:01:00+00:00")
+
+    outcomes = []
+    runtime = IntegratorShadowRuntime(
+        lease_store=lease_store,
+        queue=queue,
+        readiness_lookup=lambda _candidate_key: None,
+        clearance_probe=MainBranchClearanceProbe(
+            sessions_provider=lambda: (),
+            session_tail_provider=lambda _session_id: "",
+            dirty_tracked_paths_provider=lambda: (),
+        ),
+        outcome_sink=outcomes.append,
+        checkpoint_path=tmp_path / "integration-checkpoint.json",
+        clearance_retry_seconds=0.001,
+    )
+
+    result = runtime.drain_ready_candidates(owner_session_id="integrator-1")
+    assert result.lease_acquired is True
+    assert [outcome.outcome for outcome in result.outcomes] == ["would_block"]
+    assert result.outcomes[0].reasons == ("candidate no longer exists in readiness projection",)
+    blocked = queue.get(key=key)
+    assert blocked is not None
+    assert blocked.status == "blocked"
+    assert blocked.status_reason == "candidate no longer exists in readiness projection"
+
+
+def test_shadow_runtime_marks_candidate_superseded_when_readiness_superseded(tmp_path: Path) -> None:
+    lease_store = IntegrationLeaseStore(state_path=tmp_path / "integration-lease.json")
+    queue = IntegrationQueue(state_path=tmp_path / "integration-queue.json")
+    key = CandidateKey(slug="superseded", branch="worktree/superseded", sha="ggg777")
+    winner = CandidateKey(slug="superseded", branch="worktree/newer", sha="hhh888")
+    queue.enqueue(key=key, ready_at="2026-02-26T12:01:00+00:00")
+
+    readiness = CandidateReadiness(
+        key=key,
+        ready_at="2026-02-26T12:01:00+00:00",
+        status="SUPERSEDED",
+        reasons=("newer finalize_ready exists for slug",),
+        superseded_by=winner,
+    )
+
+    outcomes = []
+    runtime = IntegratorShadowRuntime(
+        lease_store=lease_store,
+        queue=queue,
+        readiness_lookup=lambda _candidate_key: readiness,
+        clearance_probe=MainBranchClearanceProbe(
+            sessions_provider=lambda: (),
+            session_tail_provider=lambda _session_id: "",
+            dirty_tracked_paths_provider=lambda: (),
+        ),
+        outcome_sink=outcomes.append,
+        checkpoint_path=tmp_path / "integration-checkpoint.json",
+        clearance_retry_seconds=0.001,
+    )
+
+    result = runtime.drain_ready_candidates(owner_session_id="integrator-1")
+    assert result.lease_acquired is True
+    assert [outcome.outcome for outcome in result.outcomes] == ["would_block"]
+    assert result.outcomes[0].reasons == ("candidate superseded by newer finalize_ready",)
+    superseded = queue.get(key=key)
+    assert superseded is not None
+    assert superseded.status == "superseded"
+    assert superseded.status_reason == "candidate superseded by newer finalize_ready"
+
+
 def test_clearance_probe_excludes_orchestrator_worker_pairs_and_ignores_idle_standalone() -> None:
     sessions = (
         SessionSnapshot(session_id="orchestrator", initiator_session_id=None),
