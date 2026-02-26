@@ -184,6 +184,21 @@ class MaintenanceService:
                 # Normalize once and skip repeated cleanup/deletion attempts.
                 if session.lifecycle_status != "closed":
                     await db.update_session(session.session_id, lifecycle_status="closed")
+                # Purge closed sessions older than the 72h cutoff.
+                if session.closed_at < cutoff_time:
+                    logger.info(
+                        "Purging old closed session %s (closed %s ago)",
+                        session.session_id[:8],
+                        datetime.now(timezone.utc) - session.closed_at,
+                    )
+                    await session_cleanup.terminate_session(
+                        session.session_id,
+                        self._client,
+                        reason="closed_expired",
+                        session=session,
+                        kill_tmux=False,
+                        delete_db=True,
+                    )
                 continue
 
             if session.last_activity < cutoff_time:

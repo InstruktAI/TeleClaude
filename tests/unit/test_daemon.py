@@ -747,6 +747,90 @@ async def test_agent_then_message_normalizes_codex_next_commands() -> None:
 
 
 @pytest.mark.asyncio
+async def test_bootstrap_sets_active_only_after_auto_command_dispatch():
+    """_bootstrap_session_resources sets lifecycle=active AFTER auto-command dispatch."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+
+    call_order: list[str] = []
+
+    async def mock_execute_auto(session_id: str, auto_command: str) -> dict[str, str]:
+        call_order.append("execute_auto_command")
+        return {"status": "success"}
+
+    daemon._execute_auto_command = AsyncMock(side_effect=mock_execute_auto)
+    daemon._start_polling_for_session = AsyncMock()
+
+    mock_session = MagicMock()
+    mock_session.session_id = "sess-boot-order"
+    mock_session.tmux_session_name = "tc_boot_order"
+    mock_session.lifecycle_status = "initializing"
+    mock_session.project_path = "/tmp"
+    mock_session.subdir = None
+
+    with (
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.tmux_bridge") as mock_tmux,
+    ):
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+        mock_db.get_voice = AsyncMock(return_value=None)
+        mock_tmux.ensure_tmux_session = AsyncMock(return_value=True)
+
+        async def record_update(session_id: str, **kwargs: object) -> None:
+            if "lifecycle_status" in kwargs and kwargs["lifecycle_status"] == "active":
+                call_order.append("set_active")
+
+        mock_db.update_session = AsyncMock(side_effect=record_update)
+
+        await daemon._bootstrap_session_resources("sess-boot-order", "agent claude")
+
+    assert "execute_auto_command" in call_order
+    assert "set_active" in call_order
+    assert call_order.index("execute_auto_command") < call_order.index("set_active"), (
+        f"Auto-command must execute before active transition: {call_order}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_auto_command_error_still_transitions_to_active():
+    """If auto-command raises, session must still transition to active (not strand in initializing)."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+
+    daemon._execute_auto_command = AsyncMock(side_effect=RuntimeError("boom"))
+    daemon._start_polling_for_session = AsyncMock()
+
+    mock_session = MagicMock()
+    mock_session.session_id = "sess-boot-err"
+    mock_session.tmux_session_name = "tc_boot_err"
+    mock_session.lifecycle_status = "initializing"
+    mock_session.project_path = "/tmp"
+    mock_session.subdir = None
+
+    lifecycle_updates: list[str] = []
+
+    with (
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.tmux_bridge") as mock_tmux,
+    ):
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+        mock_db.get_voice = AsyncMock(return_value=None)
+        mock_tmux.ensure_tmux_session = AsyncMock(return_value=True)
+
+        async def record_update(session_id: str, **kwargs: object) -> None:
+            if "lifecycle_status" in kwargs:
+                lifecycle_updates.append(str(kwargs["lifecycle_status"]))
+
+        mock_db.update_session = AsyncMock(side_effect=record_update)
+
+        await daemon._bootstrap_session_resources("sess-boot-err", "agent claude")
+
+    assert "active" in lifecycle_updates, (
+        f"Session must reach active even after auto-command error: {lifecycle_updates}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_execute_auto_command_updates_last_message_sent():
     """Auto-command should update last_message_sent in session."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
@@ -1256,6 +1340,44 @@ async def test_cleanup_skips_already_closed_inactive_sessions_and_normalizes_sta
 
         terminate_session.assert_not_called()
         mock_db.update_session.assert_awaited_once_with("closed-123", lifecycle_status="closed")
+
+
+@pytest.mark.asyncio
+async def test_cleanup_purges_closed_sessions_older_than_72h():
+    """Sessions closed longer than 72h should be deleted from the database."""
+    service = MaintenanceService(client=MagicMock(), output_poller=MagicMock(), poller_watch_interval_s=1.0)
+
+    fixed_now = datetime(2026, 1, 14, 12, 0, 0, tzinfo=timezone.utc)
+    old_closed_session = Session(
+        session_id="old-closed-456",
+        computer_name="TestMac",
+        tmux_session_name="old-closed-tmux",
+        last_input_origin=InputOrigin.TELEGRAM.value,
+        title="Old Closed",
+        last_activity=fixed_now - timedelta(days=6),
+        closed_at=fixed_now - timedelta(days=6),
+        lifecycle_status="closed",
+    )
+
+    with (
+        patch("teleclaude.services.maintenance_service.datetime") as mock_datetime,
+        patch("teleclaude.services.maintenance_service.db") as mock_db,
+        patch(
+            "teleclaude.services.maintenance_service.session_cleanup.terminate_session",
+            new_callable=AsyncMock,
+        ) as terminate_session,
+    ):
+        mock_datetime.now.return_value = fixed_now
+        mock_db.list_sessions = AsyncMock(return_value=[old_closed_session])
+
+        await service._cleanup_inactive_sessions()
+
+        terminate_session.assert_awaited_once()
+        args, kwargs = terminate_session.call_args
+        assert args[0] == "old-closed-456"
+        assert kwargs["reason"] == "closed_expired"
+        assert kwargs["delete_db"] is True
+        assert kwargs["kill_tmux"] is False
 
 
 @pytest.mark.asyncio

@@ -131,6 +131,7 @@ async def verify_caller(
     request: Request,
     x_caller_session_id: Annotated[str | None, Header()] = None,
     x_telec_email: Annotated[str | None, Header()] = None,
+    x_web_user_email: Annotated[str | None, Header()] = None,
     x_tmux_session: Annotated[str | None, Header()] = None,
 ) -> CallerIdentity:
     """FastAPI dependency: verify caller identity via dual-factor check.
@@ -154,7 +155,8 @@ async def verify_caller(
         # - otherwise tmux falls back to default unidentified role
         # - non-tmux contexts may use telec login email mapping
         # - otherwise reject as unauthorized
-        terminal_role = _resolve_terminal_role(x_telec_email)
+        email_to_use = x_telec_email or x_web_user_email
+        terminal_role = _resolve_terminal_role(email_to_use)
         if x_tmux_session:
             if terminal_role:
                 return CallerIdentity(

@@ -190,7 +190,13 @@ export function getLayoutSignature(
   stickyIds: string[],
   previewId: string | null,
 ): string {
-  const slotCount = stickyIds.length + (previewId !== null ? 1 : 0);
+  // A preview that's already displayed as a sticky pane doesn't get its own
+  // slot — rebuildLayout excludes it from specs. Normalise here so the
+  // signature matches the pane count that will actually be rendered.
+  const effectivePreviewId =
+    previewId !== null && !stickyIds.includes(previewId) ? previewId : null;
+
+  const slotCount = stickyIds.length + (effectivePreviewId !== null ? 1 : 0);
   const totalPanes = 1 + slotCount;
   const spec = LAYOUT_SPECS[totalPanes];
   if (!spec) return "";
@@ -199,7 +205,7 @@ export function getLayoutSignature(
   // tracked by presence only (not by its session_id).
   const structuralKeys = [
     ...stickyIds,
-    ...(previewId !== null ? ["__active__"] : []),
+    ...(effectivePreviewId !== null ? ["__active__"] : []),
   ];
 
   return JSON.stringify([spec.rows, spec.cols, spec.grid, structuralKeys]);
