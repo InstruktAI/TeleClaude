@@ -378,6 +378,46 @@ def test_shadow_runtime_retries_clearance_until_blockers_clear(tmp_path: Path) -
     assert sleep_calls == [0.25, 0.25]
 
 
+def test_shadow_runtime_calls_canonical_main_pusher_when_shadow_mode_disabled(tmp_path: Path) -> None:
+    lease_store = IntegrationLeaseStore(state_path=tmp_path / "integration-lease.json")
+    queue = IntegrationQueue(state_path=tmp_path / "integration-queue.json")
+    key = CandidateKey(slug="push", branch="worktree/push", sha="eee555")
+    queue.enqueue(key=key, ready_at="2026-02-26T12:01:00+00:00")
+
+    readiness = CandidateReadiness(
+        key=key,
+        ready_at="2026-02-26T12:01:00+00:00",
+        status="READY",
+        reasons=(),
+        superseded_by=None,
+    )
+    push_calls: list[CandidateReadiness] = []
+
+    runtime = IntegratorShadowRuntime(
+        lease_store=lease_store,
+        queue=queue,
+        readiness_lookup=lambda _candidate_key: readiness,
+        clearance_probe=MainBranchClearanceProbe(
+            sessions_provider=lambda: (),
+            session_tail_provider=lambda _session_id: "",
+            dirty_tracked_paths_provider=lambda: (),
+        ),
+        outcome_sink=lambda _outcome: None,
+        checkpoint_path=tmp_path / "integration-checkpoint.json",
+        shadow_mode=False,
+        canonical_main_pusher=push_calls.append,
+        clearance_retry_seconds=0.001,
+    )
+
+    result = runtime.drain_ready_candidates(owner_session_id="integrator-1")
+    assert result.lease_acquired is True
+    assert [outcome.outcome for outcome in result.outcomes] == ["would_integrate"]
+    assert push_calls == [readiness]
+    integrated = queue.get(key=key)
+    assert integrated is not None
+    assert integrated.status == "integrated"
+
+
 def test_clearance_probe_excludes_orchestrator_worker_pairs_and_ignores_idle_standalone() -> None:
     sessions = (
         SessionSnapshot(session_id="orchestrator", initiator_session_id=None),
