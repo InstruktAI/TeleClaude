@@ -10,8 +10,8 @@ Pure wiring task: register WhatsApp env vars in the adapter registry, fix the co
 
 **File(s):** `teleclaude/cli/config_handlers.py`
 
-- [ ] Add `"whatsapp"` key to `_ADAPTER_ENV_VARS` dict (after the `"redis"` entry, line ~148)
-- [ ] Register these `EnvVarInfo` entries:
+- [x] Add `"whatsapp"` key to `_ADAPTER_ENV_VARS` dict (after the `"redis"` entry, line ~148)
+- [x] Register these `EnvVarInfo` entries:
   - `WHATSAPP_PHONE_NUMBER_ID` / `"whatsapp"` / `"Business phone number ID from Meta"` / `"123456789012345"`
   - `WHATSAPP_ACCESS_TOKEN` / `"whatsapp"` / `"System user token (long-lived)"` / `"EAAx..."`
   - `WHATSAPP_WEBHOOK_SECRET` / `"whatsapp"` / `"App secret for webhook signature verification"` / `"abc123..."`
