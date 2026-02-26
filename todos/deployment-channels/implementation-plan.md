@@ -14,14 +14,14 @@ updates. Redis fan-out via EventBusBridge ensures all daemons respond.
 
 **File(s):** `teleclaude/config/schema.py`
 
-- [ ] Add `DeploymentConfig` Pydantic model:
+- [x] Add `DeploymentConfig` Pydantic model:
   ```python
   class DeploymentConfig(BaseModel):
       channel: Literal["alpha", "beta", "stable"] = "alpha"
       pinned_minor: str = ""
   ```
-- [ ] Add validator: `pinned_minor` required and non-empty when `channel=stable`
-- [ ] Add `deployment: DeploymentConfig = DeploymentConfig()` to `ProjectConfig`
+- [x] Add validator: `pinned_minor` required and non-empty when `channel=stable`
+- [x] Add `deployment: DeploymentConfig = DeploymentConfig()` to `ProjectConfig`
 
 ### Task 1.2: Deployment webhook handler
 
