@@ -364,6 +364,103 @@ async def test_next_work_explicit_slug_rejects_pending_items():
 
 
 @pytest.mark.asyncio
+async def test_next_work_explicit_holder_slug_resolves_first_runnable_child_by_group():
+    """Explicit holder slug should transparently resolve to first runnable grouped child."""
+    db = MagicMock(spec=Db)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        entries = [
+            RoadmapEntry(slug="child-not-ready", group="holder-item"),
+            RoadmapEntry(slug="child-ready", group="holder-item"),
+        ]
+        save_roadmap(tmpdir, entries)
+
+        not_ready_dir = Path(tmpdir) / "todos" / "child-not-ready"
+        not_ready_dir.mkdir(parents=True, exist_ok=True)
+        (not_ready_dir / "state.yaml").write_text('{"build": "pending", "review": "pending"}')
+
+        ready_dir = Path(tmpdir) / "todos" / "child-ready"
+        ready_dir.mkdir(parents=True, exist_ok=True)
+        (ready_dir / "requirements.md").write_text("# Requirements\n")
+        (ready_dir / "implementation-plan.md").write_text("# Plan\n")
+        (ready_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 8}}')
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
+            ),
+        ):
+            result = await next_work(db, slug="holder-item", cwd=tmpdir)
+
+        assert "ERROR:" not in result
+        assert "child-ready" in result
+        assert "child-not-ready" not in result
+
+
+@pytest.mark.asyncio
+async def test_next_work_explicit_holder_slug_not_ready_when_no_runnable_children():
+    """Holder with children but no ready child should return ITEM_NOT_READY."""
+    db = MagicMock(spec=Db)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        entries = [
+            RoadmapEntry(slug="child-a"),
+            RoadmapEntry(slug="child-b"),
+        ]
+        save_roadmap(tmpdir, entries)
+
+        holder_dir = Path(tmpdir) / "todos" / "holder-item"
+        holder_dir.mkdir(parents=True, exist_ok=True)
+        (holder_dir / "state.yaml").write_text(
+            '{"build":"pending","review":"pending","breakdown":{"assessed":true,"todos":["child-a","child-b"]}}'
+        )
+
+        child_a_dir = Path(tmpdir) / "todos" / "child-a"
+        child_a_dir.mkdir(parents=True, exist_ok=True)
+        (child_a_dir / "state.yaml").write_text('{"build": "pending", "review": "pending"}')
+
+        child_b_dir = Path(tmpdir) / "todos" / "child-b"
+        child_b_dir.mkdir(parents=True, exist_ok=True)
+        (child_b_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 7}}')
+
+        result = await next_work(db, slug="holder-item", cwd=tmpdir)
+
+        assert "ERROR:" in result
+        assert "ITEM_NOT_READY" in result
+        assert "holder-item" in result
+
+
+@pytest.mark.asyncio
+async def test_next_work_explicit_holder_slug_deps_unsatisfied_when_children_blocked():
+    """Holder with ready children blocked by deps should return DEPS_UNSATISFIED."""
+    db = MagicMock(spec=Db)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        entries = [
+            RoadmapEntry(slug="dep-item"),
+            RoadmapEntry(slug="child-ready", group="holder-item", after=["dep-item"]),
+        ]
+        save_roadmap(tmpdir, entries)
+
+        dep_dir = Path(tmpdir) / "todos" / "dep-item"
+        dep_dir.mkdir(parents=True, exist_ok=True)
+        (dep_dir / "state.yaml").write_text('{"build": "pending", "review": "pending"}')
+
+        child_dir = Path(tmpdir) / "todos" / "child-ready"
+        child_dir.mkdir(parents=True, exist_ok=True)
+        (child_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 8}}')
+
+        result = await next_work(db, slug="holder-item", cwd=tmpdir)
+
+        assert "ERROR:" in result
+        assert "DEPS_UNSATISFIED" in result
+        assert "holder-item" in result
+
+
+@pytest.mark.asyncio
 async def test_next_work_explicit_bug_slug_allows_pending_items():
     """Explicit bug slugs should skip DOR readiness gating."""
     db = MagicMock(spec=Db)

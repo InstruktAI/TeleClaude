@@ -23,6 +23,7 @@ from teleclaude.cli.models import AgentAvailabilityInfo
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import CreateSessionRequest
 from teleclaude.cli.tui.theme import resolve_style
+from teleclaude.core.agents import get_enabled_agents
 
 
 def _is_agent_selectable(info: AgentAvailabilityInfo | None) -> bool:
@@ -247,8 +248,6 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         ("enter", "create_session", "Create"),
     ]
 
-    _AGENTS = ("claude", "gemini", "codex")
-
     def __init__(
         self,
         computer: str,
@@ -262,6 +261,7 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         self._project_path = project_path
         self._agent_availability = agent_availability or {}
         self._default_message = default_message
+        self._agents = tuple(get_enabled_agents())
 
     def compose(self) -> ComposeResult:
         project_name = self._project_path.rsplit("/", 1)[-1]
@@ -274,11 +274,17 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
 
             with Vertical(id="agent-group") as ag:
                 ag.border_title = "Agent"
-                yield AgentSelector(
-                    agents=self._AGENTS,
-                    availability=self._agent_availability,
-                    id="agent-selector",
-                )
+                if self._agents:
+                    yield AgentSelector(
+                        agents=self._agents,
+                        availability=self._agent_availability,
+                        id="agent-selector",
+                    )
+                else:
+                    yield Label(
+                        "No enabled agents in config.yml (set agents.<name>.enabled: true)",
+                        id="agent-disabled-note",
+                    )
 
             with Vertical(id="mode-group") as mg:
                 mg.border_title = "Mode"
@@ -319,6 +325,10 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
 
     def _do_create(self) -> None:
         """Gather form values and dismiss with CreateSessionRequest."""
+        if not self._agents:
+            self.dismiss(None)
+            return
+
         agent_sel = self.query_one("#agent-selector", AgentSelector)
         mode_sel = self.query_one("#mode-selector", ModeSelector)
         title_input = self.query_one("#title-input", Input)

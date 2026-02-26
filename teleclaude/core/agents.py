@@ -30,9 +30,48 @@ class AgentName(str, Enum):
         return tuple(member.value for member in cls)
 
 
+KNOWN_AGENT_IDS: tuple[str, ...] = AgentName.choices()
+
+
 def normalize_agent_name(value: str) -> str:
     """Normalize and validate an agent name, returning the canonical value."""
     return AgentName.from_str(value).value
+
+
+def get_known_agents() -> tuple[str, ...]:
+    """Return canonical known agent IDs in stable order."""
+    return KNOWN_AGENT_IDS
+
+
+def get_enabled_agents() -> tuple[str, ...]:
+    """Return known agents currently enabled by config policy."""
+    return tuple(name for name in KNOWN_AGENT_IDS if bool(config.agents.get(name) and config.agents[name].enabled))
+
+
+def is_agent_enabled(name: str) -> bool:
+    """Return True when the provided agent name is known and enabled."""
+    try:
+        normalized = normalize_agent_name(name)
+    except ValueError:
+        return False
+    cfg = config.agents.get(normalized)
+    return bool(cfg and cfg.enabled)
+
+
+def assert_agent_enabled(name: str) -> str:
+    """Validate selection against config-enabled policy and return normalized name."""
+    normalized = normalize_agent_name(name)
+    cfg = config.agents.get(normalized)
+    if cfg is None:
+        allowed = ", ".join(get_known_agents())
+        raise ValueError(f"Unknown agent '{name}'. Allowed agents: {allowed}.")
+    if not cfg.enabled:
+        enabled = ", ".join(get_enabled_agents()) or "none"
+        raise ValueError(
+            f"Agent '{normalized}' is disabled by `config.yml:agents.{normalized}.enabled`. "
+            f"Enable it in config.yml or choose an enabled agent ({enabled})."
+        )
+    return normalized
 
 
 def is_agent_title(title: str) -> bool:

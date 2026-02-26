@@ -13,6 +13,7 @@ from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import SettingsChanged, StateChanged
 from teleclaude.cli.tui.theme import get_agent_color, get_agent_style
 from teleclaude.cli.tui.utils.formatters import format_countdown
+from teleclaude.core.agents import get_known_agents
 
 
 class StatusBar(TelecMixin, Widget):
@@ -127,7 +128,7 @@ class StatusBar(TelecMixin, Widget):
         self._agent_regions = []
 
         # Left: agent availability pills
-        for i, agent in enumerate(("claude", "gemini", "codex")):
+        for i, agent in enumerate(get_known_agents()):
             if i > 0:
                 line.append("  ")
             start_x = line.cell_len

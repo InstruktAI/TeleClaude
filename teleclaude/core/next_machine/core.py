@@ -83,7 +83,7 @@ POST_COMPLETION: dict[str, str] = {
 1. Read worker output via get_session_data
 2. telec todo mark-phase {args} --phase build --status complete --cwd <project-root>
 3. Call {next_call} — this runs build gates (tests + demo validation)
-4. If next_work says gates PASSED: telec sessions end <session_id> --computer local and continue
+4. If next_work says gates PASSED: telec sessions end <session_id> and continue
 5. If next_work says BUILD GATES FAILED:
    a. Send the builder the failure message (do NOT end the session)
    b. Wait for the builder to report completion again
@@ -93,7 +93,7 @@ POST_COMPLETION: dict[str, str] = {
 1. Read worker output via get_session_data
 2. telec todo mark-phase {args} --phase build --status complete --cwd <project-root>
 3. Call {next_call} — this runs build gates (tests + demo validation)
-4. If next_work says gates PASSED: telec sessions end <session_id> --computer local and continue
+4. If next_work says gates PASSED: telec sessions end <session_id> and continue
 5. If next_work says BUILD GATES FAILED:
    a. Send the builder the failure message (do NOT end the session)
    b. Wait for the builder to report completion again
@@ -101,7 +101,7 @@ POST_COMPLETION: dict[str, str] = {
 """,
     "next-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data to extract verdict
-2. telec sessions end <session_id> --computer local
+2. telec sessions end <session_id>
 3. Relay verdict to state:
    - If APPROVE: telec todo mark-phase {args} --phase review --status approved --cwd <project-root>
    - If REQUEST CHANGES: telec todo mark-phase {args} --phase review --status changes_requested --cwd <project-root>
@@ -109,13 +109,13 @@ POST_COMPLETION: dict[str, str] = {
 """,
     "next-fix-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. telec sessions end <session_id> --computer local
+2. telec sessions end <session_id>
 3. telec todo mark-phase {args} --phase review --status pending --cwd <project-root>
 4. Call {next_call}
 """,
     "next-defer": """WHEN WORKER COMPLETES:
 1. Read worker output. Confirm deferrals_processed in state.yaml
-2. telec sessions end <session_id> --computer local
+2. telec sessions end <session_id>
 3. Call {next_call}
 """,
     "next-finalize": """WHEN WORKER COMPLETES:
@@ -129,7 +129,7 @@ POST_COMPLETION: dict[str, str] = {
    If any check fails: stop and report FINALIZE_LOCK_MISMATCH (do NOT apply).
 4. Confirm worker reported exactly `FINALIZE_READY: {args}` in session `<session_id>` transcript.
    If missing: send worker feedback to report FINALIZE_READY and stop (do NOT apply).
-5. telec sessions end <session_id> --computer local
+5. telec sessions end <session_id>
 6. FINALIZE APPLY (orchestrator-owned, canonical root only — NEVER cd into worktree):
    a. MAIN_REPO="$(git rev-parse --git-common-dir)/.."
    b. git -C "$MAIN_REPO" fetch origin main
@@ -211,7 +211,7 @@ Execute these steps in order (FOLLOW TO THE LETTER!):
 
 Based on the above guidance and the work item details, select the best agent and thinking mode.
 
-telec sessions run --computer local --command "{formatted_command}" --args "{args}" --project "{project}" --agent "<your selection>" --mode "<your selection>" --subfolder "{subfolder}"
+telec sessions run --command "{formatted_command}" --args "{args}" --project "{project}" --agent "<your selection>" --mode "<your selection>" --subfolder "{subfolder}"
 Save the returned session_id.
 Command metadata: command="{formatted_command}" args="{args}" subfolder="{subfolder}".
 
@@ -643,6 +643,92 @@ def has_pending_deferrals(cwd: str, slug: str) -> bool:
 
     state = read_phase_state(cwd, slug)
     return state.get("deferrals_processed") is not True
+
+
+def resolve_holder_children(cwd: str, holder_slug: str) -> list[str]:
+    """Resolve container/holder child slugs in deterministic order.
+
+    Resolution sources:
+    - roadmap group mapping (`group == holder_slug`)
+    - holder breakdown state (`state.yaml.breakdown.todos`)
+
+    Roadmap order is authoritative when present. Breakdown-only children are
+    appended in their declared order.
+    """
+    entries = load_roadmap(cwd)
+    grouped_children = [entry.slug for entry in entries if entry.group == holder_slug]
+
+    breakdown_state = read_breakdown_state(cwd, holder_slug)
+    breakdown_children: list[str] = []
+    if breakdown_state:
+        raw_children = breakdown_state.get("todos")
+        if isinstance(raw_children, list):
+            breakdown_children = [child for child in raw_children if child]
+
+    if not grouped_children and not breakdown_children:
+        return []
+
+    ordered_children = list(grouped_children)
+    seen = set(ordered_children)
+    for child in breakdown_children:
+        if child not in seen:
+            ordered_children.append(child)
+            seen.add(child)
+    return ordered_children
+
+
+def resolve_first_runnable_holder_child(
+    cwd: str,
+    holder_slug: str,
+    dependencies: dict[str, list[str]],
+) -> tuple[str | None, str]:
+    """Resolve first runnable child for a holder slug.
+
+    Returns:
+        (child_slug, reason)
+        - reason == "ok" when child_slug is selected
+        - reason in {"not_holder", "children_not_in_roadmap", "complete",
+          "deps_unsatisfied", "item_not_ready"} otherwise
+    """
+    children = resolve_holder_children(cwd, holder_slug)
+    if not children:
+        return None, "not_holder"
+
+    has_children_in_roadmap = False
+    has_incomplete_children = False
+    has_deps_blocked = False
+    has_not_ready = False
+
+    for child in children:
+        if not slug_in_roadmap(cwd, child):
+            continue
+
+        has_children_in_roadmap = True
+        phase = get_item_phase(cwd, child)
+        if phase == ItemPhase.DONE.value:
+            continue
+
+        has_incomplete_children = True
+        is_ready = phase == ItemPhase.IN_PROGRESS.value or is_ready_for_work(cwd, child)
+        if not is_ready:
+            has_not_ready = True
+            continue
+
+        if not check_dependencies_satisfied(cwd, child, dependencies):
+            has_deps_blocked = True
+            continue
+
+        return child, "ok"
+
+    if not has_children_in_roadmap:
+        return None, "children_not_in_roadmap"
+    if not has_incomplete_children:
+        return None, "complete"
+    if has_deps_blocked:
+        return None, "deps_unsatisfied"
+    if has_not_ready:
+        return None, "item_not_ready"
+    return None, "item_not_ready"
 
 
 def resolve_slug(
@@ -1449,10 +1535,10 @@ async def compose_agent_guidance(db: Db) -> str:
 
         listed_count += 1
         lines.append(f"- {name.upper()}{status_note}:")
-        if cfg.strengths:
-            lines.append(f"  Strengths: {cfg.strengths}")
-        if cfg.avoid:
-            lines.append(f"  Avoid: {cfg.avoid}")
+        strengths_text = cfg.strengths.strip() or "Not configured (set config.yml:agents.<name>.strengths)."
+        avoid_text = cfg.avoid.strip() or "Not configured (set config.yml:agents.<name>.avoid)."
+        lines.append(f"  Strengths: {strengths_text}")
+        lines.append(f"  Avoid: {avoid_text}")
 
     if listed_count == 0:
         raise RuntimeError("No agents are currently enabled and available.")
@@ -2002,6 +2088,10 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 next_call="telec todo prepare",
             )
 
+        holder_children = await asyncio.to_thread(resolve_holder_children, cwd, resolved_slug)
+        if holder_children:
+            return f"CONTAINER: {resolved_slug} was split into: {', '.join(holder_children)}. Work on those first."
+
         # 1.5. Ensure slug exists in roadmap before preparing
         if not await asyncio.to_thread(slug_in_roadmap, cwd, resolved_slug):
             has_requirements = check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md")
@@ -2057,13 +2147,6 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 note=f"Assess todos/{resolved_slug}/input.md for complexity. Split if needed.",
                 next_call="telec todo prepare",
             )
-
-        # If breakdown assessed and has dependent todos, this one is a container
-        if breakdown_state and breakdown_state.get("todos"):
-            dep_todos = breakdown_state["todos"]
-            if isinstance(dep_todos, list):
-                return f"CONTAINER: {resolved_slug} was split into: {', '.join(dep_todos)}. Work on those first."
-            return f"CONTAINER: {resolved_slug} was split. Check state.yaml for dependent todos."
 
         # 2. Check requirements
         if not check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md"):
@@ -2192,11 +2275,35 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         # Bugs bypass the roadmap check (they're not in the roadmap)
         is_bug = await asyncio.to_thread(is_bug_todo, cwd, slug)
         if not is_bug and not await asyncio.to_thread(slug_in_roadmap, cwd, slug):
-            return format_error(
-                "NOT_PREPARED",
-                f"Item '{slug}' not found in roadmap.",
-                next_call="Check todos/roadmap.yaml or call telec todo prepare.",
-            )
+            holder_child, holder_reason = await asyncio.to_thread(resolve_first_runnable_holder_child, cwd, slug, deps)
+            if holder_child:
+                slug = holder_child
+            elif holder_reason == "complete":
+                return f"COMPLETE: Holder '{slug}' has no remaining child work."
+            elif holder_reason == "deps_unsatisfied":
+                return format_error(
+                    "DEPS_UNSATISFIED",
+                    f"Holder '{slug}' has children, but none are currently runnable due to unsatisfied dependencies.",
+                    next_call="Complete dependency items first, or check todos/roadmap.yaml.",
+                )
+            elif holder_reason == "item_not_ready":
+                return format_error(
+                    "ITEM_NOT_READY",
+                    f"Holder '{slug}' has children, but none are ready to start work.",
+                    next_call=f"Call telec todo prepare on the child items for '{slug}' first.",
+                )
+            elif holder_reason == "children_not_in_roadmap":
+                return format_error(
+                    "NOT_PREPARED",
+                    f"Holder '{slug}' has child todos, but none are in roadmap.",
+                    next_call="Check todos/roadmap.yaml or call telec todo prepare.",
+                )
+            else:
+                return format_error(
+                    "NOT_PREPARED",
+                    f"Item '{slug}' not found in roadmap.",
+                    next_call="Check todos/roadmap.yaml or call telec todo prepare.",
+                )
 
         phase = await asyncio.to_thread(get_item_phase, cwd, slug)
         if (

@@ -20,6 +20,7 @@ from teleclaude.cli.tui.widgets.agent_status import (
     is_agent_selectable,
 )
 from teleclaude.constants import ResultStatus
+from teleclaude.core.agents import get_enabled_agents
 
 logger = get_logger(__name__)
 
@@ -49,7 +50,6 @@ if TYPE_CHECKING:
 class StartSessionModal:
     """Modal for starting a new session with agent/mode selection."""
 
-    AGENTS = ["claude", "gemini", "codex"]
     MODES = ["fast", "slow", "med"]
 
     def __init__(
@@ -60,6 +60,7 @@ class StartSessionModal:
         agent_availability: dict[str, AgentAvailabilityInfo],
         default_prompt: str = "",
         notify: Callable[[str, NotificationLevel], None] | None = None,
+        selectable_agents: tuple[str, ...] | None = None,
     ):
         """Initialize modal.
 
@@ -76,13 +77,15 @@ class StartSessionModal:
         self.agent_availability = agent_availability
         self.notify = notify
         self.start_requested = False
+        self.AGENTS = list(selectable_agents if selectable_agents is not None else get_enabled_agents())
 
         # Find first available agent
         self.selected_agent = 0
-        for i, agent in enumerate(self.AGENTS):
-            if self._is_agent_available(agent):
-                self.selected_agent = i
-                break
+        if self.AGENTS:
+            for i, agent in enumerate(self.AGENTS):
+                if self._is_agent_available(agent):
+                    self.selected_agent = i
+                    break
 
         self.selected_mode = 1  # default: slow
         self.prompt = default_prompt
@@ -111,10 +114,16 @@ class StartSessionModal:
         Returns:
             List of available agent indices
         """
+        if not self.AGENTS:
+            return []
         return [i for i, a in enumerate(self.AGENTS) if self._is_agent_available(a)]
 
     def _ensure_selected_agent_available(self) -> None:
         """Ensure selected agent is available or fall back to first available."""
+        if not self.AGENTS:
+            if self.current_field == 0:
+                self.current_field = 1
+            return
         if self._is_agent_available(self.AGENTS[self.selected_agent]):
             return
         available = self._get_available_agents()
@@ -228,6 +237,13 @@ class StartSessionModal:
             Session creation result
         """
         self._ensure_selected_agent_available()
+        if not self.AGENTS:
+            if self.notify:
+                self.notify(
+                    "No enabled agents in config.yml (set config.yml:agents.<agent>.enabled: true)",
+                    NotificationLevel.ERROR,
+                )
+            return None
         if not self._is_agent_available(self.AGENTS[self.selected_agent]):
             if self.notify:
                 self.notify("No agents available to start a session", NotificationLevel.ERROR)
@@ -340,30 +356,38 @@ class StartSessionModal:
         # Agent label
         stdscr.addstr(agent_y - 1, content_x + 2, " Agent ", modal_bg | curses.A_BOLD)
         agent_cell_w = 15
-        for i, agent in enumerate(self.AGENTS):
-            x = content_x + 2 + i * agent_cell_w
-            spec = build_agent_render_spec(
-                agent,
-                self.agent_availability.get(agent),
-                show_unavailable_detail=False,
+        if self.AGENTS:
+            for i, agent in enumerate(self.AGENTS):
+                x = content_x + 2 + i * agent_cell_w
+                spec = build_agent_render_spec(
+                    agent,
+                    self.agent_availability.get(agent),
+                    show_unavailable_detail=False,
+                )
+                base_attr = curses.color_pair(spec.color_pair_id) if spec.color_pair_id else modal_bg
+                if spec.bold:
+                    base_attr |= curses.A_BOLD
+
+                if i == self.selected_agent and spec.selectable:
+                    marker = "●"
+                    attr = base_attr | (curses.A_REVERSE if self.current_field == 0 else 0)
+                elif spec.selectable:
+                    marker = "○"
+                    attr = base_attr
+                else:
+                    marker = "░"
+                    attr = base_attr
+
+                label = f" {marker} {spec.text} "
+                rendered = label[:agent_cell_w].ljust(agent_cell_w)
+                stdscr.addstr(agent_y, x, rendered, attr)
+        else:
+            stdscr.addstr(
+                agent_y,
+                content_x + 2,
+                "No enabled agents in config.yml (agents.<name>.enabled)",
+                modal_bg | curses.A_BOLD,
             )
-            base_attr = curses.color_pair(spec.color_pair_id) if spec.color_pair_id else modal_bg
-            if spec.bold:
-                base_attr |= curses.A_BOLD
-
-            if i == self.selected_agent and spec.selectable:
-                marker = "●"
-                attr = base_attr | (curses.A_REVERSE if self.current_field == 0 else 0)
-            elif spec.selectable:
-                marker = "○"
-                attr = base_attr
-            else:
-                marker = "░"
-                attr = base_attr
-
-            label = f" {marker} {spec.text} "
-            rendered = label[:agent_cell_w].ljust(agent_cell_w)
-            stdscr.addstr(agent_y, x, rendered, attr)
 
         # Mode selection (with border box)
         mode_y = agent_y + 3

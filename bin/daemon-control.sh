@@ -20,6 +20,8 @@ cd "$PROJECT_ROOT"
 PID_FILE="$PROJECT_ROOT/teleclaude.pid"
 LOG_FILE="/var/log/instrukt-ai/teleclaude/teleclaude.log"
 API_SOCKET="/tmp/teleclaude-api.sock"
+# Startup wait window in seconds (number of 1s readiness probes)
+STARTUP_WAIT_SECONDS="${TELECLAUDE_DAEMON_STARTUP_WAIT_S:-15}"
 
 # Platform-specific config
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -54,10 +56,10 @@ log_error() {
 }
 
 # Wait for daemon to come up with retries
-# Args: max_attempts (default 10), old_pid (optional - wait for this PID to die first)
+# Args: max_attempts (default STARTUP_WAIT_SECONDS), old_pid (optional - wait for this PID to die first)
 # Returns 0 if daemon started with new PID, 1 if timeout
 wait_for_daemon() {
-    local max_attempts=${1:-10}
+    local max_attempts=${1:-$STARTUP_WAIT_SECONDS}
     local old_pid=${2:-""}
     local attempt=1
 
@@ -151,8 +153,8 @@ start_daemon() {
         sudo systemctl start "$SERVICE_LABEL"
     fi
 
-    # Wait for daemon to come up (up to 10 seconds)
-    if wait_for_daemon 10; then
+    # Wait for daemon to come up (up to STARTUP_WAIT_SECONDS)
+    if wait_for_daemon "$STARTUP_WAIT_SECONDS"; then
         PID=$(cat "$PID_FILE")
         log_info "Daemon started successfully (PID: $PID)"
         log_info "Service manager will auto-restart if killed"
@@ -161,7 +163,7 @@ start_daemon() {
 
     # If not running after retries, check why
     if is_service_loaded; then
-        log_error "Service loaded but daemon not running after 10 seconds"
+        log_error "Service loaded but daemon not running after ${STARTUP_WAIT_SECONDS} seconds"
         if [ "$PLATFORM" = "macos" ]; then
             log_error "Check status: launchctl list | grep teleclaude"
         else
@@ -390,8 +392,8 @@ restart_daemon() {
         sudo systemctl restart "$SERVICE_LABEL"
     fi
 
-    # Wait for daemon to come up (up to 10 seconds)
-    if wait_for_daemon 10 "$OLD_PID"; then
+    # Wait for daemon to come up (up to STARTUP_WAIT_SECONDS)
+    if wait_for_daemon "$STARTUP_WAIT_SECONDS" "$OLD_PID"; then
         if [ "$PLATFORM" = "macos" ]; then
             PID=$(launchctl print "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
         fi
@@ -446,8 +448,8 @@ kill_daemon() {
         kill "$OLD_PID" 2>/dev/null || true
     fi
 
-    # Wait for service manager to auto-restart (up to 10 seconds)
-    if wait_for_daemon 10 "$OLD_PID"; then
+    # Wait for service manager to auto-restart (up to STARTUP_WAIT_SECONDS)
+    if wait_for_daemon "$STARTUP_WAIT_SECONDS" "$OLD_PID"; then
         log_info "Daemon auto-restarted by service manager"
         return 0
     fi

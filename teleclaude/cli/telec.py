@@ -8,6 +8,7 @@ import time as _t
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 _BOOT = _t.monotonic()
 
@@ -34,8 +35,6 @@ from teleclaude.cli.tool_commands import (  # noqa: E402
     handle_todo_set_deps,
     handle_todo_work,
 )
-from teleclaude.config import config  # noqa: E402
-from teleclaude.config.loader import load_global_config  # noqa: E402
 from teleclaude.constants import ENV_ENABLE, MAIN_MODULE  # noqa: E402
 from teleclaude.logging_config import setup_logging  # noqa: E402
 from teleclaude.project_setup import init_project  # noqa: E402
@@ -44,6 +43,22 @@ from teleclaude.todo_scaffold import create_bug_skeleton, create_todo_skeleton  
 TMUX_ENV_KEY = "TMUX"
 TUI_ENV_KEY = "TELEC_TUI_SESSION"
 TUI_SESSION_NAME = "tc_tui"
+
+
+class _ConfigProxy:
+    """Lazily resolve runtime config on first attribute access.
+
+    This keeps low-dependency commands (for example `telec todo demo validate`)
+    usable even when runtime config loading would fail.
+    """
+
+    def __getattr__(self, name: str) -> Any:
+        from teleclaude.config import config as runtime_config
+
+        return getattr(runtime_config, name)
+
+
+config = _ConfigProxy()
 
 
 class TelecCommand(str, Enum):
@@ -129,7 +144,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Start a new agent session",
                 flags=[
                     _H,
-                    Flag("--computer", desc="Target computer (default: local)"),
+                    Flag("--computer", desc="Target computer (optional; defaults to local)"),
                     Flag("--project", desc="Project directory path"),
                     Flag("--agent", desc="Agent: claude, gemini, codex"),
                     Flag("--mode", desc="Thinking mode: fast, med, slow"),
@@ -162,7 +177,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--args", desc="Command arguments"),
                     Flag("--agent", desc="Agent: claude, gemini, codex"),
                     Flag("--mode", desc="Thinking mode: fast, med, slow"),
-                    Flag("--computer", desc="Target computer (default: local)"),
+                    Flag("--computer", desc="Target computer (optional; defaults to local)"),
                     Flag("--subfolder", desc="Subdirectory within the project"),
                 ],
                 notes=[
@@ -179,7 +194,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "end": CommandDef(
                 desc="End (terminate) a session",
                 args="<session_id>",
-                flags=[_H, Flag("--session", "-s", "Session ID"), Flag("--computer", desc="Target computer")],
+                flags=[
+                    _H,
+                    Flag("--session", "-s", "Session ID"),
+                    Flag("--computer", desc="Target computer (optional; defaults to local)"),
+                ],
             ),
             "unsubscribe": CommandDef(
                 desc="Stop receiving notifications from a session",
@@ -361,7 +380,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "work": CommandDef(
                 desc="Run the Phase B (work) state machine",
                 args="[<slug>]",
-                flags=[_H, Flag("--cwd", desc="Project root directory (required)")],
+                flags=[_H],
             ),
             "maintain": CommandDef(
                 desc="Run the Phase D (maintain) state machine",
@@ -2631,7 +2650,7 @@ def _handle_bugs_report(args: list[str]) -> None:
                 agent="claude",
                 thinking_mode="slow",
                 title=f"Bug fix: {slug}",
-                message=f"Run telec todo work {slug} --cwd . and follow output verbatim until done.",
+                message=f"Run telec todo work {slug} and follow output verbatim until done.",
             )
         finally:
             await api.close()
@@ -2648,7 +2667,7 @@ def _handle_bugs_report(args: list[str]) -> None:
         print("Bug scaffold, branch, and worktree created successfully.")
         print("Start orchestrator manually from worktree directory:")
         print(f"  cd {worktree_path}")
-        print(f"  telec claude 'Run telec todo work {slug} --cwd . and follow output verbatim until done.'")
+        print(f"  telec claude 'Run telec todo work {slug} and follow output verbatim until done.'")
 
 
 def _handle_bugs_list(args: list[str]) -> None:
@@ -2795,6 +2814,10 @@ def _role_for_email(email: str) -> str | None:
     if not normalized:
         return None
     try:
+        # Import lazily so CLI commands that do not require config can start
+        # even when runtime config is invalid or unavailable.
+        from teleclaude.config.loader import load_global_config
+
         global_cfg = load_global_config()
     except Exception:
         return None

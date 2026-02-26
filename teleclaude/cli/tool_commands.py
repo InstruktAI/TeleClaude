@@ -9,6 +9,7 @@ handle_{command} for top-level commands.
 
 from __future__ import annotations
 
+import os
 import sys
 
 from teleclaude.cli.tool_client import print_json, tool_api_call
@@ -126,7 +127,8 @@ def handle_sessions_list(args: list[str]) -> None:
 def handle_sessions_start(args: list[str]) -> None:
     """Start a new agent session.
 
-    Usage: telec sessions start --computer <name> --project <path>
+    Usage: telec sessions start --project <path>
+                                [--computer <name>]
                                 [--agent claude|gemini|codex]
                                 [--mode fast|med|slow]
                                 [--message <text>]
@@ -136,9 +138,10 @@ def handle_sessions_start(args: list[str]) -> None:
     given project directory. The agent starts immediately.
 
     Examples:
-      telec sessions start --computer local --project /path/to/project
-      telec sessions start --computer local --project /path/to/project --agent claude --mode slow
-      telec sessions start --computer local --project /p/to/p --message "Implement feature X"
+      telec sessions start --project /path/to/project
+      telec sessions start --project /path/to/project --agent claude --mode slow
+      telec sessions start --project /p/to/p --message "Implement feature X"
+      telec sessions start --project /path/to/project --computer remote-macbook
     """
     if "--help" in args or "-h" in args:
         print(handle_sessions_start.__doc__ or "")
@@ -287,7 +290,7 @@ def handle_sessions_run(args: list[str]) -> None:
                               [--args <args>]
                               [--agent claude|gemini|codex]
                               [--mode fast|med|slow]
-                              [--computer local]
+                              [--computer <name>]
 
     Creates a new session and immediately runs the given slash command with the
     specified arguments. Useful for dispatching worker commands like /next-build.
@@ -296,9 +299,9 @@ def handle_sessions_run(args: list[str]) -> None:
       --command <cmd>    Slash command to run (e.g. /next-build)
       --project <path>   Project directory path
       --args <args>      Command arguments (e.g. "my-slug")
-      --agent <name>     Agent to use (default: claude)
+      --agent <name>     Agent to use (default: first enabled agent)
       --mode <mode>      Thinking mode: fast, med, slow (default: slow)
-      --computer <name>  Target computer (default: local)
+      --computer <name>  Target computer (optional; defaults to local)
       --subfolder <dir>  Subdirectory within the project
 
     Examples:
@@ -311,7 +314,6 @@ def handle_sessions_run(args: list[str]) -> None:
 
     body: dict[str, object] = {  # guard: loose-dict - JSON request body
         "computer": "local",
-        "agent": "claude",
         "thinking_mode": "slow",
         "args": "",
     }
@@ -355,14 +357,14 @@ def handle_sessions_run(args: list[str]) -> None:
 def handle_sessions_end(args: list[str]) -> None:
     """End (terminate) a session.
 
-    Usage: telec sessions end <session_id> [--computer local]
+    Usage: telec sessions end <session_id> [--computer <name>]
 
     Gracefully terminates the session: kills the tmux session, deletes the
     session record, and cleans up all resources (listeners, workspace dirs).
 
     Examples:
       telec sessions end abc123
-      telec sessions end abc123 --computer local
+      telec sessions end abc123 --computer remote-macbook
     """
     if "--help" in args or "-h" in args:
         print(handle_sessions_end.__doc__ or "")
@@ -727,43 +729,39 @@ def handle_todo_prepare(args: list[str]) -> None:
 def handle_todo_work(args: list[str]) -> None:
     """Run the Phase B (work) state machine.
 
-    Usage: telec todo work [<slug>] --cwd <dir>
+    Usage: telec todo work [<slug>]
 
     Executes the build/review/fix cycle on prepared work items. Dispatches
     worker agents for build, review, or fix-review phases as determined by the
     current state of the slug.
 
     Requires orchestrator clearance — workers cannot invoke this on themselves.
-    The --cwd flag is required and must point to the project root.
+    Uses the current working directory as the project root.
 
     Options:
       <slug>       Work item slug (optional; auto-selects next ready item)
-      --cwd <dir>  Project root directory (REQUIRED)
 
     Examples:
-      telec todo work --cwd /path/to/project
-      telec todo work my-feature --cwd /path/to/project
+      telec todo work
+      telec todo work my-feature
     """
     if "--help" in args or "-h" in args:
         print(handle_todo_work.__doc__ or "")
         return
 
-    body: dict[str, object] = {}  # guard: loose-dict - JSON request body
+    body: dict[str, object] = {"cwd": os.getcwd()}  # guard: loose-dict - JSON request body
 
     i = 0
     while i < len(args):
-        if args[i] == "--cwd" and i + 1 < len(args):
-            body["cwd"] = args[i + 1]
-            i += 2
+        if args[i] == "--cwd":
+            # Deprecated: todo work now always uses the shell cwd.
+            # Keep parsing for backwards-compatible invocations.
+            i += 2 if i + 1 < len(args) else 1
         elif not args[i].startswith("-"):
             body["slug"] = args[i]
             i += 1
         else:
             i += 1
-
-    if not body.get("cwd"):
-        print("Error: --cwd is required for todo work", file=sys.stderr)
-        raise SystemExit(1)
 
     data = tool_api_call("POST", "/todos/work", json_body=body)
     print_json(data)

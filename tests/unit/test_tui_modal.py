@@ -17,6 +17,15 @@ def mock_api():
     return MagicMock()
 
 
+@pytest.fixture(autouse=True)
+def mock_enabled_agents(monkeypatch):
+    """Keep modal tests deterministic regardless of workspace config."""
+    monkeypatch.setattr(
+        "teleclaude.cli.tui.widgets.modal.get_enabled_agents",
+        lambda: ("claude", "gemini", "codex"),
+    )
+
+
 def test_modal_init_defaults_to_first_available_agent(mock_api):
     """Test modal selects first available agent on init."""
     agent_availability = {
@@ -297,3 +306,28 @@ def test_modal_start_requests_session_and_notifies(mock_api):
     assert result.status == "success"
     assert modal.start_requested is True
     assert ("Spawning new session...", "info") in notify_calls
+
+
+def test_modal_start_blocks_when_no_enabled_agents(mock_api, monkeypatch):
+    monkeypatch.setattr("teleclaude.cli.tui.widgets.modal.get_enabled_agents", lambda: ())
+
+    notify_calls = []
+
+    def notify(message: str, level: str) -> None:
+        notify_calls.append((message, level))
+
+    modal = StartSessionModal(
+        computer="local",
+        project_path="/home/user/project",
+        api=mock_api,
+        agent_availability={},
+        notify=notify,
+    )
+
+    result = modal._start_session(MagicMock())
+
+    assert result is None
+    assert (
+        "No enabled agents in config.yml (set config.yml:agents.<agent>.enabled: true)",
+        "error",
+    ) in notify_calls
