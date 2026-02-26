@@ -13,6 +13,7 @@ from teleclaude.core.next_machine import next_work
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(10)
 async def test_next_work_explicit_bug_slug_with_worktree_cwd_skips_dor_gate(tmp_path: Path) -> None:
     """Bug start should work when cwd points at trees/{slug} worktree."""
     db = MagicMock(spec=Db)
