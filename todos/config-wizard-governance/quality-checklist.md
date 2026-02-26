@@ -10,15 +10,22 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate config-wizard-governance` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate config-wizard-governance` exits 0, or exception noted)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+Manual verification notes:
+
+- Verified governance text is present in all four target docs via direct `grep` checks for SC-1 through SC-4.
+- Verified frontmatter delimiter integrity (`---`) for all four edited snippets (SC-6).
+- Re-ran `make test` after one transient timeout failure; second run passed fully (`2237 passed, 106 skipped`).
+- `git status` cleanliness for build scope will only allow orchestrator-managed drift: `todos/config-wizard-governance/state.yaml`.
 
 ## Review Gates (Reviewer)
 

@@ -44,18 +44,18 @@ Four governance doc edits, each adding targeted wording to close the config-surf
 
 ### Task 2.1: Sync and verify
 
-- [ ] Run `telec sync` — must pass with no errors
-- [ ] Verify all four edited files retain valid snippet frontmatter
+- [x] Run `telec sync` — must pass with no errors
+- [x] Verify all four edited files retain valid snippet frontmatter
 
 ### Task 2.2: Quality Checks
 
-- [ ] Run `make lint` (if doc linting applies)
-- [ ] Verify no unchecked implementation tasks remain
+- [x] Run `make lint` (if doc linting applies)
+- [x] Verify no unchecked implementation tasks remain
 
 ---
 
 ## Phase 3: Review Readiness
 
-- [ ] Confirm all six success criteria from requirements.md are addressed
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm all six success criteria from requirements.md are addressed
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable; none required for this todo)
