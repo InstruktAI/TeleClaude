@@ -14,11 +14,11 @@ only. Follows patterns from existing `teleclaude/core/migrations/runner.py`.
 
 **File(s):** `teleclaude/deployment/__init__.py`
 
-- [ ] Create `teleclaude/deployment/` package
-- [ ] `parse_version(ver: str) -> tuple[int, ...]` — strips leading 'v', splits, converts
-- [ ] `version_cmp(a: str, b: str) -> int` — -1/0/1 comparison
-- [ ] `version_in_range(ver: str, from_ver: str, to_ver: str) -> bool`
-- [ ] Stdlib only — no external deps
+- [x] Create `teleclaude/deployment/` package
+- [x] `parse_version(ver: str) -> tuple[int, ...]` — strips leading 'v', splits, converts
+- [x] `version_cmp(a: str, b: str) -> int` — -1/0/1 comparison
+- [x] `version_in_range(ver: str, from_ver: str, to_ver: str) -> bool`
+- [x] Stdlib only — no external deps
 
 ### Task 1.2: Migration manifest directory
 
