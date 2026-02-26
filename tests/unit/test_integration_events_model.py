@@ -382,3 +382,39 @@ def test_service_replays_history_on_init(tmp_path: Path) -> None:
     )
     assert candidate is not None
     assert candidate.status == "READY"
+
+
+def test_service_ingest_raw_accepts_valid_event_type(tmp_path: Path) -> None:
+    service = _new_service(tmp_path / "integration-events.jsonl")
+
+    result = service.ingest_raw(
+        "review_approved",
+        {
+            "slug": "integration-events-model",
+            "approved_at": "2026-02-26T10:01:00Z",
+            "review_round": 1,
+            "reviewer_session_id": "review-1",
+        },
+    )
+
+    assert result.status == "APPENDED"
+    assert result.event is not None
+    assert result.event.event_type == "review_approved"
+
+
+def test_service_ingest_raw_rejects_unknown_event_type(tmp_path: Path) -> None:
+    service = _new_service(tmp_path / "integration-events.jsonl")
+
+    result = service.ingest_raw(
+        "review-approved",
+        {
+            "slug": "integration-events-model",
+            "approved_at": "2026-02-26T10:01:00Z",
+            "review_round": 1,
+            "reviewer_session_id": "review-1",
+        },
+    )
+
+    assert result.status == "REJECTED"
+    assert result.event is None
+    assert any("unsupported event_type" in message for message in result.diagnostics)
