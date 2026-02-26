@@ -1,11 +1,17 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
+- slug: integration-orchestrator-rollout
+  description: Parent rollout for event-driven singleton integrator and guarded mainline
+    integration
+- slug: integration-safety-gates
+  group: integration-orchestrator-rollout
+  description: 'Step 1: add finalize/apply safety gates for dirty/diverged canonical
+    main'
+- slug: api-todos-work-stability-hardening
+  description: Stabilize `/todos/work` latency by removing redundant worktree prep/sync
+    and adding phase-level diagnostics
 - slug: help-desk-whatsapp
   description: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
-- slug: deployment-versioning
-  group: mature-deployment
-  description: 'Phase 1: Runtime __version__, telec version command, pyproject.toml
-    1.0.0'
 - slug: deployment-migrations
   group: mature-deployment
   description: 'Phase 2: Migration manifest format, runner, version utilities (no
@@ -25,3 +31,27 @@
 - slug: discord-slash-commands-like-telegram
   description: Add Discord Application Commands (slash commands) mirroring Telegram
     command set
+- slug: integration-events-model
+  group: integration-orchestrator-rollout
+  after:
+  - integration-safety-gates
+  description: 'Step 2: persist review_approved/finalize_ready/branch_pushed events
+    and readiness projection'
+- slug: integrator-shadow-mode
+  group: integration-orchestrator-rollout
+  after:
+  - integration-events-model
+  description: 'Step 3: run singleton lease+queue integrator in shadow mode without
+    main merges'
+- slug: integrator-cutover
+  group: integration-orchestrator-rollout
+  after:
+  - integrator-shadow-mode
+  description: 'Step 4: make integrator the only path that merges and pushes canonical
+    main'
+- slug: integration-blocked-flow
+  group: integration-orchestrator-rollout
+  after:
+  - integrator-cutover
+  description: 'Step 5: emit integration_blocked flow with follow-up todo creation
+    and resume UX'
