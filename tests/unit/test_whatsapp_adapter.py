@@ -180,6 +180,48 @@ async def test_send_file_uploads_media_then_sends_message(
     assert adapter._http.post.await_count == 2
 
 
+@pytest.mark.asyncio
+async def test_send_file_retries_media_upload_on_429(
+    adapter: WhatsAppAdapter, customer_session: Session, tmp_path: Path
+) -> None:
+    f = tmp_path / "sample.txt"
+    f.write_text("hello", encoding="utf-8")
+
+    adapter._http = AsyncMock()
+    adapter._http.post = AsyncMock(
+        side_effect=[
+            _FakeResponse({}, status_code=429, headers={"Retry-After": "0.01"}),
+            _FakeResponse({"id": "media.retry"}),
+            _FakeResponse({"messages": [{"id": "wamid.file.retry"}]}),
+        ]
+    )
+
+    with patch("teleclaude.adapters.whatsapp_adapter.asyncio.sleep", new=AsyncMock()) as sleep_mock:
+        message_id = await adapter.send_file(customer_session, str(f), caption="file caption")
+
+    assert message_id == "wamid.file.retry"
+    assert adapter._http.post.await_count == 3
+    sleep_mock.assert_awaited_once_with(0.01)
+
+
+@pytest.mark.asyncio
+async def test_send_file_raises_after_exhausting_media_upload_429_retries(
+    adapter: WhatsAppAdapter, customer_session: Session, tmp_path: Path
+) -> None:
+    f = tmp_path / "sample.txt"
+    f.write_text("hello", encoding="utf-8")
+
+    adapter._http = AsyncMock()
+    adapter._http.post = AsyncMock(side_effect=[_FakeResponse({}, status_code=429) for _ in range(4)])
+
+    with patch("teleclaude.adapters.whatsapp_adapter.asyncio.sleep", new=AsyncMock()) as sleep_mock:
+        with pytest.raises(RuntimeError, match="HTTP 429"):
+            await adapter.send_file(customer_session, str(f), caption="file caption")
+
+    assert adapter._http.post.await_count == 4
+    assert sleep_mock.await_count == 3
+
+
 def test_markdown_conversion_for_whatsapp(adapter: WhatsAppAdapter) -> None:
     converted = adapter._convert_markdown_for_platform("**bold** ~~gone~~ `code`")
 

@@ -266,18 +266,34 @@ class WhatsAppAdapter(UiAdapter):
     async def _upload_media(self, file_path: str, mime_type: str) -> str:
         if self._http is None:
             raise RuntimeError("WhatsApp adapter is not started")
-        with open(file_path, "rb") as fh:
-            response = await self._http.post(
-                self._media_url,
-                data={"messaging_product": "whatsapp", "type": mime_type},
-                files={"file": (Path(file_path).name, fh, mime_type)},
-                headers=self._auth_headers(),
+        for attempt in range(self._MAX_429_RETRIES + 1):
+            with open(file_path, "rb") as fh:
+                response = await self._http.post(
+                    self._media_url,
+                    data={"messaging_product": "whatsapp", "type": mime_type},
+                    files={"file": (Path(file_path).name, fh, mime_type)},
+                    headers=self._auth_headers(),
+                )
+            if response.status_code != 429:
+                response.raise_for_status()
+                payload = response.json()
+                if isinstance(payload, dict) and payload.get("id"):
+                    return str(payload["id"])
+                raise RuntimeError("WhatsApp media upload response missing media id")
+
+            if attempt >= self._MAX_429_RETRIES:
+                response.raise_for_status()
+
+            retry_after = self._parse_retry_after_seconds(response.headers.get("Retry-After"))
+            backoff_seconds = retry_after or (self._BASE_429_BACKOFF_SECONDS * (2**attempt))
+            logger.warning(
+                "WhatsApp media upload rate-limited (429); retrying in %.2fs (attempt %d/%d)",
+                backoff_seconds,
+                attempt + 1,
+                self._MAX_429_RETRIES,
             )
-        response.raise_for_status()
-        payload = response.json()
-        if isinstance(payload, dict) and payload.get("id"):
-            return str(payload["id"])
-        raise RuntimeError("WhatsApp media upload response missing media id")
+            await asyncio.sleep(backoff_seconds)
+        raise RuntimeError("WhatsApp media upload retry loop exited unexpectedly")
 
     async def send_file(
         self,
