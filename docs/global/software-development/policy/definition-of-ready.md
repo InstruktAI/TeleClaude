@@ -40,6 +40,7 @@ Gates (all required):
    - Prerequisite tasks are listed and blocked via `roadmap.yaml` if needed.
    - Required configs, access, and environments are known.
    - Required external systems are reachable or stubbed.
+   - If the work introduces new configuration (config keys, env vars, YAML sections), they are listed explicitly and their wizard exposure is confirmed.
 7. **Integration safety**
    - The change can be merged incrementally without destabilizing main.
    - Entry/exit points are explicit; rollback or containment exists if risky.
