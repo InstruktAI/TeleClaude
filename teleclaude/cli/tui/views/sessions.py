@@ -525,6 +525,11 @@ class SessionsView(Widget, can_focus=True):
         # Double-click detection
         if self._last_click_session == session_id and (now - self._last_click_time) < DOUBLE_PRESS_THRESHOLD:
             self._toggle_sticky(session_id)
+            if session_id not in self._sticky_session_ids:
+                # Preserve pane-slot stability: removed sticky immediately becomes preview.
+                self.preview_session_id = session_id
+                self.post_message(PreviewChanged(session_id, request_focus=False))
+                self._notify_state_changed()
             self._last_click_time = 0.0
             self._last_click_session = None
             return
@@ -625,8 +630,9 @@ class SessionsView(Widget, can_focus=True):
         elif decision.action == TreeInteractionAction.TOGGLE_STICKY:
             self._toggle_sticky(session_id)
             if decision.clear_preview:
-                self.preview_session_id = None
-                self.post_message(PreviewChanged(None, request_focus=False))
+                # Double-space on sticky removes sticky and promotes it to preview.
+                self.preview_session_id = session_id
+                self.post_message(PreviewChanged(session_id, request_focus=False))
                 self._notify_state_changed()
             self._interaction.mark_double_press_guard(session_id, now)
 
