@@ -3,4 +3,3 @@
 - slug: harmonize-agent-notifications
   after:
   - ucap-cutover-parity-validation
-- slug: tui-footer-key-contract-restoration
