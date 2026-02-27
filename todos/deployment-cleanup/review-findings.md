@@ -114,3 +114,73 @@ Fix: Remove lines 42-44 from `docs/global/general/spec/tools/telec-cli.md` and u
 | 4   | Suggestion | Stale "deploy" in `_handle_system_command` docstring (`daemon.py:1122`)                | Updated to `restart, health_check, etc.`                                           | `554e53a7` |
 
 All findings addressed. Ready for re-review.
+
+---
+
+## Review Round 3
+
+### Status of Previous Findings
+
+| #   | Severity   | Finding                                                                                | Status                               |
+| --- | ---------- | -------------------------------------------------------------------------------------- | ------------------------------------ |
+| 1   | Important  | Orphaned `telec deploy` section in `docs/global/general/spec/tools/telec-cli.md:42-44` | **RESOLVED** — removed in `21e96338` |
+| 2   | Important  | Stale comment referencing deploy commands at `redis_transport.py:1038`                 | **RESOLVED** — updated in `554e53a7` |
+| 3   | Suggestion | Stale "deploy" in `send_system_command` docstring (`redis_transport.py:1863,1867`)     | **RESOLVED** — updated in `554e53a7` |
+| 4   | Suggestion | Stale "deploy" in `_handle_system_command` docstring (`daemon.py:1122`)                | **RESOLVED** — updated in `554e53a7` |
+
+All four fixes verified in current code:
+
+- `docs/global/general/spec/tools/telec-cli.md:42` — now shows `### telec agents` with no deploy section above it.
+- `teleclaude/transport/redis_transport.py:1038` — comment reads "commands that call os.\_exit(0) (e.g., restart)".
+- `teleclaude/daemon.py:1122` — docstring reads "restart, health_check, etc."
+- `teleclaude/transport/redis_transport.py:1860-1866` — docstring examples use "restart, health_check".
+
+### Paradigm-Fit Assessment
+
+- **Data flow**: Removal follows dependency order (API endpoint → CLI → daemon handler → transport → service → events). The event bus, system command dispatch, and tool access filtering patterns remain intact for the surviving commands. PASS.
+- **Component reuse**: No copy-paste duplication. Test substitutions use `telec agents status` (member-excluded tool) as a semantically equivalent replacement for the removed `telec deploy`. Config contract test correctly extended to include `deployment` key. PASS.
+- **Pattern consistency**: All changes follow the existing patterns: CLI surface definitions, enum-based command routing, role-based tool filtering, doc snippet frontmatter conventions, and procedure doc structure. PASS.
+
+### Critical
+
+(none)
+
+### Important
+
+(none)
+
+### Suggestions
+
+(none)
+
+### New Findings
+
+(none)
+
+### Requirements Trace
+
+| Requirement                                          | Status                                        |
+| ---------------------------------------------------- | --------------------------------------------- |
+| `telec deploy` MCP tool removed                      | PASS (MCP already removed by prior migration) |
+| No deploy dispatch path in daemon/transport          | PASS                                          |
+| `deploy_service.py` deleted                          | PASS                                          |
+| `DeployArgs` removed from `core/events.py`           | PASS                                          |
+| Deploy status check removed from `core/lifecycle.py` | PASS                                          |
+| All docs reference automated deployment flow         | PASS                                          |
+| New `deployment-pipeline.md` exists                  | PASS                                          |
+
+### Test Coverage Assessment
+
+- Tests updated: `test_api_route_auth.py`, `test_role_tools.py`, `test_help_desk_features.py`, `test_contracts.py`
+- Role filtering tests correctly substituted `telec agents status` (member-excluded tool) for removed `telec deploy`
+- Config contract test updated to include `deployment` key
+- No orphaned deploy references remain in test files
+- Regression risk: Low — removal is clean, no new behavior introduced
+
+### Why No Issues
+
+1. **Paradigm-fit verification**: Checked CLI surface definition pattern, enum-based command routing in `telec.py`, tool access filtering in `tool_access.py`, event bus dispatch in `daemon.py`, transport layer command handling in `redis_transport.py`, and API endpoint registration in `api_server.py`. All follow established patterns.
+2. **Requirements validation**: All 7 success criteria verified via grep and file inspection. `deploy_service.py` deleted, `DeployArgs` removed, `DEPLOYED` and `SystemCommand.DEPLOY` enums removed, API endpoint removed, CLI command removed, docs updated with new automated flow, `deployment-pipeline.md` created.
+3. **Copy-paste duplication check**: No duplicated code. Test substitutions use semantically equivalent tools rather than copying test logic. New docs (`deployment-pipeline.md`, updated `deploy.md`) are original content describing the new system.
+
+Verdict: **APPROVE**
