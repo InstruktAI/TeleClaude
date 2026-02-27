@@ -1,23 +1,11 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: deployment-channels
-  group: mature-deployment
-  after:
-  - deployment-versioning
-  - deployment-migrations
-  description: 'Phase 3: Channel config, webhook handler, update executor, Redis fan-out'
 - slug: deployment-cleanup
   group: mature-deployment
   after:
   - deployment-channels
   description: 'Phase 4: Remove deploy_service, MCP tool (if still present), update
     docs, write pipeline doc'
-- slug: integration-events-model
-  group: integration-orchestrator-rollout
-  after:
-  - integration-safety-gates
-  description: 'Step 2: persist review_approved/finalize_ready/branch_pushed events
-    and readiness projection'
 - slug: integrator-shadow-mode
   group: integration-orchestrator-rollout
   after:
@@ -36,9 +24,6 @@
   - integrator-cutover
   description: 'Step 5: emit integration_blocked flow with follow-up todo creation
     and resume UX'
-- slug: skills-procedure-taxonomy-alignment
-  description: Extract procedure logic from agents/skills into docs procedures and
-    align skill wrappers with breath-aware taxonomy (exploratory, skills-only scope).
 - slug: config-wizard-whatsapp-wiring
   description: Wire WhatsApp env vars, guidance, and config.sample into the config
     wizard
