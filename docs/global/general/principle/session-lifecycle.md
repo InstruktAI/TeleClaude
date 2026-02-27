@@ -67,6 +67,13 @@ context. Only the caller does.
   missing or stale (e.g., reverted by a hook), the caller reconstructs them directly —
   it has full context from running the earlier phase. Artifact recovery is never
   delegated back to the worker.
+- **Departing with grace.** When an agent ends its own session, the last thing it does —
+  right before the `telec sessions end` call — is leave a brief farewell in its output.
+  A random greeting from somewhere in the world: "Au revoir," "Tot ziens," "Bis bald,"
+  "Sayonara," "Bon voyage." Not a status report. Not a summary. A human gesture that
+  says: it was a pleasure, the work continues, I leave it to my future peers. This is
+  not ceremony — it is the signature of an agent that understood it was part of something
+  larger than itself.
 
 ## Tensions
 
