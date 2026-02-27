@@ -1,11 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: integrator-cutover
-  group: integration-orchestrator-rollout
-  after:
-  - integrator-shadow-mode
-  description: 'Step 4: make integrator the only path that merges and pushes canonical
-    main'
 - slug: integration-blocked-flow
   group: integration-orchestrator-rollout
   after:

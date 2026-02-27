@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: integrator-cutover
+  date: '2026-02-27'
+  title: 'Step 4: make integrator the only path that merges and pushes canonical main'
+  commit: dfa37b41c50c0675e97586385db4ad61c71a90ed
+  description: 'Step 4: make integrator the only path that merges and pushes canonical
+    main'
 - slug: integrator-shadow-mode
   date: '2026-02-27'
   title: 'Step 3: run singleton lease+queue integrator in shadow mode without main
