@@ -176,18 +176,20 @@ def test_sessions_check_action_is_context_sensitive() -> None:
 def test_sessions_focus_pane_routes_to_header_default_actions(monkeypatch: pytest.MonkeyPatch) -> None:
     view = SessionsView()
     view._nav_items = [_computer_header(), _project_header(), _session_row()]
-    called: list[str] = []
+    called: list[tuple[str, ...]] = []
 
-    monkeypatch.setattr(view, "action_restart_all", lambda: called.append("restart_all"))
-    monkeypatch.setattr(view, "action_new_session", lambda: called.append("new_session"))
+    monkeypatch.setattr(
+        view, "action_new_session", lambda path_mode=False: called.append(("new_session", str(path_mode)))
+    )
 
+    # Computer header → path-mode new session (not restart_all)
     view.cursor_index = 0
     view.action_focus_pane()
-    assert called == ["restart_all"]
+    assert called == [("new_session", "True")]
 
     view.cursor_index = 1
     view.action_focus_pane()
-    assert called == ["restart_all", "new_session"]
+    assert called == [("new_session", "True"), ("new_session", "False")]
 
 
 @pytest.mark.unit
@@ -195,8 +197,9 @@ def test_sessions_default_action_tracks_cursor_context() -> None:
     view = SessionsView()
     view._nav_items = [_computer_header(), _project_header(), _session_row()]
 
+    # Computer header → focus_pane (Enter opens path-mode modal, not restart_all)
     view.cursor_index = 0
-    assert view._default_footer_action() == "restart_all"
+    assert view._default_footer_action() == "focus_pane"
     view.cursor_index = 1
     assert view._default_footer_action() == "new_session"
     view.cursor_index = 2

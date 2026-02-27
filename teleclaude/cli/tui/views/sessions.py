@@ -79,8 +79,10 @@ class SessionsView(Widget, can_focus=True):
         Binding("equals_sign", "expand_all", "All", key_display="+", group=Binding.Group("Fold", compact=True)),
         Binding("minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True)),
         Binding("n", "new_session", "New"),
+        Binding("n", "new_project", "New Project"),
         Binding("k", "kill_session", "Kill"),
         Binding("R", "restart_session", "Restart"),
+        Binding("R", "restart_project", "Restart All"),
         Binding("R", "restart_all", "Restart All"),
     ]
 
@@ -663,14 +665,14 @@ class SessionsView(Widget, can_focus=True):
         """Enter: on a session — preview AND focus the tmux pane.
 
         On a project header — open new session modal.
-        On a computer header — restart all sessions on that computer.
+        On a computer header — open new session modal in path-input mode.
         If session is headless, revive it first.
         """
         row = self._current_session_row()
         if not row:
             item = self._current_item()
             if isinstance(item, ComputerHeader):
-                self.action_restart_all()
+                self.action_new_session(path_mode=True)
             else:
                 self.action_new_session()
             return
@@ -764,8 +766,8 @@ class SessionsView(Widget, can_focus=True):
 
         return None
 
-    def action_new_session(self) -> None:
-        """n: open new session modal."""
+    def action_new_session(self, path_mode: bool = False) -> None:
+        """n: open new session modal. path_mode=True adds a project path input."""
         context = self._resolve_context_for_cursor()
         if context:
             computer, project_path = context
@@ -779,6 +781,7 @@ class SessionsView(Widget, can_focus=True):
             computer=computer,
             project_path=project_path,
             agent_availability=self._availability,
+            path_mode=path_mode,
         )
         self.app.push_screen(modal, self._on_create_session_result)
 
@@ -817,6 +820,30 @@ class SessionsView(Widget, can_focus=True):
 
         self.post_message(RestartSessionRequest(row.session_id, row.session.computer or "local"))
 
+    def action_restart_project(self) -> None:
+        """R on project header: restart all sessions for that project."""
+        item = self._current_item()
+        if not isinstance(item, ProjectHeader):
+            return
+
+        project_path = item.project.path
+        session_ids = sorted({s.session_id for s in self._sessions if s.project_path == project_path})
+        if not session_ids:
+            self.app.notify(f"No sessions to restart in {item.project.name}", severity="warning")
+            return
+
+        modal = ConfirmModal(
+            title="Restart Project Sessions",
+            message=f"Restart {len(session_ids)} sessions in '{item.project.name}'?",
+        )
+
+        def on_confirm(confirmed: bool | None) -> None:
+            if confirmed:
+                computer = item.project.computer or "local"
+                self.post_message(RestartSessionsRequest(computer=computer, session_ids=session_ids))
+
+        self.app.push_screen(modal, on_confirm)
+
     def action_restart_all(self) -> None:
         """R on computer header: restart all sessions on that computer."""
         item = self._current_item()
@@ -840,6 +867,42 @@ class SessionsView(Widget, can_focus=True):
 
         self.app.push_screen(modal, on_confirm)
 
+    def action_new_project(self) -> None:
+        """n on computer header: open New Project modal."""
+        from teleclaude.cli.tui.widgets.modals import NewProjectModal, NewProjectResult
+
+        item = self._current_item()
+        if not isinstance(item, ComputerHeader):
+            return
+
+        computer = item.data.computer
+
+        def on_result(result: NewProjectResult | None) -> None:
+            if not result:
+                return
+            import subprocess
+
+            yaml_patch = f"computer:\n  trusted_dirs:\n    - name: {result.name}\n      path: {result.path}\n"
+            if result.description:
+                yaml_patch += f"      description: {result.description}\n"
+            try:
+                subprocess.run(
+                    ["telec", "config", "patch", "--yaml", yaml_patch],
+                    check=True,
+                    capture_output=True,
+                )
+            except subprocess.CalledProcessError as exc:
+                self.app.notify(f"Failed to save project: {exc.stderr.decode()[:80]}", severity="error")
+                return
+            self.app.notify(f"Project '{result.name}' added")
+
+        existing_names = {p.name for p in self._projects if (p.computer or "local") == computer.name}
+        existing_paths = {p.path for p in self._projects if (p.computer or "local") == computer.name}
+        self.app.push_screen(
+            NewProjectModal(existing_names=existing_names, existing_paths=existing_paths),
+            on_result,
+        )
+
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Enable/hide actions based on current tree node type."""
         del parameters
@@ -847,10 +910,14 @@ class SessionsView(Widget, can_focus=True):
 
         if action == "new_session":
             return isinstance(item, ProjectHeader)
+        if action == "new_project":
+            return isinstance(item, ComputerHeader)
         if action == "focus_pane":
             return isinstance(item, (ProjectHeader, ComputerHeader, SessionRow))
         if action in {"kill_session", "restart_session", "toggle_preview"}:
             return isinstance(item, SessionRow)
+        if action == "restart_project":
+            return isinstance(item, ProjectHeader)
         if action == "restart_all":
             return isinstance(item, ComputerHeader)
         return True
@@ -859,7 +926,7 @@ class SessionsView(Widget, can_focus=True):
         """Return the primary action for the selected node."""
         item = self._current_item()
         if isinstance(item, ComputerHeader):
-            return "restart_all"
+            return "focus_pane"
         if isinstance(item, ProjectHeader):
             return "new_session"
         if isinstance(item, SessionRow):
