@@ -10,7 +10,7 @@ The fix is a small, targeted state transition change. When TOGGLE_STICKY removes
 
 **File(s):** `teleclaude/cli/tui/state.py`
 
-- [x] In `reduce_state`, TOGGLE_STICKY removal branch: change from clearing preview to setting `preview = PreviewState(session_id)` for the removed session
+- [ ] In `reduce_state`, TOGGLE_STICKY removal branch: change from clearing preview to setting `preview = PreviewState(session_id)` for the removed session
 
 Current code (partial fix already on main):
 
@@ -35,7 +35,7 @@ if existing_idx is not None:
 
 The keyboard-based interaction path (lines ~625-631) uses `decision.clear_preview` which is `True` when un-stickying (`interaction.py:83` sets `clear_preview=is_sticky`). Currently this branch clears the preview — it must instead set it to the un-stickied session:
 
-- [x] In the `TOGGLE_STICKY` branch, replace the `decision.clear_preview` body: change `self.preview_session_id = None` to `self.preview_session_id = session_id`, and change `PreviewChanged(None, ...)` to `PreviewChanged(session_id, request_focus=False)`
+- [ ] In the `TOGGLE_STICKY` branch, replace the `decision.clear_preview` body: change `self.preview_session_id = None` to `self.preview_session_id = session_id`, and change `PreviewChanged(None, ...)` to `PreviewChanged(session_id, request_focus=False)`
 
 ### Task 1.2b: Sessions view (click path) — set preview on un-sticky
 
@@ -43,14 +43,14 @@ The keyboard-based interaction path (lines ~625-631) uses `decision.clear_previe
 
 The click-based double-press handler (lines ~525-530) calls `_toggle_sticky(session_id)` and returns without touching preview. This path must also set preview when un-stickying:
 
-- [x] After `_toggle_sticky(session_id)`, check `if session_id not in self._sticky_session_ids:` — if true (was removed), set `self.preview_session_id = session_id` and post `PreviewChanged(session_id, request_focus=False)`
+- [ ] After `_toggle_sticky(session_id)`, check `if session_id not in self._sticky_session_ids:` — if true (was removed), set `self.preview_session_id = session_id` and post `PreviewChanged(session_id, request_focus=False)`
 
 ### Task 1.3: Verify pane bridge ordering
 
 **File(s):** `teleclaude/cli/tui/pane_bridge.py` (read-only verification)
 
-- [x] Confirm that `on_sticky_changed` followed by `on_preview_changed` results in correct state: `_sticky_session_ids` shortened, `_preview_session_id` set to the removed session
-- [x] Confirm PaneWriter coalescing produces the correct final snapshot
+- [ ] Confirm that `on_sticky_changed` followed by `on_preview_changed` results in correct state: `_sticky_session_ids` shortened, `_preview_session_id` set to the removed session
+- [ ] Confirm PaneWriter coalescing produces the correct final snapshot
 
 ---
 
@@ -58,27 +58,27 @@ The click-based double-press handler (lines ~525-530) calls `_toggle_sticky(sess
 
 ### Task 2.1: Tests
 
-- [x] Update `test_remove_sticky_clears_preview_for_same_session` — preview should be SET to the removed session, not cleared
-- [x] Update `test_remove_sticky_preserves_preview_for_different_session` — removing sticky-A while preview-B is active must now set preview to A (not preserve B)
-- [x] Add test: un-sticky with no prior preview → preview is set to removed session
-- [x] Run `make test-unit`
+- [ ] Update `test_remove_sticky_clears_preview_for_same_session` — preview should be SET to the removed session, not cleared
+- [ ] Update `test_remove_sticky_preserves_preview_for_different_session` — removing sticky-A while preview-B is active must now set preview to A (not preserve B)
+- [ ] Add test: un-sticky with no prior preview → preview is set to removed session
+- [ ] Run `make test-unit`
 
 ### Task 2.2: Manual verification
 
-- [x] Reload TUI with SIGUSR2 (not executable in this headless builder worktree; covered by automated regression tests and pane-bridge state tracing)
-- [x] Test: make 2 sessions sticky, un-sticky one → it becomes preview, layout doesn't rebuild (covered by `tests/unit/test_sessions_view_sticky_preview.py`)
-- [x] Test: have a preview active, un-sticky a different session → preview switches, layout stable (covered by reducer+view regression tests)
-- [x] Test: un-sticky last sticky with no preview → session becomes preview, layout stable (covered by `test_remove_sticky_sets_preview_when_none_active`)
+- [ ] Reload TUI with SIGUSR2
+- [ ] Test: make 2 sessions sticky, un-sticky one → it becomes preview, layout doesn't rebuild
+- [ ] Test: have a preview active, un-sticky a different session → preview switches, layout stable
+- [ ] Test: un-sticky last sticky with no preview → session becomes preview, layout stable
 
 ### Task 2.3: Quality Checks
 
-- [x] Run `make lint`
-- [x] Verify no unchecked implementation tasks remain
+- [ ] Run `make lint`
+- [ ] Verify no unchecked implementation tasks remain
 
 ---
 
 ## Phase 3: Review Readiness
 
-- [x] Confirm requirements are reflected in code changes
-- [x] Confirm implementation tasks are all marked `[x]`
-- [x] Document any deferrals explicitly in `deferrals.md` (if applicable; no additional deferrals required)
+- [ ] Confirm requirements are reflected in code changes
+- [ ] Confirm implementation tasks are all marked `[x]`
+- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
