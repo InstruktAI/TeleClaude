@@ -17,6 +17,7 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
+    AgentNotificationPayload,
     AgentOutputPayload,
     AgentStopPayload,
     TeleClaudeEvents,
@@ -1033,3 +1034,72 @@ async def test_stall_cancellation_prevents_stale_transitions(coordinator):
     statuses = [ctx.status for event, ctx in emitted if event == TeleClaudeEvents.SESSION_STATUS]  # type: ignore[union-attr]
     assert "awaiting_output" not in statuses
     assert "stalled" not in statuses
+
+
+# ---------------------------------------------------------------------------
+# handle_notification emits canonical activity event (harmonize-agent-notifications)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_handle_notification_emits_agent_notification_activity_event(coordinator):
+    """handle_notification must emit a canonical agent_notification activity event."""
+    session_id = "sess-notif-1"
+    payload = AgentNotificationPayload(
+        message="Permission required",
+        session_id=session_id,
+    )
+    context = AgentEventContext(
+        event_type=AgentHookEvents.AGENT_NOTIFICATION,
+        session_id=session_id,
+        data=payload,
+    )
+
+    emitted: list[tuple[str, object]] = []
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db") as mock_db,
+        patch("teleclaude.core.agent_coordinator.event_bus") as mock_bus,
+    ):
+        mock_db.get_session = AsyncMock(return_value=None)
+        mock_db.set_notification_flag = AsyncMock()
+        mock_bus.emit.side_effect = lambda event, ctx: emitted.append((event, ctx))
+
+        await coordinator.handle_notification(context)
+
+    activity_events = [ctx for event, ctx in emitted if event == TeleClaudeEvents.AGENT_ACTIVITY]
+    assert len(activity_events) == 1
+    evt = activity_events[0]
+    assert evt.event_type == AgentHookEvents.AGENT_NOTIFICATION  # type: ignore[union-attr]
+    assert evt.canonical_type == "agent_notification"  # type: ignore[union-attr]
+    assert evt.message == "Permission required"  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_handle_notification_activity_event_carries_message(coordinator):
+    """The emitted activity event message field must match the payload message."""
+    session_id = "sess-notif-2"
+    payload = AgentNotificationPayload(
+        message="Awaiting bash approval",
+        session_id=session_id,
+    )
+    context = AgentEventContext(
+        event_type=AgentHookEvents.AGENT_NOTIFICATION,
+        session_id=session_id,
+        data=payload,
+    )
+
+    with (
+        patch("teleclaude.core.agent_coordinator.db") as mock_db,
+        patch.object(coordinator, "_emit_activity_event") as mock_emit,
+    ):
+        mock_db.get_session = AsyncMock(return_value=None)
+        mock_db.set_notification_flag = AsyncMock()
+
+        await coordinator.handle_notification(context)
+
+    mock_emit.assert_called_once_with(
+        session_id,
+        AgentHookEvents.AGENT_NOTIFICATION,
+        message="Awaiting bash approval",
+    )
