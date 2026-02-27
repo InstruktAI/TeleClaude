@@ -1,11 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: integrator-shadow-mode
-  group: integration-orchestrator-rollout
-  after:
-  - integration-events-model
-  description: 'Step 3: run singleton lease+queue integrator in shadow mode without
-    main merges'
 - slug: integrator-cutover
   group: integration-orchestrator-rollout
   after:

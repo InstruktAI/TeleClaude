@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: integrator-shadow-mode
+  date: '2026-02-27'
+  title: 'Step 3: run singleton lease+queue integrator in shadow mode without main
+    merges'
+  commit: 449c4e02916a0c84788623c510b823bf52da6fb9
+  description: 'Step 3: run singleton lease+queue integrator in shadow mode without
+    main merges'
 - slug: fix-sticky-removal-layout-issues
   date: '2026-02-27'
   title: Fix pane continuity on sticky removal
