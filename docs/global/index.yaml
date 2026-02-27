@@ -88,6 +88,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: general/principle/agent-shorthand
+  description: "Compressed communication protocol for agent-to-agent exchanges \u2014\
+    \ semantic tokens over prose."
+  type: principle
+  scope: global
+  path: docs/general/principle/agent-shorthand.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/principle/attunement
   description: "Sense which phase of the breath you are in \u2014 and communicate\
     \ accordingly. The relational intelligence that makes the breath cycle work between\
@@ -186,6 +195,16 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: general/principle/session-lifecycle
+  description: Sessions are ephemeral expressions; artifacts carry continuity. Callers
+    clean up children, then themselves. Signal sessions persist only when human attention
+    is required.
+  type: principle
+  scope: global
+  path: docs/general/principle/session-lifecycle.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/procedure/agent-artifact-authoring
   description: Author agent artifacts (agents, skills, commands) that compile into
     tool-specific formats.
@@ -249,7 +268,7 @@ snippets:
   source_project: TeleClaude
 - id: general/procedure/maintenance/next-prepare
   description: Orchestration procedure for next-prepare. Routes work to draft or gate
-    procedures with strict phase separation.
+    procedures with strict phase separation and session lifecycle management.
   type: procedure
   scope: global
   path: docs/general/procedure/maintenance/next-prepare.md

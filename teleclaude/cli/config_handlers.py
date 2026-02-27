@@ -34,6 +34,7 @@ logger = get_logger(__name__)
 _TELECLAUDE_DIR = Path("~/.teleclaude").expanduser()
 _GLOBAL_CONFIG_PATH = _TELECLAUDE_DIR / "teleclaude.yml"
 _PEOPLE_DIR = _TELECLAUDE_DIR / "people"
+_DEFAULT_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 
 
 # --- Data classes ---
@@ -143,6 +144,50 @@ _ADAPTER_ENV_VARS: dict[str, list[EnvVarInfo]] = {
             "redis",
             "Redis password (multi-computer transport)",
             "your-redis-password",
+        ),
+    ],
+    "whatsapp": [
+        EnvVarInfo(
+            "WHATSAPP_PHONE_NUMBER_ID",
+            "whatsapp",
+            "Business phone number ID from Meta",
+            "123456789012345",
+        ),
+        EnvVarInfo(
+            "WHATSAPP_ACCESS_TOKEN",
+            "whatsapp",
+            "System user token (long-lived)",
+            "EAAx...",
+        ),
+        EnvVarInfo(
+            "WHATSAPP_WEBHOOK_SECRET",
+            "whatsapp",
+            "App secret for webhook signature verification",
+            "abc123...",
+        ),
+        EnvVarInfo(
+            "WHATSAPP_VERIFY_TOKEN",
+            "whatsapp",
+            "Random string for webhook challenge-response",
+            "my-verify-token",
+        ),
+        EnvVarInfo(
+            "WHATSAPP_TEMPLATE_NAME",
+            "whatsapp",
+            "Template name for 24h window boundary messages",
+            "hello_world",
+        ),
+        EnvVarInfo(
+            "WHATSAPP_TEMPLATE_LANGUAGE",
+            "whatsapp",
+            "Template language code",
+            "en_US",
+        ),
+        EnvVarInfo(
+            "WHATSAPP_BUSINESS_NUMBER",
+            "whatsapp",
+            "Business phone number for invite deep links",
+            "+1234567890",
         ),
     ],
 }
@@ -398,6 +443,52 @@ def check_env_vars() -> list[EnvVarStatus]:
         for info in vars_list:
             results.append(EnvVarStatus(info=info, is_set=bool(os.environ.get(info.name))))
     return results
+
+
+def resolve_env_file_path(env_path: Path | None = None) -> Path:
+    """Resolve the target env file path for config writes."""
+    if env_path is not None:
+        return env_path.expanduser()
+    override = os.environ.get("TELECLAUDE_ENV_PATH")
+    if override:
+        return Path(override).expanduser()
+    return _DEFAULT_ENV_PATH
+
+
+def set_env_var(name: str, value: str, env_path: Path | None = None) -> Path:
+    """Set or update an env var in the resolved env file and os.environ."""
+    if not name or any(char in name for char in "\r\n="):
+        raise ValueError("Invalid env var name")
+    if any(char in value for char in "\r\n"):
+        raise ValueError("Env var value cannot contain newlines")
+
+    target = resolve_env_file_path(env_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    lines: list[str] = []
+    found = False
+    if target.exists():
+        lines = target.read_text(encoding="utf-8").splitlines(keepends=True)
+        for index, line in enumerate(lines):
+            stripped = line.lstrip()
+            if stripped.startswith(f"export {name}="):
+                lines[index] = f"export {name}={value}\n"
+                found = True
+                break
+            if stripped.startswith(f"{name}="):
+                lines[index] = f"{name}={value}\n"
+                found = True
+                break
+
+    if not found:
+        if lines and not lines[-1].endswith("\n"):
+            lines[-1] = f"{lines[-1]}\n"
+        lines.append(f"{name}={value}\n")
+
+    target.write_text("".join(lines), encoding="utf-8")
+    os.environ[name] = value
+    logger.info("Updated env var %s in %s", name, target)
+    return target
 
 
 # --- Schema discovery ---

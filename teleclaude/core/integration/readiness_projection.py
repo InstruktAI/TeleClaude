@@ -9,6 +9,7 @@ from typing import Callable, Literal, cast
 from teleclaude.core.integration.events import (
     BranchPushedPayload,
     FinalizeReadyPayload,
+    IntegrationBlockedPayload,
     IntegrationEvent,
     ReviewApprovedPayload,
 )
@@ -97,9 +98,13 @@ class ReadinessProjection:
         elif event.event_type == "finalize_ready":
             payload = cast(FinalizeReadyPayload, event.payload)
             self._apply_finalize_ready(payload)
-        else:
+        elif event.event_type == "branch_pushed":
             payload = cast(BranchPushedPayload, event.payload)
             self._apply_branch_pushed(payload)
+        else:
+            # integration_blocked is operational telemetry and does not alter readiness state.
+            payload = cast(IntegrationBlockedPayload, event.payload)
+            self._apply_integration_blocked(payload)
 
         self._recompute()
 
@@ -158,6 +163,9 @@ class ReadinessProjection:
 
     def _apply_branch_pushed(self, payload: BranchPushedPayload) -> None:
         self._branch_pushes.add((payload["branch"], payload["sha"], payload["remote"]))
+
+    def _apply_integration_blocked(self, _payload: IntegrationBlockedPayload) -> None:
+        return
 
     def _recompute(self) -> None:
         latest_by_slug: dict[str, _CandidateFinalize] = {}

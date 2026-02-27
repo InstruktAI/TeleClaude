@@ -1,5 +1,69 @@
 # Delivered work items. Newest first.
 
+- slug: config-wizard-redesign
+  date: '2026-02-27'
+  title: Major visual and interaction redesign of the config wizard — card layout,
+    inline editing, guided onboarding, progress indicators
+  commit: ff23e681c29223611995e6761a2abcfb72467d9c
+  description: Major visual and interaction redesign of the config wizard — card layout,
+    inline editing, guided onboarding, progress indicators
+- slug: integration-blocked-flow
+  date: '2026-02-27'
+  title: 'Step 5: emit integration_blocked flow with follow-up todo creation and resume
+    UX'
+  commit: 0f0e1d0a1a720a5fee0027098ecbd39343e5f708
+  description: 'Step 5: emit integration_blocked flow with follow-up todo creation
+    and resume UX'
+- slug: integrator-cutover
+  date: '2026-02-27'
+  title: 'Step 4: make integrator the only path that merges and pushes canonical main'
+  commit: dfa37b41c50c0675e97586385db4ad61c71a90ed
+  description: 'Step 4: make integrator the only path that merges and pushes canonical
+    main'
+- slug: integrator-shadow-mode
+  date: '2026-02-27'
+  title: 'Step 3: run singleton lease+queue integrator in shadow mode without main
+    merges'
+  commit: 449c4e02916a0c84788623c510b823bf52da6fb9
+  description: 'Step 3: run singleton lease+queue integrator in shadow mode without
+    main merges'
+- slug: fix-sticky-removal-layout-issues
+  date: '2026-02-27'
+  title: Fix pane continuity on sticky removal
+  commit: f9c7cf247be10579cb475fb09678b4551d9e6ea8
+  description: Fix layout issues when sticky header is removed
+- slug: config-wizard-governance
+  date: '2026-02-27'
+  title: Add config wizard integration gates to DoD, DOR, add-adapter procedure, and
+    teleclaude-config spec
+  description: Add config wizard integration gates to DoD, DOR, add-adapter procedure,
+    and teleclaude-config spec
+- slug: config-wizard-whatsapp-wiring
+  date: '2026-02-27'
+  title: Wire WhatsApp env vars, guidance, and config.sample into the config wizard
+  commit: c0427e665b8dcb7be98106d917bf1185ea3895cf
+  description: Wire WhatsApp env vars, guidance, and config.sample into the config
+    wizard
+- slug: mature-deployment
+  date: '2026-02-27'
+  title: 'Group: mature-deployment (4 children delivered)'
+  children:
+  - deployment-versioning
+  - deployment-channels
+  - deployment-migrations
+  - deployment-cleanup
+- slug: deployment-cleanup
+  date: '2026-02-27'
+  title: 'Phase 4: Remove deploy_service, MCP tool (if still present), update docs,
+    write pipeline doc'
+  commit: 5543233d
+  description: 'Phase 4: Remove deploy_service, MCP tool (if still present), update
+    docs, write pipeline doc'
+- slug: deployment-channels
+  date: '2026-02-27'
+  title: 'Phase 3: Channel config, webhook handler, update executor, Redis fan-out'
+  commit: b5d07b2d0ff08cb7c4f7b07a97c7c6a37df19f3c
+  description: 'Phase 3: Channel config, webhook handler, update executor, Redis fan-out'
 - slug: integration-events-model
   date: '2026-02-27'
   title: 'Step 2: persist review_approved/finalize_ready/branch_pushed events and

@@ -36,7 +36,6 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
-    DeployArgs,
     ErrorEventContext,
     EventType,
     SessionLifecycleContext,
@@ -58,6 +57,11 @@ from teleclaude.core.session_utils import (
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todo_watcher import TodoWatcher
 from teleclaude.core.voice_assignment import get_voice_env_vars
+from teleclaude.deployment.handler import (
+    DEPLOYMENT_FANOUT_CHANNEL,
+    configure_deployment_handler,
+    handle_deployment_event,
+)
 from teleclaude.hooks.api_routes import set_contract_registry
 from teleclaude.hooks.bridge import EventBusBridge
 from teleclaude.hooks.config import load_hooks_config
@@ -71,7 +75,6 @@ from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
 from teleclaude.logging_config import setup_logging
 from teleclaude.notifications import NotificationOutboxWorker
-from teleclaude.services.deploy_service import DeployService
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.services.monitoring_service import MonitoringService
@@ -1135,7 +1138,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _handle_system_command(self, _event: str, context: SystemCommandContext) -> None:
         """Handler for SYSTEM_COMMAND events.
 
-        System commands are daemon-level operations (deploy, restart, etc.)
+        System commands are daemon-level operations (restart, health_check, etc.)
 
         Args:
             _event: Event type (always "system_command") - unused but required by event handler signature
@@ -1145,9 +1148,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         logger.info("Handling system command '%s' from %s", ctx.command, ctx.from_computer)
 
-        if ctx.command == "deploy":
-            await self._handle_deploy(ctx.args)
-        elif ctx.command == "health_check":
+        if ctx.command == "health_check":
             await self._handle_health_check()
         else:
             logger.warning("Unknown system command: %s", ctx.command)
@@ -1522,20 +1523,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         await self.client.send_message(session, f"❌ {user_message}", metadata=MessageMetadata())
 
-    async def _handle_deploy(self, _args: DeployArgs) -> None:
-        """Execute deployment: git pull + restart daemon via service manager.
-
-        Args:
-            _args: Deploy arguments (verify_health currently unused)
-        """
-        # Get Redis adapter for status updates
-        redis_transport_base = self.client.adapters.get("redis")
-        if not redis_transport_base:
-            logger.error("Redis transport not available, cannot update deploy status")
-            return
-        deploy_service = DeployService(redis_transport=redis_transport_base)
-        await deploy_service.deploy()
-
     async def _handle_health_check(self) -> None:
         """Handle health check requested."""
         logger.info("Health check requested")
@@ -1689,6 +1676,35 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             )
         )
 
+        # Built-in deployment channel handler.
+        redis_transport = self.client.adapters.get("redis")
+        _get_redis_fn = redis_transport._get_redis if isinstance(redis_transport, RedisTransport) else None
+        configure_deployment_handler(_get_redis_fn)
+        handler_registry.register("deployment_update", handle_deployment_event)
+        await contract_registry.register(
+            Contract(
+                id="deployment-github",
+                source_criterion=PropertyCriterion(match="github"),
+                type_criterion=PropertyCriterion(match=["push", "release"]),
+                target=Target(handler="deployment_update"),
+                source="programmatic",
+            )
+        )
+        await contract_registry.register(
+            Contract(
+                id="deployment-fanout",
+                source_criterion=PropertyCriterion(match="deployment"),
+                type_criterion=PropertyCriterion(match="version_available"),
+                target=Target(handler="deployment_update"),
+                source="programmatic",
+            )
+        )
+        if isinstance(redis_transport, RedisTransport):
+            self._deployment_fanout_task = asyncio.create_task(
+                self._deployment_fanout_consumer(dispatcher, redis_transport)
+            )
+            self._deployment_fanout_task.add_done_callback(self._log_background_task_exception("deployment_fanout"))
+
         # Register built-in normalizers.
         normalizer_registry = NormalizerRegistry()
         register_builtin_normalizers(normalizer_registry)
@@ -1750,6 +1766,47 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._contract_sweep_task.add_done_callback(self._log_background_task_exception("contract_sweep"))
 
         logger.info("Webhook service initialized (%d contracts loaded)", len(contract_registry._cache))
+
+    async def _deployment_fanout_consumer(self, dispatcher: HookDispatcher, redis_transport: "RedisTransport") -> None:
+        """Consume deployment version_available events from Redis Stream and dispatch locally.
+
+        Messages published by this daemon carry a daemon_id matching config.computer.name.
+        The consumer skips those to avoid double-executing updates that this daemon already
+        triggered directly (github-source path calls execute_update before publishing).
+        Remote daemons have different daemon_id values and will process the message normally.
+        """
+        from teleclaude.hooks.webhook_models import HookEvent as _HookEvent
+
+        last_id = "$"  # only new messages after startup
+        logger.info("Deployment fanout consumer started (channel=%s)", DEPLOYMENT_FANOUT_CHANNEL)
+        while not self.shutdown_event.is_set():
+            try:
+                redis = await redis_transport._get_redis()
+                results = await redis.xread({DEPLOYMENT_FANOUT_CHANNEL: last_id}, count=10, block=5000)
+                if not results:
+                    continue
+                for _stream, messages in results:
+                    for msg_id, data in messages:
+                        last_id = msg_id.decode() if isinstance(msg_id, bytes) else str(msg_id)
+                        event_json = data.get(b"event") or data.get("event")
+                        if event_json is None:
+                            continue
+                        if isinstance(event_json, bytes):
+                            event_json = event_json.decode()
+                        try:
+                            event = _HookEvent.from_json(event_json)
+                            if event.properties.get("daemon_id") == config.computer.name:
+                                logger.debug("Deployment fanout: skipping self-originated message")
+                                continue
+                            await dispatcher.dispatch(event)
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning("Deployment fanout: dispatch failed: %s", exc)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Deployment fanout consumer error: %s", exc)
+                await asyncio.sleep(5)
+        logger.info("Deployment fanout consumer stopped")
 
     async def _contract_sweep_loop(self) -> None:
         """Periodically deactivate expired contracts."""

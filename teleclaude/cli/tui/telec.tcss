@@ -116,6 +116,19 @@ ConfigView {
     height: 1fr;
 }
 
+#config-scroll {
+    padding: 1 0;
+}
+
+#config-content {
+    min-height: 100%;
+    padding: 0 2;
+}
+
+ConfigView:focus #config-content {
+    border-left: thick $connector;
+}
+
 /* ── Footer ────────────────────────────────────────────── */
 #footer-area {
     dock: bottom;

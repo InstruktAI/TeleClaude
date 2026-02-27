@@ -1,0 +1,23 @@
+{
+  "slug": "integrator-cutover",
+  "title": "Transition from shadow mode to enforced integrator ownership so no non-integrator path can merge or push canonical `main`.",
+  "version": "1.0.0",
+  "delivered_date": "2026-02-27",
+  "merge_commit": "dfa37b41c50c0675e97586385db4ad61c71a90ed",
+  "metrics": {
+    "implementation_plan_tasks_total": 11,
+    "implementation_plan_tasks_checked": 0,
+    "review_rounds": 1,
+    "important_findings": 0,
+    "suggestions": 4,
+    "lint_errors": 0,
+    "type_errors": 0
+  },
+  "five_acts": {
+    "act_1_context": "The project needed to move from shadow-mode safety validation to strict integrator ownership so legacy paths could not mutate canonical main.",
+    "act_2_build": "Implemented cutover authorization primitives, runtime cutover controls, and shell guardrails across git, gh, and pre-push layers for canonical-main operations.",
+    "act_3_conflict": "Review challenged coverage depth around parity-not-ready and gh-path checks while validating that the architecture remained boundary-consistent.",
+    "act_4_resolution": "The delivery achieved APPROVE in round one with no Critical or Important findings, with follow-up hardening captured as explicit suggestions.",
+    "act_5_outcome": "Canonical main authority is now guarded by integrator cutover controls while preserving feature-branch workflows and providing auditable diagnostics for blocked paths."
+  }
+}

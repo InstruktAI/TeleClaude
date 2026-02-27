@@ -22,7 +22,7 @@ def test_toggle_sticky_clears_active_preview() -> None:
 
 
 def test_remove_sticky_clears_preview_for_same_session() -> None:
-    """Removing a sticky session should clear preview if it was previewing that session."""
+    """Removing a sticky session should keep it as active preview."""
     state = TuiState()
     state.sessions.sticky_sessions = [StickySessionInfo("sess-sticky")]
     state.sessions.preview = PreviewState("sess-sticky")
@@ -36,11 +36,12 @@ def test_remove_sticky_clears_preview_for_same_session() -> None:
     )
 
     assert state.sessions.sticky_sessions == []
-    assert state.sessions.preview is None
+    assert state.sessions.preview is not None
+    assert state.sessions.preview.session_id == "sess-sticky"
 
 
 def test_remove_sticky_preserves_preview_for_different_session() -> None:
-    """Removing a sticky should not clear preview for a different session."""
+    """Removing sticky-A should replace an existing preview with sticky-A."""
     state = TuiState()
     state.sessions.sticky_sessions = [StickySessionInfo("sess-A"), StickySessionInfo("sess-B")]
     state.sessions.preview = PreviewState("sess-B")
@@ -55,7 +56,26 @@ def test_remove_sticky_preserves_preview_for_different_session() -> None:
 
     assert [s.session_id for s in state.sessions.sticky_sessions] == ["sess-B"]
     assert state.sessions.preview is not None
-    assert state.sessions.preview.session_id == "sess-B"
+    assert state.sessions.preview.session_id == "sess-A"
+
+
+def test_remove_sticky_sets_preview_when_none_active() -> None:
+    """Removing a sticky with no prior preview should promote that session."""
+    state = TuiState()
+    state.sessions.sticky_sessions = [StickySessionInfo("sess-sticky")]
+    state.sessions.preview = None
+
+    reduce_state(
+        state,
+        Intent(
+            IntentType.TOGGLE_STICKY,
+            {"session_id": "sess-sticky", "active_agent": "claude"},
+        ),
+    )
+
+    assert state.sessions.sticky_sessions == []
+    assert state.sessions.preview is not None
+    assert state.sessions.preview.session_id == "sess-sticky"
 
 
 def test_clear_preview_intent_removes_active_preview() -> None:

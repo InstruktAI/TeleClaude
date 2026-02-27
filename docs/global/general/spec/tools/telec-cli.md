@@ -39,10 +39,6 @@ There are many of course, but this section is now intended to reveal the full su
 
 <!-- @exec: telec projects -h -->
 
-### `telec deploy`
-
-<!-- @exec: telec deploy -h -->
-
 ### `telec agents`
 
 <!-- @exec: telec agents -h -->

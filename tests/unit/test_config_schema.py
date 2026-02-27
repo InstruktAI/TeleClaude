@@ -2,6 +2,7 @@ import pytest
 
 from teleclaude.config.loader import load_global_config, load_person_config, load_project_config
 from teleclaude.config.schema import (
+    IntegratorCutoverConfig,
     JobScheduleConfig,
     JobSubscription,
     JobWhenConfig,
@@ -363,3 +364,37 @@ jobs:
     config = load_project_config(config_path)
     assert config.jobs["idea-miner"].category == "subscription"
     assert config.jobs["maintenance"].category == "system"
+
+
+def test_integrator_cutover_defaults(tmp_path):
+    config_path = tmp_path / "teleclaude.yml"
+    config_path.write_text("", encoding="utf-8")
+    config = load_project_config(config_path)
+    assert config.integrator.cutover.enabled is False
+    assert config.integrator.cutover.parity_evidence_accepted is False
+    assert config.integrator.cutover.rollback_on_incomplete_parity is True
+
+
+def test_integrator_cutover_requires_parity_before_enable(tmp_path):
+    config_path = tmp_path / "teleclaude.yml"
+    config_path.write_text(
+        """
+integrator:
+  cutover:
+    enabled: true
+    parity_evidence_accepted: false
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="integrator.cutover.enabled requires parity_evidence_accepted=true"):
+        load_project_config(config_path)
+
+
+def test_integrator_cutover_can_be_enabled_when_parity_accepted():
+    cfg = IntegratorCutoverConfig(
+        enabled=True,
+        parity_evidence_accepted=True,
+        rollback_on_incomplete_parity=True,
+    )
+    assert cfg.enabled is True
+    assert cfg.parity_evidence_accepted is True

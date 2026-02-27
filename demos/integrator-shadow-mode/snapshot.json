@@ -1,0 +1,24 @@
+{
+  "slug": "integrator-shadow-mode",
+  "title": "Run the singleton lease+queue integrator in shadow mode so orchestration behavior is validated without allowing canonical `main` merges.",
+  "version": "1.0.0",
+  "delivered_date": "2026-02-27",
+  "merge_commit": "449c4e02916a0c84788623c510b823bf52da6fb9",
+  "metrics": {
+    "implementation_plan_tasks_total": 11,
+    "implementation_plan_tasks_checked": 0,
+    "review_rounds": 2,
+    "important_findings_round_2": 5,
+    "tests_passed": 2369,
+    "tests_skipped": 106,
+    "lint_errors": 0,
+    "type_errors": 0
+  },
+  "five_acts": {
+    "act_1_context": "Integration needed a safe validation path that exercised lease ownership, durable queue ordering, readiness rechecks, and main-clearance coordination without touching canonical main.",
+    "act_2_build": "Implemented a dedicated integration core package with file-backed lease state, durable queue state transitions, and a shadow runtime that emits would_integrate or would_block outcomes.",
+    "act_3_conflict": "Review rounds surfaced correctness and resilience gaps in self-blocking clearance logic, transition rules, constructor validation, and edge-case test coverage.",
+    "act_4_resolution": "Fix rounds added owner-session exclusion, stricter transition checks, constructor guards, and targeted regression tests until review reached APPROVE.",
+    "act_5_outcome": "The branch now provides deterministic shadow-mode integration orchestration with lease/queue safety gates and review-validated behavior, ready for non-shadow cutover hardening." 
+  }
+}

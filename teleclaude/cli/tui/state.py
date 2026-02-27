@@ -200,8 +200,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
                 break
         if existing_idx is not None:
             state.sessions.sticky_sessions.pop(existing_idx)
-            if state.sessions.preview and state.sessions.preview.session_id == session_id:
-                state.sessions.preview = None
+            state.sessions.preview = PreviewState(session_id=session_id)
         else:
             if _sticky_count(state) >= MAX_STICKY_PANES:
                 return

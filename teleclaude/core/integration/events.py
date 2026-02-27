@@ -8,9 +8,9 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Literal, Mapping, TypedDict, cast
+from typing import Literal, Mapping, NotRequired, TypedDict, cast
 
-IntegrationEventType = Literal["review_approved", "finalize_ready", "branch_pushed"]
+IntegrationEventType = Literal["review_approved", "finalize_ready", "branch_pushed", "integration_blocked"]
 
 
 class ReviewApprovedPayload(TypedDict):
@@ -43,7 +43,20 @@ class BranchPushedPayload(TypedDict):
     pusher: str
 
 
-IntegrationEventPayload = ReviewApprovedPayload | FinalizeReadyPayload | BranchPushedPayload
+class IntegrationBlockedPayload(TypedDict):
+    """Payload for `integration_blocked`."""
+
+    slug: str
+    branch: str
+    sha: str
+    conflict_evidence: list[str]
+    diagnostics: list[str]
+    next_action: str
+    blocked_at: str
+    follow_up_slug: NotRequired[str]
+
+
+IntegrationEventPayload = ReviewApprovedPayload | FinalizeReadyPayload | BranchPushedPayload | IntegrationBlockedPayload
 
 
 class IntegrationEventRecord(TypedDict):
@@ -61,11 +74,29 @@ _REQUIRED_FIELDS: Mapping[IntegrationEventType, tuple[str, ...]] = MappingProxyT
         "review_approved": ("slug", "approved_at", "review_round", "reviewer_session_id"),
         "finalize_ready": ("slug", "branch", "sha", "worker_session_id", "orchestrator_session_id", "ready_at"),
         "branch_pushed": ("branch", "sha", "remote", "pushed_at", "pusher"),
+        "integration_blocked": (
+            "slug",
+            "branch",
+            "sha",
+            "conflict_evidence",
+            "diagnostics",
+            "next_action",
+            "blocked_at",
+        ),
     }
 )
 
+_OPTIONAL_FIELDS: Mapping[IntegrationEventType, tuple[str, ...]] = MappingProxyType(
+    {"review_approved": (), "finalize_ready": (), "branch_pushed": (), "integration_blocked": ("follow_up_slug",)}
+)
+
 _TIMESTAMP_FIELDS: Mapping[IntegrationEventType, str] = MappingProxyType(
-    {"review_approved": "approved_at", "finalize_ready": "ready_at", "branch_pushed": "pushed_at"}
+    {
+        "review_approved": "approved_at",
+        "finalize_ready": "ready_at",
+        "branch_pushed": "pushed_at",
+        "integration_blocked": "blocked_at",
+    }
 )
 
 
@@ -155,7 +186,9 @@ def validate_event_payload(event_type: IntegrationEventType, payload: Mapping[st
         return _validate_review_approved(payload, diagnostics)
     if event_type == "finalize_ready":
         return _validate_finalize_ready(payload, diagnostics)
-    return _validate_branch_pushed(payload, diagnostics)
+    if event_type == "branch_pushed":
+        return _validate_branch_pushed(payload, diagnostics)
+    return _validate_integration_blocked(payload, diagnostics)
 
 
 def integration_event_to_record(event: IntegrationEvent) -> IntegrationEventRecord:
@@ -212,10 +245,11 @@ def integration_event_from_record(record: Mapping[str, object]) -> IntegrationEv
 
 def _validate_field_set(event_type: IntegrationEventType, payload: Mapping[str, object]) -> list[str]:
     required = set(_REQUIRED_FIELDS[event_type])
+    optional = set(_OPTIONAL_FIELDS[event_type])
     present = set(payload.keys())
 
     missing = sorted(required - present)
-    unexpected = sorted(present - required)
+    unexpected = sorted(present - required - optional)
 
     diagnostics: list[str] = []
     if missing:
@@ -270,6 +304,31 @@ def _validate_branch_pushed(payload: Mapping[str, object], diagnostics: list[str
     return {"branch": branch, "sha": sha, "remote": remote, "pushed_at": pushed_at, "pusher": pusher}
 
 
+def _validate_integration_blocked(payload: Mapping[str, object], diagnostics: list[str]) -> IntegrationBlockedPayload:
+    slug = _as_non_empty_str(payload, "slug", diagnostics)
+    branch = _as_non_empty_str(payload, "branch", diagnostics)
+    sha = _as_non_empty_str(payload, "sha", diagnostics)
+    conflict_evidence = _as_non_empty_str_list(payload, "conflict_evidence", diagnostics)
+    diagnostics_list = _as_non_empty_str_list(payload, "diagnostics", diagnostics)
+    next_action = _as_non_empty_str(payload, "next_action", diagnostics)
+    blocked_at = _as_iso8601("integration_blocked", payload, "blocked_at", diagnostics)
+    follow_up_slug = _as_non_empty_str(payload, "follow_up_slug", diagnostics) if "follow_up_slug" in payload else None
+    if diagnostics:
+        raise IntegrationEventValidationError("integration_blocked", diagnostics)
+    result: IntegrationBlockedPayload = {
+        "slug": slug,
+        "branch": branch,
+        "sha": sha,
+        "conflict_evidence": conflict_evidence,
+        "diagnostics": diagnostics_list,
+        "next_action": next_action,
+        "blocked_at": blocked_at,
+    }
+    if follow_up_slug is not None:
+        result["follow_up_slug"] = follow_up_slug
+    return result
+
+
 def _as_non_empty_str(payload: Mapping[str, object], field_name: str, diagnostics: list[str]) -> str:
     raw = payload.get(field_name)
     if not isinstance(raw, str) or not raw.strip():
@@ -287,6 +346,25 @@ def _as_positive_int(payload: Mapping[str, object], field_name: str, diagnostics
         diagnostics.append(f"{field_name} must be >= 1")
         return 0
     return raw
+
+
+def _as_non_empty_str_list(payload: Mapping[str, object], field_name: str, diagnostics: list[str]) -> list[str]:
+    raw = payload.get(field_name)
+    if not isinstance(raw, list):
+        diagnostics.append(f"{field_name} must be a non-empty list of strings")
+        return []
+
+    normalized: list[str] = []
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            diagnostics.append(f"{field_name} must contain only non-empty strings")
+            return []
+        normalized.append(item.strip())
+
+    if not normalized:
+        diagnostics.append(f"{field_name} must be a non-empty list of strings")
+        return []
+    return normalized
 
 
 def _as_iso8601(

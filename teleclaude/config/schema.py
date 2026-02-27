@@ -101,6 +101,27 @@ class GitConfig(BaseModel):
     checkout_root: Optional[str] = None
 
 
+class IntegratorCutoverConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    enabled: bool = False
+    parity_evidence_accepted: bool = False
+    rollback_on_incomplete_parity: bool = True
+
+    @model_validator(mode="after")
+    def validate_cutover_enablement(self) -> "IntegratorCutoverConfig":
+        if self.enabled and not self.parity_evidence_accepted:
+            raise ValueError(
+                "integrator.cutover.enabled requires parity_evidence_accepted=true; "
+                "disable cutover to rollback until parity is accepted"
+            )
+        return self
+
+
+class IntegratorConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    cutover: IntegratorCutoverConfig = IntegratorCutoverConfig()
+
+
 class PersonEntry(BaseModel):
     model_config = ConfigDict(extra="allow")
     name: str
@@ -207,6 +228,18 @@ class HooksConfig(BaseModel):
     subscriptions: List[SubscriptionConfig] = []
 
 
+class DeploymentConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    channel: Literal["alpha", "beta", "stable"] = "alpha"
+    pinned_minor: str = ""
+
+    @model_validator(mode="after")
+    def validate_stable_requires_pinned_minor(self) -> "DeploymentConfig":
+        if self.channel == "stable" and not self.pinned_minor:
+            raise ValueError("pinned_minor is required and must be non-empty when channel=stable")
+        return self
+
+
 class ProjectConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
     project_name: Optional[str] = None
@@ -215,7 +248,9 @@ class ProjectConfig(BaseModel):
     hooks: HooksConfig = HooksConfig()
     jobs: Dict[str, JobScheduleConfig] = {}
     git: GitConfig = GitConfig()
+    integrator: IntegratorConfig = IntegratorConfig()
     channel_subscriptions: List[ChannelSubscription] = []
+    deployment: DeploymentConfig = DeploymentConfig()
 
     @model_validator(mode="before")
     @classmethod
