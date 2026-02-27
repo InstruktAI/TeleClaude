@@ -567,8 +567,6 @@ class ConfigContent(TelecMixin, Widget):
         self._status_message = f"Saved {var_name} to {target_path}"
         self._status_is_error = False
         self.refresh_data()
-        if self._guided_mode:
-            self._auto_advance_completed_steps()
 
     def cancel_edit(self) -> None:
         if not self.is_editing:

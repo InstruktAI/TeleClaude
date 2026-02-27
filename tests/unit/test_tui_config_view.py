@@ -169,6 +169,9 @@ def test_guided_mode_advances_after_save_when_step_completes(monkeypatch) -> Non
         ]
         content._env_data = updated_env
         content._adapter_sections = project_adapter_sections(updated_env)
+        if content._guided_mode:
+            content._apply_guided_step()
+            content._auto_advance_completed_steps()
 
     monkeypatch.setattr(config_view, "set_env_var", fake_set_env_var)
     monkeypatch.setattr(content, "refresh_data", fake_refresh_data)
@@ -190,6 +193,40 @@ def test_guided_environment_step_is_incomplete_when_env_data_missing() -> None:
     )
 
     assert content._is_current_guided_step_complete() is False
+
+
+def test_save_edit_triggers_guided_auto_advance_once_via_refresh(monkeypatch) -> None:
+    content = ConfigContent()
+    status = _env_status("TELEGRAM_BOT_TOKEN", "telegram", False)
+    content._env_data = [status]
+    content._adapter_sections = project_adapter_sections(content._env_data)
+    content._guided_mode = True
+    content._guided_step_index = 0
+    content._apply_guided_step()
+    content._begin_edit(status)
+    content._edit_buffer = "token"
+
+    def fake_set_env_var(name: str, value: str) -> Path:
+        _ = (name, value)
+        return Path("/tmp/.env")
+
+    auto_advance_calls = {"count": 0}
+
+    def fake_auto_advance_completed_steps() -> None:
+        auto_advance_calls["count"] += 1
+
+    def fake_refresh_data() -> None:
+        if content._guided_mode:
+            content._apply_guided_step()
+            content._auto_advance_completed_steps()
+
+    monkeypatch.setattr(config_view, "set_env_var", fake_set_env_var)
+    monkeypatch.setattr(content, "_auto_advance_completed_steps", fake_auto_advance_completed_steps)
+    monkeypatch.setattr(content, "refresh_data", fake_refresh_data)
+
+    content.save_edit()
+
+    assert auto_advance_calls["count"] == 1
 
 
 def test_notifications_view_does_not_render_placeholder_literal() -> None:
