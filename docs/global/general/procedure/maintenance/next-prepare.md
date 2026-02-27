@@ -63,13 +63,20 @@ the full lifecycle — including ending the gate session and itself when done.
 
 ### Cleanup
 
-11. **Pass / needs_work resolved**: End the gate worker session, then end the router's
-    own session. The todo folder is the durable evidence trail.
-12. **Needs decision**: Do NOT end the gate session. It stays alive as a visible signal
-    to the human that intervention is needed. The human sees it in the session list,
-    tails it, reads the blockers, and intervenes. End only the router's own session.
+11. **Pass / needs_work resolved**: End the gate worker session (`telec sessions end <gate_session_id>`).
+    The todo folder is the durable evidence trail. Do NOT stay alive to report results —
+    the commit is the report. Then end yourself:
+    ```bash
+    telec sessions end "$(cat "$TMPDIR/teleclaude_session_id")"
+    ```
+12. **Needs decision**: Do NOT end the gate session — it stays alive as a visible signal
+    to the human. The blockers in `dor-report.md` are the signal. End yourself:
+    ```bash
+    telec sessions end "$(cat "$TMPDIR/teleclaude_session_id")"
+    ```
 13. The todo folder (`todos/<slug>/`) is the durable evidence trail for all outcomes.
     The gate session persists only when human attention is required.
+    The router session never persists — ending yourself is always the final action.
 
 ## Outputs
 
