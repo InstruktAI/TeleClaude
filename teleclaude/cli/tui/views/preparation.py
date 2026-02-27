@@ -184,17 +184,21 @@ class PreparationView(Widget, can_focus=True):
         tree_nodes = build_dep_tree(all_todo_items)
         max_depth = max((node.depth for node in tree_nodes), default=0) if tree_nodes else 0
 
-        # Group projects by computer (sorted alphabetically)
+        # Group projects by computer, preserving trusted_dirs order from config
+        computer_order: list[str] = []
         computer_to_projects: dict[str, list[ProjectWithTodosInfo]] = {}
         for project in self._projects_with_todos:
             comp_name = project.computer or "local"
-            computer_to_projects.setdefault(comp_name, []).append(project)
+            if comp_name not in computer_to_projects:
+                computer_order.append(comp_name)
+                computer_to_projects[comp_name] = []
+            computer_to_projects[comp_name].append(project)
 
         # Collect all widgets first, then batch-mount to minimize layout reflows
         widgets_to_mount: list[Widget] = []
         expanded_file_rows: list[tuple[TodoRow, list[Widget]]] = []
 
-        for comp_name in sorted(computer_to_projects):
+        for comp_name in computer_order:
             projects_in_comp = computer_to_projects[comp_name]
 
             # Count todos across all projects under this computer
@@ -216,7 +220,7 @@ class PreparationView(Widget, can_focus=True):
             widgets_to_mount.append(comp_header)
             self._nav_items.append(comp_header)
 
-            for project in sorted(projects_in_comp, key=lambda p: p.name):
+            for project in projects_in_comp:
                 from teleclaude.cli.models import ProjectInfo
 
                 proj_info = ProjectInfo(
