@@ -15,10 +15,10 @@ Enforce integrator-exclusive canonical main integration after shadow parity sign
 
 ### Task 1.2: Wire cutover toggles and safety controls
 
-**File(s):** `teleclaude/core/integration/runtime.py`, `teleclaude/config/schema.py`
+**File(s):** `teleclaude/core/integration/runtime.py`, `teleclaude/core/integration/authorization.py`, `teleclaude/config/schema.py`
 
-- [ ] Add cutover enablement control gated by parity evidence.
-- [ ] Add documented rollback path for incomplete readiness evidence.
+- [x] Add cutover enablement control gated by parity evidence.
+- [x] Add documented rollback path for incomplete readiness evidence.
 
 ## Phase 2: Verification
 
