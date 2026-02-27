@@ -1,11 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: deployment-cleanup
-  group: mature-deployment
-  after:
-  - deployment-channels
-  description: 'Phase 4: Remove deploy_service, MCP tool (if still present), update
-    docs, write pipeline doc'
 - slug: integrator-shadow-mode
   group: integration-orchestrator-rollout
   after:
