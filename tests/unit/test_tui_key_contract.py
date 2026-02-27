@@ -660,7 +660,7 @@ def test_preparation_tree_groups_by_computer() -> None:
     """nav_items must include ComputerHeader before each ProjectHeader."""
     view = PreparationView()
 
-    # Two projects on different computers (intentionally unsorted to test sort)
+    # Two projects on different computers — beta first to verify trusted_dirs order is preserved
     pw1 = _project_with_todos(computer="alpha", name="alpha-project", path="/alpha", slugs=["todo-a"])
     pw2 = _project_with_todos(computer="beta", name="beta-project", path="/beta", slugs=["todo-b"])
     view._projects_with_todos = [pw2, pw1]
@@ -674,9 +674,9 @@ def test_preparation_tree_groups_by_computer() -> None:
     assert "ProjectHeader" in types
     assert types.index("ComputerHeader") < types.index("ProjectHeader")
 
-    # Computers sorted alphabetically: alpha before beta
+    # Computers preserve trusted_dirs insertion order: beta before alpha (as provided)
     comp_names = [w.data.computer.name for w in view._nav_items if isinstance(w, ComputerHeader)]
-    assert comp_names == sorted(comp_names)
+    assert comp_names == ["beta", "alpha"]
 
 
 @pytest.mark.unit
