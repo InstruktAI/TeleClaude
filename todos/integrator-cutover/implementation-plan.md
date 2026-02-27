@@ -24,11 +24,11 @@ Enforce integrator-exclusive canonical main integration after shadow parity sign
 
 ### Task 2.1: Add acceptance and regression coverage
 
-**File(s):** `tests/integration/test_integrator_cutover.py`
+**File(s):** `tests/integration/test_integrator_cutover.py`, `tests/unit/test_integrator_shadow_mode.py`, `tests/unit/test_config_schema.py`
 
-- [ ] Verify non-integrator canonical main push is blocked.
-- [ ] Verify integrator canonical main push still succeeds.
-- [ ] Verify feature-branch pushes remain allowed.
+- [x] Verify non-integrator canonical main push is blocked.
+- [x] Verify integrator canonical main push still succeeds.
+- [x] Verify feature-branch pushes remain allowed.
 
 ### Task 2.2: Run quality gates
 

@@ -8,6 +8,7 @@ from threading import Barrier, Lock, Thread
 
 import pytest
 
+from teleclaude.core.integration.authorization import IntegratorCutoverControls
 from teleclaude.core.integration.lease import IntegrationLeaseStore, LeaseRenewResult
 from teleclaude.core.integration.queue import IntegrationQueue, IntegrationQueueError
 from teleclaude.core.integration.readiness_projection import CandidateKey, CandidateReadiness
@@ -229,6 +230,93 @@ def test_shadow_runtime_requires_pusher_when_shadow_mode_disabled(tmp_path: Path
             shadow_mode=False,
             canonical_main_pusher=None,
         )
+
+
+def test_shadow_runtime_rolls_back_to_shadow_mode_when_parity_is_incomplete(tmp_path: Path) -> None:
+    lease_store = IntegrationLeaseStore(state_path=tmp_path / "integration-lease.json")
+    queue = IntegrationQueue(state_path=tmp_path / "integration-queue.json")
+    key = CandidateKey(slug="cutover-rollback", branch="worktree/cutover-rollback", sha="r111")
+    queue.enqueue(key=key, ready_at="2026-02-26T12:01:00+00:00")
+
+    readiness = CandidateReadiness(
+        key=key,
+        ready_at="2026-02-26T12:01:00+00:00",
+        status="READY",
+        reasons=(),
+        superseded_by=None,
+    )
+    push_calls: list[CandidateReadiness] = []
+
+    runtime = IntegratorShadowRuntime(
+        lease_store=lease_store,
+        queue=queue,
+        readiness_lookup=lambda _candidate_key: readiness,
+        clearance_probe=MainBranchClearanceProbe(
+            sessions_provider=lambda: (),
+            session_tail_provider=lambda _session_id: "",
+            dirty_tracked_paths_provider=lambda: (),
+        ),
+        outcome_sink=lambda _outcome: None,
+        checkpoint_path=tmp_path / "integration-checkpoint.json",
+        shadow_mode=False,
+        canonical_main_pusher=push_calls.append,
+        cutover_controls=IntegratorCutoverControls(
+            enabled=True,
+            parity_evidence_accepted=False,
+            rollback_on_incomplete_parity=True,
+        ),
+        clearance_retry_seconds=0.001,
+    )
+
+    result = runtime.drain_ready_candidates(owner_session_id="integrator-1")
+    assert result.lease_acquired is True
+    assert [outcome.outcome for outcome in result.outcomes] == ["would_integrate"]
+    assert push_calls == []
+
+
+def test_shadow_runtime_blocks_non_integrator_canonical_main_apply(tmp_path: Path) -> None:
+    lease_store = IntegrationLeaseStore(state_path=tmp_path / "integration-lease.json")
+    queue = IntegrationQueue(state_path=tmp_path / "integration-queue.json")
+    key = CandidateKey(slug="cutover-auth", branch="worktree/cutover-auth", sha="r222")
+    queue.enqueue(key=key, ready_at="2026-02-26T12:01:00+00:00")
+
+    readiness = CandidateReadiness(
+        key=key,
+        ready_at="2026-02-26T12:01:00+00:00",
+        status="READY",
+        reasons=(),
+        superseded_by=None,
+    )
+    push_calls: list[CandidateReadiness] = []
+
+    runtime = IntegratorShadowRuntime(
+        lease_store=lease_store,
+        queue=queue,
+        readiness_lookup=lambda _candidate_key: readiness,
+        clearance_probe=MainBranchClearanceProbe(
+            sessions_provider=lambda: (),
+            session_tail_provider=lambda _session_id: "",
+            dirty_tracked_paths_provider=lambda: (),
+        ),
+        outcome_sink=lambda _outcome: None,
+        checkpoint_path=tmp_path / "integration-checkpoint.json",
+        shadow_mode=False,
+        canonical_main_pusher=push_calls.append,
+        cutover_controls=IntegratorCutoverControls(
+            enabled=True,
+            parity_evidence_accepted=True,
+            rollback_on_incomplete_parity=True,
+        ),
+        clearance_retry_seconds=0.001,
+    )
+
+    with pytest.raises(IntegrationRuntimeError, match="requires integrator ownership"):
+        runtime.drain_ready_candidates(owner_session_id="worker-1")
+
+    assert push_calls == []
+    queued = queue.get(key=key)
+    assert queued is not None
+    assert queued.status == "queued"
 
 
 def test_shadow_runtime_would_block_sets_fallback_reason_when_readiness_reasons_empty(tmp_path: Path) -> None:
