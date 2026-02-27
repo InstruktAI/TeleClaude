@@ -33,11 +33,11 @@ Convert blocked integration outcomes into explicit, resumable operational flows.
 
 **File(s):** `tests/integration/test_integration_blocked_flow.py`
 
-- [ ] Cover blocked emission, follow-up creation, and resume behavior.
-- [ ] Run `make test`.
-- [ ] Run `make lint`.
+- [x] Cover blocked emission, follow-up creation, and resume behavior.
+- [x] Run `make test`.
+- [x] Run `make lint`.
 
 ## Phase 3: Review Readiness
 
-- [ ] Confirm blocked flow remains deterministic and resumable.
-- [ ] Confirm no silent-failure fallback path remains.
+- [x] Confirm blocked flow remains deterministic and resumable.
+- [x] Confirm no silent-failure fallback path remains.
