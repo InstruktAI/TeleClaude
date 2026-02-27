@@ -1,11 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: integration-blocked-flow
-  group: integration-orchestrator-rollout
-  after:
-  - integrator-cutover
-  description: 'Step 5: emit integration_blocked flow with follow-up todo creation
-    and resume UX'
 - slug: config-wizard-redesign
   after:
   - config-wizard-whatsapp-wiring

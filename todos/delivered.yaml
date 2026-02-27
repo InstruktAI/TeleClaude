@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: integration-blocked-flow
+  date: '2026-02-27'
+  title: 'Step 5: emit integration_blocked flow with follow-up todo creation and resume
+    UX'
+  commit: 0f0e1d0a1a720a5fee0027098ecbd39343e5f708
+  description: 'Step 5: emit integration_blocked flow with follow-up todo creation
+    and resume UX'
 - slug: integrator-cutover
   date: '2026-02-27'
   title: 'Step 4: make integrator the only path that merges and pushes canonical main'
