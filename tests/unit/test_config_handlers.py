@@ -130,7 +130,7 @@ def test_set_env_var_updates_existing_assignment(tmp_path):
     key = "TELECLAUDE_EXISTING"
     try:
         config_handlers.set_env_var(key, "new", env_path=env_path)
-        assert env_path.read_text(encoding="utf-8") == "KEEP=1\nTELECLAUDE_EXISTING=new\n"
+        assert env_path.read_text(encoding="utf-8") == "KEEP=1\nexport TELECLAUDE_EXISTING=new\n"
         assert os.environ[key] == "new"
     finally:
         os.environ.pop(key, None)

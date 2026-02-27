@@ -471,7 +471,11 @@ def set_env_var(name: str, value: str, env_path: Path | None = None) -> Path:
         lines = target.read_text(encoding="utf-8").splitlines(keepends=True)
         for index, line in enumerate(lines):
             stripped = line.lstrip()
-            if stripped.startswith(f"{name}=") or stripped.startswith(f"export {name}="):
+            if stripped.startswith(f"export {name}="):
+                lines[index] = f"export {name}={value}\n"
+                found = True
+                break
+            if stripped.startswith(f"{name}="):
                 lines[index] = f"{name}={value}\n"
                 found = True
                 break
