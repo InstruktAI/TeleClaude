@@ -92,6 +92,10 @@ snippets:
   description: Discord Bot API - Help Desk Integration
   scope: project
   path: discord/bot-api.md
+- id: third-party/discord/gateway-delivery-guarantees
+  description: Discord Gateway
+  scope: project
+  path: discord/gateway-delivery-guarantees.md
 - id: third-party/gemini-cli/commands
   description: Gemini CLI Commands
   scope: project

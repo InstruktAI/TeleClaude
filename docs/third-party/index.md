@@ -21,6 +21,7 @@
 @docs/third-party/codex-cli/skills.md
 @docs/third-party/codex-cli/sub-agents.md
 @docs/third-party/discord/bot-api.md
+@docs/third-party/discord/gateway-delivery-guarantees.md
 @docs/third-party/gemini-cli/commands.md
 @docs/third-party/gemini-cli/hooks.md
 @docs/third-party/gemini-cli/permissions.md
