@@ -255,6 +255,47 @@ async def test_create_session_registers_listener_for_initiator(mock_initialized_
 
 
 @pytest.mark.asyncio
+async def test_create_session_skips_listener_registration_when_flag_set(mock_initialized_db):
+    """Explicit flag should preserve initiator linkage without registering listener."""
+    mock_client = MagicMock()
+    mock_client.create_channel = AsyncMock()
+    mock_client.send_message = AsyncMock()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with (
+            patch.object(command_handlers, "config") as mock_config,
+            patch.object(command_handlers, "db") as mock_db,
+            patch("teleclaude.core.session_listeners.register_listener", new_callable=AsyncMock) as mock_register,
+        ):
+            mock_config.computer.name = "TestComputer"
+            mock_config.computer.default_working_dir = tmpdir
+            mock_db.create_session = mock_initialized_db.create_session
+            mock_db.get_session = mock_initialized_db.get_session
+
+            parent = await mock_initialized_db.create_session(
+                computer_name="TestComputer",
+                tmux_session_name="tc_parent",
+                last_input_origin=InputOrigin.TELEGRAM.value,
+                title="Parent Session",
+            )
+
+            cmd = CreateSessionCommand(
+                project_path=tmpdir,
+                title="Child Session",
+                origin=InputOrigin.TELEGRAM.value,
+                initiator_session_id=parent.session_id,
+                skip_listener_registration=True,
+            )
+            result = await command_handlers.create_session(cmd, mock_client)
+
+    assert result["session_id"]
+    stored = await mock_initialized_db.get_session(result["session_id"])
+    assert stored is not None
+    assert stored.initiator_session_id == parent.session_id
+    mock_register.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_create_session_stores_resolved_user_role(mock_initialized_db):
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
@@ -2029,6 +2070,136 @@ async def test_handle_voice_updates_last_input_origin_before_feedback():
     # Verify the correct origin was written
     origin_update = next(e for e in call_order if "last_input_origin" in e)
     assert InputOrigin.TELEGRAM.value in origin_update
+
+
+@pytest.mark.asyncio
+async def test_process_message_waits_through_initializing_then_dispatches():
+    """process_message gates on initializing and dispatches once session becomes active."""
+    call_count = 0
+
+    def make_session(lifecycle: str) -> MagicMock:
+        s = MagicMock()
+        s.session_id = "sess-gate-ok"
+        s.lifecycle_status = lifecycle
+        s.tmux_session_name = "tc_gate_ok"
+        s.active_agent = None
+        s.project_path = "/tmp"
+        s.subdir = None
+        return s
+
+    async def get_session_side_effect(session_id: str) -> MagicMock:
+        nonlocal call_count
+        call_count += 1
+        # First two calls return initializing, third returns active
+        if call_count <= 2:
+            return make_session("initializing")
+        return make_session("active")
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(side_effect=get_session_side_effect)
+    mock_db.update_session = AsyncMock()
+    mock_db.update_last_activity = AsyncMock()
+
+    mock_client = AsyncMock()
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(command_handlers, "tmux_io") as mock_tmux_io,
+        patch.object(command_handlers, "polling_coordinator"),
+        patch.object(command_handlers, "STARTUP_GATE_TIMEOUT_S", 5),
+        patch.object(command_handlers, "STARTUP_GATE_POLL_INTERVAL_S", 0),
+    ):
+        mock_tmux_io.wrap_bracketed_paste.return_value = "hello"
+        mock_tmux_io.process_text = AsyncMock(return_value=True)
+
+        cmd = ProcessMessageCommand(
+            session_id="sess-gate-ok",
+            text="hello",
+            origin=InputOrigin.TELEGRAM.value,
+        )
+        await command_handlers.process_message(cmd, mock_client, AsyncMock())
+
+    # tmux_io.process_text must have been called (message dispatched after gate)
+    mock_tmux_io.process_text.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_process_message_timeout_skips_tmux_and_sends_feedback():
+    """process_message sends feedback and skips tmux on startup gate timeout."""
+
+    mock_db = AsyncMock()
+    # Always return initializing to simulate a stuck bootstrap
+    initializing_session = MagicMock()
+    initializing_session.session_id = "sess-gate-timeout"
+    initializing_session.lifecycle_status = "initializing"
+    initializing_session.tmux_session_name = "tc_gate_timeout"
+    initializing_session.active_agent = None
+    initializing_session.project_path = "/tmp"
+    initializing_session.subdir = None
+    mock_db.get_session = AsyncMock(return_value=initializing_session)
+
+    mock_client = AsyncMock()
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(command_handlers, "tmux_io") as mock_tmux_io,
+        patch.object(command_handlers, "polling_coordinator"),
+        patch.object(command_handlers, "STARTUP_GATE_TIMEOUT_S", 0),
+        patch.object(command_handlers, "STARTUP_GATE_POLL_INTERVAL_S", 0),
+    ):
+        mock_tmux_io.process_text = AsyncMock(return_value=True)
+
+        cmd = ProcessMessageCommand(
+            session_id="sess-gate-timeout",
+            text="hello",
+            origin=InputOrigin.TELEGRAM.value,
+        )
+        await command_handlers.process_message(cmd, mock_client, AsyncMock())
+
+    # tmux_io.process_text must NOT have been called (gate timed out)
+    mock_tmux_io.process_text.assert_not_awaited()
+    # Feedback message sent to user
+    mock_client.send_message.assert_awaited_once()
+    feedback_text = mock_client.send_message.call_args.args[1]
+    assert "timed out" in feedback_text.lower()
+
+
+@pytest.mark.asyncio
+async def test_process_message_active_session_skips_gate():
+    """process_message with active session bypasses startup gate entirely."""
+    mock_session = MagicMock()
+    mock_session.session_id = "sess-no-gate"
+    mock_session.lifecycle_status = "active"
+    mock_session.tmux_session_name = "tc_no_gate"
+    mock_session.active_agent = None
+    mock_session.project_path = "/tmp"
+    mock_session.subdir = None
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=mock_session)
+    mock_db.update_session = AsyncMock()
+    mock_db.update_last_activity = AsyncMock()
+
+    mock_client = AsyncMock()
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(command_handlers, "tmux_io") as mock_tmux_io,
+        patch.object(command_handlers, "polling_coordinator"),
+    ):
+        mock_tmux_io.wrap_bracketed_paste.return_value = "hello"
+        mock_tmux_io.process_text = AsyncMock(return_value=True)
+
+        cmd = ProcessMessageCommand(
+            session_id="sess-no-gate",
+            text="hello",
+            origin=InputOrigin.TELEGRAM.value,
+        )
+        await command_handlers.process_message(cmd, mock_client, AsyncMock())
+
+    # get_session called exactly once (no polling loop)
+    assert mock_db.get_session.await_count == 1
+    mock_tmux_io.process_text.assert_awaited_once()
 
 
 class ExecuteKwargs(TypedDict, total=False):

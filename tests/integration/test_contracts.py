@@ -67,5 +67,5 @@ def test_config_contract():
     spec = extract_yaml_from_md(spec_path)
 
     keys = spec.get("config_keys", {})
-    required = {"computer", "agents", "redis", "people", "jobs"}
+    required = {"computer", "agents", "redis", "whatsapp", "people", "jobs", "deployment"}
     assert set(keys.keys()) == required

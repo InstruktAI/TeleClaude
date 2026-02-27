@@ -145,4 +145,4 @@ class AIKeysConfigComponent(AdapterConfigComponent):
 
 class WhatsAppConfigComponent(AdapterConfigComponent):
     def __init__(self, callback: ConfigComponentCallback) -> None:
-        super().__init__(callback, "adapters.whatsapp", "WhatsApp", [])  # Placeholder
+        super().__init__(callback, "adapters.whatsapp", "WhatsApp", ["whatsapp"])

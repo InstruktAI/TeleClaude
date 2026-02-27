@@ -81,6 +81,14 @@ def test_map_rest_message():
     assert cmd.origin == InputOrigin.API.value
 
 
+def test_map_api_new_session_supports_skip_listener_registration():
+    """API create-session mapping should carry listener-skip intent."""
+    metadata = MessageMetadata(origin=InputOrigin.API.value, project_path="/tmp/project")
+    cmd = CommandMapper.map_api_input("new_session", {"skip_listener_registration": True}, metadata)
+    assert isinstance(cmd, CreateSessionCommand)
+    assert cmd.skip_listener_registration is True
+
+
 def test_map_api_agent_rejects_when_no_enabled_agents(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("teleclaude.core.command_mapper.get_enabled_agents", lambda: ())
 

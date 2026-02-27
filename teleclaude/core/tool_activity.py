@@ -31,7 +31,6 @@ _MAPPED_TOOL_NAMES: dict[str, str] = {
     "escalate": "telec sessions escalate",
     "list_computers": "telec computers list",
     "list_projects": "telec projects list",
-    "deploy": "telec deploy",
     "channels_list": "telec channels list",
     "publish": "telec channels publish",
 }

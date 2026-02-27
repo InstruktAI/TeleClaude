@@ -45,6 +45,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- its own name uniqueness, and headless sessions have NULL tmux_session_name.
 );
 
+-- Performance indexes for sessions table
+CREATE INDEX IF NOT EXISTS idx_sessions_closed_at ON sessions(closed_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_lifecycle_status ON sessions(lifecycle_status);
+CREATE INDEX IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_native_session_id ON sessions(native_session_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_initiator ON sessions(initiator_session_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_computer ON sessions(computer_name);
+
 -- Voice assignments for TTS (persists across tmux session restarts)
 -- Two-phase storage:
 -- 1. At tmux creation: store keyed by teleclaude_session_id (our session_id)

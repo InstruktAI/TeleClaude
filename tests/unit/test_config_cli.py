@@ -296,7 +296,21 @@ class TestValidate:
 class TestInvite:
     def test_invite_json(self, tmp_path, capsys):
         p1, p2 = _setup_config(tmp_path)
-        with p1, p2:
+        with (
+            p1,
+            p2,
+            patch("teleclaude.invite.resolve_telegram_bot_username", new=AsyncMock(return_value="teleclaude_bot")),
+            patch("teleclaude.invite.resolve_discord_bot_user_id", new=AsyncMock(return_value="123456789")),
+            patch(
+                "teleclaude.invite.generate_invite_links",
+                return_value={
+                    "telegram": "https://t.me/teleclaude_bot?start=tok123",
+                    "discord": "https://discord.com/users/123456789",
+                    "whatsapp": None,
+                },
+            ),
+            patch("teleclaude.invite.send_invite_email", new=AsyncMock(return_value=None)),
+        ):
             from teleclaude.cli.config_cli import handle_config_cli
 
             handle_config_cli(["invite", "Alice", "--json"])

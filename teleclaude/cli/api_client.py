@@ -482,6 +482,7 @@ class TelecAPIClient:
         auto_command: str | None = None,
         human_email: str | None = None,
         human_role: str | None = "admin",
+        skip_listener_registration: bool = False,
         metadata: dict[str, object] | None = None,  # guard: loose-dict
     ) -> CreateSessionResult:
         """Create a new session.
@@ -510,6 +511,8 @@ class TelecAPIClient:
         }
         if subdir is not None:
             payload["subdir"] = subdir
+        if skip_listener_registration:
+            payload["skip_listener_registration"] = True
         resp = await self._request("POST", "/sessions", timeout=30.0, json_body=payload)
         return TypeAdapter(CreateSessionResult).validate_json(resp.text)
 

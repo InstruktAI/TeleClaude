@@ -28,7 +28,6 @@ from teleclaude.api.auth import (
     CLEARANCE_AGENTS_AVAILABILITY,
     CLEARANCE_AGENTS_STATUS,
     CLEARANCE_COMPUTERS_LIST,
-    CLEARANCE_DEPLOY,
     CLEARANCE_PROJECTS_LIST,
     CLEARANCE_SESSIONS_AGENT_RESTART,
     CLEARANCE_SESSIONS_END,
@@ -54,7 +53,6 @@ from teleclaude.api_models import (
     ComputerDTO,
     CreateSessionRequest,
     CreateSessionResponseDTO,
-    DeployRequest,
     EscalateRequest,
     FileUploadRequest,
     JobDTO,
@@ -409,7 +407,7 @@ class APIServer:
             has_identity = any(h in _IDENTITY_HEADERS for h in request.headers)
             if has_identity:
                 client_host = request.client.host if request.client else None
-                is_trusted = client_host in _TRUSTED_HOSTS
+                is_trusted = client_host in _TRUSTED_HOSTS or client_host is None or client_host == ""
                 if not is_trusted:
                     logger.warning(
                         "Rejected identity headers from untrusted source: %s",
@@ -658,7 +656,11 @@ class APIServer:
             metadata.title = title
             metadata.launch_intent = launch_intent
             metadata.auto_command = auto_command
-            cmd = CommandMapper.map_api_input("new_session", {}, metadata)
+            cmd = CommandMapper.map_api_input(
+                "new_session",
+                {"skip_listener_registration": request.skip_listener_registration},
+                metadata,
+            )
 
             try:
                 data = await get_command_service().create_session(cmd)
@@ -1649,63 +1651,6 @@ class APIServer:
             except Exception as e:
                 logger.error("set_agent_status failed: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to set agent status: {e}") from e
-
-        @self.app.post("/deploy")
-        async def deploy_endpoint(  # pyright: ignore
-            request: DeployRequest,
-            identity: "CallerIdentity" = Depends(CLEARANCE_DEPLOY),  # noqa: ARG001
-        ) -> dict[str, object]:  # guard: loose-dict - API boundary
-            """Deploy latest code to remote computers via Redis.
-
-            Sends a deploy command to the specified computers (or all remotes if none
-            specified) and waits for completion. Requires admin clearance.
-            """
-            from teleclaude.transport.redis_transport import RedisTransport
-
-            redis_transport: RedisTransport | None = None
-            for adapter in self.client.adapters.values():
-                if isinstance(adapter, RedisTransport):
-                    redis_transport = adapter
-                    break
-            if not redis_transport:
-                raise HTTPException(status_code=503, detail="Redis transport not available")
-
-            all_peers = await redis_transport.discover_peers()
-            computer_name = config.computer.name
-            available = [peer.name for peer in all_peers if peer.name != computer_name]
-            available_set = set(available)
-
-            requested = [str(c) for c in (request.computers or [])]
-            targets = list(available) if not requested else [name for name in requested if name in available_set]
-
-            results: dict[str, object] = {}  # guard: loose-dict - deploy status per computer
-            if requested:
-                for name in requested:
-                    if name == computer_name:
-                        results[name] = {"status": "skipped", "message": "Skipping self deployment"}
-                    elif name not in available_set:
-                        results[name] = {"status": "error", "message": "Unknown or offline computer"}
-
-            if not targets:
-                return {"_message": {"status": "success", "message": "No remote computers to deploy to"}}
-
-            logger.info("deploy_endpoint: deploying to computers: %s", targets)
-            for computer in targets:
-                await redis_transport.send_system_command(
-                    computer_name=computer, command="deploy", args={"verify_health": True}
-                )
-            for computer in targets:
-                for _ in range(60):
-                    status = await redis_transport.get_system_command_status(computer_name=computer, command="deploy")
-                    status_str = str(status.get("status", "unknown"))
-                    if status_str in ("deployed", "error"):
-                        results[computer] = status
-                        break
-                    await asyncio.sleep(1)
-                else:
-                    results[computer] = {"status": "timeout", "message": "Deployment timed out after 60 seconds"}
-
-            return results
 
         @self.app.get("/api/people")
         async def list_people() -> list[PersonDTO]:  # pyright: ignore

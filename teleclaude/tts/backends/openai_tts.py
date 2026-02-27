@@ -46,7 +46,7 @@ class OpenAITTSBackend:
 
             try:
                 response.write_to_file(tmp_path)
-                subprocess.run(["afplay", tmp_path], check=True, timeout=300)
+                subprocess.run(["afplay", tmp_path], check=True, capture_output=True, timeout=300)
                 logger.debug(f"OpenAI: spoke {len(text)} chars with voice {voice}")
                 return True
             finally:

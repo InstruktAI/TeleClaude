@@ -443,19 +443,11 @@ class SessionLifecycleContext:
 
 
 @dataclass(frozen=True)
-class DeployArgs:
-    """Arguments for deploy system command."""
-
-    verify_health: bool = True
-
-
-@dataclass(frozen=True)
 class SystemCommandContext:
     """Context for system commands (no session_id)."""
 
     command: str = ""
     from_computer: str = "unknown"
-    args: DeployArgs = field(default_factory=DeployArgs)
 
 
 @dataclass(frozen=True)

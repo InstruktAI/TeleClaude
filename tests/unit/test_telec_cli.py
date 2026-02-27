@@ -4,13 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict
+from typing import Any, Dict, TypedDict
 
 import pytest
 
 from teleclaude.cli import telec
 from teleclaude.cli.api_client import APIError
 from teleclaude.cli.models import CreateSessionResult
+
+
+class _CreateSessionCall(TypedDict, total=False):
+    skip_listener_registration: bool
 
 
 def test_attach_tmux_session_switches_inside_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -267,6 +271,46 @@ def test_version_command_uses_unknown_commit_when_git_unavailable(
 
     output = capsys.readouterr().out.strip()
     assert output == "TeleClaude v1.0.0 (channel: alpha, commit: unknown)"
+
+
+def test_bugs_report_dispatch_skips_listener_registration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """bugs report should offload without registering caller listener notifications."""
+    create_calls: list[_CreateSessionCall] = []
+
+    class _FakeApiClient:
+        async def connect(self) -> None:
+            return None
+
+        async def create_session(self, **kwargs: object) -> CreateSessionResult:
+            call: _CreateSessionCall = {}
+            skip_listener_registration = kwargs.get("skip_listener_registration")
+            if isinstance(skip_listener_registration, bool):
+                call["skip_listener_registration"] = skip_listener_registration
+            create_calls.append(call)
+            return CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tc_1", agent=None)
+
+        async def close(self) -> None:
+            return None
+
+    def _fake_git_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(telec, "TelecAPIClient", _FakeApiClient)
+    monkeypatch.setattr(telec.subprocess, "run", _fake_git_run)
+
+    slug = "fix-bugs-report-skip-listener"
+    telec._handle_bugs_report(
+        [
+            "listener spam on bugs report",
+            "--slug",
+            slug,
+            "--project-root",
+            str(tmp_path),
+        ]
+    )
+
+    assert create_calls, "Expected telec bugs report to dispatch an orchestrator session"
+    assert create_calls[0].get("skip_listener_registration") is True
 
 
 def test_bugs_list_uses_worktree_state_for_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

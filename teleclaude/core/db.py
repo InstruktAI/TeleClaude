@@ -199,6 +199,7 @@ class Db:
 
         # Async engine for runtime access
         db_url = f"sqlite+aiosqlite:///{db_path}"
+        from sqlalchemy import event  # noqa: raw-sql - PRAGMAs require raw SQL
         from sqlalchemy.ext.asyncio import create_async_engine
         from sqlalchemy.orm import sessionmaker
 
@@ -207,18 +208,22 @@ class Db:
             db_url,
             future=True,
             connect_args=connect_args,
-            pool_size=5,
-            max_overflow=3,
+            pool_size=20,
+            max_overflow=10,
             pool_pre_ping=True,
         )
         self._sessionmaker = sessionmaker(self._engine, expire_on_commit=False, class_=SqlAsyncSession)
 
-        async with self._engine.begin() as conn:
-            from sqlalchemy import text  # noqa: raw-sql - PRAGMAs require raw SQL
-
-            await conn.execute(text("PRAGMA journal_mode = WAL"))  # noqa: raw-sql
-            await conn.execute(text("PRAGMA synchronous = NORMAL"))  # noqa: raw-sql
-            await conn.execute(text("PRAGMA busy_timeout = 5000"))  # noqa: raw-sql
+        # Apply PRAGMAs to every new connection via pool event listener.
+        # This ensures all pooled connections have WAL mode, busy timeout, etc.
+        @event.listens_for(self._engine.sync_engine, "connect")
+        def _set_sqlite_pragmas(dbapi_conn, _connection_record):  # type: ignore[no-untyped-def]
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA journal_mode = WAL")  # noqa: raw-sql
+            cursor.execute("PRAGMA synchronous = NORMAL")  # noqa: raw-sql
+            cursor.execute("PRAGMA busy_timeout = 5000")  # noqa: raw-sql
+            cursor.execute("PRAGMA cache_size = -8000")  # noqa: raw-sql  8MB per connection
+            cursor.close()
 
         await self._normalize_adapter_metadata()
 
@@ -1345,6 +1350,47 @@ class Db:
             result = await db_session.exec(stmt)
             await db_session.commit()
             return (result.rowcount or 0) == 1
+
+    async def claim_hook_outbox_batch(self, row_ids: list[int], now_iso: str, lock_cutoff_iso: str) -> set[int]:
+        """Claim multiple hook outbox rows in a single DB round-trip.
+
+        Returns the set of row IDs that were successfully claimed.
+        """
+        if not row_ids:
+            return set()
+        from sqlalchemy import or_, update
+
+        stmt = (
+            update(db_models.HookOutbox)
+            .where(
+                db_models.HookOutbox.id.in_(row_ids),
+                db_models.HookOutbox.delivered_at.is_(None),
+                or_(
+                    db_models.HookOutbox.locked_at.is_(None),
+                    db_models.HookOutbox.locked_at <= lock_cutoff_iso,
+                ),
+            )
+            .values(locked_at=now_iso)
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            await db_session.commit()
+            claimed_count = result.rowcount or 0
+
+        # If all were claimed, return all IDs. Otherwise, we need to check which ones.
+        if claimed_count == len(row_ids):
+            return set(row_ids)
+
+        # Fall back to checking which rows are now locked by us
+        from sqlmodel import select
+
+        stmt_check = select(db_models.HookOutbox.id).where(
+            db_models.HookOutbox.id.in_(row_ids),
+            db_models.HookOutbox.locked_at == now_iso,
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt_check)
+            return {int(row_id) for row_id in result.all()}
 
     async def mark_hook_outbox_delivered(self, row_id: int, error: str | None = None) -> None:
         """Mark a hook outbox row delivered (optionally capturing last error)."""

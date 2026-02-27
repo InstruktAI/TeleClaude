@@ -59,7 +59,6 @@ class ResultStatus(str, Enum):
     SKIPPED = "skipped"
     TIMEOUT = "timeout"
     UNKNOWN = "unknown"
-    DEPLOYED = "deployed"
 
 
 class ComputerStatus(str, Enum):
@@ -69,7 +68,6 @@ class ComputerStatus(str, Enum):
 
 
 class SystemCommand(str, Enum):
-    DEPLOY = "deploy"
     HEALTH_CHECK = "health_check"
     EXIT = "exit"
 

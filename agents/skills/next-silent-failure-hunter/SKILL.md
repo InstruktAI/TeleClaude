@@ -5,6 +5,10 @@ description: Identify silent failures, inadequate error handling, and inappropri
 
 # Silent Failure Hunter
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/procedure/silent-failure-audit.md
+
 ## Purpose
 
 Audit error handling to eliminate silent failures and weak recovery paths.
@@ -25,12 +29,4 @@ Audit error handling to eliminate silent failures and weak recovery paths.
 
 ## Procedure
 
-- Locate all error handling paths (try/catch, error callbacks, fallbacks).
-- For each handler, evaluate:
-  - Logging quality and context
-  - User feedback clarity and actionability
-  - Catch specificity (avoid broad catches)
-  - Fallback behavior (no hidden failures)
-  - Propagation correctness (don’t swallow errors)
-- Flag hidden-failure patterns: empty catches, log-and-continue, silent defaults, optional chaining that masks errors.
-- Report each issue with location, severity, description, and hidden errors it could mask.
+Follow the silent failure audit procedure. Full evaluation criteria and hidden-failure patterns are in the required reads above.

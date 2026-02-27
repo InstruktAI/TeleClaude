@@ -105,6 +105,14 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: project/design/architecture/deployment-pipeline
+  description: Architecture of the automated webhook-driven deployment pipeline.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/deployment-pipeline.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: project/design/architecture/feature-flags
   description: Design of the experiment and feature-flag system for safe feature toggling.
   type: design
@@ -197,6 +205,16 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/output-sizing.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/performance-tuning
+  description: Performance tuning decisions for the daemon under sustained API load,
+    covering connection pooling, caching layers, event loop policy, and background
+    worker pressure.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/performance-tuning.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -309,6 +327,14 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/ux/session-highlight/implementation-plan.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/ux/session-preview-sticky
+  description: Preview and sticky session interaction model for TUI pane management.
+  type: design
+  scope: project
+  path: docs/project/design/ux/session-preview-sticky.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -463,7 +489,8 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: project/procedure/deploy
-  description: Deploy TeleClaude changes safely with verification.
+  description: How TeleClaude updates propagate to computers via the automated deployment
+    pipeline.
   type: procedure
   scope: project
   path: docs/project/procedure/deploy.md

@@ -21,6 +21,7 @@ class CreateSessionRequest(BaseModel):  # type: ignore[explicit-any]
     title: str | None = None
     message: str | None = None
     direct: bool = False
+    skip_listener_registration: bool = False
     auto_command: str | None = None
     native_session_id: str | None = None
     subdir: str | None = None
@@ -518,14 +519,6 @@ class EscalateRequest(BaseModel):  # type: ignore[explicit-any]
     customer_name: str = Field(..., min_length=1)
     reason: str = Field(..., min_length=1)
     context_summary: str | None = None
-
-
-class DeployRequest(BaseModel):  # type: ignore[explicit-any]
-    """Request to deploy to remote computers (POST /deploy)."""
-
-    model_config = ConfigDict(frozen=True)
-
-    computers: list[str] | None = None
 
 
 class AgentStatusRequest(BaseModel):  # type: ignore[explicit-any]
