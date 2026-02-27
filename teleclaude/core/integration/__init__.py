@@ -7,10 +7,16 @@ from teleclaude.core.integration.authorization import (
     require_integrator_owner,
     resolve_cutover_mode,
 )
+from teleclaude.core.integration.blocked_followup import (
+    BlockedFollowUpError,
+    BlockedFollowUpLink,
+    BlockedFollowUpStore,
+)
 from teleclaude.core.integration.event_store import AppendResult, IntegrationEventStore, IntegrationEventStoreError
 from teleclaude.core.integration.events import (
     BranchPushedPayload,
     FinalizeReadyPayload,
+    IntegrationBlockedPayload,
     IntegrationEvent,
     IntegrationEventPayload,
     IntegrationEventType,
@@ -47,10 +53,12 @@ from teleclaude.core.integration.readiness_projection import (
     ReadinessStatus,
 )
 from teleclaude.core.integration.runtime import (
+    IntegrationBlockedOutcome,
     IntegrationRuntimeError,
     IntegratorShadowRuntime,
     MainBranchClearanceCheck,
     MainBranchClearanceProbe,
+    ResumeBlockedResult,
     RuntimeDrainResult,
     SessionSnapshot,
     ShadowOutcome,
@@ -62,8 +70,13 @@ from teleclaude.core.integration.service import IngestionResult, IngestionStatus
 
 __all__ = [
     "AppendResult",
+    "BlockedFollowUpError",
+    "BlockedFollowUpLink",
+    "BlockedFollowUpStore",
     "BranchPushedPayload",
     "FinalizeReadyPayload",
+    "IntegrationBlockedOutcome",
+    "IntegrationBlockedPayload",
     "IntegrationEvent",
     "IntegrationEventPayload",
     "IntegrationEventStore",
@@ -102,6 +115,7 @@ __all__ = [
     "require_integrator_owner",
     "resolve_cutover_mode",
     "RuntimeDrainResult",
+    "ResumeBlockedResult",
     "ReachabilityChecker",
     "QueueItem",
     "QueueStatus",

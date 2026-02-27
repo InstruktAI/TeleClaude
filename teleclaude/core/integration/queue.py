@@ -17,7 +17,7 @@ _ALLOWED_STATUS_TRANSITIONS: dict[QueueStatus, frozenset[QueueStatus]] = {
     "queued": frozenset({"in_progress"}),
     "in_progress": frozenset({"queued", "integrated", "blocked", "superseded"}),
     "integrated": frozenset(),
-    "blocked": frozenset(),
+    "blocked": frozenset({"queued"}),
     "superseded": frozenset(),
 }
 
@@ -153,6 +153,10 @@ class IntegrationQueue:
     def mark_superseded(self, *, key: CandidateKey, reason: str, now: datetime | None = None) -> None:
         """Mark candidate as superseded by newer readiness."""
         self._set_status(key=key, to_status="superseded", reason=reason, now=now)
+
+    def resume_blocked(self, *, key: CandidateKey, reason: str, now: datetime | None = None) -> None:
+        """Re-queue a blocked candidate after remediation and readiness re-check."""
+        self._set_status(key=key, to_status="queued", reason=reason, now=now)
 
     def get(self, *, key: CandidateKey) -> QueueItem | None:
         """Get queue state for one candidate key."""

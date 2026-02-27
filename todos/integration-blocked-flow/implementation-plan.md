@@ -10,15 +10,15 @@ Convert blocked integration outcomes into explicit, resumable operational flows.
 
 **File(s):** `teleclaude/core/integration/events.py`, `teleclaude/core/integration/runtime.py`
 
-- [ ] Add `integration_blocked` payload contract with required evidence fields.
-- [ ] Emit actionable diagnostics for remediation.
+- [x] Add `integration_blocked` payload contract with required evidence fields.
+- [x] Emit actionable diagnostics for remediation.
 
 ### Task 1.2: Implement follow-up todo linkage
 
 **File(s):** `teleclaude/core/integration/blocked_followup.py`
 
-- [ ] Create/link follow-up todo for blocked candidate.
-- [ ] Ensure idempotent follow-up creation.
+- [x] Create/link follow-up todo for blocked candidate.
+- [x] Ensure idempotent follow-up creation.
 
 ## Phase 2: Resume Mechanics and Validation
 
@@ -26,8 +26,8 @@ Convert blocked integration outcomes into explicit, resumable operational flows.
 
 **File(s):** `teleclaude/core/integration/runtime.py`
 
-- [ ] Re-queue remediated candidates only after readiness re-check.
-- [ ] Preserve audit history across blocked/resumed transitions.
+- [x] Re-queue remediated candidates only after readiness re-check.
+- [x] Preserve audit history across blocked/resumed transitions.
 
 ### Task 2.2: Add coverage and run gates
 

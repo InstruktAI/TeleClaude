@@ -57,6 +57,14 @@ integrator:
       - remote
       - pushed_at
       - pusher
+    integration_blocked:
+      - slug
+      - branch
+      - sha
+      - conflict_evidence
+      - diagnostics
+      - next_action
+      - blocked_at
 
   readiness_predicate:
     all_required_events_present: true
@@ -139,6 +147,20 @@ Required fields:
 - `remote` (normally `origin`)
 - `pushed_at` (ISO8601)
 - `pusher` (identity label)
+
+### `integration_blocked`
+
+Meaning: the queued candidate could not proceed and requires remediation before retry.
+
+Required fields:
+
+- `slug`
+- `branch`
+- `sha`
+- `conflict_evidence` (non-empty list; includes merge-conflict evidence when present)
+- `diagnostics` (non-empty list of actionable blocking diagnostics)
+- `next_action` (single remediation step)
+- `blocked_at` (ISO8601)
 
 ## Readiness Predicate
 
