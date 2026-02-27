@@ -223,7 +223,7 @@ def test_hook_to_canonical_covers_all_expected_hook_types() -> None:
 
 def test_hook_to_canonical_all_values_are_valid_canonical_types() -> None:
     """All values in HOOK_TO_CANONICAL must be valid canonical activity types."""
-    valid = {"user_prompt_submit", "agent_output_update", "agent_output_stop"}
+    valid = {"user_prompt_submit", "agent_output_update", "agent_output_stop", "agent_notification"}
     for hook, canonical in HOOK_TO_CANONICAL.items():
         assert canonical in valid, f"{hook!r} maps to invalid canonical type {canonical!r}"
 
@@ -256,3 +256,66 @@ def test_serialize_activity_event_optional_fields_default_to_none() -> None:
     assert result.tool_name is None
     assert result.tool_preview is None
     assert result.summary is None
+
+
+# ---------------------------------------------------------------------------
+# agent_notification — new canonical type
+# ---------------------------------------------------------------------------
+
+
+def test_serialize_notification_hook_maps_to_agent_notification() -> None:
+    """notification hook must map to agent_notification canonical type."""
+    result = serialize_activity_event(
+        session_id="sess-notif",
+        hook_event_type="notification",
+        timestamp="2024-01-01T00:00:00+00:00",
+    )
+
+    assert result is not None
+    assert result.canonical_type == "agent_notification"
+    assert result.hook_event_type == "notification"
+
+
+def test_serialize_notification_hook_passes_message_through() -> None:
+    """message field must be included in the canonical event for notification hooks."""
+    result = serialize_activity_event(
+        session_id="sess-notif-msg",
+        hook_event_type="notification",
+        timestamp="2024-01-01T00:00:00+00:00",
+        message="Permission required for shell command",
+    )
+
+    assert result is not None
+    assert result.message == "Permission required for shell command"
+
+
+def test_serialize_notification_hook_message_defaults_to_none() -> None:
+    """message defaults to None when not supplied (notification hook without message)."""
+    result = serialize_activity_event(
+        session_id="sess-notif-nomsg",
+        hook_event_type="notification",
+        timestamp="2024-01-01T00:00:00+00:00",
+    )
+
+    assert result is not None
+    assert result.message is None
+
+
+def test_notification_in_hook_to_canonical() -> None:
+    """notification must be present in HOOK_TO_CANONICAL mapping."""
+    assert "notification" in HOOK_TO_CANONICAL
+    assert HOOK_TO_CANONICAL["notification"] == "agent_notification"
+
+
+def test_serialize_notification_uses_ctrl_routing() -> None:
+    """agent_notification events use CTRL delivery scope like all activity events."""
+    result = serialize_activity_event(
+        session_id="sess-notif-ctrl",
+        hook_event_type="notification",
+        timestamp="2024-01-01T00:00:00+00:00",
+        message="hello",
+    )
+
+    assert result is not None
+    assert result.delivery_scope == "CTRL"
+    assert result.message_intent == "ctrl_activity"

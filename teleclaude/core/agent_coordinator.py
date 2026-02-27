@@ -473,6 +473,7 @@ class AgentCoordinator:
         tool_name: str | None = None,
         tool_preview: str | None = None,
         summary: str | None = None,
+        message: str | None = None,
     ) -> None:
         """Emit agent activity event with error handling.
 
@@ -486,6 +487,7 @@ class AgentCoordinator:
             tool_name: Optional tool name for tool_use events
             tool_preview: Optional UI preview text for tool_use events
             summary: Optional output summary (agent_stop only)
+            message: Optional notification message (notification only)
         """
         try:
             timestamp = datetime.now(timezone.utc).isoformat()
@@ -496,6 +498,7 @@ class AgentCoordinator:
                 tool_name=tool_name,
                 tool_preview=tool_preview,
                 summary=summary,
+                message=message,
             )
             event_bus.emit(
                 TeleClaudeEvents.AGENT_ACTIVITY,
@@ -505,6 +508,7 @@ class AgentCoordinator:
                     tool_name=tool_name,
                     tool_preview=tool_preview,
                     summary=summary,
+                    message=message,
                     timestamp=timestamp,
                     canonical_type=canonical.canonical_type if canonical else None,
                     message_intent=canonical.message_intent if canonical else None,
@@ -1300,6 +1304,9 @@ class AgentCoordinator:
 
         # Update notification flag
         await db.set_notification_flag(session_id, True)
+
+        # 3. Emit canonical activity event so Web/TUI consumers receive agent_notification
+        self._emit_activity_event(session_id, AgentHookEvents.AGENT_NOTIFICATION, message=str(message))
 
     async def handle_session_end(self, context: AgentEventContext) -> None:
         """Handle session_end event - agent session ended."""

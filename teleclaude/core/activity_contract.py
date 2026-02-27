@@ -28,6 +28,7 @@ CanonicalActivityEventType = Literal[
     "user_prompt_submit",
     "agent_output_update",
     "agent_output_stop",
+    "agent_notification",
 ]
 
 # Routing intent for all activity control events (CTRL scope, no UI content)
@@ -43,6 +44,7 @@ HOOK_TO_CANONICAL: dict[str, CanonicalActivityEventType] = {
     "tool_use": "agent_output_update",
     "tool_done": "agent_output_update",
     "agent_stop": "agent_output_stop",
+    "notification": "agent_notification",
 }
 
 # ---------------------------------------------------------------------------
@@ -70,13 +72,16 @@ class CanonicalActivityEvent:
     tool_name: str | None = None
     tool_preview: str | None = None
     summary: str | None = None
+    message: str | None = None
 
 
 # ---------------------------------------------------------------------------
 # Validation (R3)
 # ---------------------------------------------------------------------------
 
-_CANONICAL_TYPES: frozenset[str] = frozenset({"user_prompt_submit", "agent_output_update", "agent_output_stop"})
+_CANONICAL_TYPES: frozenset[str] = frozenset(
+    {"user_prompt_submit", "agent_output_update", "agent_output_stop", "agent_notification"}
+)
 _DELIVERY_SCOPES: frozenset[str] = frozenset({"ORIGIN_ONLY", "DUAL", "CTRL"})
 
 
@@ -111,6 +116,7 @@ def serialize_activity_event(
     tool_name: str | None = None,
     tool_preview: str | None = None,
     summary: str | None = None,
+    message: str | None = None,
 ) -> CanonicalActivityEvent | None:
     """Serialize an internal hook-level activity event to the canonical outbound form.
 
@@ -124,6 +130,7 @@ def serialize_activity_event(
         tool_name: Optional tool name (for tool_use events).
         tool_preview: Optional UI preview text (for tool_use events).
         summary: Optional output summary (for agent_stop events).
+        message: Optional notification message (for notification events).
 
     Returns:
         CanonicalActivityEvent on success, None on unmapped or invalid input.
@@ -147,6 +154,7 @@ def serialize_activity_event(
         tool_name=tool_name,
         tool_preview=tool_preview,
         summary=summary,
+        message=message,
     )
 
     errors = _validate_canonical_event(event)

@@ -511,6 +511,7 @@ class AgentActivityEvent:
     tool_name: str | None = None
     tool_preview: str | None = None
     summary: str | None = None
+    message: str | None = None
     timestamp: str | None = None
     # Canonical contract fields (preserved as optional for backward compatibility)
     canonical_type: str | None = None
