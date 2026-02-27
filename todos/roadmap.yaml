@@ -1,40 +1,6 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: deployment-cleanup
-  group: mature-deployment
-  after:
-  - deployment-channels
-  description: 'Phase 4: Remove deploy_service, MCP tool (if still present), update
-    docs, write pipeline doc'
-- slug: integrator-shadow-mode
-  group: integration-orchestrator-rollout
-  after:
-  - integration-events-model
-  description: 'Step 3: run singleton lease+queue integrator in shadow mode without
-    main merges'
-- slug: integrator-cutover
-  group: integration-orchestrator-rollout
-  after:
-  - integrator-shadow-mode
-  description: 'Step 4: make integrator the only path that merges and pushes canonical
-    main'
-- slug: integration-blocked-flow
-  group: integration-orchestrator-rollout
-  after:
-  - integrator-cutover
-  description: 'Step 5: emit integration_blocked flow with follow-up todo creation
-    and resume UX'
-- slug: config-wizard-whatsapp-wiring
-  description: Wire WhatsApp env vars, guidance, and config.sample into the config
-    wizard
-- slug: config-wizard-governance
-  description: Add config wizard integration gates to DoD, DOR, add-adapter procedure,
-    and teleclaude-config spec
-- slug: config-wizard-redesign
-  after:
-  - config-wizard-whatsapp-wiring
-  description: Major visual and interaction redesign of the config wizard — card layout,
-    inline editing, guided onboarding, progress indicators
 - slug: harmonize-agent-notifications
   after:
   - ucap-cutover-parity-validation
+- slug: tui-footer-key-contract-restoration
