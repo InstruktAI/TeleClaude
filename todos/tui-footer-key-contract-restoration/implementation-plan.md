@@ -10,25 +10,26 @@ This plan covers remaining gaps against the target key contract. The unified 3-r
 
 **Files:** `teleclaude/cli/tui/views/sessions.py`
 
-- [x] In `action_focus_pane()`, change the `isinstance(item, ComputerHeader)` branch from calling `self.action_restart_all()` to calling `self.action_new_session()` with a flag indicating path-input mode (e.g., `path_mode=True`).
-- [x] In `_default_footer_action()`, change the `ComputerHeader` return from `"restart_all"` to `"focus_pane"` (so Enter shows as default in footer for computer nodes).
-- [x] In `check_action()`, keep `focus_pane` enabled on `ComputerHeader` (already true). Ensure `new_session` remains enabled only on `ProjectHeader` (the computer-level Enter uses `focus_pane`, not `new_session` binding).
+- [ ] In `action_focus_pane()`, change the `isinstance(item, ComputerHeader)` branch from calling `self.action_restart_all()` to calling `self.action_new_session()` with a flag indicating path-input mode (e.g., `path_mode=True`).
+- [ ] In `_default_footer_action()`, change the `ComputerHeader` return from `"restart_all"` to `"focus_pane"` (so Enter shows as default in footer for computer nodes).
+- [ ] In `check_action()`, keep `focus_pane` enabled on `ComputerHeader` (already true). Ensure `new_session` remains enabled only on `ProjectHeader` (the computer-level Enter uses `focus_pane`, not `new_session` binding).
 
 ### Task 1.2: Add restart-project capability
 
 **Files:** `teleclaude/cli/tui/views/sessions.py`
 
-- [x] Add `action_restart_project()` method: collect all session IDs under the current `ProjectHeader`, show `ConfirmModal`, post `RestartSessionRequest` for each.
-- [x] Add a `BINDINGS` entry for `restart_project` bound to `R` with `show=True`.
-- [x] Update `check_action()`: `restart_session` enabled on `SessionRow`, `restart_all` enabled on `ComputerHeader`, `restart_project` enabled on `ProjectHeader`. The `R` key binding is overloaded via three separate action names, each guarded by `check_action()`.
+- [ ] Add `action_restart_project()` method: collect all session IDs under the current `ProjectHeader`, show `ConfirmModal`, post `RestartSessionRequest` for each.
+- [ ] Add a `BINDINGS` entry for `restart_project` bound to `R` with `show=True`.
+- [ ] Update `check_action()`: `restart_session` enabled on `SessionRow`, `restart_all` enabled on `ComputerHeader`, `restart_project` enabled on `ProjectHeader`. The `R` key binding should be overloaded via three separate action names, each guarded by `check_action()`.
+- [ ] Alternatively, use a single `restart` action that dispatches by node type in the action handler (simpler binding, same `check_action` gating).
 
 ### Task 1.3: Global visibility audit
 
 **Files:** `teleclaude/cli/tui/app.py`, `teleclaude/cli/tui/widgets/telec_footer.py`
 
-- [x] Verify app-level `BINDINGS`: `q` (Quit), `r` (Refresh), `t` (Cycle Theme) have `show=True`. Tab switches `1/2/3/4` have `show=False`. ✓ Already correct — no changes needed.
-- [x] Verify `TelecFooter` Row 3 renders `s` (Speech) and `a` (Animation) as toggle pills (not as standard bindings). ✓ Already correct — icons rendered in `_render_controls_line()`.
-- [x] Ensure no hidden navigation keys leak into footer rows. ✓ No regressions found.
+- [ ] Verify app-level `BINDINGS`: `q` (Quit), `r` (Refresh), `t` (Cycle Theme) have `show=True`. Tab switches `1/2/3/4` have `show=False`.
+- [ ] Verify `TelecFooter` Row 3 renders `s` (Speech) and `a` (Animation) as toggle pills (not as standard bindings).
+- [ ] Ensure no hidden navigation keys leak into footer rows. This is an audit task — fix only if regressions found.
 
 ## Phase 2: Todo tree and key contract completion
 
@@ -36,20 +37,20 @@ This plan covers remaining gaps against the target key contract. The unified 3-r
 
 **Files:** `teleclaude/cli/tui/views/preparation.py`, `teleclaude/cli/tui/widgets/computer_header.py`
 
-- [x] Reuse the existing `ComputerHeader` widget from sessions view.
-- [x] Update the tree-building logic in preparation view to group projects under their computer node (Computer → Project → Todo → TodoFile), matching the sessions tree pattern.
-- [x] Group by `p.computer` on each `ProjectWithTodosInfo`; computers sorted alphabetically, projects sorted alphabetically within computer.
-- [x] `_nav_items` includes `ComputerHeader` entries; click handler `on_computer_header_pressed` added.
-- [x] Preserve sort/group ordering: computers alphabetical, projects alphabetical within computer, todos by roadmap order within project.
+- [ ] Reuse the existing `ComputerHeader` widget from sessions view.
+- [ ] Update the tree-building logic in preparation view to group projects under their computer node (Computer → Project → Todo → TodoFile), matching the sessions tree pattern.
+- [ ] The data source already has `_slug_to_computer` mapping — use it to group todos by computer in `_mount_node()` or equivalent builder.
+- [ ] Update `_nav_items` depth tracking to account for the added computer tier.
+- [ ] Preserve sort/group ordering: computers alphabetical, projects alphabetical within computer, todos by roadmap order within project.
 
 ### Task 2.2: Update Preparation check_action for computer nodes
 
 **Files:** `teleclaude/cli/tui/views/preparation.py`
 
-- [x] Import `ComputerHeader` and add it to `check_action()`.
-- [x] Computer node enables: `new_project` (shared `n` binding), `expand_all`, `collapse_all`.
-- [x] Computer node disables: `new_todo`, `new_bug`, `remove_todo`, `activate`, `preview_file`, `prepare`, `start_work`.
-- [x] Existing project/todo/file node gating verified unchanged after adding computer tier.
+- [ ] Import `ComputerHeader` and add it to `check_action()`.
+- [ ] Computer node enables: `new_project` (shared `n` binding), `expand_all`, `collapse_all`.
+- [ ] Computer node disables: `new_todo`, `new_bug`, `remove_todo`, `activate`, `preview_file`, `prepare`, `start_work`.
+- [ ] Verify existing project/todo/file node gating still works after adding the computer tier.
 
 ## Phase 3: Modal/path validation contract completion
 
@@ -57,60 +58,57 @@ This plan covers remaining gaps against the target key contract. The unified 3-r
 
 **Files:** `teleclaude/cli/tui/widgets/modals.py`
 
-- [x] Add an optional `path_mode: bool = False` parameter to `StartSessionModal.__init__()`.
-- [x] When `path_mode=True`, render an additional `Input` widget for project path between the computer label and agent selector.
-- [x] Path validation: on Enter, call `os.path.expanduser()` on the path input value, then check `os.path.isdir()`.
-- [x] On invalid path: keep modal open, set an inline error label on the path input ("Path does not exist or is not a directory").
-- [x] On valid path: include the resolved path in the `CreateSessionRequest` result.
-- [x] When `path_mode=False` (default), behavior is unchanged — no path input shown.
+- [ ] Add an optional `path_mode: bool = False` parameter to `StartSessionModal.__init__()`.
+- [ ] When `path_mode=True`, render an additional `Input` widget for project path between the computer label and agent selector.
+- [ ] Path validation: on Enter, call `os.path.expanduser()` on the path input value, then check `os.path.isdir()`.
+- [ ] On invalid path: keep modal open, set an inline error label on the path input (e.g., "Path does not exist" or "Not a directory").
+- [ ] On valid path: include the resolved path in the `CreateSessionRequest` result.
+- [ ] When `path_mode=False` (default), behavior is unchanged — no path input shown.
 
 ### Task 3.2: Create NewProjectModal
 
 **Files:** `teleclaude/cli/tui/widgets/modals.py`
 
-- [x] Create `NewProjectModal(ModalScreen[NewProjectResult | None])` with fields: name (`Input`), description (`Input`), path (`Input`).
-- [x] Path validation: same `~`-resolution and `isdir()` check as Task 3.1.
-- [x] Dedupe check: compare name and resolved path against caller-provided `existing_names`/`existing_paths`. Show inline error if duplicate found.
-- [x] On success: return `NewProjectResult(name, description, path)`.
-- [x] Caller handles persistence via `telec config patch --yaml`.
-- [x] Added `NewProjectResult` dataclass to `modals.py`.
+- [ ] Create `NewProjectModal(ModalScreen[NewProjectResult | None])` with fields: name (`Input`), description (`Input`), path (`Input`).
+- [ ] Path validation: same `~`-resolution and `isdir()` check as Task 3.1. Share the validation helper.
+- [ ] Dedupe check: compare name and resolved path against existing `computer.trusted_dirs` entries. Show inline error if duplicate found.
+- [ ] On success: return `NewProjectResult(name, description, path)`.
+- [ ] The caller (sessions/preparation view) handles persistence: call `telec config patch --yaml '...'` to append to `computer.trusted_dirs`, then refresh the tree.
 
 ### Task 3.3: Wire New Project action into views
 
 **Files:** `teleclaude/cli/tui/views/sessions.py`, `teleclaude/cli/tui/views/preparation.py`
 
-- [x] Add `action_new_project()` to both views.
-- [x] On `NewProjectResult`: invoke `telec config patch` to update `computer.trusted_dirs`, notify user, refresh follows on next data poll.
-- [x] Add `BINDINGS` entry for `new_project` bound to `n` in both views. Guarded by `check_action()` (computer node only).
-- [x] `n` on project → `new_session` (sessions view) / `new_todo` (prep view). `n` on computer → `new_project`. Separate action names, no conflict.
+- [ ] Add `action_new_project()` method to both views (or a shared mixin).
+- [ ] On `NewProjectResult`: invoke `telec config patch` to update `computer.trusted_dirs`, then call tree refresh.
+- [ ] Add `BINDINGS` entry for `new_project` bound to `n` on computer nodes. Guard with `check_action()`.
+- [ ] In sessions view: `n` on computer → `NewProjectModal`. `n` on project → currently `new_session` — verify no conflict (use separate action names if needed).
 
 ## Phase 4: Tests and verification
 
 ### Task 4.1: Key visibility and behavior tests
 
-**Files:** `tests/unit/test_tui_key_contract.py` (new file)
+**Files:** `tests/unit/cli/tui/` (new test file or extend existing)
 
-- [x] Test `SessionsView.check_action()` returns correct enabled/disabled for each action × node type combination.
-- [x] Test `PreparationView.check_action()` returns correct enabled/disabled including the new computer tier.
-- [x] Test hidden-but-active keys: arrow keys have `show=False` but are bound.
-- [x] Test `_default_footer_action()` returns `focus_pane` for computer, `new_session` for project, `focus_pane` for session.
-- [x] Test that default action is always enabled for its node type.
+- [ ] Test `SessionsView.check_action()` returns correct enabled/disabled for each action × node type combination.
+- [ ] Test `PreparationView.check_action()` returns correct enabled/disabled including the new computer tier.
+- [ ] Test hidden-but-active keys: `1/2/3/4` have `show=False` but are bound. Todo-row `Enter` (`activate`) has `show=False` on todo nodes.
+- [ ] Test `_default_footer_action()` returns `focus_pane` for computer, `new_session` for project, `focus_pane` for session.
 
 ### Task 4.2: Modal validation tests
 
-**Files:** `tests/unit/test_tui_key_contract.py`
+**Files:** `tests/unit/cli/tui/` (new test file or extend existing)
 
-- [x] Test `StartSessionModal` path-mode: `~` resolves, invalid path shows error, valid path returns in result, no path_mode leaves modal unchanged.
-- [x] Test `NewProjectModal`: duplicate name rejected, duplicate path rejected, invalid path rejected, valid input returns `NewProjectResult`.
+- [ ] Test `StartSessionModal` path-mode: `~` resolves, invalid path shows error, valid path returns in result.
+- [ ] Test `NewProjectModal`: duplicate name/path rejected, valid input returns `NewProjectResult`.
+- [ ] Test `NewProjectModal` path validation: `~` resolution, non-directory rejected.
 
 ### Task 4.3: Preparation tree structure test
 
-**Files:** `tests/unit/test_tui_key_contract.py`
+**Files:** `tests/unit/cli/tui/`
 
-- [x] Test that preparation tree `_nav_items` includes `ComputerHeader` before `ProjectHeader`.
-- [x] Test that each project appears under its computer node.
-- [x] Test sort order: computers alphabetical.
-- [x] Test single-computer case still renders a `ComputerHeader`.
+- [ ] Test that preparation tree builds Computer → Project → Todo → TodoFile hierarchy.
+- [ ] Test sort order: computers alphabetical, projects alphabetical, todos by roadmap order.
 
 ## Rollout Notes
 
