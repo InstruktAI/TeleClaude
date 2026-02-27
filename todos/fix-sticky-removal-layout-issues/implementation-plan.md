@@ -29,12 +29,21 @@ if existing_idx is not None:
     state.sessions.preview = PreviewState(session_id)
 ```
 
-### Task 1.2: Sessions view — post PreviewChanged with new session after un-sticky
+### Task 1.2: Sessions view (interaction path) — set preview on un-sticky
 
 **File(s):** `teleclaude/cli/tui/views/sessions.py`
 
-- [ ] In the TOGGLE_STICKY handler, after `_toggle_sticky(session_id)`, set `self.preview_session_id = session_id` and post `PreviewChanged(session_id, request_focus=False)` when the session was removed (not added)
-- [ ] Ensure `decision.clear_preview` logic still works correctly (it fires when the un-stickied session was also previewed — now the preview is being set explicitly, so this branch may need adjustment)
+The keyboard-based interaction path (lines ~625-631) uses `decision.clear_preview` which is `True` when un-stickying (`interaction.py:83` sets `clear_preview=is_sticky`). Currently this branch clears the preview — it must instead set it to the un-stickied session:
+
+- [ ] In the `TOGGLE_STICKY` branch, replace the `decision.clear_preview` body: change `self.preview_session_id = None` to `self.preview_session_id = session_id`, and change `PreviewChanged(None, ...)` to `PreviewChanged(session_id, request_focus=False)`
+
+### Task 1.2b: Sessions view (click path) — set preview on un-sticky
+
+**File(s):** `teleclaude/cli/tui/views/sessions.py`
+
+The click-based double-press handler (lines ~525-530) calls `_toggle_sticky(session_id)` and returns without touching preview. This path must also set preview when un-stickying:
+
+- [ ] After `_toggle_sticky(session_id)`, check `if session_id not in self._sticky_session_ids:` — if true (was removed), set `self.preview_session_id = session_id` and post `PreviewChanged(session_id, request_focus=False)`
 
 ### Task 1.3: Verify pane bridge ordering
 
@@ -49,9 +58,9 @@ if existing_idx is not None:
 
 ### Task 2.1: Tests
 
-- [ ] Update `test_remove_sticky_clears_preview_for_same_session` in `tests/unit/test_tui_state.py` — now the preview should be SET to the removed session, not cleared
+- [ ] Update `test_remove_sticky_clears_preview_for_same_session` — preview should be SET to the removed session, not cleared
+- [ ] Update `test_remove_sticky_preserves_preview_for_different_session` — removing sticky-A while preview-B is active must now set preview to A (not preserve B)
 - [ ] Add test: un-sticky with no prior preview → preview is set to removed session
-- [ ] Add test: un-sticky with different session previewed → preview changes to removed session
 - [ ] Run `make test-unit`
 
 ### Task 2.2: Manual verification

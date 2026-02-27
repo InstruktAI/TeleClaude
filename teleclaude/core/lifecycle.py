@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import os
-import time
 from typing import TYPE_CHECKING, Callable
 
 from instrukt_ai_logging import get_logger
@@ -14,7 +11,6 @@ from teleclaude.api_server import APIServer
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.models import SessionSnapshot
-from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:  # pragma: no cover
     from teleclaude.config.runtime_settings import RuntimeSettings
@@ -90,32 +86,6 @@ class DaemonLifecycle:
 
         self._init_voice_handler()
         logger.info("Voice handler initialized")
-
-        redis_transport_base = self.client.adapters.get("redis")
-        if redis_transport_base and isinstance(redis_transport_base, RedisTransport):
-            redis_transport: RedisTransport = redis_transport_base
-            if redis_transport.redis:
-                status_key = f"system_status:{config.computer.name}:deploy"
-                if not redis_transport._redis_ready.is_set():  # pylint: disable=protected-access
-                    logger.warning("Redis not ready; skipping deploy status check")
-                    status_data = None
-                else:
-                    try:
-                        status_data = await asyncio.wait_for(redis_transport.redis.get(status_key), timeout=1.0)
-                    except Exception as exc:  # pylint: disable=broad-exception-caught
-                        logger.error("Failed to read deploy status from Redis: %s", exc, exc_info=True)
-                        status_data = None
-                if status_data:
-                    try:
-                        status_raw: object = json.loads(status_data.decode("utf-8"))  # type: ignore[misc]
-                        if isinstance(status_raw, dict) and status_raw.get("status") == "restarting":  # type: ignore[misc]
-                            await redis_transport.redis.set(
-                                status_key,
-                                json.dumps({"status": "deployed", "timestamp": time.time(), "pid": os.getpid()}),  # type: ignore[misc]
-                            )
-                            logger.info("Deployment complete, daemon restarted successfully (PID: %s)", os.getpid())
-                    except (json.JSONDecodeError, Exception) as e:
-                        logger.warning("Failed to parse deploy status: %s", e)
 
         self._started = True
 

@@ -36,7 +36,6 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
-    DeployArgs,
     ErrorEventContext,
     EventType,
     SessionLifecycleContext,
@@ -76,7 +75,6 @@ from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
 from teleclaude.logging_config import setup_logging
 from teleclaude.notifications import NotificationOutboxWorker
-from teleclaude.services.deploy_service import DeployService
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.services.monitoring_service import MonitoringService
@@ -1121,7 +1119,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _handle_system_command(self, _event: str, context: SystemCommandContext) -> None:
         """Handler for SYSTEM_COMMAND events.
 
-        System commands are daemon-level operations (deploy, restart, etc.)
+        System commands are daemon-level operations (restart, health_check, etc.)
 
         Args:
             _event: Event type (always "system_command") - unused but required by event handler signature
@@ -1131,9 +1129,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         logger.info("Handling system command '%s' from %s", ctx.command, ctx.from_computer)
 
-        if ctx.command == "deploy":
-            await self._handle_deploy(ctx.args)
-        elif ctx.command == "health_check":
+        if ctx.command == "health_check":
             await self._handle_health_check()
         else:
             logger.warning("Unknown system command: %s", ctx.command)
@@ -1507,20 +1503,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return
 
         await self.client.send_message(session, f"❌ {user_message}", metadata=MessageMetadata())
-
-    async def _handle_deploy(self, _args: DeployArgs) -> None:
-        """Execute deployment: git pull + restart daemon via service manager.
-
-        Args:
-            _args: Deploy arguments (verify_health currently unused)
-        """
-        # Get Redis adapter for status updates
-        redis_transport_base = self.client.adapters.get("redis")
-        if not redis_transport_base:
-            logger.error("Redis transport not available, cannot update deploy status")
-            return
-        deploy_service = DeployService(redis_transport=redis_transport_base)
-        await deploy_service.deploy()
 
     async def _handle_health_check(self) -> None:
         """Handle health check requested."""

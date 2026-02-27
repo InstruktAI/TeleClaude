@@ -521,14 +521,6 @@ class EscalateRequest(BaseModel):  # type: ignore[explicit-any]
     context_summary: str | None = None
 
 
-class DeployRequest(BaseModel):  # type: ignore[explicit-any]
-    """Request to deploy to remote computers (POST /deploy)."""
-
-    model_config = ConfigDict(frozen=True)
-
-    computers: list[str] | None = None
-
-
 class AgentStatusRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to set agent dispatch status (POST /agents/{agent}/status)."""
 

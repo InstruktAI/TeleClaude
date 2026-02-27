@@ -24,7 +24,6 @@ WORKER_EXCLUDED_TOOLS = {
 
 # Member tool access policy.
 MEMBER_EXCLUDED_TOOLS = {
-    "telec deploy",
     "telec sessions end",
     "telec agents status",
     "telec sessions escalate",
@@ -36,7 +35,6 @@ UNAUTHORIZED_EXCLUDED_TOOLS = {
     "telec sessions run",
     "telec sessions send",
     "telec sessions file",
-    "telec deploy",
     "telec sessions unsubscribe",
     "telec sessions end",
     "telec todo prepare",
