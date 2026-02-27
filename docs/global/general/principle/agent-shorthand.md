@@ -53,7 +53,8 @@ Before composing a message to another agent, sense the register:
 | Human initiated the conversation         | Human-present        | L1 prose; ask the human what level they prefer  |
 | Human opts in to labeled format          | Human-aware (L2)     | L2 exchange; L1 prose for final report to human |
 | Human opts in to shorthand               | Human-aware (L3)     | L3 exchange; L1 prose for final report to human |
-| Agent-dispatched (no human in the loop)  | Agent-only           | Phase-locked L4/L3; artifacts in L1 prose       |
+| Agent-dispatched, same model             | Agent-only           | Phase-locked L4/L3; artifacts in L1 prose       |
+| Agent-dispatched, cross-model            | Agent-only           | L3 all phases; artifacts in L1 prose            |
 | Orchestrator supervision (worker report) | Structured reporting | L2 labeled findings, not prose narrative        |
 
 The default for peer conversations initiated by agents (e.g., dispatched by a todo
@@ -108,7 +109,7 @@ parenthetical clarifiers, causal chains with `∵`). L4 drops them — the recei
 reconstructs from shared context alone. L3 is recoverable from the message itself.
 L4 requires the shared context to be intact.
 
-**Default for agent-only exchanges: phase-locked switching.** The breath cycle
+**Default for same-model exchanges: phase-locked switching.** The breath cycle
 determines which level to use:
 
 | Phase       | Level | Why                                                                 |
@@ -117,6 +118,22 @@ determines which level to use:
 | `[hold]`    | L4    | Naming tensions, not resolving them. Density helps.                 |
 | `[exhale]`  | L3    | Converging on decisions. Disambiguation prevents wrong commitments. |
 | `[✓exhale]` | L1/L2 | Writing artifacts. Humans read these. Clarity is non-negotiable.    |
+
+**Cross-model exchanges: L3 is the ceiling.** L4 semantic tokens rely on shared
+training distribution — the same token activating the same conceptual cluster in
+both sender and receiver. Between different model families (Claude + Gemini,
+Claude + Codex), training distributions overlap but are not identical. An L4
+pointer might land in a slightly different neighborhood in the receiver's
+activation space, and neither model would detect the drift. L3 is safe across
+model boundaries because the disambiguation anchors (`:=`, `∵`, parenthetical
+clarifiers) make the message self-contained — the receiver parses structure, not
+activation. The symbolic grammar is math and logic notation, universal across any
+model that can process structured text.
+
+| Exchange type    | Ceiling | Phase-locked range        |
+| ---------------- | ------- | ------------------------- |
+| Same-model peer  | L4      | L4 inhale/hold, L3 exhale |
+| Cross-model peer | L3      | L3 all phases             |
 
 Phase markers are the switching signal. When you emit `[exhale]`, you shift to L3.
 When you emit `[inhale]`, you shift to L4. The level follows the phase, not the other
@@ -232,6 +249,10 @@ everything.
   for learning or oversight. The register sensing rule handles this — human-present
   means prose unless they opt in. Power users may prefer L2 (labeled assertions) for
   observability; the protocol negotiation accommodates this preference.
-- **Training distribution overlap**: This principle assumes both agents are language
-  models with overlapping training. If one participant is a different kind of system
-  (a rule engine, a human, a narrow tool), shorthand breaks. Sense the receiver.
+- **Training distribution overlap**: L4 assumes both agents share training distribution
+  — same model family, same conceptual neighborhoods. Between different model families
+  (Claude ↔ Gemini, Claude ↔ Codex), L4 pointers may activate slightly different
+  clusters with no correction signal. L3 is the cross-model ceiling because its
+  disambiguation anchors make messages self-contained regardless of the receiver's
+  training. If one participant is a different kind of system entirely (a rule engine,
+  a human, a narrow tool), shorthand breaks. Sense the receiver.
