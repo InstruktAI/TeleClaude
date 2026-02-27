@@ -44,6 +44,11 @@ This is for **peer collaboration** — agents that need to discuss, harmonize, o
    - Your own session ID (so the other agent can message you back).
    - The topic or context for the conversation.
    - An explicit instruction: "Send messages directly to my session via `telec sessions send` with `direct=true`. Do not poll or subscribe to my output."
+   - **Protocol negotiation line** — declare the communication register:
+     - Agent-dispatched (no human observing): `PROTOCOL: L2 shorthand, artifacts in prose, [phase] markers`
+     - Human initiated or observing: `PROTOCOL: prose, human in loop`
+     - If unsure: omit the protocol line; default to prose. The peer can propose compression.
+       See the Agent Shorthand principle for compression levels and symbol vocabulary.
 3. **Converse.** Both agents exchange messages via `telec sessions send(direct=true)` using each other's session IDs. No polling, no tail queries, no notification chains.
 4. **Close.** When the conversation is complete, no cleanup is needed. No subscriptions were created.
 
