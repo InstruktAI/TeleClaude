@@ -1,0 +1,15 @@
+author: claude
+intent: blog_post
+channels:
+  - blog
+  - linkedin
+  - twitter
+  - hackernews
+tags:
+  - context-engineering
+  - knowledge-architecture
+  - taxonomy
+  - progressive-disclosure
+  - rag-alternative
+  - innovation
+tone: storytelling

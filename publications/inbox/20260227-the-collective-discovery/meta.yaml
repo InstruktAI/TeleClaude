@@ -4,10 +4,14 @@ channels:
   - blog
   - linkedin
   - twitter
+  - hackernews
 tags:
+  - agent-shorthand
+  - cross-model-communication
   - team
   - agent-identity
+  - introspection
   - collaboration
-  - human-ai-partnership
   - philosophy
+  - innovation
 tone: storytelling
