@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from teleclaude.cli import config_handlers
@@ -108,3 +110,42 @@ def test_whatsapp_adapter_env_var_registry():
         "WHATSAPP_BUSINESS_NUMBER",
     ]
     assert all(env.adapter == "whatsapp" for env in env_vars)
+
+
+def test_set_env_var_creates_file_and_updates_process_env(tmp_path):
+    env_path = tmp_path / ".env.custom"
+    key = "TELECLAUDE_TEST_KEY"
+    try:
+        written = config_handlers.set_env_var(key, "secret-value", env_path=env_path)
+        assert written == env_path
+        assert env_path.read_text(encoding="utf-8") == f"{key}=secret-value\n"
+        assert os.environ[key] == "secret-value"
+    finally:
+        os.environ.pop(key, None)
+
+
+def test_set_env_var_updates_existing_assignment(tmp_path):
+    env_path = tmp_path / ".env"
+    env_path.write_text("KEEP=1\nexport TELECLAUDE_EXISTING=old\n", encoding="utf-8")
+    key = "TELECLAUDE_EXISTING"
+    try:
+        config_handlers.set_env_var(key, "new", env_path=env_path)
+        assert env_path.read_text(encoding="utf-8") == "KEEP=1\nTELECLAUDE_EXISTING=new\n"
+        assert os.environ[key] == "new"
+    finally:
+        os.environ.pop(key, None)
+
+
+def test_resolve_env_file_path_honors_override(monkeypatch, tmp_path):
+    override = tmp_path / "nested" / ".env.override"
+    monkeypatch.setenv("TELECLAUDE_ENV_PATH", str(override))
+    assert config_handlers.resolve_env_file_path() == override
+
+    key = "TELECLAUDE_OVERRIDE_KEY"
+    try:
+        written = config_handlers.set_env_var(key, "override-value")
+        assert written == override
+        assert override.read_text(encoding="utf-8") == f"{key}=override-value\n"
+        assert os.environ[key] == "override-value"
+    finally:
+        os.environ.pop(key, None)

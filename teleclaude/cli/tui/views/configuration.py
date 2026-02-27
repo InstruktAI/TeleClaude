@@ -125,7 +125,7 @@ class ConfigurationView(BaseView):
         guided = self.state.config.guided_mode
         if guided:
             return "[Enter] Next Step  [Esc] Exit Guided Mode"
-        return "[Tab] Next Tab  [Arrows] Navigate/Edit  [Enter] Edit"
+        return "[Tab] Next Tab  [Arrows] Navigate/Edit  [Enter] Edit  [Textual Config tab supports inline env edits]"
 
     def move_up(self) -> None:
         self.current_component.handle_key(curses.KEY_UP)
@@ -197,8 +197,11 @@ class ConfigurationView(BaseView):
                 stdscr.addstr(row, col, label, attr)
                 col += len(label) + 2
 
-            row += 2
-            height -= 2
+            legacy_note = "Legacy view. Inline env editing is available in the Textual Config tab."
+            stdscr.addstr(row + 1, 2, legacy_note[: max(0, width - 4)], curses.A_DIM)
+
+            row += 3
+            height -= 3
 
             # 2. Render Adapter Tabs (if active)
             if self.active_subtab == "adapters":

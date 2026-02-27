@@ -34,7 +34,7 @@ class NotificationsConfigComponent(ConfigComponent):
 
     def render(self, stdscr: CursesWindow, start_row: int, height: int, width: int) -> None:
         stdscr.addstr(start_row, 0, "Notifications Configuration", curses.A_BOLD)
-        stdscr.addstr(start_row + 2, 0, "(Not implemented yet - requires user selection)", curses.A_DIM)
+        stdscr.addstr(start_row + 2, 0, "Legacy mode: edit subscriptions in person config files.", curses.A_DIM)
 
     def handle_key(self, key: int) -> bool:
         return False
