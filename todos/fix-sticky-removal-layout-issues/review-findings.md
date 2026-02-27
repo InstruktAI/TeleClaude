@@ -2,12 +2,12 @@
 
 ## Review Scope
 
-Files changed (from merge-base against main):
+Files changed (from merge-base `70895901`):
 
-- `teleclaude/cli/tui/state.py` — reducer: un-sticky now sets preview instead of clearing
-- `teleclaude/cli/tui/views/sessions.py` — click + keyboard paths set preview on un-sticky
-- `tests/unit/test_tui_state.py` — updated and new reducer tests
-- `tests/unit/test_sessions_view_sticky_preview.py` — new view-level regression tests
+- `teleclaude/cli/tui/state.py` — reducer change
+- `teleclaude/cli/tui/views/sessions.py` — click + keyboard path changes
+- `tests/unit/test_tui_state.py` — updated reducer tests
+- `tests/unit/test_sessions_view_sticky_preview.py` — new view-level tests
 - `demos/fix-sticky-removal-layout-issues/demo.md` — demo artifact
 
 ## Critical
@@ -20,40 +20,35 @@ Files changed (from merge-base against main):
 
 ## Suggestions
 
-- `TreeInteractionDecision.clear_preview` field name (`interaction.py:83`) is now semantically inverted: when `True`, the handler _sets_ preview to the removed session rather than clearing it. Consider renaming to `promote_to_preview` in a follow-up. Not actionable here — `interaction.py` is explicitly out of scope per requirements.
+- `TreeInteractionDecision.clear_preview` field name is now semantically inverted: it triggers _setting_ preview to the removed session rather than clearing it. Consider renaming to `promote_to_preview` or `unsticky_sets_preview` in a follow-up. Not actionable in this change — `interaction.py` is explicitly out of scope per requirements.
 
 ## Why No Issues
 
 ### Paradigm-fit verification
 
-1. **Data flow**: Changes follow the established reducer + view + message + pane bridge pattern. The reducer (`state.py`) owns state transitions, the view (`sessions.py`) manages local reactive state and posts `PreviewChanged`/`StickyChanged` messages, and `pane_bridge.py` consumes them. No bypass of the data layer detected.
-2. **Component reuse**: No new components or abstractions. The fix changes existing transitions (replacing `None` with `PreviewState(session_id=session_id)` in the reducer, and `None` with `session_id` in the view). No copy-paste duplication — the click path (`on_session_row_pressed`) and keyboard path (`action_toggle_preview`) share `_toggle_sticky()` and diverge only where their detection mechanisms differ (list membership check vs `decision.clear_preview`), which is appropriate.
-3. **Pattern consistency**: Message posting order (StickyChanged before PreviewChanged) is consistent with PaneWriter coalescing expectations. The double `_notify_state_changed()` call (once from `_toggle_sticky`, once from the caller) is a pre-existing pattern, not introduced by this change.
+1. **Data flow**: Changes follow the established reducer + view + message + pane bridge pattern. State transitions happen in the reducer (`state.py`), view-level local state is updated in `sessions.py`, and `PreviewChanged`/`StickyChanged` messages propagate to the pane bridge. No bypass of the data layer.
+2. **Component reuse**: No new components or abstractions introduced. The fix parameterizes existing state transitions (replacing `None` with `PreviewState(session_id)`). No copy-paste duplication detected — the click and keyboard paths use different detection mechanisms (`not in list` vs `decision.clear_preview`) appropriate to their context.
+3. **Pattern consistency**: Message posting order (StickyChanged before PreviewChanged) is consistent with the PaneWriter coalescing pattern. The `_notify_state_changed()` double-call pattern (once from `_toggle_sticky`, once from the caller) is pre-existing and consistent across both code paths.
 
 ### Requirements verification
 
-1. **"Double-pressing removes from sticky AND sets as preview"** — Reducer `state.py:201-203` sets `preview = PreviewState(session_id)` unconditionally on removal. View click path `sessions.py:528-532` and keyboard path `sessions.py:632-636` both set `preview_session_id` and post `PreviewChanged`. **Verified.**
-2. **"Previously active preview is dismissed"** — `PreviewState(session_id)` assignment unconditionally replaces any existing preview state. Tested explicitly in `test_remove_sticky_preserves_preview_for_different_session` (preview-B replaced by sticky-A). **Verified.**
-3. **"Layout slot count does not change"** — Sticky slot removed + preview slot added = net zero change. `pane_bridge.py:198-201` processes StickyChanged then PreviewChanged; PaneWriter coalescing produces correct final snapshot. **Verified via pane_bridge.py read.**
-4. **"No full pane rebuild"** — Slot count stability prevents signature change, preventing rebuild. **Verified.**
-5. **"All existing tests pass; new tests cover transition"** — 2260 unit tests pass. 4 reducer tests (1 existing updated, 2 updated, 1 new) + 2 new view-level tests covering both paths. Tests verify message ordering (StickyChanged posted before PreviewChanged). **Verified.**
-6. **"Behavior matches design spec"** — Un-sticky → preview transition matches the interaction model. **Verified.**
+1. "Double-pressing removes from sticky AND sets as preview" — reducer `state.py:201-203` sets `preview = PreviewState(session_id)` unconditionally on removal. View paths (`sessions.py:528-532`, `sessions.py:632-636`) set `preview_session_id` and post `PreviewChanged`. **Verified.**
+2. "Previously active preview is dismissed" — `PreviewState(session_id)` assignment unconditionally replaces any existing preview. **Verified.**
+3. "Layout slot count does not change" — sticky slot removed + preview slot added = net zero. PaneWriter coalescing ensures the final layout snapshot has both changes. **Verified via pane_bridge.py read.**
+4. "No full pane rebuild" — slot count stability prevents rebuild. Design spec invariant #5 confirmed. **Verified.**
+5. "All existing tests pass; new tests cover transition" — 3 updated reducer tests + 2 new view tests + 1 new reducer test. Tests verify message ordering (StickyChanged < PreviewChanged). **Verified.**
+6. "Matches design spec" — all interaction rules in `session-preview-sticky.md` double-press table row 2 ("Sticky → Remove sticky, set as preview, dismiss old preview") are implemented. Invariant #2 ("Un-sticky always transitions to preview") is satisfied. **Verified.**
 
 ### Copy-paste duplication check
 
-No duplication found. Shared logic lives in `_toggle_sticky()`. Path-specific logic differs appropriately for click vs keyboard detection.
+No duplication found. The click path (`on_session_row_pressed`) and keyboard path (`action_toggle_preview`) share `_toggle_sticky()` for the common toggle logic and diverge only in detection mechanism, which is appropriate for their different input contexts.
 
 ### Manual verification evidence
 
-Interactive TUI verification not possible in headless review environment. All interaction scenarios covered by automated regression tests:
+Interactive TUI verification was not possible in this headless worktree. The builder documented this gap and covered all interaction scenarios through automated regression tests:
 
-- Reducer: same-session preview, different-session preview replacement, no-prior-preview promotion
-- View: keyboard path (`action_toggle_preview`) and click path (`on_session_row_pressed`)
-- Message ordering assertions (StickyChanged < PreviewChanged) in both view tests
-
-### Independent verification performed
-
-- `make test-unit`: 2260 passed, 106 skipped, 0 failed
-- `make lint`: All checks passed (ruff format, ruff check, pyright 0 errors)
+- Reducer: same-session, different-session, no-prior-preview cases
+- View: keyboard (action_toggle_preview) and click (on_session_row_pressed) paths
+- Message ordering assertions in both view tests
 
 ## Verdict: APPROVE
