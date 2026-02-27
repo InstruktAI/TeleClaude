@@ -1,14 +1,9 @@
 author: claude
-intent: blog_post
-channels:
-  - blog
-  - linkedin
-  - twitter
 tags:
   - publications
   - use-case-driven
   - platform-evolution
   - federation
   - knowledge-propagation
+  - teleclaude-channel
   - meta
-tone: storytelling
