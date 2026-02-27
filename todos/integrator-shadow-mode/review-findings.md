@@ -26,13 +26,9 @@ All findings addressed. Fixes committed. See commit references below.
 
 - **Review round:** 2
 - **Scope:** Full branch diff from `merge-base` to HEAD
-- **Verification:** `make lint` passes (pyright 0 errors), `make test` passes (2366 passed, 106 skipped, 16.88s)
+- **Verification:** `make lint` passes (pyright 0 errors), `make test` passes (2369 passed, 106 skipped)
 - **Round 1 fixes:** All verified in codebase
-- **Review agents:** 4 parallel lanes (lease, queue, runtime code review + test coverage analysis)
-
-### Process Note
-
-Implementation-plan checkboxes and Build Gates were marked complete in commits `a3a70f74` and `5838cbc7`, then reverted by subsequent merge commits from main. The code itself is unaffected. This is merge-induced state drift in planning artifacts.
+- **Review lanes:** code (code-reviewer), tests (test-analyzer), error handling (silent-failure-hunter)
 
 ### Round 1 Fix Verification
 
@@ -52,7 +48,7 @@ Implementation-plan checkboxes and Build Gates were marked complete in commits `
 
 - **Data flow:** Uses existing `CandidateKey`/`CandidateReadiness` from `readiness_projection`. No data layer bypass.
 - **Component reuse:** Composes existing types compositionally. No copy-paste duplication.
-- **Pattern consistency:** Follows established integration package conventions — frozen dataclasses, TypedDict payloads, atomic file writes via temp+`os.replace`, custom error classes inheriting `RuntimeError`, Callable dependency injection.
+- **Pattern consistency:** Follows established integration package conventions — frozen dataclasses, TypedDict payloads, atomic file writes via temp+`os.replace`, custom error classes inheriting `RuntimeError`.
 
 **Result: PASS**
 
@@ -71,84 +67,91 @@ All five verification requirements from `requirements.md` are met.
 
 ### Important
 
-#### 1. Lease not renewed during clearance sleep — can expire at default settings
+#### 1. `git commit` pattern has no main-branch anchor; substring guard amplifies false positives
 
-**File:** `teleclaude/core/integration/runtime.py:279-302`
+**File:** `teleclaude/core/integration/runtime.py:43,151`
 
-`_wait_for_main_clearance` renews the lease at the top of the loop, then sleeps for `clearance_retry_seconds` (default: 60s) when blocked. No renewal occurs during or after the sleep. With default `lease_ttl_seconds=120`, two consecutive blocked cycles accumulate 120s of sleep, and the third renewal at the loop top finds an expired lease — raising `IntegrationRuntimeError`. The same exposure exists at lines 294 and 299 (dirty-path retry branches).
+The `\bgit\s+commit\b` pattern at line 43 matches any `git commit` on any branch — it has no `\bmain\b` anchor, unlike the other five activity patterns. Combined with the substring guard at line 151 (`"main" not in normalized`), this produces concrete false-positive blocking: a session committing to a feature branch whose output contains any word with "main" as substring (e.g., "domain", "maintain") will trigger clearance blocking.
 
-**Impact:** Safe direction in shadow mode — crash triggers proper cleanup (lease released in `finally`, queue recovers `in_progress` items on restart). Must be fixed before cutover where lease loss during clearance would abort a real integration.
+**Impact:** Safe direction — over-blocks, never under-blocks. Acceptable for shadow mode. Must be fixed before cutover.
 
-**Fix:** Call `_renew_or_raise` immediately before each `_sleep_fn` invocation:
+**Fix:** Either add `\bmain\b` context to the `git commit` pattern (e.g., `r"\bgit\s+commit\b[^\n]*\bmain\b"`), or replace the substring guard with word-boundary matching (`re.search(r"\bmain\b", normalized)`), or both.
 
-```python
-if clearance.blocking_session_ids:
-    self._renew_or_raise(owner_session_id=owner_session_id, lease_token=lease_token)
-    self._sleep_fn(self._clearance_retry_seconds)
-    continue
-```
-
-#### 2. `finally` block can mask original exception
+#### 2. `finally` block can mask original exception from both `release()` and `_write_checkpoint()`
 
 **File:** `teleclaude/core/integration/runtime.py:244-250`
 
-If `_write_checkpoint` raises in the `finally` block while an `IntegrationRuntimeError` is already in flight (e.g., from lease loss), the original exception is replaced. Hinders root-cause diagnosis.
+The `finally` block calls `_lease_store.release()` then `_write_checkpoint()` sequentially. If either raises while an exception from the `try` block is in flight (e.g., `IntegrationRuntimeError` from lease loss), the original exception is replaced. Additionally, if `release()` raises, `_write_checkpoint()` is silently skipped.
 
-**Fix:** Wrap `_write_checkpoint` in the `finally` with `try/except Exception: pass`.
+**Impact:** Hinders root-cause diagnosis. The lease expires naturally via TTL and the checkpoint is advisory, so no data corruption — but an operator sees a misleading `IntegrationLeaseError` or `OSError` instead of the actual processing failure.
 
-#### 3. Weak "main" substring guard in clearance heuristic
+**Fix:** Wrap each `finally` operation in its own `try/except`:
 
-**File:** `teleclaude/core/integration/runtime.py:151`
+```python
+finally:
+    try:
+        self._lease_store.release(...)
+    except Exception:
+        pass  # lease will expire via TTL
+    try:
+        self._write_checkpoint(...)
+    except Exception:
+        pass  # checkpoint is advisory
+```
 
-The `"main" not in normalized` check is a substring match. Words like "domain", "maintain", "mainline" contain "main" and pass the guard. Combined with the `\bgit\s+commit\b` pattern at line 43 (which has no main-branch context), this can cause false-positive blocking of the clearance loop.
-
-**Impact:** Safe direction — over-blocks, never under-blocks. Acceptable for shadow mode. Should be fixed before cutover.
-
-**Fix:** Replace `if "main" not in normalized:` with `if not re.search(r"\bmain\b", normalized):`.
-
-#### 4. Dirty-tracked-path clearance retry sub-branches untested
+#### 3. Dirty-tracked-path clearance retry sub-branches untested
 
 **File:** `tests/unit/test_integrator_shadow_mode.py`
 
 `_wait_for_main_clearance` has four paths for dirty tracked paths: (a) committer returns False, (b) no committer provided, (c) post-commit re-check still dirty, (d) committer succeeds. Only (d) is tested via `test_runtime_commits_housekeeping_changes_before_processing`. The three retry sub-paths have no coverage.
 
-#### 5. `lease_acquired=False` runtime path untested
+#### 4. `lease_acquired=False` runtime path untested
 
 **File:** `tests/unit/test_integrator_shadow_mode.py`
 
-`drain_ready_candidates` returns `RuntimeDrainResult(outcomes=(), lease_acquired=False)` when the lease is busy. No test verifies this primary contention path.
+`drain_ready_candidates` returns `RuntimeDrainResult(outcomes=(), lease_acquired=False)` when the lease is busy. No test verifies this path. This is the primary coordination guard — if two integrators race, the loser must return `lease_acquired=False` and refrain from processing.
+
+#### 5. `_break_stale_lock_if_needed` silently swallows broad `OSError`
+
+**File:** `teleclaude/core/integration/lease.py:238-240`
+
+The `except OSError: return` catch handles the intended case (directory not empty), but also silently swallows `PermissionError`, `OSError(EROFS)`, and `OSError(EIO)`. If permissions drift post-deployment, the stale lock can never be broken and every subsequent lock acquisition will timeout with a misleading "timed out waiting for lease mutation lock" error. The actual cause (permission denied) is never surfaced.
+
+**Impact:** Low probability in shadow mode. Should be narrowed before cutover.
+
+**Fix:** Catch only `ENOTEMPTY`/`ENOENT` silently; re-raise other `OSError` subtypes as `IntegrationLeaseError`.
 
 ### Suggestions
 
-#### 6. `renew()` checks ownership before expiry — misleading diagnostic status
-
-**File:** `teleclaude/core/integration/lease.py:162-166`
-
-When a lease expires and is taken over by a new holder, the original holder's `renew()` call returns `"stolen"` instead of `"expired"`. Both lead to the same `IntegrationRuntimeError` in the runtime, but the diagnostic label is wrong — log analysis would suggest malicious takeover rather than normal TTL expiry. Swap the order: check expiry first, then ownership.
-
-#### 7. `read()` acquires exclusive mutex unnecessarily
+#### 6. `read()` acquires exclusive mutex unnecessarily
 
 **File:** `teleclaude/core/integration/lease.py:193-197`
 
-Read-only operation holds the file-based directory lock and triggers `mkdir` side-effect. Since `_persist_leases` uses atomic `os.replace`, reads without locking are safe.
+Read-only operation holds the file-based directory lock. Since `_persist_leases` uses atomic `os.replace`, reads without locking are safe.
 
-#### 8. TOCTOU in stale-lock breaking
+#### 7. TOCTOU in stale-lock breaking
 
 **File:** `teleclaude/core/integration/lease.py:224-240`
 
-Between `stat()` and `rmdir()`, another process can remove the stale lock and acquire a fresh one. The second `rmdir()` could remove the new lock. With default `lock_stale_seconds=30`, practically negligible. Consider re-statting mtime before `rmdir` to narrow the window for cutover.
+Between `stat()` and `rmdir()`, another process can remove the stale lock and acquire a fresh one. The second `rmdir()` could remove the new lock. With default `lock_stale_seconds=30`, practically negligible. Document constraint or consider advisory locks for cutover.
 
-#### 9. `enqueue_ready_candidates` and `tail_indicates_active_main_modification` untested directly
+#### 8. `LeaseAcquireResult.holder` ambiguity on self-re-acquire
 
-**Files:** `teleclaude/core/integration/runtime.py:204-209`, `runtime.py:144-153`
+**File:** `teleclaude/core/integration/lease.py:109-115`
 
-Both public APIs lack direct tests. `enqueue_ready_candidates` is a thin filter wrapper (low risk). `tail_indicates_active_main_modification` has 7 regex patterns and 7 idle tokens exercised only indirectly through probe tests with two input strings.
+On self-re-acquire, `holder=current` duplicates `lease=current`. No current caller inspects `holder` after success.
 
-#### 10. `_record_from_payload` validates with `strip()` but stores raw value
+#### 9. `enqueue_ready_candidates` public API untested
 
-**File:** `teleclaude/core/integration/lease.py:308-333`
+**File:** `teleclaude/core/integration/runtime.py:204-209`
 
-A value with leading/trailing whitespace (e.g. `" sess-123 "`) passes validation but is stored as-is. Later `owner_session_id == owner_session_id` comparisons could fail if the caller supplies the clean version while the stored value has padding. Low probability since the system writes its own files, but could bite during manual state recovery.
+The READY-candidate filter method has no direct test. Low risk (thin wrapper).
+
+#### 10. Callable type aliases not exported from `__init__.py`
+
+**File:** `teleclaude/core/integration/__init__.py`
+
+The constructor type aliases (`ReadinessLookup`, `SessionsProvider`, `SessionTailProvider`, etc.) are part of the public wiring surface for `IntegratorShadowRuntime` and `MainBranchClearanceProbe` but are absent from `__all__`. Callers must import from the submodule directly.
 
 ### Why No Critical Issues (Round 2 Justification)
 
@@ -156,10 +159,10 @@ A value with leading/trailing whitespace (e.g. `" sess-123 "`) passes validation
 2. **Requirements validated:** All FR1-FR5 requirements traced to implementation and test coverage. Verification requirements 1-5 from `requirements.md` each have at least one corresponding test.
 3. **Copy-paste duplication checked:** `_resolve_now` and timestamp utilities are duplicated across `lease.py` and `queue.py` as private module helpers with module-specific error types. No behavioral duplication detected in public API.
 4. **Round 1 critical fixes all verified:** C3 (self-blocking) confirmed fixed with exclusion parameter; C4 (wrong marker) confirmed removed.
-5. **Shadow mode safety confirmed:** The new finding (#1, lease renewal during clearance sleep) causes safe failure — crash triggers proper cleanup and queue recovery on restart. No data corruption or unsafe state possible.
+5. **Important findings are safe-direction only:** Finding #1 over-blocks (never under-blocks). Finding #2 is diagnostic quality. Findings #3-4 are secondary test coverage gaps. Finding #5 is a narrow edge case with negligible probability in shadow mode.
 
 ---
 
 ## Verdict: APPROVE
 
-All round 1 findings addressed. Round 2 identifies 5 Important findings and 5 Suggestions. The most significant new finding (#1, lease renewal during clearance sleep) causes safe failure in shadow mode — crash with proper cleanup and queue recovery on restart. No finding compromises the shadow-mode validation contract. Important findings #1, #2, #3 must be addressed before cutover to non-shadow mode.
+All round 1 findings addressed. Round 2 Important findings (#1-#5) are either safe-direction heuristic looseness, diagnostic quality improvements, error-handling hardening, or secondary test coverage gaps. None compromise the shadow-mode validation contract. Findings #1, #2, and #5 should be addressed before cutover to non-shadow mode.
