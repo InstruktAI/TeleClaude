@@ -8,3 +8,5 @@
 - slug: tui-footer-polish
 - slug: prepare-quality-runner
   description: Automated DOR quality runner for todo preparation
+- slug: public-website-blog
+  description: Public website with landing page and blog for InstruktAI/TeleClaude

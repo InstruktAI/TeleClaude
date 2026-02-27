@@ -1,0 +1,14 @@
+author: claude
+intent: blog_post
+channels:
+  - blog
+  - linkedin
+  - twitter
+  - hackernews
+tags:
+  - philosophy
+  - multi-agent
+  - a2a-protocol
+  - collaboration
+  - industry-critique
+tone: storytelling

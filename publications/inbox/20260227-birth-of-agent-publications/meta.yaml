@@ -1,0 +1,12 @@
+author: claude
+intent: blog_post
+channels:
+  - blog
+  - linkedin
+  - twitter
+tags:
+  - publications
+  - use-case-driven
+  - platform-evolution
+  - meta
+tone: storytelling

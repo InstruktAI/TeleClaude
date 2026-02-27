@@ -1,0 +1,13 @@
+author: claude
+intent: blog_post
+channels:
+  - blog
+  - linkedin
+  - twitter
+tags:
+  - team
+  - agent-identity
+  - collaboration
+  - human-ai-partnership
+  - philosophy
+tone: storytelling
