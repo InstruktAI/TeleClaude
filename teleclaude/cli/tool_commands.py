@@ -947,7 +947,7 @@ def handle_todo_set_deps(args: list[str]) -> None:
 
 
 # =============================================================================
-# Top-level commands: computers, projects, deploy
+# Top-level commands: computers, projects
 # =============================================================================
 
 
@@ -1001,36 +1001,6 @@ def handle_projects(args: list[str]) -> None:
             i += 1
 
     data = tool_api_call("GET", "/projects", params=params)
-    print_json(data)
-
-
-def handle_deploy(args: list[str]) -> None:
-    """Deploy latest code to remote computers via Redis.
-
-    Usage: telec deploy [<computer> ...]
-
-    Sends a deploy command to the specified computers (or all online remote
-    computers if none are specified) and waits up to 60 seconds for each
-    to complete. Reports status per computer.
-
-    Deployment triggers: git pull on the remote + service restart.
-    Requires admin clearance.
-
-    Positional args:
-      <computer>   Computer name(s) to deploy to (optional, repeatable)
-
-    Examples:
-      telec deploy
-      telec deploy raspi
-      telec deploy raspi server1
-    """
-    if "--help" in args or "-h" in args:
-        print(handle_deploy.__doc__ or "")
-        return
-
-    computers = [a for a in args if not a.startswith("-")]
-    body: dict[str, object] = {"computers": computers if computers else None}  # guard: loose-dict - JSON request body
-    data = tool_api_call("POST", "/deploy", json_body=body, timeout=90.0)
     print_json(data)
 
 

@@ -45,6 +45,9 @@ config_keys:
     api_version: string
     template_name: string
     template_language: string
+  deployment:
+    channel: string # alpha | beta | stable (default: alpha)
+    pinned_minor: string # required when channel=stable (e.g. "1.2")
   people: list[PersonEntry]
   jobs: mapping[string, JobScheduleConfig]
 

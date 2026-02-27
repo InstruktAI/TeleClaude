@@ -5,16 +5,16 @@ from teleclaude.core.tool_access import filter_tool_names
 
 
 def test_filter_member():
-    tools = ["telec deploy", "telec sessions start"]
+    tools = ["telec agents status", "telec sessions start"]
     filtered = filter_tool_names(None, tools, human_role=HUMAN_ROLE_MEMBER)
-    assert "telec deploy" not in filtered
+    assert "telec agents status" not in filtered
     assert "telec sessions start" in filtered
 
 
 def test_filter_admin():
-    tools = ["telec deploy"]
+    tools = ["telec agents status"]
     filtered = filter_tool_names(None, tools, human_role=HUMAN_ROLE_ADMIN)
-    assert "telec deploy" in filtered
+    assert "telec agents status" in filtered
 
 
 def test_filter_unauthorized():
@@ -27,8 +27,8 @@ def test_filter_unauthorized():
 def test_filter_worker_and_member():
     # Worker role should filter worker tools, Member role should filter member tools.
     # Union of exclusions.
-    tools = ["telec todo work", "telec deploy", "telec docs get"]
+    tools = ["telec todo work", "telec agents status", "telec docs get"]
     filtered = filter_tool_names(ROLE_WORKER, tools, human_role=HUMAN_ROLE_MEMBER)
     assert "telec todo work" not in filtered  # Excluded by worker
-    assert "telec deploy" not in filtered  # Excluded by member
+    assert "telec agents status" not in filtered  # Excluded by member
     assert "telec docs get" in filtered

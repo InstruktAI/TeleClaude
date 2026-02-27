@@ -1,5 +1,20 @@
 # Delivered work items. Newest first.
 
+- slug: mature-deployment
+  date: '2026-02-27'
+  title: 'Group: mature-deployment (4 children delivered)'
+  children:
+  - deployment-versioning
+  - deployment-channels
+  - deployment-migrations
+  - deployment-cleanup
+- slug: deployment-cleanup
+  date: '2026-02-27'
+  title: 'Phase 4: Remove deploy_service, MCP tool (if still present), update docs,
+    write pipeline doc'
+  commit: 5543233d
+  description: 'Phase 4: Remove deploy_service, MCP tool (if still present), update
+    docs, write pipeline doc'
 - slug: deployment-channels
   date: '2026-02-27'
   title: 'Phase 3: Channel config, webhook handler, update executor, Redis fan-out'
