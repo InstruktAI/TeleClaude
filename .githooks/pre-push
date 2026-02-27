@@ -30,6 +30,17 @@ log_block() {
         >> "$LOG_FILE"
 }
 
+is_truthy() {
+    case "${1:-}" in
+        1|true|TRUE|yes|YES|on|ON)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 REMOTE_NAME="${1:-origin}"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 CANONICAL_ROOT="$(cd "$(git rev-parse --git-common-dir)/.." && pwd -P)"
@@ -46,6 +57,31 @@ while read -r local_ref _local_sha remote_ref _remote_sha; do
         && [ "$BRANCH" = "main" ] \
         && [ "$local_ref" = "refs/heads/main" ] \
         && [ "$GIT_DIR" = "$GIT_COMMON_DIR" ]; then
+        if is_truthy "${TELECLAUDE_INTEGRATOR_CUTOVER_ENABLED:-0}"; then
+            parity_state="${TELECLAUDE_INTEGRATOR_PARITY_EVIDENCE:-}"
+            if [ "$parity_state" != "accepted" ]; then
+                log_block "$local_ref" "$remote_ref" "$SESSION_ID"
+                echo "GUARDRAIL_MARKER: ${MARKER}" >&2
+                cat >&2 <<'MSG'
+ERROR: INTEGRATOR_CUTOVER_NOT_READY
+Cutover is enabled, but parity evidence is not accepted.
+Rollback by setting TELECLAUDE_INTEGRATOR_CUTOVER_ENABLED=0 until parity evidence is accepted.
+MSG
+                exit 1
+            fi
+
+            system_role="${TELECLAUDE_SYSTEM_ROLE:-${TELECLAUDE_ROLE:-unknown}}"
+            if [ "$system_role" != "integrator" ]; then
+                log_block "$local_ref" "$remote_ref" "$SESSION_ID"
+                echo "GUARDRAIL_MARKER: ${MARKER}" >&2
+                cat >&2 <<'MSG'
+ERROR: INTEGRATOR_MAIN_AUTH_BLOCKED
+Canonical main push is restricted to integrator role during cutover.
+Re-run from the integrator path or disable cutover rollback if parity readiness is incomplete.
+MSG
+                exit 1
+            fi
+        fi
         continue
     fi
 

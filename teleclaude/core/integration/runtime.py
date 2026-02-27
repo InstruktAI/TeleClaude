@@ -11,6 +11,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable, Literal, TypedDict
 
+from teleclaude.core.integration.authorization import (
+    CutoverResolution,
+    IntegrationAuthorizationError,
+    IntegratorCutoverControls,
+    require_integrator_owner,
+    resolve_cutover_mode,
+)
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.queue import IntegrationQueue
 from teleclaude.core.integration.readiness_projection import CandidateKey, CandidateReadiness
@@ -24,6 +31,7 @@ OutcomeSink = Callable[["ShadowOutcome"], None]
 ClockFn = Callable[[], datetime]
 SleepFn = Callable[[float], None]
 CanonicalMainPusher = Callable[[CandidateReadiness], None]
+IntegratorOwnerPredicate = Callable[[str], bool]
 
 ShadowOutcomeType = Literal["would_integrate", "would_block"]
 
@@ -183,6 +191,8 @@ class IntegratorShadowRuntime:
         sleep_fn: SleepFn | None = None,
         shadow_mode: bool = True,
         canonical_main_pusher: CanonicalMainPusher | None = None,
+        cutover_controls: IntegratorCutoverControls | None = None,
+        is_integrator_owner: IntegratorOwnerPredicate | None = None,
     ) -> None:
         self._lease_store = lease_store
         self._queue = queue
@@ -196,9 +206,20 @@ class IntegratorShadowRuntime:
         self._housekeeping_committer = housekeeping_committer
         self._clock = clock if clock is not None else lambda: datetime.now(tz=UTC)
         self._sleep_fn = sleep_fn if sleep_fn is not None else time.sleep
-        if not shadow_mode and canonical_main_pusher is None:
+        self._is_integrator_owner = is_integrator_owner if is_integrator_owner is not None else _default_is_integrator
+
+        self._cutover_resolution: CutoverResolution | None = None
+        effective_shadow_mode = shadow_mode
+        if cutover_controls is not None:
+            self._cutover_resolution = resolve_cutover_mode(
+                requested_shadow_mode=shadow_mode,
+                controls=cutover_controls,
+            )
+            effective_shadow_mode = self._cutover_resolution.shadow_mode
+
+        if not effective_shadow_mode and canonical_main_pusher is None:
             raise ValueError("canonical_main_pusher is required when shadow_mode=False")
-        self._shadow_mode = shadow_mode
+        self._shadow_mode = effective_shadow_mode
         self._canonical_main_pusher = canonical_main_pusher
 
     def enqueue_ready_candidates(self, candidates: tuple[CandidateReadiness, ...]) -> None:
@@ -224,6 +245,16 @@ class IntegratorShadowRuntime:
         outcomes: list[ShadowOutcome] = []
 
         try:
+            if not self._shadow_mode:
+                try:
+                    require_integrator_owner(
+                        owner_session_id=owner_session_id,
+                        is_integrator_owner=self._is_integrator_owner,
+                        action="canonical-main integration",
+                    )
+                except IntegrationAuthorizationError as exc:
+                    raise IntegrationRuntimeError(str(exc)) from exc
+
             processed = 0
             while True:
                 if max_items is not None and processed >= max_items:
@@ -334,3 +365,7 @@ class IntegratorShadowRuntime:
 
 def _format_timestamp(value: datetime) -> str:
     return value.astimezone(UTC).isoformat(timespec="seconds")
+
+
+def _default_is_integrator(owner_session_id: str) -> bool:
+    return owner_session_id.startswith("integrator-")

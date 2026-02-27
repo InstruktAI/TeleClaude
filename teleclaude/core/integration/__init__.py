@@ -1,5 +1,12 @@
 """Integration event model package."""
 
+from teleclaude.core.integration.authorization import (
+    CutoverResolution,
+    IntegrationAuthorizationError,
+    IntegratorCutoverControls,
+    require_integrator_owner,
+    resolve_cutover_mode,
+)
 from teleclaude.core.integration.event_store import AppendResult, IntegrationEventStore, IntegrationEventStoreError
 from teleclaude.core.integration.events import (
     BranchPushedPayload,
@@ -85,10 +92,15 @@ __all__ = [
     "ReviewApprovedPayload",
     "CandidateKey",
     "CandidateReadiness",
+    "CutoverResolution",
     "IntegratedChecker",
+    "IntegrationAuthorizationError",
     "build_integration_event",
     "compute_idempotency_key",
+    "IntegratorCutoverControls",
     "parse_event_type",
+    "require_integrator_owner",
+    "resolve_cutover_mode",
     "RuntimeDrainResult",
     "ReachabilityChecker",
     "QueueItem",

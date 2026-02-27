@@ -8,10 +8,10 @@ Enforce integrator-exclusive canonical main integration after shadow parity sign
 
 ### Task 1.1: Add canonical main authorization checks
 
-**File(s):** `teleclaude/core/integration/authorization.py`, `teleclaude/core/git_ops.py`
+**File(s):** `teleclaude/core/integration/authorization.py`, `teleclaude/core/integration/runtime.py`, `teleclaude/install/wrappers/git`, `teleclaude/install/wrappers/gh`, `.githooks/pre-push`
 
-- [ ] Enforce integrator-only merge/push for canonical `main`.
-- [ ] Return clear rejection errors for non-integrator callers.
+- [x] Enforce integrator-only merge/push for canonical `main`.
+- [x] Return clear rejection errors for non-integrator callers.
 
 ### Task 1.2: Wire cutover toggles and safety controls
 

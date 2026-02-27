@@ -51,6 +51,17 @@ _log_block() {
         >> "$LOG_FILE"
 }
 
+_is_truthy() {
+    case "${1:-}" in
+        1|true|TRUE|yes|YES|on|ON)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 first_cmd=""
 second_cmd=""
 first_index=0
@@ -169,6 +180,32 @@ Main-targeting operations are allowed only from the canonical repository root on
 Stop now and report FINALIZE_READY to the orchestrator so finalize-apply can run in canonical context.
 MSG
         exit 1
+    fi
+
+    if _is_truthy "${TELECLAUDE_INTEGRATOR_CUTOVER_ENABLED:-0}"; then
+        parity_state="${TELECLAUDE_INTEGRATOR_PARITY_EVIDENCE:-}"
+        if [ "$parity_state" != "accepted" ]; then
+            _log_block "$branch" "gh $*" "$repo_root" "$common_root" "$session_id"
+            echo "GUARDRAIL_MARKER: ${MARKER}" >&2
+            cat >&2 <<'MSG'
+ERROR: INTEGRATOR_CUTOVER_NOT_READY
+Cutover is enabled, but parity evidence is not accepted.
+Rollback by setting TELECLAUDE_INTEGRATOR_CUTOVER_ENABLED=0 until parity evidence is accepted.
+MSG
+            exit 1
+        fi
+
+        system_role="${TELECLAUDE_SYSTEM_ROLE:-${TELECLAUDE_ROLE:-unknown}}"
+        if [ "$system_role" != "integrator" ]; then
+            _log_block "$branch" "gh $*" "$repo_root" "$common_root" "$session_id"
+            echo "GUARDRAIL_MARKER: ${MARKER}" >&2
+            cat >&2 <<'MSG'
+ERROR: INTEGRATOR_MAIN_AUTH_BLOCKED
+Canonical main merge is restricted to integrator role during cutover.
+Re-run from the integrator path or disable cutover rollback if parity readiness is incomplete.
+MSG
+            exit 1
+        fi
     fi
 fi
 
