@@ -2,78 +2,77 @@
 
 ## Assessment Date
 
-2026-02-27 (draft)
+2026-02-27 (gate)
+
+## Verdict: PASS (9/10)
+
+All 8 DOR gates satisfied. Artifacts are well-structured, grounded in the actual codebase, and ready for implementation.
 
 ## Gate Results
 
-### 1. Intent & Success
+### 1. Intent & Success — Pass
 
-**Status:** Pass
+- Problem statement explicit: 6 visual/functional gaps from demo walkthrough.
+- 13 success criteria, all concrete and testable with observable TUI behavior.
+- Input, requirements, and implementation plan are consistent and complete.
 
-- Problem statement is explicit: 6 visual/functional gaps observed during demo walkthrough.
-- Success criteria are concrete and testable (13 criteria with observable outcomes).
-- The "what" and "why" are captured in input.md and requirements.md.
+### 2. Scope & Size — Pass
 
-### 2. Scope & Size
+- 6 independent items, all localized to TUI layer (~4 files).
+- No cross-cutting concerns.
+- Fits a single builder session comfortably.
 
-**Status:** Pass
+### 3. Verification — Pass
 
-- 6 items are independent and localized to the TUI layer.
-- No cross-cutting concerns beyond the TUI.
-- All changes in ~4 files — fits a single session.
+- Each success criterion maps to observable TUI behavior.
+- `demo.md` provides step-by-step walkthrough for all items.
+- Edge cases identified: Shift+Up on first item (no-op), `s` key conflict (fallback to `v`).
 
-### 3. Verification
+### 4. Approach Known — Pass
 
-**Status:** Pass
+- Items 1–3 (modal sizing, key contrast, plain letters): straightforward CSS/style edits. Verified: `_format_binding_item()` uses hardcoded `Style(color="white")`, BINDINGS use unicode `key_display` values. Fix paths clear.
+- Item 4 (toggle bindings): `animation_mode` and `tts_enabled` reactives already exist on the footer. Click toggle logic exists. Only needs app-level `Binding` entries and action handlers that delegate to the footer. `s` conflict investigation deferred to builder with `v` fallback documented.
+- Item 5 (roadmap reordering): `telec roadmap move` CLI verified with `--before`/`--after` flags. `check_action()` pattern exists. Root-vs-child TodoRow distinction is achievable via `_tree_lines` length (root nodes have empty `_tree_lines`).
+- Item 6 (regression): prior delivery's todo folder cleaned up, but requirements recoverable from git history (`git show ed0f6a51~1:todos/tui-footer-key-contract-restoration/requirements.md`).
 
-- Each success criterion is observable in the running TUI.
-- demo.md provides step-by-step verification procedure.
-- Edge cases identified (Shift+Up on first item, `s` key conflict).
+### 5. Research Complete — Pass (auto-satisfied)
 
-### 4. Approach Known
+No third-party dependencies introduced.
 
-**Status:** Partial
+### 6. Dependencies & Preconditions — Pass
 
-- Items 1–3 (modal sizing, key contrast, plain letters) are straightforward CSS/style changes.
-- Item 4 (toggle bindings) has a known risk: Textual key dispatch priority for `s` needs empirical investigation by the builder. Fallback to `v` is defined.
-- Item 5 (roadmap reordering) uses existing `telec roadmap move` CLI — approach is clear.
-- Item 6 (regression audit) is verification, not implementation.
+- `tui-footer-key-contract-restoration` merged to main and listed in `delivered.yaml`.
+- `telec roadmap move` CLI exists with expected flags.
+- All 4 target files verified: `telec.tcss`, `telec_footer.py`, `app.py`, `preparation.py`.
 
-### 5. Research Complete
+### 7. Integration Safety — Pass
 
-**Status:** Pass
+- All changes TUI-only, no core logic impact.
+- Incremental merge safe — footer styling, CSS rules, and new bindings are additive.
 
-- No third-party dependencies introduced.
-- All target files and line numbers identified during exploration.
+### 8. Tooling Impact — Pass (auto-satisfied)
 
-### 6. Dependencies & Preconditions
+No tooling or scaffolding changes.
 
-**Status:** Pass
+## Plan-to-Requirement Fidelity
 
-- Prior delivery `tui-footer-key-contract-restoration` is merged to main.
-- `telec roadmap move` CLI exists with `--before`/`--after` flags.
-- All required source files identified.
+| Task                   | Requirements Covered     |
+| ---------------------- | ------------------------ |
+| 1.1 Modal sizing       | SC-1, SC-2               |
+| 1.2 Key contrast       | SC-3, SC-4               |
+| 1.3 Plain key letters  | SC-5                     |
+| 2.1 Toggle bindings    | SC-6, SC-7               |
+| 2.2 Roadmap reordering | SC-8, SC-9, SC-10, SC-11 |
+| 3.1 Regression audit   | SC-12                    |
+| 3.2 Tests and lint     | SC-13                    |
 
-### 7. Integration Safety
+All 13 success criteria traced. No task contradicts a requirement. No orphan tasks.
 
-**Status:** Pass
+## Observations
 
-- All changes are TUI-only — no core logic impact.
-- Can be merged incrementally.
-- Footer changes are backward compatible.
-
-### 8. Tooling Impact
-
-**Status:** Pass
-
-- No tooling or scaffolding changes.
-
-## Open Questions
-
-1. **Textual `s` key conflict:** Does a view-level binding gated off by `check_action(return False)` still consume the key event and prevent app-level fallthrough? Determines `s` vs `v` for TTS. Builder should investigate before committing.
-
-## Draft Score: 8/10
+- `NewProjectModal` has no CSS sizing rule — it uses the generic `#modal-box` rule. The `ConfirmModal` and `StartSessionModal` both have explicit `#modal-box` rules. Adding `NewProjectModal #modal-box` CSS is the correct fix path.
+- The implementation plan could note the root-vs-child mechanism (`_tree_lines` length) for Task 2.2, but this is a builder-level detail, not a readiness blocker.
 
 ## Blockers
 
-None. The `s` vs `v` decision is a design choice with a clear fallback, not a blocker.
+None.
