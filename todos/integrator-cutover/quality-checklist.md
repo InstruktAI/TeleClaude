@@ -10,15 +10,20 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate integrator-cutover` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate integrator-cutover` exits 0, or exception noted)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+Manual verification:
+
+- Verified canonical-main guard behavior through new acceptance tests (`tests/integration/test_integrator_cutover.py`) covering blocked non-integrator push, successful integrator push, and allowed feature-branch push during cutover.
+- Verified build-scope tree cleanliness with orchestrator drift allowlist exception (`todos/integrator-cutover/state.yaml`).
 
 ## Review Gates (Reviewer)
 

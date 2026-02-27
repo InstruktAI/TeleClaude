@@ -32,10 +32,10 @@ Enforce integrator-exclusive canonical main integration after shadow parity sign
 
 ### Task 2.2: Run quality gates
 
-- [ ] Run `make test`.
-- [ ] Run `make lint`.
+- [x] Run `make test`.
+- [x] Run `make lint`.
 
 ## Phase 3: Review Readiness
 
-- [ ] Confirm all legacy non-integrator canonical main paths are blocked.
-- [ ] Confirm rollback path is documented and test-backed.
+- [x] Confirm all legacy non-integrator canonical main paths are blocked.
+- [x] Confirm rollback path is documented and test-backed.
