@@ -1,22 +1,24 @@
 # Implementation Plan: Harmonize Agent Notifications
 
-## Approach
-
-We will update the daemon's activity contract and coordinator to intercept raw notification and error hooks, harmonizing them into a clean canonical format using selective property plugging.
-
 ## Tasks
 
-- [ ] **Event Schema Expansion**:
-  - Add `message: str | None = None` to `CanonicalActivityEvent` in `teleclaude/core/activity_contract.py`.
-  - Add `message: str | None = None` to `AgentActivityEvent` in `teleclaude/core/events.py`.
-- [ ] **Core Contract Mapping**:
-  - Update `HOOK_TO_CANONICAL` in `teleclaude/core/activity_contract.py`:
-    - `notification` -> `agent_notification`
-    - `error` -> `agent_error`
-- [ ] **Coordinator Logic Alignment**:
-  - Update `AgentCoordinator.handle_notification` to plug clean semantic fields from the payload instead of passing raw stringified data.
-  - Update `AgentCoordinator._emit_activity_event` to support the new `message` field.
-- [ ] **Documentation Update**:
-  - Update `docs/project/spec/event-vocabulary.md` to include `agent_notification` and `agent_error`.
-- [ ] **Verification**:
-  - Verify that `notification` events across all outputs (Web, TUI, tmux/Discord) no longer contain XML implementation markers.
+- [ ] **1. Extend canonical activity types** (`teleclaude/core/activity_contract.py`):
+  - Add `"agent_notification"` to `CanonicalActivityEventType`, `_CANONICAL_TYPES`, and `HOOK_TO_CANONICAL`.
+  - Add `message: str | None = None` to `CanonicalActivityEvent`.
+  - Add `message` param to `serialize_activity_event()` and pass through.
+
+- [ ] **2. Add message field to consumer event** (`teleclaude/core/events.py`):
+  - Add `message: str | None = None` to `AgentActivityEvent`.
+
+- [ ] **3. Wire message through coordinator** (`teleclaude/core/agent_coordinator.py`):
+  - Add `message: str | None = None` param to `_emit_activity_event()`, pass to serializer and event constructor.
+  - In `handle_notification()`, call `_emit_activity_event(session_id, AgentHookEvents.AGENT_NOTIFICATION, message=str(message))`.
+
+- [ ] **4. Update event vocabulary** (`docs/project/spec/event-vocabulary.md`):
+  - Add `notification -> agent_notification` to mapping table.
+  - Add `message` to optional payload fields.
+  - Add `agent_notification` to canonical events list.
+
+- [ ] **5. Tests**:
+  - Serializer test: `notification` hook produces `agent_notification` canonical type with `message`.
+  - Coordinator test: `handle_notification` emits activity event.
