@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: config-wizard-whatsapp-wiring
+  date: '2026-02-27'
+  title: Wire WhatsApp env vars, guidance, and config.sample into the config wizard
+  commit: c0427e665b8dcb7be98106d917bf1185ea3895cf
+  description: Wire WhatsApp env vars, guidance, and config.sample into the config
+    wizard
 - slug: mature-deployment
   date: '2026-02-27'
   title: 'Group: mature-deployment (4 children delivered)'

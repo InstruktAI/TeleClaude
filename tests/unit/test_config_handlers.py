@@ -94,3 +94,17 @@ def test_discover_config_areas(mock_teleclaude_dir):
     assert "notifications" in names
     # adapters should be there too
     assert any(n.startswith("adapters.") for n in names)
+
+
+def test_whatsapp_adapter_env_var_registry():
+    env_vars = config_handlers.get_adapter_env_vars("whatsapp")
+    assert [env.name for env in env_vars] == [
+        "WHATSAPP_PHONE_NUMBER_ID",
+        "WHATSAPP_ACCESS_TOKEN",
+        "WHATSAPP_WEBHOOK_SECRET",
+        "WHATSAPP_VERIFY_TOKEN",
+        "WHATSAPP_TEMPLATE_NAME",
+        "WHATSAPP_TEMPLATE_LANGUAGE",
+        "WHATSAPP_BUSINESS_NUMBER",
+    ]
+    assert all(env.adapter == "whatsapp" for env in env_vars)

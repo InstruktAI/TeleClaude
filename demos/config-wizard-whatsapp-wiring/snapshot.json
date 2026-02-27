@@ -1,0 +1,21 @@
+{
+  "slug": "config-wizard-whatsapp-wiring",
+  "title": "Wire WhatsApp adapter into config wizard",
+  "version": "1.0.0",
+  "delivered_date": "2026-02-27",
+  "merge_commit": "c0427e665b8dcb7be98106d917bf1185ea3895cf",
+  "metrics": {
+    "tasks": 5,
+    "files_changed": 11,
+    "tests_added": 3,
+    "review_rounds": 3,
+    "review_verdict": "APPROVE"
+  },
+  "five_acts": {
+    "act_1_setup": "WhatsApp adapter existed but the config wizard had no env var wiring — the tab was empty.",
+    "act_2_conflict": "Seven environment variables, guidance entries, sample config, and spec needed wiring — all following strict existing patterns.",
+    "act_3_journey": "Registered all 7 env vars in the adapter registry, fixed WhatsAppConfigComponent constructor, added 4 field guidance entries, updated sample config and spec.",
+    "act_4_climax": "All 2286 tests pass. Contract test verifies whatsapp in required config keys. Review approved with 0 critical/important findings.",
+    "act_5_resolution": "WhatsApp tab in the config wizard is now fully functional — matching Telegram, Discord, and Redis adapter patterns exactly."
+  }
+}

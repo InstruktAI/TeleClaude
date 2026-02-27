@@ -63,6 +63,17 @@ discord:
 # macOS: ~/Applications/{Claude,Gemini,Codex}Launcher.app/...
 # other Unix: claude, gemini, codex
 
+# WhatsApp Configuration
+whatsapp:
+  enabled: false
+  phone_number_id: ${WHATSAPP_PHONE_NUMBER_ID}
+  access_token: ${WHATSAPP_ACCESS_TOKEN}
+  webhook_secret: ${WHATSAPP_WEBHOOK_SECRET}
+  verify_token: ${WHATSAPP_VERIFY_TOKEN}
+  api_version: v21.0
+  template_name: ${WHATSAPP_TEMPLATE_NAME}
+  template_language: en_US
+
 # Redis Configuration (for AI-to-AI communication)
 redis:
   enabled: true # Enable Redis adapter for cross-computer messaging

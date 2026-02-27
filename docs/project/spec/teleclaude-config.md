@@ -36,6 +36,15 @@ config_keys:
     enabled: boolean
     host: string
     port: int
+  whatsapp:
+    enabled: boolean
+    phone_number_id: string
+    access_token: string
+    webhook_secret: string
+    verify_token: string
+    api_version: string
+    template_name: string
+    template_language: string
   deployment:
     channel: string # alpha | beta | stable (default: alpha)
     pinned_minor: string # required when channel=stable (e.g. "1.2")
@@ -44,6 +53,13 @@ config_keys:
 
 environment_variables:
   - TELEGRAM_BOT_TOKEN
+  - WHATSAPP_PHONE_NUMBER_ID
+  - WHATSAPP_ACCESS_TOKEN
+  - WHATSAPP_WEBHOOK_SECRET
+  - WHATSAPP_VERIFY_TOKEN
+  - WHATSAPP_TEMPLATE_NAME
+  - WHATSAPP_TEMPLATE_LANGUAGE
+  - WHATSAPP_BUSINESS_NUMBER
   - ANTHROPIC_API_KEY
   - OPENAI_API_KEY
   - GOOGLE_API_KEY

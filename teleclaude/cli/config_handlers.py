@@ -145,6 +145,50 @@ _ADAPTER_ENV_VARS: dict[str, list[EnvVarInfo]] = {
             "your-redis-password",
         ),
     ],
+    "whatsapp": [
+        EnvVarInfo(
+            "WHATSAPP_PHONE_NUMBER_ID",
+            "whatsapp",
+            "Business phone number ID from Meta",
+            "123456789012345",
+        ),
+        EnvVarInfo(
+            "WHATSAPP_ACCESS_TOKEN",
+            "whatsapp",
+            "System user token (long-lived)",
+            "EAAx...",
+        ),
+        EnvVarInfo(
+            "WHATSAPP_WEBHOOK_SECRET",
+            "whatsapp",
+            "App secret for webhook signature verification",
+            "abc123...",
+        ),
+        EnvVarInfo(
+            "WHATSAPP_VERIFY_TOKEN",
+            "whatsapp",
+            "Random string for webhook challenge-response",
+            "my-verify-token",
+        ),
+        EnvVarInfo(
+            "WHATSAPP_TEMPLATE_NAME",
+            "whatsapp",
+            "Template name for 24h window boundary messages",
+            "hello_world",
+        ),
+        EnvVarInfo(
+            "WHATSAPP_TEMPLATE_LANGUAGE",
+            "whatsapp",
+            "Template language code",
+            "en_US",
+        ),
+        EnvVarInfo(
+            "WHATSAPP_BUSINESS_NUMBER",
+            "whatsapp",
+            "Business phone number for invite deep links",
+            "+1234567890",
+        ),
+    ],
 }
 
 
