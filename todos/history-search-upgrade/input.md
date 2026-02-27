@@ -26,8 +26,8 @@ The mirror tells you WHAT happened and WHERE to look deeper.
 ### Generation (where mirrors are created)
 
 - Mirrors are generated locally, on the machine that ran the session (the only computer with the JSONL)
-- **Trigger**: daemon `session_closed` event fires full mirror generation
-- **Long-running sessions**: daemon fires periodic `mirror_update` every ~30 minutes of activity
+- **Trigger**: daemon background worker scans for sessions with new activity, regenerates mirrors periodically (~5-10 min). Final generation on session close (daemon cleanup path). Note: `SESSION_CLOSED` event is currently only emitted from Telegram adapter — not universal. Background worker is the robust approach.
+- **Long-running sessions**: naturally handled by periodic worker — no special case needed
 - **Extraction**: `extract_structured_messages(path, agent, include_tools=False, include_thinking=False)` — already exists in `teleclaude/utils/transcript.py`
 - **Filtering**: strip empty text blocks (noise entries before tool work) and `<system-reminder>` tags in user messages (metadata, not conversation)
 - **Backfill**: one-time agent job processes all existing ~3,660 transcripts. Batch migration, runs once overnight. After that, incremental.
@@ -85,16 +85,46 @@ The mirror tells you WHAT happened and WHERE to look deeper.
 
 These are available via `--show SESSION --raw` drill-down to the source computer.
 
-## Key Existing Infrastructure
+## Infrastructure Alignment (verified against codebase)
 
-- `extract_structured_messages()` in `teleclaude/utils/transcript.py` (line ~2066) — already does text-only filtering
-- `_discover_transcripts()` in `teleclaude/utils/transcript.py` — discovers transcripts across agents
-- Redis Streams transport for cross-computer messaging (existing)
-- Heartbeat-based peer discovery with TTL (existing)
-- Hook service with `session_closed` events (existing)
-- `telec channels publish/list` CLI (existing)
-- Cron job infrastructure for the backfill agent job (existing)
+### Database
+
+- 15 existing tables in `teleclaude/core/schema.sql`
+- **FTS5 already in use**: `memory_observations_fts` table in migration `005_add_memory_tables.py` — exact pattern to follow (content table + FTS5 virtual table + auto-sync triggers)
+- Migration system: `teleclaude/core/migrations/NNN_name.py` with `async def up(db)` / `async def down(db)`. Next: `025_add_mirrors_table.py`
+- DB: `aiosqlite`, path configurable via `TELECLAUDE_DB_PATH`
+
+### Generation Triggers
+
+- `SESSION_CLOSED` event exists but is **only emitted from Telegram adapter** and replay path — not universal
+- `AGENT_STOP` fires on **every agent turn** (all agents: Claude SubagentStop, Codex agent_stop) — more universal but frequent
+- Recommended approach: background worker that periodically scans for sessions with new activity, regenerates mirrors. Simple, robust, no event-wiring needed. Can add event-based optimization later.
+- For session close: the daemon's session cleanup path could trigger final mirror generation
+
+### Extraction
+
+- `extract_structured_messages(path, agent, include_tools=False, include_thinking=False)` already filters perfectly
+- Empty text blocks already skipped: `if text.strip():` at line 2172
+- System-reminder tags: live **inside user text block content**, not as separate metadata entries. Need regex strip of `<system-reminder>...</system-reminder>` from user message text.
+- Returns `StructuredMessage(role, type, text, timestamp, entry_index, file_index)`
+
+### Redis Channels (full module exists)
+
+- `teleclaude/channels/publisher.py`: `await publish(redis, channel, payload)` — XADD with JSON payload
+- `teleclaude/channels/consumer.py`: XREADGROUP with consumer groups, auto-ack
+- `teleclaude/channels/worker.py`: background polling worker (5s interval), filter matching, dispatch
+- `teleclaude/channels/api_routes.py`: HTTP API for publish/list
+- Channel naming: `channel:{project}:{topic}` — for mirrors: `channel:mirrors:conversations`
+- **Deployment fanout** (`teleclaude/deployment/handler.py`): reference pattern using XREAD without consumer groups, self-origin skip via daemon_id
+
+### Current History.py
+
+- Brute-force scan: ThreadPoolExecutor with 8 workers scanning up to 500 JSONL files
+- AND-logic word matching with 80-char context window
+- `--show` mode: flexible session ID matching (prefix, extracted ID, substring)
+- CLI flags: `--agent`, `--show`, `--thinking`, `--tail`, positional search terms
+- Upgrade path: replace `scan_agent_history()` + `_scan_one()` with FTS5 query against mirrors table
 
 ## Design Process
 
-This design was produced through a structured AI-to-AI peer conversation using three breath cycles (inhale/hold/exhale). Round 1 failed due to premature convergence and a fundamental error (designing text-level stripping when the data layer already solves extraction). Round 2 succeeded by: (1) questioning the premise ("agent sessions are not conversations"), (2) grounding in real data, (3) identifying the "recall" frame as primary use case, (4) separating generation/distribution/search as independent concerns, (5) resolving file-vs-SQLite with FTS5 argument, (6) resolving the cost question with the two-tier model.
+This design was produced through a structured AI-to-AI peer conversation using three breath cycles (inhale/hold/exhale). Round 1 failed due to premature convergence and a fundamental error (designing text-level stripping when the data layer already solves extraction). Round 2 succeeded by: (1) questioning the premise ("agent sessions are not conversations"), (2) grounding in real data, (3) identifying the "recall" frame as primary use case, (4) separating generation/distribution/search as independent concerns, (5) resolving file-vs-SQLite with FTS5 argument, (6) resolving the cost question with the two-tier model. Infrastructure research confirmed alignment with existing patterns (FTS5 in memory search, channels module, migration system).
