@@ -22,10 +22,13 @@ Ownership:
 
 Manual verification notes:
 
-- Verified governance text is present in all four target docs via direct `grep` checks for SC-1 through SC-4.
+- Verified governance text is present in all four target docs via direct file reads for SC-1 through SC-4.
 - Verified frontmatter delimiter integrity (`---`) for all four edited snippets (SC-6).
-- Re-ran `make test` after one transient timeout failure; second run passed fully (`2237 passed, 106 skipped`).
-- `git status` cleanliness for build scope will only allow orchestrator-managed drift: `todos/config-wizard-governance/state.yaml`.
+- `make test` passed: 2237 passed, 106 skipped.
+- `make lint` passed: 0 errors, 0 warnings.
+- `telec sync` passed with no errors on this todo's docs.
+- `telec todo demo validate config-wizard-governance` passed: 6 executable block(s) found.
+- `git status` cleanliness: only orchestrator-managed drift remains (`todos/config-wizard-governance/state.yaml`, `todos/roadmap.yaml`).
 
 ## Review Gates (Reviewer)
 
