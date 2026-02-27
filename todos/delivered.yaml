@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: config-wizard-governance
+  date: '2026-02-27'
+  title: Add config wizard integration gates to DoD, DOR, add-adapter procedure, and
+    teleclaude-config spec
+  description: Add config wizard integration gates to DoD, DOR, add-adapter procedure,
+    and teleclaude-config spec
 - slug: config-wizard-whatsapp-wiring
   date: '2026-02-27'
   title: Wire WhatsApp env vars, guidance, and config.sample into the config wizard

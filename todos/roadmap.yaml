@@ -18,9 +18,6 @@
   - integrator-cutover
   description: 'Step 5: emit integration_blocked flow with follow-up todo creation
     and resume UX'
-- slug: config-wizard-governance
-  description: Add config wizard integration gates to DoD, DOR, add-adapter procedure,
-    and teleclaude-config spec
 - slug: config-wizard-redesign
   after:
   - config-wizard-whatsapp-wiring
