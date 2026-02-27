@@ -33,11 +33,9 @@ The upgrade replaces brute-force JSONL scanning with a three-layer architecture:
 - [ ] Create triggers: `mirrors_ai` (after insert), `mirrors_ad` (after delete), `mirrors_au` (after update) — same pattern as `memory_obs_ai/ad/au`
 - [ ] Implement `async def down(db)` to drop FTS triggers, virtual table, and content table
 
-### Task 1.2: Register migration in runner
+### Task 1.2: ~~Register migration in runner~~ (Not needed)
 
-**File(s):** `teleclaude/core/migrations/runner.py`, `teleclaude/core/migrations/__init__.py`
-
-- [ ] Add migration 025 to the migration registry (follow pattern of existing entries)
+The migration runner auto-discovers `*.py` files matching `^\d{3}_` in the migrations directory. No explicit registration step is required — placing `025_add_mirrors_table.py` in the directory is sufficient.
 
 ---
 
@@ -116,7 +114,7 @@ The upgrade replaces brute-force JSONL scanning with a three-layer architecture:
 **File(s):** `scripts/history.py`
 
 - [ ] Replace `scan_agent_history()` + `_scan_one()` with FTS5 query: `SELECT ... FROM mirrors JOIN mirrors_fts ON mirrors.id = mirrors_fts.rowid WHERE mirrors_fts MATCH ? AND agent = ? ORDER BY timestamp_start DESC`
-- [ ] Open daemon DB in read-only mode (`file:...?mode=ro`)
+- [ ] Resolve daemon DB path: read `TELECLAUDE_DB_PATH` env var, fall back to `~/.teleclaude/teleclaude.db`. Open in read-only mode (`file:{path}?mode=ro`)
 - [ ] Preserve existing output format (table with #, Date/Time, Agent, Project, Topic, Session columns)
 - [ ] Preserve `--agent` filtering (already exists, now filters via SQL WHERE)
 - [ ] Add `--computer` flag: default searches local mirrors, `--computer <name>` routes to remote daemon API
