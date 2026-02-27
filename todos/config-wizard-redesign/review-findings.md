@@ -113,3 +113,15 @@ When editing an already-set variable, `_begin_edit` pre-populates `_edit_buffer`
 ## Verdict: REQUEST CHANGES
 
 Findings #1 (export prefix loss) and #2 (empty env_data logic error) are behavioral bugs that should be fixed before merge. Finding #3 (redundant call) is a small cleanup. All three fixes are 1-3 lines each.
+
+## Fixes Applied
+
+- **Issue #1 (Important):** Preserve `export` prefix when updating existing exported env vars.
+  - **Fix:** `set_env_var` now writes `export {name}={value}` when the matched line starts with `export`.
+  - **Commit:** `d44d71bb`
+- **Issue #2 (Important):** Guided mode incorrectly treated missing env data as complete.
+  - **Fix:** `_is_current_guided_step_complete` now returns `False` when `_env_data` is empty on the environment step.
+  - **Commit:** `c010d44f`
+- **Issue #3 (Important):** Duplicate guided auto-advance call after save.
+  - **Fix:** Removed the redundant `_auto_advance_completed_steps` call in `save_edit`; refresh flow remains the single advancement path.
+  - **Commit:** `1170859f`
