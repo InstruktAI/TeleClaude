@@ -1,61 +1,21 @@
 # DOR Report: history-search-upgrade
 
-## Gate Verdict: PASS (Score: 8)
+## Gate Verdict: PENDING RE-ASSESSMENT
 
-### Gate 1: Intent & Success — PASS
+Artifacts were substantially rewritten on 2026-02-27 following a brainstorm session (3d2880de) that refined the generation architecture, corrected factual errors, and introduced new design decisions. The previous DOR score of 8 is invalidated — formal gate assessment is required against the updated artifacts.
 
-Problem is explicit: brute-force JSONL scanning doesn't scale and doesn't work across computers. Outcome is clear: FTS5-backed mirror search with live cross-computer API queries. Success criteria are concrete and testable. Grounded in real data analysis (73/430 entries, 17% conversation-only).
+### Changes from previous assessment
 
-### Gate 2: Scope & Size — PASS
+1. **Generation architecture reversed**: event-driven primary (AGENT_STOP + SESSION_CLOSED), background worker as safety net. Previous plan had worker as primary.
+2. **No separate backfill script**: worker's idempotent reconciliation IS the backfill. Previous plan had `teleclaude/mirrors/backfill.py`.
+3. **Fan-out architecture added**: event handlers dispatch to registered processors. Mirrors is processor #1. Extensible without rework.
+4. **AGENT_STOP routing clarified**: hook event through `agent_coordinator.handle_event`, not event bus. Different wiring path than SESSION_CLOSED.
+5. **SESSION_CLOSED sources corrected**: fires from `db.close_session()`, DB hard delete, `session_cleanup.replay_session_closed()`, `command_handlers` session-end. Previous artifacts incorrectly stated "Telegram-only".
+6. **Function signature corrected**: `agent_name: AgentName` enum, `-> list[StructuredMessage]` return type.
+7. **API route registration pinned**: `teleclaude/mirrors/api_routes.py` mounted via `app.include_router()` in `api_server.py`.
+8. **Computer routing explicit**: no flag = local only, `--computer` with one or more names = parallel remote queries.
+9. **Notification-service dependency added**: soft dependency — log-based fallback until notification-service is delivered. Roadmap dependency set.
 
-Work spans 6 phases across ~12 tasks. Each phase is independently testable and deployable. Cross-cutting changes (daemon.py, new mirrors/ module, history.py rewrite, migration) are justified and called out. No distribution layer (removed per hard requirement: no mirror replication). Scope is well-bounded by explicit "out of scope" section.
+### Pending gate evaluation
 
-### Gate 3: Verification — PASS
-
-Demo plan defines concrete validation steps: migration check, FTS5 search, remote API query, mirror content inspection. Unit tests planned for extraction, stripping, FTS5 queries. Edge cases identified: empty transcripts, system-reminder regex, remote daemon unavailability.
-
-### Gate 4: Approach Known — PASS
-
-Every component follows an existing codebase pattern:
-
-- FTS5: `memory_observations_fts` in migration 005
-- Background worker: existing daemon task patterns
-- Extraction: `extract_structured_messages()` with proven filtering
-- API endpoints: existing daemon API patterns
-- Read-only DB: standard `sqlite3` stdlib usage
-
-No unknowns. No new technologies.
-
-### Gate 5: Research Complete — PASS
-
-Infrastructure research completed: DB schema verified, FTS5 pattern confirmed, extraction function verified, session lifecycle events mapped. No third-party dependencies introduced.
-
-### Gate 6: Dependencies & Preconditions — PASS
-
-No prerequisite tasks. Required infrastructure exists: daemon DB, migration system, extraction functions, daemon API server, computer discovery. No external dependencies.
-
-### Gate 7: Integration Safety — PASS
-
-Migration is additive (new table). history.py can fall back to brute-force if mirrors table missing. Daemon worker is independent of other tasks. API endpoints are additive. Backfill is one-time and idempotent.
-
-### Gate 8: Tooling Impact — N/A
-
-No tooling changes.
-
-### Plan-to-Requirement Fidelity — PASS
-
-Every plan task traces to a requirement. No contradictions found:
-
-- "No mirror replication" → no distribution phase in plan
-- "FTS5 against local DB" → Task 3.1 implements exactly this
-- "Remote search via daemon API" → Tasks 3.2/3.3 implement endpoints + routing
-- "Reuse extract_structured_messages()" → Task 2.1 calls with correct params
-- "Migration 025" → Task 1.1 creates the file
-- "Background worker" → Task 2.2 implements periodic scan
-
-## Actions Taken
-
-- Updated requirements to reflect hard constraint: no mirror replication between computers
-- Removed entire distribution layer (Phase 3 from original plan) — replaced with API endpoints
-- Updated input.md architecture section: "Mirrors stay home" instead of "Mirrors travel"
-- Verified plan-to-requirement fidelity after changes
+All 8 DOR gates must be re-evaluated against the updated requirements.md and implementation-plan.md by the gate worker.

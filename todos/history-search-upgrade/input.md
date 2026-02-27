@@ -115,8 +115,8 @@ These are available via `--show SESSION --raw` drill-down to the source computer
 
 ### Generation Triggers
 
-- **AGENT_STOP**: fires on every agent turn (all agents). Primary trigger for near-real-time mirror currency.
-- **SESSION_CLOSED**: fires from Telegram adapter, Discord adapter, session cleanup replay, cache manager. Secondary trigger for final mirror state.
+- **AGENT_STOP**: fires on every agent turn (all agents). Primary trigger for near-real-time mirror currency. **Routing**: AGENT_STOP is an `AgentHookEvents` value, not a `TeleClaudeEvents` event bus event. It flows through `agent_coordinator.handle_event` (wired at daemon line 322 via `self.client.agent_event_handler`). The mirror processor hooks into this path — either as a registered callback in agent_coordinator or via a new event emitted by agent_coordinator after processing AGENT_STOP.
+- **SESSION_CLOSED**: fires from `db.close_session()`, `db` hard delete, `session_cleanup.replay_session_closed()`, and `command_handlers` session-end. This is a standard `TeleClaudeEvents` event bus event — subscriber wiring via `event_bus.subscribe()`. Secondary trigger for final mirror state.
 - **Background worker**: idempotent reconciliation on startup + periodic interval (5 minutes). Safety net.
 
 ### Extraction
