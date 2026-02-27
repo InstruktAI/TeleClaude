@@ -13,7 +13,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Footer
 
-from teleclaude.cli.models import AgentAvailabilityInfo, ProjectWithTodosInfo
+from teleclaude.cli.models import AgentAvailabilityInfo, ComputerInfo, ProjectWithTodosInfo
 from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
     DocEditRequest,
@@ -22,9 +22,17 @@ from teleclaude.cli.tui.messages import (
 )
 from teleclaude.cli.tui.prep_tree import build_dep_tree
 from teleclaude.cli.tui.todos import TodoItem
+from teleclaude.cli.tui.tree import ComputerDisplayInfo
 from teleclaude.cli.tui.types import TodoStatus
+from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
-from teleclaude.cli.tui.widgets.modals import ConfirmModal, CreateSlugModal, StartSessionModal
+from teleclaude.cli.tui.widgets.modals import (
+    ConfirmModal,
+    CreateSlugModal,
+    NewProjectModal,
+    NewProjectResult,
+    StartSessionModal,
+)
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
@@ -59,6 +67,7 @@ class PreparationView(Widget, can_focus=True):
         Binding("equals_sign", "expand_all", "All", key_display="+", group=Binding.Group("Fold", compact=True)),
         Binding("minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True)),
         Binding("n", "new_todo", "Todo"),
+        Binding("n", "new_project", "New Project"),
         Binding("b", "new_bug", "Bug"),
         Binding("p", "prepare", "Prep"),
         Binding("s", "start_work", "Start"),
@@ -130,7 +139,7 @@ class PreparationView(Widget, can_focus=True):
             self._expanded_todos = {str(item) for item in expanded_todos}
 
     def _rebuild(self) -> None:
-        """Rebuild the todo display from current data."""
+        """Rebuild the todo display from current data (Computer → Project → Todo)."""
         _rb0 = _t.monotonic()
         self._logger.trace("[PERF] PrepView._rebuild START t=%.3f", _rb0)
         container = self.query_one("#preparation-scroll", VerticalScroll)
@@ -175,81 +184,109 @@ class PreparationView(Widget, can_focus=True):
         tree_nodes = build_dep_tree(all_todo_items)
         max_depth = max((node.depth for node in tree_nodes), default=0) if tree_nodes else 0
 
+        # Group projects by computer (sorted alphabetically)
+        computer_to_projects: dict[str, list[ProjectWithTodosInfo]] = {}
+        for project in self._projects_with_todos:
+            comp_name = project.computer or "local"
+            computer_to_projects.setdefault(comp_name, []).append(project)
+
         # Collect all widgets first, then batch-mount to minimize layout reflows
         widgets_to_mount: list[Widget] = []
         expanded_file_rows: list[tuple[TodoRow, list[Widget]]] = []
 
-        for project in self._projects_with_todos:
-            from teleclaude.cli.models import ProjectInfo
+        for comp_name in sorted(computer_to_projects):
+            projects_in_comp = computer_to_projects[comp_name]
 
-            proj_info = ProjectInfo(
-                computer=project.computer,
-                name=project.name,
-                path=project.path,
-                description=project.description,
+            # Count todos across all projects under this computer
+            comp_todo_count = sum(len(p.todos or []) for p in projects_in_comp)
+            comp_info = ComputerInfo(
+                name=comp_name,
+                status="online",
+                user="",
+                host=comp_name,
+                is_local=(comp_name == "local"),
+                tmux_binary="tmux",
             )
-            header = ProjectHeader(project=proj_info, session_count=0)
-            widgets_to_mount.append(header)
-            self._nav_items.append(header)
+            comp_display = ComputerDisplayInfo(
+                computer=comp_info,
+                session_count=comp_todo_count,
+                recent_activity=False,
+            )
+            comp_header = ComputerHeader(data=comp_display)
+            widgets_to_mount.append(comp_header)
+            self._nav_items.append(comp_header)
 
-            if getattr(project, "has_roadmap", False):
-                roadmap_row = TodoFileRow(
-                    filepath=f"{project.path}/todos/roadmap.yaml",
-                    filename="roadmap.yaml",
-                    slug="",
-                    is_last=False,
-                    tree_lines=[],
+            for project in sorted(projects_in_comp, key=lambda p: p.name):
+                from teleclaude.cli.models import ProjectInfo
+
+                proj_info = ProjectInfo(
+                    computer=project.computer,
+                    name=project.name,
+                    path=project.path,
+                    description=project.description,
                 )
-                widgets_to_mount.append(roadmap_row)
-                self._nav_items.append(roadmap_row)
+                header = ProjectHeader(project=proj_info, session_count=0)
+                widgets_to_mount.append(header)
+                self._nav_items.append(header)
 
-            # Filter tree nodes to this project's todos
-            project_slugs = {td.slug for td in (project.todos or [])}
-            project_nodes = [node for node in tree_nodes if node.slug in project_slugs]
+                if getattr(project, "has_roadmap", False):
+                    roadmap_row = TodoFileRow(
+                        filepath=f"{project.path}/todos/roadmap.yaml",
+                        filename="roadmap.yaml",
+                        slug="",
+                        is_last=False,
+                        tree_lines=[],
+                    )
+                    widgets_to_mount.append(roadmap_row)
+                    self._nav_items.append(roadmap_row)
 
-            for node in project_nodes:
-                # Depth-0 items always use ├─ because GroupSeparator closes the tree
-                is_last_sibling = False if node.depth == 0 else node.is_last
+                # Filter tree nodes to this project's todos
+                project_slugs = {td.slug for td in (project.todos or [])}
+                project_nodes = [node for node in tree_nodes if node.slug in project_slugs]
 
-                row = TodoRow(
-                    todo=node.todo,
-                    is_last=is_last_sibling,
-                    slug_width=slug_width,
-                    col_widths=col_widths,
-                    tree_lines=node.tree_lines,
-                    max_depth=max_depth,
-                )
-                widgets_to_mount.append(row)
-                self._nav_items.append(row)
+                for node in project_nodes:
+                    # Depth-0 items always use ├─ because GroupSeparator closes the tree
+                    is_last_sibling = False if node.depth == 0 else node.is_last
 
-                # Collect file rows for expanded todos
-                if node.slug in self._expanded_todos and node.todo.files:
-                    # File tree_lines = parent's lines + parent's own branch continuation
-                    file_tree_lines = node.tree_lines + [not is_last_sibling]
-                    sorted_files = sorted(node.todo.files)
-                    file_widgets: list[Widget] = []
-                    # Get project path for filepath construction
-                    proj_path = self._slug_to_project_path.get(node.slug, "")
-                    for fi, filename in enumerate(sorted_files):
-                        f_last = fi == len(sorted_files) - 1
-                        filepath = (
-                            f"{proj_path}/todos/{node.slug}/{filename}"
-                            if proj_path
-                            else f"todos/{node.slug}/{filename}"
-                        )
-                        file_row = TodoFileRow(
-                            filepath=filepath,
-                            filename=filename,
-                            slug=node.slug,
-                            is_last=f_last,
-                            tree_lines=file_tree_lines,
-                        )
-                        file_widgets.append(file_row)
-                        widgets_to_mount.append(file_row)
-                    expanded_file_rows.append((row, file_widgets))
+                    row = TodoRow(
+                        todo=node.todo,
+                        is_last=is_last_sibling,
+                        slug_width=slug_width,
+                        col_widths=col_widths,
+                        tree_lines=node.tree_lines,
+                        max_depth=max_depth,
+                    )
+                    widgets_to_mount.append(row)
+                    self._nav_items.append(row)
 
-            if project_nodes:
-                widgets_to_mount.append(GroupSeparator(connector_col=ProjectHeader.CONNECTOR_COL))
+                    # Collect file rows for expanded todos
+                    if node.slug in self._expanded_todos and node.todo.files:
+                        # File tree_lines = parent's lines + parent's own branch continuation
+                        file_tree_lines = node.tree_lines + [not is_last_sibling]
+                        sorted_files = sorted(node.todo.files)
+                        file_widgets: list[Widget] = []
+                        # Get project path for filepath construction
+                        proj_path = self._slug_to_project_path.get(node.slug, "")
+                        for fi, filename in enumerate(sorted_files):
+                            f_last = fi == len(sorted_files) - 1
+                            filepath = (
+                                f"{proj_path}/todos/{node.slug}/{filename}"
+                                if proj_path
+                                else f"todos/{node.slug}/{filename}"
+                            )
+                            file_row = TodoFileRow(
+                                filepath=filepath,
+                                filename=filename,
+                                slug=node.slug,
+                                is_last=f_last,
+                                tree_lines=file_tree_lines,
+                            )
+                            file_widgets.append(file_row)
+                            widgets_to_mount.append(file_row)
+                        expanded_file_rows.append((row, file_widgets))
+
+                if project_nodes:
+                    widgets_to_mount.append(GroupSeparator(connector_col=ProjectHeader.CONNECTOR_COL))
 
         # Single batch mount - one layout reflow instead of N
         if widgets_to_mount:
@@ -473,23 +510,35 @@ class PreparationView(Widget, can_focus=True):
             if 0 <= self.cursor_index < len(self._nav_items):
                 self._nav_items[self.cursor_index].scroll_visible()
 
+    def _current_computer_header(self) -> ComputerHeader | None:
+        item = self._current_item()
+        return item if isinstance(item, ComputerHeader) else None
+
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Enable/hide actions based on current tree node type."""
         del parameters
         item = self._current_item()
 
+        if isinstance(item, ComputerHeader):
+            # Computer nodes: only new_project and fold actions allowed
+            if action in {"new_todo", "new_bug", "remove_todo", "activate", "preview_file", "prepare", "start_work"}:
+                return False
+            if action == "new_project":
+                return True
+            return True
+
         if isinstance(item, ProjectHeader):
-            if action in {"remove_todo", "activate", "preview_file"}:
+            if action in {"remove_todo", "activate", "preview_file", "new_project"}:
                 return False
             return True
 
         if isinstance(item, TodoRow):
-            if action == "preview_file":
+            if action in {"preview_file", "new_project"}:
                 return False
             return True
 
         if isinstance(item, TodoFileRow):
-            if action in {"new_todo", "new_bug"}:
+            if action in {"new_todo", "new_bug", "new_project"}:
                 return False
             return True
 
@@ -504,6 +553,8 @@ class PreparationView(Widget, can_focus=True):
     def _default_footer_action(self) -> str | None:
         """Return the primary action for the selected node."""
         item = self._current_item()
+        if isinstance(item, ComputerHeader):
+            return "new_project"
         if isinstance(item, ProjectHeader):
             return "new_todo"
         if isinstance(item, (TodoRow, TodoFileRow)):
@@ -634,6 +685,41 @@ class PreparationView(Widget, can_focus=True):
             )
         )
 
+    def action_new_project(self) -> None:
+        """n on computer header: open New Project modal."""
+        item = self._current_item()
+        if not isinstance(item, ComputerHeader):
+            return
+
+        comp_name = item.data.computer.name
+        existing_projects = [p for p in self._projects_with_todos if (p.computer or "local") == comp_name]
+        existing_names = {p.name for p in existing_projects}
+        existing_paths = {p.path for p in existing_projects}
+
+        def on_result(result: NewProjectResult | None) -> None:
+            if not result:
+                return
+            import subprocess
+
+            yaml_patch = f"computer:\n  trusted_dirs:\n    - name: {result.name}\n      path: {result.path}\n"
+            if result.description:
+                yaml_patch += f"      description: {result.description}\n"
+            try:
+                subprocess.run(
+                    ["telec", "config", "patch", "--yaml", yaml_patch],
+                    check=True,
+                    capture_output=True,
+                )
+            except subprocess.CalledProcessError as exc:
+                self.app.notify(f"Failed to save project: {exc.stderr.decode()[:80]}", severity="error")
+                return
+            self.app.notify(f"Project '{result.name}' added")
+
+        self.app.push_screen(
+            NewProjectModal(existing_names=existing_names, existing_paths=existing_paths),
+            on_result,
+        )
+
     def action_new_todo(self) -> None:
         """n: create a new todo via modal."""
 
@@ -734,6 +820,14 @@ class PreparationView(Widget, can_focus=True):
         )
 
     # --- Click handlers ---
+
+    def on_computer_header_pressed(self, event: ComputerHeader.Pressed) -> None:
+        """Handle click on a computer header - update cursor."""
+        for i, widget in enumerate(self._nav_items):
+            if widget is event.header:
+                self.cursor_index = i
+                self._update_cursor_highlight()
+                break
 
     def on_todo_row_pressed(self, event: TodoRow.Pressed) -> None:
         """Handle click on a todo row - update cursor."""

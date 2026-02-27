@@ -9,6 +9,9 @@ Visual design:
 
 from __future__ import annotations
 
+import os
+from dataclasses import dataclass
+
 from rich.style import Style
 from rich.text import Text
 from textual.app import ComposeResult
@@ -24,6 +27,15 @@ from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import CreateSessionRequest
 from teleclaude.cli.tui.theme import resolve_style
 from teleclaude.core.agents import get_enabled_agents
+
+
+@dataclass
+class NewProjectResult:
+    """Result returned by NewProjectModal on success."""
+
+    name: str
+    description: str
+    path: str
 
 
 def _is_agent_selectable(info: AgentAvailabilityInfo | None) -> bool:
@@ -241,7 +253,12 @@ class ConfirmModal(ModalScreen[bool]):
 
 
 class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
-    """Session creation modal with thin border and titled field groups."""
+    """Session creation modal with thin border and titled field groups.
+
+    When path_mode=True, renders an additional project path input above the
+    agent selector. The path is resolved via os.path.expanduser() and validated
+    as an existing directory before creating the session.
+    """
 
     BINDINGS = [
         ("escape", "dismiss_modal", "Cancel"),
@@ -254,6 +271,7 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         project_path: str,
         agent_availability: dict[str, AgentAvailabilityInfo] | None = None,
         default_message: str | None = None,
+        path_mode: bool = False,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
@@ -261,6 +279,7 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         self._project_path = project_path
         self._agent_availability = agent_availability or {}
         self._default_message = default_message
+        self._path_mode = path_mode
         self._agents = tuple(get_enabled_agents())
 
     def compose(self) -> ComposeResult:
@@ -270,7 +289,18 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
             box.border_title = "Start Session"
 
             yield Label(f"Computer: {self._computer}", id="modal-computer")
-            yield Label(f"Project:  {project_name}", id="modal-project")
+
+            if self._path_mode:
+                with Vertical(id="path-group") as pg:
+                    pg.border_title = "Project Path"
+                    yield Input(
+                        value="",
+                        placeholder="~/path/to/project",
+                        id="path-input",
+                    )
+                    yield Label("", id="path-error")
+            else:
+                yield Label(f"Project:  {project_name}", id="modal-project")
 
             with Vertical(id="agent-group") as ag:
                 ag.border_title = "Agent"
@@ -329,6 +359,22 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
             self.dismiss(None)
             return
 
+        project_path = self._project_path
+
+        if self._path_mode:
+            path_input = self.query_one("#path-input", Input)
+            path_error = self.query_one("#path-error", Label)
+            raw_path = path_input.value.strip()
+            if not raw_path:
+                path_error.update("Path is required")
+                return
+            resolved = os.path.expanduser(raw_path)
+            if not os.path.isdir(resolved):
+                path_error.update("Path does not exist or is not a directory")
+                return
+            path_error.update("")
+            project_path = resolved
+
         agent_sel = self.query_one("#agent-selector", AgentSelector)
         mode_sel = self.query_one("#mode-selector", ModeSelector)
         title_input = self.query_one("#title-input", Input)
@@ -336,13 +382,105 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
 
         request = CreateSessionRequest(
             computer=self._computer,
-            project_path=self._project_path,
+            project_path=project_path,
             agent=agent_sel.selected_agent,
             thinking_mode=mode_sel.selected_mode,
             title=title_input.value or None,
             message=message_input.value or None,
         )
         self.dismiss(request)
+
+
+class NewProjectModal(ModalScreen[NewProjectResult | None]):
+    """New project modal with name, description, and path fields.
+
+    Validates:
+    - Path resolves via os.path.expanduser() and must be an existing directory.
+    - Name and path must not duplicate an existing project on this computer.
+    """
+
+    BINDINGS = [
+        ("escape", "dismiss_modal", "Cancel"),
+    ]
+
+    def __init__(
+        self,
+        existing_names: set[str] | None = None,
+        existing_paths: set[str] | None = None,
+        **kwargs: object,
+    ) -> None:
+        super().__init__(**kwargs)
+        self._existing_names = existing_names or set()
+        self._existing_paths = existing_paths or set()
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="modal-box") as box:
+            box.border_title = "New Project"
+            with Vertical(id="name-group") as ng:
+                ng.border_title = "Name"
+                yield Input(placeholder="my-project", id="name-input")
+                yield Label("", id="name-error")
+            with Vertical(id="desc-group") as dg:
+                dg.border_title = "Description (optional)"
+                yield Input(placeholder="Short description", id="desc-input")
+            with Vertical(id="path-group") as pg:
+                pg.border_title = "Path"
+                yield Input(placeholder="~/path/to/project", id="path-input")
+                yield Label("", id="path-error")
+            with Horizontal(id="modal-actions"):
+                yield Button("[Enter] Create", variant="primary", id="create-btn")
+                yield Button("[Esc] Cancel", id="cancel-btn")
+
+    def on_mount(self) -> None:
+        self.query_one("#name-input", Input).focus()
+
+    def action_dismiss_modal(self) -> None:
+        self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self._do_create()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "cancel-btn":
+            self.dismiss(None)
+            return
+        if event.button.id == "create-btn":
+            self._do_create()
+
+    def _do_create(self) -> None:
+        name_input = self.query_one("#name-input", Input)
+        name_error = self.query_one("#name-error", Label)
+        path_input = self.query_one("#path-input", Input)
+        path_error = self.query_one("#path-error", Label)
+        desc_input = self.query_one("#desc-input", Input)
+
+        name = name_input.value.strip()
+        raw_path = path_input.value.strip()
+        description = desc_input.value.strip()
+
+        # Validate name
+        if not name:
+            name_error.update("Name is required")
+            return
+        if name in self._existing_names:
+            name_error.update(f"A project named '{name}' already exists")
+            return
+        name_error.update("")
+
+        # Validate path
+        if not raw_path:
+            path_error.update("Path is required")
+            return
+        resolved = os.path.expanduser(raw_path)
+        if not os.path.isdir(resolved):
+            path_error.update("Path does not exist or is not a directory")
+            return
+        if resolved in self._existing_paths:
+            path_error.update("A project at this path already exists")
+            return
+        path_error.update("")
+
+        self.dismiss(NewProjectResult(name=name, description=description, path=resolved))
 
 
 class CreateSlugModal(ModalScreen[str | None]):
