@@ -1,5 +1,10 @@
 # Delivered work items. Newest first.
 
+- slug: fix-sticky-removal-layout-issues
+  date: '2026-02-27'
+  title: Fix pane continuity on sticky removal
+  commit: f9c7cf247be10579cb475fb09678b4551d9e6ea8
+  description: Fix layout issues when sticky header is removed
 - slug: config-wizard-governance
   date: '2026-02-27'
   title: Add config wizard integration gates to DoD, DOR, add-adapter procedure, and
