@@ -48,24 +48,36 @@ between agents. The human reads the output, not the process.
 
 Before composing a message to another agent, sense the register:
 
-| Signal                                   | Register             | Format                                                       |
-| ---------------------------------------- | -------------------- | ------------------------------------------------------------ |
-| Human initiated the conversation         | Human-present        | Prose throughout; compressed artifacts only if human opts in |
-| Human explicitly allows shorthand        | Human-aware          | Shorthand for exchange; prose for final report to human      |
-| Agent-dispatched (no human in the loop)  | Agent-only           | Shorthand throughout; artifacts in prose                     |
-| Orchestrator supervision (worker report) | Structured reporting | Labeled findings, not prose narrative                        |
+| Signal                                   | Register             | Format                                          |
+| ---------------------------------------- | -------------------- | ----------------------------------------------- |
+| Human initiated the conversation         | Human-present        | L1 prose; ask the human what level they prefer  |
+| Human opts in to labeled format          | Human-aware (L2)     | L2 exchange; L1 prose for final report to human |
+| Human opts in to shorthand               | Human-aware (L3)     | L3 exchange; L1 prose for final report to human |
+| Agent-dispatched (no human in the loop)  | Agent-only           | Phase-locked L4/L3; artifacts in L1 prose       |
+| Orchestrator supervision (worker report) | Structured reporting | L2 labeled findings, not prose narrative        |
 
 The default for peer conversations initiated by agents (e.g., dispatched by a todo
-or orchestrator) is **agent-only register**: shorthand throughout.
+or orchestrator) is **agent-only register**: phase-locked L4/L3 throughout.
 
-When a human is present and has not explicitly opted in, use prose. The human's ability
-to follow the conversation takes priority over compression efficiency.
+When a human is present, default to L1 prose and ask what level they prefer. Power
+users may prefer L2 (labeled assertions) for observability without sacrificing scan
+speed. The human's stated preference takes priority over compression efficiency.
 
 ### Compression levels
 
-Three levels, from most human-readable to most compressed:
+Four levels, from human-native to agent-native:
 
-**Level 1 — Labeled assertions** (human-scannable, agent-efficient):
+**Level 1 — Prose** (human-native):
+
+```
+The premise that agent sessions equal conversations is false. Session 1c178904
+contains 813KB across 430 entries, but only 73 (17%) are actual text — the rest
+are tool use. Agents summarize tool findings in their text responses, which means
+the mirror should be a recall artifact, not a degraded transcript. Three tensions
+remain unresolved: file vs sqlite storage, writer ownership, and trigger mechanism.
+```
+
+**Level 2 — Labeled assertions** (human-scannable, agent-efficient):
 
 ```
 PREMISE_CHECK: "agent sessions = conversations" → FALSE
@@ -75,7 +87,7 @@ FRAME: mirror := recall artifact, not degraded transcript
 TENSIONS: file∨sqlite × writer_ownership × trigger_mechanism
 ```
 
-**Level 2 — Symbolic compressed** (agent-native, human-parseable with effort):
+**Level 3 — Symbolic compressed** (recoverable shorthand, agent-native):
 
 ```
 ?sessions=conv →✗
@@ -85,16 +97,39 @@ TENSIONS: file∨sqlite × writer_ownership × trigger_mechanism
 ⊗file∨sqlite ×writer ×trigger
 ```
 
-**Level 3 — Semantic tokens** (agent-native, minimal):
+**Level 4 — Semantic tokens** (context-inferred, minimal):
 
 ```
 ⊢premise✗ @evidence:73/430 ∴recall¬degraded ⊗3tensions
 ```
 
-**Default for agent-only exchanges: Level 2.** It balances compression with
-disambiguation. Level 3 risks ambiguity that costs more to resolve than it saves.
-Level 1 is appropriate when the human may read the exchange or when context is
-not yet shared.
+The key distinction between L3 and L4: L3 preserves disambiguation anchors (`:=`,
+parenthetical clarifiers, causal chains with `∵`). L4 drops them — the receiver
+reconstructs from shared context alone. L3 is recoverable from the message itself.
+L4 requires the shared context to be intact.
+
+**Default for agent-only exchanges: phase-locked switching.** The breath cycle
+determines which level to use:
+
+| Phase       | Level | Why                                                                 |
+| ----------- | ----- | ------------------------------------------------------------------- |
+| `[inhale]`  | L4    | Divergence is the goal. Ambiguity is tolerable. Speed matters.      |
+| `[hold]`    | L4    | Naming tensions, not resolving them. Density helps.                 |
+| `[exhale]`  | L3    | Converging on decisions. Disambiguation prevents wrong commitments. |
+| `[✓exhale]` | L1/L2 | Writing artifacts. Humans read these. Clarity is non-negotiable.    |
+
+Phase markers are the switching signal. When you emit `[exhale]`, you shift to L3.
+When you emit `[inhale]`, you shift to L4. The level follows the phase, not the other
+way around.
+
+**Fallback policy:** If L4 exchanges produce repeated correction cycles or
+reconstruction divergence, drop to L3 as the floor for all phases. L3 is always
+safe — it carries its own disambiguation. L4 is the aspiration — when shared context
+is tight and delivery is reliable, it is the most efficient register. When it creates
+noise, retreat without hesitation.
+
+Level 2 is appropriate when a human may read the exchange. Level 1 is the default
+when a human is actively in the conversation.
 
 ### Symbol vocabulary
 
@@ -125,19 +160,45 @@ Phase markers (explicit breath cycle signaling):
 | `[exhale]`  | Converging — curating conclusions          |
 | `[✓exhale]` | Final exhale — ready to write artifacts    |
 
+### Level 4 — divergence risk and mitigation
+
+Level 4 tokens are pointers, not descriptions. A single token like `⊗latency` can
+activate multiple conceptual clusters in the receiver: network latency, query latency,
+user-perceived latency. At L3, `⊗latency(remote_api_call)` disambiguates with a
+parenthetical anchor. At L4, the anchor is dropped — the receiver reconstructs from
+shared context alone.
+
+The risk is **silent divergence**: both agents proceed confidently with slightly
+different reconstructions of the same L4 exchange. The divergence is invisible until
+artifacts conflict. A correction cycle at that point costs more than L3 would have
+cost from the start.
+
+Mitigations:
+
+- **Phase-locked switching** is the primary defense. L4 during inhale/hold is safe
+  because ambiguity during exploration has low cost. The L3 exhale is the sync point
+  — both agents verify alignment before committing to action.
+- **Tight shared context** makes L4 safe. When both agents have read the same files,
+  same conversation, same artifacts, the pointers have one valid target. Cold starts
+  (one agent hasn't seen what the other has) make L4 lossy — use L3 until context
+  is established.
+- **Short bursts** over **long exchanges**. L4 works best in 1-3 line exchanges
+  between agents that just read the same codebase together. Over many L4 turns,
+  small reconstruction differences accumulate.
+
 ### Protocol negotiation
 
 The first message in any agent-to-agent direct conversation should include a protocol
 line. This is not overhead — it is one line that saves thousands of tokens:
 
 ```
-PROTOCOL: L2 shorthand, artifacts in prose, [phase] markers
+PROTOCOL: phase-locked (L4 inhale/hold, L3 exhale), artifacts in prose
 ```
 
-Or in Level 2 itself:
+Or in Level 3 itself:
 
 ```
-⊢proto:L2 artifacts:prose phases:marked
+⊢proto:phased L4↔L3 artifacts:prose
 ```
 
 If the receiving agent does not recognize the protocol, it responds in prose and the
@@ -159,15 +220,18 @@ everything.
 
 ## Tensions
 
-- **Compression vs. ambiguity**: Level 3 can be genuinely ambiguous. A mispointed
-  semantic token costs a correction cycle that exceeds the savings. Level 2 is the
-  pragmatic default because it preserves enough structure to disambiguate.
+- **Compression vs. ambiguity**: Level 4 can be genuinely ambiguous. A mispointed
+  semantic token during convergence costs a correction cycle that exceeds the savings.
+  Phase-locked switching resolves this: L4 during exploration (where ambiguity is
+  cheap), L3 during convergence (where disambiguation matters). If L4 creates repeated
+  correction cycles, drop to L3 as the floor — the fallback is always available.
 - **Shared context assumption**: Shorthand assumes both agents have the same context.
   If context diverges (different sessions, different codebases), compression becomes
-  lossy. When in doubt, use Level 1 until context is established.
+  lossy. When in doubt, use L2 until context is established.
 - **Human curiosity vs. efficiency**: The human may want to follow the agent exchange
   for learning or oversight. The register sensing rule handles this — human-present
-  means prose unless they opt in.
+  means prose unless they opt in. Power users may prefer L2 (labeled assertions) for
+  observability; the protocol negotiation accommodates this preference.
 - **Training distribution overlap**: This principle assumes both agents are language
   models with overlapping training. If one participant is a different kind of system
   (a rule engine, a human, a narrow tool), shorthand breaks. Sense the receiver.
