@@ -1,10 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: config-wizard-redesign
-  after:
-  - config-wizard-whatsapp-wiring
-  description: Major visual and interaction redesign of the config wizard — card layout,
-    inline editing, guided onboarding, progress indicators
 - slug: harmonize-agent-notifications
   after:
   - ucap-cutover-parity-validation

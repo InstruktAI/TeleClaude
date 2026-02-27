@@ -1,5 +1,12 @@
 # Delivered work items. Newest first.
 
+- slug: config-wizard-redesign
+  date: '2026-02-27'
+  title: Major visual and interaction redesign of the config wizard — card layout,
+    inline editing, guided onboarding, progress indicators
+  commit: ff23e681c29223611995e6761a2abcfb72467d9c
+  description: Major visual and interaction redesign of the config wizard — card layout,
+    inline editing, guided onboarding, progress indicators
 - slug: integration-blocked-flow
   date: '2026-02-27'
   title: 'Step 5: emit integration_blocked flow with follow-up todo creation and resume
