@@ -181,6 +181,17 @@ def test_guided_mode_advances_after_save_when_step_completes(monkeypatch) -> Non
     assert _ADAPTER_TABS[content.active_adapter_tab] == "discord"
 
 
+def test_guided_environment_step_is_incomplete_when_env_data_missing() -> None:
+    content = ConfigContent()
+    content._guided_mode = True
+    content._env_data = []
+    content._guided_step_index = next(
+        index for index, step in enumerate(config_view._GUIDED_STEPS) if step.subtab == "environment"
+    )
+
+    assert content._is_current_guided_step_complete() is False
+
+
 def test_notifications_view_does_not_render_placeholder_literal() -> None:
     content = ConfigContent()
     content.active_subtab = _SUBTABS.index("notifications")

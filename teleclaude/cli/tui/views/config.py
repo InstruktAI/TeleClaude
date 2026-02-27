@@ -639,7 +639,7 @@ class ConfigContent(TelecMixin, Widget):
         if step.subtab == "notifications":
             return self._notification_projection.configured
         if step.subtab == "environment":
-            return all(status.is_set for status in self._env_data) if self._env_data else True
+            return all(status.is_set for status in self._env_data) if self._env_data else False
         if step.subtab == "validate":
             return bool(self._validation_results) and all(result.passed for result in self._validation_results)
         return False
