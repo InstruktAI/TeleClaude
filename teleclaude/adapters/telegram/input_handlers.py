@@ -23,7 +23,7 @@ from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionLifecycleContext, UiCommands
+from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents, UiCommands
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand
@@ -466,9 +466,10 @@ Usage:
             session.session_id[:8],
         )
 
-        # Emit session_closed event to daemon for cleanup
+        # Emit close intent: session is active and user closed the topic externally.
+        # SESSION_CLOSE_REQUESTED triggers terminate_session exactly once.
         event_bus.emit(
-            "session_closed",
+            TeleClaudeEvents.SESSION_CLOSE_REQUESTED,
             SessionLifecycleContext(session_id=session.session_id),
         )
 

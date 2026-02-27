@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 from telegram import ForumTopic
-from telegram.error import TelegramError
+from telegram.error import BadRequest, TelegramError
 
 from teleclaude.core.db import db
 from teleclaude.core.models import ChannelMetadata, Session
@@ -217,10 +217,30 @@ class ChannelOperationsMixin:
         try:
             await self._delete_forum_topic_with_retry(topic_id)
             logger.info("Deleted topic %s for session %s", topic_id, session.session_id[:8])
-            return True
+        except BadRequest as e:
+            if "topic_id_invalid" in str(e).lower():
+                # Topic was already deleted (e.g. by a prior cleanup pass). Treat as success.
+                logger.info(
+                    "Topic %s for session %s already deleted (Topic_id_invalid); treating as success",
+                    topic_id,
+                    session.session_id[:8],
+                )
+            else:
+                logger.warning("Failed to delete topic %s: %s", topic_id, e)
+                return False
         except TelegramError as e:
             logger.warning("Failed to delete topic %s: %s", topic_id, e)
             return False
+
+        # Clear persisted topic_id so maintenance replay does not retry this session.
+        fresh_session = await db.get_session(session.session_id)
+        if fresh_session:
+            telegram_meta = fresh_session.get_metadata().get_ui().get_telegram()
+            telegram_meta.topic_id = None
+            await db.update_session(session.session_id, adapter_metadata=fresh_session.adapter_metadata)
+            logger.debug("Cleared topic_id for session %s", session.session_id[:8])
+
+        return True
 
     @command_retry(max_retries=3, max_timeout=15.0)
     async def _delete_forum_topic_with_retry(self, topic_id: int) -> None:

@@ -13,7 +13,7 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core import session_cleanup, tmux_bridge
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionLifecycleContext
+from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.session_utils import get_session_output_dir
 
 
@@ -220,13 +220,11 @@ async def _wait_for_event_tasks(max_wait: float = 0.5, step: float = 0.05) -> No
 
 
 @pytest.mark.integration
-async def test_session_closed_event_triggers_channel_deletion(daemon_with_mocked_telegram):
-    """Emitting session_closed via event_bus triggers delete_channel on the adapter.
+async def test_session_closed_event_is_observer_only(daemon_with_mocked_telegram):
+    """SESSION_CLOSED is observer-only: it must NOT trigger delete_channel.
 
-    This is the critical chain that was never tested:
-    event_bus.emit("session_closed") → daemon._handle_session_closed
-    → terminate_session → cleanup_session_resources → adapter_client.delete_channel
-    → telegram_adapter.delete_channel
+    Fixes the duplicate-cleanup bug where db.close_session emitted SESSION_CLOSED
+    which triggered a second terminate_session → second delete → Topic_id_invalid.
     """
     daemon = daemon_with_mocked_telegram
     test_db = daemon.db
@@ -244,52 +242,47 @@ async def test_session_closed_event_triggers_channel_deletion(daemon_with_mocked
     telegram_adapter = daemon.client.adapters["telegram"]
     telegram_adapter.delete_channel.reset_mock()
 
-    # Fire session_closed via event bus (same path as _handle_topic_closed)
-    event_bus.emit("session_closed", SessionLifecycleContext(session_id=session.session_id))
+    # Fire SESSION_CLOSED — this is a fact event, must be observer-only.
+    event_bus.emit(TeleClaudeEvents.SESSION_CLOSED, SessionLifecycleContext(session_id=session.session_id))
     await _wait_for_event_tasks()
 
-    # The chain must have called delete_channel on the telegram adapter.
-    # Expected: called twice due to db.close_session feedback loop
-    # (terminate_session → db.close_session → emits session_closed → terminate again)
-    assert telegram_adapter.delete_channel.call_count == 2
-
-    # Session must be closed in DB
-    updated = await test_db.get_session(session.session_id)
-    assert updated is not None
-    assert updated.closed_at is not None
+    # SESSION_CLOSED must NOT trigger delete_channel (observer-only).
+    telegram_adapter.delete_channel.assert_not_called()
 
 
 @pytest.mark.integration
-async def test_session_closed_event_for_already_closed_session(daemon_with_mocked_telegram):
-    """Re-emitting session_closed for an already-closed session still triggers delete_channel.
+async def test_session_close_requested_triggers_channel_deletion(daemon_with_mocked_telegram):
+    """SESSION_CLOSE_REQUESTED triggers delete_channel exactly once.
 
-    This covers UC1 (topic closed for closed session): the session has closed_at set,
-    but the topic was never deleted. Re-emitting session_closed should still clean up.
+    This is the correct close-intent path that replaces the old session_closed → terminate chain.
     """
     daemon = daemon_with_mocked_telegram
     test_db = daemon.db
 
     session = await test_db.create_session(
         computer_name="TestPC",
-        tmux_session_name="tc_already_closed",
+        tmux_session_name="tc_close_requested",
         last_input_origin=InputOrigin.TELEGRAM.value,
-        title="Already Closed Test",
+        title="Close Requested Test",
         adapter_metadata=_telegram_metadata(topic_id=99002),
     )
 
-    # Close the session first (simulates a session that was closed but topic not deleted)
-    await test_db.close_session(session.session_id)
-    await _wait_for_event_tasks()  # close_session also emits session_closed
+    await tmux_bridge.ensure_tmux_session(name="tc_close_requested", working_dir="/tmp")
 
     telegram_adapter = daemon.client.adapters["telegram"]
     telegram_adapter.delete_channel.reset_mock()
 
-    # Re-emit session_closed (simulates topic_closed handler or maintenance replay)
-    event_bus.emit("session_closed", SessionLifecycleContext(session_id=session.session_id))
+    # Fire SESSION_CLOSE_REQUESTED — the intent to close.
+    event_bus.emit(TeleClaudeEvents.SESSION_CLOSE_REQUESTED, SessionLifecycleContext(session_id=session.session_id))
     await _wait_for_event_tasks()
 
-    # delete_channel must still be called for already-closed sessions
+    # Must call delete_channel exactly once.
     telegram_adapter.delete_channel.assert_called_once()
+
+    # Session must be closed in DB.
+    updated = await test_db.get_session(session.session_id)
+    assert updated is not None
+    assert updated.closed_at is not None
 
 
 @pytest.mark.integration
@@ -338,8 +331,8 @@ async def test_terminate_session_calls_delete_channel(daemon_with_mocked_telegra
 
 
 @pytest.mark.integration
-async def test_session_closed_event_full_cleanup_chain(daemon_with_mocked_telegram):
-    """Event-driven session close performs full cleanup: tmux, workspace, channel, DB."""
+async def test_session_close_requested_full_cleanup_chain(daemon_with_mocked_telegram):
+    """SESSION_CLOSE_REQUESTED performs full cleanup: tmux, workspace, channel, DB."""
     daemon = daemon_with_mocked_telegram
     test_db = daemon.db
 
@@ -360,12 +353,12 @@ async def test_session_closed_event_full_cleanup_chain(daemon_with_mocked_telegr
     telegram_adapter = daemon.client.adapters["telegram"]
     telegram_adapter.delete_channel.reset_mock()
 
-    # Trigger via event bus
-    event_bus.emit("session_closed", SessionLifecycleContext(session_id=session.session_id))
+    # Trigger via SESSION_CLOSE_REQUESTED (the intent path, not the fact path)
+    event_bus.emit(TeleClaudeEvents.SESSION_CLOSE_REQUESTED, SessionLifecycleContext(session_id=session.session_id))
     await _wait_for_event_tasks()
 
-    # All cleanup must have happened (called twice due to db.close_session feedback loop)
-    assert telegram_adapter.delete_channel.call_count == 2
+    # delete_channel called exactly once (no double-delete)
+    telegram_adapter.delete_channel.assert_called_once()
 
     updated = await test_db.get_session(session.session_id)
     assert updated is not None
@@ -378,32 +371,35 @@ async def test_session_closed_event_full_cleanup_chain(daemon_with_mocked_telegr
 
 
 @pytest.mark.integration
-async def test_session_closed_idempotent_via_event_bus(daemon_with_mocked_telegram):
-    """Emitting session_closed twice is safe and idempotent."""
+async def test_session_close_requested_concurrent_is_idempotent(daemon_with_mocked_telegram):
+    """Concurrent SESSION_CLOSE_REQUESTED events call delete_channel exactly once.
+
+    Two events fired before any await completes: the concurrency guard (_cleanup_in_flight)
+    ensures only one terminate_session runs for the same session simultaneously.
+    """
     daemon = daemon_with_mocked_telegram
     test_db = daemon.db
 
     session = await test_db.create_session(
         computer_name="TestPC",
-        tmux_session_name="tc_idempotent_event",
+        tmux_session_name="tc_concurrent_close",
         last_input_origin=InputOrigin.TELEGRAM.value,
-        title="Idempotent Event Test",
+        title="Concurrent Close Test",
         adapter_metadata=_telegram_metadata(topic_id=99005),
     )
+
+    await tmux_bridge.ensure_tmux_session(name="tc_concurrent_close", working_dir="/tmp")
 
     telegram_adapter = daemon.client.adapters["telegram"]
     telegram_adapter.delete_channel.reset_mock()
 
-    # First emission
-    event_bus.emit("session_closed", SessionLifecycleContext(session_id=session.session_id))
+    # Fire both events before yielding — they race concurrently in the event loop.
+    event_bus.emit(TeleClaudeEvents.SESSION_CLOSE_REQUESTED, SessionLifecycleContext(session_id=session.session_id))
+    event_bus.emit(TeleClaudeEvents.SESSION_CLOSE_REQUESTED, SessionLifecycleContext(session_id=session.session_id))
     await _wait_for_event_tasks()
 
-    # Second emission (should not raise)
-    event_bus.emit("session_closed", SessionLifecycleContext(session_id=session.session_id))
-    await _wait_for_event_tasks()
-
-    # delete_channel called at least twice (idempotent cleanup)
-    assert telegram_adapter.delete_channel.call_count >= 2
+    # delete_channel must be called exactly once — concurrency guard blocks the duplicate.
+    telegram_adapter.delete_channel.assert_called_once()
 
 
 if __name__ == MAIN_MODULE:
