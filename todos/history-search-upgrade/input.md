@@ -12,12 +12,13 @@ A **mirror** is a purpose-built recall artifact, not a degraded transcript. The 
 
 **Evidence**: Real transcript analysis (session 1c178904, 813KB, 430 JSONL entries) showed 73 conversation-only messages (17% of entries). The conversation-only view is coherent — decisions, conclusions, and rationale are preserved because agents naturally summarize tool findings in their text responses.
 
-## Two-Tier Architecture
+## Architecture
 
-- **Mirrors travel** — lightweight recall index distributed across computers via Redis channels
+- **Mirrors stay home** — each computer generates and stores only its own session mirrors in its daemon DB
 - **Raw transcripts stay home** — forensic archive on the originating machine
+- **Cross-computer search is live** — `--computer <name>` sends a search request to the remote daemon API on-the-fly; no mirror data is replicated between computers
 
-For recall ("what did we discuss about X?") — the mirror answers perfectly.
+For recall ("what did we discuss about X?") — query the local mirrors, or query a remote daemon via API.
 For forensics ("what was the exact error?") — the raw transcript on the source machine has it.
 The mirror tells you WHAT happened and WHERE to look deeper.
 
@@ -32,13 +33,13 @@ The mirror tells you WHAT happened and WHERE to look deeper.
 - **Filtering**: strip empty text blocks (noise entries before tool work) and `<system-reminder>` tags in user messages (metadata, not conversation)
 - **Backfill**: one-time agent job processes all existing ~3,660 transcripts. Batch migration, runs once overnight. After that, incremental.
 
-### Distribution (how mirrors reach other computers)
+### Cross-Computer Search (live API, no replication)
 
-- Published via Redis Streams channels (deployment fanout pattern as template)
-- Channel: `mirrors:transcripts` (or scoped per project)
-- Remote daemons consume and materialize into their local mirrors table
-- Heartbeat + cache for computer discovery (existing infrastructure)
-- What travels on the channel is the same regardless of local storage — the protocol is independent of materialization strategy
+- **Hard requirement**: no mirror data is replicated between computers. Each computer stores only its own sessions.
+- `--computer <name>` sends a live search request to the remote daemon's API endpoint
+- Computer discovery uses existing heartbeat + cache infrastructure
+- Remote daemon exposes `GET /api/mirrors/search` and `GET /api/mirrors/<session_id>/transcript`
+- If remote daemon is unavailable, search fails gracefully with an error message
 
 ### Search (history.py upgrade)
 
@@ -59,7 +60,7 @@ The mirror tells you WHAT happened and WHERE to look deeper.
 
 ## Ownership
 
-- **Daemon**: generates mirrors (from transcripts), publishes to channel, consumes remote mirrors, writes to mirrors table
+- **Daemon**: generates mirrors (from local transcripts), writes to local mirrors table, serves mirror search API for remote queries
 - **history.py**: reads daemon DB in read-only mode. Works even when daemon is down (existing mirrors still searchable, no new generation)
 - **Agents**: use the history CLI tool. Never touch SQLite directly.
 
@@ -108,14 +109,11 @@ These are available via `--show SESSION --raw` drill-down to the source computer
 - System-reminder tags: live **inside user text block content**, not as separate metadata entries. Need regex strip of `<system-reminder>...</system-reminder>` from user message text.
 - Returns `StructuredMessage(role, type, text, timestamp, entry_index, file_index)`
 
-### Redis Channels (full module exists)
+### Daemon API (for remote search)
 
-- `teleclaude/channels/publisher.py`: `await publish(redis, channel, payload)` — XADD with JSON payload
-- `teleclaude/channels/consumer.py`: XREADGROUP with consumer groups, auto-ack
-- `teleclaude/channels/worker.py`: background polling worker (5s interval), filter matching, dispatch
-- `teleclaude/channels/api_routes.py`: HTTP API for publish/list
-- Channel naming: `channel:{project}:{topic}` — for mirrors: `channel:mirrors:conversations`
-- **Deployment fanout** (`teleclaude/deployment/handler.py`): reference pattern using XREAD without consumer groups, self-origin skip via daemon_id
+- Existing API server handles HTTP endpoints on the unix socket
+- Add mirror-specific endpoints: `/api/mirrors/search`, `/api/mirrors/<session_id>`, `/api/mirrors/<session_id>/transcript`
+- Computer discovery (heartbeat + cache) already exists for resolving remote daemon addresses
 
 ### Current History.py
 

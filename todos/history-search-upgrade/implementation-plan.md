@@ -2,7 +2,7 @@
 
 ## Overview
 
-The upgrade replaces brute-force JSONL scanning with a three-layer architecture: **generation** (daemon extracts conversation from transcripts into SQLite), **distribution** (Redis Streams fanout to other computers), **search** (FTS5 queries in `history.py`). Each layer is independent — generation works without distribution, search works without the daemon running. The implementation follows existing patterns: FTS5 from migration 005, fanout from deployment handler, read-only DB access from current `history.py`.
+The upgrade replaces brute-force JSONL scanning with two layers: **generation** (daemon extracts conversation from transcripts into local SQLite) and **search** (FTS5 queries in `history.py`, with live API calls for remote computers). Each computer stores only its own mirrors — no cross-computer replication. Remote search is on-the-fly via the daemon API. The implementation follows existing patterns: FTS5 from migration 005, daemon background workers, read-only DB access.
 
 ## Phase 1: Storage Layer
 
@@ -28,14 +28,12 @@ The upgrade replaces brute-force JSONL scanning with a three-layer architecture:
       updated_at TEXT NOT NULL
   )
   ```
-- [ ] Add indexes: `idx_mirrors_computer` on `(computer)`, `idx_mirrors_agent` on `(agent)`, `idx_mirrors_project` on `(project)`, `idx_mirrors_timestamp` on `(timestamp_start DESC)`
+- [ ] Add indexes: `idx_mirrors_agent` on `(agent)`, `idx_mirrors_project` on `(project)`, `idx_mirrors_timestamp` on `(timestamp_start DESC)`
 - [ ] Create `mirrors_fts` FTS5 virtual table: `USING fts5(title, conversation_text, content='mirrors', content_rowid='id')`
 - [ ] Create triggers: `mirrors_ai` (after insert), `mirrors_ad` (after delete), `mirrors_au` (after update) — same pattern as `memory_obs_ai/ad/au`
-- [ ] Implement `async def down(db)` to drop FTS triggers, virtual table, and content table
+- [ ] Implement `async def down(db)` to drop FTS triggers, virtual table, indexes, and content table
 
-### Task 1.2: ~~Register migration in runner~~ (Not needed)
-
-The migration runner auto-discovers `*.py` files matching `^\d{3}_` in the migrations directory. No explicit registration step is required — placing `025_add_mirrors_table.py` in the directory is sufficient.
+The migration runner auto-discovers `*.py` files matching `^\d{3}_` in the migrations directory — no explicit registration needed.
 
 ---
 
@@ -43,7 +41,7 @@ The migration runner auto-discovers `*.py` files matching `^\d{3}_` in the migra
 
 ### Task 2.1: Mirror generator module
 
-**File(s):** `teleclaude/mirrors/generator.py` (new)
+**File(s):** `teleclaude/mirrors/__init__.py` (new), `teleclaude/mirrors/generator.py` (new)
 
 - [ ] `generate_mirror(session_id, transcript_path, agent, computer, project, db)` → extracts conversation text using `extract_structured_messages(path, agent, include_tools=False, include_thinking=False)`, strips `<system-reminder>...</system-reminder>` from user messages via regex, joins into conversation_text, writes to `mirrors` table via `INSERT OR REPLACE`
 - [ ] `strip_system_reminders(text)` → regex `re.sub(r'<system-reminder>.*?</system-reminder>', '', text, flags=re.DOTALL).strip()`
@@ -58,7 +56,6 @@ The migration runner auto-discovers `*.py` files matching `^\d{3}_` in the migra
   1. Discovers transcript files via `_discover_transcripts()` pattern from all agents
   2. Compares file mtime against `mirrors.updated_at` to find sessions needing regeneration
   3. Calls `generate_mirror()` for each stale/new transcript
-  4. Publishes updated mirrors to Redis Streams channel (if Redis available)
 - [ ] Register as a daemon background task (follow pattern of existing daemon workers)
 - [ ] Graceful shutdown via cancellation token
 
@@ -69,73 +66,55 @@ The migration runner auto-discovers `*.py` files matching `^\d{3}_` in the migra
 - [ ] In the daemon's `_handle_session_closed` handler, trigger final mirror generation for the closing session
 - [ ] This supplements the background worker — ensures mirror is current when session ends
 
-### Task 2.4: Package init
-
-**File(s):** `teleclaude/mirrors/__init__.py` (new)
-
-- [ ] Export `generate_mirror`, `MirrorWorker` (or equivalent entry point)
-
----
-
-## Phase 3: Distribution Layer
-
-### Task 3.1: Mirror channel publisher
-
-**File(s):** `teleclaude/mirrors/channel.py` (new)
-
-- [ ] `publish_mirror(redis, mirror_data, daemon_id)` → publishes mirror to `mirrors:conversations` Redis Stream via XADD
-- [ ] Payload: `{session_id, computer, agent, project, title, timestamp_start, timestamp_end, conversation_text, message_count, metadata, daemon_id}`
-- [ ] Follow deployment fanout pattern from `teleclaude/deployment/handler.py` — include `daemon_id` for self-origin skip
-- [ ] Channel key: `mirrors:conversations` (constant)
-
-### Task 3.2: Mirror channel consumer
-
-**File(s):** `teleclaude/mirrors/channel.py`
-
-- [ ] `consume_mirrors(redis, db, daemon_id)` → polls `mirrors:conversations` stream via XREAD (not XREADGROUP — fanout pattern)
-- [ ] Skip messages from own `daemon_id` (self-origin skip)
-- [ ] Materialize remote mirrors into local `mirrors` table via `INSERT OR REPLACE`
-- [ ] Track last-read stream ID for resume after restart
-
-### Task 3.3: Integrate channel into daemon startup
+### Task 2.4: Wire into daemon startup/shutdown
 
 **File(s):** `teleclaude/daemon.py`
 
-- [ ] Start mirror consumer as background task alongside existing channel workers
-- [ ] Inject Redis accessor using same pattern as `configure_deployment_handler(get_redis=...)`
-- [ ] Start mirror background worker as daemon task
+- [ ] Start mirror worker as background task in `start()`
+- [ ] Cancel mirror worker in `stop()`
 
 ---
 
-## Phase 4: Search Upgrade
+## Phase 3: Search Upgrade
 
-### Task 4.1: FTS5 search in history.py
+### Task 3.1: FTS5 search in history.py
 
 **File(s):** `scripts/history.py`
 
-- [ ] Replace `scan_agent_history()` + `_scan_one()` with FTS5 query: `SELECT ... FROM mirrors JOIN mirrors_fts ON mirrors.id = mirrors_fts.rowid WHERE mirrors_fts MATCH ? AND agent = ? ORDER BY timestamp_start DESC`
+- [ ] Replace `scan_agent_history()` + `_scan_one()` with FTS5 query against local `mirrors_fts`
 - [ ] Resolve daemon DB path: read `TELECLAUDE_DB_PATH` env var, fall back to `~/.teleclaude/teleclaude.db`. Open in read-only mode (`file:{path}?mode=ro`)
 - [ ] Preserve existing output format (table with #, Date/Time, Agent, Project, Topic, Session columns)
-- [ ] Preserve `--agent` filtering (already exists, now filters via SQL WHERE)
-- [ ] Add `--computer` flag: default searches local mirrors, `--computer <name>` routes to remote daemon API
+- [ ] Preserve `--agent` filtering (now via SQL WHERE on `mirrors.agent`)
+- [ ] Add `--computer` flag: when specified, send live search request to remote daemon API instead of querying local DB
 
-### Task 4.2: Remote search via daemon API
+### Task 3.2: Daemon mirror search API
 
-**File(s):** `teleclaude/mirrors/api_routes.py` (new), `scripts/history.py`
+**File(s):** `teleclaude/mirrors/api_routes.py` (new)
 
-- [ ] Daemon endpoint: `GET /api/mirrors/search?q=<terms>&agent=<agent>&limit=<n>` → returns JSON array of mirror results
-- [ ] `history.py --computer <name>` resolves computer to daemon API URL (using existing computer discovery) and calls the search endpoint
-- [ ] Fallback: if remote daemon unreachable, print error and suggest local search
+Endpoints for remote search (used by `--computer` flag):
 
-### Task 4.3: Show mirror and raw transcript
+- [ ] `GET /api/mirrors/search?q=<terms>&agent=<agent>&limit=<n>` → returns JSON array of mirror search results from the local mirrors table
+- [ ] `GET /api/mirrors/<session_id>` → returns single mirror record (conversation text)
+- [ ] `GET /api/mirrors/<session_id>/transcript` → streams the raw JSONL transcript file content for forensic drill-down
+
+### Task 3.3: Remote search in history.py
 
 **File(s):** `scripts/history.py`
 
-- [ ] `--show SESSION`: fetch mirror from local DB by session_id, render `conversation_text` as formatted output (user/assistant turns with timestamps)
-- [ ] `--show SESSION --raw`: if mirror's `computer` matches local computer name, render from local JSONL (existing `show_transcript()`). If remote, fetch full transcript from source computer's daemon API endpoint
-- [ ] Daemon endpoint: `GET /api/mirrors/<session_id>/raw` → streams the raw JSONL transcript file content
+- [ ] `--computer <name>`: resolve computer to daemon API URL using existing computer discovery (heartbeat/cache)
+- [ ] Send search query to `GET /api/mirrors/search` on the remote daemon
+- [ ] Display results in the same format as local search
+- [ ] Fallback: if remote daemon unreachable, print error
 
-### Task 4.4: Register API routes
+### Task 3.4: Show mirror and raw transcript
+
+**File(s):** `scripts/history.py`
+
+- [ ] `--show SESSION`: fetch mirror from local DB by session_id, render `conversation_text` as formatted output
+- [ ] `--show SESSION --raw`: if session is local, render from local JSONL (existing `show_transcript()`). If remote (session not found locally), fetch from source computer's `GET /api/mirrors/<session_id>/transcript`
+- [ ] Add `--raw` flag to argparse
+
+### Task 3.5: Register API routes
 
 **File(s):** `teleclaude/daemon.py` or API route registration module
 
@@ -143,9 +122,9 @@ The migration runner auto-discovers `*.py` files matching `^\d{3}_` in the migra
 
 ---
 
-## Phase 5: Backfill
+## Phase 4: Backfill
 
-### Task 5.1: Backfill job
+### Task 4.1: Backfill job
 
 **File(s):** `teleclaude/mirrors/backfill.py` (new)
 
@@ -156,27 +135,27 @@ The migration runner auto-discovers `*.py` files matching `^\d{3}_` in the migra
 
 ---
 
-## Phase 6: Validation
+## Phase 5: Validation
 
-### Task 6.1: Tests
+### Task 5.1: Tests
 
 - [ ] Test mirror generation from a sample JSONL transcript (conversation extraction, system-reminder stripping, empty transcript handling)
 - [ ] Test FTS5 search against mirrors table (match, no-match, multi-word AND logic)
-- [ ] Test `--computer` flag routing (local vs remote)
-- [ ] Test channel publish/consume round-trip (mirror published → consumed → materialized)
+- [ ] Test `--computer` flag routing (mock daemon API)
+- [ ] Test mirror search API endpoints
 - [ ] Test migration up/down
 - [ ] Run `make test`
 
-### Task 6.2: Quality Checks
+### Task 5.2: Quality Checks
 
 - [ ] Run `make lint`
 - [ ] Verify no unchecked implementation tasks remain
 - [ ] Verify daemon starts cleanly with migration applied
-- [ ] Verify `history.py` works with daemon down (read-only access to existing mirrors)
+- [ ] Verify `history.py` works with daemon down (read-only access to local mirrors)
 
 ---
 
-## Phase 7: Review Readiness
+## Phase 6: Review Readiness
 
 - [ ] Confirm requirements are reflected in code changes
 - [ ] Confirm implementation tasks are all marked `[x]`
