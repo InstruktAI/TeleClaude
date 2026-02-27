@@ -1,5 +1,3 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: harmonize-agent-notifications
-  after:
-  - ucap-cutover-parity-validation
+[]
