@@ -1,5 +1,10 @@
 # Delivered work items. Newest first.
 
+- slug: deployment-channels
+  date: '2026-02-27'
+  title: 'Phase 3: Channel config, webhook handler, update executor, Redis fan-out'
+  commit: b5d07b2d0ff08cb7c4f7b07a97c7c6a37df19f3c
+  description: 'Phase 3: Channel config, webhook handler, update executor, Redis fan-out'
 - slug: integration-events-model
   date: '2026-02-27'
   title: 'Step 2: persist review_approved/finalize_ready/branch_pushed events and

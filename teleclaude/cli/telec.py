@@ -1252,8 +1252,22 @@ def _git_short_commit_hash() -> str:
 
 def _handle_version() -> None:
     """Print runtime version metadata."""
+    from teleclaude.config.loader import load_project_config
+    from teleclaude.utils import resolve_project_config_path
+
     commit_hash = _git_short_commit_hash()
-    print(f"TeleClaude v{__version__} (channel: alpha, commit: {commit_hash})")
+    project_root = Path(__file__).resolve().parents[2]
+    try:
+        project_cfg_path = resolve_project_config_path(project_root)
+        project_config = load_project_config(project_cfg_path)
+        channel = project_config.deployment.channel
+        pinned_minor = project_config.deployment.pinned_minor
+    except Exception:
+        channel = "alpha"
+        pinned_minor = ""
+
+    channel_str = f"{channel} ({pinned_minor})" if channel == "stable" and pinned_minor else channel
+    print(f"TeleClaude v{__version__} (channel: {channel_str}, commit: {commit_hash})")
 
 
 def _maybe_kill_tui_session() -> None:

@@ -1,0 +1,21 @@
+{
+  "slug": "deployment-channels",
+  "title": "Automated Deployment Pipeline: Channels, Webhook Handler, and Fan-Out",
+  "version": "1.0.0",
+  "delivered_date": "2026-02-27",
+  "merge_commit": "b5d07b2d0ff08cb7c4f7b07a97c7c6a37df19f3c",
+  "metrics": {
+    "implementation_tasks": 31,
+    "tests_added": 34,
+    "files_changed": 5,
+    "review_rounds": 3,
+    "findings_resolved": 18
+  },
+  "five_acts": {
+    "act1_hook": "TeleClaude daemons now listen for GitHub webhook events and automatically pull/checkout the right code version — no manual intervention required.",
+    "act2_problem": "Before this feature, deployments were fully manual: someone had to SSH in, run git pull, restart the service. With multiple daemons across machines, coordinating a rollout was error-prone and slow.",
+    "act3_journey": "Built a three-layer deployment pipeline: a contract-based webhook handler that validates incoming GitHub events, a fan-out mechanism using Redis Streams so all daemons stay in sync, and an executor that runs git pull/checkout → migrations → make install → restart. Three review rounds caught and fixed a double-execution bug, a fragile version prefix-match, a subprocess leak on timeout, and a cross-channel contamination issue.",
+    "act4_resolution": "Each daemon now self-identifies via daemon_id to avoid executing its own fan-out message. Migrations run off the event loop via asyncio.to_thread. The executor kills orphaned make install processes on timeout. Channel equality guards prevent beta events from triggering stable deployments.",
+    "act5_new_world": "Push a tag to GitHub → all daemons on that channel update themselves within seconds. Zero manual SSH. Zero coordination overhead. Deployments are now a background event, not a scheduled task."
+  }
+}
