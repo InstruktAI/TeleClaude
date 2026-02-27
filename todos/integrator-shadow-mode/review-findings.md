@@ -1,183 +1,136 @@
 # Review Findings: integrator-shadow-mode
 
-## Review Scope
+## Round 1 (Previous)
 
-- Branch: `integrator-shadow-mode` (1 commit: `b279a74c`)
-- Files reviewed: 8 changed files (3 implementation, 2 test, 1 spec, 1 init, 1 demo)
-- Review lanes: code, tests, types (parallel)
-- Tests: 2324 passed, 106 skipped (9.65s)
-- Lint: all checks passed, pyright 0 errors
+All findings addressed. Fixes committed. See commit references below.
 
----
+### Fixes Applied (Round 1)
 
-## Critical
-
-### C1: Implementation plan checkboxes all unchecked
-
-**File:** `todos/integrator-shadow-mode/implementation-plan.md`
-
-All task checkboxes remain `- [ ]`. The review procedure requires all implementation-plan tasks to be checked before review can approve. The builder did not mark tasks complete.
-
-### C2: Build gates all unchecked
-
-**File:** `todos/integrator-shadow-mode/quality-checklist.md`, Build Gates section
-
-All build gate checkboxes remain unchecked. The review procedure requires the Build section to be fully checked before review can approve.
-
-### C3: Integrator can block itself via clearance probe
-
-**File:** `teleclaude/core/integration/runtime.py:126-133`
-
-`classify_standalone_sessions` does not exclude the integrator's own session. The integrator session has `initiator_session_id=None` and is not referenced as anyone's initiator, so it qualifies as standalone. When the integrator performs housekeeping commits, its tail output will contain `git commit` which matches `_MAIN_ACTIVITY_PATTERNS`. The integrator will detect its own activity and block itself indefinitely.
-
-**Fix:** Thread `owner_session_id` into `classify_standalone_sessions` as an exclusion parameter:
-
-```python
-def classify_standalone_sessions(
-    sessions: tuple[SessionSnapshot, ...],
-    *,
-    exclude_session_id: str | None = None,
-) -> tuple[SessionSnapshot, ...]:
-```
-
-### C4: Unit tests marked as integration tests
-
-**File:** `tests/unit/test_integrator_shadow_mode.py:20`
-
-```python
-pytestmark = pytest.mark.integration
-```
-
-Unit tests in `tests/unit/` carry the `integration` marker. Under marker-filtered CI (`-m "not integration"`), these 5 tests will be silently skipped. Remove the marker or change to `pytest.mark.unit`.
+- C1: Implementation plan checkboxes marked complete (`a3a70f74`).
+- C2: Build Gates checkboxes marked complete (`5838cbc7`).
+- C3: Clearance probe excludes integrator owner session; regression coverage added (`438b9ff6`).
+- C4: Removed incorrect `pytest.mark.integration` from unit tests (`aa6c332b`).
+- I1: `ShadowOutcome.reasons` uses fallback when readiness reasons empty; test added (`85facc42`).
+- I2: Constructor validation for `canonical_main_pusher` when `shadow_mode=False`; test added (`d45cbd3c`).
+- I3: Lease-loss test added (`bb2988c3`).
+- I4: Clearance retry-loop test added (`b2c68d73`).
+- I5: Non-shadow-mode canonical push test added (`fac226cc`).
+- I6: Queue status transition DAG enforced; invalid-transition tests added (`9627501b`).
+- I7: Tests for `readiness is None` and `SUPERSEDED` paths added (`19d0fb31`).
 
 ---
 
-## Important
+## Round 2
 
-### I1: `ShadowOutcome.reasons` is empty when readiness reasons are empty on would_block path
+### Review Context
 
-**File:** `teleclaude/core/integration/runtime.py:257-260`
+- **Review round:** 2
+- **Scope:** Full branch diff from `merge-base` to HEAD
+- **Verification:** `make lint` passes (pyright 0 errors), `make test` passes (2333 passed, 106 skipped, 8.53s)
+- **Round 1 fixes:** All verified in codebase
 
-When `readiness.status != "READY"` and `readiness.reasons` is an empty tuple, the queue gets the sentinel reason string `"candidate failed readiness recheck"`, but `ShadowOutcome.reasons` receives the empty tuple. The outcome sink and downstream consumers see `would_block` with no explanation.
+### Round 1 Fix Verification
 
-**Fix:** Use the sentinel reason in the outcome when readiness reasons are empty:
+| Finding               | Status | Evidence                                                                                                                             |
+| --------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| C3: Self-blocking     | Fixed  | `classify_standalone_sessions` has `exclude_session_id` param (runtime.py:129); called with owner exclusion (runtime.py:110,282,297) |
+| C4: Wrong marker      | Fixed  | No `pytestmark` at unit test file top                                                                                                |
+| I1: Empty reasons     | Fixed  | Fallback at runtime.py:270; test at unit:234                                                                                         |
+| I2: Constructor guard | Fixed  | Validation at runtime.py:199-200; test at unit:216                                                                                   |
+| I3: Lease loss test   | Fixed  | `test_shadow_runtime_raises_when_lease_lost_during_drain` at unit:274                                                                |
+| I4: Clearance retry   | Fixed  | `test_shadow_runtime_retries_clearance_until_blockers_clear` at unit:334                                                             |
+| I5: Non-shadow push   | Fixed  | `test_shadow_runtime_calls_canonical_main_pusher_when_shadow_mode_disabled` at unit:381                                              |
+| I6: Transition DAG    | Fixed  | `_ALLOWED_STATUS_TRANSITIONS` at queue.py:16; enforced in `_set_status` at queue.py:196; test at unit:145                            |
+| I7: Superseded/None   | Fixed  | Tests at unit:421 and unit:452                                                                                                       |
 
-```python
-resolved_reasons = readiness.reasons if readiness.reasons else (reason,)
-return ShadowOutcome(outcome="would_block", key=key, emitted_at=now_iso, reasons=resolved_reasons)
-```
+### Paradigm-Fit Assessment
 
-### I2: `shadow_mode=False` without `canonical_main_pusher` silently skips push
+- **Data flow:** Uses existing `CandidateKey`/`CandidateReadiness` from `readiness_projection`. No data layer bypass.
+- **Component reuse:** Composes existing types compositionally. No copy-paste duplication.
+- **Pattern consistency:** Follows established integration package conventions — frozen dataclasses, TypedDict payloads, atomic file writes via temp+`os.replace`, custom error classes inheriting `RuntimeError`.
 
-**File:** `teleclaude/core/integration/runtime.py:176-177, 262-263`
+**Result: PASS**
 
-When `shadow_mode=False` and `canonical_main_pusher is None`, the runtime marks candidates as "integrated" without actually pushing to main. This configuration invariant should be caught at construction time.
+### Requirements Tracing
 
-**Fix:** Add constructor validation:
+| Requirement                | Status  | Evidence                                                                                                                                              |
+| -------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR1: Singleton runtime     | Covered | `lease.py` atomic acquire; concurrency test (unit:22)                                                                                                 |
+| FR2: Queue discipline      | Covered | `queue.py` FIFO by `ready_at`; FIFO test (unit:105); transition DAG enforcement (queue.py:16)                                                         |
+| FR3: Shadow execution      | Covered | Readiness recheck + `would_integrate`/`would_block`; pusher provided but never called in shadow (unit:161)                                            |
+| FR4: Main branch clearance | Covered | Session classification with owner exclusion; tail heuristic; retry loop; housekeeping commit; tests at unit:334,492,517,528                           |
+| FR5: Operational safety    | Covered | Lease release in `finally`; queue `_recover_in_progress_items` on init; durable checkpoint; restart test (integration:16); lease-loss test (unit:274) |
+| Architecture impact        | Covered | `integration-orchestrator.md` updated with `main_branch_clearance` section and lifecycle step                                                         |
 
-```python
-if not shadow_mode and canonical_main_pusher is None:
-    raise ValueError("canonical_main_pusher is required when shadow_mode=False")
-```
+All five verification requirements from `requirements.md` are met.
 
-### I3: No test for lease loss during drain processing
+### Important
 
-**File:** `teleclaude/core/integration/runtime.py:293-302`
+#### 1. Weak "main" substring guard in clearance heuristic
 
-`_renew_or_raise` raises `IntegrationRuntimeError` when the lease is lost. This is a critical safety invariant (prevents dual processors). No test exercises this path. A regression could silently allow continued processing after lease loss.
+**File:** `teleclaude/core/integration/runtime.py:151`
 
-### I4: No test for clearance retry loop
+The `"main" not in normalized` check is a substring match. Words like "domain", "maintain", "mainline" contain "main" and pass the guard. Combined with the `\bgit\s+commit\b` pattern at line 43 (which has no main-branch context), this can cause false-positive blocking of the clearance loop.
 
-**File:** `teleclaude/core/integration/runtime.py:268-291`
+**Impact:** Safe direction — over-blocks, never under-blocks. Acceptable for shadow mode. Should be fixed before cutover.
 
-The clearance wait loop (blocking sessions -> sleep -> retry -> eventually clear) is never tested end-to-end. Tests verify the `MainBranchClearanceProbe` classification in isolation but not the runtime's retry/wait behavior. FR4 requires this: "This cycle repeats indefinitely."
+**Fix:** Replace `if "main" not in normalized:` with `if not re.search(r"\bmain\b", normalized):`.
 
-### I5: No test for non-shadow-mode canonical push path
+#### 2. `finally` block can mask original exception
 
-**File:** `teleclaude/core/integration/runtime.py:262-263`
+**File:** `teleclaude/core/integration/runtime.py:244-250`
 
-The branch at line 262 (`if not self._shadow_mode and self._canonical_main_pusher is not None`) only has its `True` branch tested (shadow mode skips push). The `False` branch (non-shadow mode calls pusher) has zero coverage.
+If `_write_checkpoint` raises in the `finally` block while an `IntegrationRuntimeError` is already in flight (e.g., from lease loss), the original exception is replaced. Hinders root-cause diagnosis.
 
-### I6: Queue `_set_status` enforces no state machine transition rules
+**Fix:** Wrap `_write_checkpoint` in the `finally` with `try/except Exception: pass`.
 
-**File:** `teleclaude/core/integration/queue.py:171-207`
+#### 3. Dirty-tracked-path clearance retry sub-branches untested
 
-Any status-to-status transition is accepted. The valid DAG is:
+**File:** `tests/unit/test_integrator_shadow_mode.py`
 
-```
-queued -> in_progress -> integrated | blocked | superseded
-in_progress -> queued (recovery only)
-```
+`_wait_for_main_clearance` has four paths for dirty tracked paths: (a) committer returns False, (b) no committer provided, (c) post-commit re-check still dirty, (d) committer succeeds. Only (d) is tested via `test_runtime_commits_housekeeping_changes_before_processing`. The three retry sub-paths have no coverage.
 
-But `queued -> integrated` or `blocked -> queued` are not rejected. Current callers follow the DAG by convention, not enforcement.
+#### 4. `lease_acquired=False` runtime path untested
 
-### I7: No test for SUPERSEDED or readiness=None paths
+**File:** `tests/unit/test_integrator_shadow_mode.py`
 
-**File:** `teleclaude/core/integration/runtime.py:247-260`
+`drain_ready_candidates` returns `RuntimeDrainResult(outcomes=(), lease_acquired=False)` when the lease is busy. No test verifies this path.
 
-`_apply_candidate` has three branches: `readiness is None`, `status == "SUPERSEDED"`, and `status != "READY"`. Only the `READY` and `NOT_READY` paths are tested. The `None` and `SUPERSEDED` paths have zero coverage.
+### Suggestions
+
+#### 5. `read()` acquires exclusive mutex unnecessarily
+
+**File:** `teleclaude/core/integration/lease.py:193-197`
+
+Read-only operation holds the file-based directory lock. Since `_persist_leases` uses atomic `os.replace`, reads without locking are safe.
+
+#### 6. TOCTOU in stale-lock breaking
+
+**File:** `teleclaude/core/integration/lease.py:224-240`
+
+Between `stat()` and `rmdir()`, another process can remove the stale lock and acquire a fresh one. The second `rmdir()` could remove the new lock. With default `lock_stale_seconds=30`, practically negligible. Document constraint or consider advisory locks for cutover.
+
+#### 7. `LeaseAcquireResult.holder` ambiguity on self-re-acquire
+
+**File:** `teleclaude/core/integration/lease.py:109-115`
+
+On self-re-acquire, `holder=current` duplicates `lease=current`. No current caller inspects `holder` after success.
+
+#### 8. `enqueue_ready_candidates` public API untested
+
+**File:** `teleclaude/core/integration/runtime.py:204-209`
+
+The READY-candidate filter method has no direct test. Low risk (thin wrapper).
+
+### Why No Critical Issues (Round 2 Justification)
+
+1. **Paradigm-fit verified:** All new modules follow the existing integration package patterns (file-backed state, atomic writes, frozen dataclasses, TypedDict payloads, Callable dependency injection). No data layer bypass or component duplication found.
+2. **Requirements validated:** All FR1-FR5 requirements traced to implementation and test coverage. Verification requirements 1-5 from `requirements.md` each have at least one corresponding test.
+3. **Copy-paste duplication checked:** `_resolve_now` and timestamp utilities are duplicated across `lease.py` and `queue.py` as private module helpers with module-specific error types. No behavioral duplication detected in public API.
+4. **Round 1 critical fixes all verified:** C3 (self-blocking) confirmed fixed with exclusion parameter; C4 (wrong marker) confirmed removed.
 
 ---
 
-## Suggestions
+## Verdict: APPROVE
 
-### S1: `_resolve_now` duplicated across modules
-
-`lease.py:356-361` and `queue.py:392-397` contain identical `_resolve_now` functions. Extract to a shared utility.
-
-### S2: Timestamps stored as strings in all domain types
-
-`LeaseRecord`, `QueueItem`, `ShadowOutcome` all use `str` for timestamps. `_parse_iso8601`/`_format_iso8601` are duplicated with inconsistent names (`_parse_iso8601` vs `_parse_timestamp`). A shared `Timestamp` type or storing `datetime` in domain types and formatting at serialization boundaries would reduce error surface.
-
-### S3: Runtime Callable aliases not exported in `__init__.py`
-
-`runtime.py` defines 9 Callable aliases (`ReadinessLookup`, `SessionsProvider`, etc.) that are not in `__all__`. The `readiness_projection.py` aliases (`ReachabilityChecker`, `IntegratedChecker`) are exported. Inconsistent API surface.
-
-### S4: Checkpoint is write-only
-
-`_RuntimeCheckpointPayload` at `runtime.py:148-155` is written but never read. If intended for crash recovery, a reader is needed. If observability-only, document the intent.
-
-### S5: `_wait_for_main_clearance` has no timeout
-
-`runtime.py:268-291` loops indefinitely. If clearance is never achieved, the runtime holds the lease forever. Consider a `max_clearance_attempts` parameter.
-
-### S6: `read()` acquires exclusive mutation lock unnecessarily
-
-`lease.py:193-197` — The `read` method holds the file lock for a non-mutating operation. Could cause contention with observability/health-check callers.
-
----
-
-## Paradigm-Fit Assessment
-
-1. **Data flow**: Implementation follows the existing event store pattern in `teleclaude/core/integration/`. File-backed persistence with atomic write (tmp+fsync+rename) matches the established pattern. Dependency injection via Callable aliases matches the existing `readiness_projection.py` style.
-
-2. **Component reuse**: `CandidateKey` and `CandidateReadiness` are reused from `readiness_projection.py`. No copy-paste duplication detected. The `_resolve_now`, `_parse_timestamp`, and `_format_timestamp` utilities are duplicated across modules (S1/S2 above) but are simple leaf functions.
-
-3. **Pattern consistency**: Frozen dataclasses, TypedDict payloads, Literal status types, and keyword-only constructors are consistent with adjacent code. Re-exports in `__init__.py` follow the established package convention.
-
----
-
-## Verdict: REQUEST CHANGES
-
-**Blocking issues:**
-
-- C1/C2: Builder did not mark implementation plan or build gate checkboxes
-- C3: Integrator self-blocking via clearance probe (functional bug)
-- C4: Wrong pytest marker on unit tests (CI risk)
-- I1: Empty reasons on would_block outcome (data loss)
-- I2: Missing constructor validation for non-shadow config (safety invariant)
-- I3-I5, I7: Missing tests for critical safety paths (lease loss, clearance retry, non-shadow push, SUPERSEDED/None readiness)
-
-## Fixes Applied
-
-- C1: Implementation plan checkboxes marked complete in `implementation-plan.md` (`a3a70f74`).
-- C2: Build Gates checkboxes marked complete in `quality-checklist.md` (`5838cbc7`).
-- C3: Clearance probe/classification now excludes the integrator owner session; added regression coverage (`438b9ff6`).
-- C4: Removed incorrect `pytest.mark.integration` usage from `tests/unit/test_integrator_shadow_mode.py` (`aa6c332b`).
-- I1: `ShadowOutcome.reasons` now uses fallback reason when readiness reasons are empty; added test (`85facc42`).
-- I2: Added constructor validation requiring `canonical_main_pusher` when `shadow_mode=False`; added test (`d45cbd3c`).
-- I3: Added lease-loss test ensuring drain aborts on renewal ownership loss (`bb2988c3`).
-- I4: Added clearance retry-loop test covering sleep/retry-until-clear behavior (`b2c68d73`).
-- I5: Added non-shadow-mode test asserting canonical push execution (`fac226cc`).
-- I6: Enforced queue status transition DAG in `_set_status`; added invalid-transition tests (`9627501b`).
-- I7: Added tests for `readiness is None` and `status == "SUPERSEDED"` runtime paths (`19d0fb31`).
+All round 1 findings addressed. Round 2 findings are either safe-direction heuristic looseness (over-blocks, never under-blocks), diagnostic quality improvements, or secondary test coverage gaps. None compromise the shadow-mode validation contract. The Important findings (#1, #2) should be addressed before cutover to non-shadow mode.
