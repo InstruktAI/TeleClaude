@@ -1,8 +1,28 @@
 # Review Findings: fix-sticky-removal-layout-issues
 
-## Review Scope
+## Round 2
 
-Files changed (from merge-base `70895901`):
+Re-review after merge with main (`41e19cdd`). No code changes since round 1 APPROVE — merge only touched orchestrator-managed files (`state.yaml`, `quality-checklist.md`, `review-findings.md`).
+
+### Verification
+
+- `git diff 8ea37947..HEAD -- teleclaude/ tests/`: empty — zero code drift
+- `git diff main -- teleclaude/ tests/`: identical to round 1 diff
+- `make test-unit`: 2260 passed, 106 skipped
+- `make lint`: ruff + pyright = 0 errors
+- Pane bridge ordering re-verified: `on_sticky_changed` → `on_preview_changed` → PaneWriter coalescing produces correct final snapshot (`pane_bridge.py:140-161`)
+
+### Round 2 Findings
+
+(none — no code changes since round 1)
+
+---
+
+## Round 1
+
+### Review Scope
+
+Files changed (from merge-base):
 
 - `teleclaude/cli/tui/state.py` — reducer change
 - `teleclaude/cli/tui/views/sessions.py` — click + keyboard path changes
@@ -45,7 +65,7 @@ No duplication found. The click path (`on_session_row_pressed`) and keyboard pat
 
 ### Manual verification evidence
 
-Interactive TUI verification was not possible in this headless worktree. The builder documented this gap and covered all interaction scenarios through automated regression tests:
+Interactive TUI verification was not possible in this headless review. The builder covered all interaction scenarios through automated regression tests:
 
 - Reducer: same-session, different-session, no-prior-preview cases
 - View: keyboard (action_toggle_preview) and click (on_session_row_pressed) paths
