@@ -55,6 +55,8 @@ type: 'design'
   are coalesced latest-wins within the current non-critical segment.
 - **Critical preservation**: critical classes are never dropped; queue pressure evicts bursty
   rows first and preserves critical ordering.
+- **Per-session claim hysteresis**: claim admission pauses at a high watermark and only resumes
+  after draining below a low watermark to prevent claim/defer churn.
 
 ## Primary flows
 
@@ -99,8 +101,9 @@ sequenceDiagram
     loop Every 1s
         Worker->>DB: fetch_hook_outbox_batch(now, limit=25, lock_cutoff=30s)
         DB->>Worker: Pending rows
-        loop For each row
-            Worker->>DB: claim_hook_outbox(row_id, now, lock_cutoff)
+        Worker->>Worker: Skip rows for sessions paused by claim watermarks
+        Worker->>DB: claim_hook_outbox_batch(row_ids, now, lock_cutoff)
+        loop For each claimed row
             alt Claimed successfully
                 Worker->>Handler: Process event (e.g., parse transcript, update title)
                 Handler->>Adapters: Emit domain events
@@ -122,6 +125,20 @@ sequenceDiagram
 | -------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | critical | `session_start`, `user_prompt_submit`, `agent_stop`, `session_end`, `notification`, `error` | Never dropped; strict ordering preserved.                |
 | bursty   | `tool_use`, `tool_done` (and non-critical unknowns by default)                              | Coalesced latest-wins; oldest bursty rows evicted first. |
+
+### 3b. Per-session claim watermarks
+
+- `high_watermark` (default `max_pending - 8`): when outstanding per-session depth reaches this threshold, new DB claims for that session are paused.
+- `low_watermark` (default `high_watermark / 3`): claims resume only after depth drains to this threshold or below.
+- Outstanding depth includes both queued and in-flight rows.
+- This hysteresis avoids tight claim/requeue loops and protects other sessions from starvation.
+
+### 3c. Per-session critical reserve
+
+- `critical_reserve` (default `8`): reserves queue slots for critical events.
+- Effective bursty capacity is `max_pending - critical_reserve`.
+- When bursty rows hit that cap, oldest bursty rows are evicted first (latest-wins behavior) even before the queue is globally full.
+- Critical rows can still evict bursty rows when queue is full; critical rows are never dropped.
 
 ### 4. Retry Backoff Schedule
 

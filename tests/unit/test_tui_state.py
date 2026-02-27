@@ -1,6 +1,7 @@
 """Unit tests for TUI reducer highlight transitions."""
 
 from teleclaude.cli.tui.state import Intent, IntentType, PreviewState, TuiState, reduce_state
+from teleclaude.cli.tui.types import StickySessionInfo
 
 
 def test_toggle_sticky_clears_active_preview() -> None:
@@ -18,6 +19,43 @@ def test_toggle_sticky_clears_active_preview() -> None:
 
     assert state.sessions.preview is None
     assert [s.session_id for s in state.sessions.sticky_sessions] == ["sess-sticky"]
+
+
+def test_remove_sticky_clears_preview_for_same_session() -> None:
+    """Removing a sticky session should clear preview if it was previewing that session."""
+    state = TuiState()
+    state.sessions.sticky_sessions = [StickySessionInfo("sess-sticky")]
+    state.sessions.preview = PreviewState("sess-sticky")
+
+    reduce_state(
+        state,
+        Intent(
+            IntentType.TOGGLE_STICKY,
+            {"session_id": "sess-sticky", "active_agent": "claude"},
+        ),
+    )
+
+    assert state.sessions.sticky_sessions == []
+    assert state.sessions.preview is None
+
+
+def test_remove_sticky_preserves_preview_for_different_session() -> None:
+    """Removing a sticky should not clear preview for a different session."""
+    state = TuiState()
+    state.sessions.sticky_sessions = [StickySessionInfo("sess-A"), StickySessionInfo("sess-B")]
+    state.sessions.preview = PreviewState("sess-B")
+
+    reduce_state(
+        state,
+        Intent(
+            IntentType.TOGGLE_STICKY,
+            {"session_id": "sess-A", "active_agent": "claude"},
+        ),
+    )
+
+    assert [s.session_id for s in state.sessions.sticky_sessions] == ["sess-B"]
+    assert state.sessions.preview is not None
+    assert state.sessions.preview.session_id == "sess-B"
 
 
 def test_clear_preview_intent_removes_active_preview() -> None:

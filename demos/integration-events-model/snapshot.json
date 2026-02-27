@@ -1,0 +1,24 @@
+{
+  "slug": "integration-events-model",
+  "title": "Define and persist the canonical integration event model",
+  "version": "1.0.0",
+  "delivered_date": "2026-02-26",
+  "merge_commit": "3a2b0b8c47cf9c68fb61f4d08d91453465f09d7a",
+  "metrics": {
+    "implementation_plan_tasks_total": 11,
+    "implementation_plan_tasks_completed": 11,
+    "review_rounds": 3,
+    "important_findings_resolved": 9,
+    "tests_passed": 2311,
+    "tests_skipped": 106,
+    "lint_errors": 0,
+    "type_errors": 0
+  },
+  "five_acts": {
+    "act_1_context": "Readiness decisions lacked durable, auditable event evidence and drifted from canonical contract fields.",
+    "act_2_build": "Implemented canonical integration event models, append-only idempotent storage, and readiness projection with supersession rules.",
+    "act_3_conflict": "Review surfaced nine Important issues spanning tie-breaking, replay semantics, validation attribution, duplication, typing, and missing coverage.",
+    "act_4_resolution": "All nine findings were fixed with targeted code changes and regression tests, then re-reviewed to APPROVE with no Important/Critical findings.",
+    "act_5_outcome": "Mainline now has durable event ingestion and deterministic readiness computation for integration candidates, plus demo artifacts for presentation."
+  }
+}

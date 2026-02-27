@@ -1,0 +1,20 @@
+{
+  "slug": "deployment-migrations",
+  "title": "Deployment Migration Framework",
+  "version": "1.0.0",
+  "delivered_date": "2026-02-26",
+  "merge_commit": "3b43dc8c1fed747e047e3f74dea5a01950889746",
+  "metrics": {
+    "files_added": 6,
+    "lines_added": 602,
+    "tests_added": 178,
+    "tasks_completed": 7
+  },
+  "five_acts": {
+    "challenge": "Breaking changes between TeleClaude versions had no safe migration path — deployments could silently corrupt state or fail with no recovery mechanism.",
+    "build": "Introduced a versioned migration framework: numbered scripts under migrations/v{semver}/ with a check()/migrate() contract, an atomic-write state file for resumability, and a pure-stdlib runner that orders and applies migrations from any version range.",
+    "gauntlet": "Approved in round 1 with no critical findings. Three important findings (untested edge-case paths) deferred to next cycle per reviewer recommendation.",
+    "numbers": "6 new files, 602 lines, 178 new tests, 2290 total passing. Zero external dependencies.",
+    "whats_next": "Enables deployment-channels and deployment-cleanup phases. The migration contract is now the foundation for any future schema or config evolution in the deployment pipeline."
+  }
+}

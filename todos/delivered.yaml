@@ -1,5 +1,31 @@
 # Delivered work items. Newest first.
 
+- slug: deployment-channels
+  date: '2026-02-27'
+  title: 'Phase 3: Channel config, webhook handler, update executor, Redis fan-out'
+  commit: b5d07b2d0ff08cb7c4f7b07a97c7c6a37df19f3c
+  description: 'Phase 3: Channel config, webhook handler, update executor, Redis fan-out'
+- slug: integration-events-model
+  date: '2026-02-27'
+  title: 'Step 2: persist review_approved/finalize_ready/branch_pushed events and
+    readiness projection'
+  commit: 3a2b0b8c47cf9c68fb61f4d08d91453465f09d7a
+  description: 'Step 2: persist review_approved/finalize_ready/branch_pushed events
+    and readiness projection'
+- slug: skills-procedure-taxonomy-alignment
+  date: '2026-02-26'
+  title: Extract procedure logic from agents/skills into docs procedures and align
+    skill wrappers with breath-aware taxonomy (exploratory, skills-only scope).
+  commit: 40830d507bcaf414590b9c45741ed0a6cb261524
+  description: Extract procedure logic from agents/skills into docs procedures and
+    align skill wrappers with breath-aware taxonomy (exploratory, skills-only scope).
+- slug: deployment-migrations
+  date: '2026-02-26'
+  title: 'Phase 2: Migration manifest format, runner, version utilities (no CLI —
+    internal library)'
+  commit: 3b43dc8c1fed747e047e3f74dea5a01950889746
+  description: 'Phase 2: Migration manifest format, runner, version utilities (no
+    CLI — internal library)'
 - slug: adapter-output-qos-scheduler
   date: '2026-02-26'
   title: Adapter-aware output QoS system to prevent Telegram flood-control churn under

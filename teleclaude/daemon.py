@@ -58,6 +58,11 @@ from teleclaude.core.session_utils import (
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todo_watcher import TodoWatcher
 from teleclaude.core.voice_assignment import get_voice_env_vars
+from teleclaude.deployment.handler import (
+    DEPLOYMENT_FANOUT_CHANNEL,
+    configure_deployment_handler,
+    handle_deployment_event,
+)
 from teleclaude.hooks.api_routes import set_contract_registry
 from teleclaude.hooks.bridge import EventBusBridge
 from teleclaude.hooks.config import load_hooks_config
@@ -140,11 +145,33 @@ HOOK_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_BASE_BACKOFF_S"
 HOOK_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_MAX_BACKOFF_S", "60"))
 HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S: float = float(os.getenv("HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S", "5"))
 HOOK_OUTBOX_SESSION_MAX_PENDING: int = int(os.getenv("HOOK_OUTBOX_SESSION_MAX_PENDING", "32"))
+HOOK_OUTBOX_SESSION_CRITICAL_RESERVE: int = int(os.getenv("HOOK_OUTBOX_SESSION_CRITICAL_RESERVE", "8"))
+HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK: int = int(
+    os.getenv(
+        "HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK",
+        str(max(1, HOOK_OUTBOX_SESSION_MAX_PENDING - 8)),
+    )
+)
+HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK: int = int(
+    os.getenv(
+        "HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK",
+        str(max(0, HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK // 3)),
+    )
+)
 HOOK_OUTBOX_SUMMARY_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_SUMMARY_INTERVAL_S", "15"))
 HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD: int = int(os.getenv("HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD", "20"))
 HOOK_OUTBOX_LAG_WARN_THRESHOLD_S: float = float(os.getenv("HOOK_OUTBOX_LAG_WARN_THRESHOLD_S", "3"))
 HOOK_OUTBOX_WARN_LOG_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_WARN_LOG_INTERVAL_S", "15"))
 HOOK_OUTBOX_MAX_LAG_SAMPLES: int = int(os.getenv("HOOK_OUTBOX_MAX_LAG_SAMPLES", "2048"))
+
+if HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK > HOOK_OUTBOX_SESSION_MAX_PENDING:
+    HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK = HOOK_OUTBOX_SESSION_MAX_PENDING  # pyright: ignore[reportConstantRedefinition]
+if HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK >= HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK:
+    HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK = max(0, HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK - 1)  # pyright: ignore[reportConstantRedefinition]
+if HOOK_OUTBOX_SESSION_CRITICAL_RESERVE < 0:
+    HOOK_OUTBOX_SESSION_CRITICAL_RESERVE = 0  # pyright: ignore[reportConstantRedefinition]
+if HOOK_OUTBOX_SESSION_CRITICAL_RESERVE > HOOK_OUTBOX_SESSION_MAX_PENDING:
+    HOOK_OUTBOX_SESSION_CRITICAL_RESERVE = HOOK_OUTBOX_SESSION_MAX_PENDING  # pyright: ignore[reportConstantRedefinition]
 
 HOOK_EVENT_CLASS_CRITICAL: frozenset[str] = frozenset(
     {
@@ -337,6 +364,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._hook_outbox_last_summary_at = time.monotonic()
         self._hook_outbox_last_backlog_warn_at: dict[str, float] = {}
         self._hook_outbox_last_lag_warn_at: dict[str, float] = {}
+        self._hook_outbox_claim_paused_sessions: set[str] = set()
         self.resource_monitor_task: asyncio.Task[object] | None = None
         self.launchd_watch_task: asyncio.Task[object] | None = None
         self._start_time = time.time()
@@ -439,6 +467,40 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             if item.classification == "bursty":
                 return idx
         return None
+
+    @staticmethod
+    def _bursty_item_count(pending: list[_HookOutboxQueueItem]) -> int:
+        return sum(1 for item in pending if item.classification == "bursty")
+
+    @staticmethod
+    def _bursty_capacity_limit() -> int:
+        return max(0, HOOK_OUTBOX_SESSION_MAX_PENDING - HOOK_OUTBOX_SESSION_CRITICAL_RESERVE)
+
+    async def _session_outbox_depth(self, session_id: str) -> int:
+        """Return outstanding per-session depth including in-flight items."""
+        queue_state = self._session_outbox_queues.get(session_id)
+        if queue_state is None:
+            return 0
+        async with queue_state.lock:
+            return max(len(queue_state.pending), len(queue_state.claimed_row_ids))
+
+    async def _should_pause_hook_outbox_claims(self, session_id: str) -> bool:
+        """Decide whether claims should be paused for a session via watermark hysteresis."""
+        depth = await self._session_outbox_depth(session_id)
+        paused_sessions = self._hook_outbox_claim_paused_sessions
+        is_paused = session_id in paused_sessions
+
+        if is_paused:
+            if depth <= HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK:
+                paused_sessions.discard(session_id)
+                return False
+            return True
+
+        if depth >= HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK:
+            paused_sessions.add(session_id)
+            return True
+
+        return False
 
     def _maybe_warn_hook_backlog(self, session_id: str, depth: int) -> None:
         if depth < HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD:
@@ -744,11 +806,25 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     await asyncio.sleep(HOOK_OUTBOX_POLL_INTERVAL_S)
                     continue
 
+                claimable_rows: list[HookOutboxRow] = []
                 for row in rows:
+                    session_id = str(row["session_id"])
+                    if await self._should_pause_hook_outbox_claims(session_id):
+                        continue
+                    claimable_rows.append(row)
+
+                if not claimable_rows:
+                    self._maybe_log_hook_outbox_summary()
+                    await asyncio.sleep(HOOK_OUTBOX_POLL_INTERVAL_S)
+                    continue
+
+                row_ids = [int(row["id"]) for row in claimable_rows]
+                claimed_ids = await db.claim_hook_outbox_batch(row_ids, now_iso, lock_cutoff)
+
+                for row in claimable_rows:
                     if self.shutdown_event.is_set():
                         break
-                    claimed = await db.claim_hook_outbox(row["id"], now_iso, lock_cutoff)
-                    if not claimed:
+                    if int(row["id"]) not in claimed_ids:
                         continue
 
                     session_id = str(row["session_id"])
@@ -803,7 +879,21 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     if row_id:
                         claimed_row_ids.add(row_id)
                 else:
-                    if len(pending) >= HOOK_OUTBOX_SESSION_MAX_PENDING:
+                    bursty_limit = self._bursty_capacity_limit()
+                    if bursty_limit == 0:
+                        dropped_rows.append(row)
+                        enqueued = False
+                    else:
+                        while self._bursty_item_count(pending) >= bursty_limit:
+                            drop_idx = self._find_oldest_bursty_index(pending)
+                            if drop_idx is None:
+                                break
+                            dropped_row = pending.pop(drop_idx).row
+                            dropped_row_id = int(dropped_row.get("id") or 0)
+                            dropped_rows.append(dropped_row)
+                            if dropped_row_id:
+                                claimed_row_ids.discard(dropped_row_id)
+                    if enqueued and len(pending) >= HOOK_OUTBOX_SESSION_MAX_PENDING:
                         drop_idx = self._find_oldest_bursty_index(pending)
                         if drop_idx is not None:
                             dropped_row = pending.pop(drop_idx).row
@@ -858,10 +948,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 queue_depth=queue_depth,
                 max_pending=HOOK_OUTBOX_SESSION_MAX_PENDING,
             )
-            retry_at = (datetime.now(timezone.utc) + timedelta(seconds=HOOK_OUTBOX_POLL_INTERVAL_S)).isoformat()
+            attempt = int(row.get("attempt_count", 0)) + 1
+            delay = self._hook_outbox_backoff(attempt)
+            retry_at = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
             await db.mark_hook_outbox_failed(
                 row_id=row_id or row["id"],
-                attempt_count=int(row.get("attempt_count", 0)),
+                attempt_count=attempt,
                 next_attempt_at=retry_at,
                 error="backpressure:session_queue_full",
             )
@@ -997,6 +1089,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return
 
         self._session_outbox_queues.pop(ctx.session_id, None)
+        self._hook_outbox_claim_paused_sessions.discard(ctx.session_id)
         worker = self._session_outbox_workers.pop(ctx.session_id, None)
         if worker and not worker.done():
             worker.cancel()
@@ -1582,6 +1675,35 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             )
         )
 
+        # Built-in deployment channel handler.
+        redis_transport = self.client.adapters.get("redis")
+        _get_redis_fn = redis_transport._get_redis if isinstance(redis_transport, RedisTransport) else None
+        configure_deployment_handler(_get_redis_fn)
+        handler_registry.register("deployment_update", handle_deployment_event)
+        await contract_registry.register(
+            Contract(
+                id="deployment-github",
+                source_criterion=PropertyCriterion(match="github"),
+                type_criterion=PropertyCriterion(match=["push", "release"]),
+                target=Target(handler="deployment_update"),
+                source="programmatic",
+            )
+        )
+        await contract_registry.register(
+            Contract(
+                id="deployment-fanout",
+                source_criterion=PropertyCriterion(match="deployment"),
+                type_criterion=PropertyCriterion(match="version_available"),
+                target=Target(handler="deployment_update"),
+                source="programmatic",
+            )
+        )
+        if isinstance(redis_transport, RedisTransport):
+            self._deployment_fanout_task = asyncio.create_task(
+                self._deployment_fanout_consumer(dispatcher, redis_transport)
+            )
+            self._deployment_fanout_task.add_done_callback(self._log_background_task_exception("deployment_fanout"))
+
         # Register built-in normalizers.
         normalizer_registry = NormalizerRegistry()
         register_builtin_normalizers(normalizer_registry)
@@ -1643,6 +1765,47 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._contract_sweep_task.add_done_callback(self._log_background_task_exception("contract_sweep"))
 
         logger.info("Webhook service initialized (%d contracts loaded)", len(contract_registry._cache))
+
+    async def _deployment_fanout_consumer(self, dispatcher: HookDispatcher, redis_transport: "RedisTransport") -> None:
+        """Consume deployment version_available events from Redis Stream and dispatch locally.
+
+        Messages published by this daemon carry a daemon_id matching config.computer.name.
+        The consumer skips those to avoid double-executing updates that this daemon already
+        triggered directly (github-source path calls execute_update before publishing).
+        Remote daemons have different daemon_id values and will process the message normally.
+        """
+        from teleclaude.hooks.webhook_models import HookEvent as _HookEvent
+
+        last_id = "$"  # only new messages after startup
+        logger.info("Deployment fanout consumer started (channel=%s)", DEPLOYMENT_FANOUT_CHANNEL)
+        while not self.shutdown_event.is_set():
+            try:
+                redis = await redis_transport._get_redis()
+                results = await redis.xread({DEPLOYMENT_FANOUT_CHANNEL: last_id}, count=10, block=5000)
+                if not results:
+                    continue
+                for _stream, messages in results:
+                    for msg_id, data in messages:
+                        last_id = msg_id.decode() if isinstance(msg_id, bytes) else str(msg_id)
+                        event_json = data.get(b"event") or data.get("event")
+                        if event_json is None:
+                            continue
+                        if isinstance(event_json, bytes):
+                            event_json = event_json.decode()
+                        try:
+                            event = _HookEvent.from_json(event_json)
+                            if event.properties.get("daemon_id") == config.computer.name:
+                                logger.debug("Deployment fanout: skipping self-originated message")
+                                continue
+                            await dispatcher.dispatch(event)
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning("Deployment fanout: dispatch failed: %s", exc)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Deployment fanout consumer error: %s", exc)
+                await asyncio.sleep(5)
+        logger.info("Deployment fanout consumer stopped")
 
     async def _contract_sweep_loop(self) -> None:
         """Periodically deactivate expired contracts."""
@@ -1795,6 +1958,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             workers = list(self._session_outbox_workers.values())
             self._session_outbox_workers.clear()
             self._session_outbox_queues.clear()
+            self._hook_outbox_claim_paused_sessions.clear()
             for worker in workers:
                 worker.cancel()
             for worker in workers:
@@ -1994,4 +2158,9 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        import uvloop  # type: ignore[import-not-found]
+
+        uvloop.run(main())
+    except ImportError:
+        asyncio.run(main())

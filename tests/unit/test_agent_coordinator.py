@@ -975,6 +975,7 @@ async def test_handle_agent_stop_emits_completed_and_cancels_stall(coordinator, 
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(10)
 async def test_stall_detection_transitions_to_awaiting_then_stalled(coordinator):
     """_schedule_stall_detection transitions accepted → awaiting_output → stalled on timeout."""
     import asyncio
@@ -990,7 +991,18 @@ async def test_stall_detection_transitions_to_awaiting_then_stalled(coordinator)
             patch("teleclaude.core.agent_coordinator.STALL_THRESHOLD_SECONDS", 0.02),
         ):
             coordinator._schedule_stall_detection(session_id, last_activity_at="2026-01-01T00:00:00+00:00")
-            await asyncio.sleep(0.05)
+            deadline = asyncio.get_running_loop().time() + 0.5
+            statuses: list[str] = []
+            while asyncio.get_running_loop().time() < deadline:
+                statuses = [ctx.status for event, ctx in emitted if event == TeleClaudeEvents.SESSION_STATUS]  # type: ignore[union-attr]
+                if "awaiting_output" in statuses and "stalled" in statuses:
+                    break
+                await asyncio.sleep(0.01)
+            else:
+                pytest.fail(f"Expected awaiting_output and stalled statuses, got: {statuses}")
+
+    coordinator._cancel_stall_task(session_id)
+    await asyncio.sleep(0)
 
     statuses = [ctx.status for event, ctx in emitted if event == TeleClaudeEvents.SESSION_STATUS]  # type: ignore[union-attr]
     assert "awaiting_output" in statuses
