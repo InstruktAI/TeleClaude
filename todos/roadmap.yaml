@@ -26,3 +26,42 @@
 - slug: guaranteed-inbound-delivery
   description: Core inbound queue for guaranteed user message delivery — adapter-agnostic,
     per-session FIFO, durable retry
+- slug: mesh-architecture
+  after:
+  - notification-service
+  description: 'P2P mesh: DNS bootstrap, gossip discovery, HTTPS transport, burst
+    mitigation'
+- slug: mesh-trust-model
+  after:
+  - event-envelope-schema
+  - mesh-architecture
+  description: Per-event trust evaluation, immune system model, trust rings, sovereignty
+    handles
+- slug: event-envelope-schema
+  after:
+  - notification-service
+  description: 'Five-layer envelope: Identity, Semantic, Data, Affordances, Resolution
+    + core taxonomy'
+- slug: community-governance
+  after:
+  - mesh-architecture
+  - event-envelope-schema
+  description: 'PR-based governance: two-round attention, time-boxed voting, AI+human
+    democracy'
+- slug: community-manager-agent
+  after:
+  - community-governance
+  - notification-service
+  description: 'GitHub event handlers: voting threshold, todo creation, feedback summarization'
+- slug: service-publication
+  after:
+  - mesh-architecture
+  - event-envelope-schema
+  - mesh-trust-model
+  description: 'Services as events: local contracts, mesh publish, transactional capabilities'
+- slug: telec-init-enrichment
+  after:
+  - notification-service
+  - event-envelope-schema
+  description: 'Rich project bootstrapping: deep analysis, doc scaffolding, intelligence
+    seeding'

@@ -22,12 +22,12 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [x] Requirements traced to implemented behavior — SC-1 through SC-13 verified; SC-8/SC-9 partial (cursor tracking gap)
+- [x] Requirements traced to implemented behavior — SC-1 through SC-13 all pass (round 2)
 - [x] Deferrals justified and not hiding required scope — no deferrals.md; none needed
 - [x] Findings written in `review-findings.md`
-- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES
-- [x] Critical issues resolved or explicitly blocked — no critical issues; 1 Important (cursor follow)
-- [x] Test coverage and regression risk assessed — existing tests pass; no new tests justified by builder
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — APPROVE (round 2)
+- [x] Critical issues resolved or explicitly blocked — round 1 Important #1 fixed in eca2516e
+- [x] Test coverage and regression risk assessed — existing tests pass; no new tests justified
 
 ## Finalize Gates (Finalizer)
 

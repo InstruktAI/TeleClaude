@@ -1,9 +1,14 @@
 # Review Findings: tui-footer-polish
 
+## Round 2 (re-review after fix)
+
+Previous verdict: REQUEST CHANGES (cursor tracking, Important #1).
+Fix applied in `eca2516e`. This round verifies the fix and re-evaluates.
+
 ## Paradigm-Fit Assessment
 
-1. **Data flow**: Implementation correctly uses `telec roadmap move` CLI via subprocess, consistent with how `action_new_project` uses `telec config patch`. Post-mutation `_refresh_data()` triggers full tree rebuild. Follows established pattern.
-2. **Component reuse**: `_format_binding_item()` modified in-place as required. `check_action()` extended using the same gating pattern. No copy-paste duplication found.
+1. **Data flow**: Implementation uses `telec roadmap move` CLI via subprocess, consistent with `action_new_project`'s use of `telec config patch`. Post-mutation `_refresh_data()` triggers full tree rebuild. Follows established pattern.
+2. **Component reuse**: `_format_binding_item()` modified in-place as required. `check_action()` extended using the same gating pattern. No copy-paste duplication.
 3. **Pattern consistency**: Bindings use the same `Binding()` constructor. Actions follow `action_*` naming. Error handling uses `self.app.notify()` with severity. All consistent with adjacent code.
 
 ## Critical
@@ -12,30 +17,14 @@ None.
 
 ## Important
 
-### 1. Cursor does not follow moved item after Shift+Up/Down
+None. Previous Important #1 (cursor tracking) resolved in `eca2516e`.
 
-**File:** `teleclaude/cli/tui/views/preparation.py:581, 611`
+### Verification of fix
 
-After a successful `telec roadmap move`, `_refresh_data()` triggers `_rebuild()` which clears and remounts all widgets. The `cursor_index` stays at the same numeric position, but the item that was there has moved away. This means:
+- `action_move_todo_up` (`preparation.py:581`): `self.cursor_index -= 1` before `_refresh_data()`. Edge case protected by early return when `prev_slug is None`.
+- `action_move_todo_down` (`preparation.py:612`): `self.cursor_index += 1` before `_refresh_data()`. Edge case protected by early return when `next_slug is None`.
 
-- **Shift+Up**: The item moves to position N-1, but cursor stays at N — now pointing at the item that slid down. Visually confusing; repeated Shift+Up reorders different items each time instead of moving the same item progressively.
-- **Shift+Down**: Same issue in reverse.
-
-**Fix**: Adjust `cursor_index` before calling `_refresh_data()`:
-
-```python
-# In action_move_todo_up, after successful subprocess:
-if self.cursor_index > 0:
-    self.cursor_index -= 1
-self.app._refresh_data()
-
-# In action_move_todo_down, after successful subprocess:
-if self.cursor_index < len(self._nav_items) - 1:
-    self.cursor_index += 1
-self.app._refresh_data()
-```
-
-This ensures the cursor follows the moved item through rebuilds, matching the expected UX for list reordering (SC-8, SC-9).
+Fix is correct and minimal.
 
 ## Suggestions
 
@@ -43,48 +32,54 @@ This ensures the cursor follows the moved item through rebuilds, matching the ex
 
 **File:** `teleclaude/cli/tui/widgets/telec_footer.py:98-103`
 
-The `not enabled` and `dim` branches produce identical styles (`Style(bold=True, dim=True)`). Could be simplified to:
+The `not enabled` and `dim` branches produce identical styles (`Style(bold=True, dim=True)`). Could be:
 
 ```python
 key_style = Style(bold=True, dim=(not enabled or dim))
 ```
 
-Functionally correct as-is; purely a readability note.
+Functionally correct as-is; readability note only.
 
 ### 2. Blocking subprocess.run in move actions
 
 **File:** `teleclaude/cli/tui/views/preparation.py:570-576, 600-606`
 
-`subprocess.run()` blocks the event loop during Shift+Up/Down. In practice `telec roadmap move` is a fast local YAML operation (<50ms), and the existing codebase uses blocking subprocess in comparable action handlers (`action_new_project`). No regression, but converting to `asyncio.create_subprocess_exec` would eliminate any stuttering during rapid repeated reordering.
+`subprocess.run()` blocks the event loop during Shift+Up/Down. In practice `telec roadmap move` is fast (<50ms), and the codebase uses blocking subprocess in comparable action handlers. No regression, but `asyncio.create_subprocess_exec` would be cleaner.
+
+### 3. Build Gates and implementation-plan checkboxes not marked
+
+**Files:** `todos/tui-footer-polish/quality-checklist.md`, `todos/tui-footer-polish/implementation-plan.md`
+
+All Build Gates and implementation-plan task checkboxes remain `[ ]`. The work is complete per code evidence and `state.yaml` (`build: complete`). This is a clerical omission — not blocking since the orchestrator validated build completion.
 
 ## Requirements Trace
 
-| SC    | Status  | Evidence                                                                                                          |
-| ----- | ------- | ----------------------------------------------------------------------------------------------------------------- |
-| SC-1  | Pass    | `NewProjectModal #modal-box { width: 60; max-height: 20; }` in `telec.tcss:372-375`                               |
-| SC-2  | Pass    | `StartSessionModal #modal-box { width: 64; max-height: 32; }` unchanged — already compact                         |
-| SC-3  | Pass    | `Style(bold=True)` without explicit color; terminal default adapts to light theme                                 |
-| SC-4  | Pass    | Same mechanism; bold without color renders bright in dark theme                                                   |
-| SC-5  | Pass    | `key_display` changed from unicode symbols to `"q"`, `"r"`, `"t"` in `app.py:94,127-128`                          |
-| SC-6  | Pass    | `Binding("a", "cycle_animation", "Anim")` in `app.py:129`; handler cycles off→periodic→party                      |
-| SC-7  | Pass    | `Binding("v", "toggle_tts", "Voice")` in `app.py:130`; `s` conflict documented                                    |
-| SC-8  | Partial | Shift+Up moves item in roadmap ✓, but cursor doesn't follow (see Important #1)                                    |
-| SC-9  | Partial | Shift+Down moves item in roadmap ✓, but cursor doesn't follow (see Important #1)                                  |
-| SC-10 | Pass    | `check_action` gates `move_todo_up/down` — disabled on non-root nodes, ComputerHeader, ProjectHeader, TodoFileRow |
-| SC-11 | Pass    | Actions call `telec roadmap move --before/--after` via subprocess, then `_refresh_data()`                         |
-| SC-12 | Pass    | Regression audit documented in implementation-plan.md; all 12 prior criteria verified                             |
-| SC-13 | Pass    | Builder reports 2426 tests passed, lint clean                                                                     |
+| SC    | Status | Evidence                                                                                                          |
+| ----- | ------ | ----------------------------------------------------------------------------------------------------------------- |
+| SC-1  | Pass   | `NewProjectModal #modal-box { width: 60; max-height: 20; }` in `telec.tcss:372-375`                               |
+| SC-2  | Pass   | `StartSessionModal #modal-box { width: 64; max-height: 32; }` unchanged — already compact                         |
+| SC-3  | Pass   | `Style(bold=True)` without explicit color; terminal default adapts to light theme                                 |
+| SC-4  | Pass   | Same mechanism; bold without color renders bright in dark theme                                                   |
+| SC-5  | Pass   | `key_display` changed from unicode symbols to `"q"`, `"r"`, `"t"` in `app.py:94,127-128`                          |
+| SC-6  | Pass   | `Binding("a", "cycle_animation", "Anim")` in `app.py:129`; handler cycles off→periodic→party                      |
+| SC-7  | Pass   | `Binding("v", "toggle_tts", "Voice")` in `app.py:130`; `s` conflict documented in docstring                       |
+| SC-8  | Pass   | Shift+Up moves item in roadmap; cursor follows via `cursor_index -= 1` (fix `eca2516e`)                           |
+| SC-9  | Pass   | Shift+Down moves item in roadmap; cursor follows via `cursor_index += 1` (fix `eca2516e`)                         |
+| SC-10 | Pass   | `check_action` gates `move_todo_up/down` — disabled on non-root nodes, ComputerHeader, ProjectHeader, TodoFileRow |
+| SC-11 | Pass   | Actions call `telec roadmap move --before/--after` via subprocess, then `_refresh_data()`                         |
+| SC-12 | Pass   | Regression audit documented in implementation-plan.md; all 12 prior criteria verified                             |
+| SC-13 | Pass   | Builder reports 2426 tests passed, lint clean                                                                     |
 
 ## Test Coverage Assessment
 
-No new unit tests added. Builder justified this as all changes being UI/widget-level (CSS rules, key_display labels, action delegation). Existing guardrail tests (`test_create_todo_modal.py`, `test_no_fallbacks.py`) still pass. The behavioral gap (cursor not following moved item) would not have been caught by unit tests regardless — it's a UX integration concern.
+No new unit tests added. Builder justified this as all changes being UI/widget-level (CSS rules, key_display labels, action delegation). Existing guardrail tests still pass. Acceptable given the scope.
 
-## Verdict: REQUEST CHANGES
+## Why No Critical/Important Issues
 
-One Important finding: cursor must follow the moved item on Shift+Up/Down to satisfy SC-8 and SC-9 intent. The fix is a 2-line change per action method.
+1. **Paradigm-fit verified**: Data flow uses established CLI subprocess pattern. Component reuse confirmed — `_format_binding_item()` extended, not duplicated. `check_action()` follows existing gating pattern.
+2. **Requirements validated**: All 13 success criteria traced to code evidence. SC-8/SC-9 now pass after cursor fix.
+3. **Copy-paste duplication checked**: `_find_root_todo_neighbors()` is new standalone logic. `action_move_todo_up`/`action_move_todo_down` share structure but differ in direction semantics (--before vs --after, cursor decrement vs increment) — not a duplication issue.
 
-## Fixes Applied
+## Verdict: APPROVE
 
-- Issue: Cursor did not follow moved root todo after `Shift+Up` / `Shift+Down` (`Important #1`).
-- Fix: Updated `action_move_todo_up` and `action_move_todo_down` to adjust `cursor_index` before `_refresh_data()` so selection follows the moved item through rebuild.
-- Commit: `eca2516e`
+All Important findings from round 1 resolved. SC-1 through SC-13 pass. Code follows established patterns. 3 minor suggestions carried forward (non-blocking).
