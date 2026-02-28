@@ -1,0 +1,4 @@
+# Input: animations-full-color
+
+<!-- Brain dump — raw thoughts, ideas, context. Prepare when ready. -->
+Right now, our animations are the are not full color or they are not adhering to the rich color palette that we now have since we started using the textual library. I think if I'm not mistaken, I think we have many more colors, and those are now not used in the animation, which is resorting to like 16 colors or something. It is also not having any gradient animations. I would love to see gradient animations like glows, like potentially clouds, you know, where the where where the letters are lightly blue and you see like clouds passing, you see things floating up like a like like balloons. I I have all of these ideas about these animations, and I just want you to come up with a new improvement on this. So this is nice. This is going to be your cup of tea. What do you think? 
