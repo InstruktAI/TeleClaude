@@ -62,7 +62,7 @@ special processing was applied to the content — it's raw material for the writ
 **Why it matters:** The dump command is an ingestion primitive. It doesn't interpret,
 edit, or route. It captures and signals.
 
-### Step 3: The notification (when notification-service is live)
+### Step 3: The notification (when event-platform is live)
 
 When the notification service is built and running, the dump command also fires a
 `content.dumped` event. This triggers the writer agent to pick up the content, verify

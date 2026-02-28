@@ -173,7 +173,7 @@ Unresolved notification remains visible for needs_decision.
 
 ## Risks
 
-1. **Notification service not yet built**: this handler depends on `notification-service`.
+1. **Notification service not yet built**: this handler depends on `event-platform`.
    Cannot be built until that dependency ships. Mitigate: design to the notification
    service's public API contract from its requirements/plan.
 2. **Over-rewriting human-authored plans**: mitigate with bounded edits, uncertainty

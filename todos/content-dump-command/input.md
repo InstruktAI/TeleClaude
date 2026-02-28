@@ -31,7 +31,7 @@ publisher. The human's dump becomes a polished piece without touching it again.
 
 ## Dependency
 
-Depends on notification-service — same pattern as `telec todo dump`. The notification
+Depends on event-platform — same pattern as `telec todo dump`. The notification
 triggers downstream processing.
 
 ## CLI shape (preliminary)

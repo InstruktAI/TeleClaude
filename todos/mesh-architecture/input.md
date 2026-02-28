@@ -97,6 +97,6 @@ arrive as a steady stream, not a wall. Simple convention, no infrastructure need
 
 ## Dependencies
 
-- notification-service (the internal event processing that mesh events feed into)
+- event-platform (the internal event processing that mesh events feed into)
 - event-envelope-schema (the format of what travels between nodes)
 - mesh-trust-model (how received events are evaluated)

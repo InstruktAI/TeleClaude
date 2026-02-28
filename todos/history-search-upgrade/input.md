@@ -78,7 +78,7 @@ The old `scripts/history.py` gets **rewritten** — the brute-force JSONL scanne
 
 ## Operational Reporting
 
-The mirror worker reports its progress and completion through the **notification service** (see `todos/notification-service/`). This is a dependency — the notification service must exist before the mirror worker can report through it.
+The mirror worker reports its progress and completion through the **notification service** (see `todos/event-platform/`). This is a dependency — the notification service must exist before the mirror worker can report through it.
 
 Progress notifications: "Mirror indexing: 0/3660" → "1200/3660" → "3660/3660 complete in 4m 12s". These use the notification service's progress update semantics (silent in-place updates until terminal completion).
 
@@ -155,7 +155,7 @@ The mirror worker (daemon module in `teleclaude/mirrors/worker.py`) implements i
 
 ## Dependencies
 
-- **notification-service**: mirror worker reports progress/completion through the notification service. Must exist before mirror worker can report properly. However, this is a soft dependency — the mirror worker can be built first with a simple log-based fallback, and notification integration added when the notification service is ready.
+- **event-platform**: mirror worker reports progress/completion through the notification service. Must exist before mirror worker can report properly. However, this is a soft dependency — the mirror worker can be built first with a simple log-based fallback, and notification integration added when the notification service is ready.
 
 ## Design Process
 

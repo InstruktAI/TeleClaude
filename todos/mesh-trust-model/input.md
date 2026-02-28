@@ -96,4 +96,4 @@ centralizing control, which kills the model.
 
 - event-envelope-schema (the format that carries trust-relevant metadata)
 - mesh-architecture (the transport layer these evaluations operate on)
-- notification-service (the internal processor that applies trust evaluations)
+- event-platform (the internal processor that applies trust evaluations)

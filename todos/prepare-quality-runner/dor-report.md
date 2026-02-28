@@ -23,10 +23,10 @@ All eight DOR gates are satisfied:
    within uncertainty boundary, reporter writes dor-report.md. Daemon integration via
    startup wiring.
 5. **Research complete** — No third-party dependencies. Gate auto-satisfied.
-6. **Dependencies & preconditions** — `notification-service` listed as `after` dependency
+6. **Dependencies & preconditions** — `event-platform` listed as `after` dependency
    in roadmap.yaml. That service has DOR pass (score 8), build pending. The dependency
    is tracked and the handler is designed to the notification service's public API contract.
-   Build cannot start until notification-service ships — this is expected, not a blocker.
+   Build cannot start until event-platform ships — this is expected, not a blocker.
 7. **Integration safety** — Additive: new handler module wired into daemon startup.
    No destabilization risk to existing code.
 8. **Tooling impact** — No tooling changes. Gate auto-satisfied.
@@ -58,14 +58,14 @@ no internal imports, daemon-hosted lifecycle).
 The draft report listed three blockers. Gate assessment reclassifies all three as
 implementation notes — none block readiness:
 
-1. **notification-service build pending** — Tracked `after` dependency in roadmap.yaml.
+1. **event-platform build pending** — Tracked `after` dependency in roadmap.yaml.
    The handler's preparation is ready; its build waits for the dependency to ship.
    This is normal dependency management, not a DOR failure.
 
-2. **Handler registration API** — The notification-service plan defines `EventCatalog`
+2. **Handler registration API** — The event-platform plan defines `EventCatalog`
    with registration, `EventEnvelope` as the public model, and API endpoints for
    claim/resolve. The exact dispatch pattern (push vs. pull) will solidify during
-   the notification-service build. The prepare-quality-runner requirements correctly
+   the event-platform build. The prepare-quality-runner requirements correctly
    describe the behavioral contract (react to events, claim via API, assess, resolve
    via API) without over-specifying the dispatch mechanism.
 
@@ -80,14 +80,14 @@ implementation notes — none block readiness:
 - Validated all 8 DOR gates against artifacts.
 - Verified plan-to-requirement traceability (12 tasks, all traced).
 - Checked plan-requirement consistency (no contradictions).
-- Cross-referenced notification-service requirements and plan to validate dependency assumptions.
+- Cross-referenced event-platform requirements and plan to validate dependency assumptions.
 - Reclassified draft blockers as implementation notes.
 
 ## Remaining Notes for Builder
 
-- Build is blocked by `notification-service` roadmap dependency — do not schedule until
+- Build is blocked by `event-platform` roadmap dependency — do not schedule until
   that dependency delivers.
 - The handler dispatch pattern (push callback vs. API polling) should be settled during
-  or immediately after notification-service build. Both patterns work with the current
+  or immediately after event-platform build. Both patterns work with the current
   requirements.
 - The scorer rubric dimensions are well-defined. Builder chooses the evaluation mechanism.

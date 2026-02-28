@@ -80,4 +80,4 @@ asks peers for services matching its interest. Gossip fills the gap.
 - event-envelope-schema (service descriptors use the standard envelope)
 - mesh-architecture (transport for service events)
 - mesh-trust-model (trust evaluation of service providers)
-- notification-service (internal processing of service events)
+- event-platform (internal processing of service events)

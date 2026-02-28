@@ -49,7 +49,7 @@ agent processing (prepare, DOR assessment) without human intervention.
 
 - Must use the existing `create_todo_skeleton()` for folder scaffolding — no duplicate scaffold logic.
 - The notification emission requires the notification service package (`teleclaude_notifications`).
-  This todo is blocked by `notification-service` in the roadmap.
+  This todo is blocked by `event-platform` in the roadmap.
 - CLI handler must be synchronous (matching all existing handlers). Use `asyncio.run()` for the
   async notification emission, following the `bugs report` pattern.
 - The `input.md` overwrite must happen after `create_todo_skeleton()` returns, since the skeleton
@@ -57,7 +57,7 @@ agent processing (prepare, DOR assessment) without human intervention.
 
 ## Risks
 
-- **Notification service API stability**: the producer API is defined in the notification-service
+- **Notification service API stability**: the producer API is defined in the event-platform
   implementation plan but not yet built. If the API changes, the emit call must be updated.
   Mitigation: the producer API is simple (`emit_event(event_type, source, ...)`) and stable in design.
 - **Redis unavailability**: if Redis is down, the notification emission fails. The scaffold should

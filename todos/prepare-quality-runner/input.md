@@ -38,7 +38,7 @@ What it produces (as notification resolutions):
   idempotency key — same slug + same commit hash = no-op)
 - If blocked: `needs_decision` with specific blockers, notification stays unresolved
 
-Depends on: notification-service (the event bus that routes signals to this handler).
+Depends on: event-platform (the event bus that routes signals to this handler).
 
 This is TeleClaude's first internal dog-fooding consumer of the notification service.
 It proves the pattern before external integrations.

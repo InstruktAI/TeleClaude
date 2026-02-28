@@ -39,9 +39,9 @@ No third-party dependencies. Notification service is an internal package with a 
 
 ### 6. Dependencies & Preconditions — PASS
 
-- `notification-service` dependency explicit in `roadmap.yaml` (`todo-dump-command.after: [notification-service]`)
-- notification-service DOR: score 8, status pass (verified in state.yaml)
-- Producer API (`emit_event`) defined in notification-service implementation plan
+- `event-platform` dependency explicit in `roadmap.yaml` (`todo-dump-command.after: [event-platform]`)
+- event-platform DOR: score 8, status pass (verified in state.yaml)
+- Producer API (`emit_event`) defined in event-platform implementation plan
 
 ### 7. Integration Safety — PASS
 
@@ -76,9 +76,9 @@ No contradictions found between plan and requirements.
 
 ## Assumptions
 
-1. Notification service producer API: `emit_event(event_type, source, level, domain, description, payload)` — per notification-service implementation plan.
+1. Notification service producer API: `emit_event(event_type, source, level, domain, description, payload)` — per event-platform implementation plan.
 2. Redis connection details available via standard notification service mechanism.
-3. `todo.dumped` event type listed in notification-service event catalog (Task 5.5).
+3. `todo.dumped` event type listed in event-platform event catalog (Task 5.5).
 
 ## Open Questions
 
@@ -86,4 +86,4 @@ None.
 
 ## Blockers
 
-None. The `notification-service` dependency is tracked via `roadmap.yaml` and has DOR pass.
+None. The `event-platform` dependency is tracked via `roadmap.yaml` and has DOR pass.

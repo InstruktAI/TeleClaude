@@ -49,8 +49,8 @@ raw content; the system takes it from there.
 
 - Must follow existing CLI patterns (`telec.py` `CLI_SURFACE` dict, `TelecCommand` enum,
   `_handle_*` dispatch).
-- Notification emission depends on the notification-service package being built and the
-  `content.dumped` event schema being registered. If notification-service is not yet
+- Notification emission depends on the event-platform package being built and the
+  `content.dumped` event schema being registered. If event-platform is not yet
   available at build time, the notification call must be guarded (emit if available,
   warn and skip if not).
 - Inbox folder naming must match the established convention: `YYYYMMDD-<slug>`.

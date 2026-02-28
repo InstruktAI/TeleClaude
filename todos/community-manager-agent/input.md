@@ -79,6 +79,6 @@ is sufficient.
 ## Dependencies
 
 - community-governance (the model these handlers implement)
-- notification-service (event routing)
+- event-platform (event routing)
 - mesh-architecture (event distribution)
 - event-envelope-schema (event format)

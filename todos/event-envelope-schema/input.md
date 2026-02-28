@@ -140,5 +140,5 @@ resolution_shape:
 
 ## Dependencies
 
-- notification-service (the internal processor that handles envelopes)
+- event-platform (the internal processor that handles envelopes)
 - mesh-architecture (the transport that carries envelopes between nodes)

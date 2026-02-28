@@ -36,7 +36,7 @@ blockers needing human decision.
 
 ## Dependency
 
-Depends on notification-service — the notification IS the decoupling mechanism.
+Depends on event-platform — the notification IS the decoupling mechanism.
 Without it, dump would have to fall back to inline dispatch (defeating the purpose).
 
 ## CLI shape (preliminary)
