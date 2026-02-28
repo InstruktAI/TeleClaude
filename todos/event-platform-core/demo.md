@@ -13,11 +13,11 @@ telec events list
 # 3. Separate database
 ls -la ~/.teleclaude/events.db
 
-# 4. API responds
-curl -s http://localhost:8765/api/notifications?limit=5 | python -m json.tool
+# 4. API responds (daemon API uses Unix socket, not HTTP port)
+curl -s --unix-socket /tmp/teleclaude-api.sock "http://localhost/api/notifications?limit=5" | python -m json.tool
 
 # 5. Daemon restart event exists
-curl -s "http://localhost:8765/api/notifications?event_type=system.daemon.restarted&limit=1" | python -m json.tool
+curl -s --unix-socket /tmp/teleclaude-api.sock "http://localhost/api/notifications?event_type=system.daemon.restarted&limit=1" | python -m json.tool
 
 # 6. Old notification package removed
 python -c "from teleclaude.notifications import NotificationRouter" 2>&1 | grep -q "ModuleNotFoundError" && echo "PASS: old package removed" || echo "FAIL: old package still exists"
@@ -79,7 +79,7 @@ Check Redis: `redis-cli XLEN teleclaude:events` — stream length increased.
 The pipeline processor picks it up within ~1 second. Query the API:
 
 ```bash
-curl -s http://localhost:8765/api/notifications?limit=1 | python -m json.tool
+curl -s --unix-socket /tmp/teleclaude-api.sock "http://localhost/api/notifications?limit=1" | python -m json.tool
 ```
 
 Observe: `human_status: unseen`, `agent_status: none`, `visibility: local`.
@@ -89,10 +89,10 @@ Redis Stream is the event log. SQLite is the notification projection.
 
 ```bash
 # Mark seen
-curl -s -X PATCH http://localhost:8765/api/notifications/1/seen | python -m json.tool
+curl -s --unix-socket /tmp/teleclaude-api.sock -X PATCH "http://localhost/api/notifications/1/seen" | python -m json.tool
 
 # Agent claims
-curl -s -X POST http://localhost:8765/api/notifications/1/claim \
+curl -s --unix-socket /tmp/teleclaude-api.sock -X POST "http://localhost/api/notifications/1/claim" \
   -H 'Content-Type: application/json' -d '{"agent_id": "demo-agent"}' | python -m json.tool
 ```
 
@@ -123,7 +123,7 @@ description. Adding a new event type requires only a schema definition — zero 
 
 ```bash
 # Daemon restart event (emitted automatically on startup)
-curl -s "http://localhost:8765/api/notifications?event_type=system.daemon.restarted" | python -m json.tool
+curl -s --unix-socket /tmp/teleclaude-api.sock "http://localhost/api/notifications?event_type=system.daemon.restarted" | python -m json.tool
 ```
 
 This was emitted automatically. The platform is already consuming its own events.

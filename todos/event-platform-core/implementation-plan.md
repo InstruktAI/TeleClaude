@@ -11,7 +11,7 @@ Codebase patterns to follow:
 | Pattern             | Evidence                                                                                  |
 | ------------------- | ----------------------------------------------------------------------------------------- |
 | Redis Streams XADD  | `teleclaude/transport/redis_transport.py:1731` — `xadd(stream, data, maxlen=...)`         |
-| Redis Streams XREAD | `teleclaude/transport/redis_transport.py:975` — blocking XREAD with last_id tracking      |
+| Redis Streams XREAD | `teleclaude/transport/redis_transport.py:1001` — blocking XREAD with last_id tracking     |
 | Durable last-ID     | `teleclaude/transport/redis_transport.py:621-644` — last processed ID in SQLite           |
 | aiosqlite DB        | `teleclaude/core/db.py` — WAL mode, async connection management                           |
 | Pydantic models     | Established pattern across codebase                                                       |
@@ -170,8 +170,7 @@ Codebase patterns to follow:
   - `async resolve_notification(id: int, resolution: dict) -> bool`
   - `async upsert_by_idempotency_key(envelope, schema) -> tuple[int, bool]`
     (returns notification_id, was_created)
-  - `async get_pipeline_state(key: str) -> str | None`
-  - `async set_pipeline_state(key: str, value: str) -> None`
+  - ~~`pipeline_state` methods removed — consumer group tracking handles this via Redis~~
 
 ---
 
