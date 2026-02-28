@@ -56,17 +56,17 @@ class PeriodicTrigger:
             if not filtered_animations:
                 continue
 
-            anim_class_big = random.choice(filtered_animations)
+            # Synchronize: pick ONE animation for both big and small targets
+            anim_class = random.choice(filtered_animations)
+            
             self.engine.play(
-                anim_class_big(palette=palette, is_big=True, duration_seconds=duration),
+                anim_class(palette=palette, is_big=True, duration_seconds=duration),
                 priority=AnimationPriority.PERIODIC,
             )
 
-            small_compatible = [cls for cls in filtered_animations if cls.supports_small]
-            if small_compatible:
-                anim_class_small = random.choice(small_compatible)
+            if anim_class.supports_small:
                 self.engine.play(
-                    anim_class_small(palette=palette, is_big=False, duration_seconds=duration),
+                    anim_class(palette=palette, is_big=False, duration_seconds=duration),
                     priority=AnimationPriority.PERIODIC,
                 )
 

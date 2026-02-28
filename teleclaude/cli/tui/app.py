@@ -480,8 +480,7 @@ class TelecApp(App[str | None]):
         elif isinstance(event, SessionUpdatedEvent):
             session = event.data
             old_status = self._session_status_cache.get(session.session_id)
-            if old_status and old_status != session.status:
-                self.notify(f"Session: {old_status} -> {session.status}")
+            # Silence redundant status toasts; they are visible in the UI
             self._session_status_cache[session.session_id] = session.status
             self.post_message(SessionUpdated(session))
 
@@ -991,15 +990,19 @@ class TelecApp(App[str | None]):
 
     def _show_animation_toast(self, target: str, animation: Animation) -> None:
         """Show a toast notification when an animation starts."""
+        import time
+        now = time.time()
         name = animation.__class__.__name__
-        # Debounce: avoid duplicate toasts for the same animation (e.g. banner + logo starting)
-        if getattr(self, "_last_anim_toast", None) == name:
+        
+        # Debounce: avoid duplicate toasts for the same animation within 1s
+        last_name, last_time = getattr(self, "_last_anim_toast", (None, 0.0))
+        if last_name == name and (now - last_time) < 1.0:
             return
-        self._last_anim_toast = name
+        self._last_anim_toast = (name, now)
 
         self.notify(
             f"Animation: {name}",
-            title="TUI Atmosphere",
+            title="Atmosphere Change",
             severity="information",
             timeout=3.0,
         )
