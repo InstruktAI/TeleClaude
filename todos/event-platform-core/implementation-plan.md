@@ -430,34 +430,35 @@ Codebase patterns to follow:
 
 **File(s):** `tests/test_events/`
 
-- [ ] `test_envelope.py`: serialization/deserialization, to_stream_dict/from_stream_dict round-trip,
+- [x] `test_envelope.py`: serialization/deserialization, to_stream_dict/from_stream_dict round-trip,
       visibility enum, level enum
-- [ ] `test_catalog.py`: register, get, list_all, build_idempotency_key, duplicate registration error
-- [ ] `test_db.py`: init, insert, get, list with filters, upsert by idempotency key, state machine
+- [x] `test_catalog.py`: register, get, list_all, build_idempotency_key, duplicate registration error
+- [x] `test_db.py`: init, insert, get, list with filters, upsert by idempotency key, state machine
       transitions (mark seen, claim, update status, resolve)
-- [ ] `test_cartridges.py`: dedup drops duplicates, dedup passes non-duplicates, projector creates
+- [x] `test_cartridges.py`: dedup drops duplicates, dedup passes non-duplicates, projector creates
       notification for lifecycle events, projector passes through non-lifecycle events
-- [ ] `test_pipeline.py`: full chain — dedup → projector, event dropped by dedup never reaches projector
+- [x] `test_pipeline.py`: full chain — dedup → projector, event dropped by dedup never reaches projector
+      (covered in test_cartridges.py full pipeline tests)
 
 ### Task 7.2: Integration test
 
-- [ ] `test_integration.py`: producer → Redis Stream → processor → SQLite → API query.
+- [x] `test_integration.py`: producer → Redis Stream → processor → SQLite → API query.
       Requires running Redis (skip if unavailable). Emit event, wait for processor to handle,
       query API, verify response.
 
 ### Task 7.3: Quality checks
 
-- [ ] Run `make test`
-- [ ] Run `make lint`
-- [ ] Verify: `grep -r "from teleclaude\." teleclaude_events/` returns nothing
-- [ ] Verify: old `teleclaude/notifications/` no longer exists
-- [ ] Verify: no unchecked tasks remain
+- [x] Run `make test`
+- [x] Run `make lint`
+- [x] Verify: `grep -r "from teleclaude\." teleclaude_events/` returns nothing
+- [x] Verify: old `teleclaude/notifications/` no longer exists
+- [x] Verify: no unchecked tasks remain
 
 ---
 
 ## Phase 8: Review Readiness
 
-- [ ] Confirm all requirements reflected in code
-- [ ] Confirm all tasks marked `[x]`
-- [ ] Run `telec todo demo validate event-platform-core`
-- [ ] Document any deferrals in `deferrals.md`
+- [x] Confirm all requirements reflected in code
+- [x] Confirm all tasks marked `[x]`
+- [x] Run `telec todo demo validate event-platform-core`
+- [x] Document any deferrals in `deferrals.md`
