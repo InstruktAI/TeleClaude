@@ -729,7 +729,7 @@ def handle_todo_prepare(args: list[str]) -> None:
 
     Options:
       <slug>       Work item slug (optional; auto-selects if omitted)
-      --cwd <dir>  Project root directory (default: daemon's default_working_dir)
+      --cwd <dir>  Project root directory (default: project's default_working_dir)
       --no-hitl    Disable human-in-the-loop gate prompts
 
     Examples:
