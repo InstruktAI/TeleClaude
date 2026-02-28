@@ -147,43 +147,34 @@ def _log_next_work_phase(slug: str, phase: str, started_at: float, decision: str
 POST_COMPLETION: dict[str, str] = {
     "next-build": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. Verify artifact delivery: telec todo verify-artifacts {args} --phase build   - If FAIL: send the failure details to the builder (do NOT end the session). Wait for fix. Repeat from step 1.
-   - If PASS: proceed to step 3
-3. telec todo mark-phase {args} --phase build --status complete4. Call {next_call} — this runs build gates (tests + demo validation)
-5. If next_work says gates PASSED: telec sessions end <session_id> and continue
-6. If next_work says BUILD GATES FAILED:
-   a. Send the builder the failure message (do NOT end the session)
-   b. Wait for the builder to report completion again
-   c. Repeat from step 2
-7. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+2. Call {next_call}
+3. If next_work returns BUILD GATES FAILED or ARTIFACT VERIFICATION FAILED:
+   - Send the failure details to the builder (do NOT end the session)
+   - Wait for builder to report completion again
+   - Repeat from step 2
+4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
    - Do NOT end the session — keep it alive as a signal for human investigation
    - Report the error status and session ID to the user for manual intervention
-8. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-bugs-fix": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. Verify artifact delivery: telec todo verify-artifacts {args} --phase build   - If FAIL: send the failure details to the builder (do NOT end the session). Wait for fix. Repeat from step 1.
-   - If PASS: proceed to step 3
-3. telec todo mark-phase {args} --phase build --status complete4. Call {next_call} — this runs build gates (tests + demo validation)
-5. If next_work says gates PASSED: telec sessions end <session_id> and continue
-6. If next_work says BUILD GATES FAILED:
-   a. Send the builder the failure message (do NOT end the session)
-   b. Wait for the builder to report completion again
-   c. Repeat from step 2
-7. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+2. Call {next_call}
+3. If next_work returns BUILD GATES FAILED or ARTIFACT VERIFICATION FAILED:
+   - Send the failure details to the builder (do NOT end the session)
+   - Wait for builder to report completion again
+   - Repeat from step 2
+4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
    - Do NOT end the session — keep it alive as a signal for human investigation
    - Report the error status and session ID to the user for manual intervention
-8. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data to extract verdict
-2. Run artifact verification: telec todo verify-artifacts {args} --phase review   - If FAIL: send the failure details to the reviewer (do NOT end the session).
-     Wait for the reviewer to address the gaps and report completion again. Repeat from step 1.
-   - If PASS: proceed to step 3
-3. If verdict is APPROVE:
+2. If verdict is APPROVE:
    a. telec sessions end <session_id>
    b. telec todo mark-phase {args} --phase review --status approved   c. Call {next_call}
-4. If verdict is REQUEST CHANGES — PEER CONVERSATION PROTOCOL (keep reviewer alive):
+3. If verdict is REQUEST CHANGES — PEER CONVERSATION PROTOCOL (keep reviewer alive):
    a. DO NOT end the reviewer session — keep it alive throughout peer iteration
    b. telec todo mark-phase {args} --phase review --status changes_requested   c. Dispatch fixer: telec sessions run --command /next-fix-review --args {args} \\
         --project <project-root> --subfolder trees/{args}
@@ -199,17 +190,17 @@ POST_COMPLETION: dict[str, str] = {
         Address all findings from review-findings.md, then report FIX COMPLETE." --direct
    g. Wait for fixer to complete (monitor via heartbeat; do not poll continuously)
    h. When fixer reports FIX COMPLETE:
-      - Run artifact verification again (step 2), then read review-findings.md verdict
+      - Read review-findings.md verdict
       - If APPROVE: telec sessions end <fixer_session_id>, telec sessions end <reviewer_session_id>,
           telec todo mark-phase {args} --phase review --status approved --cwd <project-root>,
           call {next_call}
       - If still REQUEST CHANGES: telec sessions end <fixer_session_id>,
           telec sessions end <reviewer_session_id>,
           call {next_call} (state machine manages the round count and limit)
-5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
    - Do NOT end the session — keep it alive as a signal for human investigation
    - Report the error status and session ID to the user for manual intervention
-6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-fix-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
@@ -229,7 +220,9 @@ POST_COMPLETION: dict[str, str] = {
    - Report the error status and session ID to the user for manual intervention
 5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
-    "next-finalize": """WHEN WORKER COMPLETES:
+    "next-finalize": """# state.yaml lives in the worktree only — never commit it to main directly.
+
+WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data.
 2. Accept completion only for the dispatched worker session `<session_id>`.
    Ignore notifications from any other session.
@@ -255,27 +248,22 @@ POST_COMPLETION: dict[str, str] = {
    a. git -C "$MAIN_REPO" fetch origin main
    b. git -C "$MAIN_REPO" switch main
    c. git -C "$MAIN_REPO" pull --ff-only origin main
-   d. git -C "$MAIN_REPO" merge {args} --no-edit
+   d. git -C "$MAIN_REPO" merge --squash {args}
+      TITLE="$(grep '^# ' "$MAIN_REPO/todos/{args}/requirements.md" | head -1 | sed 's/^# //')"
+      git -C "$MAIN_REPO" commit -m "feat({args}): ${{TITLE:-deliver {args}}}"
    e. MERGE_COMMIT="$(git -C "$MAIN_REPO" rev-parse HEAD)"
    f. If "$MAIN_REPO/todos/{args}/bug.md" exists: skip delivery bookkeeping.
       Else: telec roadmap deliver {args} --commit "$MERGE_COMMIT"
             && git -C "$MAIN_REPO" add todos/delivered.yaml todos/roadmap.yaml
             && git -C "$MAIN_REPO" commit -m "chore({args}): record delivery"
-8. DEMO SNAPSHOT (orchestrator-owned — stamp delivery metadata while artifacts exist):
-   If demos/{args}/demo.md exists (builder created it during build):
-   a. Read todos/{args}/requirements.md title and implementation-plan.md metrics
-   b. Generate demos/{args}/snapshot.json with: slug, title, version (from pyproject.toml),
-      delivered_date (today), merge_commit, metrics, and five acts narrative from the todo artifacts.
-   c. git -C "$MAIN_REPO" add demos/{args}/snapshot.json && git -C "$MAIN_REPO" commit -m "chore({args}): add demo snapshot"
-   If demos/{args}/demo.md does NOT exist, skip — no demo was created for this delivery.
-9. CLEANUP (orchestrator-owned, from main repo root):
+8. CLEANUP (orchestrator-owned, from main repo root):
    a. git -C "$MAIN_REPO" worktree remove trees/{args} --force
-   b. git -C "$MAIN_REPO" branch -d {args}
+   b. git -C "$MAIN_REPO" branch -D {args}
    c. rm -rf "$MAIN_REPO/todos/{args}"
    d. git -C "$MAIN_REPO" add -A && git -C "$MAIN_REPO" commit -m "chore: cleanup {args}"
-10. git -C "$MAIN_REPO" push origin main
-11. make restart (daemon picks up merged code before next dispatch)
-12. Call {next_call}
+9. git -C "$MAIN_REPO" push origin main
+10. make restart (daemon picks up merged code before next dispatch)
+11. Call {next_call}
 """,
 }
 
@@ -2017,16 +2005,15 @@ def sync_slug_todo_from_worktree_to_main(cwd: str, slug: str) -> None:
 def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> int:
     """Copy canonical todo artifacts for a slug from main into worktree.
 
-    Planning artifacts are copied from main when changed (main remains source of truth).
-    state.yaml is only seeded when missing — the worktree owns build/review
-    progress once work begins.
+    All artifacts are seed-only — only copied when the destination does not yet
+    exist. This prevents the sync from overwriting worker-updated artifacts
+    (review-findings.md, implementation-plan.md, etc.) on subsequent next_work calls.
     """
     todo_base = f"todos/{slug}"
     main_root = Path(cwd)
     worktree_root = Path(cwd) / "trees" / slug
     if not worktree_root.exists():
         return 0
-    # Planning artifacts: main is source of truth; unchanged files are skipped.
     copied = 0
     for rel in [
         f"{todo_base}/bug.md",
@@ -2038,17 +2025,14 @@ def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> int:
         f"{todo_base}/deferrals.md",
         f"{todo_base}/breakdown.md",
         f"{todo_base}/dor-report.md",
+        f"{todo_base}/state.yaml",
     ]:
-        if _sync_file(main_root, worktree_root, rel):
+        src = main_root / rel
+        dst = worktree_root / rel
+        if src.exists() and not dst.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
             copied += 1
-    # state.yaml: seed only — worktree owns build/review progress.
-    state_rel = f"{todo_base}/state.yaml"
-    src = main_root / state_rel
-    dst = worktree_root / state_rel
-    if src.exists() and not dst.exists():
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst)
-        copied += 1
     return copied
 
 

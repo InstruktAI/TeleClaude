@@ -14,17 +14,21 @@ _OLD_OVERLAP_MARKER = "teleclaude-overlap-guard"
 # are permanently lost. By requiring a clean working tree, _unstaged_changes_cleared()
 # always takes the safe retcode==0 path (no patch, no checkout, no data loss).
 STASH_PREVENTION_BLOCK = f"""
-# {STASH_PREVENTION_MARKER}: block commits with unstaged changes to tracked files
-_teleclaude_unstaged="$(git diff --name-only)"
-if [ -n "$_teleclaude_unstaged" ]; then
-  echo "ERROR: unstaged changes to tracked files detected."
-  echo "Pre-commit would stash these and risk losing them."
-  echo ""
-  echo "Unstaged files:"
-  printf '  %s\\n' $_teleclaude_unstaged
-  echo ""
-  echo "Stage all changes (git add) or commit in separate steps."
-  exit 1
+# {STASH_PREVENTION_MARKER}: block commits with partially staged files
+_staged="$(git diff --cached --name-only | sort)"
+_unstaged="$(git diff --name-only | sort)"
+if [ -n "$_staged" ] && [ -n "$_unstaged" ]; then
+  _overlap="$(comm -12 <(printf '%s\\n' $_staged) <(printf '%s\\n' $_unstaged))"
+  if [ -n "$_overlap" ]; then
+    echo "ERROR: partially staged files detected."
+    echo "Pre-commit stash/restore would corrupt these files."
+    echo ""
+    echo "Affected files (staged AND unstaged):"
+    printf '  %s\\n' $_overlap
+    echo ""
+    echo "Stage remaining hunks (git add -p) or discard them (git checkout -- <file>)."
+    exit 1
+  fi
 fi
 """
 
@@ -171,9 +175,11 @@ def _append_block_if_missing(hook_file: Path, marker: str, block: str) -> bool:
 def _ensure_precommit_entrypoint_guard(precommit_hook_file: Path) -> None:
     """Inject stash prevention guard into pre-commit's generated git hook wrapper.
 
-    This guard must run before pre-commit stashes unstaged files, so it cannot
-    live only in `.pre-commit-config.yaml`. Migrates from the old overlap guard
-    if present.
+    This guard only blocks partial staging — when the same file has both staged
+    and unstaged changes. Completely unstaged files with no overlap to staged
+    files are safe and are not blocked.
+
+    Migrates from the old overlap guard if present.
     """
     if not precommit_hook_file.exists():
         print("telec init: pre-commit entrypoint not found; run `pre-commit install`.")

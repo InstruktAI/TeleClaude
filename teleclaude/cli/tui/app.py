@@ -566,6 +566,14 @@ class TelecApp(App[str | None]):
         elif canonical == "agent_output_stop":
             sessions_view.clear_active_tool(message.session_id)
             sessions_view.set_output_highlight(message.session_id, message.summary or "")
+            if self._activity_trigger is not None:
+                from teleclaude.cli.tui.animation_triggers import ActivityTrigger
+
+                if isinstance(self._activity_trigger, ActivityTrigger):
+                    agent = self._session_agents.get(message.session_id)
+                    if agent:
+                        self._activity_trigger.on_agent_activity(agent, is_big=True)
+                        self._activity_trigger.on_agent_activity(agent, is_big=False)
         elif canonical == "agent_output_update":
             if message.tool_name:
                 preview = message.tool_preview or ""
@@ -575,21 +583,6 @@ class TelecApp(App[str | None]):
                 sessions_view.set_active_tool(message.session_id, tool_info)
             else:
                 sessions_view.clear_active_tool(message.session_id)
-
-        # Feed agent activity to animation trigger (both banner and logo targets)
-        if self._activity_trigger is not None:
-            from teleclaude.cli.tui.animation_triggers import ActivityTrigger
-
-            if isinstance(self._activity_trigger, ActivityTrigger):
-                agent = self._session_agents.get(message.session_id)
-                if not agent:
-                    self.notify(
-                        f"Activity for session {message.session_id[:8]} with no cached agent",
-                        severity="error",
-                    )
-                    return
-                self._activity_trigger.on_agent_activity(agent, is_big=True)
-                self._activity_trigger.on_agent_activity(agent, is_big=False)
 
     # --- Action handlers for user-initiated actions ---
 
