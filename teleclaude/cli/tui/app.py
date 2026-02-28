@@ -126,7 +126,7 @@ class TelecApp(App[str | None]):
         ),
         Binding("r", "refresh", "Refresh", key_display="r"),
         Binding("t", "cycle_pane_theming", "Cycle Theme", key_display="t"),
-        Binding("a", "cycle_animation", "Anim", key_display="a"),
+        Binding("a", "cycle_animation", "Cycle Anim", key_display="a"),
         Binding("v", "toggle_tts", "Voice", key_display="v"),
     ]
 
