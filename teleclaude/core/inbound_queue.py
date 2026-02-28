@@ -7,7 +7,7 @@ Per-session workers drain the queue with FIFO ordering, CAS claim, and exponenti
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable, Optional
 
 from instrukt_ai_logging import get_logger
@@ -131,7 +131,7 @@ class InboundQueueManager:
 
     def _on_worker_done(self, session_id: str, task: asyncio.Task[None]) -> None:
         self._workers.pop(session_id, None)
-        if task.exception() is not None:
+        if not task.cancelled() and task.exception() is not None:
             logger.warning(
                 "Inbound worker for session %s crashed: %s",
                 session_id[:8],
@@ -145,10 +145,7 @@ class InboundQueueManager:
         while True:
             now = datetime.now(timezone.utc)
             now_iso = now.isoformat()
-            from datetime import timedelta
-
             lock_cutoff_iso = (now - timedelta(seconds=_LOCK_TIMEOUT_S)).isoformat()
-
             rows = await db.fetch_inbound_pending(
                 session_id=session_id,
                 limit=_FETCH_LIMIT,
