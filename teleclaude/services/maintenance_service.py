@@ -56,6 +56,8 @@ class MaintenanceService:
                 await session_cleanup.cleanup_orphan_tmux_sessions()
                 await session_cleanup.cleanup_orphan_workspaces()
                 await db.cleanup_stale_voice_assignments()
+                cutoff_iso = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
+                await db.cleanup_inbound(cutoff_iso)
                 await self._check_idle_compaction()
                 await self._cleanup_adapter_resources()
 
