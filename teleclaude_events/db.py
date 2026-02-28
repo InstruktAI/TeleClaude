@@ -197,11 +197,16 @@ class EventDB:
 
     async def update_agent_status(self, id: int, status: str, agent_id: str) -> bool:
         now = _now_iso()
-        claimed_at = now if status == "claimed" else None
-        cursor = await self._db().execute(
-            "UPDATE notifications SET agent_status = ?, agent_id = ?, claimed_at = ?, updated_at = ? WHERE id = ?",
-            (status, agent_id, claimed_at, now, id),
-        )
+        if status == "claimed":
+            cursor = await self._db().execute(
+                "UPDATE notifications SET agent_status = ?, agent_id = ?, claimed_at = ?, updated_at = ? WHERE id = ?",
+                (status, agent_id, now, now, id),
+            )
+        else:
+            cursor = await self._db().execute(
+                "UPDATE notifications SET agent_status = ?, agent_id = ?, updated_at = ? WHERE id = ?",
+                (status, agent_id, now, id),
+            )
         await self._db().commit()
         return cursor.rowcount > 0  # type: ignore[union-attr]
 
