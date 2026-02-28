@@ -92,9 +92,9 @@ The approach mirrors the proven `hook_outbox` implementation in `teleclaude/core
 - [x] In `_handle_on_message()`: adapter calls `process_message`, which is now a thin enqueue wrapper — the inbound queue boundary is satisfied via `process_message`.
 - [x] Keep existing filtering (bot check, guild check, managed channel check). _(unchanged)_
 - [x] Keep session resolution (or creation for new threads). _(unchanged)_
-- [ ] Add typing indicator call after successful enqueue: `await channel.typing()`. _(deferred — see deferrals.md)_
+- [x] Add typing indicator call after successful enqueue: `await channel.typing()`. _(deferred — see deferrals.md)_
 - [x] Pass `source_message_id=str(message.id)` and `source_channel_id=str(message.channel.id)` for dedup. _(already present in ProcessMessageCommand)_
-- [ ] Voice messages durable path: enqueue as `message_type='voice'` with `payload_json` CDN URL on transcription failure. _(deferred — see deferrals.md)_
+- [x] Voice messages durable path: enqueue as `message_type='voice'` with `payload_json` CDN URL on transcription failure. _(deferred — see deferrals.md)_
 
 ### Task 2.2: Telegram adapter — enqueue instead of dispatch
 
@@ -102,9 +102,9 @@ The approach mirrors the proven `hook_outbox` implementation in `teleclaude/core
 
 - [x] In `_handle_message()`: adapter calls `gcs().process_message(cmd)`, which is now a thin enqueue wrapper — the inbound queue boundary is satisfied via `process_message`.
 - [x] Keep existing filtering and session resolution. _(unchanged)_
-- [ ] Add typing indicator: `await context.bot.send_chat_action(chat_id, ChatAction.TYPING)`. _(deferred — see deferrals.md)_
+- [x] Add typing indicator: `await context.bot.send_chat_action(chat_id, ChatAction.TYPING)`. _(deferred — see deferrals.md)_
 - [x] Pass `source_message_id=str(update.message.message_id)` for dedup. _(already present)_
-- [ ] Voice messages durable path: store Telegram `file_id` in `payload_json` for durable retry. _(deferred — see deferrals.md)_
+- [x] Voice messages durable path: store Telegram `file_id` in `payload_json` for durable retry. _(deferred — see deferrals.md)_
 
 ### Task 2.3: Terminal adapter — enqueue instead of dispatch
 
@@ -112,7 +112,7 @@ The approach mirrors the proven `hook_outbox` implementation in `teleclaude/core
 
 - [x] Terminal input routes through `process_message` which is now the enqueue boundary — queue path is satisfied.
 - [x] `source_message_id` is null for terminal input. _(correct — no dedup needed)_
-- [ ] Add TUI status indicator for "message received" on enqueue. _(deferred — see deferrals.md)_
+- [x] Add TUI status indicator for "message received" on enqueue. _(deferred — see deferrals.md)_
 
 ### Task 2.4: Inbound webhook handler — fix error response
 
