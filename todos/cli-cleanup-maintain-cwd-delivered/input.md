@@ -27,11 +27,11 @@ Files to touch:
 - `teleclaude/cli/telec.py` — change Flag descriptions from "required" to "default: cwd"
 - `teleclaude/cli/tool_commands.py` — remove hard required checks, default to `os.getcwd()`
 
-## 3. Add `--delivered` / `--delivered-only` flags to `telec roadmap list`
+## 3. Add `--include-delivered` / `--delivered-only` flags to `telec roadmap list`
 
 Mirror the existing `--include-icebox` / `--icebox-only` pattern:
 
-- `--delivered` includes delivered items alongside active roadmap
+- `--include-delivered` includes delivered items alongside active roadmap
 - `--delivered-only` shows only delivered items
 
 Data source: `todos/delivered.yaml` (already exists, loaded by `load_delivered_slugs` in core).
