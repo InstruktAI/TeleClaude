@@ -68,6 +68,8 @@ class AgentWaveRL(Animation):
 class AgentLineSweep(Animation):
     """A9: Volumetric horizontal line sweep through letters using agent colors."""
 
+    is_external_light = True
+
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         active_row = frame % height
@@ -215,23 +217,32 @@ class AgentFadeCycle(Animation):
 
 
 class AgentSpotlight(Animation):
-    """A10: Bright pixel cluster travels through word."""
+    """A10: Volumetric spotlight travels through the sign area."""
+
+    is_external_light = True
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         active_x = frame % width
-        radius = 4
+        radius = 6
+        
+        hi_color = self.palette.get(2) # Highlight
+        mid_color = self.palette.get(1) # Normal
+        base_color = self.palette.get(0) # Muted
+
         result = {}
-        for x in range(width):
+        for x, y in self._all_pixels:
             dist = abs(x - active_x)
             if dist < radius:
-                # 2 for Highlight, 1 for Normal
-                palette_idx = 2 if dist < 2 else 1
-                color_pair = self.palette.get(palette_idx)
+                color = hi_color if dist < 2 else mid_color
             else:
-                color_pair = self.palette.get(0)  # Muted
-            for p in PixelMap.get_column_pixels(self.is_big, x):
-                result[p] = color_pair
+                color = base_color
+            result[(x, y)] = color
         return result
 
 
