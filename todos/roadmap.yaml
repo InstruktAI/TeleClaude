@@ -1,12 +1,7 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
 - slug: animations-full-color
-- slug: event-platform
-  description: 'Event processing platform: cartridge pipeline, notifications as projections,
-    trust/autonomy separation, domain pillars, signal processing'
 - slug: event-platform-core
-  after:
-  - event-platform
   description: 'Core platform: package, envelope, pipeline runtime, basic cartridges,
     SQLite state, API, WebSocket, daemon hosting, consolidation'
 - slug: integrator-wiring
@@ -74,20 +69,29 @@
 - slug: event-system-cartridges
   after:
   - event-platform-core
+  description: 'System pipeline intelligence: trust evaluator, enrichment, correlation,
+    classification cartridges'
 - slug: event-alpha-container
   after:
   - event-platform-core
+  description: 'Docker sidecar sandbox for experimental/alpha cartridges'
 - slug: event-domain-infrastructure
   after:
   - event-system-cartridges
+  description: 'Domain pipeline: parallel per-domain processing, guardian AIs, folder
+    hierarchy, personal subscriptions, autonomy matrix'
 - slug: event-mesh-distribution
   after:
   - event-platform-core
   - mesh-architecture
+  description: 'Cross-node event distribution: local/cluster/public visibility, cartridge
+    publishing via mesh'
 - slug: event-signal-pipeline
   after:
   - event-domain-infrastructure
+  description: 'Three-stage feed aggregation: ingest, cluster, synthesize utility cartridges'
 - slug: event-domain-pillars
   after:
   - event-domain-infrastructure
   - event-signal-pipeline
+  description: 'Out-of-box domain configs: software-dev, marketing, creative, customer-relations'
