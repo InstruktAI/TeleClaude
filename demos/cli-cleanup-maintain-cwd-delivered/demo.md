@@ -21,7 +21,7 @@ telec todo set-deps cli-cleanup-maintain-cwd-delivered 2>&1 && echo "PASS: set-d
 
 ```bash
 # 4. roadmap list --delivered shows delivered items
-telec roadmap list --delivered 2>&1 | grep -q "Delivered" && echo "PASS: --delivered flag works"
+telec roadmap list --include-delivered 2>&1 | grep -q "Delivered" && echo "PASS: --include-delivered flag works"
 ```
 
 ```bash

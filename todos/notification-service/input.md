@@ -2,6 +2,7 @@
 
 <!-- Converged design from brainstorm session (breath cycle: inhale/hold/exhale). Session 3d2880de. -->
 <!-- Enriched with event-driven paradigm, affordance-based envelopes, consumption spectrum, and progressive automation insights. Session c40b16b6 (Feb 28 2026). -->
+<!-- Expanded with event-first architecture, cartridge pipeline, scopes, trust/autonomy separation, signal processing, domain taxonomy. Session (Feb 28 2026, second pass). -->
 
 ## Problem
 
@@ -11,17 +12,574 @@ Beyond notifications: scheduled jobs and ad-hoc dispatching create tight couplin
 
 ## Core Concept
 
-A **notification service** — an intelligent, schema-driven event processor that is the single source of truth for all autonomous platform events. Not a message broker. Not a dashboard. An event processor with domain knowledge expressed through schemas.
+An **event processing platform** — a pipeline runtime with pluggable cartridges that is the single source of truth for all autonomous platform events. Events are the primary concept. Notifications are one projection pattern that certain event groups opt into. Not a message broker. Not a dashboard. A pipeline of composable processing stages with domain knowledge expressed through schemas.
 
-Every autonomous event flows through one pipe. The notifications table is the canonical event log for the entire platform. TUI, web frontend, Discord — they're all just readers of that pipe. Nothing delivers notifications on its own anymore. The pipe is the truth, the clients are projections.
+Every autonomous event flows through the pipeline. The Redis Stream is the canonical event log. The notification table is one projection of that log — a view shaped by lifecycle declarations, not the source of truth. TUI, web frontend, Discord — they're all readers of projections.
 
-This is not just a notification system. It is the **nervous system** of the platform — sensory input (events), processing (schema-driven routing), motor output (agent responses), awareness (multi-surface projections of the same truth).
+This is the **nervous system** of the platform — sensory input (events), processing (cartridge pipeline), motor output (agent responses), awareness (multi-surface projections of the same truth).
+
+The package is `teleclaude_events`, not `teleclaude_notifications`. Events are first-class. Notifications are derived.
+
+## Events Are Primary, Notifications Are Projections
+
+### Events are the atoms
+
+An event is an immutable fact: "this thing happened." It flows through the Redis Stream, gets processed by the cartridge pipeline, and produces effects. Events are never modified after emission. They are the source of truth.
+
+### Notification lifecycles are molecules
+
+A group of related events can declare a notification lifecycle. For example, `deployment.started`, `deployment.failed`, and `deployment.completed` together describe a lifecycle. A cartridge that produces these events declares how they map to notification state:
+
+- `deployment.started` → creates notification, `agent_status: in_progress`
+- `deployment.completed` → resolves notification, terminal
+- `deployment.failed` → resets to `unseen`, needs attention
+
+The notification projector — a built-in cartridge at the end of the pipeline — reads these lifecycle declarations and maintains the notification table. It doesn't know about deployments. It knows: "this event belongs to an event group that declares a notification lifecycle, and the declaration tells me what state transition to apply."
+
+### Not all events become notifications
+
+Events that don't declare a notification lifecycle simply don't create notifications. A `node.alive` gossip heartbeat flows through the pipeline, gets processed by relevant cartridges, and never touches the notification table. The schema determines treatment:
+
+- **Notification-worthy**: creates/updates rows in SQLite with human awareness + agent handling state. What humans and agents see in their inbox.
+- **Index entry**: stored for lookup but not surfaced as a notification. Service descriptors, node registrations.
+- **Signal only**: routed to subscribed handlers but not persisted in notification state at all. Pure event-driven triggering.
+
+### Lifecycle declarations live in cartridges
+
+A cartridge is a complete unit:
+
+1. **Processing logic** — the `async def process()` function
+2. **Event group declaration** — "I produce/consume these event types"
+3. **Notification lifecycle declaration** (optional) — "here's how my events map to notification states"
+
+A cartridge that only processes (no lifecycle) is pure pipeline logic — enrichment, trust evaluation, correlation. A cartridge that declares a lifecycle is telling the notification projector how to make its events visible to humans and agents.
+
+## The Cartridge Pipeline
+
+### The pipeline IS the processor
+
+There is no monolithic processor that cartridges protect. The cartridges ARE the processing. Lined up in sequence, each one does its job, passes the event along (or drops it), and the final cartridge is projection — writing to notification state, index, or triggering signal-only handlers.
+
+The notification service is a **pipeline runtime**. It reads events from the Redis Stream and pushes them through an ordered sequence of cartridges. The platform ships default cartridges. Users add their own. The core is tiny — it's just the pipeline executor and the stream reader.
+
+### Cartridge interface
+
+A cartridge is an async function with a known signature:
+
+```python
+async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
+    # do something
+    return event  # or None to drop
+```
+
+### Pipeline phases and scopes
+
+The pipeline has phases, and each phase has a different scope, permission model, and trust level.
+
+**Phase 1: System pipeline.** Linear. Ordered. Sequential. Admin-only. These are the core cartridges that define platform behavior. They ship with the platform and get updated through releases. Nobody touches these except platform operators.
+
+Core system cartridges:
+
+- Trust evaluator (per-event, runs on everything — see Trust section)
+- Deduplication (idempotency key checking)
+- Enrichment (add local context from platform state)
+- Correlation (detect patterns across events, synthesize higher-order events)
+- Classification (determine event treatment: notification, index, signal-only)
+- Notification projector (lifecycle declarations → SQLite state)
+
+**Phase 2: Domain pipeline.** Parallel per domain. After events exit the system pipeline, they branch into domain-specific processing. A marketing domain cartridge does marketing things. An engineering domain cartridge does engineering things. These run in parallel — they don't depend on each other.
+
+Domain cartridges are managed by domain guardian AIs — agents specifically configured to watch over a domain. There are no human domain managers. The guardian evaluates cartridge submissions, detects patterns, validates compositions.
+
+**Phase 3: Personal subscriptions.** Parallel per member. The leaf nodes. A member's AI creates a micro-cartridge: "show me when campaign budgets exceed threshold." These are tiny — often just a filter plus a notification preference. Self-managed. The member doesn't think of it as a cartridge — they told their AI what they want to know, and the AI expressed it as a subscription.
+
+```
+Event arrives
+  │
+  ▼
+  System Pipeline (admin, sequential, ordered)
+  ├─ trust → dedup → enrichment → correlation → classification → projection
+  │
+  ├──────────────┬──────────────┐
+  ▼              ▼              ▼
+  Domain:        Domain:        Domain:
+  marketing      software-dev   creative
+  │              │              │
+  ├──┬──┐       ├──┬──┐       ├──┬──┐
+  ▼  ▼  ▼       ▼  ▼  ▼       ▼  ▼  ▼
+  Personal subscriptions per member
+```
+
+### Pipeline validation
+
+A cartridge declares where it belongs:
+
+```yaml
+scope: domain
+domain: marketing
+phase: after_system
+requires: [enrichment]
+produces: [domain.marketing.campaign.budget_exceeded]
+consumes: [domain.marketing.campaign.*]
+parallel_safe: true
+```
+
+The pipeline validator checks at composition time:
+
+- Does the cartridge's scope match the installer's role?
+- Are its dependencies satisfied?
+- Does it consume event types that exist?
+- Does it produce event types that don't conflict?
+- Is the declared position valid?
+- Is the dependency graph acyclic?
+
+If validation fails, the cartridge doesn't get inserted. Composition-time rejection, not runtime failure. Predictable. Safe.
+
+### Cartridge dependencies form a DAG
+
+Cartridges can depend on other cartridges. A trust-evaluation cartridge must run before a sovereignty cartridge. An enrichment cartridge must run before a correlation cartridge.
+
+The pipeline executor resolves this on startup:
+
+1. Read all enabled cartridges and their declared `after` fields
+2. Topological sort → execution order
+3. Independent cartridges at the same level run in parallel
+4. Dependent cartridges run sequentially
+
+When you install a cartridge that declares `after: [enrichment]` and you don't have the enrichment cartridge, the AI sees the dependency and helps resolve it. Dependency resolution through intelligence, not a package manager.
+
+## Two Kinds of Cartridges: Utility and Domain
+
+### Utility cartridges — domain-agnostic building blocks
+
+Small, composable, shared across domains. They do one thing. Examples:
+
+- Signal ingest (feed aggregator — see Signal Processing section)
+- Summarizer (takes content, produces summary)
+- Scheduler (emits events on a schedule)
+- Threshold monitor (watches numeric fields, fires on threshold crossing)
+- Content formatter (transforms for different output formats)
+
+These live in `company/cartridges/` — not under any domain. Any domain can compose with them.
+
+### Domain cartridges — domain-specific orchestrations
+
+Compose utility cartridges with domain knowledge. They know the business context. Examples:
+
+- Marketing: campaign performance monitor (composes feed aggregator + threshold monitor + summarizer)
+- Software development: deployment pipeline monitor (composes threshold monitor + alerting)
+- Creative: asset production tracker (composes content formatter + scheduler)
+
+These live in `company/domains/{domain}/cartridges/`. They reference utility cartridges as dependencies.
+
+The relationship:
+
+```
+Utility cartridges (domain-agnostic building blocks)
+    ↑ composed by
+Domain cartridges (domain-specific orchestrations)
+    ↑ subscribed to by
+Personal micro-cartridges (individual preferences/filters)
+```
+
+## Trust and Autonomy Are Orthogonal
+
+### Trust is about data integrity
+
+Trust answers: "Should I accept this event at all?" It's handled by the trust cartridge in the system pipeline. Applied to ALL incoming events — local and remote alike. Even local events could originate from compromised processes. Trust evaluation is per-event, never per-source or per-domain.
+
+Trust is resolved BEFORE processing. Once an event passes trust evaluation, it's "inside." Trust's job is done. The outcome is: accept, flag, quarantine, or reject.
+
+A trusted peer that gets infected doesn't get a free pass. Each event stands alone. The trust cartridge evaluates content, not reputation. Reputation is one signal among many, not a bypass.
+
+The trust cartridge's strictness is configurable separately from autonomy — strict mode rejects slight anomalies, permissive mode accepts anything with valid signatures. That's trust policy, not autonomy policy. Different knob.
+
+### Autonomy is about delegation
+
+Autonomy answers: "How much does my AI handle without me?" Applied AFTER the event is inside. Governs what happens when a notification lifecycle creates something actionable.
+
+**L3: Full autonomy (THE DEFAULT).** AI handles everything. Events flow, notifications get processed, affordances get acted on. The human sees a dashboard of what happened, not a queue of what needs approval. This is the product experience. Smooth. Fast. Cheap.
+
+**L2: Guided.** AI handles routine events. Novel or high-impact events surface for human review. The AI makes judgment calls about what's routine, improving over time.
+
+**L1: Supervised.** Everything surfaces. AI processes but doesn't act autonomously. Notifications queue for human review. Learning mode, or high-sensitivity domains.
+
+TeleClaude ships with **L3 as the default**. People opt INTO more control, not out of automation. The wizard asks: "Do you want to customize your autonomy levels?" Most people say no. Smooth experience. Those who want tighter control configure overrides.
+
+### The autonomy matrix
+
+Autonomy is configurable at multiple scopes. More specific overrides more general:
+
+```
+event_type > cartridge > domain > global
+```
+
+Example configuration:
+
+```
+Scope                           Level   Reason
+────────────────────────────    ─────   ──────
+global                          L3      default
+domain:software-development     L3      inherited
+domain:marketing                L2      review novel campaigns
+cartridge:pagerduty-escalation  L2      want to see before paging
+event:deployment.failed         L1      always review failures manually
+```
+
+Accessible via `telec config` or the wizard at any time.
+
+### Autonomy is NOT trust
+
+A fully trusted event from the local daemon can still require human approval if L1 is set on that domain. A barely-trusted event from a new mesh peer can be auto-handled if L3 is set on infrastructure events and the trust cartridge let it through. Different axes. Different purposes.
+
+## The Pre-Processing Pipeline: Cartridge Architecture
+
+### The pipeline has a pre-projection evaluation stage
+
+Before projecting an event into notification state, the pipeline runs cartridges that evaluate, enrich, and route. This is not a simple hook — it's a composable pipeline of cartridges, each one a processing stage.
+
+The pipeline maps to the immune system metaphor from the trust model:
+
+- **Innate immunity** (receptor level): signature validation. Malformed or unsigned events never enter the pipeline. Not a cartridge — it's the entry gate.
+- **Adaptive immunity** (cartridge): trust evaluation. Learns from experience. Per-event, per-content.
+- **Memory cells** (cartridge): enrichment. Adds context from local state. "This entity has failed three times before."
+- **Pattern recognition** (cartridge): correlation. Detects rhythms across events. Synthesizes higher-order events.
+- **Tolerance** (cartridge): sovereignty enforcement. Domain autonomy levels gate how far events flow before needing approval.
+
+### Cartridges are composable and publishable
+
+The cartridge ecosystem mirrors the mesh service publication pattern:
+
+- **Core cartridges** ship with TeleClaude (trust, dedup, enrichment, correlation, notification projection)
+- **Community cartridges** are promoted through governance PRs
+- **Personal/experimental cartridges** run in sandboxed environments (see Alpha Container)
+
+### Alpha container for untrusted cartridges
+
+Approved cartridges run in-process in the daemon. They're trusted code — tested, reviewed, merged. No sandboxing needed.
+
+Alpha/experimental cartridges run in a sandboxed Docker container — a long-running sidecar:
+
+```bash
+docker run -d \
+  --read-only --user 65534 --cap-drop ALL \
+  --memory 512m --cpus 1.0 --network none \
+  -v /path/to/teleclaude:/app:ro \
+  -v ~/.config/anthropic:/credentials:ro \
+  -v ./alpha-cartridges:/alpha:ro \
+  -v /tmp/teleclaude-pipeline.sock:/pipeline.sock \
+  teleclaude/alpha-runner
+```
+
+Three read-only mounts: codebase (for imports), AI credentials (for evaluation), alpha cartridge code. Communication via unix socket. The container can't escape — no network, no filesystem write, no privilege escalation.
+
+Alpha cartridges run AFTER approved ones. They get pre-processed events — already trust-evaluated, deduplicated, enriched. If they fail or timeout, the daemon continues with what the approved pipeline produced. The alpha stage is additive, never blocking.
+
+When an alpha cartridge gets promoted through governance, it moves from the alpha mount into the codebase. Next release, it runs in-process. Zero overhead for that cartridge. A mature node with no alpha cartridges doesn't run the container at all.
+
+The container is only needed for alpha cartridges. Personal micro-cartridges from members have a smaller blast radius (only affect the member) and may only need lightweight subprocess sandboxing.
+
+## Cartridge Lifecycle and Progressive Promotion
+
+### Local → Domain → Platform
+
+1. **Personal**: Alice asks her AI "notify me when ad spend crosses 10k." The AI creates a micro-cartridge in her personal folder.
+2. **Pattern detected**: Bob and Carol in marketing create nearly identical cartridges.
+3. **Domain promotion**: The domain guardian AI notices the pattern. Suggests consolidation. A domain cartridge is created in `company/domains/marketing/cartridges/`.
+4. **Platform promotion**: If a cartridge proves useful across many domains, it can be promoted to utility scope or even core via governance PR.
+
+### Mesh distribution of cartridges
+
+A cartridge is publishable on the mesh as a `cartridge.published` event. The payload includes the cartridge descriptor AND the source code. The code is DATA — not executed on arrival. The receiving node's AI evaluates it as untrusted data.
+
+```yaml
+event: cartridge.published
+source: node-abc-123
+level: 2
+domain: platform
+
+payload:
+  name: pagerduty-escalation
+  version: 1
+  description: Escalates L3 notifications to PagerDuty
+  after: [trust-evaluator]
+  input_schema:
+    event_types: ['*']
+    requires_fields: [level, agent_status, created_at]
+  output_schema:
+    may_emit: [notification.escalated]
+    may_drop: false
+  runtime: python3
+  source_hash: sha256:abc...
+  source: |
+    async def process(event, context):
+        ...
+```
+
+Sovereignty governs installation:
+
+- L1: "Found a new cartridge. Want me to install it?" (human approves)
+- L2: "Installed pagerduty-escalation. Monitoring for 24 hours." (AI decides, human notified)
+- L3: Installed and running. (fully autonomous)
+
+### Organic promotion through usage signals
+
+Every cartridge invocation emits meta-events (aggregated, not per-event). A correlation cartridge watches `cartridge.invoked` events across the mesh. When critical mass is reached, it emits `cartridge.promotion_suggested`. The community governance machinery creates a PR. The author doesn't initiate the PR — the mesh did. Pull, not push.
+
+### Progressive automation IS the subscription model
+
+The subscription model is the mechanism through which progressive automation materializes:
+
+1. **No subscription** — event type exists but nobody locally cares
+2. **AI-evaluated** — "show me anything that looks like infrastructure failure" (loose, AI interprets)
+3. **Pattern subscription** — "give me all `domain.software-development.deployment.failed`" (tight, deterministic)
+4. **Codified handler** — "when deployment.failed arrives, auto-retry with backoff" (full automation)
+
+This IS the discover → interpret → approve → codify → consume cycle. The subscription slot stays the same. What fills it evolves from AI evaluation to codified handler. Progressive automation is cartridge replacement at the same pipeline position.
+
+## Roles and Permissions
+
+### No managers. Domain guardian AIs.
+
+There are no domain leads. There are domain guardian AIs — agents configured to watch over a domain. They evaluate cartridge submissions, detect patterns, validate compositions. A human who works in marketing configures their `telec init` and says "I work in marketing." The AI handles the rest.
+
+### Role model
+
+| Role   | System cartridges | Domain cartridges             | Personal cartridges |
+| ------ | ----------------- | ----------------------------- | ------------------- |
+| Admin  | Full control      | Full control                  | Can view all        |
+| Member | No access         | Subscribe in assigned domains | Full control of own |
+
+Admin creates domains. Admin assigns members to domains. Members express interests through their AI, which creates subscriptions or personal micro-cartridges. Everyone has their personal folder.
+
+### How a member interacts
+
+A marketing person says: "I want to know when our ad spend crosses 10k."
+
+The AI:
+
+1. Checks which domain the member belongs to — `marketing`
+2. Checks if a domain cartridge already handles ad spend monitoring
+3. If yes: subscribes the member to it with their threshold
+4. If no: creates a personal micro-cartridge
+5. If the personal cartridge works and others want it too: promotes to domain scope
+
+The member never installs anything. They express intent. The AI translates.
+
+## Folder Hierarchy
+
+The physical filesystem reflects the scope model:
+
+```
+~/.teleclaude/
+  ├── company/                  # crown jewels — domain artifacts, shared state
+  │   ├── domains/
+  │   │   ├── marketing/
+  │   │   │   └── cartridges/
+  │   │   ├── software-development/
+  │   │   │   └── cartridges/
+  │   │   └── creative/
+  │   │       └── cartridges/
+  │   └── cartridges/           # domain-agnostic utility cartridges
+  │
+  ├── personal/                 # per-member folders
+  │   ├── alice/
+  │   │   └── cartridges/
+  │   └── bob/
+  │       └── cartridges/
+  │
+  └── helpdesk/                 # jailed agent territory — untrusted
+```
+
+Personal folders: your AI, your experiments, your subscriptions. Nobody else sees it unless you promote.
+
+Company folder: shared truth. Domain cartridges, promoted personal cartridges, accumulated artifacts. This gets backed up. These are the crown jewels.
+
+Promotion means: something moves from `personal/alice/cartridges/` to `company/domains/marketing/cartridges/`. The domain guardian AI handles the move.
+
+Backup is itself a system cartridge — periodic backup of `~/.teleclaude/company/` and all personal folders. Emits `system.backup.completed` events.
+
+## Signal Processing Pipeline
+
+### Feed aggregation as domain-agnostic utility
+
+Signal processing is not a marketing feature — it's a platform capability. Engineering wants it for monitoring tech blogs and changelogs. Marketing wants it for social media. Creative wants it for design inspiration. Operations wants it for vendor status pages.
+
+The signal processing pipeline is three utility cartridges:
+
+**Stage 1: signal-ingest.** Pulls from configured sources. Doesn't think. Doesn't curate. Normalizes each item to a minimal envelope and emits `signal.ingest.received` events with:
+
+- Source (platform/feed)
+- Raw content (title, snippet, link, author)
+- One-line AI-generated summary (cheap — one sentence from title + first paragraph)
+- Extracted tags (topic keywords, entities)
+- Timestamp
+
+Fast and cheap. Hundreds of signals per hour. Source configuration supports both inline and file references:
+
+```yaml
+signal-ingest:
+  sources:
+    - type: youtube
+      channels_file: ~/subscriptions/youtube-channels.csv
+      poll_interval: 1h
+    - type: rss
+      feeds_file: ~/subscriptions/rss-feeds.opml
+      poll_interval: 30m
+    - type: x
+      accounts_file: ~/subscriptions/x-accounts.csv
+      keywords: [teleclaude, 'AI agents']
+      poll_interval: 15m
+```
+
+Members export from YouTube, dump their OPML, export X follows. Drop files in their subscriptions folder. The AI ETLs to the right format if needed. Reference by path.
+
+**Stage 2: signal-cluster.** Runs periodically (configurable). Works on summaries and tags from Stage 1 — doesn't read full content yet.
+
+- Groups signals by tag overlap and semantic similarity
+- Detects bursts: "17 signals in 2 hours all tagged `AI regulation`"
+- Detects novelty: "this signal has unique tags — potential new thread"
+- Emits `signal.cluster.formed` — each cluster contains signal IDs, cluster topic, source diversity, time spread
+
+Still cheap. Pattern matching on metadata, not deep reading.
+
+**Stage 3: signal-synthesize.** Reads deeply per cluster, not per item. Takes a `signal.cluster.formed` event and:
+
+- Reads full content of all signals in the cluster together (one context window)
+- Deduplicates — strips overlap, extracts unique perspectives
+- Produces synthesis: what happened, why it matters, unique insights, consensus vs. contested
+- Emits `signal.synthesis.ready` — a single, clean, curated artifact
+
+This is the expensive step. But it runs once per cluster, not once per signal. 20 signals about the same topic = one synthesis call that reads all 20. 20x cheaper than individual curation. And the output is better — the AI sees the full picture.
+
+### Quality is implicit in synthesis
+
+Quality emerges from the synthesis process. Low-quality signals that just repeat what others said get absorbed and contribute nothing to the synthesis. They disappear naturally. No explicit quality rating needed. The implicit signal: did this source contribute unique content? Sources that consistently contribute unique perspectives surface more. Sources that echo get absorbed and forgotten. Natural selection through synthesis.
+
+### Domain cartridges add the domain lens
+
+Domain cartridges subscribe to `signal.synthesis.ready` and filter by relevance:
+
+- Marketing: "show me synthesis about our industry"
+- Engineering: "show me synthesis about our tech stack"
+- Creative: "show me synthesis about design trends"
+
+Personal subscriptions add individual preferences on top.
+
+## Event Taxonomy
+
+### Namespaced per scope
+
+Three top-level scopes, then each domain owns its own tree:
+
+```
+system.{subsystem}.{event}          — platform core
+signal.{stage}.{event}              — domain-agnostic signal processing
+domain.{name}.{entity}.{event}      — domain-specific, namespaced
+```
+
+Each domain gets `domain.{name}.*` and nobody else publishes into that namespace. The domain guardian AI enforces this.
+
+### Software Development taxonomy
+
+```
+domain.software-development.
+  ├── planning.{todo_created, todo_dumped, todo_activated,
+  │             roadmap_updated, requirement_defined, dependency_resolved}
+  ├── preparation.{dor_assessed, artifacts_updated,
+  │               gate_passed, gate_blocked}
+  ├── build.{started, phase_completed, completed, failed}
+  ├── review.{started, finding_reported, verdict_ready,
+  │          needs_decision, approved}
+  ├── testing.{suite_started, suite_passed, suite_failed,
+  │           coverage_changed}
+  ├── deployment.{started, completed, failed, rolled_back}
+  ├── operations.{incident_detected, incident_acknowledged,
+  │              incident_resolved, health_check_failed,
+  │              health_restored, service_degraded}
+  └── maintenance.{dependency_updated, migration_applied,
+                   cleanup_completed, backup_completed}
+```
+
+### Marketing taxonomy
+
+```
+domain.marketing.
+  ├── campaign.{started, paused, completed, budget_exceeded}
+  ├── content.{drafted, refined, approved, published, distributed}
+  ├── audience.{segment_created, insight_detected}
+  └── performance.{report_ready, threshold_crossed}
+```
+
+### Creative taxonomy
+
+```
+domain.creative.
+  ├── asset.{brief_received, draft_submitted, revision_requested,
+  │          approved, delivered}
+  ├── project.{started, milestone_reached, completed}
+  └── review.{feedback_received, round_completed}
+```
+
+### System taxonomy
+
+```
+system.
+  ├── daemon.{restarted, shutdown}
+  ├── backup.{started, completed, failed}
+  ├── migration.{applied, failed}
+  ├── worker.{crashed, recovered}
+  ├── cartridge.{installed, removed, promoted, error}
+  └── health.{check_failed, check_recovered}
+```
+
+### Signal taxonomy
+
+```
+signal.
+  ├── ingest.{received, source_error}
+  ├── cluster.{formed, updated, dissolved}
+  └── synthesis.{ready, failed}
+```
+
+We ship starter taxonomies per domain pillar. The taxonomy grows through governance — someone wants `domain.marketing.influencer.contacted`? Their AI emits it, the guardian evaluates, if it catches on it gets added to the official taxonomy via PR.
+
+## Domain Pillars (Out-of-Box)
+
+TeleClaude ships with domain skeletons. Each pillar has:
+
+- A domain guardian AI configuration
+- A starter set of cartridges
+- Event schemas for that domain's lifecycle
+- Documentation that the AI reads during `telec init`
+
+### Software Development (existing)
+
+The current SDLC — todo lifecycle, build/review, deployment, operations, maintenance. Already the most mature pillar. The entire existing notification-service scope maps into this domain.
+
+### Marketing
+
+Content lifecycle, feed monitoring, campaign tracking. Starter cartridges:
+
+- Signal processing pipeline (configured for social media feeds)
+- Content publication pipeline (draft → refine → approve → publish → distribute)
+- Campaign budget monitor (threshold cartridge + marketing events)
+
+### Creative Production
+
+Asset lifecycle: brief → draft → review → approval → delivery. Multi-format: images, video, audio, web.
+
+### Customer Relations
+
+Help desk events, escalation, satisfaction tracking. This is where the jailed agent (help desk) lives — external-facing, untrusted input.
+
+## Notification Mechanics
 
 ### What a notification IS
 
-A notification is a **living object** with a state machine that multiple actors (agents and humans) interact with across multiple surfaces, all staying in sync. It is not a fire-and-forget message.
+A notification is a **living object** with a state machine that multiple actors (agents and humans) interact with across multiple surfaces, all staying in sync. It is not a fire-and-forget message. It's a projection of events into human/agent-relevant state.
 
-Sometimes a notification is purely informational (read and done). Sometimes it points at a work item that has its own lifecycle — and the notification becomes a window into that lifecycle. The notification doesn't own the work. It gives you a view into whatever is happening inside it.
+Sometimes a notification is purely informational (read and done). Sometimes it points at a work item that has its own lifecycle — and the notification becomes a window into that lifecycle.
 
 Analogy: GitHub PR notifications. You get a notification. The PR has its own lifecycle. The notification doesn't manage the PR — it keeps surfacing the PR's state back to you at meaningful transitions.
 
@@ -30,103 +588,97 @@ Analogy: GitHub PR notifications. You get a notification. The PR has its own lif
 - Not a task manager (todos do that)
 - Not a message broker (Redis does that)
 - Not a rendering engine (clients do that)
-- Not a replacement for transcripts or mirrors (those are forensics and recall)
+- Not the event log (the Redis Stream is that)
+
+### State machine
+
+Two orthogonal dimensions:
+
+**Human awareness:** `unseen` → `seen`
+
+**Agent handling (for actionable notifications):** `none` → `claimed` → `in_progress` → `resolved`
+
+These are independent. An agent can resolve something the human hasn't seen yet. A human can see something no agent has touched.
+
+State transition rules:
+
+- State transitions on an existing notification do NOT create new notifications.
+- Only when resolution produces something genuinely new does a NEW notification get created.
+- Meaningful transitions reset to unread (defined by schema).
+- Progress ticks update silently.
+
+### Notification lifecycle — finite attention
+
+Notifications have finite attention lifetimes. The system actively manages attention by aging state:
+
+- **Active**: unseen or being handled. Top of inbox.
+- **Resolved**: done. Still visible for recent context.
+- **Archived**: aged out. Not shown by default. Queryable.
+- **Purged**: gone from SQLite. Exists only in Redis Stream retention window, if at all.
+
+Archival triggers: time-based (resolved notifications archive after N days), entity-based (entity reaches terminal state), significance-based (L0 events archive faster than L3).
 
 ## Architecture
 
 ### Separate package, daemon-hosted
 
-The notification service is a **separate Python package** within the monorepo. Clean dependency direction: `teleclaude` imports from the notification package, never the reverse. The notification package has no imports from `teleclaude.*`.
+The event processing platform is a **separate Python package** (`teleclaude_events/`) within the monorepo. Clean dependency direction: `teleclaude` imports from the events package, never the reverse.
 
-The daemon hosts it — starts it on startup, stops it on shutdown. The daemon is a runtime host, not the owner. Like a web framework hosting middleware. The notification package could theoretically run in any Python host process.
-
-**Separate SQLite database.** The notification service owns its own storage. This doesn't violate the single-database policy (that's about the daemon's data; this is a separate service's data). Benefits: no write contention with the main daemon DB, independent lifecycle (backup, reset, migration), clean ownership.
+```
+teleclaude_events/
+  ├── envelope.py          # five-layer event envelope
+  ├── catalog.py           # event type registry
+  ├── pipeline.py          # pipeline runtime (cartridge executor)
+  ├── producer.py          # emit events to Redis Stream
+  ├── db.py                # notification state (SQLite projection)
+  ├── cartridges/
+  │   ├── trust.py         # trust evaluation (per-event)
+  │   ├── dedup.py         # idempotency
+  │   ├── enrichment.py    # add local context
+  │   ├── correlation.py   # detect patterns, synthesize events
+  │   ├── classification.py # determine event treatment
+  │   ├── notification.py  # notification projector
+  │   └── ...
+  └── schemas/
+      ├── software_development.py
+      ├── marketing.py
+      ├── creative.py
+      ├── system.py
+      └── signal.py
+```
 
 ### Event-sourcing architecture (right-sized)
 
-- **Redis Stream** = the event log. Append-only, ordered, persistent, replayable. Producers append events via `XADD`. The notification processor consumes via a consumer group.
-- **SQLite** (separate file) = the read model / projection. Current state of all notifications, queryable by clients.
-- **Notification processor** = the projection function. Reads events from the stream, applies schema rules, updates the SQLite read model, fans out to clients.
+- **Redis Stream** = the event log. Append-only, ordered, persistent, replayable.
+- **SQLite** (separate file) = the notification state. One projection of the event log.
+- **Cartridge pipeline** = the projection function. Reads events, processes through cartridges, projects into state.
 
-Why not Kafka/Pulsar/EventStoreDB? Scale mismatch. Hundreds of events per day across a few computers. Redis Streams + SQLite is perfectly right-sized. If this outgrows Redis Streams someday, swap the ingress for NATS JetStream or Kafka without changing the processor or the read model.
+**Separate SQLite database.** The events package owns its own storage. Not the daemon's DB. Benefits: no write contention, independent lifecycle, clean ownership.
 
 ### Redis Streams solves the reliability problem
 
-Redis pub/sub is fire-and-forget. Redis Streams are persistent. If the daemon restarts (which happens frequently in development), the notification processor reconnects to the consumer group and picks up exactly where it left off. Zero message loss. Producers never block — they append to the stream regardless of who's reading.
-
-This eliminates the need for a separate daemon process. The persistence is in Redis, not in the process. The daemon can restart freely; the gap is just latency (seconds), not data loss.
-
-## Event-Driven Job Execution
-
-### Signal in, action out
-
-The notification service replaces scheduled jobs with reactive event processing. Instead of cron-based polling ("every 5 minutes, scan for changes"), events fire when things happen and handlers react.
-
-| Old pattern                      | New pattern                                             |
-| -------------------------------- | ------------------------------------------------------- |
-| Scheduled DOR scanner            | `todo.artifact_changed` → prepare-quality-runner reacts |
-| `telec bugs report` inline chain | `bug.reported` → notification → agent claims and fixes  |
-| Ad-hoc `next_prepare` passes     | `todo.created` / `todo.dumped` → automated preparation  |
-| Manual content pipeline          | `content.dumped` → writer agent picks up                |
-
-### The "dump" primitive
-
-Two modes of creation, distinguished by whether a signal fires:
-
-| Command                      | Signal                              | Processing                             |
-| ---------------------------- | ----------------------------------- | -------------------------------------- |
-| `telec todo create`          | No signal. Workspace for iteration. | Human-driven.                          |
-| `telec todo dump`            | Fires notification immediately.     | Agent-driven via notification service. |
-| `telec content dump`         | Fires notification immediately.     | Writer/publisher agents react.         |
-| `telec bugs report` (legacy) | Inline dispatch (coupled).          | To be migrated to notification-driven. |
-
-The dump is a fire-and-forget brain dump. The notification service routes it to subscribed handlers. The human's five-minute dump becomes a fully processed artifact without them touching it again.
-
-### First internal consumers (dog-fooding)
-
-- **prepare-quality-runner**: consumes `todo.artifact_changed`, `todo.created`, `todo.dumped`, `todo.activated`, `todo.dependency_resolved`. Produces DOR assessments as notification resolutions.
-- **content pipeline**: consumes `content.dumped`. Writer agent refines, publisher agent distributes.
-- **history-search-upgrade**: mirror worker reports progress/completion through notifications.
-
-These prove the pattern before any external integration. TeleClaude is both the first producer and consumer of its own event stream.
-
-## Event Levels
-
-Same pipe, different significance. Consumers filter by level.
-
-| Level | Name           | What                                                  | Who cares                      |
-| ----- | -------------- | ----------------------------------------------------- | ------------------------------ |
-| L0    | Infrastructure | Redis connected, worker spawned, GC ran               | Nobody unless something breaks |
-| L1    | Operational    | Session started, mirror indexed, daemon restarted     | Operators, gathering agents    |
-| L2    | Workflow       | DOR passed, build complete, review needs decision     | Orchestrators, the human       |
-| L3    | Business       | Deployment delivered, customer escalation, SLA breach | The human, always              |
-
-The level is a field in the envelope. An infrastructure agent subscribes to L0-L1. A human's TUI shows L2-L3 by default. An admin who wants everything? Turn the dial. Progressive disclosure through subscription, not through separate infrastructure.
+Redis pub/sub is fire-and-forget. Redis Streams are persistent. If the daemon restarts, the processor reconnects to the consumer group and picks up where it left off. Zero message loss.
 
 ## The Envelope Schema
 
 ### Telec as the shared codec
 
-The wire format is JSON. The interpreter is telec. Everyone runs telec. That's the entire answer.
-
-Producers use whatever internal models they want (Pydantic, dataclass, raw dict). They serialize to the envelope format and throw it at the pipe. Out the other end comes JSON. Telec parses it. Telec knows the shape because telec defines the shape. Schema versioning IS telec versioning. V1 telec reads V1 envelopes. V2 telec reads V1 and V2.
-
-There is no coupling problem between producer and consumer packages. The producer's internal representation is their private business. The consumer never imports the producer's models. They both speak JSON through a shared codec.
+The wire format is JSON. The interpreter is telec. Schema versioning IS telec versioning.
 
 ### Envelope structure
 
 ```yaml
 # === Identity: who am I ===
-event: deployment.failed
+event: domain.software-development.deployment.failed
 version: 1
 source: deployment-service
 timestamp: 2026-02-28T10:00:00Z
 idempotency_key: 'deploy:instrukt-proxy:v2.4.1:attempt-3'
 
 # === Semantic: how to make sense of me ===
-level: 3 # L0-L3 significance
-domain: infrastructure # loose hint, not strict taxonomy
-entity: 'telec://deployment/abc' # what I'm about
+level: 3
+domain: software-development
+entity: 'telec://deployment/abc'
 description: >
   Deployment of instrukt-proxy v2.4.1 to staging failed
   on attempt 3 of 3. Container health check timed out.
@@ -138,24 +690,21 @@ payload:
   target: staging
   attempt: 3
   error: health_check_timeout
-  logs_tail: '...'
 
 # === Affordances: what can you do with me ===
 actions:
   retry:
     description: Retry the deployment with same config
-    produces: deployment.started
+    produces: domain.software-development.deployment.started
     outcome_shape:
-      success: deployment.completed
-      failure: deployment.failed
+      success: domain.software-development.deployment.completed
+      failure: domain.software-development.deployment.failed
   escalate:
     description: Escalate to human operator
     produces: notification.escalation
   rollback:
     description: Roll back to previous stable version
-    produces: deployment.started
-    outcome_shape:
-      success: deployment.completed
+    produces: domain.software-development.deployment.started
 
 # === Resolution: what "done" looks like ===
 terminal_when: 'action taken OR 3 hours elapsed'
@@ -165,27 +714,13 @@ resolution_shape:
   resolved_by: string
 ```
 
-The envelope has five layers:
+### Affordances are descriptive, never instructive
 
-1. **Identity** — who am I, where did I come from, how to deduplicate me
-2. **Semantic** — how to make sense of me (level, domain, description, entity reference)
-3. **Data** — what happened (the payload, varies by event type)
-4. **Affordances** — what can you do with me (actions, outcomes, error shapes)
-5. **Resolution** — what "done" looks like
+Affordances describe possibilities. The receiving AI decides whether to act based on its own sovereignty rules. Affordances are a menu, not an API. The notification service tracks state transitions, not actions themselves.
 
-The identity, semantic, and resolution layers are fixed — telec owns them. The data layer varies per event type. The affordance layer is the innovation — it's what makes events self-describing for consumers who have never seen them before.
-
-### Self-describing events with affordances
-
-Traditional event systems say: "here's a blob, you figure it out." The affordance layer says: "here's what you CAN do with me."
-
-An AI agent that has never seen `deployment.failed` before reads the affordances and understands: I have three options (retry, escalate, rollback). Each one produces a specific event type. Each outcome has a known shape. I can reason about which action to take based on context I already have.
-
-The agent doesn't need an SDK for the deployment service. It doesn't need to import anything. The event taught it what to do.
+Execution is the consumer's responsibility. An agent reads the affordance, picks an action, and emits the corresponding event. The entity field is the correlation key — both the original failure and the retry reference the same entity. The notification projector correlates them.
 
 ## The Consumption Spectrum
-
-Every consumer chooses where they sit on this spectrum:
 
 ```
 TIGHT ←————————————————————————→ LOOSE
@@ -196,346 +731,134 @@ our own events,  parser for our    unfamiliar events,  what's even
 full knowledge)  versioned shape)  routes by heuristic) available)
 ```
 
-### Tight (dog-fooding)
-
-We produce and consume our own events. Full knowledge. Predictable wiring. Our handlers know the exact payload shape because we wrote the producer. This is our dog food — tight because we choose it, not because the system demands it.
-
-### Automation
-
-An external consumer inspects the envelope version, maps the payload fields, builds a deterministic parser. No AI needed. Wire-to-wire. They chose to codify the consumption because they want it all the time.
-
-### AI-assisted
-
-A consumer who has never seen our events before points their AI at the stream. The AI reads the description, reads the affordances, and makes a judgment call about relevance and action. Loose. No schema import. No shared library. Intelligence in the middle.
-
-This is where AI-native event processing is genuinely different from traditional systems. A traditional code handler CANNOT reason about an unfamiliar event. An AI handler CAN — if the metadata is rich enough. The affordance layer makes the metadata rich enough.
-
-### Discovery
-
-A new consumer explores what's available:
-
-```
-telec events discover "infrastructure failures"
-telec events discover "anything about deployments"
-telec events watch --interest "business-level events I should act on"
-```
-
-Not a filter on event type. A filter on meaning. The AI reads each incoming event's description and affordances, checks if it matches the interest, and routes it.
-
 ## Progressive Automation
 
 ### Discover → interpret → approve → codify → consume
 
-When a new service publishes its event catalog:
+This cycle is the subscription model in motion:
 
-1. **Discover**: AI sees new event types. Notifies the admin: "deployment-service published 3 new event types."
-2. **Interpret**: AI reads the descriptions and affordances. Reports: "These look like infrastructure lifecycle events. We might want to react to failures."
-3. **Approve**: Admin gets a notification with an action: "Want me to wire up automatic handling for deployment failures?" Button press. Or, for areas with higher AI clearance, this happens autonomously.
-4. **Codify**: An AI coder takes the loose event description and generates tight plumbing — a handler, a parser, a route into internal systems. Out of the box building blocks. The codification follows a known approach and schema that telec provides.
-5. **Consume**: The next time the event fires, tight automation handles it. No AI in the middle. Wire-to-wire.
+1. **Discover**: AI sees new event types via `cartridge.published` or unfamiliar events arriving
+2. **Interpret**: AI reads descriptions and affordances, reports relevance
+3. **Approve**: at L1, human approves. At L3, AI acts autonomously
+4. **Codify**: AI generates tight plumbing — a handler, a parser, a cartridge
+5. **Consume**: next event triggers codified handler. Wire-to-wire. No AI in the middle.
 
-### Graduated sovereignty
+### Graduated autonomy (not trust)
 
-Clearance levels for AI autonomy over event handling:
-
-| Level                    | Authority                                         | Example                                           |
-| ------------------------ | ------------------------------------------------- | ------------------------------------------------- |
-| L1: Human-in-the-loop    | Every action requires approval                    | Business intelligence decisions, financial events |
-| L2: Operational autonomy | AI handles routine events, escalates anomalies    | Infrastructure health, routine maintenance        |
-| L3: Full autonomy        | AI discovers, interprets, codifies without asking | Low-risk integrations, monitoring, cleanup        |
-
-The sovereignty level is configurable per domain. Not per event type — per domain of concern. "Give the AI L3 clearance for infrastructure. Keep L1 for anything touching customer data."
+Autonomy levels per domain (configurable in the matrix). The default is L3 — full autonomy. People opt into more control.
 
 ### Local sovereignty
 
-Each node in the network is sovereign. They decide their own interpretation. They map events to their own internal context. The exchange protocol doesn't dictate how you consume — it just makes sure what arrives is rich enough that you CAN consume it, regardless of your approach.
+Each node is sovereign. They decide their own interpretation. The protocol doesn't dictate how to consume — it ensures signals carry enough context for any consumer.
 
-This is decentralized collaboration through self-describing signals. The pipe doesn't care who's listening or how smart they are. It just makes sure the signal carries enough context that anyone — human, AI, or automation — can make sense of it at their own level.
+## Event-Driven Job Execution
 
-## Schema-Driven Intelligence
+### Signal in, action out
 
-### The schema IS the intelligence
+Events replace scheduled jobs:
 
-A payload walks in with a certain shape. The processor doesn't have a switch statement for each type — it reads the schema metadata and derives the correct behavior. Adding a new notification type is **zero code in the processor** — you define a schema, register it, and the processor knows how to handle payloads of that shape.
+| Old pattern                      | New pattern                                                                |
+| -------------------------------- | -------------------------------------------------------------------------- |
+| Scheduled DOR scanner            | `domain.software-development.planning.todo_activated` → quality runner     |
+| `telec bugs report` inline chain | `domain.software-development.operations.incident_detected` → agent claims  |
+| Ad-hoc `next_prepare` passes     | `domain.software-development.planning.todo_dumped` → automated preparation |
+| Manual content pipeline          | `domain.marketing.content.drafted` → writer agent picks up                 |
 
-### What schemas express
+### The "dump" primitive — transitions as signal sources
 
-- **Identity**: how to deduplicate (idempotency key derivation from payload fields)
-- **Update semantics**: which payload field changes constitute a meaningful transition (reset to unread) vs a silent update (progress tick — just update in place)
-- **Terminal conditions**: when is this notification done (100% progress, entity in terminal state, explicit resolution)
-- **Agent eligibility**: can agents claim and act on this notification type? (`actionable: true/false`)
-- **Append behavior**: some fields accumulate (retries appended as array), others overwrite
-- **Referenced entity type**: what `telec://` URI this notification points at (if any)
-- **Affordances**: what actions are available, what each produces, what outcomes to expect
+Lifecycle transitions are the universal signal source. Every entity has a lifecycle. Every transition is a potential event. The schema declares which transitions emit signals.
 
-### Schema implementation (start simple)
-
-Pydantic models in the notification package for internal (dog-food) events. The wire format is always JSON. If schema evolution becomes complex later, migrate to JSON Schema or Protocol Buffers for formal versioning and backward compatibility validation. But start with Python-native.
-
-### Service event catalogs
-
-Services publish their event catalogs — collections of event descriptors. Each descriptor is a complete envelope template: what fields exist, what they mean, what actions are available.
-
-```
-telec events list                          # all event types across all services
-telec events list --service deployment     # events from one service
-telec events describe deployment.failed    # full envelope shape for one event
-telec events discover "failures"           # AI-assisted search by meaning
-```
-
-The catalog is progressive disclosure. You don't need to know everything upfront. You discover what's relevant, subscribe to what matters, and ignore the rest.
-
-## Notification Categories
-
-### Informational
-
-No external reference. Read and done. Examples: "Mirror indexing complete — 3,660 sessions in 4m 12s", "Daemon restarted."
-
-### Entity-referenced
-
-Points at a resource via `telec://` URI. Reflects that resource's lifecycle. Examples: "DOR passed for history-search-upgrade" (references `telec://todo/history-search-upgrade`), "Deployment failed: instrukt-proxy" (references `telec://deployment/abc`). The notification surfaces state changes from the referenced entity without managing the entity itself.
-
-### Progress
-
-A long-running operation with evolving content. Same notification ID, content updates in place. Example: "Mirror indexing: 0/3660" evolves to "1200/3660" evolves to "3660/3660 complete." The processor knows from the schema that progress ticks are silent updates (no unread reset) until the terminal condition (100%) which IS a meaningful transition.
-
-## Notification State Machine
-
-Two orthogonal dimensions:
-
-### Human awareness
-
-`unseen` -> `seen`
-
-### Agent handling (for actionable notifications)
-
-`none` -> `claimed` -> `in_progress` -> `resolved`
-
-These are independent. An agent can resolve something the human hasn't seen yet. A human can see something no agent has touched. The list view shows both at a glance.
-
-### State transition rules
-
-- **State transitions on an existing notification do NOT create new notifications.** Agent claims it? Update the record, push to all surfaces. No "Agent X read your notification" noise.
-- **Only when resolution produces something genuinely new** (a bug was filed, a deployment was triggered) does a NEW notification get created for that new event.
-- **Meaningful transitions** reset to unread (entity state changed, error occurred, resolution attached).
-- **Progress ticks** update silently (content changes but nature hasn't changed).
-- The schema determines which transitions are meaningful vs silent.
-
-### Agent resolution
-
-When an agent resolves a notification, it attaches a structured result:
-
-```json
-{
-  "summary": "Restarted mirror worker, indexing resumed",
-  "link": "telec://session/abc123",
-  "resolved_by": "claude",
-  "resolved_at": "2026-02-27T14:00:00Z"
-}
-```
-
-Admin sees the resolution without leaving the notification list. Self-contained.
-
-### Stale claim prevention
-
-If a notification is in `claimed` or `in_progress` for more than N minutes without resolution, the claim expires. Returns to `none`. Another agent or human can pick it up. Simple deadlock prevention.
+The dump command is a shortcut: create entity + immediately transition to a signal-worthy state. But signals aren't special to dumps — any transition can fire. "What if I created a todo and later want to signal it?" Transition it. Any transition can emit.
 
 ## Stateful Delivery
 
-### All surfaces stay in sync
+All surfaces stay in sync. Notifications are tracked by ID in every client. State changes push to all surfaces:
 
-Notifications are tracked by ID in every client, just like session messages. When a notification state changes in one surface (read in TUI), ALL reflections update (Discord message edited, web frontend refreshed). No out-of-sync states.
+- **TUI**: WebSocket events, same architecture as sessions
+- **Web frontend**: admin notifications panel, same API
+- **Discord**: messages posted on creation, edited on state changes
+- **Telegram**: high-level notifications (L2+) delivered via adapter
 
-- **TUI**: notifications enter the cache system the same way sessions do. WebSocket events for state changes. Same architecture, new entity type.
-- **Web frontend**: admin notifications panel. Same API, rendered in browser.
-- **Discord**: #notifications channel. Messages posted on creation, edited in place on state changes. Stateful, just like session messages.
-
-### Delivery mechanism
-
-All clients support push. On notification creation or state change:
-
-1. Update SQLite read model
-2. Push event via WebSocket to connected TUI/web clients
-3. Post/edit Discord message via bot
-4. Clients receive structured JSON payloads and render using client-side templates
-
-### Client-side rendering
-
-Notifications are **structured JSON payloads**, not markdown. Each notification type has a sub-schema that expresses its shape. Clients use templates to render the structured data appropriately for their medium. The notification service never produces presentation — it produces data. Templates live in the clients.
+Notifications are **structured JSON payloads**, not markdown. Client-side rendering via templates.
 
 ## telec:// URI Scheme
 
-### Platform-wide resource addressing
+Platform-wide resource addressing: `telec://{type}/{id}`
 
-Every entity in TeleClaude gets a canonical URI: `telec://{type}/{id}`
-
-- `telec://todo/history-search-upgrade`
-- `telec://session/abc123`
-- `telec://deployment/v2.4.1-staging`
-- `telec://bug/mirror-worker-crash`
-- `telec://notification/42`
-
-### Resolution
-
-Each client implements a resolver that maps `telec://` URIs to navigation:
-
-- **TUI**: resolves to view + params (switch to Sessions tab, highlight session abc123)
-- **Web frontend**: resolves to URL path (`/admin/todos/history-search-upgrade`)
-- **Discord**: displays as text or links to web frontend URL
-- **Agents**: resolves to API endpoint for fetching the resource
-
-### Registry
-
-Start with hardcoded types: `todo`, `session`, `deployment`, `bug`, `notification`, `job`. Extract to a discoverable registry if/when more types emerge.
-
-## External Service Integration
-
-### Callback envelope pattern
-
-When TeleClaude requests work from an external service (deployment platform, future services):
-
-1. TeleClaude creates a partially-filled notification payload — the **envelope** — conforming to a known schema
-2. The envelope is sent along with the service request (via Redis or API)
-3. The external service does its work, enriches the payload with result fields
-4. The enriched payload is sent back via `XADD` to the notification Redis Stream
-5. The notification processor receives what is essentially its own schema coming home with new data
-6. It processes it like any other notification — the schema dictates behavior
-
-External services never need to understand TeleClaude's notification internals. They just fill in the blanks on the form they were given and return it. TeleClaude stays in control of the schema, the lifecycle, and the rendering.
-
-### Internal service notifications
-
-When an external service is consumed (requested, in-progress, delivered), the notification service creates internal notifications tracking the lifecycle. Admin sees: "Deployment requested" -> "Deployment in progress" -> "Deployment complete — v2.4.1 on staging."
+Each client implements a resolver. Start with hardcoded types: `todo`, `session`, `deployment`, `bug`, `notification`, `job`. Extract to discoverable registry later.
 
 ## Idempotency
 
-### Deduplication
-
-Each notification has an idempotency key derived from payload fields (defined per schema). If the same event fires twice (session_closed replay, worker retry), the second write is either:
+Per-schema idempotency key derivation from payload fields. Duplicates either:
 
 - Deduplicated (same key, same content = no-op)
-- Appended (same key, new content = added to array). First invocation creates, second invocation appends. The notification body shows all invocations and their results.
+- Appended (same key, new content = accumulated)
 
-The schema declares which fields participate in the idempotency key and whether duplicates are dropped or appended.
-
-## Referential Integrity
-
-When a referenced entity is deleted (todo removed, session purged), the notification transitions to a terminal state silently — "stale" or "archived." No ping to anyone. It just stops being active. If a consumer scrolls past it, they see it greyed out or gone. No action required from the consumer.
-
-Integrity checks can run lazily (when a notification is accessed) or periodically (daemon maintenance task). Not eagerly on every entity deletion — that would couple the notification service to every entity lifecycle.
+The schema declares behavior.
 
 ## Consolidation
 
-### What gets replaced
-
 ALL existing bespoke notification paths collapse into this service:
 
-- `notification_outbox` table and related workers — replaced
-- Session outbox workers for notification delivery — replaced
+- `notification_outbox` table and workers — replaced
+- Session outbox workers — replaced
 - Hook outbox notification paths — replaced
-- Job reports going directly to channels — replaced (jobs create notifications instead)
-- Any direct channel posting for operational events — replaced
+- Job reports to channels — replaced
+- Direct channel posting for operational events — replaced
 - Scheduled maintenance jobs — replaced with event-driven handlers
-- Inline dispatch chains (e.g., `telec bugs report`) — decoupled via notification triggers
-
-This is greenfield. The existing notification plumbing is dead code. Remove it and build the notification service as the single path.
-
-## What Generates Notifications
-
-Only autonomous things the user didn't initiate:
-
-- **Background workers**: mirror indexing progress/completion, future processors
-- **Job reports**: cron jobs create notifications instead of posting to channels
-- **Agent-to-agent outcomes**: when peer agents converge on a decision, the conclusion is a notification
-- **System health**: daemon restart, migration applied, worker crashed
-- **Todo state transitions**: DOR passed, build complete, review needs human decision
-- **Todo dumps**: `telec todo dump` fires `todo.dumped` immediately
-- **Content dumps**: `telec content dump` fires `content.dumped` immediately
-- **External service callbacks**: deployment complete, service response received
-- **Errors that need attention**: actionable errors, not every error
-- **Service catalog changes**: new services discovered, new event types available
-
-### What does NOT generate notifications
-
-- User-initiated actions (they already see the result)
-- Normal agent turns (that's transcript/mirror territory)
-- Internal daemon housekeeping that succeeds silently
-- Reading/acknowledging a notification (no echo noise)
-
-## Notification as Agent Signal Source
-
-The notification inbox IS an observability pipeline for autonomous events. Gathering agents (periodic AI agent sessions that scan the platform for signals) can query the notification API: "show me all unread notifications from the last 24 hours." They get a structured list of everything that happened autonomously. No separate observability infrastructure needed.
-
-This was a key insight from the brainstorm: we don't need a separate metrics/observability pipeline. The notification service IS the signal surface for agents. If an event matters enough to notify a human, it matters enough for an agent to ingest as a signal.
-
-## Initial Event Catalog (Dog-Food)
-
-Events TeleClaude produces and consumes internally. These are the first tight-path consumers that prove the pattern.
-
-### Todo lifecycle events
-
-- `todo.created` — new todo scaffolded via `telec todo create`
-- `todo.dumped` — brain dump via `telec todo dump` (immediate processing expected)
-- `todo.activated` — moved from icebox to active roadmap
-- `todo.artifact_changed` — requirements.md or implementation-plan.md modified
-- `todo.dependency_resolved` — a blocking dependency was delivered
-- `todo.dor_assessed` — DOR score updated (resolution from prepare-quality-runner)
-
-### Content lifecycle events
-
-- `content.dumped` — brain dump via `telec content dump`
-- `content.refined` — writer agent completed refinement
-- `content.published` — publisher agent distributed content
-
-### System events
-
-- `system.daemon_restarted` — daemon came back up
-- `system.worker_crashed` — background worker failed
-- `system.migration_applied` — database migration ran
-
-### Build/review lifecycle events
-
-- `build.completed` — builder finished implementation
-- `review.verdict_ready` — reviewer produced a verdict
-- `review.needs_decision` — review has blockers requiring human input
+- Inline dispatch chains — decoupled via event triggers
 
 ## Dependency Fan
 
-The notification service is the hub. Four items are currently blocked on it:
+The event processing platform is the hub:
 
 ```
-notification-service
-  ├── history-search-upgrade (mirror worker operational reporting)
-  ├── prepare-quality-runner (event-driven DOR assessment)
-  ├── todo-dump-command (telec todo dump fires notification)
-  └── content-dump-command (telec content dump fires notification)
+notification-service (teleclaude_events)
+  ├── history-search-upgrade
+  ├── prepare-quality-runner
+  ├── todo-dump-command
+  ├── content-dump-command
+  ├── event-envelope-schema (formalizes the five-layer envelope)
+  ├── mesh-architecture (carries events between nodes)
+  ├── mesh-trust-model (per-event trust evaluation)
+  ├── service-publication (services as events)
+  ├── community-governance (PR-based democracy via events)
+  └── telec-init-enrichment (bootstraps domain awareness)
 ```
-
-## Relationship to harmonize-agent-notifications
-
-The existing `harmonize-agent-notifications` todo is subsumed by this work. That todo was about harmonizing existing bespoke notification paths. This todo replaces them entirely with a proper service. The harmonize todo has been delivered and closed.
 
 ## Technology Choices
 
-| Concern                     | Solution                                     | Rationale                                                      |
-| --------------------------- | -------------------------------------------- | -------------------------------------------------------------- |
-| Event persistence / ingress | Redis Streams                                | Already running Redis, persistent, replayable, consumer groups |
-| Current state / queries     | SQLite (separate file)                       | Lightweight, zero ops, owned by notification service           |
-| Schema enforcement          | Pydantic models (internal)                   | Python-native, start simple, wire format is always JSON        |
-| Event processing            | Custom processor in notification package     | Hundreds of events/day, no framework needed                    |
-| Client delivery             | WebSocket push (TUI/web) + Discord bot (API) | All clients already support push                               |
-| Resource addressing         | `telec://` URI scheme                        | Platform-wide, client-resolved                                 |
-| Shared codec                | telec CLI                                    | All consumers run telec, versioned envelope format             |
+| Concern             | Solution                                | Rationale                                   |
+| ------------------- | --------------------------------------- | ------------------------------------------- |
+| Event persistence   | Redis Streams                           | Already running, persistent, replayable     |
+| Notification state  | SQLite (separate file)                  | Lightweight, owned by events package        |
+| Schema enforcement  | Pydantic models                         | Python-native, wire format is JSON          |
+| Event processing    | Cartridge pipeline in events package    | Composable, pluggable, right-sized          |
+| Alpha sandboxing    | Docker container sidecar                | Isolated, read-only, no-network             |
+| Client delivery     | WebSocket push + Discord bot + Telegram | All clients support push                    |
+| Resource addressing | `telec://` URI scheme                   | Platform-wide, client-resolved              |
+| Shared codec        | telec CLI                               | All consumers run telec, versioned envelope |
 
 ## Design Process
 
 This design was produced through structured brainstorm sessions:
 
 1. **Session 3d2880de** (Feb 27): Mo and Claude during a prepare-phase review of history-search-upgrade. The notification need surfaced from the mirror worker's requirement for operational reporting.
-   - **Inhale**: explored notification needs across the platform — background workers, agent observability, external services, cross-project integration
-   - **Hold**: crystallized key tensions — daemon-coupled vs standalone, markdown vs structured JSON, separate daemon vs Redis Streams for reliability, Kafka vs right-sized tools, notification-as-work-item vs notification-as-window-into-work
-   - **Exhale**: converged on schema-driven intelligent processor, event-sourcing with Redis Streams + SQLite, callback envelope pattern for external services, `telec://` URI scheme, stateful delivery across all surfaces
+   - **Inhale**: explored notification needs across the platform
+   - **Hold**: crystallized tensions — daemon-coupled vs standalone, markdown vs structured JSON, separate daemon vs Redis Streams
+   - **Exhale**: converged on schema-driven processor, event-sourcing with Redis Streams + SQLite
 
-2. **Session c40b16b6** (Feb 28): Mo and Claude during todo preparation review. Expanded the design with event-driven job execution, the consumption spectrum, affordance-based envelopes, and progressive automation.
-   - **Key insight**: the notification service is not just for notifications — it's the nervous system. Events replace scheduled jobs. The envelope carries affordances (what you can do with me), not just data. Consumers choose their level of coupling: tight (dog-food), automation (parser), AI-assisted (heuristic), discovery (natural language). Progressive automation lets AI discover new event types, interpret them, offer to codify tight plumbing, with graduated sovereignty levels controlling how much autonomy the AI has per domain.
-   - **Telec as shared codec**: resolved the "where do schemas live" question. The wire format is JSON. Telec defines and parses the envelope. Schema versioning is telec versioning. No coupling between producer and consumer packages.
+2. **Session c40b16b6** (Feb 28): Expanded with event-driven job execution, consumption spectrum, affordance-based envelopes, progressive automation.
+   - **Key insight**: the service is the nervous system. Events replace scheduled jobs. Envelope carries affordances. Progressive automation through graduated sovereignty.
+
+3. **Second pass** (Feb 28): Critical concept review revealed fundamental architectural gaps. Expanded into full event processing platform with cartridge pipeline.
+   - **Events are primary, notifications are projections.** Package renamed to `teleclaude_events`. The Redis Stream is the event log. The notification table is one projection shaped by lifecycle declarations.
+   - **Cartridge pipeline architecture.** The processor is not monolithic — it's a pipeline of pluggable cartridges. System cartridges (trust, dedup, enrichment, correlation, classification, projection) form the core. Domain and personal cartridges extend downstream.
+   - **Trust and autonomy are orthogonal.** Trust is per-event data integrity (pipeline membrane). Autonomy is delegation preference (post-pipeline). L3 full autonomy is the default. People opt into control.
+   - **Three-scope model.** System (admin, sequential), Domain (guardian AI, parallel), Personal (member via AI, leaf nodes). No human managers — domain guardian AIs. Progressive consolidation: personal → domain → platform.
+   - **Alpha container.** Approved cartridges run in-process. Experimental cartridges run in a sandboxed Docker sidecar with read-only mounts and no network.
+   - **Signal processing pipeline.** Three-stage utility: ingest (cheap normalization + tagging) → cluster (group by similarity, detect bursts) → synthesize (deep read per cluster, deduplicate, produce clean artifact). Domain-agnostic — any domain subscribes.
+   - **Namespaced event taxonomy.** `system.*`, `signal.*`, `domain.{name}.*`. Each domain owns its namespace. Starter taxonomies ship per pillar.
+   - **Cartridge ecosystem.** Cartridges are publishable on the mesh. Code-in-payload evaluated by AI as data. Progressive promotion through usage signals → community governance. Utility cartridges (small, composable) vs domain cartridges (orchestrations).
+   - **Folder hierarchy.** `~/.teleclaude/company/` (crown jewels, backed up), `~/.teleclaude/personal/` (per-member), `~/.teleclaude/helpdesk/` (jailed). Promotion = moving from personal to company.
+   - **Domain pillars.** Software Development (existing SDLC), Marketing (content + feeds + campaigns), Creative (asset lifecycle), Customer Relations (help desk).

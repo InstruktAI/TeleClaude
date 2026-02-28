@@ -39,7 +39,6 @@ UNAUTHORIZED_EXCLUDED_TOOLS = {
     "telec sessions end",
     "telec todo prepare",
     "telec todo work",
-    "telec todo maintain",
     "telec todo mark-phase",
     "telec todo set-deps",
     "telec agents status",

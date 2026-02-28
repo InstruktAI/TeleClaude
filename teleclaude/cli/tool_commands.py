@@ -718,7 +718,7 @@ def handle_sessions_escalate(args: list[str]) -> None:
 def handle_todo_prepare(args: list[str]) -> None:
     """Run the Phase A (prepare) state machine.
 
-    Usage: telec todo prepare [<slug>] [--cwd <dir>] [--no-hitl]
+    Usage: telec todo prepare [<slug>] [--no-hitl]
 
     Checks preparation state for the given slug and returns instructions for
     the next action: draft artifacts (if not started), gate review (if draft
@@ -729,7 +729,6 @@ def handle_todo_prepare(args: list[str]) -> None:
 
     Options:
       <slug>       Work item slug (optional; auto-selects if omitted)
-      --cwd <dir>  Project root directory (default: project's default_working_dir)
       --no-hitl    Disable human-in-the-loop gate prompts
 
     Examples:
@@ -740,14 +739,11 @@ def handle_todo_prepare(args: list[str]) -> None:
         print(handle_todo_prepare.__doc__ or "")
         return
 
-    body: dict[str, object] = {"hitl": True}  # guard: loose-dict - JSON request body
+    body: dict[str, object] = {"hitl": True, "cwd": os.getcwd()}  # guard: loose-dict - JSON request body
 
     i = 0
     while i < len(args):
-        if args[i] == "--cwd" and i + 1 < len(args):
-            body["cwd"] = args[i + 1]
-            i += 2
-        elif args[i] == "--no-hitl":
+        if args[i] == "--no-hitl":
             body["hitl"] = False
             i += 1
         elif not args[i].startswith("-"):
@@ -801,47 +797,10 @@ def handle_todo_work(args: list[str]) -> None:
     print_json(data)
 
 
-def handle_todo_maintain(args: list[str]) -> None:
-    """Run the Phase D (maintain) state machine.
-
-    Usage: telec todo maintain --cwd <dir>
-
-    Executes maintenance steps for infrastructure upkeep. Currently returns a
-    stub message indicating maintenance procedures are not yet defined.
-
-    Options:
-      --cwd <dir>  Project root directory (REQUIRED)
-
-    Examples:
-      telec todo maintain --cwd /path/to/project
-    """
-    if "--help" in args or "-h" in args:
-        print(handle_todo_maintain.__doc__ or "")
-        return
-
-    body: dict[str, object] = {}  # guard: loose-dict - JSON request body
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--cwd" and i + 1 < len(args):
-            body["cwd"] = args[i + 1]
-            i += 2
-        else:
-            i += 1
-
-    if not body.get("cwd"):
-        print("Error: --cwd is required for todo maintain", file=sys.stderr)
-        raise SystemExit(1)
-
-    data = tool_api_call("POST", "/todos/maintain", json_body=body)
-    print_json(data)
-
-
 def handle_todo_mark_phase(args: list[str]) -> None:
     """Mark a work phase as complete/approved in state.yaml.
 
     Usage: telec todo mark-phase <slug> --phase <phase> --status <status>
-                                  --cwd <dir>
 
     Updates the phase status for the given slug in its state.yaml file.
     For terminal statuses (complete, approved), the worktree must have no
@@ -852,17 +811,16 @@ def handle_todo_mark_phase(args: list[str]) -> None:
       --phase <p>     Phase to mark: build or review
       --status <s>    New status: pending, started, complete, approved,
                       or changes_requested
-      --cwd <dir>     Project root directory (REQUIRED)
 
     Examples:
-      telec todo mark-phase my-slug --phase build --status complete --cwd /path/to/project
-      telec todo mark-phase my-slug --phase review --status approved --cwd /path/to/project
+      telec todo mark-phase my-slug --phase build --status complete
+      telec todo mark-phase my-slug --phase review --status approved
     """
     if "--help" in args or "-h" in args:
         print(handle_todo_mark_phase.__doc__ or "")
         return
 
-    body: dict[str, object] = {}  # guard: loose-dict - JSON request body
+    body: dict[str, object] = {"cwd": os.getcwd()}  # guard: loose-dict - JSON request body
 
     i = 0
     while i < len(args):
@@ -872,16 +830,13 @@ def handle_todo_mark_phase(args: list[str]) -> None:
         elif args[i] == "--status" and i + 1 < len(args):
             body["status"] = args[i + 1]
             i += 2
-        elif args[i] == "--cwd" and i + 1 < len(args):
-            body["cwd"] = args[i + 1]
-            i += 2
         elif not args[i].startswith("-"):
             body["slug"] = args[i]
             i += 1
         else:
             i += 1
 
-    for req in ("slug", "phase", "status", "cwd"):
+    for req in ("slug", "phase", "status"):
         if not body.get(req):
             print(f"Error: --{req} is required" if req != "slug" else "Error: slug is required", file=sys.stderr)
             raise SystemExit(1)
@@ -893,9 +848,9 @@ def handle_todo_mark_phase(args: list[str]) -> None:
 def handle_todo_set_deps(args: list[str]) -> None:
     """Set dependencies for a work item in the roadmap.
 
-    Usage: telec todo set-deps <slug> --after <dep1> [<dep2> ...] --cwd <dir>
+    Usage: telec todo set-deps <slug> --after <dep1> [<dep2> ...]
                                OR
-           telec todo set-deps <slug> --cwd <dir>   (clears all dependencies)
+           telec todo set-deps <slug>   (clears all dependencies)
 
     Replaces all existing dependencies for the slug with the given list.
     Pass no --after flags to clear all dependencies. Validates all slugs
@@ -904,12 +859,11 @@ def handle_todo_set_deps(args: list[str]) -> None:
     Options:
       <slug>           Work item slug
       --after <slug>   Dependency slug (can be repeated for multiple deps)
-      --cwd <dir>      Project root directory (REQUIRED)
 
     Examples:
-      telec todo set-deps my-feature --after auth-setup --cwd /path/to/project
-      telec todo set-deps my-feature --after dep1 --after dep2 --cwd /path/to/project
-      telec todo set-deps my-feature --cwd /path/to/project   (clears deps)
+      telec todo set-deps my-feature --after auth-setup
+      telec todo set-deps my-feature --after dep1 --after dep2
+      telec todo set-deps my-feature   (clears deps)
     """
     if "--help" in args or "-h" in args:
         print(handle_todo_set_deps.__doc__ or "")
@@ -917,15 +871,12 @@ def handle_todo_set_deps(args: list[str]) -> None:
 
     slug: str | None = None
     after: list[str] = []
-    cwd: str | None = None
+    cwd: str = os.getcwd()
 
     i = 0
     while i < len(args):
         if args[i] == "--after" and i + 1 < len(args):
             after.append(args[i + 1])
-            i += 2
-        elif args[i] == "--cwd" and i + 1 < len(args):
-            cwd = args[i + 1]
             i += 2
         elif not args[i].startswith("-"):
             slug = args[i]
@@ -935,9 +886,6 @@ def handle_todo_set_deps(args: list[str]) -> None:
 
     if not slug:
         print("Error: slug is required", file=sys.stderr)
-        raise SystemExit(1)
-    if not cwd:
-        print("Error: --cwd is required", file=sys.stderr)
         raise SystemExit(1)
 
     body: dict[str, object] = {"slug": slug, "after": after, "cwd": cwd}  # guard: loose-dict - JSON request body

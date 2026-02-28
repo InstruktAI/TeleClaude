@@ -11,7 +11,7 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.models import TodoInfo
-from teleclaude.core.next_machine.core import load_icebox, load_roadmap
+from teleclaude.core.next_machine.core import load_delivered, load_icebox, load_roadmap
 
 logger = get_logger(__name__)
 
@@ -20,19 +20,25 @@ def assemble_roadmap(
     project_path: str,
     include_icebox: bool = False,
     icebox_only: bool = False,
+    include_delivered: bool = False,
+    delivered_only: bool = False,
 ) -> list[TodoInfo]:
-    """Assemble a rich list of todos from roadmap, icebox, and filesystem.
+    """Assemble a rich list of todos from roadmap, icebox, delivered, and filesystem.
 
     Args:
         project_path: Absolute path to project directory
         include_icebox: If True, include items from icebox.yaml
         icebox_only: If True, include ONLY items from icebox.yaml (implies include_icebox=True)
+        include_delivered: If True, include items from delivered.yaml
+        delivered_only: If True, include ONLY items from delivered.yaml (implies include_delivered=True)
 
     Returns:
         List of TodoInfo objects with full metadata (DOR, build status, etc.)
     """
     if icebox_only:
         include_icebox = True
+    if delivered_only:
+        include_delivered = True
 
     todos_root = Path(project_path) / "todos"
     icebox_path = todos_root / "icebox.md"  # Legacy fallback
@@ -201,7 +207,7 @@ def assemble_roadmap(
         return None
 
     # 1. Load active roadmap items
-    if not icebox_only:
+    if not icebox_only and not delivered_only:
         roadmap_entries = load_roadmap(project_path)
         for entry in roadmap_entries:
             slug = entry.slug
@@ -223,6 +229,16 @@ def assemble_roadmap(
             seen_slugs.add(entry.slug)
             append_todo(entry.slug, description=entry.description, after=entry.after, group=entry.group)
 
+    # 2b. Load delivered entries
+    if include_delivered:
+        for entry in load_delivered(project_path):
+            if entry.slug in seen_slugs:
+                continue
+            seen_slugs.add(entry.slug)
+            append_todo(entry.slug, description=entry.description or entry.title, group="Delivered")
+            todos[-1].status = "delivered"
+            todos[-1].delivered_at = entry.date
+
     # 3. Scan for remaining directories (orphans or untracked icebox containers)
     for todo_dir in sorted(todos_root.iterdir(), key=lambda p: p.name):
         if not todo_dir.is_dir():
@@ -237,6 +253,8 @@ def assemble_roadmap(
         if is_icebox and not include_icebox:
             continue
         if icebox_only and not is_icebox:
+            continue
+        if delivered_only:
             continue
 
         seen_slugs.add(todo_dir.name)
