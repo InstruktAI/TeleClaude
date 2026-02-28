@@ -20,8 +20,6 @@
   - notification-service
   description: telec content dump — fire-and-forget content dump with notification
     trigger
-- slug: integrate-session-lifecycle-into-next-work
-  description: Integrate session lifecycle into next-work orchestration
 - slug: guaranteed-inbound-delivery
   description: Core inbound queue for guaranteed user message delivery — adapter-agnostic,
     per-session FIFO, durable retry

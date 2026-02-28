@@ -1,5 +1,9 @@
 # Delivered work items. Newest first.
 
+- slug: integrate-session-lifecycle-into-next-work
+  date: '2026-02-28'
+  title: Integrate session lifecycle into next-work orchestration
+  description: Integrate session lifecycle into next-work orchestration
 - slug: tui-footer-polish
   date: '2026-02-28'
   commit: 31e8d4e3
