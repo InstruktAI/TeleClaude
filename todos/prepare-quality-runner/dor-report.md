@@ -1,48 +1,93 @@
 # DOR Report: prepare-quality-runner
 
-## Assessment
+## Gate Verdict
 
-- **Score:** 7 (draft)
-- **Verdict:** needs_work
-- **Assessed at:** 2026-02-28T16:00:00Z
+- **Score:** 8
+- **Status:** pass
+- **Assessed at:** 2026-02-28T17:15:00Z
 - **Schema version:** 1
+- **Gate phase:** formal DOR validation (separate from draft)
 
-## Actions taken
+## Gate Assessment
 
-- Rewrote `requirements.md` to align with event-driven architecture from `input.md`.
-  Previous version described a batch scanner; new version describes a notification handler.
-- Rewrote `implementation-plan.md` to match notification handler architecture.
-  Previous version described standalone modules; new version describes handler + scorer +
-  improver modules integrated with notification service.
-- Created `demo.md` with four scenarios covering the handler's behavior.
-- Fixed `state.json` references to `state.yaml` throughout.
+All eight DOR gates are satisfied:
 
-## Remaining gaps
+1. **Intent & success** — Clear problem (reactive DOR quality maintenance), clear outcome
+   (event-driven handler), 9 concrete acceptance criteria.
+2. **Scope & size** — Atomic: one handler with four internal modules (handler, scorer,
+   improver, reporter). In/out scope well-delineated. Fits a single build session.
+3. **Verification** — Unit tests per module, integration test for full event flow,
+   lint checks, demo scenarios covering all verdict paths.
+4. **Approach known** — Architecture settled: handler consumes events via notification
+   service API, scorer evaluates against structured rubric, improver tightens artifacts
+   within uncertainty boundary, reporter writes dor-report.md. Daemon integration via
+   startup wiring.
+5. **Research complete** — No third-party dependencies. Gate auto-satisfied.
+6. **Dependencies & preconditions** — `notification-service` listed as `after` dependency
+   in roadmap.yaml. That service has DOR pass (score 8), build pending. The dependency
+   is tracked and the handler is designed to the notification service's public API contract.
+   Build cannot start until notification-service ships — this is expected, not a blocker.
+7. **Integration safety** — Additive: new handler module wired into daemon startup.
+   No destabilization risk to existing code.
+8. **Tooling impact** — No tooling changes. Gate auto-satisfied.
 
-1. **Dependency not yet built.** The notification-service todo has DOR pass but build
-   is pending. This handler cannot be built until the notification service ships.
-   This is a known blocking dependency in `roadmap.yaml`.
+## Plan-to-Requirement Fidelity
 
-2. **Handler registration mechanism unclear.** The notification-service implementation
-   plan describes a processor with push callbacks, but the exact handler registration
-   API (how a handler subscribes to specific event types) is not yet specified in the
-   notification-service requirements. The prepare-quality-runner plan assumes a
-   registration interface that may need refinement when the notification service is built.
+Every plan task traces to a functional requirement:
 
-3. **Scorer implementation approach.** The plan describes a structured rubric with point
-   allocations, but whether this scoring happens via AI assessment (LLM-driven) or
-   deterministic heuristics is not specified. The current DOR assessment in
-   `next-prepare-gate` uses AI judgment. The plan should clarify whether the handler
-   replicates this or uses a different approach.
+| Plan task                   | Requirement      |
+| --------------------------- | ---------------- |
+| 1.1 Handler registration    | FR1              |
+| 1.2 Filtering & idempotency | FR1, FR2         |
+| 2.1 Scorer                  | FR3, FR4         |
+| 2.2 Consistency checker     | FR3              |
+| 3.1 Improver                | FR5              |
+| 3.2 Reassessment            | FR5              |
+| 4.1 Report writer           | FR6              |
+| 4.2 State writeback         | FR7              |
+| 4.3 Notification resolution | FR8              |
+| 5.1 Daemon integration      | Constraints      |
+| 6.1 Tests                   | AC8              |
+| 6.2 Quality checks          | AC9, Constraints |
 
-## Blockers
+No contradictions found. Plan respects all constraints (no direct Redis access,
+no internal imports, daemon-hosted lifecycle).
 
-- Notification-service build completion (roadmap dependency).
-- Handler registration API specification (depends on notification-service implementation).
+## Draft Blockers Reclassified
 
-## Draft assessment
+The draft report listed three blockers. Gate assessment reclassifies all three as
+implementation notes — none block readiness:
 
-This todo is well-scoped and the architectural direction is clear. The main risk is the
-dependency on notification-service — both for the handler registration mechanism and for
-the event types it consumes. Once notification-service ships, the remaining gaps can be
-resolved and this todo should reach DOR pass.
+1. **notification-service build pending** — Tracked `after` dependency in roadmap.yaml.
+   The handler's preparation is ready; its build waits for the dependency to ship.
+   This is normal dependency management, not a DOR failure.
+
+2. **Handler registration API** — The notification-service plan defines `EventCatalog`
+   with registration, `EventEnvelope` as the public model, and API endpoints for
+   claim/resolve. The exact dispatch pattern (push vs. pull) will solidify during
+   the notification-service build. The prepare-quality-runner requirements correctly
+   describe the behavioral contract (react to events, claim via API, assess, resolve
+   via API) without over-specifying the dispatch mechanism.
+
+3. **Scorer approach (AI vs deterministic)** — The plan defines a structured rubric
+   with point allocations per dimension. Whether evaluation runs as deterministic
+   heuristics or AI-driven prompts with the rubric as scoring criteria is a build-time
+   implementation decision. The rubric itself is the approach; the execution mechanism
+   is an engineering choice the builder makes. Not a readiness blocker.
+
+## Actions Taken
+
+- Validated all 8 DOR gates against artifacts.
+- Verified plan-to-requirement traceability (12 tasks, all traced).
+- Checked plan-requirement consistency (no contradictions).
+- Cross-referenced notification-service requirements and plan to validate dependency assumptions.
+- Reclassified draft blockers as implementation notes.
+
+## Remaining Notes for Builder
+
+- Build is blocked by `notification-service` roadmap dependency — do not schedule until
+  that dependency delivers.
+- The handler dispatch pattern (push callback vs. API polling) should be settled during
+  or immediately after notification-service build. Both patterns work with the current
+  requirements.
+- The scorer rubric dimensions are well-defined. Builder chooses the evaluation mechanism.
