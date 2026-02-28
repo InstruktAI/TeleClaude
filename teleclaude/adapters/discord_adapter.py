@@ -91,6 +91,8 @@ class DiscordAdapter(UiAdapter):
         self._forum_project_map: dict[int, str] = {}
         # forum-channel-id -> webhook cache for actor-based reflection delivery
         self._reflection_webhook_cache: dict[int, object] = {}
+        # team channel IDs — managed text channels under the Team category
+        self._team_channel_ids: set[int] = set()
         self._tree: object | None = None
         self._launcher_registration_view: object | None = None
 
@@ -194,6 +196,11 @@ class DiscordAdapter(UiAdapter):
         if discord_meta.thread_id is not None:
             return session
 
+        # Team text channels don't use forum threads — messages go directly
+        # to the channel. The channel_id is already set from the incoming message.
+        if discord_meta.channel_id is not None and discord_meta.channel_id in self._team_channel_ids:
+            return session
+
         # Route to the correct forum based on session type.
         # Infrastructure provisioning runs at startup (_handle_on_ready);
         # if channels are still missing here, skip silently.
@@ -245,16 +252,23 @@ class DiscordAdapter(UiAdapter):
         """Determine forum type and project path for an incoming message.
 
         Returns (forum_type, project_path) where forum_type is one of:
-        'help_desk', 'project', 'all_sessions'.
+        'help_desk', 'project', 'all_sessions', 'team'.
         """
         channel = getattr(message, "channel", None)
+        channel_id = self._parse_optional_int(getattr(channel, "id", None))
+
+        # Team text channel — route to the person's home directory
+        if channel_id is not None and channel_id in self._team_channel_ids:
+            home = os.path.expanduser("~")
+            return "team", home
+
         # Prefer explicit parent_id attribute, then parent.id, then channel.id
         parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
         if parent_id is None:
             parent_obj = getattr(channel, "parent", None)
             parent_id = self._parse_optional_int(getattr(parent_obj, "id", None))
         if parent_id is None:
-            parent_id = self._parse_optional_int(getattr(channel, "id", None))
+            parent_id = channel_id
 
         if parent_id is not None and parent_id == self._help_desk_channel_id:
             return "help_desk", config.computer.help_desk_dir
@@ -804,6 +818,8 @@ class DiscordAdapter(UiAdapter):
             ch_id = await self._find_or_create_private_text_channel(
                 guild, category, slug, discord_user_id
             )
+            if ch_id is not None:
+                self._team_channel_ids.add(ch_id)
             # Ensure permissions are correct on existing channels too
             if ch_id is not None and discord_user_id is not None:
                 await self._ensure_channel_private(ch_id, guild, discord_user_id)
@@ -1285,6 +1301,10 @@ class DiscordAdapter(UiAdapter):
 
         if discord_meta.thread_id is not None:
             return str(discord_meta.thread_id)
+
+        # Team text channels — no thread creation, output goes to the channel directly
+        if discord_meta.channel_id is not None and discord_meta.channel_id in self._team_channel_ids:
+            return str(discord_meta.channel_id)
 
         target_forum_id = self._resolve_target_forum(session)
         if target_forum_id is not None:
@@ -2035,20 +2055,24 @@ class DiscordAdapter(UiAdapter):
         return False
 
     def _is_managed_message(self, message: object) -> bool:
-        """Check if a message originates from a managed forum.
+        """Check if a message originates from a managed channel.
 
-        Managed forums include: help desk, all-sessions, and all project forums.
-        When ``_help_desk_channel_id`` is not configured, all messages are
-        accepted (dev/test mode).  Otherwise the message must come from
-        a managed forum or a thread whose parent is a managed forum.
+        Managed channels include: help desk, all-sessions, project forums,
+        and team text channels. When ``_help_desk_channel_id`` is not configured,
+        all messages are accepted (dev/test mode).
         """
         if self._help_desk_channel_id is None:
             return True
 
-        managed_ids = self._get_managed_forum_ids()
-
         channel = getattr(message, "channel", None)
         channel_id = self._parse_optional_int(getattr(channel, "id", None))
+
+        # Team text channels are managed
+        if channel_id is not None and channel_id in self._team_channel_ids:
+            return True
+
+        managed_ids = self._get_managed_forum_ids()
+
         if channel_id in managed_ids:
             return True
 
