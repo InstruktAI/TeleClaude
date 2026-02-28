@@ -39,21 +39,31 @@ Three independent cleanup items in one pass. Order: remove maintain first (reduc
 
 ---
 
-## Phase 2: Fix `--cwd` defaults on mark-phase and set-deps
+## Phase 2: Remove `--cwd` / `--project-root` from CLI surface
 
-### Task 2.1: Update CLI_SURFACE flag descriptions
+### Task 2.1: Remove flag definitions from CLI_SURFACE
 
 **File(s):** `teleclaude/cli/telec.py`
 
-- [ ] Change `Flag("--cwd", desc="Project root directory (required)")` to `Flag("--cwd", desc="Project root directory (default: cwd)")` on mark-phase (line 424)
-- [ ] Same change on set-deps (line 433)
+- [ ] Delete `_PROJECT_ROOT` and `_PROJECT_ROOT_LONG` flag definitions (lines 130-131)
+- [ ] Remove all `_PROJECT_ROOT` / `_PROJECT_ROOT_LONG` references from CLI_SURFACE entries (~15 locations across todo, roadmap, bugs, docs subcommands)
+- [ ] Remove all `Flag("--cwd", ...)` entries from CLI_SURFACE
 
-### Task 2.2: Default to cwd in handlers
+### Task 2.2: Remove `--project-root` parsing from telec.py handlers
+
+**File(s):** `teleclaude/cli/telec.py`
+
+- [ ] In every handler that parses `--project-root` (~26 locations), remove the arg parsing branch and set `project_root = Path.cwd()` unconditionally
+- [ ] Affected handlers: `_handle_todo_create`, `_handle_todo_remove`, `_handle_todo_validate`, `_handle_todo_demo`, `_handle_roadmap_show`, `_handle_roadmap_add`, `_handle_roadmap_remove`, `_handle_roadmap_move`, `_handle_roadmap_deps`, `_handle_roadmap_freeze`, `_handle_roadmap_deliver`, `_handle_bugs_create`, `_handle_bugs_report`, `_handle_bugs_list`, and any others
+
+### Task 2.3: Remove `--cwd` parsing from tool_commands.py handlers
 
 **File(s):** `teleclaude/cli/tool_commands.py`
 
-- [ ] In `handle_todo_mark_phase`: remove `"cwd"` from required fields, default `body["cwd"]` to `os.getcwd()` if not provided
-- [ ] In `handle_todo_set_deps`: remove required check for `cwd`, default to `os.getcwd()` if not provided
+- [ ] In `handle_todo_prepare`: remove `--cwd` arg parsing, set `body["cwd"] = os.getcwd()` unconditionally
+- [ ] In `handle_todo_mark_phase`: remove `--cwd` arg parsing and required check, set `body["cwd"] = os.getcwd()` unconditionally
+- [ ] In `handle_todo_set_deps`: remove `--cwd` arg parsing and required check, set `cwd = os.getcwd()` unconditionally
+- [ ] Update docstrings/help text to remove `--cwd` references
 
 ---
 
