@@ -252,7 +252,7 @@ async def send_invite_email(
     )
 
     # Send email
-    from teleclaude.notifications.email import send_email
+    from teleclaude.services.email import send_email
 
     subject = f"Welcome to {org_name} — Your Personal AI Assistant"
     await send_email(email, subject, html_body, text_body)

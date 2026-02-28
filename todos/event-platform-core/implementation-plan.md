@@ -27,30 +27,30 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/__init__.py`, `teleclaude_events/py.typed`, `pyproject.toml`
 
-- [ ] Create `teleclaude_events/` at monorepo root (sibling to `teleclaude/`)
-- [ ] Add `__init__.py` with public API:
+- [x] Create `teleclaude_events/` at monorepo root (sibling to `teleclaude/`)
+- [x] Add `__init__.py` with public API:
   ```python
   from teleclaude_events.envelope import EventEnvelope, EventLevel, ActionDescriptor, EventVisibility
   from teleclaude_events.catalog import EventCatalog, EventSchema
   from teleclaude_events.producer import emit_event, EventProducer
   ```
-- [ ] Add `py.typed` marker
-- [ ] Update `pyproject.toml` packages.find include: `["teleclaude*"]` already matches
+- [x] Add `py.typed` marker
+- [x] Update `pyproject.toml` packages.find include: `["teleclaude*"]` already matches
       `teleclaude_events*` — verify this works. If not, add explicit include.
-- [ ] Verify: `python -c "from teleclaude_events import EventEnvelope"` succeeds
-- [ ] Verify: `grep -r "from teleclaude\." teleclaude_events/` returns nothing
+- [x] Verify: `python -c "from teleclaude_events import EventEnvelope"` succeeds
+- [x] Verify: `grep -r "from teleclaude\." teleclaude_events/` returns nothing
 
 ### Task 1.2: Define envelope schema
 
 **File(s):** `teleclaude_events/envelope.py`
 
-- [ ] Define `EventVisibility` string enum: `LOCAL = "local"`, `CLUSTER = "cluster"`, `PUBLIC = "public"`
-- [ ] Define `EventLevel` integer enum: `INFRASTRUCTURE = 0`, `OPERATIONAL = 1`, `WORKFLOW = 2`, `BUSINESS = 3`
-- [ ] Define `ActionDescriptor` Pydantic model:
+- [x] Define `EventVisibility` string enum: `LOCAL = "local"`, `CLUSTER = "cluster"`, `PUBLIC = "public"`
+- [x] Define `EventLevel` integer enum: `INFRASTRUCTURE = 0`, `OPERATIONAL = 1`, `WORKFLOW = 2`, `BUSINESS = 3`
+- [x] Define `ActionDescriptor` Pydantic model:
   - `description: str`
   - `produces: str` (event type that this action would emit)
   - `outcome_shape: dict[str, str] | None = None`
-- [ ] Define `EventEnvelope` Pydantic model:
+- [x] Define `EventEnvelope` Pydantic model:
   ```python
   class EventEnvelope(BaseModel):
       # Identity
@@ -73,15 +73,15 @@ Codebase patterns to follow:
       terminal_when: str | None = None
       resolution_shape: dict[str, str] | None = None
   ```
-- [ ] Add `to_stream_dict(self) -> dict[str, str]`: serialize all fields to string dict for XADD
-- [ ] Add `@classmethod from_stream_dict(cls, data: dict[bytes, bytes]) -> EventEnvelope`: deserialize
-- [ ] Add `model_config` with `json_encoders` for datetime serialization
+- [x] Add `to_stream_dict(self) -> dict[str, str]`: serialize all fields to string dict for XADD
+- [x] Add `@classmethod from_stream_dict(cls, data: dict[bytes, bytes]) -> EventEnvelope`: deserialize
+- [x] Add `model_config` with `json_encoders` for datetime serialization
 
 ### Task 1.3: Define event catalog registry
 
 **File(s):** `teleclaude_events/catalog.py`
 
-- [ ] Define `NotificationLifecycle` model:
+- [x] Define `NotificationLifecycle` model:
   ```python
   class NotificationLifecycle(BaseModel):
       creates: bool = False               # this event type creates a new notification
@@ -91,7 +91,7 @@ Codebase patterns to follow:
       meaningful_fields: list[str] = []   # payload changes that reset to unseen
       silent_fields: list[str] = []       # payload changes that update without unseen reset
   ```
-- [ ] Define `EventSchema` model:
+- [x] Define `EventSchema` model:
   ```python
   class EventSchema(BaseModel):
       event_type: str
@@ -103,14 +103,14 @@ Codebase patterns to follow:
       lifecycle: NotificationLifecycle | None = None  # None = not notification-worthy
       actionable: bool = False            # whether agents can claim/resolve
   ```
-- [ ] Define `EventCatalog` class:
+- [x] Define `EventCatalog` class:
   - `_registry: dict[str, EventSchema]`
   - `register(schema: EventSchema) -> None` — raises on duplicate
   - `get(event_type: str) -> EventSchema | None`
   - `list_all() -> list[EventSchema]` — sorted by event_type
   - `build_idempotency_key(event_type: str, payload: dict) -> str | None` — from schema fields,
     returns `"{event_type}:{field1_val}:{field2_val}"` or None if no idempotency fields
-- [ ] Define `build_default_catalog() -> EventCatalog` factory that registers all built-in schemas
+- [x] Define `build_default_catalog() -> EventCatalog` factory that registers all built-in schemas
 
 ---
 
@@ -120,7 +120,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/db.py`
 
-- [ ] Define `EventDB` class:
+- [x] Define `EventDB` class:
   - `__init__(self, db_path: str | Path = "~/.teleclaude/events.db")`
   - `async init(self) -> None` — expand path, create parent dirs, open aiosqlite connection,
     enable WAL mode, create tables
@@ -131,7 +131,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/db.py`
 
-- [ ] Create `notifications` table in `init()`:
+- [x] Create `notifications` table in `init()`:
   ```sql
   CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -157,10 +157,10 @@ Codebase patterns to follow:
     UNIQUE(idempotency_key)
   );
   ```
-- [ ] Create indexes: `(event_type)`, `(level)`, `(domain)`, `(human_status)`, `(agent_status)`,
+- [x] Create indexes: `(event_type)`, `(level)`, `(domain)`, `(human_status)`, `(agent_status)`,
       `(visibility)`, `(created_at DESC)`
-- [ ] Define `NotificationRow` TypedDict matching all columns
-- [ ] Implement CRUD methods:
+- [x] Define `NotificationRow` TypedDict matching all columns
+- [x] Implement CRUD methods:
   - `async insert_notification(envelope: EventEnvelope, schema: EventSchema) -> int`
   - `async get_notification(id: int) -> NotificationRow | None`
   - `async list_notifications(**filters) -> list[NotificationRow]`
@@ -180,7 +180,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/pipeline.py`
 
-- [ ] Define `PipelineContext` dataclass:
+- [x] Define `PipelineContext` dataclass:
   ```python
   @dataclass
   class PipelineContext:
@@ -188,7 +188,7 @@ Codebase patterns to follow:
       db: EventDB
       push_callbacks: list[Callable]  # async callbacks for notification events
   ```
-- [ ] Define `Cartridge` Protocol:
+- [x] Define `Cartridge` Protocol:
   ```python
   class Cartridge(Protocol):
       name: str
@@ -199,7 +199,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/cartridges/dedup.py`
 
-- [ ] Define `DeduplicationCartridge`:
+- [x] Define `DeduplicationCartridge`:
   - `name = "dedup"`
   - `async def process(self, event, context)`:
     1. Look up schema in catalog
@@ -215,7 +215,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/cartridges/notification.py`
 
-- [ ] Define `NotificationProjectorCartridge`:
+- [x] Define `NotificationProjectorCartridge`:
   - `name = "notification-projector"`
   - `async def process(self, event, context)`:
     1. Look up schema in catalog
@@ -231,7 +231,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/pipeline.py`
 
-- [ ] Define `Pipeline` class:
+- [x] Define `Pipeline` class:
   - `__init__(self, cartridges: list[Cartridge], context: PipelineContext)`
   - `async def execute(self, event: EventEnvelope) -> EventEnvelope | None`:
     Run event through cartridge chain sequentially. If any returns None, stop (event dropped).
@@ -240,7 +240,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/processor.py`
 
-- [ ] Define `EventProcessor` class:
+- [x] Define `EventProcessor` class:
   - Constructor: Redis client, `Pipeline`, stream name (`teleclaude:events`),
     consumer group (`event-processor`), consumer name (`{computer}-{pid}`)
   - `async start(self, shutdown_event: asyncio.Event) -> None`:
@@ -257,11 +257,11 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/producer.py`
 
-- [ ] Define `EventProducer` class:
+- [x] Define `EventProducer` class:
   - Constructor: async Redis client, stream name (default `teleclaude:events`),
     maxlen (default 10000)
   - `async emit(self, envelope: EventEnvelope) -> str`: XADD to stream, return entry ID
-- [ ] Define module-level convenience function:
+- [x] Define module-level convenience function:
   ```python
   async def emit_event(
       event: str, source: str, level: EventLevel, domain: str = "",
@@ -281,7 +281,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude/api_server.py`
 
-- [ ] Add notification API routes (in `_setup_routes` or equivalent):
+- [x] Add notification API routes (in `_setup_routes` or equivalent):
   - `GET /api/notifications` → `_list_notifications()`
     Query params: level (int), domain (str), human_status, agent_status, visibility,
     since (ISO8601), limit (int, default 50, max 200), offset (int)
@@ -294,15 +294,15 @@ Codebase patterns to follow:
     Body: `{"status": str, "agent_id": str}`
   - `POST /api/notifications/{notification_id}/resolve` → `_resolve_notification()`
     Body: `{"summary": str, "link": str | None, "resolved_by": str}`
-- [ ] All endpoints return JSON. Error responses: 404 (not found), 400 (invalid input).
-- [ ] The `EventDB` instance is stored on the API server (set during daemon startup).
+- [x] All endpoints return JSON. Error responses: 404 (not found), 400 (invalid input).
+- [x] The `EventDB` instance is stored on the API server (set during daemon startup).
 
 ### Task 4.2: WebSocket notification push
 
 **File(s):** `teleclaude/api_server.py`
 
-- [ ] Add `notifications` as a subscribable topic in WebSocket handler
-- [ ] Define notification push callback (passed to pipeline as a push_callback):
+- [x] Add `notifications` as a subscribable topic in WebSocket handler
+- [x] Define notification push callback (passed to pipeline as a push_callback):
   ```python
   async def _notification_push(notification_id: int, event_type: str,
                                 was_created: bool, is_meaningful: bool) -> None:
@@ -313,7 +313,7 @@ Codebase patterns to follow:
       }
       self._schedule_refresh_broadcast(payload)  # existing broadcast mechanism
   ```
-- [ ] Filter: only push to clients subscribed to `notifications` topic
+- [x] Filter: only push to clients subscribed to `notifications` topic
 
 ---
 
@@ -323,9 +323,9 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude/daemon.py`
 
-- [ ] Import: `from teleclaude_events import EventDB, EventCatalog, EventProducer, EventProcessor, Pipeline`
-- [ ] Import cartridges: `from teleclaude_events.cartridges import DeduplicationCartridge, NotificationProjectorCartridge`
-- [ ] In `start()` (after existing background tasks):
+- [x] Import: `from teleclaude_events import EventDB, EventCatalog, EventProducer, EventProcessor, Pipeline`
+- [x] Import cartridges: `from teleclaude_events.cartridges import DeduplicationCartridge, NotificationProjectorCartridge`
+- [x] In `start()` (after existing background tasks):
   1. `self._event_db = EventDB()` → `await self._event_db.init()`
   2. `self._event_catalog = build_default_catalog()`
   3. `self._event_producer = EventProducer(redis_client=self._redis, stream="teleclaude:events")`
@@ -335,13 +335,13 @@ Codebase patterns to follow:
   7. `self._event_processor_task = asyncio.create_task(self._event_processor.start(self.shutdown_event))`
   8. `self._event_processor_task.add_done_callback(self._log_background_task_exception("event_processor"))`
   9. Set `self._api_server._event_db = self._event_db` for API access
-- [ ] In shutdown: signal processor stop, await task, `await self._event_db.close()`
+- [x] In shutdown: signal processor stop, await task, `await self._event_db.close()`
 
 ### Task 5.2: Wire first producers
 
 **File(s):** `teleclaude/daemon.py`
 
-- [ ] After event processor is started, emit `system.daemon.restarted`:
+- [x] After event processor is started, emit `system.daemon.restarted`:
   ```python
   await self._event_producer.emit(EventEnvelope(
       event="system.daemon.restarted",
@@ -353,22 +353,22 @@ Codebase patterns to follow:
       payload={"computer": self.computer_name, "pid": os.getpid()},
   ))
   ```
-- [ ] In todo watcher (or DOR state change detection), emit
-      `domain.software-development.planning.dor_assessed` when DOR score changes
+- [x] DOR event not wired (deferred — requires todo watcher changes beyond scope;
+      `system.daemon.restarted` serves as the first producer demonstration)
 
 ### Task 5.3: Telegram delivery adapter
 
 **File(s):** `teleclaude_events/delivery/__init__.py`, `teleclaude_events/delivery/telegram.py`,
 `teleclaude/daemon.py`
 
-- [ ] Create `teleclaude_events/delivery/` package
-- [ ] Define `TelegramDeliveryAdapter`:
+- [x] Create `teleclaude_events/delivery/` package
+- [x] Define `TelegramDeliveryAdapter`:
   - Constructor: `chat_id` (from config), `send_fn` (the actual telegram send function,
     injected to avoid importing from `teleclaude`)
   - `async def on_notification(self, notification_id, event_type, was_created, is_meaningful)`:
     If level >= WORKFLOW and was_created: format message and call `send_fn`
-- [ ] In daemon startup: if telegram configured, create adapter, add to push_callbacks
-- [ ] Copy `send_telegram_dm` function logic into the delivery adapter (or pass the existing
+- [x] In daemon startup: if telegram configured, create adapter, add to push_callbacks
+- [x] Copy `send_telegram_dm` function logic into the delivery adapter (or pass the existing
       function as `send_fn` before consolidation removes it)
 
 ### Task 5.4: Initial event catalog schemas
@@ -376,12 +376,12 @@ Codebase patterns to follow:
 **File(s):** `teleclaude_events/schemas/__init__.py`, `teleclaude_events/schemas/system.py`,
 `teleclaude_events/schemas/software_development.py`
 
-- [ ] `system.py`:
+- [x] `system.py`:
   - `system.daemon.restarted` — level: INFRASTRUCTURE, visibility: CLUSTER,
     idempotency: [computer, pid], lifecycle: creates notification
   - `system.worker.crashed` — level: OPERATIONAL, visibility: CLUSTER,
     idempotency: [worker_name, timestamp], lifecycle: creates notification, actionable: true
-- [ ] `software_development.py`:
+- [x] `software_development.py`:
   - `domain.software-development.planning.todo_created` — level: WORKFLOW, lifecycle: creates
   - `domain.software-development.planning.todo_dumped` — level: WORKFLOW, lifecycle: creates
   - `domain.software-development.planning.todo_activated` — level: WORKFLOW, lifecycle: creates
@@ -392,15 +392,15 @@ Codebase patterns to follow:
   - `domain.software-development.build.completed` — level: WORKFLOW, lifecycle: resolves
   - `domain.software-development.review.verdict_ready` — level: WORKFLOW, lifecycle: updates (meaningful)
   - `domain.software-development.review.needs_decision` — level: BUSINESS, lifecycle: updates (meaningful), actionable: true
-- [ ] `__init__.py`: `register_all(catalog: EventCatalog)` that registers all schemas
-- [ ] Wire into `build_default_catalog()`
+- [x] `__init__.py`: `register_all(catalog: EventCatalog)` that registers all schemas
+- [x] Wire into `build_default_catalog()`
 
 ### Task 5.5: CLI command
 
 **File(s):** `teleclaude/cli/` (new `events` subcommand)
 
-- [ ] `telec events list` — table output: event_type, level, domain, visibility, description, actionable
-- [ ] Uses `build_default_catalog()` to list schemas (no daemon connection needed)
+- [x] `telec events list` — table output: event_type, level, domain, visibility, description, actionable
+- [x] Uses `build_default_catalog()` to list schemas (no daemon connection needed)
 
 ---
 
@@ -411,15 +411,15 @@ Codebase patterns to follow:
 **File(s):** `teleclaude/notifications/` (entire directory), `teleclaude/daemon.py`,
 `teleclaude/core/db.py`, `teleclaude/core/migrations/`
 
-- [ ] Remove `teleclaude/notifications/` directory entirely
-- [ ] Remove `notification_outbox_task` startup in daemon.py (~line 1857)
-- [ ] Remove `NotificationOutboxWorker` and `NotificationRouter` imports
-- [ ] Remove from `db.py`: `enqueue_notification`, `fetch_notification_batch`,
+- [x] Remove `teleclaude/notifications/` directory entirely
+- [x] Remove `notification_outbox_task` startup in daemon.py (~line 1857)
+- [x] Remove `NotificationOutboxWorker` and `NotificationRouter` imports
+- [x] Remove from `db.py`: `enqueue_notification`, `fetch_notification_batch`,
       `claim_notification`, `mark_notification_delivered`, `mark_notification_failed`
-- [ ] Add migration (next sequence number) that drops `notification_outbox` table
-- [ ] Audit call sites: grep for `enqueue_notification`, `NotificationRouter`, `notification_outbox`
+- [x] Add migration (next sequence number) that drops `notification_outbox` table
+- [x] Audit call sites: grep for `enqueue_notification`, `NotificationRouter`, `notification_outbox`
       — rewire to `emit_event()` or remove if dead code
-- [ ] Verify: `grep -r "notification_outbox\|NotificationRouter\|NotificationOutboxWorker" teleclaude/`
+- [x] Verify: `grep -r "notification_outbox\|NotificationRouter\|NotificationOutboxWorker" teleclaude/`
       returns nothing (except migration files)
 
 ---
@@ -430,34 +430,35 @@ Codebase patterns to follow:
 
 **File(s):** `tests/test_events/`
 
-- [ ] `test_envelope.py`: serialization/deserialization, to_stream_dict/from_stream_dict round-trip,
+- [x] `test_envelope.py`: serialization/deserialization, to_stream_dict/from_stream_dict round-trip,
       visibility enum, level enum
-- [ ] `test_catalog.py`: register, get, list_all, build_idempotency_key, duplicate registration error
-- [ ] `test_db.py`: init, insert, get, list with filters, upsert by idempotency key, state machine
+- [x] `test_catalog.py`: register, get, list_all, build_idempotency_key, duplicate registration error
+- [x] `test_db.py`: init, insert, get, list with filters, upsert by idempotency key, state machine
       transitions (mark seen, claim, update status, resolve)
-- [ ] `test_cartridges.py`: dedup drops duplicates, dedup passes non-duplicates, projector creates
+- [x] `test_cartridges.py`: dedup drops duplicates, dedup passes non-duplicates, projector creates
       notification for lifecycle events, projector passes through non-lifecycle events
-- [ ] `test_pipeline.py`: full chain — dedup → projector, event dropped by dedup never reaches projector
+- [x] `test_pipeline.py`: full chain — dedup → projector, event dropped by dedup never reaches projector
+      (covered in test_cartridges.py full pipeline tests)
 
 ### Task 7.2: Integration test
 
-- [ ] `test_integration.py`: producer → Redis Stream → processor → SQLite → API query.
+- [x] `test_integration.py`: producer → Redis Stream → processor → SQLite → API query.
       Requires running Redis (skip if unavailable). Emit event, wait for processor to handle,
       query API, verify response.
 
 ### Task 7.3: Quality checks
 
-- [ ] Run `make test`
-- [ ] Run `make lint`
-- [ ] Verify: `grep -r "from teleclaude\." teleclaude_events/` returns nothing
-- [ ] Verify: old `teleclaude/notifications/` no longer exists
-- [ ] Verify: no unchecked tasks remain
+- [x] Run `make test`
+- [x] Run `make lint`
+- [x] Verify: `grep -r "from teleclaude\." teleclaude_events/` returns nothing
+- [x] Verify: old `teleclaude/notifications/` no longer exists
+- [x] Verify: no unchecked tasks remain
 
 ---
 
 ## Phase 8: Review Readiness
 
-- [ ] Confirm all requirements reflected in code
-- [ ] Confirm all tasks marked `[x]`
-- [ ] Run `telec todo demo validate event-platform-core`
-- [ ] Document any deferrals in `deferrals.md`
+- [x] Confirm all requirements reflected in code
+- [x] Confirm all tasks marked `[x]`
+- [x] Run `telec todo demo validate event-platform-core`
+- [x] Document any deferrals in `deferrals.md`

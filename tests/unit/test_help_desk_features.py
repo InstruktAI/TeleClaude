@@ -458,20 +458,11 @@ class TestChannelWorkerDispatch:
 
     @pytest.mark.asyncio
     async def test_channel_worker_dispatches_notification(self) -> None:
-        """Notification target type routes through NotificationRouter."""
+        """Notification target type logs and defers to event platform."""
         from teleclaude.channels.worker import _dispatch_to_target
 
-        with patch("teleclaude.notifications.router.NotificationRouter") as mock_router_cls:
-            mock_router = MagicMock()
-            mock_router.send_notification = AsyncMock(return_value=[1])
-            mock_router_cls.return_value = mock_router
+        target = {"type": "notification", "channel": "telegram"}
+        payload = {"summary": "New ticket from Alice"}
 
-            target = {"type": "notification", "channel": "telegram"}
-            payload = {"summary": "New ticket from Alice"}
-
-            await _dispatch_to_target(target, payload)
-
-            mock_router.send_notification.assert_awaited_once_with(
-                channel="telegram",
-                content="New ticket from Alice",
-            )
+        # Should complete without error; delivery is via event platform
+        await _dispatch_to_target(target, payload)

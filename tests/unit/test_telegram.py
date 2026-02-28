@@ -10,7 +10,7 @@ import pytest
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
-from teleclaude.notifications.telegram import send_telegram_dm
+from teleclaude.services.telegram import send_telegram_dm
 
 
 def _ok_response(message_id: int = 42, status: int = 200) -> httpx.Response:
@@ -52,7 +52,7 @@ async def test_send_text_message_success(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
     mock = _mock_client(_ok_response(99))
 
-    with patch("teleclaude.notifications.telegram.httpx.AsyncClient", return_value=mock):
+    with patch("teleclaude.services.telegram.httpx.AsyncClient", return_value=mock):
         result = await send_telegram_dm(chat_id="123", content="hello world")
     assert result == "99"
 
@@ -65,7 +65,7 @@ async def test_send_document_success(monkeypatch: pytest.MonkeyPatch, tmp_path) 
     doc.write_text("report content")
 
     mock = _mock_client(_ok_response(55))
-    with patch("teleclaude.notifications.telegram.httpx.AsyncClient", return_value=mock):
+    with patch("teleclaude.services.telegram.httpx.AsyncClient", return_value=mock):
         result = await send_telegram_dm(chat_id="123", content="see attached", file=str(doc))
     assert result == "55"
 
@@ -96,7 +96,7 @@ async def test_telegram_api_ok_false_raises(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
     mock = _mock_client(_error_response("chat not found"))
 
-    with patch("teleclaude.notifications.telegram.httpx.AsyncClient", return_value=mock):
+    with patch("teleclaude.services.telegram.httpx.AsyncClient", return_value=mock):
         with pytest.raises(RuntimeError, match="chat not found"):
             await send_telegram_dm(chat_id="123", content="hello")
 
@@ -106,7 +106,7 @@ async def test_non_json_error_response_raises(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
     mock = _mock_client(_html_response(502))
 
-    with patch("teleclaude.notifications.telegram.httpx.AsyncClient", return_value=mock):
+    with patch("teleclaude.services.telegram.httpx.AsyncClient", return_value=mock):
         with pytest.raises(RuntimeError, match="HTTP 502"):
             await send_telegram_dm(chat_id="123", content="hello")
 
@@ -121,6 +121,6 @@ async def test_non_json_success_response_raises(monkeypatch: pytest.MonkeyPatch)
     )
     mock = _mock_client(resp)
 
-    with patch("teleclaude.notifications.telegram.httpx.AsyncClient", return_value=mock):
+    with patch("teleclaude.services.telegram.httpx.AsyncClient", return_value=mock):
         with pytest.raises(RuntimeError, match="non-JSON"):
             await send_telegram_dm(chat_id="123", content="hello")

@@ -16,7 +16,7 @@ ls -la ~/.teleclaude/events.db
 # 4. API responds (daemon API uses Unix socket, not HTTP port)
 curl -s --unix-socket /tmp/teleclaude-api.sock "http://localhost/api/notifications?limit=5" | python -m json.tool
 
-# 5. Daemon restart event exists (INFRASTRUCTURE level=0, domain=system)
+# 5. Daemon restart event exists (filter by domain=system)
 curl -s --unix-socket /tmp/teleclaude-api.sock "http://localhost/api/notifications?domain=system&limit=1" | python -m json.tool
 
 # 6. Old notification package removed

@@ -119,6 +119,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.task_registry import TaskRegistry
+    from teleclaude_events.db import EventDB
 
 logger = get_logger(__name__)
 
@@ -227,6 +228,8 @@ class APIServer:
         # Debounce refresh-style WS events to avoid burst refresh storms
         self._refresh_debounce_task: asyncio.Task[object] | None = None
         self._refresh_pending_payload: dict[str, object] | None = None  # guard: loose-dict - WS payload
+        # Event platform DB (set by daemon after init)
+        self._event_db: EventDB | None = None
 
         # Subscribe to local session updates
         event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated_event)
@@ -1875,6 +1878,100 @@ class APIServer:
                 logger.error("list_todos: failed to get todos: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list todos: {e}") from e
 
+        # --- Notification API ---
+
+        @self.app.get("/api/notifications")
+        async def list_notifications(  # pyright: ignore
+            level: int | None = Query(None),
+            domain: str | None = Query(None),
+            human_status: str | None = Query(None),
+            agent_status: str | None = Query(None),
+            visibility: str | None = Query(None),
+            since: str | None = Query(None),
+            limit: int = Query(50, ge=1, le=200),
+            offset: int = Query(0, ge=0),
+        ) -> object:
+            if self._event_db is None:
+                raise HTTPException(status_code=503, detail="Event DB not available")
+            rows = await self._event_db.list_notifications(
+                level=level,
+                domain=domain,
+                human_status=human_status,
+                agent_status=agent_status,
+                visibility=visibility,
+                since=since,
+                limit=limit,
+                offset=offset,
+            )
+            return rows
+
+        @self.app.get("/api/notifications/{notification_id}")
+        async def get_notification(notification_id: int) -> object:  # pyright: ignore
+            if self._event_db is None:
+                raise HTTPException(status_code=503, detail="Event DB not available")
+            row = await self._event_db.get_notification(notification_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail="Notification not found")
+            return row
+
+        @self.app.patch("/api/notifications/{notification_id}/seen")
+        async def mark_notification_seen(  # pyright: ignore
+            notification_id: int,
+            unseen: bool = Query(False),
+        ) -> object:
+            if self._event_db is None:
+                raise HTTPException(status_code=503, detail="Event DB not available")
+            status = "unseen" if unseen else "seen"
+            ok = await self._event_db.update_human_status(notification_id, status)
+            if not ok:
+                raise HTTPException(status_code=404, detail="Notification not found")
+            return {"ok": True}
+
+        @self.app.post("/api/notifications/{notification_id}/claim")
+        async def claim_notification(  # pyright: ignore
+            notification_id: int,
+            body: dict[str, object] = Body(...),  # guard: loose-dict - API boundary
+        ) -> object:
+            if self._event_db is None:
+                raise HTTPException(status_code=503, detail="Event DB not available")
+            agent_id = body.get("agent_id")
+            if not isinstance(agent_id, str) or not agent_id:
+                raise HTTPException(status_code=400, detail="agent_id required")
+            ok = await self._event_db.update_agent_status(notification_id, "claimed", agent_id)
+            if not ok:
+                raise HTTPException(status_code=404, detail="Notification not found")
+            return {"ok": True}
+
+        @self.app.patch("/api/notifications/{notification_id}/status")
+        async def update_notification_status(  # pyright: ignore
+            notification_id: int,
+            body: dict[str, object] = Body(...),  # guard: loose-dict - API boundary
+        ) -> object:
+            if self._event_db is None:
+                raise HTTPException(status_code=503, detail="Event DB not available")
+            status = body.get("status")
+            agent_id = body.get("agent_id")
+            if not isinstance(status, str) or not status:
+                raise HTTPException(status_code=400, detail="status required")
+            if not isinstance(agent_id, str) or not agent_id:
+                raise HTTPException(status_code=400, detail="agent_id required")
+            ok = await self._event_db.update_agent_status(notification_id, status, agent_id)
+            if not ok:
+                raise HTTPException(status_code=404, detail="Notification not found")
+            return {"ok": True}
+
+        @self.app.post("/api/notifications/{notification_id}/resolve")
+        async def resolve_notification(  # pyright: ignore
+            notification_id: int,
+            body: dict[str, object] = Body(...),  # guard: loose-dict - API boundary
+        ) -> object:
+            if self._event_db is None:
+                raise HTTPException(status_code=503, detail="Event DB not available")
+            ok = await self._event_db.resolve_notification(notification_id, dict(body))
+            if not ok:
+                raise HTTPException(status_code=404, detail="Notification not found")
+            return {"ok": True}
+
         @self.app.websocket("/ws")
         async def websocket_endpoint(  # pyright: ignore
             websocket: WebSocket,
@@ -2186,6 +2283,10 @@ class APIServer:
                         data=ProjectsInitialDataDTO(projects=projects, computer=computer),
                     )
                     await websocket.send_json(event.model_dump(exclude_none=True))
+            elif data_type == "notifications":
+                if self._event_db is not None:
+                    rows = await self._event_db.list_notifications(limit=50)
+                    await websocket.send_json({"type": "notifications_initial", "notifications": rows})
             elif data_type == "todos":
                 # Todos are project-specific, can't send initial state without project context
                 logger.debug("Skipping initial state for todos (project-specific)")
@@ -2317,9 +2418,16 @@ class APIServer:
         else:
             self._refresh_debounce_task = asyncio.create_task(_debounced())
 
-    def _broadcast_payload(self, event: str, payload: dict[str, object]) -> None:  # guard: loose-dict - WS payload
-        """Send a WS payload to all connected clients."""
-        for ws in list(self._ws_clients):
+    def _broadcast_payload(
+        self,
+        event: str,
+        payload: dict[str, object],  # guard: loose-dict - WS payload
+        *,
+        targets: list["WebSocket"] | None = None,
+    ) -> None:
+        """Send a WS payload to connected clients. If targets is given, only those clients receive it."""
+        clients = targets if targets is not None else list(self._ws_clients)
+        for ws in clients:
 
             async def _send_with_timeout(client: WebSocket = ws) -> None:
                 try:
@@ -2357,6 +2465,41 @@ class APIServer:
             await asyncio.wait_for(websocket.close(), timeout=1.0)
         except (TimeoutError, Exception):
             pass
+
+    async def _notification_push(
+        self,
+        notification_id: int,
+        event_type: str,
+        level: int,  # noqa: ARG002
+        was_created: bool,
+        is_meaningful: bool,  # noqa: ARG002
+    ) -> None:
+        """Push a notification event to subscribed WebSocket clients."""
+        if self._event_db is None:
+            return
+        row = await self._event_db.get_notification(notification_id)
+        if row is None:
+            return
+        payload: dict[str, object] = {  # guard: loose-dict - WS payload
+            "type": "notification_created" if was_created else "notification_updated",
+            "event_type": event_type,
+            "notification": row,
+        }
+        # Collect clients subscribed to the "notifications" topic; send only to them.
+        # Using _broadcast_payload directly (not _schedule_refresh_broadcast) avoids the
+        # 250ms debounce that would coalesce back-to-back notification payloads.
+        subscribed: list[WebSocket] = []
+        seen: set[int] = set()
+        for ws, computer_subs in self._client_subscriptions.items():
+            if id(ws) in seen:
+                continue
+            for data_types in computer_subs.values():
+                if "notifications" in data_types:
+                    subscribed.append(ws)
+                    seen.add(id(ws))
+                    break
+        if subscribed:
+            self._broadcast_payload("notification", payload, targets=subscribed)
 
     async def start(self) -> None:
         """Start the API server on Unix socket."""

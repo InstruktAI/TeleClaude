@@ -1,7 +1,4 @@
-"""Email notification sender via Brevo SMTP.
-
-Provides async email delivery with HTML and plain text support.
-"""
+"""Email delivery helpers via Brevo SMTP."""
 
 from __future__ import annotations
 
@@ -40,7 +37,6 @@ async def send_email(
         ValueError: If required credentials are missing
         RuntimeError: If SMTP delivery fails
     """
-    # Read credentials from environment
     smtp_user = os.getenv("BREVO_SMTP_USER")
     smtp_pass = os.getenv("BREVO_SMTP_PASS")
     sender_email = os.getenv("BREVO_SENDER_EMAIL")
@@ -51,24 +47,19 @@ async def send_email(
             "Missing required Brevo SMTP credentials: BREVO_SMTP_USER, BREVO_SMTP_PASS, BREVO_SENDER_EMAIL must be set"
         )
 
-    # Build MIME message
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = f"{sender_name} <{sender_email}>"
     msg["To"] = to
 
-    # Add plain text alternative
     if text_body:
         msg.attach(MIMEText(text_body, "plain"))
     else:
-        # Basic HTML stripping for text fallback
         text_fallback = re.sub(r"<[^>]+>", "", html_body)
         msg.attach(MIMEText(text_fallback, "plain"))
 
-    # Add HTML body
     msg.attach(MIMEText(html_body, "html"))
 
-    # Send via SMTP in thread (smtplib is blocking)
     def _send_smtp() -> None:
         try:
             with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:

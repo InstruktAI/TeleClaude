@@ -77,6 +77,7 @@ class TelecCommand(str, Enum):
     TODO = "todo"
     ROADMAP = "roadmap"
     BUGS = "bugs"
+    EVENTS = "events"
     AUTH = "auth"
     CONFIG = "config"
 
@@ -511,6 +512,17 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "list": CommandDef(
                 desc="List in-flight bug fixes with status",
                 flags=[],
+            ),
+        },
+    ),
+    "events": CommandDef(
+        desc="Event catalog and platform commands",
+        subcommands={
+            "list": CommandDef(
+                desc="List event schemas: type, level, domain, visibility, description, actionable",
+                flags=[
+                    Flag("--domain", desc="Filter by domain"),
+                ],
             ),
         },
     ),
@@ -1208,6 +1220,8 @@ def _handle_cli_command(argv: list[str]) -> None:
         _handle_roadmap(args)
     elif cmd_enum is TelecCommand.BUGS:
         _handle_bugs(args)
+    elif cmd_enum is TelecCommand.EVENTS:
+        _handle_events(args)
     elif cmd_enum is TelecCommand.AUTH:
         _handle_auth(args)
     elif cmd_enum is TelecCommand.CONFIG:
@@ -2863,6 +2877,62 @@ def _handle_config(args: list[str]) -> None:
         print(f"Unknown config subcommand: {subcommand}")
         print(_usage("config"))
         raise SystemExit(1)
+
+
+def _handle_events(args: list[str]) -> None:
+    """Handle telec events subcommands."""
+    if not args:
+        print(_usage("events"))
+        return
+
+    subcommand = args[0]
+    if subcommand == "list":
+        _handle_events_list(args[1:])
+    else:
+        print(f"Unknown events subcommand: {subcommand}")
+        print(_usage("events"))
+        raise SystemExit(1)
+
+
+def _handle_events_list(args: list[str]) -> None:
+    """List all registered event schemas."""
+    from teleclaude_events import build_default_catalog
+
+    domain_filter: str | None = None
+    i = 0
+    while i < len(args):
+        if args[i] == "--domain" and i + 1 < len(args):
+            domain_filter = args[i + 1]
+            i += 2
+        else:
+            i += 1
+
+    catalog = build_default_catalog()
+    schemas = catalog.list_all()
+    if domain_filter:
+        schemas = [s for s in schemas if s.domain == domain_filter]
+
+    if not schemas:
+        print("No event schemas found.")
+        return
+
+    col_widths = [55, 8, 24, 8, 50, 12]
+    headers = ["EVENT TYPE", "LEVEL", "DOMAIN", "VISIBLE", "DESCRIPTION", "ACTIONABLE"]
+    header_row = "  ".join(h.ljust(w) for h, w in zip(headers, col_widths))
+    print(header_row)
+    print("-" * (sum(col_widths) + 2 * (len(col_widths) - 1)))
+    for s in schemas:
+        row = "  ".join(
+            [
+                str(s.event_type).ljust(col_widths[0]),
+                str(s.default_level).ljust(col_widths[1]),
+                str(s.domain).ljust(col_widths[2]),
+                str(s.default_visibility.value).ljust(col_widths[3]),
+                str(s.description).ljust(col_widths[4]),
+                ("yes" if s.actionable else "no").ljust(col_widths[5]),
+            ]
+        )
+        print(row)
 
 
 def _handle_auth(args: list[str]) -> None:

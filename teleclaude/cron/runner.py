@@ -26,16 +26,14 @@ import sys
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_project_config
 from teleclaude.config.schema import JobScheduleConfig
-from teleclaude.cron.job_recipients import discover_job_recipients
 from teleclaude.cron.notification_scan import find_undelivered_reports
 from teleclaude.cron.state import CronState
-from teleclaude.notifications import NotificationRouter
 
 if TYPE_CHECKING:
     from jobs.base import Job
@@ -258,25 +256,6 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
         return False
 
 
-def _run_coro_safely(coro: Awaitable[object]) -> None:
-    """Execute a coroutine, supporting both sync and async call sites."""
-
-    def _on_task_done(task: asyncio.Task[object]) -> None:
-        if task.cancelled():
-            return
-        exc = task.exception()
-        if exc:
-            logger.error("fire-and-forget coroutine failed", error=str(exc))
-
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        asyncio.run(coro)
-    else:
-        task = loop.create_task(coro)
-        task.add_done_callback(_on_task_done)
-
-
 def _should_run_subscription_job(
     job_name: str,
     state: CronState,
@@ -335,7 +314,7 @@ def _scan_and_notify(
     schedules: dict[str, JobScheduleConfig],
     root: Path | None = None,
 ) -> None:
-    """Scan for undelivered reports, discover recipients, and enqueue notifications."""
+    """Scan for undelivered reports and mark them notified. Delivery is via event platform."""
     if root is None:
         root = Path.home() / ".teleclaude"
 
@@ -345,41 +324,16 @@ def _scan_and_notify(
     if not undelivered:
         return
 
-    router = NotificationRouter(root=root)
-
     for job_name, reports in undelivered.items():
-        schedule_cfg = schedules.get(job_name)
-        category = schedule_cfg.category if schedule_cfg else "subscription"
-
-        recipients = discover_job_recipients(job_name, category, root=root)
-        if not recipients:
-            logger.debug("no recipients for job reports", job=job_name)
-            continue
-
         latest_mtime = datetime.min.replace(tzinfo=timezone.utc)
 
         for report_path in reports:
-            content = report_path.read_text(encoding="utf-8")
-            file_str = str(report_path)
-
-            try:
-                _run_coro_safely(
-                    router.enqueue_job_notifications(
-                        job_name=job_name,
-                        content=content,
-                        file_path=file_str,
-                        recipients=recipients,
-                    )
-                )
-            except Exception as exc:
-                logger.error("failed to enqueue report notification", job=job_name, error=str(exc))
-                continue
-
             mtime = datetime.fromtimestamp(report_path.stat().st_mtime, tz=timezone.utc)
             if mtime > latest_mtime:
                 latest_mtime = mtime
 
         if latest_mtime > datetime.min.replace(tzinfo=timezone.utc):
+            logger.info("marking job reports notified (delivery via event platform)", job=job_name)
             state.mark_notified(job_name, latest_mtime)
 
 
