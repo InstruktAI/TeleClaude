@@ -10,24 +10,24 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [x] Requirements implemented according to scope
-- [x] Implementation-plan task checkboxes all `[x]`
-- [x] Tests pass (`make test`) — 2426 passed, 106 skipped
-- [x] Lint passes (`make lint`) — ruff + pyright clean
-- [x] No silent deferrals in implementation plan
-- [x] Code committed
-- [x] Demo validated (`telec todo demo validate tui-footer-polish` exits 0 — 2 executable blocks found)
-- [x] Working tree clean
-- [x] Comments/docstrings updated where behavior changed
+- [ ] Requirements implemented according to scope
+- [ ] Implementation-plan task checkboxes all `[x]`
+- [ ] Tests pass (`make test`)
+- [ ] Lint passes (`make lint`)
+- [ ] No silent deferrals in implementation plan
+- [ ] Code committed
+- [ ] Demo validated (`telec todo demo validate tui-footer-polish` exits 0, or exception noted)
+- [ ] Working tree clean
+- [ ] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior — SC-1 through SC-13 verified; SC-8/SC-9 partial (cursor tracking gap)
+- [x] Deferrals justified and not hiding required scope — no deferrals.md; none needed
+- [x] Findings written in `review-findings.md`
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES
+- [x] Critical issues resolved or explicitly blocked — no critical issues; 1 Important (cursor follow)
+- [x] Test coverage and regression risk assessed — existing tests pass; no new tests justified by builder
 
 ## Finalize Gates (Finalizer)
 
