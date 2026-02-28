@@ -19,29 +19,29 @@ Six independent fixes targeting the TUI footer, modals, and preparation view. Mo
 
 **File(s):** `teleclaude/cli/tui/telec.tcss`
 
-- [ ] Add `NewProjectModal #modal-box` CSS rule with compact dimensions (`width: 60; max-height: 20;`)
-- [ ] Verify `StartSessionModal #modal-box` sizing (currently `width: 64; max-height: 32`) — tighten if path mode needs it
-- [ ] Test both modals render centered and content-scaled, not full-screen
+- [x] Add `NewProjectModal #modal-box` CSS rule with compact dimensions (`width: 60; max-height: 20;`)
+- [x] Verify `StartSessionModal #modal-box` sizing (currently `width: 64; max-height: 32`) — tighten if path mode needs it
+- [x] Test both modals render centered and content-scaled, not full-screen
 
 ### Task 1.2: Theme-aware key contrast in footer Row 1
 
 **File(s):** `teleclaude/cli/tui/widgets/telec_footer.py`
 
-- [ ] In `_format_binding_item()`, replace hardcoded `Style(color="white", bold=True, ...)` with theme-aware styling:
+- [x] In `_format_binding_item()`, replace hardcoded `Style(color="white", bold=True, ...)` with theme-aware styling:
   - Non-dim keys (Row 1): use terminal default foreground with bold (high contrast in both themes)
   - Dim keys (Row 2): use dim foreground with bold
   - Disabled keys: use dim regardless
-- [ ] Label styling: default foreground without bold (naturally lower contrast than keys)
-- [ ] Verify visually in both light and dark mode via SIGUSR1 theme toggle
+- [x] Label styling: default foreground without bold (naturally lower contrast than keys)
+- [x] Verify visually in both light and dark mode via SIGUSR1 theme toggle
 
 ### Task 1.3: Plain key letters for global bindings
 
 **File(s):** `teleclaude/cli/tui/app.py`
 
-- [ ] Change `key_display` for `q` from `"⏻"` to `"q"`
-- [ ] Change `key_display` for `r` from `"↻"` to `"r"`
-- [ ] Change `key_display` for `t` from `"◑"` to `"t"`
-- [ ] Verify Row 2 renders `q Quit  r Refresh  t Cycle Theme`
+- [x] Change `key_display` for `q` from `"⏻"` to `"q"`
+- [x] Change `key_display` for `r` from `"↻"` to `"r"`
+- [x] Change `key_display` for `t` from `"◑"` to `"t"`
+- [x] Verify Row 2 renders `q Quit  r Refresh  t Cycle Theme`
 
 ## Phase 2: New Bindings (Items 4–5)
 

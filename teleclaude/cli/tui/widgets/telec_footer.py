@@ -93,7 +93,14 @@ class TelecFooter(Widget):
         label = tooltip or binding.description
 
         text = Text()
-        key_style = Style(color="white", bold=True, dim=(not enabled) or dim)
+        # Use terminal default foreground (no explicit color) so key text adapts to
+        # light and dark mode automatically: dark in light theme, bright in dark theme.
+        if not enabled:
+            key_style = Style(bold=True, dim=True)
+        elif dim:
+            key_style = Style(bold=True, dim=True)
+        else:
+            key_style = Style(bold=True)
         label_style = Style(dim=(not enabled) or dim)
         text.append(str(key), style=key_style)
         if label:

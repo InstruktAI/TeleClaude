@@ -91,7 +91,7 @@ class TelecApp(App[str | None]):
     TITLE = "TeleClaude"
 
     BINDINGS = [
-        Binding("q", "quit", "Quit", key_display="⏻"),
+        Binding("q", "quit", "Quit", key_display="q"),
         Binding(
             "1",
             "switch_tab('sessions')",
@@ -124,8 +124,8 @@ class TelecApp(App[str | None]):
             group=Binding.Group("Views", compact=True),
             show=False,
         ),
-        Binding("r", "refresh", "Refresh", key_display="↻"),
-        Binding("t", "cycle_pane_theming", "Cycle Theme", key_display="◑"),
+        Binding("r", "refresh", "Refresh", key_display="r"),
+        Binding("t", "cycle_pane_theming", "Cycle Theme", key_display="t"),
     ]
 
     def __init__(
