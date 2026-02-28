@@ -120,3 +120,65 @@ All 4 Important findings (I1-I4) and 1 Suggestion (S1) resolved. Fixes verified 
 | I2      | Wire `db.cleanup_inbound(cutoff_iso)` into `MaintenanceService.periodic_cleanup()` with 72h cutoff                     | `33d5ef23` |
 
 All 4 Important issues and 1 Suggestion addressed. Tests and lint pass on each commit. Ready for re-review.
+
+---
+
+## Round 2 Re-Review
+
+### Fix Verification
+
+All 4 Important findings from Round 1 verified resolved:
+
+| Finding                                | Verification                                                                                                                             |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| I1: `_on_worker_done` CancelledError   | `inbound_queue.py:134` — `task.cancelled()` guard present before `task.exception()`. Correct.                                            |
+| I2: `cleanup_inbound` not wired        | `maintenance_service.py` — `db.cleanup_inbound(cutoff_iso)` with 72h cutoff in `periodic_cleanup()`. Correct.                            |
+| I3: Dead code in `mark_inbound_failed` | `db.py:1557` — single `next_retry` assignment using `timedelta(seconds=backoff_seconds)`. `timedelta` imported at module level. Correct. |
+| I4: Dedup race condition               | `db.py:1499-1503` — `try/except IntegrityError` wraps `commit()`/`refresh()`, returns `None`. Correct.                                   |
+
+S1 (timedelta imports) also resolved in both `inbound_queue.py` and `db.py`.
+
+### Paradigm-Fit Re-Assessment
+
+1. **Data flow**: Confirmed. All DB methods follow `hook_outbox` patterns. CAS claim, retry, and cleanup lifecycle is correct. Schema indexes support the query patterns.
+2. **Component reuse**: Confirmed. `InboundQueue` model, `InboundQueueRow` TypedDict, and singleton access (`init_*/get_*/reset_*`) all follow established patterns. No copy-paste duplication.
+3. **Pattern consistency**: Confirmed. Worker lifecycle (`asyncio.create_task` + done callback), naming conventions, and adapter boundary discipline match adjacent code.
+
+### Requirements Trace
+
+| Requirement                        | Implementation                                                                         |
+| ---------------------------------- | -------------------------------------------------------------------------------------- |
+| No silent message drops            | `deliver_inbound` raises on failure → queue worker retries with backoff                |
+| Adapter returns in milliseconds    | `process_message` is thin enqueue wrapper; adapter returns after O(1) DB insert        |
+| Per-session FIFO ordering          | `fetch_inbound_pending` orders by `id ASC`; `_FETCH_LIMIT=1` ensures serial processing |
+| Independent per-session delivery   | Workers keyed by `session_id` in `_workers` dict; each session drains independently    |
+| Survive daemon restart             | Rows persist in SQLite; `startup()` scans and spawns workers for pending messages      |
+| Voice messages recoverable         | `payload_json` column stores CDN URL / file_id (schema ready; durable path deferred)   |
+| Webhook returns non-200 on failure | `inbound.py` raises `HTTPException(status_code=502)` on dispatch failure               |
+| Typing indicator on receipt        | Typing callback wired in `InboundQueueManager.enqueue()` (adapter-side deferred)       |
+| Tests cover queue paths            | 15 DB + 7 manager + 5 integration + updated existing tests                             |
+
+### New Findings
+
+#### Critical
+
+_(none)_
+
+#### Important
+
+_(none)_
+
+#### Suggestions
+
+_(none)_
+
+### Why No Issues
+
+1. **Paradigm-fit**: Checked `hook_outbox` patterns against inbound queue implementation — schema, DB methods, TypedDict, singleton, and worker lifecycle all follow established conventions. No bypasses or inline hacks found.
+2. **Requirements validation**: All 9 success criteria from `requirements.md` traced to specific code paths. Core durability/correctness requirements are met. UX enhancements (typing indicators, voice durable path) are explicitly deferred with documented scope.
+3. **Copy-paste check**: `InboundQueue` model mirrors but does not copy `HookOutbox`/`NotificationOutbox` — fields are domain-specific. `InboundQueueManager` is a new worker abstraction; no existing component was duplicated.
+4. **Edge cases verified**: CancelledError in done callback (I1 fix), dedup race (I4 fix), cleanup wiring (I2 fix), dead code (I3 fix), session close during delivery, daemon restart recovery, backoff cap behavior — all traced through code.
+
+---
+
+Verdict: **APPROVE**
