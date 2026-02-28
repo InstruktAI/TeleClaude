@@ -10,15 +10,15 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate guaranteed-inbound-delivery` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]` (deferred items documented in `deferrals.md`)
+- [x] Tests pass (`make test` — 2481 tests passing)
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan (D1: typing indicators, D2: voice durable path, D3: TUI indicator — all explicit in `deferrals.md`)
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate guaranteed-inbound-delivery` — 6 executable blocks confirmed)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 
