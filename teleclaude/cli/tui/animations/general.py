@@ -331,6 +331,7 @@ class DiagonalSweepDR(Animation):
     """G11: Volumetric diagonal surge from top-left to bottom-right."""
 
     supports_small = False
+    is_external_light = True
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
@@ -374,6 +375,7 @@ class DiagonalSweepDL(Animation):
     """G12: Volumetric diagonal surge from top-right to bottom-left."""
 
     supports_small = False
+    is_external_light = True
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
@@ -806,6 +808,8 @@ class SearchlightSweep(Animation):
 
 class CinematicPrismSweep(Animation):
     """TC18: Volumetric beam with random hue morphing and pivoting angle."""
+
+    is_external_light = True
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
