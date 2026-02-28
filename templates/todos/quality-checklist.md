@@ -24,6 +24,7 @@ Ownership:
 
 - [ ] Requirements traced to implemented behavior
 - [ ] Deferrals justified and not hiding required scope
+- [ ] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
 - [ ] Findings written in `review-findings.md`
 - [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
 - [ ] Critical issues resolved or explicitly blocked

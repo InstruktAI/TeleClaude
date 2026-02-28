@@ -1771,7 +1771,7 @@ def _demo_list(project_root: Path) -> None:
 
 
 def _demo_validate(slug: str, project_root: Path) -> None:
-    """Structural validation of demo.md — checks blocks exist, no execution."""
+    """Structural validation of demo.md — checks blocks exist and content diverges from skeleton."""
     demo_md_path = _find_demo_md(slug, project_root)
     if demo_md_path is None:
         print(f"Error: No demo.md found for '{slug}'")
@@ -1787,6 +1787,16 @@ def _demo_validate(slug: str, project_root: Path) -> None:
     if no_demo_reason is not None:
         print(f"No-demo marker found: {no_demo_reason}")
         raise SystemExit(0)
+
+    # Check that demo.md diverges from the skeleton template.
+    # Strip the {slug} placeholder before comparing so a scaffolded-but-unmodified
+    # demo.md is caught regardless of the actual slug value.
+    skeleton_path = project_root / "templates" / "todos" / "demo.md"
+    if skeleton_path.exists():
+        skeleton = skeleton_path.read_text(encoding="utf-8").replace("{slug}", slug)
+        if content.strip() == skeleton.strip():
+            print("Validation failed: demo.md is unchanged from the skeleton template — no demo implemented")
+            raise SystemExit(1)
 
     blocks = _extract_demo_blocks(content)
     executable = [b for b in blocks if not b[2]]

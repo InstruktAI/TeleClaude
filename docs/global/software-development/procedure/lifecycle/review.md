@@ -95,21 +95,28 @@ If manual verification is not possible in the review environment, the reviewer m
     - Do not edit Build or Finalize sections.
 11. Run review lanes in parallel where possible:
 
-    | Aspect   | When to use              | Skill                      | Task                                               |
-    | -------- | ------------------------ | -------------------------- | -------------------------------------------------- |
-    | code     | Always                   | next-code-reviewer         | Find bugs and pattern violations                   |
-    | tests    | Test files changed       | next-test-analyzer         | Evaluate coverage and quality                      |
-    | errors   | Error handling changed   | next-silent-failure-hunter | Find silent failures                               |
-    | types    | Types added/modified     | next-type-design-analyzer  | Validate type design                               |
-    | comments | Comments/docs added      | next-comment-analyzer      | Check accuracy                                     |
-    | logging  | Logging changed or noisy | next-code-reviewer         | Enforce logging policy; reject ad-hoc debug probes |
-    | simplify | After other reviews pass | next-code-simplifier       | Simplify without behavior changes                  |
+    | Aspect   | When to use              | Skill                      | Task                                                  |
+    | -------- | ------------------------ | -------------------------- | ----------------------------------------------------- |
+    | code     | Always                   | next-code-reviewer         | Find bugs and pattern violations                      |
+    | tests    | Test files changed       | next-test-analyzer         | Evaluate coverage and quality                         |
+    | errors   | Error handling changed   | next-silent-failure-hunter | Find silent failures                                  |
+    | types    | Types added/modified     | next-type-design-analyzer  | Validate type design                                  |
+    | comments | Comments/docs added      | next-comment-analyzer      | Check accuracy                                        |
+    | logging  | Logging changed or noisy | next-code-reviewer         | Enforce logging policy; reject ad-hoc debug probes    |
+    | demo     | Always                   | _(manual)_                 | Verify demo.md has real executable blocks (see below) |
+    | simplify | After other reviews pass | next-code-simplifier       | Simplify without behavior changes                     |
 
-12. Logging hygiene check (required):
+12. Demo artifact review (required):
+    - Read `todos/{slug}/demo.md` (or `demos/{slug}/demo.md`).
+    - Verify executable bash blocks are domain-specific and plausible — not stubs, not scaffolding defaults, not placeholder paths.
+    - If the demo looks shallow or untested, raise an Important finding.
+    - If `<!-- no-demo: reason -->` is present, verify the justification is legitimate.
+
+13. Logging hygiene check (required):
     - Reject temporary debug probes (e.g., `print("DEBUG: ...")`, one-off file/line probes).
     - Require structured logger usage per logging policy.
     - Escalate violations as at least Important findings.
-13. Test quality hygiene check (required):
+14. Test quality hygiene check (required):
 
 - Reject tests that lock narrative documentation wording or style.
 - Allow exact-string assertions only for execution-significant tokens/contracts.
