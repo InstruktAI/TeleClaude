@@ -1,0 +1,3 @@
+# Input: event-domain-pillars
+
+Four business domains — software development, marketing, creative production, and customer relations — each need a ready-to-use event configuration that ships out of the box. Each pillar formalizes its lifecycle as event schemas, wires starter cartridges that act on those schemas, and provides a guardian AI config so the domain pipeline has intelligence from day one. Marketing is special: it composes the signal pipeline for feed monitoring. Customer relations is jailed by design — external-facing input must not get unsupervised agent access. The goal is that `telec init` discovers and installs these configs with zero manual schema authoring.
