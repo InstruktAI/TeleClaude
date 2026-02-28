@@ -1,6 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: cli-cleanup-maintain-cwd-delivered
 - slug: history-search-upgrade
   after:
   - notification-service

@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: cli-cleanup-maintain-cwd-delivered
+  date: '2026-02-28'
+  commit: 4d063b245e872d071fd1fc7ce306f811455ad1d5
 - slug: integrate-session-lifecycle-into-next-work
   date: '2026-02-28'
   title: Integrate session lifecycle into next-work orchestration
