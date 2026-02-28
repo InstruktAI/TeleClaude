@@ -141,8 +141,6 @@ class SmartWatcher(FileSystemEventHandler):
             "teleclaude.cli.telec",
             "sync",
             "--warn-only",
-            "--project-root",
-            str(self.project_root),
         ]
 
         try:

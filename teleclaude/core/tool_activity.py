@@ -15,7 +15,6 @@ _NEXT_PREPARE_EMPTY_CALL_RE = re.compile(r"telec todo prepare\(\s*\)")
 _MAPPED_TOOL_NAMES: dict[str, str] = {
     "next_work": "telec todo work",
     "next_prepare": "telec todo prepare",
-    "next_maintain": "telec todo maintain",
     "mark_phase": "telec todo mark-phase",
     "set_dependencies": "telec todo set-deps",
     "run_agent_command": "telec sessions run",

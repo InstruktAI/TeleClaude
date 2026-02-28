@@ -1020,6 +1020,7 @@ class TodoInfo:
     files: List[str] = field(default_factory=list)
     after: List[str] = field(default_factory=list)
     group: Optional[str] = None
+    delivered_at: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, object]) -> "TodoInfo":  # guard: loose-dict
@@ -1045,6 +1046,7 @@ class TodoInfo:
             files=[str(f) for f in cast(List[object], data.get("files", []))],
             after=[str(a) for a in cast(List[object], data.get("after", []))],
             group=cast(Optional[str], data.get("group")),
+            delivered_at=cast(Optional[str], data.get("delivered_at")),
         )
 
     def to_dict(self) -> Dict[str, object]:  # guard: loose-dict

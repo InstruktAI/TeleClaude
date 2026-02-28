@@ -26,14 +26,29 @@ These flags are an escape hatch that became a liability. Agents always run from 
 
 Tests are the only consumer of `--project-root` — they pass it to point handlers at temp directories. Fix tests to use `monkeypatch.chdir(tmp_path)` instead, so they exercise the real code path.
 
-Files to touch:
+### CLI handlers (remove flag parsing, use `Path.cwd()` unconditionally)
 
-- `teleclaude/cli/telec.py` — remove `_PROJECT_ROOT`, `_PROJECT_ROOT_LONG` flag definitions; remove all `--project-root` parsing from 18 handlers; remove from CLI_SURFACE flags
-- `teleclaude/cli/tool_commands.py` — remove all `--cwd` parsing from `handle_todo_prepare`, `handle_todo_mark_phase`, `handle_todo_set_deps`; always use `os.getcwd()`
-- `tests/integration/test_telec_cli_commands.py` — replace `--project-root` args with `monkeypatch.chdir(tmp_path)`
-- `tests/unit/test_telec_cli.py` — same
-- `tests/unit/test_next_machine_demo.py` — same
-- `tests/unit/test_bugs_list_status_parity.py` — same
+- `teleclaude/cli/telec.py` — remove `_PROJECT_ROOT`, `_PROJECT_ROOT_LONG` flag definitions; remove `--project-root` parsing from 18 handlers; remove from all CLI_SURFACE flag lists
+- `teleclaude/cli/config_cmd.py` — remove `--project-root` parsing from `handle_get`, `handle_patch`, `handle_validate` (3 locations)
+- `teleclaude/cli/tool_commands.py` — remove `--cwd` parsing from `handle_todo_prepare`, `handle_todo_mark_phase`, `handle_todo_set_deps`; always use `os.getcwd()`
+
+### Internal subprocess callers (they shell out to `telec` with `--project-root` — breaks if flag is removed)
+
+- `teleclaude/cli/watch.py:144` — runs `telec sync --project-root <path>`. Already passes `cwd=self.project_root`. Remove `--project-root` from command list; subprocess inherits cwd.
+- `teleclaude/core/next_machine/core.py:425` — runs `telec todo demo validate <slug> --project-root <worktree>`. Already passes `cwd=worktree_cwd`. Remove `--project-root` from command list; subprocess inherits cwd.
+
+### Tests (only real consumer — migrate to `monkeypatch.chdir`)
+
+- `tests/integration/test_telec_cli_commands.py` — 4 occurrences
+- `tests/unit/test_telec_cli.py` — 3 occurrences
+- `tests/unit/test_next_machine_demo.py` — 1 occurrence
+- `tests/unit/test_bugs_list_status_parity.py` — 2 occurrences
+
+### Leave alone (standalone scripts, not `telec` commands)
+
+- `scripts/distribute.py` — own argparse, called from `sync.py` which passes path explicitly
+- `teleclaude/entrypoints/macos_setup.py` — standalone entrypoint for macOS init flows
+- `tools/migrations/migrate_requires.py` — one-off migration script
 
 ## 3. Add `--include-delivered` / `--delivered-only` flags to `telec roadmap list`
 

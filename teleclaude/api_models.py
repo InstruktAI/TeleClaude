@@ -206,6 +206,7 @@ class TodoDTO(BaseModel):  # type: ignore[explicit-any]
     files: list[str] = Field(default_factory=list)
     after: list[str] = Field(default_factory=list)
     group: str | None = None
+    delivered_at: str | None = None
 
 
 class ProjectWithTodosDTO(ProjectDTO):  # type: ignore[explicit-any]

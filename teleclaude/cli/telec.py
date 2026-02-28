@@ -29,7 +29,6 @@ from teleclaude.cli.tool_commands import (  # noqa: E402
     handle_computers,
     handle_projects,
     handle_sessions,
-    handle_todo_maintain,
     handle_todo_mark_phase,
     handle_todo_prepare,
     handle_todo_set_deps,
@@ -127,8 +126,6 @@ class CommandDef:
 
 
 _H = Flag("--help", "-h", "Show usage information", hidden=True)
-_PROJECT_ROOT = Flag("--project-root", "-p", "Project root (default: cwd)", hidden=True)
-_PROJECT_ROOT_LONG = Flag("--project-root", desc="Project root (default: cwd)", hidden=True)
 
 CLI_SURFACE: dict[str, CommandDef] = {
     "sessions": CommandDef(
@@ -327,12 +324,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
             _H,
             Flag("--warn-only", desc="Warn but don't fail"),
             Flag("--validate-only", desc="Validate without building"),
-            _PROJECT_ROOT_LONG,
         ],
     ),
     "watch": CommandDef(
         desc="Watch project for changes and auto-sync",
-        flags=[_H, _PROJECT_ROOT_LONG],
+        flags=[_H],
         hidden=True,
     ),
     "docs": CommandDef(
@@ -346,13 +342,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--third-party", "-t", "Include third-party docs"),
                     Flag("--areas", "-a", "Filter by taxonomy type"),
                     Flag("--domains", "-d", "Filter by domain"),
-                    _PROJECT_ROOT,
                 ],
             ),
             "get": CommandDef(
                 desc="Fetch full snippet content by ID (phase 2)",
                 args="<id> [id...]",
-                flags=[_H, _PROJECT_ROOT],
+                flags=[_H],
             ),
         },
         notes=[
@@ -369,25 +364,24 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<slug>",
                 flags=[
                     Flag("--after", desc="Comma-separated dependency slugs"),
-                    _PROJECT_ROOT_LONG,
                 ],
                 notes=["Also registers the entry in roadmap.yaml when --after is provided."],
             ),
             "remove": CommandDef(
                 desc="Remove a todo and its roadmap entry",
                 args="<slug>",
-                flags=[_PROJECT_ROOT_LONG],
+                flags=[],
             ),
             "validate": CommandDef(
                 desc="Validate todo files and state.yaml schema",
                 args="[slug]",
-                flags=[_PROJECT_ROOT_LONG],
+                flags=[],
                 notes=["If slug is omitted, all active todos are checked."],
             ),
             "demo": CommandDef(
                 desc="Manage and run demo artifacts",
                 args="<list|validate|run|create> [slug]",
-                flags=[_PROJECT_ROOT_LONG],
+                flags=[],
                 notes=[
                     "Use 'list' explicitly to list available demos.",
                     "validate <slug>: check todos/{slug}/demo.md has executable bash blocks.",
@@ -401,18 +395,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="[<slug>]",
                 flags=[
                     _H,
-                    Flag("--cwd", desc="Project root directory (optional)"),
                     Flag("--no-hitl", desc="Disable human-in-the-loop gate"),
                 ],
             ),
             "work": CommandDef(
                 desc="Run the Phase B (work) state machine",
                 args="[<slug>]",
-                flags=[_H, Flag("--cwd", desc="Project root directory (optional)")],
-            ),
-            "maintain": CommandDef(
-                desc="Run the Phase D (maintain) state machine",
-                flags=[_H, Flag("--cwd", desc="Project root directory (optional)")],
+                flags=[_H],
             ),
             "mark-phase": CommandDef(
                 desc="Mark a work phase as complete/approved in state.yaml",
@@ -421,7 +410,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _H,
                     Flag("--phase", desc="Phase: build or review"),
                     Flag("--status", desc="Status: pending, started, complete, approved, changes_requested"),
-                    Flag("--cwd", desc="Project root directory (optional)"),
                 ],
             ),
             "set-deps": CommandDef(
@@ -430,7 +418,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     _H,
                     Flag("--after", desc="Dependency slug (repeatable)"),
-                    Flag("--cwd", desc="Project root directory (optional)"),
                 ],
             ),
             "verify-artifacts": CommandDef(
@@ -439,7 +426,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     _H,
                     Flag("--phase", desc="Phase: build or review"),
-                    Flag("--cwd", desc="Project root directory (optional)"),
                 ],
                 notes=[
                     "Exits 0 on pass, 1 on failure.",
@@ -457,8 +443,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     Flag("--include-icebox", "-i", "Include icebox items"),
                     Flag("--icebox-only", "-o", "Show only icebox items"),
+                    Flag("--include-delivered", "-d", "Include delivered items"),
+                    Flag("--delivered-only", desc="Show only delivered items"),
                     Flag("--json", desc="Output as JSON"),
-                    _PROJECT_ROOT_LONG,
                 ],
             ),
             "add": CommandDef(
@@ -469,13 +456,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--after", desc="Comma-separated dependency slugs"),
                     Flag("--before", desc="Insert before this slug (default: append)"),
                     Flag("--description", desc="Summary description"),
-                    _PROJECT_ROOT_LONG,
                 ],
             ),
             "remove": CommandDef(
                 desc="Remove entry from the roadmap",
                 args="<slug>",
-                flags=[_PROJECT_ROOT_LONG],
+                flags=[],
             ),
             "move": CommandDef(
                 desc="Reorder an entry in the roadmap",
@@ -483,7 +469,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     Flag("--before", desc="Move before this slug"),
                     Flag("--after", desc="Move after this slug"),
-                    _PROJECT_ROOT_LONG,
                 ],
             ),
             "deps": CommandDef(
@@ -491,13 +476,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<slug>",
                 flags=[
                     Flag("--after", desc="Comma-separated dependency slugs"),
-                    _PROJECT_ROOT_LONG,
                 ],
             ),
             "freeze": CommandDef(
                 desc="Move entry to icebox",
                 args="<slug>",
-                flags=[_PROJECT_ROOT_LONG],
+                flags=[],
             ),
             "deliver": CommandDef(
                 desc="Move entry to delivered",
@@ -505,7 +489,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     Flag("--commit", desc="Commit hash"),
                     Flag("--title", desc="Delivery title (default: entry description)"),
-                    _PROJECT_ROOT_LONG,
                 ],
             ),
         },
@@ -518,17 +501,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<description>",
                 flags=[
                     Flag("--slug", desc="Custom slug (default: auto-generated)"),
-                    _PROJECT_ROOT_LONG,
                 ],
             ),
             "create": CommandDef(
                 desc="Scaffold bug files for a slug",
                 args="<slug>",
-                flags=[_PROJECT_ROOT_LONG],
+                flags=[],
             ),
             "list": CommandDef(
                 desc="List in-flight bug fixes with status",
-                flags=[_PROJECT_ROOT_LONG],
+                flags=[],
             ),
         },
     ),
@@ -1438,10 +1420,7 @@ def _handle_sync(args: list[str]) -> None:
 
     i = 0
     while i < len(args):
-        if args[i] == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif args[i] == "--warn-only":
+        if args[i] == "--warn-only":
             warn_only = True
             i += 1
         elif args[i] == "--validate-only":
@@ -1459,16 +1438,7 @@ def _handle_watch(args: list[str]) -> None:
     """Handle telec watch command."""
     from teleclaude.cli.watch import run_watch
 
-    project_root = Path.cwd()
-    i = 0
-    while i < len(args):
-        if args[i] == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        else:
-            i += 1
-
-    run_watch(project_root)
+    run_watch(Path.cwd())
 
 
 def _handle_docs(args: list[str]) -> None:
@@ -1540,14 +1510,7 @@ def _handle_docs_index(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg in ("--project-root", "-p") and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg in ("--project-root", "-p"):
-            print("Missing value for --project-root.")
-            print(_usage("docs", "index"))
-            raise SystemExit(1)
-        elif arg in ("--baseline-only", "-b"):
+        if arg in ("--baseline-only", "-b"):
             baseline_only = True
             i += 1
         elif arg in ("--third-party", "-t"):
@@ -1597,14 +1560,7 @@ def _handle_docs_get(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg in ("--project-root", "-p") and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg in ("--project-root", "-p"):
-            print("Missing value for --project-root.")
-            print(_usage("docs", "get"))
-            raise SystemExit(1)
-        elif arg.startswith("-"):
+        if arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("docs", "get"))
             raise SystemExit(1)
@@ -1650,8 +1606,6 @@ def _handle_todo(args: list[str]) -> None:
         handle_todo_prepare(args[1:])
     elif subcommand == "work":
         handle_todo_work(args[1:])
-    elif subcommand == "maintain":
-        handle_todo_maintain(args[1:])
     elif subcommand == "mark-phase":
         handle_todo_mark_phase(args[1:])
     elif subcommand == "set-deps":
@@ -1675,10 +1629,7 @@ def _handle_todo_validate(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg.startswith("-"):
+        if arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("todo", "validate"))
             raise SystemExit(1)
@@ -2002,7 +1953,7 @@ def _demo_create(slug: str, project_root: Path) -> None:
 
 
 def _handle_todo_verify_artifacts(args: list[str]) -> None:
-    """Handle telec todo verify-artifacts <slug> --phase <build|review> [--cwd <path>]."""
+    """Handle telec todo verify-artifacts <slug> --phase <build|review>."""
     from teleclaude.core.next_machine.core import verify_artifacts
 
     slug: str | None = None
@@ -2014,9 +1965,6 @@ def _handle_todo_verify_artifacts(args: list[str]) -> None:
         arg = args[i]
         if arg in ("--phase",) and i + 1 < len(args):
             phase = args[i + 1]
-            i += 2
-        elif arg in ("--cwd",) and i + 1 < len(args):
-            cwd = str(Path(args[i + 1]).expanduser().resolve())
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
@@ -2075,10 +2023,7 @@ def _handle_todo_demo(args: list[str]) -> None:
     i = 0
     while i < len(remaining_args):
         arg = remaining_args[i]
-        if arg == "--project-root" and i + 1 < len(remaining_args):
-            project_root = Path(remaining_args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg.startswith("-"):
+        if arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("todo", "demo"))
             raise SystemExit(1)
@@ -2125,10 +2070,7 @@ def _handle_todo_create(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg == "--after" and i + 1 < len(args):
+        if arg == "--after" and i + 1 < len(args):
             after = [part.strip() for part in args[i + 1].split(",") if part.strip()]
             i += 2
         elif arg.startswith("-"):
@@ -2173,10 +2115,7 @@ def _handle_todo_remove(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg.startswith("-"):
+        if arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("todo", "remove"))
             raise SystemExit(1)
@@ -2240,19 +2179,24 @@ def _handle_roadmap_show(args: list[str]) -> None:
     project_root = Path.cwd()
     include_icebox = False
     icebox_only = False
+    include_delivered = False
+    delivered_only = False
     json_output = False
 
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg in ("--include-icebox", "-i"):
+        if arg in ("--include-icebox", "-i"):
             include_icebox = True
             i += 1
         elif arg in ("--icebox-only", "-o"):
             icebox_only = True
+            i += 1
+        elif arg in ("--include-delivered", "-d"):
+            include_delivered = True
+            i += 1
+        elif arg == "--delivered-only":
+            delivered_only = True
             i += 1
         elif arg == "--json":
             json_output = True
@@ -2270,6 +2214,8 @@ def _handle_roadmap_show(args: list[str]) -> None:
         str(project_root),
         include_icebox=include_icebox,
         icebox_only=icebox_only,
+        include_delivered=include_delivered,
+        delivered_only=delivered_only,
     )
 
     if not todos:
@@ -2315,6 +2261,8 @@ def _handle_roadmap_show(args: list[str]) -> None:
                 extras.append(f"Build:{todo.build_status}")
             if todo.review_status and todo.review_status != "pending":
                 extras.append(f"Review:{todo.review_status}")
+            if todo.delivered_at:
+                extras.append(f"Delivered:{todo.delivered_at}")
 
             extras_str = f" [{', '.join(extras)}]" if extras else ""
 
@@ -2343,10 +2291,7 @@ def _handle_roadmap_add(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg == "--group" and i + 1 < len(args):
+        if arg == "--group" and i + 1 < len(args):
             group = args[i + 1]
             i += 2
         elif arg == "--after" and i + 1 < len(args):
@@ -2395,10 +2340,7 @@ def _handle_roadmap_remove(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg.startswith("-"):
+        if arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("roadmap", "remove"))
             raise SystemExit(1)
@@ -2437,10 +2379,7 @@ def _handle_roadmap_move(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg == "--before" and i + 1 < len(args):
+        if arg == "--before" and i + 1 < len(args):
             before = args[i + 1]
             i += 2
         elif arg == "--after" and i + 1 < len(args):
@@ -2491,10 +2430,7 @@ def _handle_roadmap_deps(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg == "--after" and i + 1 < len(args):
+        if arg == "--after" and i + 1 < len(args):
             after = [p.strip() for p in args[i + 1].split(",") if p.strip()]
             i += 2
         elif arg.startswith("-"):
@@ -2539,7 +2475,7 @@ def _handle_roadmap_deps(args: list[str]) -> None:
 
 
 def _handle_roadmap_freeze(args: list[str]) -> None:
-    """Handle telec roadmap freeze <slug> [--project-root PATH]."""
+    """Handle telec roadmap freeze <slug>."""
     from teleclaude.core.next_machine.core import freeze_to_icebox
 
     if not args:
@@ -2551,10 +2487,7 @@ def _handle_roadmap_freeze(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg.startswith("-"):
+        if arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("roadmap", "freeze"))
             raise SystemExit(1)
@@ -2578,7 +2511,7 @@ def _handle_roadmap_freeze(args: list[str]) -> None:
 
 
 def _handle_roadmap_deliver(args: list[str]) -> None:
-    """Handle telec roadmap deliver <slug> [--commit SHA] [--title TEXT] [--project-root PATH]."""
+    """Handle telec roadmap deliver <slug> [--commit SHA] [--title TEXT]."""
     from teleclaude.core.next_machine.core import deliver_to_delivered
 
     if not args:
@@ -2592,10 +2525,7 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg == "--commit" and i + 1 < len(args):
+        if arg == "--commit" and i + 1 < len(args):
             commit = args[i + 1]
             i += 2
         elif arg == "--title" and i + 1 < len(args):
@@ -2644,9 +2574,9 @@ def _handle_bugs(args: list[str]) -> None:
 
 
 def _handle_bugs_create(args: list[str]) -> None:
-    """Handle telec bugs create <slug> [--project-root PATH]."""
+    """Handle telec bugs create <slug>."""
     if not args:
-        print("Usage: telec bugs create <slug> [--project-root PATH]")
+        print("Usage: telec bugs create <slug>")
         raise SystemExit(1)
 
     slug: str | None = None
@@ -2655,24 +2585,21 @@ def _handle_bugs_create(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg.startswith("-"):
+        if arg.startswith("-"):
             print(f"Unknown option: {arg}")
-            print("Usage: telec bugs create <slug> [--project-root PATH]")
+            print("Usage: telec bugs create <slug>")
             raise SystemExit(1)
         else:
             if slug is not None:
                 print("Only one slug is allowed.")
-                print("Usage: telec bugs create <slug> [--project-root PATH]")
+                print("Usage: telec bugs create <slug>")
                 raise SystemExit(1)
             slug = arg
             i += 1
 
     if slug is None:
         print("Error: slug is required")
-        print("Usage: telec bugs create <slug> [--project-root PATH]")
+        print("Usage: telec bugs create <slug>")
         raise SystemExit(1)
 
     try:
@@ -2691,7 +2618,7 @@ def _handle_bugs_create(args: list[str]) -> None:
 
 
 def _handle_bugs_report(args: list[str]) -> None:
-    """Handle telec bugs report <description> [--slug <slug>] [--project-root PATH]."""
+    """Handle telec bugs report <description> [--slug <slug>]."""
     import re
     import shutil
 
@@ -2706,10 +2633,7 @@ def _handle_bugs_report(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg == "--slug" and i + 1 < len(args):
+        if arg == "--slug" and i + 1 < len(args):
             slug = args[i + 1]
             i += 2
         elif arg.startswith("-"):
@@ -2827,7 +2751,7 @@ def _handle_bugs_report(args: list[str]) -> None:
 
 
 def _handle_bugs_list(args: list[str]) -> None:
-    """Handle telec bugs list [--project-root PATH]."""
+    """Handle telec bugs list."""
     import yaml
 
     project_root = Path.cwd()
@@ -2835,10 +2759,7 @@ def _handle_bugs_list(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--project-root" and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg.startswith("-"):
+        if arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("bugs", "list"))
             raise SystemExit(1)

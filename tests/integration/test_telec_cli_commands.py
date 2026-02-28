@@ -40,12 +40,11 @@ def test_docs_phase1_parses_flags_and_calls_selector(
     from teleclaude import context_selector
 
     monkeypatch.setattr(context_selector, "build_context_output", fake_build_context_output)
+    monkeypatch.chdir(tmp_path)
 
     telec._handle_docs(
         [
             "index",
-            "--project-root",
-            str(tmp_path),
             "--baseline-only",
             "--third-party",
             "--areas",
@@ -79,12 +78,11 @@ def test_docs_phase2_ignores_filters(
     from teleclaude import context_selector
 
     monkeypatch.setattr(context_selector, "build_context_output", fake_build_context_output)
+    monkeypatch.chdir(tmp_path)
 
     telec._handle_docs(
         [
             "get",
-            "--project-root",
-            str(tmp_path),
             "general/policy/one,general/policy/two",
             "software-development/policy/three",
         ]
@@ -122,8 +120,9 @@ def test_sync_validate_only_calls_sync(tmp_path: Path, monkeypatch: pytest.Monke
     from teleclaude import sync as sync_module
 
     monkeypatch.setattr(sync_module, "sync", fake_sync)
+    monkeypatch.chdir(tmp_path)
 
-    telec._handle_sync(["--project-root", str(tmp_path), "--validate-only"])
+    telec._handle_sync(["--validate-only"])
 
     assert captured["project_root"] == tmp_path.resolve()
     assert captured["validate_only"] is True
@@ -131,11 +130,11 @@ def test_sync_validate_only_calls_sync(tmp_path: Path, monkeypatch: pytest.Monke
 
 
 @pytest.mark.integration
-def test_sync_failure_exits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sync_failure_exits(monkeypatch: pytest.MonkeyPatch) -> None:
     """telec sync should exit non-zero when sync() fails."""
 
-    def fake_sync(_project_root: Path, *, validate_only: bool, warn_only: bool) -> bool:
-        _ = (validate_only, warn_only)
+    def fake_sync(project_root: Path, *, validate_only: bool, warn_only: bool) -> bool:
+        _ = (project_root, validate_only, warn_only)
         return False
 
     from teleclaude import sync as sync_module
@@ -143,7 +142,7 @@ def test_sync_failure_exits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(sync_module, "sync", fake_sync)
 
     with pytest.raises(SystemExit) as excinfo:
-        telec._handle_sync(["--project-root", str(tmp_path)])
+        telec._handle_sync([])
 
     assert excinfo.value.code == 1
 

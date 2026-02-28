@@ -10,15 +10,17 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate cli-cleanup-maintain-cwd-delivered` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate cli-cleanup-maintain-cwd-delivered` exits 0, or exception noted)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
+
+**Manual verification:** Ran `telec roadmap list --include-delivered` and `telec roadmap list --delivered-only` locally. Both flags are parsed and passed to `assemble_roadmap`. The `--project-root` and `--cwd` flags are gone from all commands. `telec todo maintain` is no longer a valid subcommand.
 
 ## Review Gates (Reviewer)
 

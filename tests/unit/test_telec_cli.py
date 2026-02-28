@@ -297,6 +297,7 @@ def test_bugs_report_dispatch_skips_listener_registration(monkeypatch: pytest.Mo
 
     monkeypatch.setattr(telec, "TelecAPIClient", _FakeApiClient)
     monkeypatch.setattr(telec.subprocess, "run", _fake_git_run)
+    monkeypatch.chdir(tmp_path)
 
     slug = "fix-bugs-report-skip-listener"
     telec._handle_bugs_report(
@@ -304,8 +305,6 @@ def test_bugs_report_dispatch_skips_listener_registration(monkeypatch: pytest.Mo
             "listener spam on bugs report",
             "--slug",
             slug,
-            "--project-root",
-            str(tmp_path),
         ]
     )
 
@@ -313,7 +312,9 @@ def test_bugs_report_dispatch_skips_listener_registration(monkeypatch: pytest.Mo
     assert create_calls[0].get("skip_listener_registration") is True
 
 
-def test_bugs_list_uses_worktree_state_for_status(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_bugs_list_uses_worktree_state_for_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     """bugs list and roadmap list should agree on worktree-owned build status."""
     project_root = tmp_path
     slug = "fix-bug"
@@ -329,11 +330,13 @@ def test_bugs_list_uses_worktree_state_for_status(tmp_path: Path, capsys: pytest
     worktree_todo.mkdir(parents=True, exist_ok=True)
     (worktree_todo / "state.yaml").write_text("build: started\nreview: pending\n", encoding="utf-8")
 
-    telec._handle_roadmap(["list", "--project-root", str(project_root)])
+    monkeypatch.chdir(project_root)
+
+    telec._handle_roadmap(["list"])
     roadmap_output = capsys.readouterr().out
     assert "Build:started" in roadmap_output
 
-    telec._handle_bugs(["list", "--project-root", str(project_root)])
+    telec._handle_bugs(["list"])
     bugs_output = capsys.readouterr().out
     bug_lines = [line for line in bugs_output.splitlines() if slug in line]
     assert bug_lines

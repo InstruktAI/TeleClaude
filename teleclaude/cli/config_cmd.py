@@ -108,10 +108,7 @@ def handle_get(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg in ("--project-root", "-p") and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg in ("--format", "-f") and i + 1 < len(args):
+        if arg in ("--format", "-f") and i + 1 < len(args):
             output_format = args[i + 1].lower()
             if output_format not in ("yaml", "json"):
                 print(f"Error: Invalid output format: {output_format} (must be yaml or json)")
@@ -165,10 +162,7 @@ def handle_patch(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg in ("--project-root", "-p") and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg in ("--format", "-f") and i + 1 < len(args):
+        if arg in ("--format", "-f") and i + 1 < len(args):
             output_format = args[i + 1].lower()
             if output_format not in ("yaml", "json"):
                 print(f"Error: Invalid output format: {output_format} (must be yaml or json)")
@@ -236,10 +230,7 @@ def handle_validate(args: list[str]) -> None:
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg in ("--project-root", "-p") and i + 1 < len(args):
-            project_root = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg.startswith("-"):
+        if arg.startswith("-"):
             print(f"Error: Unknown option: {arg}")
             sys.exit(1)
         else:

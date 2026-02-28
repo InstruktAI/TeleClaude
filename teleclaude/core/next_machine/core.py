@@ -470,7 +470,7 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
     else:
         try:
             demo_result = subprocess.run(
-                ["telec", "todo", "demo", "validate", slug, "--project-root", worktree_cwd],
+                ["telec", "todo", "demo", "validate", slug],
                 cwd=worktree_cwd,
                 capture_output=True,
                 text=True,

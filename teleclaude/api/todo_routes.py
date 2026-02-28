@@ -1,6 +1,6 @@
 """Todo/workflow REST endpoints for the telec CLI tool subcommands.
 
-Exposes the next-machine state machine functions (prepare, work, maintain)
+Exposes the next-machine state machine functions (prepare, work)
 and roadmap mutation operations (mark-phase, set-deps) as REST endpoints
 with dual-factor caller identity enforcement.
 """
@@ -14,7 +14,6 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from teleclaude.api.auth import (
-    CLEARANCE_TODOS_MAINTAIN,
     CLEARANCE_TODOS_MARK_PHASE,
     CLEARANCE_TODOS_PREPARE,
     CLEARANCE_TODOS_SET_DEPS,
@@ -23,7 +22,7 @@ from teleclaude.api.auth import (
 )
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.next_machine import next_maintain, next_prepare, next_work
+from teleclaude.core.next_machine import next_prepare, next_work
 from teleclaude.core.next_machine.core import (
     detect_circular_dependency,
     get_stash_entries,
@@ -78,22 +77,6 @@ async def todo_work(  # pyright: ignore
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
     result = await next_work(db, slug, cwd, identity.session_id)
-    return {"result": result}
-
-
-@router.post("/maintain")
-async def todo_maintain(  # pyright: ignore
-    cwd: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(CLEARANCE_TODOS_MAINTAIN),  # noqa: ARG001
-) -> dict[str, str]:
-    """Run the Phase D (maintain) state machine.
-
-    Executes maintenance steps. Currently returns a stub response.
-    Requires clearance to invoke the maintain workflow.
-    """
-    if not cwd:
-        raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
-    result = await next_maintain(db, cwd)
     return {"result": result}
 
 

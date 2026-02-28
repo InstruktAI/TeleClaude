@@ -498,7 +498,6 @@ def test_cli_demo_validate_does_not_require_runtime_config_agents(tmp_path: Path
     invalid_config = tmp_path / "invalid-config.yml"
     invalid_config.write_text("computer:\n  name: test\n", encoding="utf-8")
 
-    repo_root = Path(__file__).resolve().parents[2]
     env = os.environ.copy()
     env["TELECLAUDE_CONFIG_PATH"] = str(invalid_config)
 
@@ -511,10 +510,8 @@ def test_cli_demo_validate_does_not_require_runtime_config_agents(tmp_path: Path
             "demo",
             "validate",
             slug,
-            "--project-root",
-            str(tmp_path),
         ],
-        cwd=repo_root,
+        cwd=tmp_path,
         env=env,
         text=True,
         capture_output=True,
