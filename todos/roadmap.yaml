@@ -7,6 +7,19 @@
 - slug: notification-service
 - slug: tui-footer-polish
 - slug: prepare-quality-runner
+  after:
+  - notification-service
   description: Automated DOR quality runner for todo preparation
 - slug: public-website-blog
   description: Public website with landing page and blog for InstruktAI/TeleClaude
+- slug: todo-dump-command
+  after:
+  - notification-service
+  description: telec todo dump — fire-and-forget brain dump with notification trigger
+- slug: content-dump-command
+  after:
+  - notification-service
+  description: telec content dump — fire-and-forget content dump with notification
+    trigger
+- slug: integrate-session-lifecycle-into-next-work
+  description: Integrate session lifecycle into next-work orchestration

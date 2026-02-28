@@ -813,24 +813,33 @@ class APIServer:
                         sender_session_id=identity.session_id,
                         target_session_id=session_id,
                     )
-                    created = False
+                    if link_ctx:
+                        return {
+                            "status": "error",
+                            "mode": "direct",
+                            "link_id": link_ctx[0].link_id,
+                            "message": (
+                                "A direct link is already active with this peer. "
+                                "We agreed not to use send during direct conversation "
+                                "as it obfuscates the exchange from the observer. "
+                                "Your turn-complete output is automatically shared — just talk."
+                            ),
+                        }
+
+                    link, _ = await create_or_reuse_direct_link(
+                        caller_session_id=identity.session_id,
+                        target_session_id=session_id,
+                        caller_name=caller_label,
+                        target_name=target_label,
+                        caller_computer=caller_computer,
+                        target_computer=target_computer,
+                    )
+                    link_ctx = await resolve_link_for_sender_target(
+                        sender_session_id=identity.session_id,
+                        target_session_id=session_id,
+                    )
                     if not link_ctx:
-                        link, created = await create_or_reuse_direct_link(
-                            caller_session_id=identity.session_id,
-                            target_session_id=session_id,
-                            caller_name=caller_label,
-                            target_name=target_label,
-                            caller_computer=caller_computer,
-                            target_computer=target_computer,
-                        )
-                        link_ctx = await resolve_link_for_sender_target(
-                            sender_session_id=identity.session_id,
-                            target_session_id=session_id,
-                        )
-                        if not link_ctx:
-                            raise HTTPException(status_code=500, detail="failed to resolve direct link")
-                    else:
-                        link = link_ctx[0]
+                        raise HTTPException(status_code=500, detail="failed to resolve direct link")
 
                     _, members = link_ctx
                     peers = await get_peer_members(link_id=link.link_id, sender_session_id=identity.session_id)
@@ -847,10 +856,28 @@ class APIServer:
                         "status": "success",
                         "mode": "direct",
                         "link_id": link.link_id,
-                        "link_state": "created" if created else "reused",
+                        "link_state": "created",
                         "delivered_to": len(delivery_targets),
                         "members": len(members),
                     }
+
+                if identity.session_id:
+                    existing_link = await resolve_link_for_sender_target(
+                        sender_session_id=identity.session_id,
+                        target_session_id=session_id,
+                    )
+                    if existing_link:
+                        return {
+                            "status": "error",
+                            "mode": "direct",
+                            "link_id": existing_link[0].link_id,
+                            "message": (
+                                "A direct link is active with this peer. "
+                                "We agreed not to use send during direct conversation "
+                                "as it obfuscates the exchange from the observer. "
+                                "Your turn-complete output is automatically shared — just talk."
+                            ),
+                        }
 
                 cmd = CommandMapper.map_api_input(
                     "message",
