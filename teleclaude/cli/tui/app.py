@@ -991,11 +991,17 @@ class TelecApp(App[str | None]):
 
     def _show_animation_toast(self, target: str, animation: Animation) -> None:
         """Show a toast notification when an animation starts."""
+        name = animation.__class__.__name__
+        # Debounce: avoid duplicate toasts for the same animation (e.g. banner + logo starting)
+        if getattr(self, "_last_anim_toast", None) == name:
+            return
+        self._last_anim_toast = name
+
         self.notify(
-            f"Animation: {animation.__class__.__name__}",
-            title=f"TUI {target.capitalize()}",
+            f"Animation: {name}",
+            title="TUI Atmosphere",
             severity="information",
-            timeout=2.0,
+            timeout=3.0,
         )
 
     async def action_quit(self) -> None:
