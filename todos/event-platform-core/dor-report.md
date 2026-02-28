@@ -1,14 +1,15 @@
 # DOR Gate Report: event-platform-core
 
 **Gate date:** 2026-02-28
-**Verdict:** needs_work
-**Score:** 7/10
+**Verdict:** pass
+**Score:** 8/10
 
 ## Gate Summary
 
-Seven of eight DOR gates pass. One plan-to-requirement contradiction blocks passage.
-The fix is localized — a single section of the implementation plan must be reconciled
-with the requirements. No structural issues with scope, verification, or dependencies.
+All eight DOR gates pass. The dedup cartridge contradiction identified in the first
+assessment has been resolved — implementation plan now specifies hard-drop behavior
+matching requirements and demo. XREADGROUP risk updated to reference existing codebase
+pattern. Pipeline_state table removed as redundant.
 
 ## Gate Results
 
@@ -41,9 +42,7 @@ Success criteria are concrete and machine-checkable:
 All referenced codebase patterns verified:
 
 - Redis Streams XADD: `redis_transport.py:1734` confirmed
-- Redis Streams XREADGROUP: **already exists** in `teleclaude/channels/consumer.py`
-  (the risk assessment says "XREADGROUP is new" — this is overstated; the channels
-  module already uses `xreadgroup` with `ensure_consumer_group`)
+- Redis Streams XREADGROUP: exists in `teleclaude/channels/consumer.py` — risk updated
 - aiosqlite DB: `teleclaude/core/db.py` confirmed
 - FastAPI endpoints: `teleclaude/api_server.py` confirmed
 - WebSocket subscriptions: `api_server.py:223` confirmed
@@ -81,80 +80,43 @@ No tooling or scaffolding changes.
 
 ## Plan-to-Requirement Fidelity
 
-All 18 requirements trace to implementation tasks. One contradiction found:
+All 18 requirements trace to implementation tasks. No contradictions.
 
-### BLOCKER: Dedup cartridge behavior contradiction
+### RESOLVED: Dedup cartridge behavior (previously blocked)
 
-**Requirement 6** states:
-
-> Deduplication cartridge: checks idempotency key derived from schema-declared payload
-> fields. **Drops duplicates (returns None).** First cartridge in the chain.
-
-**Implementation plan Task 3.2** states:
-
-> If key exists: set `event.idempotency_key` and return event (let projector handle upsert).
-> **Dedup is advisory — it sets the key.** The projector uses the key for upsert.
-
-**Demo.md Step 6** shows drop behavior:
-
-> Emit the same event twice... only one notification exists. **The dedup cartridge dropped
-> the duplicate.**
-
-Three artifacts, two conflicting behaviors:
-
-- Requirements + demo: dedup drops duplicates (returns None)
-- Implementation plan: dedup is advisory, passes events through, projector upserts
-
-These are functionally different. A drop-based dedup means duplicate events never reach
-the projector — the notification row is never touched again. An advisory dedup means
-duplicate events flow through to the projector which upserts — the notification row gets
-touched but content is unchanged.
-
-**Resolution needed:** Either:
-
-1. Update the implementation plan to match the requirements (dedup checks DB or in-memory
-   set, drops true duplicates), or
-2. Update the requirements to reflect the advisory approach (dedup tags, projector upserts)
-   and update the demo accordingly.
-
-Both approaches are valid. The advisory approach is arguably simpler (dedup doesn't need
-DB access) but the requirements explicitly specify drop behavior.
+Implementation plan Task 3.2 now specifies hard-drop dedup: checks DB for existing
+idempotency key, returns None if found. Aligned with requirements ("Drops duplicates")
+and demo ("The dedup cartridge dropped the duplicate").
 
 ## Observations (non-blocking)
 
-1. **XREADGROUP risk overstated:** The risk section says "XREADGROUP is new: codebase
-   uses XREAD only." This is incorrect — `teleclaude/channels/consumer.py` already
-   implements `xreadgroup` with `ensure_consumer_group`. The builder should reference
-   this existing pattern directly.
-
-2. **`pipeline_state` table:** Task 2.2 creates a `pipeline_state` key-value table for
-   "consumer group last-processed tracking." XREADGROUP handles its own position tracking
-   via the consumer group. The table may be useful for other pipeline state, but the
-   stated purpose is redundant. Minor — builder can decide.
-
-3. **Email delivery in consolidation:** The old `teleclaude/notifications/email.py` exists.
+1. **Email delivery in consolidation:** The old `teleclaude/notifications/email.py` exists.
    Phase 6 removes the entire directory. The audit step (grep for call sites) should catch
    email.py references, but it's worth the builder being aware during consolidation.
 
+2. **Orphaned pipeline_state methods:** Task 2.2 still lists `get_pipeline_state` and
+   `set_pipeline_state` CRUD methods (lines 173-174) even though the `pipeline_state`
+   table was removed. Builder should drop these methods or repurpose them.
+
 ## Requirement-to-Task Mapping
 
-| #   | Requirement                | Task(s)  | Status              |
-| --- | -------------------------- | -------- | ------------------- |
-| 1   | Separate package           | 1.1      | OK                  |
-| 2   | Five-layer envelope        | 1.2      | OK                  |
-| 3   | Event catalog              | 1.3      | OK                  |
-| 4   | Redis Streams producer     | 3.6      | OK                  |
-| 5   | Pipeline runtime           | 3.1, 3.4 | OK                  |
-| 6   | Deduplication cartridge    | 3.2      | **CONTRADICTION**   |
-| 7   | Notification projector     | 3.3      | OK                  |
-| 8   | Separate SQLite DB         | 2.1, 2.2 | OK                  |
-| 9   | Notification state machine | 2.2      | OK                  |
-| 10  | HTTP API                   | 4.1      | OK                  |
-| 11  | WebSocket push             | 4.2      | OK                  |
-| 12  | Daemon hosting             | 5.1      | OK                  |
-| 13  | Telegram delivery adapter  | 5.3      | OK                  |
-| 14  | Initial event schemas      | 5.4      | OK                  |
-| 15  | First producers wired      | 5.2      | OK                  |
-| 16  | telec events list CLI      | 5.5      | OK                  |
-| 17  | Idempotency                | 3.2      | OK (key derivation) |
-| 18  | Consolidation              | 6.1      | OK                  |
+| #   | Requirement                | Task(s)  | Status |
+| --- | -------------------------- | -------- | ------ |
+| 1   | Separate package           | 1.1      | OK     |
+| 2   | Five-layer envelope        | 1.2      | OK     |
+| 3   | Event catalog              | 1.3      | OK     |
+| 4   | Redis Streams producer     | 3.6      | OK     |
+| 5   | Pipeline runtime           | 3.1, 3.4 | OK     |
+| 6   | Deduplication cartridge    | 3.2      | OK     |
+| 7   | Notification projector     | 3.3      | OK     |
+| 8   | Separate SQLite DB         | 2.1, 2.2 | OK     |
+| 9   | Notification state machine | 2.2      | OK     |
+| 10  | HTTP API                   | 4.1      | OK     |
+| 11  | WebSocket push             | 4.2      | OK     |
+| 12  | Daemon hosting             | 5.1      | OK     |
+| 13  | Telegram delivery adapter  | 5.3      | OK     |
+| 14  | Initial event schemas      | 5.4      | OK     |
+| 15  | First producers wired      | 5.2      | OK     |
+| 16  | telec events list CLI      | 5.5      | OK     |
+| 17  | Idempotency                | 3.2      | OK     |
+| 18  | Consolidation              | 6.1      | OK     |

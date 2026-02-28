@@ -160,8 +160,9 @@ classification, and domain-scoped processing without changing the runtime.
 
 ## Risks
 
-- **XREADGROUP is new**: codebase uses XREAD only. Consumer groups add acknowledgment
-  semantics and pending entry recovery. Standard Redis pattern but unfamiliar here.
+- **XREADGROUP pattern**: the channels module (`teleclaude/channels/consumer.py`) already
+  uses `xreadgroup` with `ensure_consumer_group`. The builder should reference this existing
+  pattern directly. Lower risk than initially assessed.
 - **Migration from old system**: `notification_outbox` call sites need auditing. The
   `NotificationRouter.enqueue()` calls need to be found and rewired.
 - **Separate DB coordination**: own init, connection management, WAL mode, clean shutdown.

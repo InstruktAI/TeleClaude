@@ -159,13 +159,6 @@ Codebase patterns to follow:
   ```
 - [ ] Create indexes: `(event_type)`, `(level)`, `(domain)`, `(human_status)`, `(agent_status)`,
       `(visibility)`, `(created_at DESC)`
-- [ ] Create `pipeline_state` table for consumer group last-processed tracking:
-  ```sql
-  CREATE TABLE IF NOT EXISTS pipeline_state (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-  );
-  ```
 - [ ] Define `NotificationRow` TypedDict matching all columns
 - [ ] Implement CRUD methods:
   - `async insert_notification(envelope: EventEnvelope, schema: EventSchema) -> int`
@@ -212,9 +205,12 @@ Codebase patterns to follow:
   - `async def process(self, event, context)`:
     1. Look up schema in catalog
     2. Build idempotency key from schema + payload
-    3. If key exists: set `event.idempotency_key` and return event (let projector handle upsert)
-    4. If no idempotency fields declared: pass through unchanged
-  - Dedup is advisory — it sets the key. The projector uses the key for upsert.
+    3. If key is None (no idempotency fields declared): pass through unchanged
+    4. Set `event.idempotency_key` on the envelope
+    5. Check if key already exists in `context.db` (`SELECT 1 FROM notifications WHERE idempotency_key = ?`)
+    6. If exists: return None (drop the duplicate — event never reaches downstream cartridges)
+    7. If new: return event (passes to projector which inserts)
+  - Dedup is a hard gate — duplicates are dropped, not upserted.
 
 ### Task 3.3: Notification projector cartridge
 
