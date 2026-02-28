@@ -74,7 +74,6 @@ from teleclaude.hooks.registry import ContractRegistry
 from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
 from teleclaude.logging_config import setup_logging
-from teleclaude.notifications import NotificationOutboxWorker
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.services.monitoring_service import MonitoringService
@@ -201,14 +200,6 @@ HOOK_EVENT_CLASS_BURSTY: frozenset[str] = frozenset(
         AgentHookEvents.TOOL_DONE,
     }
 )
-
-# Notification outbox worker
-NOTIFICATION_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("NOTIFICATION_OUTBOX_POLL_INTERVAL_S", "1"))
-NOTIFICATION_OUTBOX_BATCH_SIZE: int = int(os.getenv("NOTIFICATION_OUTBOX_BATCH_SIZE", "25"))
-NOTIFICATION_OUTBOX_LOCK_TTL_S: float = float(os.getenv("NOTIFICATION_OUTBOX_LOCK_TTL_S", "30"))
-NOTIFICATION_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("NOTIFICATION_OUTBOX_BASE_BACKOFF_S", "1"))
-NOTIFICATION_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("NOTIFICATION_OUTBOX_MAX_BACKOFF_S", "60"))
-
 
 # Agent auto-command startup detection
 AGENT_START_TIMEOUT_S = 5.0
@@ -382,7 +373,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._start_time = time.time()
         self._shutdown_reason: str | None = None
         self.hook_outbox_task: asyncio.Task[object] | None = None
-        self.notification_outbox_task: asyncio.Task[object] | None = None
         self._event_db: EventDB | None = None
         self._event_processor_task: asyncio.Task[object] | None = None
         self.todo_watcher_task: asyncio.Task[object] | None = None
@@ -1704,7 +1694,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             if config.telegram:
                 people_dir = Path("~/.teleclaude/people").expanduser()
                 from teleclaude.config.loader import load_global_config, load_person_config
-                from teleclaude.notifications.telegram import send_telegram_dm
+                from teleclaude.services.telegram import send_telegram_dm
 
                 try:
                     global_cfg = load_global_config()
@@ -1964,20 +1954,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             else:
                 logger.info("Codex transcript watch disabled (interval=%.1fs)", CODEX_TRANSCRIPT_WATCH_INTERVAL_S)
 
-            self.notification_outbox_task = asyncio.create_task(
-                NotificationOutboxWorker(
-                    db=db,
-                    shutdown_event=self.shutdown_event,
-                    poll_interval_s=NOTIFICATION_OUTBOX_POLL_INTERVAL_S,
-                    batch_size=NOTIFICATION_OUTBOX_BATCH_SIZE,
-                    lock_ttl_s=NOTIFICATION_OUTBOX_LOCK_TTL_S,
-                    base_backoff_s=NOTIFICATION_OUTBOX_BASE_BACKOFF_S,
-                    max_backoff_s=NOTIFICATION_OUTBOX_MAX_BACKOFF_S,
-                ).run()
-            )
-            self.notification_outbox_task.add_done_callback(self._log_background_task_exception("notification_outbox"))
-            logger.info("Notification outbox worker started")
-
             # Initialize event platform
             await self._start_event_platform()
 
@@ -2059,14 +2035,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("Codex transcript watch task stopped")
-
-        if self.notification_outbox_task:
-            self.notification_outbox_task.cancel()
-            try:
-                await self.notification_outbox_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("Notification outbox worker stopped")
 
         if self._session_outbox_workers:
             workers = list(self._session_outbox_workers.values())

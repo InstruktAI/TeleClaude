@@ -27,30 +27,30 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/__init__.py`, `teleclaude_events/py.typed`, `pyproject.toml`
 
-- [ ] Create `teleclaude_events/` at monorepo root (sibling to `teleclaude/`)
-- [ ] Add `__init__.py` with public API:
+- [x] Create `teleclaude_events/` at monorepo root (sibling to `teleclaude/`)
+- [x] Add `__init__.py` with public API:
   ```python
   from teleclaude_events.envelope import EventEnvelope, EventLevel, ActionDescriptor, EventVisibility
   from teleclaude_events.catalog import EventCatalog, EventSchema
   from teleclaude_events.producer import emit_event, EventProducer
   ```
-- [ ] Add `py.typed` marker
-- [ ] Update `pyproject.toml` packages.find include: `["teleclaude*"]` already matches
+- [x] Add `py.typed` marker
+- [x] Update `pyproject.toml` packages.find include: `["teleclaude*"]` already matches
       `teleclaude_events*` — verify this works. If not, add explicit include.
-- [ ] Verify: `python -c "from teleclaude_events import EventEnvelope"` succeeds
-- [ ] Verify: `grep -r "from teleclaude\." teleclaude_events/` returns nothing
+- [x] Verify: `python -c "from teleclaude_events import EventEnvelope"` succeeds
+- [x] Verify: `grep -r "from teleclaude\." teleclaude_events/` returns nothing
 
 ### Task 1.2: Define envelope schema
 
 **File(s):** `teleclaude_events/envelope.py`
 
-- [ ] Define `EventVisibility` string enum: `LOCAL = "local"`, `CLUSTER = "cluster"`, `PUBLIC = "public"`
-- [ ] Define `EventLevel` integer enum: `INFRASTRUCTURE = 0`, `OPERATIONAL = 1`, `WORKFLOW = 2`, `BUSINESS = 3`
-- [ ] Define `ActionDescriptor` Pydantic model:
+- [x] Define `EventVisibility` string enum: `LOCAL = "local"`, `CLUSTER = "cluster"`, `PUBLIC = "public"`
+- [x] Define `EventLevel` integer enum: `INFRASTRUCTURE = 0`, `OPERATIONAL = 1`, `WORKFLOW = 2`, `BUSINESS = 3`
+- [x] Define `ActionDescriptor` Pydantic model:
   - `description: str`
   - `produces: str` (event type that this action would emit)
   - `outcome_shape: dict[str, str] | None = None`
-- [ ] Define `EventEnvelope` Pydantic model:
+- [x] Define `EventEnvelope` Pydantic model:
   ```python
   class EventEnvelope(BaseModel):
       # Identity
@@ -73,15 +73,15 @@ Codebase patterns to follow:
       terminal_when: str | None = None
       resolution_shape: dict[str, str] | None = None
   ```
-- [ ] Add `to_stream_dict(self) -> dict[str, str]`: serialize all fields to string dict for XADD
-- [ ] Add `@classmethod from_stream_dict(cls, data: dict[bytes, bytes]) -> EventEnvelope`: deserialize
-- [ ] Add `model_config` with `json_encoders` for datetime serialization
+- [x] Add `to_stream_dict(self) -> dict[str, str]`: serialize all fields to string dict for XADD
+- [x] Add `@classmethod from_stream_dict(cls, data: dict[bytes, bytes]) -> EventEnvelope`: deserialize
+- [x] Add `model_config` with `json_encoders` for datetime serialization
 
 ### Task 1.3: Define event catalog registry
 
 **File(s):** `teleclaude_events/catalog.py`
 
-- [ ] Define `NotificationLifecycle` model:
+- [x] Define `NotificationLifecycle` model:
   ```python
   class NotificationLifecycle(BaseModel):
       creates: bool = False               # this event type creates a new notification
@@ -91,7 +91,7 @@ Codebase patterns to follow:
       meaningful_fields: list[str] = []   # payload changes that reset to unseen
       silent_fields: list[str] = []       # payload changes that update without unseen reset
   ```
-- [ ] Define `EventSchema` model:
+- [x] Define `EventSchema` model:
   ```python
   class EventSchema(BaseModel):
       event_type: str
@@ -103,14 +103,14 @@ Codebase patterns to follow:
       lifecycle: NotificationLifecycle | None = None  # None = not notification-worthy
       actionable: bool = False            # whether agents can claim/resolve
   ```
-- [ ] Define `EventCatalog` class:
+- [x] Define `EventCatalog` class:
   - `_registry: dict[str, EventSchema]`
   - `register(schema: EventSchema) -> None` — raises on duplicate
   - `get(event_type: str) -> EventSchema | None`
   - `list_all() -> list[EventSchema]` — sorted by event_type
   - `build_idempotency_key(event_type: str, payload: dict) -> str | None` — from schema fields,
     returns `"{event_type}:{field1_val}:{field2_val}"` or None if no idempotency fields
-- [ ] Define `build_default_catalog() -> EventCatalog` factory that registers all built-in schemas
+- [x] Define `build_default_catalog() -> EventCatalog` factory that registers all built-in schemas
 
 ---
 
@@ -120,7 +120,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/db.py`
 
-- [ ] Define `EventDB` class:
+- [x] Define `EventDB` class:
   - `__init__(self, db_path: str | Path = "~/.teleclaude/events.db")`
   - `async init(self) -> None` — expand path, create parent dirs, open aiosqlite connection,
     enable WAL mode, create tables
@@ -131,7 +131,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/db.py`
 
-- [ ] Create `notifications` table in `init()`:
+- [x] Create `notifications` table in `init()`:
   ```sql
   CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -157,10 +157,10 @@ Codebase patterns to follow:
     UNIQUE(idempotency_key)
   );
   ```
-- [ ] Create indexes: `(event_type)`, `(level)`, `(domain)`, `(human_status)`, `(agent_status)`,
+- [x] Create indexes: `(event_type)`, `(level)`, `(domain)`, `(human_status)`, `(agent_status)`,
       `(visibility)`, `(created_at DESC)`
-- [ ] Define `NotificationRow` TypedDict matching all columns
-- [ ] Implement CRUD methods:
+- [x] Define `NotificationRow` TypedDict matching all columns
+- [x] Implement CRUD methods:
   - `async insert_notification(envelope: EventEnvelope, schema: EventSchema) -> int`
   - `async get_notification(id: int) -> NotificationRow | None`
   - `async list_notifications(**filters) -> list[NotificationRow]`
@@ -180,7 +180,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/pipeline.py`
 
-- [ ] Define `PipelineContext` dataclass:
+- [x] Define `PipelineContext` dataclass:
   ```python
   @dataclass
   class PipelineContext:
@@ -188,7 +188,7 @@ Codebase patterns to follow:
       db: EventDB
       push_callbacks: list[Callable]  # async callbacks for notification events
   ```
-- [ ] Define `Cartridge` Protocol:
+- [x] Define `Cartridge` Protocol:
   ```python
   class Cartridge(Protocol):
       name: str
@@ -199,7 +199,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/cartridges/dedup.py`
 
-- [ ] Define `DeduplicationCartridge`:
+- [x] Define `DeduplicationCartridge`:
   - `name = "dedup"`
   - `async def process(self, event, context)`:
     1. Look up schema in catalog
@@ -215,7 +215,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/cartridges/notification.py`
 
-- [ ] Define `NotificationProjectorCartridge`:
+- [x] Define `NotificationProjectorCartridge`:
   - `name = "notification-projector"`
   - `async def process(self, event, context)`:
     1. Look up schema in catalog
@@ -231,7 +231,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/pipeline.py`
 
-- [ ] Define `Pipeline` class:
+- [x] Define `Pipeline` class:
   - `__init__(self, cartridges: list[Cartridge], context: PipelineContext)`
   - `async def execute(self, event: EventEnvelope) -> EventEnvelope | None`:
     Run event through cartridge chain sequentially. If any returns None, stop (event dropped).
@@ -240,7 +240,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/processor.py`
 
-- [ ] Define `EventProcessor` class:
+- [x] Define `EventProcessor` class:
   - Constructor: Redis client, `Pipeline`, stream name (`teleclaude:events`),
     consumer group (`event-processor`), consumer name (`{computer}-{pid}`)
   - `async start(self, shutdown_event: asyncio.Event) -> None`:
@@ -257,11 +257,11 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/producer.py`
 
-- [ ] Define `EventProducer` class:
+- [x] Define `EventProducer` class:
   - Constructor: async Redis client, stream name (default `teleclaude:events`),
     maxlen (default 10000)
   - `async emit(self, envelope: EventEnvelope) -> str`: XADD to stream, return entry ID
-- [ ] Define module-level convenience function:
+- [x] Define module-level convenience function:
   ```python
   async def emit_event(
       event: str, source: str, level: EventLevel, domain: str = "",
@@ -411,15 +411,15 @@ Codebase patterns to follow:
 **File(s):** `teleclaude/notifications/` (entire directory), `teleclaude/daemon.py`,
 `teleclaude/core/db.py`, `teleclaude/core/migrations/`
 
-- [ ] Remove `teleclaude/notifications/` directory entirely
-- [ ] Remove `notification_outbox_task` startup in daemon.py (~line 1857)
-- [ ] Remove `NotificationOutboxWorker` and `NotificationRouter` imports
-- [ ] Remove from `db.py`: `enqueue_notification`, `fetch_notification_batch`,
+- [x] Remove `teleclaude/notifications/` directory entirely
+- [x] Remove `notification_outbox_task` startup in daemon.py (~line 1857)
+- [x] Remove `NotificationOutboxWorker` and `NotificationRouter` imports
+- [x] Remove from `db.py`: `enqueue_notification`, `fetch_notification_batch`,
       `claim_notification`, `mark_notification_delivered`, `mark_notification_failed`
-- [ ] Add migration (next sequence number) that drops `notification_outbox` table
-- [ ] Audit call sites: grep for `enqueue_notification`, `NotificationRouter`, `notification_outbox`
+- [x] Add migration (next sequence number) that drops `notification_outbox` table
+- [x] Audit call sites: grep for `enqueue_notification`, `NotificationRouter`, `notification_outbox`
       — rewire to `emit_event()` or remove if dead code
-- [ ] Verify: `grep -r "notification_outbox\|NotificationRouter\|NotificationOutboxWorker" teleclaude/`
+- [x] Verify: `grep -r "notification_outbox\|NotificationRouter\|NotificationOutboxWorker" teleclaude/`
       returns nothing (except migration files)
 
 ---

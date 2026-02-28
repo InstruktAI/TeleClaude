@@ -40,14 +40,10 @@ async def _dispatch_to_target(
         notification_channel = target.get("channel", "telegram")
         message = payload.get("summary") or payload.get("message") or str(payload)
         logger.info(
-            "Channel dispatch -> notification",
+            "Channel dispatch -> notification (delivery via event platform)",
             notification_channel=notification_channel,
             message_preview=message[:80],
         )
-        from teleclaude.notifications.router import NotificationRouter
-
-        router = NotificationRouter()
-        await router.send_notification(channel=notification_channel, content=message)
 
     elif target_type == "command":
         project = target.get("project", "")

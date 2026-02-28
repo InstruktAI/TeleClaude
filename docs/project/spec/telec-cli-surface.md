@@ -163,6 +163,13 @@ subcommands:
           --commit: 'Commit hash.'
           --title: 'Delivery title.'
           --project-root: 'Project root (default: cwd).'
+  events:
+    description: 'Event catalog and platform commands.'
+    subcommands:
+      list:
+        description: 'List event schemas: type, level, domain, visibility, description, actionable.'
+        flags:
+          --domain: 'Filter by domain.'
   bugs:
     description: 'Manage bug reports and fixes.'
     subcommands:

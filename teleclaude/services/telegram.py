@@ -1,4 +1,4 @@
-"""Telegram delivery helpers for notification outbox entries."""
+"""Telegram delivery helpers."""
 
 from __future__ import annotations
 
