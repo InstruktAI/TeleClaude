@@ -22,11 +22,11 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
+- [x] Requirements traced to implemented behavior
+- [x] Deferrals justified and not hiding required scope
+- [x] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
+- [x] Findings written in `review-findings.md` — 5 Critical, 8 Important, 4 Suggestions
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — **REQUEST CHANGES**
 - [ ] Critical issues resolved or explicitly blocked
 - [ ] Test coverage and regression risk assessed
 
