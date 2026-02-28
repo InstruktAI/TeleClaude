@@ -578,6 +578,7 @@ class PreparationView(Widget, can_focus=True):
             self.app.notify(f"Reorder failed: {exc.stderr.decode()[:80]}", severity="error")
             return
 
+        self.cursor_index -= 1
         self.app._refresh_data()  # type: ignore[attr-defined]
 
     def action_move_todo_down(self) -> None:
@@ -608,6 +609,7 @@ class PreparationView(Widget, can_focus=True):
             self.app.notify(f"Reorder failed: {exc.stderr.decode()[:80]}", severity="error")
             return
 
+        self.cursor_index += 1
         self.app._refresh_data()  # type: ignore[attr-defined]
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
