@@ -11,7 +11,7 @@ from textual.widget import Widget
 
 from teleclaude.cli.models import AgentAvailabilityInfo
 from teleclaude.cli.tui.messages import SettingsChanged, StateChanged
-from teleclaude.cli.tui.theme import get_agent_color, get_agent_style
+from teleclaude.cli.tui.theme import NEUTRAL_HIGHLIGHT_COLOR, get_agent_color, get_agent_style
 from teleclaude.cli.tui.utils.formatters import format_countdown
 
 
@@ -88,33 +88,26 @@ class TelecFooter(Widget):
 
         return context_row, global_row
 
-    def _format_binding_item(self, binding: Binding, *, enabled: bool, tooltip: str, dim: bool) -> Text:
+    def _format_binding_item(self, binding: Binding, *, enabled: bool, tooltip: str) -> Text:
         key = self.app.get_key_display(binding)
         label = tooltip or binding.description
 
         text = Text()
-        # Use terminal default foreground (no explicit color) so key text adapts to
-        # light and dark mode automatically: dark in light theme, bright in dark theme.
-        if not enabled:
-            key_style = Style(bold=True, dim=True)
-        elif dim:
-            key_style = Style(bold=True, dim=True)
-        else:
-            key_style = Style(bold=True)
-        label_style = Style(dim=(not enabled) or dim)
+        key_style = Style(bold=True, dim=True) if not enabled else Style(bold=True, color=NEUTRAL_HIGHLIGHT_COLOR)
+        label_style = Style(dim=True)
         text.append(str(key), style=key_style)
         if label:
             text.append(" ")
             text.append(label, style=label_style)
         return text
 
-    def _render_hints_line(self, items: list[tuple[Binding, bool, str]], *, dim: bool, empty_label: str) -> Text:
+    def _render_hints_line(self, items: list[tuple[Binding, bool, str]], *, empty_label: str) -> Text:
         line = Text()
         if items:
             for idx, (binding, enabled, tooltip) in enumerate(items):
                 if idx:
                     line.append("  ")
-                line.append_text(self._format_binding_item(binding, enabled=enabled, tooltip=tooltip, dim=dim))
+                line.append_text(self._format_binding_item(binding, enabled=enabled, tooltip=tooltip))
         else:
             line.append(empty_label, style=Style(dim=True))
         return line
@@ -212,8 +205,8 @@ class TelecFooter(Widget):
 
     def render(self) -> Text:
         context_row, global_row = self._collect_rows()
-        line1 = self._render_hints_line(context_row, dim=False, empty_label="No context actions")
-        line2 = self._render_hints_line(global_row, dim=True, empty_label="No global actions")
+        line1 = self._render_hints_line(context_row, empty_label="No context actions")
+        line2 = self._render_hints_line(global_row, empty_label="No global actions")
         line3 = self._render_controls_line()
         return Text.assemble(line1, "\n", line2, "\n", line3)
 
