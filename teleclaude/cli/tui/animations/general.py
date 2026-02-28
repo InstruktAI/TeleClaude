@@ -37,12 +37,24 @@ class LetterWaveLR(Animation):
         active_letter_idx = frame % num_letters
         color_pair = self.palette.get(frame // num_letters)
         safe_color = self.get_contrast_safe_color(color_pair)
+        
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        try:
+            if safe_color.startswith("#"):
+                r, g, b = hex_to_rgb(safe_color)
+            else:
+                r, g, b = 150, 150, 150
+        except (ValueError, TypeError, AttributeError):
+            r, g, b = 150, 150, 150
+            
+        dim_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
 
-        return {
-            p: (safe_color if i == active_letter_idx else -1)
-            for i in range(num_letters)
-            for p in PixelMap.get_letter_pixels(self.is_big, i)
-        }
+        result = {}
+        for i in range(num_letters):
+            color = safe_color if i == active_letter_idx else dim_color
+            for p in PixelMap.get_letter_pixels(self.is_big, i):
+                result[p] = color
+        return result
 
 
 class LetterWaveRL(Animation):
@@ -54,45 +66,56 @@ class LetterWaveRL(Animation):
         color_pair = self.palette.get(frame // num_letters)
         safe_color = self.get_contrast_safe_color(color_pair)
 
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        try:
+            if safe_color.startswith("#"):
+                r, g, b = hex_to_rgb(safe_color)
+            else:
+                r, g, b = 150, 150, 150
+        except (ValueError, TypeError, AttributeError):
+            r, g, b = 150, 150, 150
+            
+        dim_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
+
         result = {}
         for i in range(num_letters):
-            letter_pixels = PixelMap.get_letter_pixels(self.is_big, i)
-            if i == active_letter_idx:
-                for p in letter_pixels:
-                    result[p] = safe_color
-            else:
-                for p in letter_pixels:
-                    result[p] = -1
+            color = safe_color if i == active_letter_idx else dim_color
+            for p in PixelMap.get_letter_pixels(self.is_big, i):
+                result[p] = color
         return result
 
 
 class LineSweepTopBottom(Animation):
-    """G6: Horizontal lines sweep from top to bottom."""
-
-    is_external_light = True
+    """G6: Vertical gradient sweep through neon tubes from top to bottom.
+    Entire letters remain colored; only the surge position is intensified.
+    """
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         active_row = frame % height
         color_pair = self.palette.get(frame // height)
         safe_color = self.get_contrast_safe_color(color_pair)
+        
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        try:
+            r, g, b = hex_to_rgb(safe_color)
+        except (ValueError, TypeError, AttributeError):
+            r, g, b = 120, 120, 120 # Fallback safe neon gray
+            
+        dim_color = rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))
+        safe_dim = self.get_contrast_safe_color(dim_color)
 
         result = {}
         for r in range(height):
             row_pixels = PixelMap.get_row_pixels(self.is_big, r)
-            if r == active_row:
-                for p in row_pixels:
-                    result[p] = safe_color
-            else:
-                for p in row_pixels:
-                    result[p] = -1
+            current_color = safe_color if r == active_row else safe_dim
+            for p in row_pixels:
+                result[p] = current_color
         return result
 
 
 class LineSweepBottomTop(Animation):
-    """G7: Horizontal lines sweep from bottom to top."""
-
-    is_external_light = True
+    """G7: Vertical gradient sweep through neon tubes from bottom to top."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
@@ -100,15 +123,21 @@ class LineSweepBottomTop(Animation):
         color_pair = self.palette.get(frame // height)
         safe_color = self.get_contrast_safe_color(color_pair)
 
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        try:
+            r, g, b = hex_to_rgb(safe_color)
+        except (ValueError, TypeError, AttributeError):
+            r, g, b = 120, 120, 120
+            
+        dim_color = rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))
+        safe_dim = self.get_contrast_safe_color(dim_color)
+
         result = {}
         for r in range(height):
             row_pixels = PixelMap.get_row_pixels(self.is_big, r)
-            if r == active_row:
-                for p in row_pixels:
-                    result[p] = safe_color
-            else:
-                for p in row_pixels:
-                    result[p] = -1
+            current_color = safe_color if r == active_row else safe_dim
+            for p in row_pixels:
+                result[p] = current_color
         return result
 
 
@@ -127,16 +156,23 @@ class MiddleOutVertical(Animation):
         step = frame % 3
         active_rows = {2 - step, 3 + step}
         color_pair = self.palette.get(frame // 3)
+        safe_color = self.get_contrast_safe_color(color_pair)
+
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        try:
+            r, g, b = hex_to_rgb(safe_color)
+        except (ValueError, TypeError, AttributeError):
+            r, g, b = 120, 120, 120
+            
+        dim_color = rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))
+        safe_dim = self.get_contrast_safe_color(dim_color)
 
         result = {}
         for r in range(height):
             row_pixels = PixelMap.get_row_pixels(self.is_big, r)
-            if r in active_rows:
-                for p in row_pixels:
-                    result[p] = color_pair
-            else:
-                for p in row_pixels:
-                    result[p] = -1
+            current_color = safe_color if r in active_rows else safe_dim
+            for p in row_pixels:
+                result[p] = current_color
         return result
 
 
@@ -263,7 +299,6 @@ class DiagonalSweepDR(Animation):
     """G11: Pixels light up in diagonal waves top-left to bottom-right."""
 
     supports_small = False
-    is_external_light = True
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
@@ -272,14 +307,21 @@ class DiagonalSweepDR(Animation):
         active = frame % max_val
         color_pair = self.palette.get(frame // max_val)
         safe_color = self.get_contrast_safe_color(color_pair)
+        
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        try:
+            if safe_color.startswith("#"):
+                r, g, b = hex_to_rgb(safe_color)
+            else:
+                r, g, b = 150, 150, 150
+        except (ValueError, TypeError, AttributeError):
+            r, g, b = 150, 150, 150
+            
+        dim_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
 
         result = {}
-        # Only return the active diagonal line
         for x, y in PixelMap.get_all_pixels(True):
-            if (x - 1) + y == active:
-                result[(x, y)] = safe_color
-            else:
-                result[(x, y)] = -1
+            result[(x, y)] = safe_color if (x - 1) + y == active else dim_color
         return result
 
 
@@ -287,7 +329,6 @@ class DiagonalSweepDL(Animation):
     """G12: Pixels light up in diagonal waves top-right to bottom-left."""
 
     supports_small = False
-    is_external_light = True
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
@@ -298,12 +339,20 @@ class DiagonalSweepDL(Animation):
         color_pair = self.palette.get(frame // max_val)
         safe_color = self.get_contrast_safe_color(color_pair)
 
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        try:
+            if safe_color.startswith("#"):
+                r, g, b = hex_to_rgb(safe_color)
+            else:
+                r, g, b = 150, 150, 150
+        except (ValueError, TypeError, AttributeError):
+            r, g, b = 150, 150, 150
+            
+        dim_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
+
         result = {}
         for x, y in PixelMap.get_all_pixels(True):
-            if (x - 1) - y == active:
-                result[(x, y)] = safe_color
-            else:
-                result[(x, y)] = -1
+            result[(x, y)] = safe_color if (x - 1) - y == active else dim_color
         return result
 
 
@@ -646,8 +695,6 @@ class SearchlightSweep(Animation):
 class CinematicPrismSweep(Animation):
     """TC18: Volumetric beam with random hue morphing and pivoting angle."""
 
-    is_external_light = True
-
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         # Choose two random hue anchors
@@ -685,19 +732,20 @@ class CinematicPrismSweep(Animation):
         current_hue = (self.hue_start + (self.hue_end - self.hue_start) * progress) / 360.0
         r, g, b = self._hsv_to_rgb(current_hue, 0.8, 1.0)
         color = rgb_to_hex(r, g, b)
+        safe_color = self.get_contrast_safe_color(color)
+        
+        # Dimmed background version (40% intensity)
+        dim_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
         
         # Sweep position
         max_dist = width * math.cos(angle_rad) + height * math.sin(angle_rad)
         active_dist = progress * max_dist * modulation * 1.5
         
         result: dict[tuple[int, int], str | int] = {}
-        for x, y in PixelMap.get_all_pixels(self.is_big):
+        for x, y in self._all_pixels:
             # Projection onto the sweep vector
             d = x * math.cos(angle_rad) + y * math.sin(angle_rad)
-            if abs(d - active_dist) < 2:
-                result[(x, y)] = self.get_contrast_safe_color(color)
-            else:
-                result[(x, y)] = -1
+            result[(x, y)] = safe_color if abs(d - active_dist) < 2 else dim_color
                 
         return result
 
@@ -847,6 +895,7 @@ GENERAL_ANIMATIONS = [
     LetterWaveRL,
     LineSweepTopBottom,
     LineSweepBottomTop,
+    MiddleOutVertical,
     WithinLetterSweepLR,
     WithinLetterSweepRL,
     WordSplitBlink,

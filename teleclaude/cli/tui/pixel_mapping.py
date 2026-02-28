@@ -95,10 +95,13 @@ class PixelMap:
     """Helper for pixel-based calculations."""
 
     @staticmethod
-    def _resolve_target(target_arg: bool | str) -> str:
-        if isinstance(target_arg, bool):
-            return "banner" if target_arg else "logo"
-        return target_arg
+    def get_is_letter(target_arg: bool | str, x: int, y: int) -> bool:
+        """Check if a specific coordinate corresponds to a letter character."""
+        target_name = PixelMap._resolve_target(target_arg)
+        target = target_registry.get(target_name)
+        if not target or not target.letters:
+            return False
+        return any(x >= start and x <= end for start, end in target.letters)
 
     @staticmethod
     def get_letter_pixels(

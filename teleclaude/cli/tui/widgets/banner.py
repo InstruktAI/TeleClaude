@@ -76,8 +76,10 @@ class Banner(TelecMixin, Widget):
             BANNER_HEX,
             NEUTRAL_MUTED_COLOR,
             apply_tui_haze,
+            blend_colors,
             get_billboard_background,
         )
+        from teleclaude.cli.tui.pixel_mapping import PixelMap
 
         focused = getattr(self.app, "app_focus", True)
         plate_bg = get_billboard_background(focused)
@@ -109,7 +111,14 @@ class Banner(TelecMixin, Widget):
                                 # If it's a character cell, we use the full beam color.
                                 # The billboard background only reflects a fraction (30%) of the light.
                                 pixel_bg = blend_colors(bg_color, color, 0.3)
-                                result.append(char, style=Style(color=color, bgcolor=pixel_bg))
+                                is_letter = PixelMap.get_is_letter("banner", x, y)
+                                if is_letter:
+                                    # Letter gets full color pop
+                                    result.append(char, style=Style(color=color, bgcolor=pixel_bg))
+                                else:
+                                    # Background cell: character stays gray, plate reflects light
+                                    fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
+                                    result.append(char, style=Style(color=fg, bgcolor=pixel_bg))
                             else:
                                 # Internal Neon: billboard background stays at its base plate gray
                                 result.append(char, style=Style(color=color, bgcolor=bg_color))
@@ -136,8 +145,10 @@ class Banner(TelecMixin, Widget):
             BANNER_HEX,
             NEUTRAL_MUTED_COLOR,
             apply_tui_haze,
+            blend_colors,
             get_billboard_background,
         )
+        from teleclaude.cli.tui.pixel_mapping import PixelMap
 
         focused = getattr(self.app, "app_focus", True)
         plate_bg = get_billboard_background(focused)
@@ -169,7 +180,12 @@ class Banner(TelecMixin, Widget):
                             
                             if is_ext:
                                 pixel_bg = blend_colors(bg_color, color, 0.3)
-                                result.append(char, style=Style(color=color, bgcolor=pixel_bg))
+                                is_letter = PixelMap.get_is_letter("logo", x, y)
+                                if is_letter:
+                                    result.append(char, style=Style(color=color, bgcolor=pixel_bg))
+                                else:
+                                    fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
+                                    result.append(char, style=Style(color=fg, bgcolor=pixel_bg))
                             else:
                                 result.append(char, style=Style(color=color, bgcolor=bg_color))
                         else:
