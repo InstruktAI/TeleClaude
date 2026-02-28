@@ -75,7 +75,15 @@ In each handler below, remove the `--project-root` arg parsing branch. The `proj
 - [ ] `_handle_bugs_list` (line ~2776)
 - [ ] Update docstrings that mention `--project-root` in handler docstrings
 
-### Task 2.3: Remove `--cwd` parsing from tool_commands.py handlers
+### Task 2.3: Remove `--project-root` from config_cmd.py handlers
+
+**File(s):** `teleclaude/cli/config_cmd.py`
+
+- [ ] `handle_get` (line ~111): remove `--project-root` parsing, use `Path.cwd()`
+- [ ] `handle_patch` (line ~168): same
+- [ ] `handle_validate` (line ~239): same
+
+### Task 2.4: Remove `--cwd` parsing from tool_commands.py handlers
 
 **File(s):** `teleclaude/cli/tool_commands.py`
 
@@ -84,16 +92,31 @@ In each handler below, remove the `--project-root` arg parsing branch. The `proj
 - [ ] In `handle_todo_set_deps`: remove `--cwd` arg parsing and required check, set `cwd = os.getcwd()` unconditionally
 - [ ] Update docstrings/help text to remove `--cwd` references
 
-### Task 2.4: Fix tests to use monkeypatch.chdir
+### Task 2.5: Fix internal subprocess callers
+
+**File(s):** `teleclaude/cli/watch.py`, `teleclaude/core/next_machine/core.py`
+
+These shell out to `telec` with `--project-root`. Both already pass `cwd=` to `subprocess.run`, so removing the flag from the command list is safe — the subprocess inherits cwd.
+
+- [ ] `teleclaude/cli/watch.py:144` — remove `"--project-root", str(self.project_root)` from the command list
+- [ ] `teleclaude/core/next_machine/core.py:425` — remove `"--project-root", worktree_cwd` from the command list
+
+### Task 2.6: Fix tests to use monkeypatch.chdir
 
 **File(s):** `tests/integration/test_telec_cli_commands.py`, `tests/unit/test_telec_cli.py`, `tests/unit/test_next_machine_demo.py`, `tests/unit/test_bugs_list_status_parity.py`
 
 Tests are the only consumer of `--project-root`. Replace with `monkeypatch.chdir(tmp_path)` so they exercise the real code path.
 
-- [ ] `tests/integration/test_telec_cli_commands.py` — 3 occurrences (lines ~47, ~86, ~126)
-- [ ] `tests/unit/test_telec_cli.py` — 2 occurrences (lines ~307, ~332, ~336)
+- [ ] `tests/integration/test_telec_cli_commands.py` — 4 occurrences (lines ~47, ~86, ~126, ~146)
+- [ ] `tests/unit/test_telec_cli.py` — 3 occurrences (lines ~307, ~332, ~336)
 - [ ] `tests/unit/test_next_machine_demo.py` — 1 occurrence (line ~514)
 - [ ] `tests/unit/test_bugs_list_status_parity.py` — 2 occurrences (lines ~28, ~32)
+
+### NOT in scope (standalone scripts with own argparse, not `telec` commands)
+
+- `scripts/distribute.py` — called from `sync.py` which passes path explicitly
+- `teleclaude/entrypoints/macos_setup.py` — standalone macOS init entrypoint
+- `tools/migrations/migrate_requires.py` — one-off migration script
 
 ---
 
@@ -105,24 +128,33 @@ Tests are the only consumer of `--project-root`. Replace with `monkeypatch.chdir
 
 - [x] Confirmed: function exists and returns the needed data. No new code required.
 
-### Task 3.2: Extend `assemble_roadmap`
+### Task 3.2: Add `delivered_at` to `TodoInfo`
+
+**File(s):** `teleclaude/core/models.py`
+
+`TodoInfo` represents the full lifecycle of a work item. Delivered is a lifecycle state, and the date belongs on the model — not just in `DeliveredEntry`.
+
+- [ ] Add `delivered_at: Optional[str] = None` to the `TodoInfo` dataclass (date string, e.g. `"2026-02-27"`)
+
+### Task 3.3: Extend `assemble_roadmap`
 
 **File(s):** `teleclaude/core/roadmap.py`
 
 - [ ] Add `include_delivered: bool = False` and `delivered_only: bool = False` parameters to `assemble_roadmap`
 - [ ] Mirror the icebox pattern: when `delivered_only`, set `include_delivered = True`
 - [ ] Import `load_delivered` from `teleclaude.core.next_machine.core`
-- [ ] After icebox loading (step 2), add step 2b: when `include_delivered`, iterate `load_delivered()` entries and call `append_todo(slug, description=entry.description or entry.title, group="Delivered")`
+- [ ] After icebox loading (step 2), add step 2b: when `include_delivered`, iterate `load_delivered()` entries, call `append_todo(slug, description=entry.description or entry.title, group="Delivered")`, then set `delivered_at=entry.date` on the resulting `TodoInfo`
 - [ ] When `delivered_only`, skip active roadmap loading (same as `icebox_only` skips active items)
 - [ ] Set `status="delivered"` on the resulting `TodoInfo` entries
 
-### Task 3.3: Add flags to CLI
+### Task 3.4: Add flags to CLI and render `delivered_at`
 
 **File(s):** `teleclaude/cli/telec.py`
 
 - [ ] Add `Flag("--include-delivered", "-d", "Include delivered items")` and `Flag("--delivered-only", desc="Show only delivered items")` to `roadmap list` in CLI_SURFACE
 - [ ] Parse both flags in `_handle_roadmap_show` (mirror the `--include-icebox`/`--icebox-only` arg parsing pattern)
 - [ ] Pass `include_delivered` and `delivered_only` to `assemble_roadmap`
+- [ ] In the renderer, include `delivered_at` in the extras when set: e.g. `Delivered:2026-02-27`
 
 ---
 
