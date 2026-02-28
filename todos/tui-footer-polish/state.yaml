@@ -1,6 +1,6 @@
-phase: in_progress
+phase: delivered
 build: complete
-review: pending
+review: approved
 deferrals_processed: false
 breakdown:
   assessed: false
