@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: guaranteed-inbound-delivery
+  date: '2026-02-28'
+  title: Core inbound queue for guaranteed user message delivery — adapter-agnostic,
+    per-session FIFO, durable retry
+  description: Core inbound queue for guaranteed user message delivery — adapter-agnostic,
+    per-session FIFO, durable retry
 - slug: cli-cleanup-maintain-cwd-delivered
   date: '2026-02-28'
   commit: 4d063b245e872d071fd1fc7ce306f811455ad1d5

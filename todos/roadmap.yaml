@@ -19,9 +19,6 @@
   - notification-service
   description: telec content dump — fire-and-forget content dump with notification
     trigger
-- slug: guaranteed-inbound-delivery
-  description: Core inbound queue for guaranteed user message delivery — adapter-agnostic,
-    per-session FIFO, durable retry
 - slug: mesh-architecture
   after:
   - notification-service
