@@ -188,6 +188,7 @@ class TelecFooter(Widget):
         anim_icons = {"off": "\U0001f6ab", "periodic": "\u2728", "party": "\U0001f389"}
         anim_icon = anim_icons.get(self.animation_mode, "\u2728")
         toggles.append(anim_icon, style="" if self.animation_mode != "off" else "dim")
+        toggles.append(" ")
 
         left_len = line.cell_len
         right_len = toggles.cell_len
