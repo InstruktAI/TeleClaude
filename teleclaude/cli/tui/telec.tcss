@@ -343,7 +343,7 @@ Toast .toast--title {
 /* ── Modals ────────────────────────────────────────────── */
 /* Single thin border with title on top border line */
 
-ConfirmModal, StartSessionModal {
+ConfirmModal, StartSessionModal, NewProjectModal {
     align: center middle;
 }
 
@@ -365,6 +365,13 @@ ConfirmModal #modal-box {
 
 ConfirmModal #confirm-message {
     margin: 0 0 0 0;
+}
+
+/* ── NewProjectModal ──────────────────────────────────── */
+
+NewProjectModal #modal-box {
+    width: 60;
+    max-height: 20;
 }
 
 /* ── StartSessionModal ────────────────────────────────── */
