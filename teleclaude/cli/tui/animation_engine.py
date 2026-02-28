@@ -88,8 +88,17 @@ class AnimationEngine:
         if not self._is_enabled:
             return
 
+        from teleclaude.cli.tui.theme import is_dark_mode, get_terminal_background
+        import random
+
         target_name = target or animation.target
         slot = self._ensure_target(target_name)
+
+        # Update animation with current theme context before starting
+        animation.dark_mode = is_dark_mode()
+        animation.background_hex = get_terminal_background()
+        animation.seed = random.randint(0, 1000000)
+        animation.rng = random.Random(animation.seed)
 
         if slot.animation is None or priority >= slot.priority:
             slot.animation = animation

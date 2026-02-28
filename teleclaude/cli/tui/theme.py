@@ -285,6 +285,13 @@ def get_tui_inactive_background() -> str:
     return blend_colors(base_bg, blend_target, pct)
 
 
+def apply_tui_haze(hex_color: str) -> str:
+    """Apply the TUI inactive haze to a color based on current mode."""
+    blend_target = "#ffffff" if _is_dark_mode else "#000000"
+    pct = _TUI_INACTIVE_HAZE_PERCENTAGE_DARK if _is_dark_mode else _TUI_INACTIVE_HAZE_PERCENTAGE_LIGHT
+    return blend_colors(hex_color, blend_target, pct)
+
+
 def get_agent_pane_inactive_background(agent: str, haze_percentage: float | None = None) -> str:
     colors = _AGENT_HEX_COLORS_DARK if _is_dark_mode else _AGENT_HEX_COLORS_LIGHT
     base_bg = get_terminal_background()
@@ -699,6 +706,7 @@ PEACEFUL_MUTED_COLOR = _PEACEFUL_COLORS_DARK["muted"] if _is_dark_mode else _PEA
 
 # Banner muted color
 BANNER_COLOR = "color(240)" if _is_dark_mode else "color(244)"
+BANNER_HEX = "#585858" if _is_dark_mode else "#808080"
 
 # Status/footer foreground
 STATUS_FG_COLOR = "#727578"

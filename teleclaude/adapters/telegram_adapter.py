@@ -749,7 +749,7 @@ class TelegramAdapter(
         try:
             from telegram.ext import AIORateLimiter  # type: ignore[attr-defined]
 
-            builder.rate_limiter(AIORateLimiter())  # type: ignore[misc]
+            builder.rate_limiter(AIORateLimiter(max_retries=3))  # type: ignore[misc]
             logger.info("PTB AIORateLimiter enabled for Telegram transport-level rate control")
         except (ImportError, AttributeError):
             logger.warning(

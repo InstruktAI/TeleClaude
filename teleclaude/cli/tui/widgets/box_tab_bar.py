@@ -65,9 +65,12 @@ class BoxTabBar(TelecMixin, Widget):
         # Store click regions for mouse handling
         self._click_regions = [(c, c + w + 2, tid) for c, w, _, _, tid in tabs]
 
-        # Row 1: Top border of active tab only
+        # Row 1: Top border of tabs (active = solid, inactive = ghost)
         row1 = Text()
         pos = 0
+        from teleclaude.cli.tui.theme import NEUTRAL_SUBTLE_COLOR
+        ghost_color = NEUTRAL_SUBTLE_COLOR
+
         for c, w, _, is_active, _ in tabs:
             if pos < c:
                 row1.append(" " * (c - pos))
@@ -77,12 +80,14 @@ class BoxTabBar(TelecMixin, Widget):
                 row1.append("\u2500" * w, style=line_color)
                 row1.append("\u256e", style=line_color)
             else:
-                row1.append(" " * (w + 2))
+                row1.append("\u256d", style=ghost_color)
+                row1.append("\u2500" * w, style=ghost_color)
+                row1.append("\u256e", style=ghost_color)
             pos = c + w + 2
         if pos < width:
             row1.append(" " * (width - pos))
 
-        # Row 2: Tab labels with side borders for active tab
+        # Row 2: Tab labels with side borders
         row2 = Text()
         pos = 0
         for c, w, label, is_active, _ in tabs:
@@ -94,14 +99,14 @@ class BoxTabBar(TelecMixin, Widget):
                 row2.append(label, style=f"bold {NEUTRAL_HIGHLIGHT_COLOR}")
                 row2.append("\u2502", style=line_color)
             else:
-                row2.append(" ")
+                row2.append("\u2502", style=ghost_color)
                 row2.append(label, style=NEUTRAL_MUTED_COLOR)
-                row2.append(" ")
+                row2.append("\u2502", style=ghost_color)
             pos = c + w + 2
         if pos < width:
             row2.append(" " * (width - pos))
 
-        # Row 3: Continuous bottom line with open breaks at active tab
+        # Row 3: Continuous bottom line with connectors
         row3 = Text()
         pos = 0
         for c, w, _, is_active, _ in tabs:
@@ -113,7 +118,9 @@ class BoxTabBar(TelecMixin, Widget):
                 row3.append(" " * w)
                 row3.append("\u2534", style=line_color)
             else:
-                row3.append("\u2500" * (w + 2), style=line_color)
+                row3.append("\u2534", style=ghost_color)
+                row3.append("\u2500" * w, style=ghost_color)
+                row3.append("\u2534", style=ghost_color)
             pos = c + w + 2
         if pos < width:
             row3.append("\u2500" * (width - pos), style=line_color)

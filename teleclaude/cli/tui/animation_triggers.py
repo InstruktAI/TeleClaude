@@ -12,19 +12,23 @@ from teleclaude.cli.tui.animations.base import Animation
 from teleclaude.cli.tui.animations.general import GENERAL_ANIMATIONS
 
 
-def filter_animations(animations: list[type[Animation]], subset: list[str]) -> list[type[Animation]]:
-    """Filter animation classes by name subset.
+def filter_animations(animations: list[type[Animation]], subset: list[str], dark_mode: bool = True) -> list[type[Animation]]:
+    """Filter animation classes by name subset and current theme mode.
 
     Args:
         animations: List of animation classes
         subset: List of animation class names to include. Empty list means all.
+        dark_mode: Current theme mode.
 
     Returns:
         Filtered list of animation classes
     """
-    if not subset:
-        return animations
-    return [cls for cls in animations if cls.__name__ in subset]
+    mode_str = "dark" if dark_mode else "light"
+    return [
+        cls for cls in animations 
+        if (not subset or cls.__name__ in subset) and 
+           (cls.theme_filter is None or cls.theme_filter == mode_str)
+    ]
 
 
 class PeriodicTrigger:
@@ -43,10 +47,12 @@ class PeriodicTrigger:
             if not self.engine.is_enabled:
                 continue
 
+            from teleclaude.cli.tui.theme import is_dark_mode
+            dark = is_dark_mode()
             palette = palette_registry.get("spectrum")
-            duration = random.uniform(3, 8)
+            duration = random.uniform(12, 20)
 
-            filtered_animations = filter_animations(GENERAL_ANIMATIONS, self.animations_subset)
+            filtered_animations = filter_animations(GENERAL_ANIMATIONS, self.animations_subset, dark)
             if not filtered_animations:
                 continue
 
@@ -82,7 +88,8 @@ class ActivityTrigger:
         if not self.engine.is_enabled:
             return
 
-        animations = filter_animations(AGENT_ANIMATIONS, self.animations_subset)
+        from teleclaude.cli.tui.theme import is_dark_mode
+        animations = filter_animations(AGENT_ANIMATIONS, self.animations_subset, is_dark_mode())
         if not animations:
             return
 

@@ -200,17 +200,22 @@ class WithinLetterSweepRL(Animation):
 
 
 class RandomPixelSparkle(Animation):
-    """G10: Random individual character pixels flash random colors."""
+    """G10: Random individual character pixels flash random colors.
+    Uses seed-based RNG and low density to avoid chaos.
+    """
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         all_pixels = PixelMap.get_all_pixels(self.is_big)
-        num_sparkles = len(all_pixels) // 10  # 10% of pixels sparkle
+        # Sane density: 3% instead of 10%
+        num_sparkles = len(all_pixels) // 33 
 
-        result: dict[tuple[int, int], str | int] = {p: -1 for p in all_pixels}  # Clear all first
+        result: dict[tuple[int, int], str | int] = {}
 
-        sparkle_pixels = random.sample(all_pixels, num_sparkles)
+        # Use the animation's RNG for consistency within the frame but variety between runs
+        sparkle_pixels = self.rng.sample(all_pixels, min(num_sparkles, len(all_pixels)))
         for p in sparkle_pixels:
-            result[p] = self.palette.get(random.randint(0, len(self.palette) - 1))
+            color_idx = self.rng.randint(0, len(self.palette) - 1)
+            result[p] = self.get_contrast_safe_color(self.palette.get(color_idx))
 
         return result
 
@@ -344,6 +349,7 @@ class WavePulse(Animation):
 class SunsetGradient(Animation):
     """TC1: Smooth sunset gradient sweeping left to right over time."""
 
+    theme_filter = "light"
     _grad = MultiGradient(["#FF4500", "#FFD700", "#FF00FF"])
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
@@ -359,6 +365,7 @@ class SunsetGradient(Animation):
 class CloudsPassing(Animation):
     """TC2: Sky-blue background with fluffy white clouds drifting horizontally."""
 
+    theme_filter = "light"
     _SKY = "#87CEEB"
     _CLOUD = "#FFFFFF"
     _NUM_CLOUDS = 3
@@ -382,6 +389,7 @@ class CloudsPassing(Animation):
 class FloatingBalloons(Animation):
     """TC3: Brightly colored clusters floating upward from the bottom."""
 
+    theme_filter = "light"
     _COLORS = ["#FF3366", "#FFD700", "#33CC66", "#FF3366", "#FFD700"]
     _NUM_BALLOONS = 5
 
@@ -422,35 +430,40 @@ class NeonCyberpunk(Animation):
 class AuroraBorealis(Animation):
     """TC5: Wavy, organic vertical pulses of greens, blues, and purples."""
 
-    _grad = MultiGradient(["#50C878", "#00008B", "#800080"])
-
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         result = {}
+        modulation = self.get_modulation(frame)
+        phase = self.seed % 100
+        
         for x, y in PixelMap.get_all_pixels(self.is_big):
-            wave = math.sin(x * 0.3 + frame * 0.2) * 0.3 + 0.5
+            wave = math.sin(x * 0.3 + frame * 0.1 * modulation + phase) * 0.3 + 0.5
             factor = (y / max(height - 1, 1) * 0.7 + wave * 0.3) % 1.0
-            result[(x, y)] = self._grad.get(factor)
+            result[(x, y)] = self.get_contrast_safe_color(self._grad.get(factor))
         return result
 
 
 class LavaLamp(Animation):
     """TC6: Slow morphing blobs of red and orange rising and falling."""
 
+    theme_filter = "light"
     _grad = MultiGradient(["#FF4500", "#FF8C00", "#FF4500"])
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         result = {}
+        modulation = self.get_modulation(frame)
+        phase = self.seed % 50
         for x, y in PixelMap.get_all_pixels(self.is_big):
-            blob = math.sin(x * 0.2 + frame * 0.1) * math.cos(y * 0.5 + frame * 0.07)
+            blob = math.sin(x * 0.2 + frame * 0.05 * modulation + phase) * math.cos(y * 0.5 + frame * 0.03 * modulation)
             factor = (blob + 1) / 2
-            result[(x, y)] = self._grad.get(factor)
+            result[(x, y)] = self.get_contrast_safe_color(self._grad.get(factor))
         return result
 
 
 class StarryNight(Animation):
     """TC7: Midnight blue sky with randomly twinkling white and yellow stars."""
 
+    theme_filter = "dark"
     _BG = "#0B1021"
     _STAR_WHITE = "#FFFFFF"
     _STAR_YELLOW = "#FFFACD"
@@ -466,26 +479,190 @@ class StarryNight(Animation):
 
 
 class MatrixRain(Animation):
-    """TC8: Neon green raindrop columns with fading trails falling downward."""
+    """TC8: Neon green raindrop columns with fading trails falling downward.
+    Integrated with neon-tube physics: drops splash when hitting letters.
+    """
 
+    theme_filter = "dark"
     _TRAIL = 4
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
-        result: dict[tuple[int, int], str | int] = {p: "#000000" for p in PixelMap.get_all_pixels(self.is_big)}
+        # Use billboard plate gray as background if needed, but here we return -1 for transparent parts
+        result: dict[tuple[int, int], str | int] = {}
         period = height + self._TRAIL
+        
+        # Organic velocity: each column has a slightly different offset/speed logic
+        modulation = self.get_modulation(frame)
+
         for x in range(width):
-            head_y = (frame + x * 3) % period
+            # Column-specific random seed-based offset
+            col_seed = (self.seed + x * 123) % 100
+            head_y = int((frame * modulation + col_seed) % period)
+            
             for dy in range(self._TRAIL + 1):
                 y = head_y - dy
                 if 0 <= y < height:
+                    # Check if hitting a letter for "splash" effect
+                    is_letter = any(x >= start and x <= end for start, end in (BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS))
+                    
                     if dy == 0:
-                        result[(x, y)] = "#39FF14"
+                        color = "#39FF14" # Neon Green
+                        if is_letter:
+                            # Splash flare
+                            color = "#AFFF80"
                     else:
                         factor = 1.0 - dy / self._TRAIL
                         g = int(0x64 * factor)
-                        result[(x, y)] = rgb_to_hex(0, g, 0)
+                        color = rgb_to_hex(0, g, 0)
+                    
+                    result[(x, y)] = self.get_contrast_safe_color(color)
+        return result
+
+
+class HighSunBird(Animation):
+    """TC16: A bird flits across the top of the letters, casting a high-sun shadow.
+    Light Mode / Day Mode only.
+    """
+
+    theme_filter = "light"
+    supports_small = True
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        if self.dark_mode:
+            return {} # Night mode doesn't have birds/sun
+
+        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        
+        # Bird movement: flapping and flitting across the top
+        modulation = self.get_modulation(frame)
+        bx = int((frame * modulation) % (width + 10)) - 5
+        by = 0 # Stays at the top
+        flap = (frame // 2) % 2 # Flap every 2 frames
+        
+        result: dict[tuple[int, int], str | int] = {}
+        
+        # Render Bird
+        bird_pixels = [(bx, by)]
+        if flap == 0:
+            bird_pixels.extend([(bx - 1, by), (bx + 1, by)]) # Wings spread
+        else:
+            bird_pixels.extend([(bx, by - 1)]) # Wings up
+            
+        for px, py in bird_pixels:
+            if 0 <= px < width and 0 <= py < height:
+                result[(px, py)] = "#404040" # Bird color
+                
+        # Shadow: Cast downward/diagonal (Golden Angle)
+        sx, sy = bx + 1, by + 1
+        shadow_pixels = [(sx, sy)]
+        if flap == 0:
+            shadow_pixels.extend([(sx - 1, sy), (sx + 1, sy)])
+        else:
+            shadow_pixels.extend([(sx, sy - 1)])
+
+        for px, py in shadow_pixels:
+            if 0 <= px < width and 0 <= py < height:
+                # Dim the underlying character
+                result[(px, py)] = "#202020" # Shadow dimming
+                
+        return result
+
+
+class SearchlightSweep(Animation):
+    """TC17: Focused searchlight from below, casting upward shadows.
+    Night Mode / Dark Mode only.
+    """
+
+    theme_filter = "dark"
+    supports_small = True
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        if not self.dark_mode:
+            return {}
+
+        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        
+        modulation = self.get_modulation(frame)
+        # Searchlight center sweeps horizontally at the bottom
+        cx = int((frame * modulation * 2) % (width + 20)) - 10
+        cy = height - 1
+        
+        # Beam width oscillates
+        radius = 2 + int(math.sin(frame * 0.2) * 2)
+        
+        result: dict[tuple[int, int], str | int] = {}
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            dist = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
+            if dist < radius:
+                # Inside the beam
+                intensity = 1.0 - (dist / radius)
+                flare = int(200 + intensity * 55)
+                result[(x, y)] = rgb_to_hex(flare, flare, flare)
+            elif x == cx and y < cy:
+                # Upward shadow wake logic could go here, but TUI is limited.
+                # Let's just dim pixels directly above the light source slightly
+                result[(x, y)] = "#151515" 
+
+        return result
+
+
+class CinematicPrismSweep(Animation):
+    """TC18: Volumetric beam with random hue morphing and pivoting angle."""
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        # Choose two random hue anchors
+        self.hue_start = self.rng.randint(0, 360)
+        self.hue_end = (self.hue_start + self.rng.randint(60, 180)) % 360
+
+    def _hsv_to_rgb(self, h: float, s: float, v: float) -> tuple[int, int, int]:
+        i = int(h * 6.0)
+        f = (h * 6.0) - i
+        p = v * (1.0 - s)
+        q = v * (1.0 - f * s)
+        t = v * (1.0 - (1.0 - f) * s)
+        i %= 6
+        if i == 0: return int(v * 255), int(t * 255), int(p * 255)
+        if i == 1: return int(q * 255), int(v * 255), int(p * 255)
+        if i == 2: return int(p * 255), int(v * 255), int(t * 255)
+        if i == 3: return int(p * 255), int(q * 255), int(v * 255)
+        if i == 4: return int(t * 255), int(p * 255), int(v * 255)
+        if i == 5: return int(v * 255), int(p * 255), int(q * 255)
+        return 0, 0, 0
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        
+        modulation = self.get_modulation(frame)
+        progress = frame / self.duration_frames
+        
+        # Pivot angle from 30 to 60 degrees
+        angle_deg = 30 + (progress * 30)
+        angle_rad = math.radians(angle_deg)
+        
+        # Current hue
+        current_hue = (self.hue_start + (self.hue_end - self.hue_start) * progress) / 360.0
+        r, g, b = self._hsv_to_rgb(current_hue, 0.8, 1.0)
+        color = rgb_to_hex(r, g, b)
+        
+        # Sweep position
+        max_dist = width * math.cos(angle_rad) + height * math.sin(angle_rad)
+        active_dist = progress * max_dist * modulation * 1.5
+        
+        result: dict[tuple[int, int], str | int] = {}
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            # Projection onto the sweep vector
+            d = x * math.cos(angle_rad) + y * math.sin(angle_rad)
+            if abs(d - active_dist) < 2:
+                result[(x, y)] = self.get_contrast_safe_color(color)
+            else:
+                result[(x, y)] = -1
+                
         return result
 
 
@@ -593,6 +770,7 @@ class IceCrystals(Animation):
 class Bioluminescence(Animation):
     """TC15: Pitch-black sea with neon blue agents leaving glowing trails."""
 
+    theme_filter = "dark"
     _NUM_AGENTS = 8
     _TRAIL_DECAY = 5
 
@@ -662,4 +840,7 @@ GENERAL_ANIMATIONS = [
     BreathingHeart,
     IceCrystals,
     Bioluminescence,
+    HighSunBird,
+    SearchlightSweep,
+    CinematicPrismSweep,
 ]

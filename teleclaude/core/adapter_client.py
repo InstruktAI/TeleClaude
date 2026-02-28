@@ -380,17 +380,18 @@ class AdapterClient:
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session
 
-        # Notices are an origin UX path only.
+        # Source-only messages: feedback notices and transcription displays.
         # If the origin is not a registered UI adapter, skip delivery.
+        source_only = feedback or (metadata is not None and metadata.is_transcription)
         include_adapters: set[str] | None = None
-        if feedback:
+        if source_only:
             origin_adapter = (session_to_use.last_input_origin or "").strip()
             origin_ui_adapter = self.adapters.get(origin_adapter)
             if isinstance(origin_ui_adapter, UiAdapter):
                 include_adapters = {origin_adapter}
             else:
                 logger.debug(
-                    "Skipping notice with non-UI origin: session=%s origin=%s",
+                    "Skipping source-only message with non-UI origin: session=%s origin=%s",
                     session_to_use.session_id[:8],
                     origin_adapter or "<none>",
                 )
@@ -875,32 +876,27 @@ class AdapterClient:
         payload: dict[str, object],  # guard: loose-dict - Event payload from/to adapters
         source_adapter: str | None = None,
     ) -> None:
-        """Broadcast user actions to other UI adapters (echo prevention).
-
-        Skips the entry point adapter and the source adapter to prevent
-        echoing messages back to the sender.
-        """
+        """Broadcast user actions to other UI adapters (echo prevention)."""
         action_text = self._format_event_text(event, payload)
         if not action_text:
             return
 
-        for adapter_type, adapter in self.adapters.items():
-            if adapter_type == session.last_input_origin:
-                continue
-            if adapter_type == source_adapter:
-                continue
-            if not isinstance(adapter, UiAdapter):
-                continue
-
-            try:
-                await adapter.send_message(
-                    session=session,
+        def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
+            return cast(
+                Awaitable[object],
+                adapter.send_message(
+                    session=lane_session,
                     text=action_text,
                     metadata=MessageMetadata(),
-                )
-                logger.debug("Broadcasted %s to UI adapter: %s", event, adapter_type)
-            except Exception as e:
-                logger.warning("Failed to broadcast %s to UI adapter %s: %s", event, adapter_type, e)
+                ),
+            )
+
+        await self._fanout_excluding(
+            session,
+            f"broadcast_action:{event}",
+            make_task,
+            exclude=source_adapter,
+        )
 
     def _format_event_text(
         self,
@@ -909,47 +905,17 @@ class AdapterClient:
     ) -> Optional[str]:
         """Format event as human-readable text for UI adapters.
 
-        Args:
-            event: Event type
-            payload: Event payload
-
-        Returns:
-            Formatted text or None if event should not be broadcast
+        Returns formatted text or None if event should not be broadcast.
+        Only meaningful lifecycle events are broadcast; key presses are noise.
         """
         command_name = None
         if event == "command":
             command_name = cast(str | None, payload.get("command_name"))
 
-        if command_name == "send_message":
-            text_obj = cast(str | None, payload.get("text"))
-            return f"→ {str(text_obj)}" if text_obj else None
-
-        if command_name == "cancel":
-            return "→ [Ctrl+C]"
-
-        elif command_name == "cancel2x":
-            return "→ [Ctrl+C] [Ctrl+C]"
-
-        elif command_name == "kill":
-            return "→ [SIGKILL]"
-
-        elif command_name == "ctrl":
-            args_obj: object = payload.get("args", [])
-            args: list[object] = args_obj if isinstance(args_obj, list) else []  # type: ignore[misc]
-            key = str(args[0]) if args else "?"
-            return f"→ [Ctrl+{key}]"
-
-        elif command_name == "escape":
-            return "→ [ESC]"
-
-        elif command_name == "escape2x":
-            return "→ [ESC] [ESC]"
-
-        elif command_name == "create_session":
+        if command_name == "create_session":
             title = cast(str, payload.get("title", "Untitled"))
             return f"→ [Created session: {title}]"
 
-        # Don't broadcast internal coordination events
         return None
 
     async def create_channel(  # pylint: disable=too-many-locals

@@ -14,14 +14,14 @@ from teleclaude.cli.tui.pixel_mapping import PixelMap
 class TestPixelMapping(unittest.TestCase):
     def test_get_all_pixels(self):
         big_pixels = PixelMap.get_all_pixels(is_big=True)
-        self.assertEqual(len(big_pixels), 82 * 6)
+        self.assertEqual(len(big_pixels), 84 * 6)
 
         logo_pixels = PixelMap.get_all_pixels(is_big=False)
-        self.assertEqual(len(logo_pixels), 39 * 3)
+        self.assertEqual(len(logo_pixels), 40 * 3)
 
     def test_get_row_pixels(self):
         row0 = PixelMap.get_row_pixels(is_big=True, row_idx=0)
-        self.assertEqual(len(row0), 82)
+        self.assertEqual(len(row0), 84)
         for x, y in row0:
             self.assertEqual(y, 0)
 
@@ -137,11 +137,18 @@ class TestAnimations(unittest.TestCase):
 
 class TestAnimationTriggers(unittest.TestCase):
     def test_filter_animations_empty_subset(self):
-        """Test that empty subset returns all animations."""
+        """Test that empty subset returns animations matching the theme mode."""
         from teleclaude.cli.tui.animations.general import GENERAL_ANIMATIONS
 
-        filtered = filter_animations(GENERAL_ANIMATIONS, [])
-        self.assertEqual(filtered, GENERAL_ANIMATIONS)
+        # Test dark mode filtering
+        filtered_dark = filter_animations(GENERAL_ANIMATIONS, [], dark_mode=True)
+        for anim in filtered_dark:
+            self.assertIn(anim.theme_filter, (None, "dark"))
+
+        # Test light mode filtering
+        filtered_light = filter_animations(GENERAL_ANIMATIONS, [], dark_mode=False)
+        for anim in filtered_light:
+            self.assertIn(anim.theme_filter, (None, "light"))
 
     def test_filter_animations_by_name(self):
         """Test that subset filters animations by class name."""

@@ -4,34 +4,35 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 # Legacy constants for backward compatibility/initialization
-BIG_BANNER_WIDTH = 82
+# Shifted +1 to the right for the Billboard margin (+1 left, +1 right)
+BIG_BANNER_WIDTH = 84
 BIG_BANNER_HEIGHT = 6
 BIG_BANNER_LETTERS = [
-    (0, 8),  # T
-    (9, 16),  # E
-    (17, 24),  # L
-    (25, 32),  # E
-    (33, 40),  # C
-    (41, 48),  # L
-    (49, 56),  # A
-    (57, 65),  # U
-    (66, 73),  # D
-    (74, 81),  # E
+    (1, 9),   # T
+    (10, 17), # E
+    (18, 25), # L
+    (26, 33), # E
+    (34, 41), # C
+    (42, 49), # L
+    (50, 57), # A
+    (58, 66), # U
+    (67, 74), # D
+    (75, 82), # E
 ]
 
-LOGO_WIDTH = 39
+LOGO_WIDTH = 40
 LOGO_HEIGHT = 3
 LOGO_LETTERS = [
-    (0, 2),  # T
-    (4, 6),  # E
-    (8, 10),  # L
-    (12, 14),  # E
-    (16, 18),  # C
-    (20, 22),  # L
-    (24, 26),  # A
-    (28, 30),  # U
-    (32, 34),  # D
-    (36, 38),  # E
+    (1, 3),   # T
+    (5, 7),   # E
+    (9, 11),  # L
+    (13, 15), # E
+    (17, 19), # C
+    (21, 23), # L
+    (25, 27), # A
+    (29, 31), # U
+    (33, 35), # D
+    (37, 39), # E
 ]
 
 

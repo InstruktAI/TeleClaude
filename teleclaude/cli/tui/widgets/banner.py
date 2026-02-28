@@ -74,20 +74,31 @@ class Banner(TelecMixin, Widget):
         result = Text()
         engine = self.animation_engine
         from teleclaude.cli.tui.theme import (
-            BANNER_COLOR,
+            BANNER_HEX,
             NEUTRAL_MUTED_COLOR,
-            NEUTRAL_NORMAL_COLOR,
-            NEUTRAL_SUBTLE_COLOR,
+            apply_tui_haze,
+            blend_colors,
+            get_terminal_background,
             is_dark_mode,
         )
 
         dark = is_dark_mode()
-        # Billboard Plate: Lighter gray than bg in Night, Darker gray in Day
-        plate_bg = "#262626" if dark else "#303030"
-        outline_color = NEUTRAL_NORMAL_COLOR if dark else None
+        base_bg = get_terminal_background()
+        
+        # Billboard Plate: Slightly lighter in Night, slightly darker in Day
+        if dark:
+            plate_bg = blend_colors(base_bg, "#ffffff", 0.12)
+        else:
+            plate_bg = blend_colors(base_bg, "#000000", 0.15)
+            
         pipe_color = NEUTRAL_MUTED_COLOR
 
-        width = 83  # Shifted width
+        focused = getattr(self.app, "app_focus", True)
+        if not focused:
+            plate_bg = apply_tui_haze(plate_bg)
+            pipe_color = apply_tui_haze(pipe_color)
+
+        width = 84  # Shifted width with margins
 
         for y in range(BANNER_HEIGHT):
             if y > 0:
@@ -97,20 +108,20 @@ class Banner(TelecMixin, Widget):
                 line = BANNER_LINES[y]
                 for x in range(width):
                     char = line[x] if x < len(line) else " "
-
-                    # Billboard logic: Dark Mode Outline vs Day Mode Solid
-                    is_edge = x == 0 or x == width - 1 or y == 0 or y == len(BANNER_LINES) - 1
-                    style_color = outline_color if (dark and is_edge) else BANNER_COLOR
                     bg_color = plate_bg
-
+                    
                     if engine and engine.has_active_animation:
                         color = engine.get_color(x, y, target="banner")
                         if color:
+                            if not focused:
+                                color = apply_tui_haze(color)
                             result.append(char, style=Style(color=color, bgcolor=bg_color))
                         else:
-                            result.append(char, style=Style(color=style_color, bgcolor=bg_color))
+                            fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
+                            result.append(char, style=Style(color=fg, bgcolor=bg_color))
                     else:
-                        result.append(char, style=Style(color=style_color, bgcolor=bg_color))
+                        fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
+                        result.append(char, style=Style(color=fg, bgcolor=bg_color))
             else:
                 # Pipes under E (13) and D (70)
                 for x in range(width):
@@ -125,18 +136,28 @@ class Banner(TelecMixin, Widget):
         result = Text()
         engine = self.animation_engine
         from teleclaude.cli.tui.theme import (
-            BANNER_COLOR,
+            BANNER_HEX,
             NEUTRAL_MUTED_COLOR,
-            NEUTRAL_NORMAL_COLOR,
-            NEUTRAL_SUBTLE_COLOR,
+            apply_tui_haze,
+            blend_colors,
+            get_terminal_background,
             is_dark_mode,
         )
 
         dark = is_dark_mode()
-        # Billboard Plate: Lighter gray than bg in Night, Darker gray in Day
-        plate_bg = "#262626" if dark else "#303030"
-        outline_color = NEUTRAL_NORMAL_COLOR if dark else None
+        base_bg = get_terminal_background()
+        
+        if dark:
+            plate_bg = blend_colors(base_bg, "#ffffff", 0.12)
+        else:
+            plate_bg = blend_colors(base_bg, "#000000", 0.15)
+            
         pipe_color = NEUTRAL_MUTED_COLOR
+
+        focused = getattr(self.app, "app_focus", True)
+        if not focused:
+            plate_bg = apply_tui_haze(plate_bg)
+            pipe_color = apply_tui_haze(pipe_color)
 
         width = 40
         tui_width = self.size.width
@@ -152,19 +173,20 @@ class Banner(TelecMixin, Widget):
                 line = LOGO_LINES[y]
                 for x in range(width):
                     char = line[x] if x < len(line) else " "
-
-                    is_edge = x == 0 or x == width - 1 or y == 0 or y == len(LOGO_LINES) - 1
-                    style_color = outline_color if (dark and is_edge) else BANNER_COLOR
                     bg_color = plate_bg
 
                     if engine and engine.has_active_animation:
                         color = engine.get_color(x, y, target="logo")
                         if color:
+                            if not focused:
+                                color = apply_tui_haze(color)
                             result.append(char, style=Style(color=color, bgcolor=bg_color))
                         else:
-                            result.append(char, style=Style(color=style_color, bgcolor=bg_color))
+                            fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
+                            result.append(char, style=Style(color=fg, bgcolor=bg_color))
                     else:
-                        result.append(char, style=Style(color=style_color, bgcolor=bg_color))
+                        fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
+                        result.append(char, style=Style(color=fg, bgcolor=bg_color))
             else:
                 # Logo pipes: E(6), D(34)
                 for x in range(width):
