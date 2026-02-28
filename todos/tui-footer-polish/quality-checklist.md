@@ -10,15 +10,15 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate tui-footer-polish` exits 0, or exception noted)
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`) — 2426 passed, 106 skipped
+- [x] Lint passes (`make lint`) — ruff + pyright clean
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate tui-footer-polish` exits 0 — 2 executable blocks found)
 - [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 
