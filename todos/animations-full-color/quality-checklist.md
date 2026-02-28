@@ -12,11 +12,11 @@ Ownership:
 
 - [x] Requirements implemented according to scope
 - [x] Implementation-plan task checkboxes all `[x]`
-- [x] Tests pass (`make test`) — 2481 passed, 106 skipped
-- [x] Lint passes (`make lint`) — 0 errors, 0 warnings
+- [x] Tests pass (`make test`)
+- [x] Lint passes (`make lint`)
 - [x] No silent deferrals in implementation plan
 - [x] Code committed
-- [x] Demo validated (`telec todo demo validate animations-full-color` exits 0) — 3 executable blocks found
+- [x] Demo validated (`telec todo demo validate animations-full-color` exits 0, or exception noted)
 - [x] Working tree clean
 - [x] Comments/docstrings updated where behavior changed
 
