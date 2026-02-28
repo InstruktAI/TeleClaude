@@ -87,6 +87,11 @@ class DaemonLifecycle:
         self._init_voice_handler()
         logger.info("Voice handler initialized")
 
+        from teleclaude.core.inbound_queue import get_inbound_queue_manager
+
+        await get_inbound_queue_manager().startup()
+        logger.info("Inbound queue manager started")
+
         self._started = True
 
     async def _warm_local_sessions_cache(self) -> None:
@@ -139,6 +144,14 @@ class DaemonLifecycle:
 
     async def shutdown(self) -> None:
         """Stop core components in a defined order."""
+        try:
+            from teleclaude.core.inbound_queue import get_inbound_queue_manager
+
+            await get_inbound_queue_manager().shutdown()
+            logger.info("Inbound queue manager shut down")
+        except RuntimeError:
+            pass  # Not initialized — skip
+
         if self.api_server:
             await self.api_server.stop()
         for adapter_name, adapter in self.client.adapters.items():

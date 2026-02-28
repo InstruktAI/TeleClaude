@@ -12,7 +12,7 @@ from typing_extensions import TypedDict
 
 from teleclaude.config import AgentConfig
 from teleclaude.core import command_handlers
-from teleclaude.core.db import Db
+from teleclaude.core.db import Db, InboundQueueRow
 from teleclaude.core.identity import IdentityContext
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
@@ -1881,7 +1881,7 @@ async def test_handle_file_invokes_file_handler() -> None:
 
 
 @pytest.mark.asyncio
-async def test_process_message_updates_last_input_origin_before_broadcast():
+async def test_deliver_inbound_updates_last_input_origin_before_broadcast():
     """last_input_origin must be persisted to DB before broadcast_user_input is called.
 
     R2: provenance write timing — ensures routing-dependent operations (broadcast)
@@ -1915,6 +1915,28 @@ async def test_process_message_updates_last_input_origin_before_broadcast():
     mock_client.broadcast_user_input = AsyncMock(side_effect=record_broadcast)
     mock_client.pre_handle_command = AsyncMock()
 
+    row = cast(
+        InboundQueueRow,
+        {
+            "id": 1,
+            "session_id": "sess-prov-order",
+            "origin": InputOrigin.TELEGRAM.value,
+            "message_type": "text",
+            "content": "hello",
+            "payload_json": None,
+            "actor_id": None,
+            "actor_name": None,
+            "actor_avatar_url": None,
+            "status": "pending",
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "attempt_count": 0,
+            "next_retry_at": None,
+            "last_error": None,
+            "source_message_id": None,
+            "source_channel_id": None,
+        },
+    )
+
     with (
         patch.object(command_handlers, "db", mock_db),
         patch.object(command_handlers, "tmux_io") as mock_tmux_io,
@@ -1923,12 +1945,7 @@ async def test_process_message_updates_last_input_origin_before_broadcast():
         mock_tmux_io.wrap_bracketed_paste.return_value = "hello"
         mock_tmux_io.process_text = AsyncMock(return_value=True)
 
-        cmd = ProcessMessageCommand(
-            session_id="sess-prov-order",
-            text="hello",
-            origin=InputOrigin.TELEGRAM.value,
-        )
-        await command_handlers.process_message(cmd, mock_client, AsyncMock())
+        await command_handlers.deliver_inbound(row, mock_client, AsyncMock())
 
     # Provenance update must appear before broadcast
     update_idx = next(
@@ -1947,7 +1964,7 @@ async def test_process_message_updates_last_input_origin_before_broadcast():
 
 
 @pytest.mark.asyncio
-async def test_process_message_breaks_threaded_turn_before_broadcast():
+async def test_deliver_inbound_breaks_threaded_turn_before_broadcast():
     """Threaded sessions should sever the active output block before reflecting input."""
     call_order: list[str] = []
 
@@ -1976,6 +1993,28 @@ async def test_process_message_breaks_threaded_turn_before_broadcast():
     mock_client.broadcast_user_input = AsyncMock(side_effect=record_broadcast)
     mock_client.pre_handle_command = AsyncMock()
 
+    row = cast(
+        InboundQueueRow,
+        {
+            "id": 1,
+            "session_id": "sess-thread-boundary",
+            "origin": InputOrigin.TELEGRAM.value,
+            "message_type": "text",
+            "content": "hello",
+            "payload_json": None,
+            "actor_id": None,
+            "actor_name": None,
+            "actor_avatar_url": None,
+            "status": "pending",
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "attempt_count": 0,
+            "next_retry_at": None,
+            "last_error": None,
+            "source_message_id": None,
+            "source_channel_id": None,
+        },
+    )
+
     with (
         patch.object(command_handlers, "db", mock_db),
         patch.object(command_handlers, "tmux_io") as mock_tmux_io,
@@ -1985,12 +2024,7 @@ async def test_process_message_breaks_threaded_turn_before_broadcast():
         mock_tmux_io.wrap_bracketed_paste.return_value = "hello"
         mock_tmux_io.process_text = AsyncMock(return_value=True)
 
-        cmd = ProcessMessageCommand(
-            session_id="sess-thread-boundary",
-            text="hello",
-            origin=InputOrigin.TELEGRAM.value,
-        )
-        await command_handlers.process_message(cmd, mock_client, AsyncMock())
+        await command_handlers.deliver_inbound(row, mock_client, AsyncMock())
 
     assert call_order == ["break_threaded_turn", "broadcast_user_input"]
 
@@ -2073,8 +2107,8 @@ async def test_handle_voice_updates_last_input_origin_before_feedback():
 
 
 @pytest.mark.asyncio
-async def test_process_message_waits_through_initializing_then_dispatches():
-    """process_message gates on initializing and dispatches once session becomes active."""
+async def test_deliver_inbound_waits_through_initializing_then_dispatches():
+    """deliver_inbound gates on initializing and dispatches once session becomes active."""
     call_count = 0
 
     def make_session(lifecycle: str) -> MagicMock:
@@ -2102,6 +2136,28 @@ async def test_process_message_waits_through_initializing_then_dispatches():
 
     mock_client = AsyncMock()
 
+    row = cast(
+        InboundQueueRow,
+        {
+            "id": 1,
+            "session_id": "sess-gate-ok",
+            "origin": InputOrigin.TELEGRAM.value,
+            "message_type": "text",
+            "content": "hello",
+            "payload_json": None,
+            "actor_id": None,
+            "actor_name": None,
+            "actor_avatar_url": None,
+            "status": "pending",
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "attempt_count": 0,
+            "next_retry_at": None,
+            "last_error": None,
+            "source_message_id": None,
+            "source_channel_id": None,
+        },
+    )
+
     with (
         patch.object(command_handlers, "db", mock_db),
         patch.object(command_handlers, "tmux_io") as mock_tmux_io,
@@ -2112,20 +2168,15 @@ async def test_process_message_waits_through_initializing_then_dispatches():
         mock_tmux_io.wrap_bracketed_paste.return_value = "hello"
         mock_tmux_io.process_text = AsyncMock(return_value=True)
 
-        cmd = ProcessMessageCommand(
-            session_id="sess-gate-ok",
-            text="hello",
-            origin=InputOrigin.TELEGRAM.value,
-        )
-        await command_handlers.process_message(cmd, mock_client, AsyncMock())
+        await command_handlers.deliver_inbound(row, mock_client, AsyncMock())
 
     # tmux_io.process_text must have been called (message dispatched after gate)
     mock_tmux_io.process_text.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_process_message_timeout_skips_tmux_and_sends_feedback():
-    """process_message sends feedback and skips tmux on startup gate timeout."""
+async def test_deliver_inbound_timeout_raises_on_stuck_session():
+    """deliver_inbound raises RuntimeError and skips tmux on startup gate timeout."""
 
     mock_db = AsyncMock()
     # Always return initializing to simulate a stuck bootstrap
@@ -2140,6 +2191,28 @@ async def test_process_message_timeout_skips_tmux_and_sends_feedback():
 
     mock_client = AsyncMock()
 
+    row = cast(
+        InboundQueueRow,
+        {
+            "id": 1,
+            "session_id": "sess-gate-timeout",
+            "origin": InputOrigin.TELEGRAM.value,
+            "message_type": "text",
+            "content": "hello",
+            "payload_json": None,
+            "actor_id": None,
+            "actor_name": None,
+            "actor_avatar_url": None,
+            "status": "pending",
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "attempt_count": 0,
+            "next_retry_at": None,
+            "last_error": None,
+            "source_message_id": None,
+            "source_channel_id": None,
+        },
+    )
+
     with (
         patch.object(command_handlers, "db", mock_db),
         patch.object(command_handlers, "tmux_io") as mock_tmux_io,
@@ -2149,24 +2222,16 @@ async def test_process_message_timeout_skips_tmux_and_sends_feedback():
     ):
         mock_tmux_io.process_text = AsyncMock(return_value=True)
 
-        cmd = ProcessMessageCommand(
-            session_id="sess-gate-timeout",
-            text="hello",
-            origin=InputOrigin.TELEGRAM.value,
-        )
-        await command_handlers.process_message(cmd, mock_client, AsyncMock())
+        with pytest.raises(RuntimeError, match="Startup gate timeout"):
+            await command_handlers.deliver_inbound(row, mock_client, AsyncMock())
 
     # tmux_io.process_text must NOT have been called (gate timed out)
     mock_tmux_io.process_text.assert_not_awaited()
-    # Feedback message sent to user
-    mock_client.send_message.assert_awaited_once()
-    feedback_text = mock_client.send_message.call_args.args[1]
-    assert "timed out" in feedback_text.lower()
 
 
 @pytest.mark.asyncio
-async def test_process_message_active_session_skips_gate():
-    """process_message with active session bypasses startup gate entirely."""
+async def test_deliver_inbound_active_session_skips_gate():
+    """deliver_inbound with active session bypasses startup gate entirely."""
     mock_session = MagicMock()
     mock_session.session_id = "sess-no-gate"
     mock_session.lifecycle_status = "active"
@@ -2182,6 +2247,28 @@ async def test_process_message_active_session_skips_gate():
 
     mock_client = AsyncMock()
 
+    row = cast(
+        InboundQueueRow,
+        {
+            "id": 1,
+            "session_id": "sess-no-gate",
+            "origin": InputOrigin.TELEGRAM.value,
+            "message_type": "text",
+            "content": "hello",
+            "payload_json": None,
+            "actor_id": None,
+            "actor_name": None,
+            "actor_avatar_url": None,
+            "status": "pending",
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "attempt_count": 0,
+            "next_retry_at": None,
+            "last_error": None,
+            "source_message_id": None,
+            "source_channel_id": None,
+        },
+    )
+
     with (
         patch.object(command_handlers, "db", mock_db),
         patch.object(command_handlers, "tmux_io") as mock_tmux_io,
@@ -2190,12 +2277,7 @@ async def test_process_message_active_session_skips_gate():
         mock_tmux_io.wrap_bracketed_paste.return_value = "hello"
         mock_tmux_io.process_text = AsyncMock(return_value=True)
 
-        cmd = ProcessMessageCommand(
-            session_id="sess-no-gate",
-            text="hello",
-            origin=InputOrigin.TELEGRAM.value,
-        )
-        await command_handlers.process_message(cmd, mock_client, AsyncMock())
+        await command_handlers.deliver_inbound(row, mock_client, AsyncMock())
 
     # get_session called exactly once (no polling loop)
     assert mock_db.get_session.await_count == 1

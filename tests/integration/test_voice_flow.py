@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import functools
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -27,8 +29,10 @@ async def session_manager(tmp_path: Path):
 
 @pytest.mark.integration
 async def test_voice_transcription_executes_command(session_manager: Db) -> None:
-    """Voice transcription should forward to process_message and start polling."""
+    """Voice transcription should enqueue and deliver to tmux via queue worker."""
     from teleclaude.core import command_handlers
+    from teleclaude.core.command_handlers import deliver_inbound
+    from teleclaude.core.inbound_queue import init_inbound_queue_manager, reset_inbound_queue_manager
 
     session = await session_manager.create_session(
         computer_name="TestPC",
@@ -48,27 +52,37 @@ async def test_voice_transcription_executes_command(session_manager: Db) -> None
 
     start_polling = AsyncMock()
 
-    with (
-        patch("teleclaude.core.command_handlers.db", session_manager),
-        patch(
-            "teleclaude.core.command_handlers.voice_message_handler.handle_voice", new=AsyncMock(return_value="say hi")
-        ),
-        patch(
-            "teleclaude.core.command_handlers.tmux_io.process_text", new=AsyncMock(return_value=True)
-        ) as mock_process,
-    ):
-        cmd = HandleVoiceCommand(
-            session_id=session.session_id,
-            file_path="/tmp/voice.ogg",
-            origin=InputOrigin.TELEGRAM.value,
-        )
-        await command_handlers.handle_voice(cmd, client, start_polling)
+    reset_inbound_queue_manager()
+    init_inbound_queue_manager(functools.partial(deliver_inbound, client=client, start_polling=start_polling))
 
-    assert mock_process.await_count == 1
-    sent_text = mock_process.await_args.kwargs.get("text") if mock_process.await_args else None
-    if isinstance(sent_text, str):
-        assert "say hi" in sent_text
-    start_polling.assert_awaited_once()
+    try:
+        with (
+            patch("teleclaude.core.command_handlers.db", session_manager),
+            patch("teleclaude.core.inbound_queue.db", session_manager),
+            patch(
+                "teleclaude.core.command_handlers.voice_message_handler.handle_voice",
+                new=AsyncMock(return_value="say hi"),
+            ),
+            patch(
+                "teleclaude.core.command_handlers.tmux_io.process_text", new=AsyncMock(return_value=True)
+            ) as mock_process,
+        ):
+            cmd = HandleVoiceCommand(
+                session_id=session.session_id,
+                file_path="/tmp/voice.ogg",
+                origin=InputOrigin.TELEGRAM.value,
+            )
+            await command_handlers.handle_voice(cmd, client, start_polling)
+            # Allow the queue worker to drain and deliver
+            await asyncio.sleep(0.1)
+
+        assert mock_process.await_count == 1
+        sent_text = mock_process.await_args.kwargs.get("text") if mock_process.await_args else None
+        if isinstance(sent_text, str):
+            assert "say hi" in sent_text
+        start_polling.assert_awaited_once()
+    finally:
+        reset_inbound_queue_manager()
 
 
 @pytest.mark.integration

@@ -155,6 +155,32 @@ class NotificationOutbox(SQLModel, table=True):
     locked_at: Optional[str] = None
 
 
+class InboundQueue(SQLModel, table=True):
+    """inbound_queue table."""
+
+    __tablename__ = "inbound_queue"
+    __table_args__ = {"extend_existing": True}
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str
+    origin: str
+    message_type: str = "text"
+    content: str = ""
+    payload_json: Optional[str] = None
+    actor_id: Optional[str] = None
+    actor_name: Optional[str] = None
+    actor_avatar_url: Optional[str] = None
+    status: str = "pending"
+    created_at: str = ""
+    processed_at: Optional[str] = None
+    attempt_count: int = 0
+    next_retry_at: Optional[str] = None
+    last_error: Optional[str] = None
+    locked_at: Optional[str] = None
+    source_message_id: Optional[str] = None
+    source_channel_id: Optional[str] = None
+
+
 class MemoryObservation(SQLModel, table=True):
     """memory_observations table."""
 

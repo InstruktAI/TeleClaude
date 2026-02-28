@@ -519,16 +519,18 @@ class TelegramAdapter(
         from teleclaude.core.command_registry import get_command_service as gcs
         from teleclaude.types.commands import ProcessMessageCommand
 
+        msg_id = str(update.effective_message.message_id)
         cmd = ProcessMessageCommand(
             session_id=session.session_id,
             text=text,
             origin="telegram",
             actor_id=f"telegram:{user_id}",
             actor_name=identity.person_name or f"telegram:{user_id}",
-            request_id=str(update.effective_message.message_id),
+            request_id=msg_id,
+            source_message_id=msg_id,
         )
 
-        # Dispatch without metadata since ProcessMessageCommand doesn't accept it
+        # Dispatch — process_message enqueues for durable delivery
         await gcs().process_message(cmd)
 
     async def delete_message(self, session: "Session | str", message_id: str) -> bool:

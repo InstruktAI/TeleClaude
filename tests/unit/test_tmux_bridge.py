@@ -290,19 +290,20 @@ class TestSendKeysExistingTmux:
     """Tests for send_keys_existing_tmux() function."""
 
     @pytest.mark.asyncio
-    async def test_returns_false_when_session_missing(self):
-        """Test that send_keys_existing_tmux returns False when session is absent."""
-        with (
-            patch.object(tmux_bridge, "session_exists", new=AsyncMock(return_value=False)),
-            patch.object(tmux_bridge, "_send_keys_tmux", new=AsyncMock()) as mock_send,
-        ):
+    async def test_delegates_to_send_keys_tmux(self):
+        """Test that send_keys_existing_tmux delegates directly to _send_keys_tmux.
+
+        The redundant session_exists() check was removed; callers (e.g. tmux_io._send_to_tmux)
+        are expected to verify session existence before calling this function.
+        """
+        with patch.object(tmux_bridge, "_send_keys_tmux", new=AsyncMock(return_value=False)) as mock_send:
             success = await tmux_bridge.send_keys_existing_tmux(
                 session_name="missing-session",
                 text="hello",
             )
 
             assert success is False
-            mock_send.assert_not_awaited()
+            mock_send.assert_awaited_once()
 
 
 class TestSendCtrlKey:
