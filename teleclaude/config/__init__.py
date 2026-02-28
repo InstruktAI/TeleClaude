@@ -7,7 +7,7 @@ Config is loaded at module import time and available globally via:
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import yaml
 from dotenv import load_dotenv
@@ -213,16 +213,6 @@ class WhatsAppConfig:
 
 
 @dataclass
-class UIConfig:
-    """TUI display settings."""
-
-    animations_enabled: bool
-    animations_periodic_interval: int
-    animations_subset: List[str]  # Empty list means all animations enabled
-    pane_theming_mode: str = "full"
-
-
-@dataclass
 class TTSServiceVoiceConfig:
     """Voice configuration for a TTS service."""
 
@@ -330,7 +320,6 @@ class Config:
     discord: DiscordConfig
     creds: CredsConfig
     agents: Dict[str, AgentConfig]
-    ui: UIConfig
     terminal: TerminalConfig
     whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig)
     tts: TTSConfig | None = None
@@ -445,12 +434,6 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
     },
     "terminal": {
         "strip_ansi": True,
-    },
-    "ui": {
-        "animations_enabled": True,
-        "animations_periodic_interval": 60,
-        "animations_subset": [],  # Empty list = all animations enabled
-        "pane_theming_mode": "full",  # full|semi|off|highlight|highlight2|agent|agent_plus
     },
     "tts": {
         "enabled": False,
@@ -731,7 +714,6 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
     discord_raw = raw.get("discord", {})
     whatsapp_raw = raw.get("whatsapp", {})
     creds_raw = raw.get("creds", {})
-    ui_raw = raw["ui"]
     terminal_raw = raw.get("terminal", {"strip_ansi": True})
     tts_raw = raw.get("tts", None)
     stt_raw = raw.get("stt", None)
@@ -900,12 +882,6 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
         ),
         creds=CredsConfig(telegram=tg_creds, whatsapp=whatsapp_creds),
         agents=agents_registry,
-        ui=UIConfig(
-            animations_enabled=bool(ui_raw["animations_enabled"]),  # type: ignore[index,misc]
-            animations_periodic_interval=int(ui_raw["animations_periodic_interval"]),  # type: ignore[index,misc]
-            animations_subset=list(ui_raw.get("animations_subset", [])),  # type: ignore[index,misc]
-            pane_theming_mode=str(ui_raw.get("pane_theming_mode", "full")),  # type: ignore[index,misc]
-        ),
         terminal=TerminalConfig(
             strip_ansi=bool(terminal_raw.get("strip_ansi", True))  # type: ignore[attr-defined]
         ),

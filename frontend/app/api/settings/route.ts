@@ -38,7 +38,7 @@ export async function GET() {
   }
 }
 
-const ALLOWED_SETTINGS_KEYS = new Set(["tts", "pane_theming_mode"]);
+const ALLOWED_SETTINGS_KEYS = new Set(["tts"]);
 
 export async function PATCH(request: NextRequest) {
   const session = await auth();

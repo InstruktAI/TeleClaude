@@ -43,7 +43,6 @@ def test_agent_config_loading_defaults(mock_tmux, mock_binary, mock_agent_protoc
             "polling": {"directory_check_interval": 10},
             "redis": {"enabled": False, "url": "redis://localhost", "password": None},
             "telegram": {"trusted_bots": []},
-            "ui": {"animations_enabled": False, "animations_periodic_interval": 60},
             "agents": {},  # No override
         }
 
@@ -101,7 +100,6 @@ def test_agent_config_loading_overrides(mock_tmux, mock_binary, mock_agent_proto
             "polling": {"directory_check_interval": 10},
             "redis": {"enabled": False, "url": "redis://localhost", "password": None},
             "telegram": {"trusted_bots": []},
-            "ui": {"animations_enabled": False, "animations_periodic_interval": 60},
             "agents": {"test_agent": {"enabled": True, "strengths": "Testing", "avoid": "Production"}},
         }
 
@@ -132,7 +130,6 @@ def test_agent_config_loading_rejects_unknown_agent_keys(mock_tmux, mock_binary,
             "polling": {"directory_check_interval": 10},
             "redis": {"enabled": False, "url": "redis://localhost", "password": None},
             "telegram": {"trusted_bots": []},
-            "ui": {"animations_enabled": False, "animations_periodic_interval": 60},
             "agents": {
                 "test_agent": {"enabled": True},
                 "ghost_agent": {"enabled": True},
@@ -163,7 +160,6 @@ def test_agent_config_loading_requires_one_enabled_agent(mock_tmux, mock_binary,
             "polling": {"directory_check_interval": 10},
             "redis": {"enabled": False, "url": "redis://localhost", "password": None},
             "telegram": {"trusted_bots": []},
-            "ui": {"animations_enabled": False, "animations_periodic_interval": 60},
             "agents": {"test_agent": {"enabled": False}},
         }
 
@@ -191,7 +187,6 @@ def test_agent_config_loading_rejects_invalid_agent_mapping(mock_tmux, mock_bina
             "polling": {"directory_check_interval": 10},
             "redis": {"enabled": False, "url": "redis://localhost", "password": None},
             "telegram": {"trusted_bots": []},
-            "ui": {"animations_enabled": False, "animations_periodic_interval": 60},
             "agents": {"test_agent": "invalid"},
         }
 

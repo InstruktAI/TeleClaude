@@ -181,7 +181,6 @@ export interface TTSSettings {
 
 export interface Settings {
   tts: TTSSettings;
-  pane_theming_mode: PaneThemingMode;
 }
 
 export interface TTSSettingsPatch {
@@ -190,7 +189,6 @@ export interface TTSSettingsPatch {
 
 export interface SettingsPatch {
   tts?: TTSSettingsPatch;
-  pane_theming_mode?: PaneThemingMode;
 }
 
 // ---------------------------------------------------------------------------

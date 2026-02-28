@@ -508,11 +508,7 @@ def normalize_pane_theming_mode(mode: str) -> str:
 def get_pane_theming_mode() -> str:
     if _PANE_THEMING_MODE_OVERRIDE:
         return _PANE_THEMING_MODE_OVERRIDE
-    configured = str(config.ui.pane_theming_mode)  # type: ignore[attr-defined]
-    try:
-        return normalize_pane_theming_mode(configured)
-    except ValueError:
-        return PANE_THEMING_MODE_AGENT_PLUS
+    return PANE_THEMING_MODE_AGENT_PLUS
 
 
 def get_pane_theming_mode_level(mode: str | None = None) -> int:

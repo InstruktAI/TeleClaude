@@ -80,12 +80,6 @@ redis:
   url: redis://redis.srv.instrukt.ai:6379
   password: ${REDIS_PASSWORD} # Set in .env
 
-# UI Configuration (TUI display settings)
-ui:
-  animations_enabled: true # Enable banner/logo animations
-  animations_periodic_interval: 60 # Seconds between periodic animations
-  animations_subset: [] # Empty list = all animations. Specify names to filter (e.g., ["FullSpectrumCycle", "LetterWave"])
-
 # Agent dispatch guidance (optional machine-level guidance for the orchestrator AI)
 agents:
   claude:
