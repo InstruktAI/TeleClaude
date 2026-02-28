@@ -1,5 +1,8 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
+- slug: integrator-wiring
+  description: 'Wire integration module into production: event emission, integrator
+    trigger, POST_COMPLETION replacement, cutover activation'
 - slug: history-search-upgrade
   after:
   - notification-service

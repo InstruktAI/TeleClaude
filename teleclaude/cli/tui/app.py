@@ -58,6 +58,7 @@ from teleclaude.cli.tui.theme import (
     _TELECLAUDE_LIGHT_THEME,
     get_pane_theming_mode_level,
     get_system_dark_mode,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    get_terminal_background,
     get_tui_inactive_background,
 )
 from teleclaude.cli.tui.views.config import ConfigView
@@ -185,14 +186,22 @@ class TelecApp(App[str | None]):
         self._animation_timer: object | None = None
 
     def get_css_variables(self) -> dict[str, str]:
-        """Override CSS variables to inject haze background when unfocused.
+        """Override CSS variables to inject the correct background for focus state.
 
         Textual emits explicit ANSI backgrounds for every cell, so tmux's
         window-style cannot apply its inactive haze. We swap $background
-        at the CSS variable level so ALL widgets pick up the haze color.
+        at the CSS variable level so ALL widgets pick up the correct color.
+
+        We also bypass the frozen Theme.background (baked at import time) so
+        that dark/light mode switches via SIGUSR1 correctly re-read the fresh
+        terminal background after refresh_mode() clears the cache.
         """
         variables = super().get_css_variables()
-        if not self.app_focus:
+        if self.app_focus:
+            bg = get_terminal_background()
+            variables["background"] = bg
+            variables["scrollbar-background"] = bg
+        else:
             haze = get_tui_inactive_background()
             variables["background"] = haze
             variables["scrollbar-background"] = haze
