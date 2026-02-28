@@ -24,7 +24,7 @@ Replace the brute-force transcript scanning in `history.py` with a searchable co
 - Changing the raw transcript format or storage location.
 - Modifying the `extract_structured_messages()` function signature (use as-is).
 - Changes to the TUI.
-- Notification service integration for operational reporting (soft dependency — built with log-based fallback, notification integration added when notification-service is delivered).
+- Notification service integration for operational reporting (soft dependency — built with log-based fallback, notification integration added when event-platform is delivered).
 
 ## Success Criteria
 
@@ -56,7 +56,7 @@ Replace the brute-force transcript scanning in `history.py` with a searchable co
 - **Transcript discovery**: mirror worker uses `AGENT_PROTOCOL` from `teleclaude.constants` (session_dir + log_pattern per agent). Does NOT import from `scripts/history.py`.
 - **API route registration**: follows existing pattern — `teleclaude/mirrors/api_routes.py` with FastAPI router, included via `app.include_router()` in `teleclaude/api_server.py`.
 - **Computer discovery**: uses existing heartbeat/cache infrastructure for computer-to-daemon-URL resolution.
-- **Notification dependency (soft)**: mirror worker reports progress/completion through notification service when available. Log-based fallback until notification-service is delivered.
+- **Notification dependency (soft)**: mirror worker reports progress/completion through notification service when available. Log-based fallback until event-platform is delivered.
 
 ## Risks
 

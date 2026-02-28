@@ -47,15 +47,15 @@ guarded behind an import check (graceful degradation).
 
 **Status:** N/A (auto-pass)
 
-No third-party dependencies. Uses existing Redis Streams via notification-service
+No third-party dependencies. Uses existing Redis Streams via event-platform
 when available.
 
 ### Dependencies & Preconditions (Gate 6)
 
 **Status:** Pass
 
-- `notification-service` declared as dependency in `roadmap.yaml` (`after: [notification-service]`).
-- notification-service has DOR score 8 / pass, build pending.
+- `event-platform` declared as dependency in `roadmap.yaml` (`after: [event-platform]`).
+- event-platform has DOR score 8 / pass, build pending.
 - Implementation plan guards notification call — command works without it.
 - `publications/inbox/` directory exists with established `YYYYMMDD-<slug>` convention
   (confirmed: 4 entries with `content.md` and `meta.yaml`).
@@ -86,7 +86,7 @@ between plan and requirements.
 
 - `publications/inbox/` is the correct target directory (confirmed by existing entries).
 - `YYYYMMDD-<slug>` naming convention is established (confirmed by existing entries).
-- notification-service producer utility will follow XADD pattern when built.
+- event-platform producer utility will follow XADD pattern when built.
 
 ## Blockers
 

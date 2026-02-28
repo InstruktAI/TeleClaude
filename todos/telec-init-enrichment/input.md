@@ -94,6 +94,6 @@ went through bootstrapping.
 
 ## Dependencies
 
-- notification-service (events emitted during init, e.g., `project.initialized`)
+- event-platform (events emitted during init, e.g., `project.initialized`)
 - mesh-architecture (optional mesh registration during init)
 - event-envelope-schema (format for project lifecycle events)

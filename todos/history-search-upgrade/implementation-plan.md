@@ -88,7 +88,7 @@ The migration runner auto-discovers `*.py` files matching `^\d{3}_` in the migra
   3. Calls `generate_mirror()` for each stale/new transcript
 - [ ] First run on a fresh install: processes ALL existing transcripts (IS the backfill). Same code path as subsequent runs.
 - [ ] Runs on daemon startup as initial sweep, then periodically every 5 minutes
-- [ ] Progress logging: logs counts (e.g., "Mirror reconciliation: 0/3660", "1200/3660", "complete in 4m 12s"). When notification-service is available, reports through notification API instead.
+- [ ] Progress logging: logs counts (e.g., "Mirror reconciliation: 0/3660", "1200/3660", "complete in 4m 12s"). When event-platform is available, reports through notification API instead.
 - [ ] Graceful shutdown via cancellation token
 
 ### Task 2.6: Wire into daemon startup/shutdown

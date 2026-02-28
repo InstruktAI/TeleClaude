@@ -13,7 +13,7 @@ Formal DOR gate assessment performed 2026-02-28 against artifacts rewritten on 2
 | 3   | Verification       | PASS   | 7 test areas + 7 quality checks. Edge cases identified (empty transcripts, remote daemon down).                                                                  |
 | 4   | Approach known     | PASS   | Every pattern verified in codebase: FTS5 (migration 005), background tasks (`_track_background_task`), API routes (`include_router`), event wiring (both paths). |
 | 5   | Research complete  | PASS   | Auto-satisfied — no new third-party dependencies. FTS5 already in production.                                                                                    |
-| 6   | Dependencies       | PASS   | notification-service is soft dependency with log fallback. No new config keys.                                                                                   |
+| 6   | Dependencies       | PASS   | event-platform is soft dependency with log fallback. No new config keys.                                                                                         |
 | 7   | Integration safety | PASS   | Self-contained module, migration with down(), API routes mounted separately.                                                                                     |
 | 8   | Tooling impact     | PASS   | Auto-satisfied — no scaffolding changes.                                                                                                                         |
 
@@ -46,7 +46,7 @@ Every implementation plan task traces to a requirement. No contradictions found.
 ### Notes
 
 - **Size**: at the upper end for a single builder session. The well-structured plan with clear task boundaries mitigates this.
-- **Notification-service dependency**: roadmap has `after: [notification-service]`. Requirements correctly treat this as a soft dependency with log-based fallback. The implementation is buildable without notification-service — the roadmap dependency controls scheduling, not readiness.
+- **Notification-service dependency**: roadmap has `after: [event-platform]`. Requirements correctly treat this as a soft dependency with log-based fallback. The implementation is buildable without event-platform — the roadmap dependency controls scheduling, not readiness.
 
 ### Blockers
 

@@ -309,11 +309,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         "session_dir": "~/.claude/sessions",
         "log_pattern": "*.jsonl",
         "profiles": {
-            "default": (
-                "--dangerously-skip-permissions"
-                " --strict-mcp-config"
-                ' --settings \'{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": []}\''
-            ),
+            "default": ('--dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\''),
             "restricted": (
                 "--strict-mcp-config"
                 ' --settings \'{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": []}\''

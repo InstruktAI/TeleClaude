@@ -206,14 +206,15 @@ def test_pick_agent_preferred_config_disabled(monkeypatch: pytest.MonkeyPatch, t
 def test_agent_protocol_blocks_mcp_for_interactive_profiles() -> None:
     claude_profiles = AGENT_PROTOCOL["claude"]["profiles"]
     assert isinstance(claude_profiles, dict)
-    assert "--strict-mcp-config" in claude_profiles["default"]
+    # default profile (admin) must NOT block MCP — admins get full tool access
+    assert "--strict-mcp-config" not in claude_profiles["default"]
+    assert '"enabledMcpjsonServers": []' not in claude_profiles["default"]
+    # restricted profile (non-admin) must block MCP
     assert "--strict-mcp-config" in claude_profiles["restricted"]
-    assert '"enabledMcpjsonServers": []' in claude_profiles["default"]
     assert '"enabledMcpjsonServers": []' in claude_profiles["restricted"]
 
     gemini_profiles = AGENT_PROTOCOL["gemini"]["profiles"]
     assert isinstance(gemini_profiles, dict)
-    assert "--allowed-mcp-server-names _none_" in gemini_profiles["default"]
     assert "--allowed-mcp-server-names _none_" in gemini_profiles["restricted"]
 
     codex_profiles = AGENT_PROTOCOL["codex"]["profiles"]

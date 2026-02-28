@@ -110,4 +110,4 @@ voice.
 - mesh-architecture (the transport for governance events)
 - event-envelope-schema (the format for PR and todo events)
 - community-manager-agent (the handlers that implement governance mechanics)
-- notification-service (internal event processing)
+- event-platform (internal event processing)

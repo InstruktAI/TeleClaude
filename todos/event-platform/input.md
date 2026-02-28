@@ -1,4 +1,4 @@
-# Input: notification-service
+# Input: event-platform
 
 <!-- Converged design from brainstorm session (breath cycle: inhale/hold/exhale). Session 3d2880de. -->
 <!-- Enriched with event-driven paradigm, affordance-based envelopes, consumption spectrum, and progressive automation insights. Session c40b16b6 (Feb 28 2026). -->
@@ -555,7 +555,7 @@ TeleClaude ships with domain skeletons. Each pillar has:
 
 ### Software Development (existing)
 
-The current SDLC — todo lifecycle, build/review, deployment, operations, maintenance. Already the most mature pillar. The entire existing notification-service scope maps into this domain.
+The current SDLC — todo lifecycle, build/review, deployment, operations, maintenance. Already the most mature pillar. The entire existing event-platform scope maps into this domain.
 
 ### Marketing
 
@@ -813,7 +813,7 @@ ALL existing bespoke notification paths collapse into this service:
 The event processing platform is the hub:
 
 ```
-notification-service (teleclaude_events)
+event-platform (teleclaude_events)
   ├── history-search-upgrade
   ├── prepare-quality-runner
   ├── todo-dump-command

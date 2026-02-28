@@ -77,7 +77,7 @@ notification event.
 
 **File(s):** `teleclaude/content_scaffold.py` or `teleclaude/cli/telec.py`
 
-- [ ] Guard notification import behind try/except (notification-service may not exist yet)
+- [ ] Guard notification import behind try/except (event-platform may not exist yet)
 - [ ] If available, call the producer utility to XADD `content.dumped` with payload:
   ```yaml
   event_type: content.dumped
@@ -88,7 +88,7 @@ notification event.
     tags: [<tags>]
   ```
 - [ ] If not available, print warning: "Notification service not available, skipping event emission"
-- [ ] This task is deferred if notification-service is not built yet — the guard ensures
+- [ ] This task is deferred if event-platform is not built yet — the guard ensures
       the command works without it
 
 ---

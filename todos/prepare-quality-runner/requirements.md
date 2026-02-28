@@ -32,7 +32,7 @@ This is TeleClaude's first internal dog-fooding consumer of the notification ser
 
 ## Dependency
 
-This handler depends on `notification-service` being operational. It consumes events
+This handler depends on `event-platform` being operational. It consumes events
 via the notification service's Redis Stream consumer infrastructure and resolves
 notifications through the notification API.
 
