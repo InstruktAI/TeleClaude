@@ -65,16 +65,16 @@ app-level dispatch in practice. `v` (Voice) is used instead.
 
 **File(s):** `teleclaude/cli/tui/views/preparation.py`
 
-- [ ] Add bindings: `shift+up` → `action_move_todo_up`, `shift+down` → `action_move_todo_down` (show=True, key_display `Shift+↑` / `Shift+↓`)
-- [ ] Implement `action_move_todo_up()`:
+- [x] Add bindings: `shift+up` → `action_move_todo_up`, `shift+down` → `action_move_todo_down` (show=True, key_display `Shift+↑` / `Shift+↓`)
+- [x] Implement `action_move_todo_up()`:
   - Get current item; verify it's a root TodoRow
   - Get slug; find the preceding sibling's slug in the tree
   - Call `telec roadmap move <slug> --before <sibling_slug>` via subprocess
   - Trigger tree rebuild to reflect new order
-- [ ] Implement `action_move_todo_down()`: same but find next sibling, use `--after <sibling_slug>`
-- [ ] Update `check_action()`: gate `move_todo_up` and `move_todo_down` — enabled only on root TodoRow nodes
-- [ ] Handle edge cases: first item can't move up, last item can't move down (no-op or notify)
-- [ ] Verify Row 1 shows Shift+↑/↓ hints only on root todo rows; hints hide on other node types
+- [x] Implement `action_move_todo_down()`: same but find next sibling, use `--after <sibling_slug>`
+- [x] Update `check_action()`: gate `move_todo_up` and `move_todo_down` — enabled only on root TodoRow nodes
+- [x] Handle edge cases: first item can't move up, last item can't move down (no-op or notify)
+- [x] Verify Row 1 shows Shift+↑/↓ hints only on root todo rows; hints hide on other node types
 
 ## Phase 3: Verification
 

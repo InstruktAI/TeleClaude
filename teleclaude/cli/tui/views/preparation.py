@@ -72,6 +72,8 @@ class PreparationView(Widget, can_focus=True):
         Binding("p", "prepare", "Prep"),
         Binding("s", "start_work", "Start"),
         Binding("R", "remove_todo", "Remove"),
+        Binding("shift+up", "move_todo_up", "Move Up", key_display="Shift+↑"),
+        Binding("shift+down", "move_todo_down", "Move Down", key_display="Shift+↓"),
     ]
 
     cursor_index = reactive(0)
@@ -518,6 +520,96 @@ class PreparationView(Widget, can_focus=True):
         item = self._current_item()
         return item if isinstance(item, ComputerHeader) else None
 
+    def _find_root_todo_neighbors(self) -> tuple[str | None, str | None]:
+        """Return (prev_root_slug, next_root_slug) relative to the current cursor.
+
+        Search stops at ProjectHeader or ComputerHeader boundaries so reordering
+        is scoped to the current project's roadmap.
+        """
+        from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
+
+        current_idx = self.cursor_index
+        prev_slug: str | None = None
+        next_slug: str | None = None
+
+        for i in range(current_idx - 1, -1, -1):
+            widget = self._nav_items[i]
+            if isinstance(widget, (ProjectHeader, ComputerHeader, GroupSeparator)):
+                break
+            if isinstance(widget, TodoRow) and not widget._tree_lines:
+                prev_slug = widget.slug
+                break
+
+        for i in range(current_idx + 1, len(self._nav_items)):
+            widget = self._nav_items[i]
+            if isinstance(widget, (ProjectHeader, ComputerHeader, GroupSeparator)):
+                break
+            if isinstance(widget, TodoRow) and not widget._tree_lines:
+                next_slug = widget.slug
+                break
+
+        return prev_slug, next_slug
+
+    def action_move_todo_up(self) -> None:
+        """Shift+Up: move current root todo one position up in the roadmap."""
+        import subprocess
+
+        current = self._current_todo_row()
+        if not current or current._tree_lines:
+            return
+
+        slug = current.slug
+        prev_slug, _ = self._find_root_todo_neighbors()
+        if prev_slug is None:
+            return
+
+        project_path = self._slug_to_project_path.get(slug, "")
+        if not project_path:
+            return
+
+        try:
+            subprocess.run(
+                ["telec", "roadmap", "move", slug, "--before", prev_slug],
+                check=True,
+                cwd=project_path,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            self.app.notify(f"Reorder failed: {exc.stderr.decode()[:80]}", severity="error")
+            return
+
+        self.app._refresh_data()  # type: ignore[attr-defined]
+
+    def action_move_todo_down(self) -> None:
+        """Shift+Down: move current root todo one position down in the roadmap."""
+        import subprocess
+
+        current = self._current_todo_row()
+        if not current or current._tree_lines:
+            return
+
+        slug = current.slug
+        _, next_slug = self._find_root_todo_neighbors()
+        if next_slug is None:
+            return
+
+        project_path = self._slug_to_project_path.get(slug, "")
+        if not project_path:
+            return
+
+        try:
+            subprocess.run(
+                ["telec", "roadmap", "move", slug, "--after", next_slug],
+                check=True,
+                cwd=project_path,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            self.app.notify(f"Reorder failed: {exc.stderr.decode()[:80]}", severity="error")
+            return
+
+        self.app._refresh_data()  # type: ignore[attr-defined]
+
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Enable/hide actions based on current tree node type."""
         del parameters
@@ -525,24 +617,37 @@ class PreparationView(Widget, can_focus=True):
 
         if isinstance(item, ComputerHeader):
             # Computer nodes: only new_project and fold actions allowed
-            if action in {"new_todo", "new_bug", "remove_todo", "activate", "preview_file", "prepare", "start_work"}:
+            if action in {
+                "new_todo",
+                "new_bug",
+                "remove_todo",
+                "activate",
+                "preview_file",
+                "prepare",
+                "start_work",
+                "move_todo_up",
+                "move_todo_down",
+            }:
                 return False
             if action == "new_project":
                 return True
             return True
 
         if isinstance(item, ProjectHeader):
-            if action in {"remove_todo", "activate", "preview_file", "new_project"}:
+            if action in {"remove_todo", "activate", "preview_file", "new_project", "move_todo_up", "move_todo_down"}:
                 return False
             return True
 
         if isinstance(item, TodoRow):
             if action in {"preview_file", "new_project"}:
                 return False
+            # Shift+Up/Down only available on root todo rows (depth-0, tree_lines=[])
+            if action in {"move_todo_up", "move_todo_down"}:
+                return not item._tree_lines
             return True
 
         if isinstance(item, TodoFileRow):
-            if action in {"new_todo", "new_bug", "new_project"}:
+            if action in {"new_todo", "new_bug", "new_project", "move_todo_up", "move_todo_down"}:
                 return False
             return True
 
