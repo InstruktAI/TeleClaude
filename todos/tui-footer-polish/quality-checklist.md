@@ -17,7 +17,7 @@ Ownership:
 - [x] No silent deferrals in implementation plan
 - [x] Code committed
 - [x] Demo validated (`telec todo demo validate tui-footer-polish` exits 0 — 2 executable blocks found)
-- [ ] Working tree clean
+- [x] Working tree clean
 - [x] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
