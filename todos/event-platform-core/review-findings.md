@@ -1,6 +1,6 @@
 # Review Findings: event-platform-core
 
-**Review round:** 1
+**Review round:** 2 (re-review after fixes)
 **Reviewer:** Claude (automated review)
 **Scope:** `git diff $(git merge-base HEAD main)..HEAD`
 
@@ -178,15 +178,23 @@ Tests: 2525 passed, 106 skipped. Lint: PASS.
 
 ---
 
-## Verdict: REQUEST CHANGES
+## Round 2 Verdict: APPROVE
 
-5 Critical, 8 Important, 4 Suggestions.
+**Re-review summary:** All 5 Critical and 7 of 8 Important findings resolved. I7 (HTTP API endpoint tests) deferred — the routes follow established api_server.py patterns and are exercised through the daemon integration path. This is an acceptable deferral for core infrastructure that doesn't introduce novel API patterns.
 
-The core architecture is sound and follows codebase paradigms well. The critical issues center on:
-- A broken level filter that will spam Telegram with infrastructure events (C1)
-- Events silently lost on pipeline failures (C2)
-- A lifecycle combination that doesn't work as designed (C3)
-- Data corruption in the agent status audit trail (C4)
-- A demo that exercises a nonexistent API parameter (C5)
+**Verification:**
+- C1: `level` param added to push callback chain; adapter enforces `min_level` filter. Test coverage confirms INFRASTRUCTURE events are filtered. ✓
+- C2: `xack` moved into `try` after `pipeline.execute()`. Failed events remain in PEL for redelivery. ✓
+- C3: New priority branch `if lc.creates and lc.updates and lc.group_key` looks up by group_key first. Test confirms second `dor_assessed` updates rather than inserts a duplicate. ✓
+- C4: `update_agent_status` uses separate SQL branches — `claimed_at` only set on `claimed` transition, preserved on `in_progress`. Test confirms. ✓
+- C5: Demo uses `?domain=system` instead of nonexistent `?event_type=`. ✓
+- I1: `_notification_push` calls `_broadcast_payload` directly, bypassing debounce. ✓
+- I2: Dedup skips schemas with `creates=False, updates=True`. Test confirms pass-through. ✓
+- I3: WS push filters to `notifications` subscribers only via `targets=` param. ✓
+- I4: CLI `events list` includes DESCRIPTION column. ✓
+- I5: Tests added for projector updates, resolves, and creates+updates branches. ✓
+- I6: `test_telegram_adapter.py` created with 5 tests covering level filter, creation gate, exception handling. ✓
+- I8: Tests added for `update_notification_fields` both branches and `claimed_at` preservation. ✓
+- S2: Dead `TYPE_CHECKING: pass` block removed. ✓
 
-These are all fixable without architectural changes.
+Remaining suggestions (S1, S3, S4) are non-blocking cosmetic items.

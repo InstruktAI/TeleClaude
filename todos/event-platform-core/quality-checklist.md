@@ -26,9 +26,9 @@ Ownership:
 - [x] Deferrals justified and not hiding required scope
 - [x] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
 - [x] Findings written in `review-findings.md` — 5 Critical, 8 Important, 4 Suggestions
-- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — **REQUEST CHANGES**
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — **APPROVE** (round 2)
+- [x] Critical issues resolved or explicitly blocked — all 5 Critical resolved, I7 deferred (acceptable)
+- [x] Test coverage and regression risk assessed — 2525 passed, projector/adapter/db gaps filled
 
 ## Finalize Gates (Finalizer)
 
