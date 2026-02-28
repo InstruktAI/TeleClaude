@@ -57,7 +57,7 @@ Three independent cleanup items in one pass. Order: remove maintain first (reduc
 
 ---
 
-## Phase 3: Add `--delivered` / `--delivered-only` to roadmap list
+## Phase 3: Add `--include-delivered` / `--delivered-only` to roadmap list
 
 ### Task 3.1: Reuse existing `load_delivered`
 
@@ -80,7 +80,7 @@ Three independent cleanup items in one pass. Order: remove maintain first (reduc
 
 **File(s):** `teleclaude/cli/telec.py`
 
-- [ ] Add `Flag("--delivered", "-d", "Include delivered items")` and `Flag("--delivered-only", desc="Show only delivered items")` to `roadmap list` in CLI_SURFACE
+- [ ] Add `Flag("--include-delivered", "-d", "Include delivered items")` and `Flag("--delivered-only", desc="Show only delivered items")` to `roadmap list` in CLI_SURFACE
 - [ ] Parse both flags in `_handle_roadmap_show` (mirror the `--include-icebox`/`--icebox-only` arg parsing pattern)
 - [ ] Pass `include_delivered` and `delivered_only` to `assemble_roadmap`
 
@@ -92,7 +92,7 @@ Three independent cleanup items in one pass. Order: remove maintain first (reduc
 
 - [ ] Run `make test` — all existing tests pass
 - [ ] Verify `telec todo mark-phase` and `telec todo set-deps` work without `--cwd`
-- [ ] Verify `telec roadmap list --delivered` and `--delivered-only` produce correct output
+- [ ] Verify `telec roadmap list --include-delivered` and `--delivered-only` produce correct output
 
 ### Task 4.2: Quality Checks
 
