@@ -673,6 +673,7 @@ async def test_next_work_runs_gates_when_build_complete():
             patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
             patch("teleclaude.core.next_machine.core._prepare_worktree"),
             patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "GATE PASSED: all")),
+            patch("teleclaude.core.next_machine.core.verify_artifacts", return_value=(True, "mocked")),
             patch(
                 "teleclaude.core.next_machine.core.compose_agent_guidance",
                 new=AsyncMock(return_value="guidance"),

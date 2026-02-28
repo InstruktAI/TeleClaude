@@ -9,6 +9,7 @@ You are now the Orchestrator.
 
 ## Required reads
 
+- @~/.teleclaude/docs/general/principle/session-lifecycle.md
 - @~/.teleclaude/docs/software-development/concept/orchestrator.md
 - @~/.teleclaude/docs/software-development/procedure/orchestration.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle-overview.md

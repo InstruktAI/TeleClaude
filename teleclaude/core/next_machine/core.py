@@ -147,47 +147,95 @@ def _log_next_work_phase(slug: str, phase: str, started_at: float, decision: str
 POST_COMPLETION: dict[str, str] = {
     "next-build": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. telec todo mark-phase {args} --phase build --status complete --cwd <project-root>
-3. Call {next_call} — this runs build gates (tests + demo validation)
-4. If next_work says gates PASSED: telec sessions end <session_id> and continue
-5. If next_work says BUILD GATES FAILED:
+2. Verify artifact delivery: telec todo verify-artifacts {args} --phase build --cwd <project-root>
+   - If FAIL: send the failure details to the builder (do NOT end the session). Wait for fix. Repeat from step 1.
+   - If PASS: proceed to step 3
+3. telec todo mark-phase {args} --phase build --status complete --cwd <project-root>
+4. Call {next_call} — this runs build gates (tests + demo validation)
+5. If next_work says gates PASSED: telec sessions end <session_id> and continue
+6. If next_work says BUILD GATES FAILED:
    a. Send the builder the failure message (do NOT end the session)
    b. Wait for the builder to report completion again
    c. Repeat from step 2
-6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+7. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+   - Do NOT end the session — keep it alive as a signal for human investigation
+   - Report the error status and session ID to the user for manual intervention
+8. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-bugs-fix": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. telec todo mark-phase {args} --phase build --status complete --cwd <project-root>
-3. Call {next_call} — this runs build gates (tests + demo validation)
-4. If next_work says gates PASSED: telec sessions end <session_id> and continue
-5. If next_work says BUILD GATES FAILED:
+2. Verify artifact delivery: telec todo verify-artifacts {args} --phase build --cwd <project-root>
+   - If FAIL: send the failure details to the builder (do NOT end the session). Wait for fix. Repeat from step 1.
+   - If PASS: proceed to step 3
+3. telec todo mark-phase {args} --phase build --status complete --cwd <project-root>
+4. Call {next_call} — this runs build gates (tests + demo validation)
+5. If next_work says gates PASSED: telec sessions end <session_id> and continue
+6. If next_work says BUILD GATES FAILED:
    a. Send the builder the failure message (do NOT end the session)
    b. Wait for the builder to report completion again
    c. Repeat from step 2
-6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+7. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+   - Do NOT end the session — keep it alive as a signal for human investigation
+   - Report the error status and session ID to the user for manual intervention
+8. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data to extract verdict
-2. telec sessions end <session_id>
-3. Relay verdict to state:
-   - If APPROVE: telec todo mark-phase {args} --phase review --status approved --cwd <project-root>
-   - If REQUEST CHANGES: telec todo mark-phase {args} --phase review --status changes_requested --cwd <project-root>
-4. Call {next_call}
-5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+2. Run artifact verification: telec todo verify-artifacts {args} --phase review --cwd <project-root>
+   - If FAIL: send the failure details to the reviewer (do NOT end the session).
+     Wait for the reviewer to address the gaps and report completion again. Repeat from step 1.
+   - If PASS: proceed to step 3
+3. If verdict is APPROVE:
+   a. telec sessions end <session_id>
+   b. telec todo mark-phase {args} --phase review --status approved --cwd <project-root>
+   c. Call {next_call}
+4. If verdict is REQUEST CHANGES — PEER CONVERSATION PROTOCOL (keep reviewer alive):
+   a. DO NOT end the reviewer session — keep it alive throughout peer iteration
+   b. telec todo mark-phase {args} --phase review --status changes_requested --cwd <project-root>
+   c. Dispatch fixer: telec sessions run --command /next-fix-review --args {args} \\
+        --project <project-root> --subfolder trees/{args}
+   d. Save <reviewer_session_id> and <fixer_session_id>
+   e. Establish direct link from reviewer side (one-time, idempotent):
+        telec sessions send <reviewer_session_id> "A fixer is active at <fixer_session_id>. \\
+        Collaborate directly: telec sessions send <fixer_session_id> '<message>' --direct. \\
+        When all findings are resolved, update review-findings.md verdict to APPROVE \\
+        and report FIX COMPLETE." --direct
+   f. Notify fixer of reviewer:
+        telec sessions send <fixer_session_id> "Reviewer is active at <reviewer_session_id>. \\
+        Collaborate directly: telec sessions send <reviewer_session_id> '<message>' --direct. \\
+        Address all findings from review-findings.md, then report FIX COMPLETE." --direct
+   g. Wait for fixer to complete (monitor via heartbeat; do not poll continuously)
+   h. When fixer reports FIX COMPLETE:
+      - Run artifact verification again (step 2), then read review-findings.md verdict
+      - If APPROVE: telec sessions end <fixer_session_id>, telec sessions end <reviewer_session_id>,
+          telec todo mark-phase {args} --phase review --status approved --cwd <project-root>,
+          call {next_call}
+      - If still REQUEST CHANGES: telec sessions end <fixer_session_id>,
+          telec sessions end <reviewer_session_id>,
+          call {next_call} (state machine manages the round count and limit)
+5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+   - Do NOT end the session — keep it alive as a signal for human investigation
+   - Report the error status and session ID to the user for manual intervention
+6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-fix-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
 2. telec sessions end <session_id>
 3. telec todo mark-phase {args} --phase review --status pending --cwd <project-root>
 4. Call {next_call}
-5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+   - Do NOT end the session — keep it alive as a signal for human investigation
+   - Report the error status and session ID to the user for manual intervention
+6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-defer": """WHEN WORKER COMPLETES:
 1. Read worker output. Confirm deferrals_processed in state.yaml
 2. telec sessions end <session_id>
 3. Call {next_call}
-4. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+   - Do NOT end the session — keep it alive as a signal for human investigation
+   - Report the error status and session ID to the user for manual intervention
+5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
     "next-finalize": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data.
@@ -462,6 +510,222 @@ INSTRUCTIONS FOR ORCHESTRATOR:
    a. telec todo mark-phase {slug} --phase build --status complete --cwd <project-root>
    b. Call {next_call}
    If gates fail again, repeat from step 1."""
+
+
+def _extract_checklist_section(content: str, section_name: str) -> str | None:
+    """Extract content of a specific ## section from a checklist markdown file.
+
+    Returns the text from the ## {section_name} header to the next ## header,
+    or None if the section is not found.
+    """
+    lines = content.splitlines()
+    in_section = False
+    section_lines: list[str] = []
+    for line in lines:
+        if re.match(rf"^##\s+{re.escape(section_name)}", line):
+            in_section = True
+            continue
+        if in_section:
+            if re.match(r"^##\s+", line):
+                break
+            section_lines.append(line)
+    if not in_section:
+        return None
+    return "\n".join(section_lines)
+
+
+def _is_review_findings_template(content: str) -> bool:
+    """Check if review-findings.md looks like an unfilled scaffold template.
+
+    Returns True when the file is too short to contain real findings or has a
+    Findings header but no verdict, which indicates an unfilled stub.
+    """
+    if len(content.strip()) < 50:
+        return True
+    # Template marker: has a Findings section but no verdict written yet
+    has_findings_header = bool(re.search(r"^##\s+Findings\s*$", content, re.MULTILINE))
+    has_verdict = bool(re.search(r"APPROVE|REQUEST CHANGES", content))
+    if has_findings_header and not has_verdict:
+        return True
+    return False
+
+
+def verify_artifacts(worktree_cwd: str, slug: str, phase: str) -> tuple[bool, str]:
+    """Mechanically verify artifacts for a given phase.
+
+    Checks presence and completeness of artifacts for build or review phase.
+    Does not replace functional gates (make test, demo validate) — complements
+    them with artifact presence and consistency checks.
+
+    Returns:
+        (passed: bool, report: str) where report lists each check with PASS/FAIL.
+    """
+    results: list[str] = []
+    all_passed = True
+    todo_base = Path(worktree_cwd) / "todos" / slug
+
+    # General checks (all phases): state.yaml parseable and consistent
+    state_path = todo_base / "state.yaml"
+    if not state_path.exists():
+        all_passed = False
+        results.append("FAIL: state.yaml does not exist")
+    else:
+        try:
+            state_content = state_path.read_text(encoding="utf-8")
+            raw_state = yaml.safe_load(state_content)
+            if raw_state is None:
+                raw_state = {}
+            if not isinstance(raw_state, dict):
+                raise ValueError("state.yaml content is not a mapping")
+            state: dict[str, StateValue] = raw_state
+            results.append("PASS: state.yaml is parseable YAML")
+            # Phase field consistency
+            if phase == PhaseName.BUILD.value:
+                build_val = state.get(PhaseName.BUILD.value)
+                if build_val == PhaseStatus.PENDING.value:
+                    all_passed = False
+                    results.append(
+                        f"FAIL: state.yaml build={build_val!r} — still pending, expected 'complete' or later"
+                    )
+                else:
+                    results.append(f"PASS: state.yaml build={build_val!r}")
+            elif phase == PhaseName.REVIEW.value:
+                review_val = state.get(PhaseName.REVIEW.value)
+                if review_val not in (
+                    PhaseStatus.APPROVED.value,
+                    PhaseStatus.CHANGES_REQUESTED.value,
+                ):
+                    all_passed = False
+                    results.append(
+                        f"FAIL: state.yaml review={review_val!r} (expected 'approved' or 'changes_requested')"
+                    )
+                else:
+                    results.append(f"PASS: state.yaml review={review_val!r}")
+        except Exception as exc:
+            all_passed = False
+            results.append(f"FAIL: state.yaml is not parseable: {exc}")
+
+    if phase == PhaseName.BUILD.value:
+        # Check: implementation-plan.md exists and all checkboxes are [x]
+        plan_path = todo_base / "implementation-plan.md"
+        if not plan_path.exists():
+            all_passed = False
+            results.append("FAIL: implementation-plan.md does not exist")
+        else:
+            content = plan_path.read_text(encoding="utf-8")
+            unchecked = re.findall(r"^\s*-\s*\[ \]", content, re.MULTILINE)
+            if unchecked:
+                all_passed = False
+                results.append(
+                    f"FAIL: implementation-plan.md has {len(unchecked)} unchecked task(s) "
+                    f"(all must be [x] before review)"
+                )
+            else:
+                results.append("PASS: implementation-plan.md — all tasks checked [x]")
+
+        # Check: build commits exist on worktree branch beyond merge-base with main
+        try:
+            merge_base_result = subprocess.run(
+                ["git", "-C", worktree_cwd, "merge-base", "HEAD", "main"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if merge_base_result.returncode == 0:
+                base = merge_base_result.stdout.strip()
+                log_result = subprocess.run(
+                    ["git", "-C", worktree_cwd, "log", "--oneline", f"{base}..HEAD"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                has_commits = bool(log_result.stdout.strip())
+            else:
+                log_result = subprocess.run(
+                    ["git", "-C", worktree_cwd, "log", "--oneline", "-1"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                has_commits = bool(log_result.stdout.strip())
+            if has_commits:
+                results.append("PASS: build commits exist on worktree branch")
+            else:
+                all_passed = False
+                results.append("FAIL: no build commits found on worktree branch beyond main")
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            all_passed = False
+            results.append(f"FAIL: could not verify commits: {exc}")
+
+        # Check: quality-checklist.md Build Gates section has at least one [x]
+        checklist_path = todo_base / "quality-checklist.md"
+        if not checklist_path.exists():
+            all_passed = False
+            results.append("FAIL: quality-checklist.md does not exist")
+        else:
+            content = checklist_path.read_text(encoding="utf-8")
+            build_section = _extract_checklist_section(content, "Build Gates")
+            if build_section is None:
+                all_passed = False
+                results.append("FAIL: quality-checklist.md missing '## Build Gates' section")
+            else:
+                checked = re.findall(r"^\s*-\s*\[x\]", build_section, re.MULTILINE | re.IGNORECASE)
+                if not checked:
+                    all_passed = False
+                    results.append("FAIL: quality-checklist.md Build Gates — no checked items")
+                else:
+                    results.append(f"PASS: quality-checklist.md Build Gates — {len(checked)} checked item(s)")
+
+    elif phase == PhaseName.REVIEW.value:
+        # Check: review-findings.md exists and is not a scaffold template
+        findings_path = todo_base / "review-findings.md"
+        if not findings_path.exists():
+            all_passed = False
+            results.append("FAIL: review-findings.md does not exist")
+        else:
+            content = findings_path.read_text(encoding="utf-8")
+            if _is_review_findings_template(content):
+                all_passed = False
+                results.append("FAIL: review-findings.md appears to be an unfilled template")
+            else:
+                results.append("PASS: review-findings.md has real content (not template)")
+
+            # Check: verdict present
+            has_approve = REVIEW_APPROVE_MARKER in content
+            has_request_changes = "REQUEST CHANGES" in content
+            if not (has_approve or has_request_changes):
+                all_passed = False
+                results.append("FAIL: review-findings.md missing verdict (APPROVE or REQUEST CHANGES)")
+            else:
+                verdict = "APPROVE" if has_approve else "REQUEST CHANGES"
+                results.append(f"PASS: review-findings.md verdict: {verdict}")
+
+        # Check: quality-checklist.md Review Gates section has at least one [x]
+        checklist_path = todo_base / "quality-checklist.md"
+        if not checklist_path.exists():
+            all_passed = False
+            results.append("FAIL: quality-checklist.md does not exist")
+        else:
+            content = checklist_path.read_text(encoding="utf-8")
+            review_section = _extract_checklist_section(content, "Review Gates")
+            if review_section is None:
+                all_passed = False
+                results.append("FAIL: quality-checklist.md missing '## Review Gates' section")
+            else:
+                checked = re.findall(r"^\s*-\s*\[x\]", review_section, re.MULTILINE | re.IGNORECASE)
+                if not checked:
+                    all_passed = False
+                    results.append("FAIL: quality-checklist.md Review Gates — no checked items")
+                else:
+                    results.append(f"PASS: quality-checklist.md Review Gates — {len(checked)} checked item(s)")
+
+    else:
+        all_passed = False
+        results.append(f"FAIL: unknown phase '{phase}' (expected 'build' or 'review')")
+
+    summary = "PASS" if all_passed else "FAIL"
+    report = f"Artifact verification [{summary}] for {slug} phase={phase}\n" + "\n".join(results)
+    return all_passed, report
 
 
 def format_hitl_guidance(context: str) -> str:
@@ -2772,6 +3036,14 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             guidance=guidance,
             subfolder=f"trees/{resolved_slug}",
             next_call=f"telec todo work {resolved_slug}",
+            note=(
+                "PEER CONVERSATION NOTE: If you still have the reviewer session alive from the "
+                "previous review dispatch, prefer the direct conversation pattern from "
+                "POST_COMPLETION[next-review] instead of a fresh fix-review dispatch: "
+                "send fixer and reviewer session IDs to each other with --direct to let them "
+                "iterate without context-destroying churn. This fallback path is for when the "
+                "reviewer session has already ended."
+            ),
         )
 
     # Pending review still requires build completion + gates before dispatching review.
@@ -2826,6 +3098,21 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             next_call = f"telec todo work {resolved_slug}"
             return format_build_gate_failure(resolved_slug, gate_output, next_call)
         _log_next_work_phase(phase_slug, "gate_execution", gate_started, "run", "build_gates_passed")
+
+        # Artifact verification: check implementation plan checkboxes, commits, quality checklist.
+        verify_started = perf_counter()
+        artifacts_passed, artifacts_output = await asyncio.to_thread(
+            verify_artifacts, worktree_cwd, resolved_slug, PhaseName.BUILD.value
+        )
+        if not artifacts_passed:
+            _log_next_work_phase(phase_slug, "gate_execution", verify_started, "error", "artifact_verification_failed")
+            await asyncio.to_thread(
+                mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
+            )
+            await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
+            next_call = f"telec todo work {resolved_slug}"
+            return format_build_gate_failure(resolved_slug, artifacts_output, next_call)
+        _log_next_work_phase(phase_slug, "gate_execution", verify_started, "run", "artifact_verification_passed")
 
         # Review not started or still pending.
         limit_reached, current_round, max_rounds = _is_review_round_limit_reached(worktree_cwd, resolved_slug)

@@ -433,6 +433,20 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--cwd", desc="Project root directory (optional)"),
                 ],
             ),
+            "verify-artifacts": CommandDef(
+                desc="Mechanically verify artifacts for a phase (build or review)",
+                args="<slug>",
+                flags=[
+                    _H,
+                    Flag("--phase", desc="Phase: build or review"),
+                    Flag("--cwd", desc="Project root directory (optional)"),
+                ],
+                notes=[
+                    "Exits 0 on pass, 1 on failure.",
+                    "Checks artifact presence and consistency — does not run tests or demo.",
+                    "Integrated into next_work() before dispatching review.",
+                ],
+            ),
         },
     ),
     "roadmap": CommandDef(
@@ -1642,6 +1656,8 @@ def _handle_todo(args: list[str]) -> None:
         handle_todo_mark_phase(args[1:])
     elif subcommand == "set-deps":
         handle_todo_set_deps(args[1:])
+    elif subcommand == "verify-artifacts":
+        _handle_todo_verify_artifacts(args[1:])
     else:
         print(f"Unknown todo subcommand: {subcommand}")
         print(_usage("todo"))
@@ -1983,6 +1999,52 @@ def _demo_create(slug: str, project_root: Path) -> None:
     print(f"Demo promoted: {source.relative_to(project_root)} -> demos/{slug}/")
     print(f"Snapshot: {json.dumps(snapshot)}")
     raise SystemExit(0)
+
+
+def _handle_todo_verify_artifacts(args: list[str]) -> None:
+    """Handle telec todo verify-artifacts <slug> --phase <build|review> [--cwd <path>]."""
+    from teleclaude.core.next_machine.core import verify_artifacts
+
+    slug: str | None = None
+    phase: str | None = None
+    cwd = str(Path.cwd())
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("--phase",) and i + 1 < len(args):
+            phase = args[i + 1]
+            i += 2
+        elif arg in ("--cwd",) and i + 1 < len(args):
+            cwd = str(Path(args[i + 1]).expanduser().resolve())
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "verify-artifacts"))
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                print(_usage("todo", "verify-artifacts"))
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if slug is None:
+        print("Missing required argument: <slug>")
+        print(_usage("todo", "verify-artifacts"))
+        raise SystemExit(1)
+    if phase is None:
+        print("Missing required flag: --phase <build|review>")
+        print(_usage("todo", "verify-artifacts"))
+        raise SystemExit(1)
+    if phase not in ("build", "review"):
+        print(f"Invalid phase: {phase!r} (expected 'build' or 'review')")
+        raise SystemExit(1)
+
+    passed, report = verify_artifacts(cwd, slug, phase)
+    print(report)
+    raise SystemExit(0 if passed else 1)
 
 
 def _handle_todo_demo(args: list[str]) -> None:

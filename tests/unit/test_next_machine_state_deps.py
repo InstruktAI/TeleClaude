@@ -596,6 +596,7 @@ async def test_next_work_review_includes_merge_base_note():
             patch("teleclaude.core.next_machine.core.is_main_ahead", return_value=False),
             patch("teleclaude.core.next_machine.core._prepare_worktree"),
             patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
+            patch("teleclaude.core.next_machine.core.verify_artifacts", return_value=(True, "mocked")),
             patch(
                 "teleclaude.core.next_machine.core.compose_agent_guidance",
                 new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
@@ -656,6 +657,7 @@ async def test_next_work_does_not_block_review_when_main_ahead():
             patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
             patch("teleclaude.core.next_machine.core.is_main_ahead", return_value=True),
             patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
+            patch("teleclaude.core.next_machine.core.verify_artifacts", return_value=(True, "mocked")),
             patch(
                 "teleclaude.core.next_machine.core.compose_agent_guidance",
                 new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
@@ -693,6 +695,7 @@ async def test_next_work_blocks_when_review_round_limit_reached():
             patch("teleclaude.core.next_machine.core._prepare_worktree"),
             patch("teleclaude.core.next_machine.core.is_main_ahead", return_value=False),
             patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
+            patch("teleclaude.core.next_machine.core.verify_artifacts", return_value=(True, "mocked")),
         ):
             result = await next_work(db, slug=slug, cwd=tmpdir)
 
@@ -809,6 +812,7 @@ async def test_next_work_stale_review_approval_routes_back_to_review():
             patch("teleclaude.core.next_machine.core._prepare_worktree"),
             patch("teleclaude.core.next_machine.core._get_head_commit", return_value="new-sha"),
             patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
+            patch("teleclaude.core.next_machine.core.verify_artifacts", return_value=(True, "mocked")),
             patch(
                 "teleclaude.core.next_machine.core.compose_agent_guidance",
                 new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
