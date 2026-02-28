@@ -2916,8 +2916,8 @@ def _handle_events_list(args: list[str]) -> None:
         print("No event schemas found.")
         return
 
-    col_widths = [55, 8, 24, 8, 12]
-    headers = ["EVENT TYPE", "LEVEL", "DOMAIN", "VISIBLE", "ACTIONABLE"]
+    col_widths = [55, 8, 24, 8, 50, 12]
+    headers = ["EVENT TYPE", "LEVEL", "DOMAIN", "VISIBLE", "DESCRIPTION", "ACTIONABLE"]
     header_row = "  ".join(h.ljust(w) for h, w in zip(headers, col_widths))
     print(header_row)
     print("-" * (sum(col_widths) + 2 * (len(col_widths) - 1)))
@@ -2928,7 +2928,8 @@ def _handle_events_list(args: list[str]) -> None:
                 str(s.default_level).ljust(col_widths[1]),
                 str(s.domain).ljust(col_widths[2]),
                 str(s.default_visibility.value).ljust(col_widths[3]),
-                ("yes" if s.actionable else "no").ljust(col_widths[4]),
+                str(s.description).ljust(col_widths[4]),
+                ("yes" if s.actionable else "no").ljust(col_widths[5]),
             ]
         )
         print(row)
