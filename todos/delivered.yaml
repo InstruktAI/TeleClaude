@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: tui-footer-polish
+  date: '2026-02-28'
+  commit: 31e8d4e3
 - slug: harmonize-agent-notifications
   date: '2026-02-27'
 - slug: tui-footer-key-contract-restoration

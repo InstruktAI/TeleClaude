@@ -5,7 +5,6 @@
   after:
   - notification-service
 - slug: notification-service
-- slug: tui-footer-polish
 - slug: prepare-quality-runner
   after:
   - notification-service
