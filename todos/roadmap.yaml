@@ -71,3 +71,23 @@
   - event-envelope-schema
   description: 'Rich project bootstrapping: deep analysis, doc scaffolding, intelligence
     seeding'
+- slug: event-system-cartridges
+  after:
+  - event-platform-core
+- slug: event-alpha-container
+  after:
+  - event-platform-core
+- slug: event-domain-infrastructure
+  after:
+  - event-system-cartridges
+- slug: event-mesh-distribution
+  after:
+  - event-platform-core
+  - mesh-architecture
+- slug: event-signal-pipeline
+  after:
+  - event-domain-infrastructure
+- slug: event-domain-pillars
+  after:
+  - event-domain-infrastructure
+  - event-signal-pipeline
