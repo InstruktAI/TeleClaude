@@ -86,7 +86,10 @@ def test_extract_state_machines_regression() -> None:
 
     mermaid = module.generate_mermaid(phase_statuses, phase_transitions)
 
-    assert "p_PENDING --> p_COMPLETE: next-build" in mermaid
+    # next-build no longer calls mark-phase in POST_COMPLETION — the builder does it
+    # directly before reporting done. So this transition is no longer inferred from
+    # POST_COMPLETION by the diagram extractor.
+    assert "p_PENDING --> p_COMPLETE: next-build" not in mermaid
     assert "p_PENDING --> p_APPROVED: next-review" in mermaid
     assert "p_APPROVED --> p_PENDING: next-fix-review" in mermaid
 

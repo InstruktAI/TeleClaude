@@ -59,5 +59,9 @@ Execute the build phase for the slug and verify completion.
     - `todos/{slug}/state.yaml`
   - do not commit those orchestrator-managed drift files unless this build explicitly requires planning/state edits
   - if only those files are dirty, continue to completion without extra escalation about cleanliness
+- Before reporting BUILD COMPLETE, run these steps in order:
+  1. Run `telec todo verify-artifacts {slug} --phase build` — if it fails, fix the gaps and retry until it passes.
+  2. Call `telec todo mark-phase {slug} --phase build --status complete`.
+  3. Then report BUILD COMPLETE.
 - End with: `Ready for review.`
 - Summarize results in the completion report.

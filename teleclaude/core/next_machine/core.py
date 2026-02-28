@@ -2036,6 +2036,27 @@ def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> int:
     return copied
 
 
+def _commit_synced_todo_artifacts(worktree_cwd: str, slug: str) -> None:
+    """Commit any planning artifacts freshly seeded from main into the worktree."""
+    # Guard: skip if worktree_cwd is not inside a git repository (e.g. test tmpdir).
+    probe = subprocess.run(
+        ["git", "rev-parse", "--git-dir"],
+        cwd=worktree_cwd,
+        capture_output=True,
+    )
+    if probe.returncode != 0:
+        return
+    todo_path = f"todos/{slug}"
+    subprocess.run(["git", "add", todo_path], cwd=worktree_cwd, check=True)
+    result = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=worktree_cwd)
+    if result.returncode != 0:
+        subprocess.run(
+            ["git", "commit", "-m", f"chore: seed planning artifacts from main"],
+            cwd=worktree_cwd,
+            check=True,
+        )
+
+
 def _dirty_paths(repo: Repo) -> list[str]:
     """Return dirty paths from porcelain status output."""
     lines = repo.git.status("--porcelain").splitlines()
@@ -2928,6 +2949,8 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 f"copied main={main_sync_copied} slug={slug_sync_copied}" if total_synced > 0 else "unchanged_inputs"
             )
             _log_next_work_phase(phase_slug, "sync", sync_started, sync_decision, sync_reason)
+            if slug_sync_copied > 0:
+                await asyncio.to_thread(_commit_synced_todo_artifacts, worktree_cwd, resolved_slug)
     except RuntimeError as exc:
         _log_next_work_phase(phase_slug, "ensure_prepare", ensure_started, "error", "prep_failed")
         return format_error(
@@ -2965,7 +2988,6 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         await asyncio.to_thread(
             mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.COMPLETE.value
         )
-        await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
         build_status = PhaseStatus.COMPLETE.value
         _log_next_work_phase(
             phase_slug,
@@ -2986,7 +3008,6 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             await asyncio.to_thread(
                 mark_phase, worktree_cwd, resolved_slug, PhaseName.REVIEW.value, PhaseStatus.PENDING.value
             )
-            await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
             review_status = PhaseStatus.PENDING.value
             _log_next_work_phase(
                 phase_slug,
@@ -3068,8 +3089,6 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             await asyncio.to_thread(
                 mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
             )
-            # Sync reset state back to main
-            await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
             next_call = f"telec todo work {resolved_slug}"
             return format_build_gate_failure(resolved_slug, gate_output, next_call)
         _log_next_work_phase(phase_slug, "gate_execution", gate_started, "run", "build_gates_passed")
@@ -3084,7 +3103,6 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             await asyncio.to_thread(
                 mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
             )
-            await asyncio.to_thread(sync_slug_todo_from_worktree_to_main, cwd, resolved_slug)
             next_call = f"telec todo work {resolved_slug}"
             return format_build_gate_failure(resolved_slug, artifacts_output, next_call)
         _log_next_work_phase(phase_slug, "gate_execution", verify_started, "run", "artifact_verification_passed")

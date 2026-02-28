@@ -418,7 +418,7 @@ def test_sync_slug_todo_from_main_to_worktree_seeds_state_when_missing():
 
 
 def test_sync_slug_todo_from_main_to_worktree_overwrites_planning_files():
-    """Planning artifacts should always sync from main, even when worktree has them."""
+    """Sync is seed-only: existing worktree artifacts are never overwritten from main."""
     with tempfile.TemporaryDirectory() as tmpdir:
         slug = "test-slug"
         main_todo = Path(tmpdir) / "todos" / slug
@@ -429,10 +429,20 @@ def test_sync_slug_todo_from_main_to_worktree_overwrites_planning_files():
         (main_todo / "requirements.md").write_text("# Updated requirements\n", encoding="utf-8")
         (worktree_todo / "requirements.md").write_text("# Stale requirements\n", encoding="utf-8")
 
-        sync_slug_todo_from_main_to_worktree(tmpdir, slug)
+        # Seed-only: destination already exists, so nothing should be copied.
+        copied = sync_slug_todo_from_main_to_worktree(tmpdir, slug)
+        assert copied == 0
 
         final = (worktree_todo / "requirements.md").read_text(encoding="utf-8")
-        assert "Updated" in final
+        assert "Stale" in final  # worktree artifact preserved
+
+        # But a missing artifact IS seeded from main.
+        (worktree_todo / "implementation-plan.md").unlink(missing_ok=True)
+        (main_todo / "implementation-plan.md").write_text("# Plan\n", encoding="utf-8")
+        copied2 = sync_slug_todo_from_main_to_worktree(tmpdir, slug)
+        assert copied2 == 1
+        seeded = (worktree_todo / "implementation-plan.md").read_text(encoding="utf-8")
+        assert "Plan" in seeded
 
 
 def test_sync_main_to_worktree_skips_when_inputs_unchanged():
@@ -990,7 +1000,7 @@ def test_post_completion_finalize_requires_ready_and_apply():
     assert "FINALIZE_PRECONDITION_DIRTY_CANONICAL_MAIN" in instructions
     assert "FINALIZE_PRECONDITION_MAIN_AHEAD" in instructions
     assert "FINALIZE_PRECONDITION_GIT_STATE_UNKNOWN" in instructions
-    assert 'git -C "$MAIN_REPO" merge {args} --no-edit' in instructions
+    assert 'git -C "$MAIN_REPO" merge --squash {args}' in instructions
     assert "telec roadmap deliver {args}" in instructions
     assert 'git -C "$MAIN_REPO" push origin main' in instructions
 
