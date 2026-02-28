@@ -1,31 +1,19 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
 - slug: integrator-wiring
-  after:
-  - event-platform-core
   description: 'Wire integration module into production: event emission, integrator
     trigger, POST_COMPLETION replacement, cutover activation'
 - slug: history-search-upgrade
-  after:
-  - event-platform-core
 - slug: prepare-quality-runner
-  after:
-  - event-platform-core
   description: Automated DOR quality runner for todo preparation
 - slug: public-website-blog
   description: Public website with landing page and blog for InstruktAI/TeleClaude
 - slug: todo-dump-command
-  after:
-  - event-platform-core
   description: telec todo dump — fire-and-forget brain dump with notification trigger
 - slug: content-dump-command
-  after:
-  - event-platform-core
   description: telec content dump — fire-and-forget content dump with notification
     trigger
 - slug: mesh-architecture
-  after:
-  - event-platform-core
   description: 'P2P mesh: DNS bootstrap, gossip discovery, HTTPS transport, burst
     mitigation'
 - slug: mesh-trust-model
@@ -35,8 +23,6 @@
   description: Per-event trust evaluation, immune system model, trust rings, sovereignty
     handles
 - slug: event-envelope-schema
-  after:
-  - event-platform-core
   description: 'Five-layer envelope: Identity, Semantic, Data, Affordances, Resolution
     + core taxonomy'
 - slug: community-governance
@@ -48,7 +34,6 @@
 - slug: community-manager-agent
   after:
   - community-governance
-  - event-platform-core
   description: 'GitHub event handlers: voting threshold, todo creation, feedback summarization'
 - slug: service-publication
   after:
@@ -58,18 +43,13 @@
   description: 'Services as events: local contracts, mesh publish, transactional capabilities'
 - slug: telec-init-enrichment
   after:
-  - event-platform-core
   - event-envelope-schema
   description: 'Rich project bootstrapping: deep analysis, doc scaffolding, intelligence
     seeding'
 - slug: event-system-cartridges
-  after:
-  - event-platform-core
   description: 'System pipeline intelligence: trust evaluator, enrichment, correlation,
     classification cartridges'
 - slug: event-alpha-container
-  after:
-  - event-platform-core
   description: Docker sidecar sandbox for experimental/alpha cartridges
 - slug: event-domain-infrastructure
   after:
@@ -78,7 +58,6 @@
     hierarchy, personal subscriptions, autonomy matrix'
 - slug: event-mesh-distribution
   after:
-  - event-platform-core
   - mesh-architecture
   description: 'Cross-node event distribution: local/cluster/public visibility, cartridge
     publishing via mesh'
