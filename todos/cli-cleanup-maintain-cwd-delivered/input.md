@@ -24,10 +24,16 @@ These flags are an escape hatch that became a liability. Agents always run from 
 
 **Decision:** Strip `--cwd` and `--project-root` from all CLI arg parsing and CLI_SURFACE definitions. Every CLI handler uses `os.getcwd()` unconditionally. The underlying Python functions keep their `cwd` parameter — API routes and internal callers still pass it explicitly.
 
+Tests are the only consumer of `--project-root` — they pass it to point handlers at temp directories. Fix tests to use `monkeypatch.chdir(tmp_path)` instead, so they exercise the real code path.
+
 Files to touch:
 
-- `teleclaude/cli/telec.py` — remove `_PROJECT_ROOT`, `_PROJECT_ROOT_LONG` flag definitions; remove all `--project-root` parsing from every handler (~26 locations); remove from CLI_SURFACE flags
+- `teleclaude/cli/telec.py` — remove `_PROJECT_ROOT`, `_PROJECT_ROOT_LONG` flag definitions; remove all `--project-root` parsing from 18 handlers; remove from CLI_SURFACE flags
 - `teleclaude/cli/tool_commands.py` — remove all `--cwd` parsing from `handle_todo_prepare`, `handle_todo_mark_phase`, `handle_todo_set_deps`; always use `os.getcwd()`
+- `tests/integration/test_telec_cli_commands.py` — replace `--project-root` args with `monkeypatch.chdir(tmp_path)`
+- `tests/unit/test_telec_cli.py` — same
+- `tests/unit/test_next_machine_demo.py` — same
+- `tests/unit/test_bugs_list_status_parity.py` — same
 
 ## 3. Add `--include-delivered` / `--delivered-only` flags to `telec roadmap list`
 

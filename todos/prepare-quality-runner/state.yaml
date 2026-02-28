@@ -1,3 +1,19 @@
+build: pending
+review: pending
+deferrals_processed: false
 breakdown:
   assessed: true
   todos: []
+dor:
+  last_assessed_at: '2026-02-28T16:00:00Z'
+  score: 7
+  status: needs_work
+  schema_version: 1
+  blockers:
+    - notification-service build completion (roadmap dependency)
+    - handler registration API specification
+    - scorer implementation approach (AI vs deterministic)
+  actions_taken:
+    requirements_updated: true
+    implementation_plan_updated: true
+schema_version: 1

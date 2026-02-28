@@ -53,8 +53,27 @@ Three independent cleanup items in one pass. Order: remove maintain first (reduc
 
 **File(s):** `teleclaude/cli/telec.py`
 
-- [ ] In every handler that parses `--project-root` (~26 locations), remove the arg parsing branch and set `project_root = Path.cwd()` unconditionally
-- [ ] Affected handlers: `_handle_todo_create`, `_handle_todo_remove`, `_handle_todo_validate`, `_handle_todo_demo`, `_handle_roadmap_show`, `_handle_roadmap_add`, `_handle_roadmap_remove`, `_handle_roadmap_move`, `_handle_roadmap_deps`, `_handle_roadmap_freeze`, `_handle_roadmap_deliver`, `_handle_bugs_create`, `_handle_bugs_report`, `_handle_bugs_list`, and any others
+In each handler below, remove the `--project-root` arg parsing branch. The `project_root = Path.cwd()` line stays — it just becomes unconditional.
+
+- [ ] `_handle_sync` (line ~1427)
+- [ ] `_handle_watch` (line ~1451)
+- [ ] `_handle_docs_index` (line ~1529) — also remove the missing-value error branch
+- [ ] `_handle_docs_get` (line ~1586) — also remove the missing-value error branch
+- [ ] `_handle_todo_validate` (line ~1662)
+- [ ] `_handle_todo_demo` (line ~2016)
+- [ ] `_handle_todo_create` (line ~2066)
+- [ ] `_handle_todo_remove` (line ~2114)
+- [ ] `_handle_roadmap_show` (line ~2186)
+- [ ] `_handle_roadmap_add` (line ~2284)
+- [ ] `_handle_roadmap_remove` (line ~2336)
+- [ ] `_handle_roadmap_move` (line ~2378)
+- [ ] `_handle_roadmap_deps` (line ~2432)
+- [ ] `_handle_roadmap_freeze` (line ~2492)
+- [ ] `_handle_roadmap_deliver` (line ~2533)
+- [ ] `_handle_bugs_create` (line ~2596) — also remove from usage strings
+- [ ] `_handle_bugs_report` (line ~2647)
+- [ ] `_handle_bugs_list` (line ~2776)
+- [ ] Update docstrings that mention `--project-root` in handler docstrings
 
 ### Task 2.3: Remove `--cwd` parsing from tool_commands.py handlers
 
@@ -64,6 +83,17 @@ Three independent cleanup items in one pass. Order: remove maintain first (reduc
 - [ ] In `handle_todo_mark_phase`: remove `--cwd` arg parsing and required check, set `body["cwd"] = os.getcwd()` unconditionally
 - [ ] In `handle_todo_set_deps`: remove `--cwd` arg parsing and required check, set `cwd = os.getcwd()` unconditionally
 - [ ] Update docstrings/help text to remove `--cwd` references
+
+### Task 2.4: Fix tests to use monkeypatch.chdir
+
+**File(s):** `tests/integration/test_telec_cli_commands.py`, `tests/unit/test_telec_cli.py`, `tests/unit/test_next_machine_demo.py`, `tests/unit/test_bugs_list_status_parity.py`
+
+Tests are the only consumer of `--project-root`. Replace with `monkeypatch.chdir(tmp_path)` so they exercise the real code path.
+
+- [ ] `tests/integration/test_telec_cli_commands.py` — 3 occurrences (lines ~47, ~86, ~126)
+- [ ] `tests/unit/test_telec_cli.py` — 2 occurrences (lines ~307, ~332, ~336)
+- [ ] `tests/unit/test_next_machine_demo.py` — 1 occurrence (line ~514)
+- [ ] `tests/unit/test_bugs_list_status_parity.py` — 2 occurrences (lines ~28, ~32)
 
 ---
 
@@ -100,8 +130,8 @@ Three independent cleanup items in one pass. Order: remove maintain first (reduc
 
 ### Task 4.1: Tests
 
-- [ ] Run `make test` — all existing tests pass
-- [ ] Verify `telec todo mark-phase` and `telec todo set-deps` work without `--cwd`
+- [ ] Run `make test` — all existing tests pass (including refactored test files)
+- [ ] Verify no CLI command accepts `--project-root` or `--cwd`
 - [ ] Verify `telec roadmap list --include-delivered` and `--delivered-only` produce correct output
 
 ### Task 4.2: Quality Checks
