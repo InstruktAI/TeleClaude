@@ -26,7 +26,7 @@ Ownership:
 - [x] Deferrals justified and not hiding required scope
 - [x] Findings written in `review-findings.md`
 - [x] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [x] Critical issues resolved or explicitly blocked
+- [ ] Critical issues resolved or explicitly blocked
 - [x] Test coverage and regression risk assessed
 
 ## Finalize Gates (Finalizer)
