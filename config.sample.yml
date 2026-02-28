@@ -37,14 +37,14 @@ telegram:
     # Add other computer bot usernames here
   # Output QoS: pacing and coalescing to prevent Telegram flood-control churn
   qos:
-    enabled: true           # Enable output QoS scheduler for Telegram
-    group_mpm: 20           # Telegram group message-per-minute limit
-    output_budget_ratio: 0.8  # Fraction of group_mpm reserved for output updates
-    reserve_mpm: 4          # Additional mpm reserve for non-output messages
-    min_session_tick_s: 3.0  # Minimum seconds between dispatches for the same session
-    active_emitter_window_s: 10.0  # Seconds a session remains "active" after last dispatch
-    active_emitter_ema_alpha: 0.2  # EMA smoothing factor for active session count
-    rounding_ms: 100        # Cadence rounding granularity in milliseconds
+    enabled: true # Enable output QoS scheduler for Telegram
+    group_mpm: 20 # Telegram group message-per-minute limit
+    output_budget_ratio: 0.8 # Fraction of group_mpm reserved for output updates
+    reserve_mpm: 4 # Additional mpm reserve for non-output messages
+    min_session_tick_s: 3.0 # Minimum seconds between dispatches for the same session
+    active_emitter_window_s: 10.0 # Seconds a session remains "active" after last dispatch
+    active_emitter_ema_alpha: 0.2 # EMA smoothing factor for active session count
+    rounding_ms: 100 # Cadence rounding granularity in milliseconds
 
 discord:
   enabled: false
@@ -57,7 +57,7 @@ discord:
   # and persists IDs here. Do not edit manually.
   # Output QoS: coalescing mode (no hard cap; Discord library handles transport RL)
   qos:
-    mode: coalesce_only     # "off" | "coalesce_only" | "strict"
+    mode: coalesce_only # "off" | "coalesce_only" | "strict"
 
 # Agent binaries are resolved internally by platform policy:
 # macOS: ~/Applications/{Claude,Gemini,Codex}Launcher.app/...
@@ -85,30 +85,21 @@ ui:
   animations_enabled: true # Enable banner/logo animations
   animations_periodic_interval: 60 # Seconds between periodic animations
   animations_subset: [] # Empty list = all animations. Specify names to filter (e.g., ["FullSpectrumCycle", "LetterWave"])
-  # Preview/pane theming modes:
-  #   - full: vivid terminal palette with explicit contrast fg and pane tinting (legacy alias for agent_plus)
-  #   - semi: agent-aware tinted highlights while preserving native terminal foreground (legacy alias for agent)
-  #   - highlight: highlight-only preview treatment; native terminal foreground
-  #   - highlight2: two-cell highlight-only treatment
-  #   - agent: theme agent colors for pane foregrounds
-  #   - agent_plus: agent colors + stronger accent treatment
-  #   - off: pure native terminal rendering with muted/normal bg only
-  pane_theming_mode: full
 
 # Agent dispatch guidance (optional machine-level guidance for the orchestrator AI)
 agents:
   claude:
     enabled: true
-    strengths: "Superior reasoning, complex architecture, and deep technical investigation. Best for ambiguous tasks requiring high autonomy."
-    avoid: "Extremely large file reads that exceed context limits; repetitive mechanical edits without prior planning."
+    strengths: 'Superior reasoning, complex architecture, and deep technical investigation. Best for ambiguous tasks requiring high autonomy.'
+    avoid: 'Extremely large file reads that exceed context limits; repetitive mechanical edits without prior planning.'
   gemini:
     enabled: true
-    strengths: "Large-scale codebase analysis, multimodal context, and rapid information synthesis across many files. Best for massive context windows."
-    avoid: "Surgical precision edits in highly fragile files where reasoning must be strictly constrained."
+    strengths: 'Large-scale codebase analysis, multimodal context, and rapid information synthesis across many files. Best for massive context windows.'
+    avoid: 'Surgical precision edits in highly fragile files where reasoning must be strictly constrained.'
   codex:
     enabled: true
-    strengths: "High-speed code generation, refactoring, and following established patterns. Best for well-defined implementation tasks."
-    avoid: "Broad architectural planning or high-level strategic decisions."
+    strengths: 'High-speed code generation, refactoring, and following established patterns. Best for well-defined implementation tasks.'
+    avoid: 'Broad architectural planning or high-level strategic decisions.'
 
 # Speech-to-Text Configuration
 stt:

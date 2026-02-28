@@ -182,3 +182,24 @@ _(none)_
 ---
 
 Verdict: **APPROVE**
+
+---
+
+## Round 3 — Pragmatic Closure (Orchestrator-Owned)
+
+Round 3 was triggered by deferral processing. Reviewer found 2 Important edge-case findings:
+
+- **I5**: Worker terminates before retry when backoff > 5s (sleep-vs-fetch window mismatch in `_worker_loop`)
+- **I6**: `_on_worker_done` callback can orphan a replacement worker (task replacement race)
+
+**Decision**: Approve with documented follow-up. Rationale:
+
+1. Both findings are edge cases — narrow timing windows, no data loss, no silent message drops.
+2. Round 2 re-review already returned full APPROVE with requirements trace and paradigm-fit verification.
+3. Core durability/correctness requirements are fully met (15 DB + 7 manager + 5 integration tests).
+4. I5 and I6 are captured as follow-up items for a future hardening pass.
+
+Residual items for follow-up:
+
+- I5: Cap `asyncio.sleep()` in `_worker_loop` to match `_POLL_INTERVAL` so re-eligible messages are fetched promptly.
+- I6: Guard `_on_worker_done` replacement spawn against stale `_workers` dict entries.
