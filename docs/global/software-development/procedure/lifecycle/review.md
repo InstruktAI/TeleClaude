@@ -108,8 +108,12 @@ If manual verification is not possible in the review environment, the reviewer m
 
 12. Demo artifact review (required):
     - Read `todos/{slug}/demo.md` (or `demos/{slug}/demo.md`).
-    - Verify executable bash blocks are domain-specific and plausible — not stubs, not scaffolding defaults, not placeholder paths.
-    - If the demo looks shallow or untested, raise an Important finding.
+    - For each executable bash block, cross-check against the actual implementation:
+      - Do the commands, flags, and subcommands used actually exist in the codebase?
+      - Does expected output match what the code would produce? (Check return values, field names, message text.)
+      - Does the demo exercise features that were actually implemented — not planned, not old behavior?
+    - Raise a Critical finding if any block uses flags or commands that don't exist or were removed.
+    - Raise an Important finding if the demo is shallow (exercises nothing new), if expected output is fabricated, or if the demo could pass `demo validate` while being functionally wrong.
     - If `<!-- no-demo: reason -->` is present, verify the justification is legitimate.
 
 13. Logging hygiene check (required):
