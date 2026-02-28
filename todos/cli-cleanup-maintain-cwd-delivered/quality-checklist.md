@@ -24,12 +24,12 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [x] Requirements traced to implemented behavior
-- [x] Deferrals justified and not hiding required scope
-- [x] Findings written in `review-findings.md`
-- [x] Verdict recorded (APPROVE or REQUEST CHANGES)
+- [ ] Requirements traced to implemented behavior
+- [ ] Deferrals justified and not hiding required scope
+- [ ] Findings written in `review-findings.md`
+- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
 - [ ] Critical issues resolved or explicitly blocked
-- [x] Test coverage and regression risk assessed
+- [ ] Test coverage and regression risk assessed
 
 ## Finalize Gates (Finalizer)
 
