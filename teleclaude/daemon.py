@@ -81,6 +81,20 @@ from teleclaude.services.monitoring_service import MonitoringService
 from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ResumeAgentCommand, StartAgentCommand
+from teleclaude_events import (
+    EventDB,
+    EventLevel,
+    EventProcessor,
+    EventProducer,
+    EventVisibility,
+    Pipeline,
+    PipelineContext,
+    build_default_catalog,
+    configure_producer,
+)
+from teleclaude_events.cartridges import DeduplicationCartridge, NotificationProjectorCartridge
+from teleclaude_events.delivery.telegram import TelegramDeliveryAdapter
+from teleclaude_events.envelope import EventEnvelope as EventsEnvelope
 
 init_voice_handler = voice_message_handler.init_voice_handler
 
@@ -369,6 +383,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._shutdown_reason: str | None = None
         self.hook_outbox_task: asyncio.Task[object] | None = None
         self.notification_outbox_task: asyncio.Task[object] | None = None
+        self._event_db: EventDB | None = None
+        self._event_processor_task: asyncio.Task[object] | None = None
         self.todo_watcher_task: asyncio.Task[object] | None = None
         self.codex_transcript_watch_task: asyncio.Task[object] | None = None
         self.webhook_delivery_task: asyncio.Task[object] | None = None
@@ -1650,6 +1666,100 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         logger.info("Executed command in session %s: %s (polling=%s)", session_id[:8], command, start_polling)
         return True
 
+    async def _start_event_platform(self) -> None:
+        """Initialize and start the event processing platform."""
+        try:
+            # 1. Storage
+            self._event_db = EventDB()
+            await self._event_db.init()
+            logger.info("EventDB initialized")
+
+            # 2. Catalog
+            event_catalog = build_default_catalog()
+
+            # 3. Producer
+            redis_adapter = self.client.adapters.get("redis")
+            redis_client = None
+            if isinstance(redis_adapter, RedisTransport):
+                redis_client = await redis_adapter._get_redis()
+
+            if redis_client is None:
+                logger.warning("No Redis client available; event platform started in degraded mode (no Streams)")
+                return
+
+            event_producer = EventProducer(redis_client=redis_client)
+            configure_producer(event_producer)
+            logger.info("EventProducer configured")
+
+            # 4. Push callbacks
+            push_callbacks = []
+
+            # WebSocket push (if API server is running)
+            api_server = getattr(self.lifecycle, "api_server", None)
+            if api_server is not None:
+                api_server._event_db = self._event_db
+                push_callbacks.append(api_server._notification_push)
+
+            # Telegram delivery adapter (if any admin has a telegram chat_id)
+            if config.telegram:
+                people_dir = Path("~/.teleclaude/people").expanduser()
+                from teleclaude.config.loader import load_global_config, load_person_config
+                from teleclaude.notifications.telegram import send_telegram_dm
+
+                try:
+                    global_cfg = load_global_config()
+                    for person in global_cfg.people:
+                        if person.role != "admin":
+                            continue
+                        person_key = person.name.lower().replace(" ", "_")
+                        person_cfg_path = people_dir / person_key / "teleclaude.yml"
+                        if not person_cfg_path.exists():
+                            continue
+                        try:
+                            person_cfg = load_person_config(person_cfg_path)
+                        except Exception:
+                            continue
+                        chat_id = person_cfg.creds.telegram.chat_id if person_cfg.creds.telegram else None
+                        if chat_id:
+                            adapter = TelegramDeliveryAdapter(chat_id=chat_id, send_fn=send_telegram_dm)
+                            push_callbacks.append(adapter.on_notification)
+                            logger.info("TelegramDeliveryAdapter registered for admin %s", person.name)
+                except Exception:
+                    logger.warning("Could not load people config for Telegram delivery adapter")
+
+            # 5. Pipeline
+            context = PipelineContext(catalog=event_catalog, db=self._event_db, push_callbacks=push_callbacks)
+            pipeline = Pipeline([DeduplicationCartridge(), NotificationProjectorCartridge()], context)
+
+            # 6. Processor
+            computer_name = getattr(config, "computer", None)
+            computer_label = getattr(computer_name, "name", "local") if computer_name else "local"
+            event_processor = EventProcessor(
+                redis_client=redis_client,
+                pipeline=pipeline,
+                consumer_name=f"{computer_label}-{os.getpid()}",
+            )
+            self._event_processor_task = asyncio.create_task(event_processor.start(self.shutdown_event))
+            self._event_processor_task.add_done_callback(self._log_background_task_exception("event_processor"))
+            logger.info("EventProcessor started")
+
+            # 7. Emit daemon restarted event
+            await event_producer.emit(
+                EventsEnvelope(
+                    event="system.daemon.restarted",
+                    source="daemon",
+                    level=EventLevel.INFRASTRUCTURE,
+                    domain="system",
+                    visibility=EventVisibility.CLUSTER,
+                    description=f"Daemon restarted on {computer_label}",
+                    payload={"computer": computer_label, "pid": os.getpid()},
+                )
+            )
+            logger.info("Event 'system.daemon.restarted' emitted")
+
+        except Exception:
+            logger.exception("Event platform startup failed; continuing without event platform")
+
     async def _init_webhook_service(self) -> None:
         """Initialize the webhook service subsystem (contracts, handlers, dispatcher, bridge, delivery)."""
 
@@ -1868,6 +1978,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.notification_outbox_task.add_done_callback(self._log_background_task_exception("notification_outbox"))
             logger.info("Notification outbox worker started")
 
+            # Initialize event platform
+            await self._start_event_platform()
+
             # Initialize webhook service subsystem
             try:
                 await self._init_webhook_service()
@@ -2019,6 +2132,21 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("Launchd watch task stopped")
+
+        # Stop event processor
+        if self._event_processor_task:
+            self._event_processor_task.cancel()
+            try:
+                await self._event_processor_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("EventProcessor stopped")
+
+        # Close event DB
+        if self._event_db:
+            await self._event_db.close()
+            self._event_db = None
+            logger.info("EventDB closed")
 
         # Shutdown task registry (cancel all tracked background tasks)
         if hasattr(self, "task_registry"):

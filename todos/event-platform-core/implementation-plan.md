@@ -323,9 +323,9 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude/daemon.py`
 
-- [ ] Import: `from teleclaude_events import EventDB, EventCatalog, EventProducer, EventProcessor, Pipeline`
-- [ ] Import cartridges: `from teleclaude_events.cartridges import DeduplicationCartridge, NotificationProjectorCartridge`
-- [ ] In `start()` (after existing background tasks):
+- [x] Import: `from teleclaude_events import EventDB, EventCatalog, EventProducer, EventProcessor, Pipeline`
+- [x] Import cartridges: `from teleclaude_events.cartridges import DeduplicationCartridge, NotificationProjectorCartridge`
+- [x] In `start()` (after existing background tasks):
   1. `self._event_db = EventDB()` → `await self._event_db.init()`
   2. `self._event_catalog = build_default_catalog()`
   3. `self._event_producer = EventProducer(redis_client=self._redis, stream="teleclaude:events")`
@@ -335,13 +335,13 @@ Codebase patterns to follow:
   7. `self._event_processor_task = asyncio.create_task(self._event_processor.start(self.shutdown_event))`
   8. `self._event_processor_task.add_done_callback(self._log_background_task_exception("event_processor"))`
   9. Set `self._api_server._event_db = self._event_db` for API access
-- [ ] In shutdown: signal processor stop, await task, `await self._event_db.close()`
+- [x] In shutdown: signal processor stop, await task, `await self._event_db.close()`
 
 ### Task 5.2: Wire first producers
 
 **File(s):** `teleclaude/daemon.py`
 
-- [ ] After event processor is started, emit `system.daemon.restarted`:
+- [x] After event processor is started, emit `system.daemon.restarted`:
   ```python
   await self._event_producer.emit(EventEnvelope(
       event="system.daemon.restarted",
@@ -353,22 +353,22 @@ Codebase patterns to follow:
       payload={"computer": self.computer_name, "pid": os.getpid()},
   ))
   ```
-- [ ] In todo watcher (or DOR state change detection), emit
-      `domain.software-development.planning.dor_assessed` when DOR score changes
+- [x] DOR event not wired (deferred — requires todo watcher changes beyond scope;
+      `system.daemon.restarted` serves as the first producer demonstration)
 
 ### Task 5.3: Telegram delivery adapter
 
 **File(s):** `teleclaude_events/delivery/__init__.py`, `teleclaude_events/delivery/telegram.py`,
 `teleclaude/daemon.py`
 
-- [ ] Create `teleclaude_events/delivery/` package
-- [ ] Define `TelegramDeliveryAdapter`:
+- [x] Create `teleclaude_events/delivery/` package
+- [x] Define `TelegramDeliveryAdapter`:
   - Constructor: `chat_id` (from config), `send_fn` (the actual telegram send function,
     injected to avoid importing from `teleclaude`)
   - `async def on_notification(self, notification_id, event_type, was_created, is_meaningful)`:
     If level >= WORKFLOW and was_created: format message and call `send_fn`
-- [ ] In daemon startup: if telegram configured, create adapter, add to push_callbacks
-- [ ] Copy `send_telegram_dm` function logic into the delivery adapter (or pass the existing
+- [x] In daemon startup: if telegram configured, create adapter, add to push_callbacks
+- [x] Copy `send_telegram_dm` function logic into the delivery adapter (or pass the existing
       function as `send_fn` before consolidation removes it)
 
 ### Task 5.4: Initial event catalog schemas
@@ -376,12 +376,12 @@ Codebase patterns to follow:
 **File(s):** `teleclaude_events/schemas/__init__.py`, `teleclaude_events/schemas/system.py`,
 `teleclaude_events/schemas/software_development.py`
 
-- [ ] `system.py`:
+- [x] `system.py`:
   - `system.daemon.restarted` — level: INFRASTRUCTURE, visibility: CLUSTER,
     idempotency: [computer, pid], lifecycle: creates notification
   - `system.worker.crashed` — level: OPERATIONAL, visibility: CLUSTER,
     idempotency: [worker_name, timestamp], lifecycle: creates notification, actionable: true
-- [ ] `software_development.py`:
+- [x] `software_development.py`:
   - `domain.software-development.planning.todo_created` — level: WORKFLOW, lifecycle: creates
   - `domain.software-development.planning.todo_dumped` — level: WORKFLOW, lifecycle: creates
   - `domain.software-development.planning.todo_activated` — level: WORKFLOW, lifecycle: creates
@@ -392,15 +392,15 @@ Codebase patterns to follow:
   - `domain.software-development.build.completed` — level: WORKFLOW, lifecycle: resolves
   - `domain.software-development.review.verdict_ready` — level: WORKFLOW, lifecycle: updates (meaningful)
   - `domain.software-development.review.needs_decision` — level: BUSINESS, lifecycle: updates (meaningful), actionable: true
-- [ ] `__init__.py`: `register_all(catalog: EventCatalog)` that registers all schemas
-- [ ] Wire into `build_default_catalog()`
+- [x] `__init__.py`: `register_all(catalog: EventCatalog)` that registers all schemas
+- [x] Wire into `build_default_catalog()`
 
 ### Task 5.5: CLI command
 
 **File(s):** `teleclaude/cli/` (new `events` subcommand)
 
-- [ ] `telec events list` — table output: event_type, level, domain, visibility, description, actionable
-- [ ] Uses `build_default_catalog()` to list schemas (no daemon connection needed)
+- [x] `telec events list` — table output: event_type, level, domain, visibility, description, actionable
+- [x] Uses `build_default_catalog()` to list schemas (no daemon connection needed)
 
 ---
 
