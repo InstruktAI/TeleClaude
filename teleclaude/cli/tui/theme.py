@@ -293,14 +293,23 @@ def apply_tui_haze(hex_color: str) -> str:
 
 
 def get_billboard_background(focused: bool) -> str:
-    """Get billboard background color, ensuring standard haze application."""
+    """Get billboard background color, ensuring it plays along with TUI focus state.
+    
+    When focused, it is a visible dark gray. When unfocused, it receives a lighter
+    haze matching the rest of the inactive UI.
+    """
     base_bg = get_terminal_background()
-    # The billboard is a physical surface that is "hazed" by default relative to the terminal
-    plate_bg = apply_tui_haze(base_bg)
-    if not focused:
-        # Apply another layer of haze when the UI is inactive
-        plate_bg = apply_tui_haze(plate_bg)
-    return plate_bg
+    blend_target = "#ffffff" if _is_dark_mode else "#000000"
+    
+    if _is_dark_mode:
+        # Focused: 18% shift (#2d2d2d) - matches inactive agent pane base
+        # Unfocused: 23% shift (#3b3b3b) - subtle haze increase
+        pct = 0.18 if focused else 0.23
+    else:
+        # Light mode: 10% and 15% shift toward black
+        pct = 0.10 if focused else 0.15
+        
+    return blend_colors(base_bg, blend_target, pct)
 
 
 def get_agent_pane_inactive_background(agent: str, haze_percentage: float | None = None) -> str:
