@@ -2418,9 +2418,16 @@ class APIServer:
         else:
             self._refresh_debounce_task = asyncio.create_task(_debounced())
 
-    def _broadcast_payload(self, event: str, payload: dict[str, object]) -> None:  # guard: loose-dict - WS payload
-        """Send a WS payload to all connected clients."""
-        for ws in list(self._ws_clients):
+    def _broadcast_payload(  # guard: loose-dict - WS payload
+        self,
+        event: str,
+        payload: dict[str, object],
+        *,
+        targets: list["WebSocket"] | None = None,
+    ) -> None:
+        """Send a WS payload to connected clients. If targets is given, only those clients receive it."""
+        clients = targets if targets is not None else list(self._ws_clients)
+        for ws in clients:
 
             async def _send_with_timeout(client: WebSocket = ws) -> None:
                 try:
@@ -2478,14 +2485,21 @@ class APIServer:
             "event_type": event_type,
             "notification": row,
         }
-        # Only push to clients subscribed to the "notifications" topic
-        has_notifications_subscriber = any(
-            "notifications" in data_types
-            for computer_subs in self._client_subscriptions.values()
-            for data_types in computer_subs.values()
-        )
-        if has_notifications_subscriber:
-            self._schedule_refresh_broadcast(payload)
+        # Collect clients subscribed to the "notifications" topic; send only to them.
+        # Using _broadcast_payload directly (not _schedule_refresh_broadcast) avoids the
+        # 250ms debounce that would coalesce back-to-back notification payloads.
+        subscribed: list[WebSocket] = []
+        seen: set[int] = set()
+        for ws, computer_subs in self._client_subscriptions.items():
+            if id(ws) in seen:
+                continue
+            for data_types in computer_subs.values():
+                if "notifications" in data_types:
+                    subscribed.append(ws)
+                    seen.add(id(ws))
+                    break
+        if subscribed:
+            self._broadcast_payload("notification", payload, targets=subscribed)
 
     async def start(self) -> None:
         """Start the API server on Unix socket."""
