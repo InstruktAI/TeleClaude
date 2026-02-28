@@ -1,11 +1,11 @@
 phase: in_progress
 build: complete
-review: pending
+review: approved
 deferrals_processed: true
 breakdown:
   assessed: false
   todos: []
-review_round: 3
+review_round: 4
 max_review_rounds: 4
 review_baseline_commit: fc326c8d768d2622226b79574f1d7c2f62d0ad58
 unresolved_findings: []

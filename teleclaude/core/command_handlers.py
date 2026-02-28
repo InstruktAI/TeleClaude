@@ -23,7 +23,7 @@ from teleclaude.core import polling_coordinator, tmux_bridge, tmux_io, voice_mes
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
-from teleclaude.core.db import db
+from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     ErrorEventContext,
@@ -958,41 +958,29 @@ async def _wait_for_session_ready(session_id: str) -> Session | None:
     return None
 
 
-async def process_message(
-    cmd: ProcessMessageCommand,
+async def deliver_inbound(
+    row: InboundQueueRow,
     client: "AdapterClient",
     start_polling: StartPollingFunc,
 ) -> None:
-    """Process an incoming user message for a session."""
-    session_id = cmd.session_id
-    message_text = cmd.text
+    """Delivery core extracted from process_message. Called by the inbound queue worker.
 
-    logger.debug("Message for session %s: %s...", session_id[:8], message_text[:50])
+    Raises on any failure so the worker can retry with backoff.
+    """
+    session_id = row["session_id"]
+    message_text = row["content"]
+
+    logger.debug("Delivering inbound row %d for session %s: %s...", row["id"], session_id[:8], message_text[:50])
 
     session = await db.get_session(session_id)
     if not session:
-        logger.warning("Session %s not found", session_id)
-        return
+        raise RuntimeError(f"Session {session_id[:8]} not found")
 
-    # Gate: if bootstrap is still running, wait for it to finish before injecting
-    # user text into tmux.  This prevents the first customer message from being
-    # concatenated with the startup command line.
+    # Gate: wait for session to exit "initializing" before injecting into tmux.
     if session.lifecycle_status == "initializing":
         session = await _wait_for_session_ready(session_id)
         if not session:
-            logger.warning(
-                "Startup gate timeout for session %s; skipping tmux injection",
-                session_id[:8],
-            )
-            # Re-fetch for feedback — session may still exist even if gate timed out.
-            feedback_session = await db.get_session(session_id)
-            if feedback_session:
-                await client.send_message(
-                    feedback_session,
-                    "Session startup timed out. Please try again.",
-                    metadata=MessageMetadata(),
-                )
-            return
+            raise RuntimeError(f"Startup gate timeout for session {session_id[:8]}")
 
     if session.lifecycle_status == "headless" or not session.tmux_session_name:
         adopted = await _ensure_tmux_for_headless(
@@ -1002,11 +990,10 @@ async def process_message(
             resume_native=True,
         )
         if not adopted:
-            return
+            raise RuntimeError(f"Failed to adopt headless session {session_id[:8]}")
         session = adopted
 
     # Treat every user message as an explicit turn boundary in threaded mode.
-    # This ensures the next assistant output starts in a fresh threaded block.
     if is_threaded_output_enabled(session.active_agent):
         await client.break_threaded_turn(session)
 
@@ -1014,18 +1001,18 @@ async def process_message(
         session_id,
         last_message_sent=message_text[:200],
         last_message_sent_at=datetime.now(timezone.utc).isoformat(),
-        last_input_origin=cmd.origin,
+        last_input_origin=row["origin"],
     )
 
     # Broadcast user input to other adapters (e.g. TUI input -> Telegram)
-    if cmd.origin:
+    if row["origin"]:
         await client.broadcast_user_input(
             session,
             message_text,
-            cmd.origin,
-            actor_id=cmd.actor_id,
-            actor_name=cmd.actor_name,
-            actor_avatar_url=cmd.actor_avatar_url,
+            row["origin"],
+            actor_id=row["actor_id"],
+            actor_name=row["actor_name"],
+            actor_avatar_url=row["actor_avatar_url"],
         )
 
     active_agent = session.active_agent
@@ -1040,9 +1027,7 @@ async def process_message(
     )
 
     if not success:
-        logger.error("Failed to send command to session %s", session_id[:8])
-        await client.send_message(session, "Failed to send command to tmux", metadata=MessageMetadata())
-        return
+        raise RuntimeError(f"tmux delivery failed for session {session_id[:8]}")
 
     if (active_agent or "").lower() == "codex":
         polling_coordinator.seed_codex_prompt_from_message(session_id, message_text)
@@ -1050,6 +1035,29 @@ async def process_message(
     await db.update_last_activity(session_id)
     await start_polling(session_id, session.tmux_session_name)
     logger.debug("Started polling for session %s", session_id[:8])
+
+
+async def process_message(
+    cmd: ProcessMessageCommand,
+    client: "AdapterClient",
+    start_polling: StartPollingFunc,
+) -> None:
+    """Enqueue an incoming user message for durable delivery to the session."""
+    from teleclaude.core.inbound_queue import get_inbound_queue_manager
+
+    session_id = cmd.session_id
+    logger.debug("Enqueueing message for session %s: %s...", session_id[:8], cmd.text[:50])
+
+    await get_inbound_queue_manager().enqueue(
+        session_id=session_id,
+        origin=cmd.origin or "",
+        content=cmd.text,
+        actor_id=cmd.actor_id,
+        actor_name=cmd.actor_name,
+        actor_avatar_url=cmd.actor_avatar_url,
+        source_message_id=cmd.source_message_id,
+        source_channel_id=cmd.source_channel_id,
+    )
 
 
 async def keys(

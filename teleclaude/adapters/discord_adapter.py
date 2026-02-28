@@ -1649,6 +1649,7 @@ class DiscordAdapter(UiAdapter):
         actor_user_id = str(getattr(getattr(message, "author", None), "id", "")).strip() or "unknown"
         actor_name = self._discord_actor_name(getattr(message, "author", None), actor_user_id)
         actor_avatar_url = self._discord_actor_avatar_url(getattr(message, "author", None))
+        channel_id_str = str(getattr(getattr(message, "channel", None), "id", "")) or None
         cmd = ProcessMessageCommand(
             session_id=session.session_id,
             text=text,
@@ -1656,6 +1657,8 @@ class DiscordAdapter(UiAdapter):
             actor_id=f"discord:{actor_user_id}",
             actor_name=actor_name,
             actor_avatar_url=actor_avatar_url,
+            source_message_id=message_id or None,
+            source_channel_id=channel_id_str,
         )
         await self._dispatch_command(
             session,

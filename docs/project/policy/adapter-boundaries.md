@@ -15,6 +15,8 @@ description: 'Strict separation between adapters and core logic.'
 - Outbound adapter traffic is fire-and-forget; adapters broadcast but never block callers.
 - Adapters own their external API error handling and translate failures into domain-safe errors.
 - Core logic never imports adapter modules or vendor SDKs.
+- **Inbound boundary**: adapters enqueue incoming messages via `InboundQueueManager.enqueue()` and return immediately. Delivery logic (tmux send, session gate, broadcast) lives only in `deliver_inbound` (core). Adapters must not call delivery functions directly.
+- After successful enqueue, adapters show a platform-native typing indicator. This is the only adapter-side side effect of inbound message receipt.
 
 ## Rationale
 

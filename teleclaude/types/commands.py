@@ -156,6 +156,8 @@ class ProcessMessageCommand(InternalCommand):
     actor_id: Optional[str] = None
     actor_name: Optional[str] = None
     actor_avatar_url: Optional[str] = None
+    source_message_id: Optional[str] = None  # Platform message ID for inbound dedup
+    source_channel_id: Optional[str] = None  # Platform channel ID for additional context
 
     def __init__(
         self,
@@ -167,6 +169,8 @@ class ProcessMessageCommand(InternalCommand):
         actor_name: Optional[str] = None,
         actor_avatar_url: Optional[str] = None,
         request_id: Optional[str] = None,
+        source_message_id: Optional[str] = None,
+        source_channel_id: Optional[str] = None,
     ):
         super().__init__(command_type=CommandType.PROCESS_MESSAGE, request_id=request_id)
         self.session_id = session_id
@@ -175,6 +179,8 @@ class ProcessMessageCommand(InternalCommand):
         self.actor_id = actor_id
         self.actor_name = actor_name
         self.actor_avatar_url = actor_avatar_url
+        self.source_message_id = source_message_id
+        self.source_channel_id = source_channel_id
 
     def to_payload(self) -> Dict[str, object]:
         payload: Dict[str, object] = {"session_id": self.session_id, "text": self.text, "origin": self.origin}

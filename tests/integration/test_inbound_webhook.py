@@ -160,7 +160,7 @@ async def test_inbound_webhook_normalizer_exception_returns_400(monkeypatch, tmp
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_inbound_webhook_dispatch_failure_returns_warning(tmp_path, monkeypatch, daemon_with_mocked_telegram):
+async def test_inbound_webhook_dispatch_failure_returns_502(tmp_path, monkeypatch, daemon_with_mocked_telegram):
     async def failing_dispatch(self: object, _event: object) -> None:
         raise RuntimeError("dispatch failed")
 
@@ -181,5 +181,4 @@ async def test_inbound_webhook_dispatch_failure_returns_warning(tmp_path, monkey
             "X-GitHub-Event": "push",
         },
     )
-    assert response.status_code == 200
-    assert response.json() == {"status": "accepted", "warning": "dispatch error"}
+    assert response.status_code == 502

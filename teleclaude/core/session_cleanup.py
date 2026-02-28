@@ -186,6 +186,14 @@ async def _terminate_session_inner(
 
     await cleanup_session_resources(session, adapter_client, delete_channel=delete_channel)
 
+    # Expire any pending inbound messages before marking the session closed.
+    try:
+        from teleclaude.core.inbound_queue import get_inbound_queue_manager
+
+        await get_inbound_queue_manager().expire_session(session.session_id)
+    except RuntimeError:
+        pass  # Queue manager not initialized (e.g. tests) — skip
+
     if delete_db:
         await db.delete_session(session.session_id)
         logger.info("Deleted session %s from database", session.session_id[:8])

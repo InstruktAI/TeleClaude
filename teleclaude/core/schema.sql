@@ -213,6 +213,35 @@ CREATE TABLE IF NOT EXISTS webhook_outbox (
 CREATE INDEX IF NOT EXISTS idx_webhook_outbox_status ON webhook_outbox(status);
 CREATE INDEX IF NOT EXISTS idx_webhook_outbox_next_attempt ON webhook_outbox(next_attempt_at);
 
+-- Inbound message queue for guaranteed delivery (enqueue-first, worker-drain pattern)
+CREATE TABLE IF NOT EXISTS inbound_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    origin TEXT NOT NULL,                -- InputOrigin value (discord, telegram, terminal, webhook, ...)
+    message_type TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'voice', 'file')),
+    content TEXT NOT NULL DEFAULT '',    -- Text content (or empty for voice/file)
+    payload_json TEXT,                   -- JSON: voice URL, file_id, or other adapter-specific data
+    actor_id TEXT,
+    actor_name TEXT,
+    actor_avatar_url TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'delivered', 'failed', 'expired')),
+    created_at TEXT NOT NULL,
+    processed_at TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    next_retry_at TEXT,                  -- NULL = eligible immediately; future ISO = retry after this time
+    last_error TEXT,
+    locked_at TEXT,
+    source_message_id TEXT,              -- Platform message ID for dedup (e.g. Discord message.id)
+    source_channel_id TEXT               -- Platform channel ID for additional context
+);
+
+CREATE INDEX IF NOT EXISTS idx_inbound_queue_session_status
+    ON inbound_queue(session_id, status, next_retry_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_inbound_queue_source_dedup
+    ON inbound_queue(origin, source_message_id)
+    WHERE source_message_id IS NOT NULL;
+
 -- Session listeners for durable PUB-SUB stop notifications
 -- Survives daemon restarts (previously in-memory only)
 CREATE TABLE IF NOT EXISTS session_listeners (

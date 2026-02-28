@@ -662,6 +662,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: project/spec/inbound-queue
+  description: Architecture, schema, worker design, and retry policy for the durable
+    inbound message queue.
+  type: spec
+  scope: project
+  path: docs/project/spec/inbound-queue.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: project/spec/integration-orchestrator
   description: Event-driven singleton integrator contract for serial branch-to-main
     delivery.

@@ -925,7 +925,8 @@ class TestInboundEndpoints:
         response = client.post("/hooks/test", content=json.dumps({"kind": "message"}).encode())
         assert response.status_code == 400
 
-    def test_inbound_dispatch_exception_returns_accepted(self) -> None:
+    def test_inbound_dispatch_exception_returns_502(self) -> None:
+        """Dispatch failure returns 502 so platforms (WhatsApp, etc.) can retry."""
         from teleclaude.hooks.inbound import InboundEndpointRegistry, NormalizerRegistry
         from teleclaude.hooks.webhook_models import HookEvent
 
@@ -946,8 +947,7 @@ class TestInboundEndpoints:
 
         client = TestClient(app)
         response = client.post("/hooks/test", content=json.dumps({"kind": "message"}).encode())
-        assert response.status_code == 200
-        assert response.json() == {"status": "accepted", "warning": "dispatch error"}
+        assert response.status_code == 502
 
 
 class TestWebhookWorkerResilience:

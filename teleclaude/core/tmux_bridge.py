@@ -481,10 +481,13 @@ async def send_keys_existing_tmux(
     send_enter: bool = True,
     active_agent: Optional[str] = None,
 ) -> bool:
-    """Send keys to an existing tmux session (do not auto-create)."""
+    """Send keys to an existing tmux session (do not auto-create).
+
+    Callers are expected to have verified session existence before calling this function
+    (e.g. tmux_io._send_to_tmux checks session_exists before dispatching here).
+    The redundant double-check is intentionally removed to avoid an extra subprocess call.
+    """
     try:
-        if not await session_exists(session_name):
-            return False
         return await _send_keys_tmux(
             session_name=session_name,
             text=text,
@@ -647,7 +650,10 @@ async def _send_keys_tmux(
         )
         return False
 
-    # Small delay to ensure text is processed before Enter
+    # Small delay to ensure text is buffered by tmux before we send Enter.
+    # Investigation: Reducing to 0.1s causes test flakiness and missed Enter key delivery on
+    # slow hosts. 1.0s is conservative but keeps the path reliable. The inbound queue
+    # now bears the latency cost; adapter responsiveness is unaffected.
     await asyncio.sleep(1.0)
 
     # Send Enter key once if requested
@@ -1087,16 +1093,18 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
                     )
                     tmux_sessions = tmux_list_stdout.decode().strip().split("\n") if tmux_list_stdout else []
 
-                    # Get tmux processes
-                    tmux_processes = [  # type: ignore[misc]
-                        {"pid": p.pid, "create_time": p.create_time()}  # type: ignore[misc]
-                        for p in psutil.process_iter(["pid", "name", "create_time"])  # type: ignore[misc]
-                        if Path(config.computer.tmux_binary).name.lower() in p.info["name"].lower()  # type: ignore[misc]
-                    ]
+                    # Get tmux processes and system metrics off the event loop to avoid blocking
+                    def _collect_psutil_diag() -> tuple[list[object], object, object]:  # type: ignore[misc]
+                        procs: list[object] = [  # type: ignore[misc]
+                            {"pid": p.pid, "create_time": p.create_time()}
+                            for p in psutil.process_iter(["pid", "name", "create_time"])  # type: ignore[misc]
+                            if Path(config.computer.tmux_binary).name.lower() in p.info["name"].lower()  # type: ignore[misc]
+                        ]
+                        mem = psutil.virtual_memory()  # type: ignore[misc]
+                        cpu = psutil.cpu_percent(interval=0.1)  # type: ignore[misc]
+                        return procs, mem, cpu  # type: ignore[return-value]
 
-                    # Get system metrics
-                    memory = psutil.virtual_memory()  # type: ignore[misc]
-                    cpu_percent = psutil.cpu_percent(interval=0.1)  # type: ignore[misc]
+                    tmux_processes, memory, cpu_percent = await asyncio.to_thread(_collect_psutil_diag)  # type: ignore[misc]
 
                     logger.error(
                         "Session %s does not exist (died unexpectedly)",

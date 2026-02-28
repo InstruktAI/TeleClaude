@@ -6,6 +6,7 @@ This service wires required dependencies without using a generic dispatcher.
 
 from __future__ import annotations
 
+import functools
 from typing import TYPE_CHECKING, Awaitable, Callable
 
 from teleclaude.core.command_handlers import (
@@ -13,6 +14,7 @@ from teleclaude.core.command_handlers import (
     SessionDataPayload,
     agent_restart,
     close_session,
+    deliver_inbound,
     end_session,
     get_session_data,
     handle_file,
@@ -69,6 +71,14 @@ class CommandService:
         self._execute_auto_command = execute_auto_command
         self._queue_background_task = queue_background_task
         self._bootstrap_session = bootstrap_session
+
+        # Initialize the inbound queue manager singleton with delivery wired to this service's deps.
+        from teleclaude.core.inbound_queue import init_inbound_queue_manager
+
+        init_inbound_queue_manager(
+            functools.partial(deliver_inbound, client=client, start_polling=start_polling),
+            force=True,
+        )
 
     async def create_session(self, cmd: CreateSessionCommand) -> dict[str, str]:
         return await create_session(

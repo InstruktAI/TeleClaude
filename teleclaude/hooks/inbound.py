@@ -133,8 +133,8 @@ class InboundEndpointRegistry:
                     await self._dispatch(event)
             except Exception as exc:
                 logger.error("Dispatch failed for inbound %s: %s", path, exc, exc_info=True)
-                # Return 200 anyway to prevent platform retries
-                return {"status": "accepted", "warning": "dispatch error"}
+                # Return 502 so platforms (WhatsApp, etc.) can retry the delivery.
+                raise HTTPException(status_code=502, detail="dispatch error") from exc
 
             return {"status": "accepted"}
 
