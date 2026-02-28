@@ -579,6 +579,10 @@ class SearchlightSweep(Animation):
     theme_filter = "dark"
     supports_small = True
 
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
+
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.dark_mode:
             return {}
@@ -591,11 +595,11 @@ class SearchlightSweep(Animation):
         cx = int((frame * modulation * 2) % (width + 20)) - 10
         cy = height - 1
         
-        # Beam width oscillates
-        radius = 2 + int(math.sin(frame * 0.2) * 2)
+        # Beam width oscillates - ensure radius >= 1.0 to avoid ZeroDivisionError
+        radius = max(1.0, 2.0 + math.sin(frame * 0.2) * 2.0)
         
         result: dict[tuple[int, int], str | int] = {}
-        for x, y in PixelMap.get_all_pixels(self.is_big):
+        for x, y in self._all_pixels:
             dist = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
             if dist < radius:
                 # Inside the beam
@@ -603,8 +607,7 @@ class SearchlightSweep(Animation):
                 flare = int(200 + intensity * 55)
                 result[(x, y)] = rgb_to_hex(flare, flare, flare)
             elif x == cx and y < cy:
-                # Upward shadow wake logic could go here, but TUI is limited.
-                # Let's just dim pixels directly above the light source slightly
+                # Upward shadow wake
                 result[(x, y)] = "#151515" 
 
         return result

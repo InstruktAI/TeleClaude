@@ -302,9 +302,9 @@ def get_billboard_background(focused: bool) -> str:
     blend_target = "#ffffff" if _is_dark_mode else "#000000"
     
     if _is_dark_mode:
-        # Focused: 18% shift (#2d2d2d) - matches inactive agent pane base
-        # Unfocused: 23% shift (#3b3b3b) - subtle haze increase
-        pct = 0.18 if focused else 0.23
+        # Focused: 15% shift (#262626) - visible physical surface
+        # Unfocused: 20% shift (#333333) - subtle haze
+        pct = 0.15 if focused else 0.20
     else:
         # Light mode: 10% and 15% shift toward black
         pct = 0.10 if focused else 0.15
