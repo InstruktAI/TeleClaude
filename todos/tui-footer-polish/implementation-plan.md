@@ -49,13 +49,17 @@ Six independent fixes targeting the TUI footer, modals, and preparation view. Mo
 
 **File(s):** `teleclaude/cli/tui/app.py`, `teleclaude/cli/tui/widgets/telec_footer.py`
 
-- [ ] Investigate Textual key dispatch: does a view-level `s` binding (gated off by `check_action`) still consume the key, preventing app-level `s` from firing? Test empirically.
-- [ ] Add app-level binding: `a` → `action_cycle_animation` (show=True, description="Anim")
-- [ ] Add app-level binding: `s` → `action_toggle_tts` (show=True, description="TTS") — or `v` → "Voice" if `s` conflicts
-- [ ] Implement `action_cycle_animation()`: cycle `self.footer.animation_mode` (off → periodic → party → off)
-- [ ] Implement `action_toggle_tts()`: toggle `self.footer.tts_enabled`
-- [ ] Verify both appear in Row 2 and function when pressed
-- [ ] If `s` conflicts irreconcilably: switch to `v`, update description to "Voice", document the decision
+- [x] Investigate Textual key dispatch: does a view-level `s` binding (gated off by `check_action`) still consume the key, preventing app-level `s` from firing? Test empirically.
+- [x] Add app-level binding: `a` → `action_cycle_animation` (show=True, description="Anim")
+- [x] Add app-level binding: `s` → `action_toggle_tts` (show=True, description="TTS") — or `v` → "Voice" if `s` conflicts
+- [x] Implement `action_cycle_animation()`: cycle `self.footer.animation_mode` (off → periodic → party → off)
+- [x] Implement `action_toggle_tts()`: toggle `self.footer.tts_enabled`
+- [x] Verify both appear in Row 2 and function when pressed
+- [x] If `s` conflicts irreconcilably: switch to `v`, update description to "Voice", document the decision
+
+**Decision**: `s` conflicts irreconcilably — PreparationView's `start_work` binding is enabled on all
+TodoRow/ProjectHeader/TodoFileRow nodes (99% of cursor positions), so `s` is never available for
+app-level dispatch in practice. `v` (Voice) is used instead.
 
 ### Task 2.2: Roadmap reordering with Shift+Up/Down
 

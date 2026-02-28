@@ -126,6 +126,8 @@ class TelecApp(App[str | None]):
         ),
         Binding("r", "refresh", "Refresh", key_display="r"),
         Binding("t", "cycle_pane_theming", "Cycle Theme", key_display="t"),
+        Binding("a", "cycle_animation", "Anim", key_display="a"),
+        Binding("v", "toggle_tts", "Voice", key_display="v"),
     ]
 
     def __init__(
@@ -784,6 +786,25 @@ class TelecApp(App[str | None]):
             widget.refresh()
         for widget in self.query(TodoRow):
             widget.refresh()
+
+    # --- Animation and TTS keyboard actions ---
+
+    def action_cycle_animation(self) -> None:
+        """a: cycle animation mode (off → periodic → party → off)."""
+        cycle = ["off", "periodic", "party"]
+        status_bar = self.query_one("#telec-footer", TelecFooter)
+        idx = cycle.index(status_bar.animation_mode) if status_bar.animation_mode in cycle else 0
+        new_mode = cycle[(idx + 1) % len(cycle)]
+        self._cycle_animation(new_mode)
+
+    def action_toggle_tts(self) -> None:
+        """v: toggle TTS on/off.
+
+        Key choice: 's' was considered but conflicts irreconcilably with
+        PreparationView's 'start_work' binding enabled on all todo/project/file
+        nodes. 'v' (Voice) is used instead.
+        """
+        self._toggle_tts()
 
     # --- TTS toggle ---
 
