@@ -49,4 +49,4 @@ _(none)_
 
 3. **`Bioluminescence.__init__` type suppression** (`general.py:599`): The `# type: ignore[no-untyped-def]` could be avoided by explicitly matching the parent's constructor signature instead of using `*args, **kwargs`. Minor cleanliness.
 
-## Verdict: APPROVE
+Verdict: APPROVE
