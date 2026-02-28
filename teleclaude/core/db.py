@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Optional
 
@@ -1549,9 +1549,6 @@ class Db:
         dt = parse_iso_datetime(now_iso)
         if dt is None:
             dt = datetime.now(timezone.utc)
-        next_retry = (dt.replace(tzinfo=dt.tzinfo or timezone.utc)).isoformat()
-        from datetime import timedelta
-
         next_retry = (dt + timedelta(seconds=backoff_seconds)).isoformat()
 
         stmt = (
