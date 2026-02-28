@@ -1483,6 +1483,8 @@ class Db:
             source_channel_id=source_channel_id,
         )
         async with self._session() as db_session:
+            from sqlalchemy.exc import IntegrityError
+
             if source_message_id is not None:
                 from sqlmodel import select
 
@@ -1494,8 +1496,11 @@ class Db:
                 if existing.first() is not None:
                     return None
             db_session.add(row)
-            await db_session.commit()
-            await db_session.refresh(row)
+            try:
+                await db_session.commit()
+                await db_session.refresh(row)
+            except IntegrityError:
+                return None
             if row.id is None:
                 raise RuntimeError("Failed to insert inbound_queue row")
             return int(row.id)
