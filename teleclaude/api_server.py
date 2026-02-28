@@ -2418,10 +2418,10 @@ class APIServer:
         else:
             self._refresh_debounce_task = asyncio.create_task(_debounced())
 
-    def _broadcast_payload(  # guard: loose-dict - WS payload
+    def _broadcast_payload(
         self,
         event: str,
-        payload: dict[str, object],
+        payload: dict[str, object],  # guard: loose-dict - WS payload
         *,
         targets: list["WebSocket"] | None = None,
     ) -> None:

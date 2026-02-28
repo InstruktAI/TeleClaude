@@ -193,3 +193,76 @@ async def test_find_by_group_key(db: EventDB) -> None:
 
     missing = await db.find_by_group_key("slug", "nonexistent")
     assert missing is None
+
+
+@pytest.mark.asyncio
+async def test_update_notification_fields_with_reset(db: EventDB) -> None:
+    """reset_human_status=True resets human_status to 'unseen'."""
+    schema = _make_schema()
+    env = _make_envelope(slug="fields-task")
+    row_id = await db.insert_notification(env, schema)
+
+    # Mark as seen first
+    await db.update_human_status(row_id, "seen")
+    row = await db.get_notification(row_id)
+    assert row is not None
+    assert row["human_status"] == "seen"
+
+    # Update fields with reset: human_status should flip back to unseen
+    success = await db.update_notification_fields(
+        row_id,
+        "Updated description",
+        {"slug": "fields-task", "extra": True},
+        reset_human_status=True,
+    )
+    assert success is True
+    row = await db.get_notification(row_id)
+    assert row is not None
+    assert row["human_status"] == "unseen"
+    assert row["description"] == "Updated description"
+
+
+@pytest.mark.asyncio
+async def test_update_notification_fields_without_reset(db: EventDB) -> None:
+    """reset_human_status=False preserves existing human_status."""
+    schema = _make_schema()
+    env = _make_envelope(slug="silent-task")
+    row_id = await db.insert_notification(env, schema)
+
+    # Mark as seen
+    await db.update_human_status(row_id, "seen")
+
+    # Update fields without reset: human_status stays 'seen'
+    success = await db.update_notification_fields(
+        row_id,
+        "Silent update",
+        {"slug": "silent-task"},
+        reset_human_status=False,
+    )
+    assert success is True
+    row = await db.get_notification(row_id)
+    assert row is not None
+    assert row["human_status"] == "seen"
+    assert row["description"] == "Silent update"
+
+
+@pytest.mark.asyncio
+async def test_update_agent_status_preserves_claimed_at(db: EventDB) -> None:
+    """Transitioning from 'claimed' to 'in_progress' must not erase claimed_at."""
+    schema = _make_schema()
+    env = _make_envelope(slug="audit-task")
+    row_id = await db.insert_notification(env, schema)
+
+    # Claim the notification
+    await db.update_agent_status(row_id, "claimed", "agent-1")
+    row_claimed = await db.get_notification(row_id)
+    assert row_claimed is not None
+    assert row_claimed["claimed_at"] is not None
+    original_claimed_at = row_claimed["claimed_at"]
+
+    # Transition to in_progress: claimed_at must be preserved
+    await db.update_agent_status(row_id, "in_progress", "agent-1")
+    row_progress = await db.get_notification(row_id)
+    assert row_progress is not None
+    assert row_progress["agent_status"] == "in_progress"
+    assert row_progress["claimed_at"] == original_claimed_at
