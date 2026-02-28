@@ -103,9 +103,16 @@ class Banner(TelecMixin, Widget):
                             if not focused:
                                 color = apply_tui_haze(color)
                             
-                            # External light reflects on the billboard plate (modifies bgcolor)
-                            pixel_bg = color if is_ext else bg_color
-                            result.append(char, style=Style(color=color, bgcolor=pixel_bg))
+                            if is_ext:
+                                # Proportional Lighting:
+                                # Letter characters reflect more light than the billboard plate.
+                                # If it's a character cell, we use the full beam color.
+                                # The billboard background only reflects a fraction (30%) of the light.
+                                pixel_bg = blend_colors(bg_color, color, 0.3)
+                                result.append(char, style=Style(color=color, bgcolor=pixel_bg))
+                            else:
+                                # Internal Neon: billboard background stays at its base plate gray
+                                result.append(char, style=Style(color=color, bgcolor=bg_color))
                         else:
                             fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
                             result.append(char, style=Style(color=fg, bgcolor=bg_color))
@@ -160,8 +167,11 @@ class Banner(TelecMixin, Widget):
                             if not focused:
                                 color = apply_tui_haze(color)
                             
-                            pixel_bg = color if is_ext else bg_color
-                            result.append(char, style=Style(color=color, bgcolor=pixel_bg))
+                            if is_ext:
+                                pixel_bg = blend_colors(bg_color, color, 0.3)
+                                result.append(char, style=Style(color=color, bgcolor=pixel_bg))
+                            else:
+                                result.append(char, style=Style(color=color, bgcolor=bg_color))
                         else:
                             fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
                             result.append(char, style=Style(color=fg, bgcolor=bg_color))
