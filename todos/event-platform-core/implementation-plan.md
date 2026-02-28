@@ -281,7 +281,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude/api_server.py`
 
-- [ ] Add notification API routes (in `_setup_routes` or equivalent):
+- [x] Add notification API routes (in `_setup_routes` or equivalent):
   - `GET /api/notifications` → `_list_notifications()`
     Query params: level (int), domain (str), human_status, agent_status, visibility,
     since (ISO8601), limit (int, default 50, max 200), offset (int)
@@ -294,15 +294,15 @@ Codebase patterns to follow:
     Body: `{"status": str, "agent_id": str}`
   - `POST /api/notifications/{notification_id}/resolve` → `_resolve_notification()`
     Body: `{"summary": str, "link": str | None, "resolved_by": str}`
-- [ ] All endpoints return JSON. Error responses: 404 (not found), 400 (invalid input).
-- [ ] The `EventDB` instance is stored on the API server (set during daemon startup).
+- [x] All endpoints return JSON. Error responses: 404 (not found), 400 (invalid input).
+- [x] The `EventDB` instance is stored on the API server (set during daemon startup).
 
 ### Task 4.2: WebSocket notification push
 
 **File(s):** `teleclaude/api_server.py`
 
-- [ ] Add `notifications` as a subscribable topic in WebSocket handler
-- [ ] Define notification push callback (passed to pipeline as a push_callback):
+- [x] Add `notifications` as a subscribable topic in WebSocket handler
+- [x] Define notification push callback (passed to pipeline as a push_callback):
   ```python
   async def _notification_push(notification_id: int, event_type: str,
                                 was_created: bool, is_meaningful: bool) -> None:
@@ -313,7 +313,7 @@ Codebase patterns to follow:
       }
       self._schedule_refresh_broadcast(payload)  # existing broadcast mechanism
   ```
-- [ ] Filter: only push to clients subscribed to `notifications` topic
+- [x] Filter: only push to clients subscribed to `notifications` topic
 
 ---
 
