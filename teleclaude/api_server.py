@@ -2463,6 +2463,7 @@ class APIServer:
         self,
         notification_id: int,
         event_type: str,
+        level: int,  # noqa: ARG002
         was_created: bool,
         is_meaningful: bool,  # noqa: ARG002
     ) -> None:

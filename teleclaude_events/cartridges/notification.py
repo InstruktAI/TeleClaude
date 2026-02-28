@@ -55,7 +55,7 @@ class NotificationProjectorCartridge:
                 await context.db.resolve_notification(notification_id, event.payload)
 
         if notification_id is not None:
-            await _invoke_push_callbacks(context, notification_id, event.event, was_created, is_meaningful)
+            await _invoke_push_callbacks(context, notification_id, event.event, int(event.level), was_created, is_meaningful)
 
         return event
 
@@ -64,12 +64,13 @@ async def _invoke_push_callbacks(
     context: PipelineContext,
     notification_id: int,
     event_type: str,
+    level: int,
     was_created: bool,
     is_meaningful: bool,
 ) -> None:
     for cb in context.push_callbacks:
         try:
-            result = cb(notification_id, event_type, was_created, is_meaningful)
+            result = cb(notification_id, event_type, level, was_created, is_meaningful)
             if asyncio.iscoroutine(result):
                 await result
         except Exception:  # pylint: disable=broad-exception-caught

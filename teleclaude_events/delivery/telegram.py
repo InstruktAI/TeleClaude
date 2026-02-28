@@ -28,10 +28,13 @@ class TelegramDeliveryAdapter:
         self,
         notification_id: int,
         event_type: str,
+        level: int,
         was_created: bool,
         is_meaningful: bool,
     ) -> None:
         if not was_created:
+            return
+        if level < self._min_level:
             return
         try:
             message = f"[{event_type}] Notification #{notification_id} created."

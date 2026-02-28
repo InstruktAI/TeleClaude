@@ -56,7 +56,7 @@ async def test_emit_and_process_integration(redis_client, db: EventDB, tmp_path:
     producer = EventProducer(redis_client=redis_client, stream=stream_name)
     processed_ids: list[int] = []
 
-    async def on_notification(notification_id: int, event_type: str, was_created: bool, is_meaningful: bool) -> None:
+    async def on_notification(notification_id: int, event_type: str, level: int, was_created: bool, is_meaningful: bool) -> None:
         processed_ids.append(notification_id)
 
     context = PipelineContext(catalog=catalog, db=db, push_callbacks=[on_notification])
