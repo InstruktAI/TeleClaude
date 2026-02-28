@@ -16,8 +16,8 @@ ls -la ~/.teleclaude/events.db
 # 4. API responds (daemon API uses Unix socket, not HTTP port)
 curl -s --unix-socket /tmp/teleclaude-api.sock "http://localhost/api/notifications?limit=5" | python -m json.tool
 
-# 5. Daemon restart event exists
-curl -s --unix-socket /tmp/teleclaude-api.sock "http://localhost/api/notifications?event_type=system.daemon.restarted&limit=1" | python -m json.tool
+# 5. Daemon restart event exists (filter by domain=system)
+curl -s --unix-socket /tmp/teleclaude-api.sock "http://localhost/api/notifications?domain=system&limit=1" | python -m json.tool
 
 # 6. Old notification package removed
 python -c "from teleclaude.notifications import NotificationRouter" 2>&1 | grep -q "ModuleNotFoundError" && echo "PASS: old package removed" || echo "FAIL: old package still exists"
@@ -122,8 +122,8 @@ description. Adding a new event type requires only a schema definition — zero 
 ### Step 8: Dog-food in action
 
 ```bash
-# Daemon restart event (emitted automatically on startup)
-curl -s --unix-socket /tmp/teleclaude-api.sock "http://localhost/api/notifications?event_type=system.daemon.restarted" | python -m json.tool
+# Daemon restart event (emitted automatically on startup; filter by domain=system)
+curl -s --unix-socket /tmp/teleclaude-api.sock "http://localhost/api/notifications?domain=system" | python -m json.tool
 ```
 
 This was emitted automatically. The platform is already consuming its own events.
