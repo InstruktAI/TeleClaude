@@ -292,6 +292,17 @@ def apply_tui_haze(hex_color: str) -> str:
     return blend_colors(hex_color, blend_target, pct)
 
 
+def get_billboard_background(focused: bool) -> str:
+    """Get billboard background color, ensuring standard haze application."""
+    base_bg = get_terminal_background()
+    # The billboard is a physical surface that is "hazed" by default relative to the terminal
+    plate_bg = apply_tui_haze(base_bg)
+    if not focused:
+        # Apply another layer of haze when the UI is inactive
+        plate_bg = apply_tui_haze(plate_bg)
+    return plate_bg
+
+
 def get_agent_pane_inactive_background(agent: str, haze_percentage: float | None = None) -> str:
     colors = _AGENT_HEX_COLORS_DARK if _is_dark_mode else _AGENT_HEX_COLORS_LIGHT
     base_bg = get_terminal_background()

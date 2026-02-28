@@ -77,26 +77,12 @@ class Banner(TelecMixin, Widget):
             BANNER_HEX,
             NEUTRAL_MUTED_COLOR,
             apply_tui_haze,
-            blend_colors,
-            get_terminal_background,
-            is_dark_mode,
+            get_billboard_background,
         )
 
-        dark = is_dark_mode()
-        base_bg = get_terminal_background()
-        
-        # Billboard Plate: Slightly lighter in Night, slightly darker in Day
-        if dark:
-            plate_bg = blend_colors(base_bg, "#ffffff", 0.12)
-        else:
-            plate_bg = blend_colors(base_bg, "#000000", 0.15)
-            
-        pipe_color = NEUTRAL_MUTED_COLOR
-
         focused = getattr(self.app, "app_focus", True)
-        if not focused:
-            plate_bg = apply_tui_haze(plate_bg)
-            pipe_color = apply_tui_haze(pipe_color)
+        plate_bg = get_billboard_background(focused)
+        pipe_color = NEUTRAL_MUTED_COLOR if focused else apply_tui_haze(NEUTRAL_MUTED_COLOR)
 
         width = 84  # Shifted width with margins
 
@@ -139,25 +125,12 @@ class Banner(TelecMixin, Widget):
             BANNER_HEX,
             NEUTRAL_MUTED_COLOR,
             apply_tui_haze,
-            blend_colors,
-            get_terminal_background,
-            is_dark_mode,
+            get_billboard_background,
         )
 
-        dark = is_dark_mode()
-        base_bg = get_terminal_background()
-        
-        if dark:
-            plate_bg = blend_colors(base_bg, "#ffffff", 0.12)
-        else:
-            plate_bg = blend_colors(base_bg, "#000000", 0.15)
-            
-        pipe_color = NEUTRAL_MUTED_COLOR
-
         focused = getattr(self.app, "app_focus", True)
-        if not focused:
-            plate_bg = apply_tui_haze(plate_bg)
-            pipe_color = apply_tui_haze(pipe_color)
+        plate_bg = get_billboard_background(focused)
+        pipe_color = NEUTRAL_MUTED_COLOR if focused else apply_tui_haze(NEUTRAL_MUTED_COLOR)
 
         width = 40
         tui_width = self.size.width
