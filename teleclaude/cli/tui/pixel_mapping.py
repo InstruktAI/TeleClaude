@@ -44,6 +44,30 @@ class RenderTarget:
     width: int
     height: int
     letters: List[Tuple[int, int]]  # List of (start_x, end_x) tuples for each letter
+    
+    # Cached pixel lists
+    _all_pixels: Optional[List[Tuple[int, int]]] = None
+    _row_pixels: Dict[int, List[Tuple[int, int]]] = None
+    _col_pixels: Dict[int, List[Tuple[int, int]]] = None
+
+    def get_all_pixels(self) -> List[Tuple[int, int]]:
+        if self._all_pixels is None:
+            self._all_pixels = [(x, y) for y in range(self.height) for x in range(self.width)]
+        return self._all_pixels
+
+    def get_row_pixels(self, row_idx: int) -> List[Tuple[int, int]]:
+        if self._row_pixels is None:
+            self._row_pixels = {}
+        if row_idx not in self._row_pixels:
+            self._row_pixels[row_idx] = [(x, row_idx) for x in range(self.width)]
+        return self._row_pixels[row_idx]
+
+    def get_col_pixels(self, col_idx: int) -> List[Tuple[int, int]]:
+        if self._col_pixels is None:
+            self._col_pixels = {}
+        if col_idx not in self._col_pixels:
+            self._col_pixels[col_idx] = [(col_idx, y) for y in range(self.height)]
+        return self._col_pixels[col_idx]
 
 
 class TargetRegistry:
@@ -118,11 +142,7 @@ class PixelMap:
         if not target:
             return []
 
-        pixels = []
-        for y in range(target.height):
-            for x in range(target.width):
-                pixels.append((x, y))
-        return pixels
+        return target.get_all_pixels()
 
     @staticmethod
     def get_row_pixels(
@@ -140,10 +160,7 @@ class PixelMap:
         if not target:
             return []
 
-        if row_idx < 0 or row_idx >= target.height:
-            return []
-
-        return [(x, row_idx) for x in range(target.width)]
+        return target.get_row_pixels(row_idx)
 
     @staticmethod
     def get_column_pixels(
@@ -161,7 +178,4 @@ class PixelMap:
         if not target:
             return []
 
-        if col_idx < 0 or col_idx >= target.width:
-            return []
-
-        return [(col_idx, y) for y in range(target.height)]
+        return target.get_col_pixels(col_idx)

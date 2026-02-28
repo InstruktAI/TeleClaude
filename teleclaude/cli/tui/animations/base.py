@@ -17,6 +17,8 @@ class Animation(ABC):
     supports_small: bool = True
     # Theme filter: "dark", "light", or None (both)
     theme_filter: str | None = None
+    # If True, this animation is allowed to use colors darker than the letters
+    is_shadow_caster: bool = False
 
     def __init__(
         self,
@@ -77,16 +79,25 @@ class Animation(ABC):
         if not self.dark_mode:
             return hex_color  # Day mode on dark plate is safe
 
-        # Night mode logic: boost brightness if too dark
-        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-        try:
-            r, g, b = hex_to_rgb(hex_color)
-        except (ValueError, TypeError):
+        # Shadow casters are allowed to use dark colors for atmospheric effects
+        if self.is_shadow_caster:
             return hex_color
 
-        # If it's too dark (average RGB < 80), boost it to be vivid neon
-        if (r + g + b) / 3 < 80:
-            # Boost to at least 100 in each channel if it has some color,
-            # or just a bright gray if it's black.
-            return rgb_to_hex(max(r, 100), max(g, 100), max(b, 100))
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        try:
+            # Handle standard hex strings
+            if hex_color.startswith("#"):
+                r, g, b = hex_to_rgb(hex_color)
+            else:
+                # Fallback for unexpected formats (like color(N))
+                return hex_color
+        except (ValueError, TypeError, AttributeError):
+            return hex_color
+
+        # Floor: Animations should be strictly lighter than letters (#585858 / 88 RGB)
+        # Use a threshold of 100 to ensure they pop.
+        avg = (r + g + b) / 3
+        if avg < 100:
+            # Boost to at least 120 in each channel to ensure high-visibility neon
+            return rgb_to_hex(max(r, 120), max(g, 120), max(b, 120))
         return hex_color

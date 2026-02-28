@@ -81,14 +81,15 @@ class MultiGradient:
 
 
 # Spectrum: seven distinct colors that read well on both dark and light backgrounds.
+# Converted to HEX to support contrast guard math.
 _SPECTRUM_COLORS = (
-    "color(196)",  # Red
-    "color(226)",  # Yellow
-    "color(46)",  # Green
-    "color(51)",  # Cyan
-    "color(69)",  # Blue (lighter, visible on dark bg)
-    "color(201)",  # Magenta
-    "color(231)",  # White
+    "#ff0000",  # Red
+    "#ffff00",  # Yellow
+    "#00ff00",  # Green
+    "#00ffff",  # Cyan
+    "#5fafff",  # Blue (lighter, visible on dark bg)
+    "#ff00ff",  # Magenta
+    "#ffffff",  # White
 )
 
 

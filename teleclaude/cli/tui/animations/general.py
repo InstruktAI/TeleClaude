@@ -34,20 +34,12 @@ class LetterWaveLR(Animation):
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
-        # One letter active at a time, cycling through palette
         active_letter_idx = frame % num_letters
         color_pair = self.palette.get(frame // num_letters)
+        safe_color = self.get_contrast_safe_color(color_pair)
 
-        # To make it a "wave", we should probably clear other pixels or give them a base color.
-        # But if we want it to be sparse, we just return the active part.
-
-        # Let's try clearing all first for this specific animation to make it a distinct wave.
-        # In a real wave, we might want a trail. For now, simple.
-
-        # Redesigning Engine.update to optionally clear or overwrite.
-        # For now, let's just return ALL pixels for this animation.
         return {
-            p: (color_pair if i == active_letter_idx else -1)
+            p: (safe_color if i == active_letter_idx else -1)
             for i in range(num_letters)
             for p in PixelMap.get_letter_pixels(self.is_big, i)
         }
@@ -60,13 +52,14 @@ class LetterWaveRL(Animation):
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         active_letter_idx = (num_letters - 1) - (frame % num_letters)
         color_pair = self.palette.get(frame // num_letters)
+        safe_color = self.get_contrast_safe_color(color_pair)
 
         result = {}
         for i in range(num_letters):
             letter_pixels = PixelMap.get_letter_pixels(self.is_big, i)
             if i == active_letter_idx:
                 for p in letter_pixels:
-                    result[p] = color_pair
+                    result[p] = safe_color
             else:
                 for p in letter_pixels:
                     result[p] = -1
@@ -270,12 +263,13 @@ class DiagonalSweepDR(Animation):
         max_val = BIG_BANNER_WIDTH + BIG_BANNER_HEIGHT
         active = frame % max_val
         color_pair = self.palette.get(frame // max_val)
+        safe_color = self.get_contrast_safe_color(color_pair)
 
         result = {}
+        # Only return the active diagonal line
         for x, y in PixelMap.get_all_pixels(True):
-            # Shifted +1: adjust color math to match the physical cell
             if (x - 1) + y == active:
-                result[(x, y)] = color_pair
+                result[(x, y)] = safe_color
             else:
                 result[(x, y)] = -1
         return result
@@ -290,16 +284,15 @@ class DiagonalSweepDL(Animation):
         if not self.is_big:
             return {}
         max_val = BIG_BANNER_WIDTH + BIG_BANNER_HEIGHT
-        # Using x - y as diagonal invariant
-        # range: -BIG_BANNER_HEIGHT to BIG_BANNER_WIDTH
         offset = BIG_BANNER_HEIGHT
         active = (frame % max_val) - offset
         color_pair = self.palette.get(frame // max_val)
+        safe_color = self.get_contrast_safe_color(color_pair)
 
         result = {}
         for x, y in PixelMap.get_all_pixels(True):
             if (x - 1) - y == active:
-                result[(x, y)] = color_pair
+                result[(x, y)] = safe_color
             else:
                 result[(x, y)] = -1
         return result
@@ -365,26 +358,30 @@ class SunsetGradient(Animation):
 
 
 class CloudsPassing(Animation):
-    """TC2: Sky-blue background with fluffy white clouds drifting horizontally."""
+    """TC2: Fluffy white clouds drifting horizontally.
+    Rooftop atmosphere that lets the billboard show through.
+    """
 
     theme_filter = "light"
-    _SKY = "#87CEEB"
     _CLOUD = "#FFFFFF"
     _NUM_CLOUDS = 3
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
-        result: dict[tuple[int, int], str | int] = {p: self._SKY for p in PixelMap.get_all_pixels(self.is_big)}
+        result: dict[tuple[int, int], str | int] = {}
+        modulation = self.get_modulation(frame)
+        
         for i in range(self._NUM_CLOUDS):
-            speed = i + 1
-            cx = (frame * speed + i * (width // self._NUM_CLOUDS)) % width
+            speed = (i + 1) * modulation
+            cx = int(self.seed + frame * speed + i * (width // self._NUM_CLOUDS)) % width
             cy = i % height
+            color = self.get_contrast_safe_color(self._CLOUD)
             for dx in range(-2, 3):
                 nx = (cx + dx) % width
-                result[(nx, cy)] = self._CLOUD
+                result[(nx, cy)] = color
                 if height > 1:
-                    result[(nx, (cy + 1) % height)] = self._CLOUD
+                    result[(nx, (cy + 1) % height)] = color
         return result
 
 
@@ -398,12 +395,12 @@ class FloatingBalloons(Animation):
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
-        result: dict[tuple[int, int], str | int] = {p: -1 for p in PixelMap.get_all_pixels(self.is_big)}
+        result: dict[tuple[int, int], str | int] = {}
         period = height + 4
         for i in range(self._NUM_BALLOONS):
             cx = (i * 13 + (frame // period) * 7) % width
             cy = (height - 1) - (frame % period)
-            color = self._COLORS[i % len(self._COLORS)]
+            color = self.get_contrast_safe_color(self._COLORS[i % len(self._COLORS)])
             for dx in range(-1, 2):
                 for dy in range(-1, 1):
                     nx, ny = cx + dx, cy + dy
@@ -473,10 +470,11 @@ class StarryNight(Animation):
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         result = {}
         for p in PixelMap.get_all_pixels(self.is_big):
-            if random.random() < 0.05:
-                result[p] = self._STAR_WHITE if random.random() < 0.7 else self._STAR_YELLOW
+            if self.rng.random() < 0.05:
+                color = self._STAR_WHITE if self.rng.random() < 0.7 else self._STAR_YELLOW
+                result[p] = self.get_contrast_safe_color(color)
             else:
-                result[p] = self._BG
+                result[p] = -1
         return result
 
 
@@ -530,6 +528,7 @@ class HighSunBird(Animation):
 
     theme_filter = "light"
     supports_small = True
+    is_shadow_caster = True
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if self.dark_mode:
@@ -580,6 +579,7 @@ class SearchlightSweep(Animation):
 
     theme_filter = "dark"
     supports_small = True
+    is_shadow_caster = True
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
@@ -688,22 +688,22 @@ class OceanWaves(Animation):
 
 
 class FireBreath(Animation):
-    """TC10: Flickering fire heavy at the bottom, fading to ash near the top."""
+    """TC10: Flickering fire heavy at the bottom, fading near the top."""
 
     _hot = MultiGradient(["#FF0000", "#FF4500", "#FFD700"])
-    _COOL = "#404040"
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         result = {}
         for x, y in PixelMap.get_all_pixels(self.is_big):
             y_factor = y / max(height - 1, 1)
-            intensity = y_factor + random.random() * 0.3
-            if intensity < 0.35:
-                result[(x, y)] = self._COOL
+            # Fire is heavier at the bottom
+            intensity = y_factor + self.rng.random() * 0.3
+            if intensity >= 0.45:
+                color_factor = min(1.0, (intensity - 0.45) / 0.55)
+                result[(x, y)] = self.get_contrast_safe_color(self._hot.get(color_factor))
             else:
-                color_factor = min(1.0, (intensity - 0.35) / 0.65)
-                result[(x, y)] = self._hot.get(color_factor)
+                result[(x, y)] = -1
         return result
 
 
@@ -778,38 +778,36 @@ class Bioluminescence(Animation):
 
     theme_filter = "dark"
     _NUM_AGENTS = 8
-    _TRAIL_DECAY = 5
+    _TRAIL_DECAY = 10
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
-        self._agents = [[random.randint(0, width - 1), random.randint(0, height - 1)] for _ in range(self._NUM_AGENTS)]
+        self._agents = [[self.rng.randint(0, width - 1), self.rng.randint(0, height - 1)] for _ in range(self._NUM_AGENTS)]
         self._trails: dict[tuple[int, int], int] = {}
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         # Move agents randomly
         for agent in self._agents:
-            agent[0] = (agent[0] + random.choice([-1, 0, 1])) % width
-            agent[1] = (agent[1] + random.choice([-1, 0, 1])) % height
+            agent[0] = (agent[0] + self.rng.choice([-1, 0, 1])) % width
+            agent[1] = (agent[1] + self.rng.choice([-1, 0, 1])) % height
         # Decay existing trails
-        for pos in list(self._trails.keys()):
-            self._trails[pos] -= 1
-            if self._trails[pos] <= 0:
-                del self._trails[pos]
-        # Stamp agent positions into trails at full intensity
+        self._trails = {pos: val - 1 for pos, val in self._trails.items() if val > 1}
+        # Stamp agent positions into trails
         for agent in self._agents:
             self._trails[(agent[0], agent[1])] = self._TRAIL_DECAY
-        # Render
-        result: dict[tuple[int, int], str | int] = {p: "#000000" for p in PixelMap.get_all_pixels(self.is_big)}
+        # Render ONLY the trails (others are transparent)
+        result: dict[tuple[int, int], str | int] = {p: -1 for p in self._all_pixels}
         for pos, intensity in self._trails.items():
             factor = intensity / self._TRAIL_DECAY
             r = int(0x46 * factor)
             g = int(0x82 * factor)
             b = int(0xB4 * factor)
-            result[pos] = rgb_to_hex(r, g, b)
+            result[pos] = self.get_contrast_safe_color(rgb_to_hex(r, g, b))
         return result
 
 
@@ -819,7 +817,6 @@ GENERAL_ANIMATIONS = [
     LetterWaveRL,
     LineSweepTopBottom,
     LineSweepBottomTop,
-    MiddleOutVertical,
     WithinLetterSweepLR,
     WithinLetterSweepRL,
     WordSplitBlink,
@@ -831,7 +828,6 @@ GENERAL_ANIMATIONS = [
     SunsetGradient,
     CloudsPassing,
     FloatingBalloons,
-    NeonCyberpunk,
     AuroraBorealis,
     LavaLamp,
     StarryNight,
