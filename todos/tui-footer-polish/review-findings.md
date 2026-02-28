@@ -82,3 +82,9 @@ No new unit tests added. Builder justified this as all changes being UI/widget-l
 ## Verdict: REQUEST CHANGES
 
 One Important finding: cursor must follow the moved item on Shift+Up/Down to satisfy SC-8 and SC-9 intent. The fix is a 2-line change per action method.
+
+## Fixes Applied
+
+- Issue: Cursor did not follow moved root todo after `Shift+Up` / `Shift+Down` (`Important #1`).
+- Fix: Updated `action_move_todo_up` and `action_move_todo_down` to adjust `cursor_index` before `_refresh_data()` so selection follows the moved item through rebuild.
+- Commit: `eca2516e`
