@@ -94,6 +94,11 @@ class DiscordAdapter(UiAdapter):
         self._tree: object | None = None
         self._launcher_registration_view: object | None = None
 
+        # Guard against duplicate infrastructure provisioning on Discord reconnect.
+        # on_ready fires on initial connect AND on RESUME failure — re-running
+        # provisioning with a stale guild cache creates duplicate categories.
+        self._infrastructure_provisioned = False
+
         # Output QoS scheduler: coalesces stale payloads (coalesce_only mode by default).
         qos_policy = discord_policy(config.discord.qos)
         self._qos_scheduler: OutputQoSScheduler = OutputQoSScheduler(qos_policy)
@@ -327,12 +332,14 @@ class DiscordAdapter(UiAdapter):
     async def _ensure_discord_infrastructure(self) -> None:
         """Auto-provision the full Discord channel structure.
 
-        Creates three categories with their channels:
+        Creates categories with their channels:
         - Operations: #announcements (text), #general (text)
         - Help Desk: #customer-sessions (forum), #escalations (forum), #operator-chat (text)
-        - Projects - {computer}: #unknown (catch-all forum), per-project forums for session routing
+        - Projects - {computer}: #unknown (catch-all forum), per-project forums (ordered by trusted_dirs)
+        - Team: per-person text channels (from people config)
 
-        Idempotent: validates stored IDs before trusting them; clears stale IDs and re-provisions.
+        Idempotent: validates stored IDs before trusting them. When a cached ID
+        is stale, only searches by name — never creates — to prevent duplicates.
         Persists all created IDs to config.yml.
         """
         if self._client is None or self._guild_id is None:
@@ -411,9 +418,21 @@ class DiscordAdapter(UiAdapter):
                 changes["all_sessions_channel_id"] = forum_id
 
         await self._ensure_project_forums(guild, proj_cat)
+        await self._sync_project_forum_positions(proj_cat)
 
         # Build project-path-to-forum mapping for session routing
         self._build_project_forum_map()
+
+        # --- Category: Team (from people config) ---
+        try:
+            from teleclaude.config.loader import load_global_config
+
+            global_cfg = load_global_config()
+            if global_cfg.people:
+                team_cat = await self._ensure_category(guild, "Team", existing_cats, cat_changes)
+                await self._ensure_team_channels(guild, team_cat, global_cfg.people)
+        except Exception as exc:
+            logger.warning("Failed to provision team category: %s", exc)
 
         # Persist all changes
         if cat_changes:
@@ -431,22 +450,91 @@ class DiscordAdapter(UiAdapter):
         *,
         key: str | None = None,
     ) -> object | None:
-        """Resolve a category: from config cache, by name search, or create new."""
+        """Resolve a category idempotently: cached ID, then name search, then create.
+
+        Always searches by name before creating. Creation only happens when a
+        conclusive search confirms the category genuinely does not exist in Discord.
+        If the search is inconclusive (cache empty, API unavailable), refuses to
+        create to prevent duplicates.
+        """
         key = key if key is not None else name.lower().replace(" ", "_")
 
-        # Check if we already have the ID cached
+        # 1. Try the cached ID from config.yml
         cached_id = existing.get(key)
         if cached_id is not None:
             cat = await self._get_channel(cached_id)
             if cat is not None:
                 return cat
+            logger.warning("Cached category ID %s for '%s' is stale", cached_id, name)
 
-        # Find or create
+        # 2. Always search by name before considering creation.
+        #    Returns (category_or_None, conclusive: bool).
+        cat, conclusive = await self._find_category_by_name_robust(guild, name)  # type: ignore[misc]
+        if cat is not None:
+            cat_id = self._parse_optional_int(getattr(cat, "id", None))
+            if cat_id is not None:
+                cat_changes[key] = cat_id
+            return cat
+
+        # 3. If lookup was inconclusive, refuse to create — we can't confirm absence.
+        if not conclusive:
+            logger.warning("Category '%s' lookup inconclusive; skipping to prevent duplicates", name)
+            return None
+
+        # 4. Lookup was conclusive and category doesn't exist — safe to create.
         cat = await self._find_or_create_category(guild, name)
         cat_id = self._parse_optional_int(getattr(cat, "id", None)) if cat else None
         if cat_id is not None:
             cat_changes[key] = cat_id
         return cat
+
+    async def _find_category_by_name_robust(self, guild: object, name: str) -> tuple[object | None, bool]:
+        """Find a category by name using guild cache, falling back to API fetch.
+
+        Returns (category, conclusive) where conclusive=True means the search
+        reliably determined whether the category exists. If conclusive=False,
+        the caller must NOT create to avoid duplicates.
+        """
+        # Try guild cache first
+        categories = getattr(guild, "categories", None)
+        if categories is not None:
+            for cat in categories:
+                cat_name = getattr(cat, "name", None)
+                if isinstance(cat_name, str) and cat_name.lower() == name.lower():
+                    logger.debug("Found category by name (cache): %s (id=%s)", name, getattr(cat, "id", "?"))
+                    return cat, True
+            # Check if cache has entries — if so, the search is conclusive
+            has_entries = False
+            for _ in categories:
+                has_entries = True
+                break
+            if has_entries:
+                return None, True
+
+        # Cache is empty or None — might not be populated yet.
+        # Fall back to REST API fetch_channels to be safe.
+        fetch_fn = getattr(guild, "fetch_channels", None)
+        if not callable(fetch_fn):
+            logger.warning("Guild cache empty and no fetch_channels; cannot verify category '%s'", name)
+            return None, False
+
+        try:
+            fetched = await self._require_async_callable(fetch_fn, label="guild.fetch_channels")()
+            channels_list = list(fetched) if fetched is not None else []  # type: ignore[arg-type]
+            for ch in channels_list:
+                ch_type = getattr(ch, "type", None)
+                is_category = ch_type is not None and getattr(ch_type, "value", ch_type) == 4
+                if not is_category:
+                    continue
+                ch_name = getattr(ch, "name", None)
+                if isinstance(ch_name, str) and ch_name.lower() == name.lower():
+                    logger.debug("Found category by name (API): %s (id=%s)", name, getattr(ch, "id", "?"))
+                    return ch, True
+            # API returned results but category not found — conclusive absence
+            return None, True
+        except Exception as exc:
+            logger.warning("Failed to fetch channels for category lookup '%s': %s", name, exc)
+            return None, False
 
     def _build_project_forum_map(self) -> None:
         """Build project_path -> forum_id mapping from trusted dirs.
@@ -634,6 +722,211 @@ class DiscordAdapter(UiAdapter):
         if project_changes:
             self._persist_project_forum_ids(project_changes)
 
+    async def _sync_project_forum_positions(self, category: object | None) -> None:
+        """Move forums into the category and set positions to match trusted_dirs order.
+
+        Ensures all project forums belong to the correct category and that
+        most important projects (first in trusted_dirs) appear at the top.
+        """
+        if category is None:
+            return
+
+        category_id = self._parse_optional_int(getattr(category, "id", None))
+        if category_id is None:
+            return
+
+        trusted_dirs = config.computer.get_all_trusted_dirs()
+        position = 0
+        for td in trusted_dirs:
+            if td.discord_forum is None:
+                continue
+            channel = await self._get_channel(td.discord_forum)
+            if channel is None:
+                continue
+
+            edit_fn = getattr(channel, "edit", None)
+            if not callable(edit_fn):
+                continue
+
+            ch_cat_id = self._parse_optional_int(getattr(channel, "category_id", None))
+            current_pos = getattr(channel, "position", None)
+
+            needs_move = ch_cat_id != category_id
+            needs_reorder = current_pos != position
+
+            if needs_move or needs_reorder:
+                try:
+                    kwargs: dict[str, object] = {"position": position}
+                    if needs_move:
+                        kwargs["category"] = category
+                    await self._require_async_callable(edit_fn, label="forum sync")(
+                        **kwargs
+                    )
+                    if needs_move:
+                        logger.info("Moved forum '%s' into category %s at position %d", td.name, category_id, position)
+                    elif needs_reorder:
+                        logger.debug("Reordered forum '%s' to position %d", td.name, position)
+                except Exception as exc:
+                    logger.debug("Failed to sync forum '%s': %s", td.name, exc)
+            position += 1
+
+    async def _ensure_team_channels(
+        self,
+        guild: object,
+        category: object | None,
+        people: list[object],
+    ) -> None:
+        """Create a private text channel per person under the Team category.
+
+        Each channel is only visible to the person (matched by their Discord
+        user ID from per-person config) and the bot. Everyone else is denied.
+        """
+        if category is None:
+            return
+
+        from teleclaude.cli.config_handlers import get_person_config
+
+        for person in people:
+            name = getattr(person, "name", None)
+            if not isinstance(name, str) or not name.strip():
+                continue
+            slug = name.lower().replace(" ", "-")
+
+            # Resolve the person's Discord user ID from per-person config
+            discord_user_id: int | None = None
+            try:
+                person_cfg = get_person_config(name)
+                if person_cfg.creds.discord:
+                    discord_user_id = self._parse_optional_int(person_cfg.creds.discord.user_id)
+            except Exception:
+                pass
+
+            ch_id = await self._find_or_create_private_text_channel(
+                guild, category, slug, discord_user_id
+            )
+            # Ensure permissions are correct on existing channels too
+            if ch_id is not None and discord_user_id is not None:
+                await self._ensure_channel_private(ch_id, guild, discord_user_id)
+
+    async def _find_or_create_private_text_channel(
+        self,
+        guild: object,
+        category: object | None,
+        name: str,
+        owner_user_id: int | None,
+    ) -> int | None:
+        """Find or create a text channel with private permissions.
+
+        Denies @everyone view access, allows only the owner and the bot.
+        """
+        channels = getattr(guild, "channels", None)
+        if channels is None:
+            logger.warning("Guild channel cache not populated; refusing to create text channel '%s'", name)
+            return None
+
+        for ch in channels:
+            ch_name = getattr(ch, "name", None)
+            ch_type = getattr(ch, "type", None)
+            is_text = ch_type is not None and getattr(ch_type, "value", ch_type) == 0
+            if isinstance(ch_name, str) and ch_name.lower() == name.lower() and is_text:
+                found_id = self._parse_optional_int(getattr(ch, "id", None))
+                if found_id is not None:
+                    return found_id
+
+        # Build permission overwrites for a private channel
+        overwrites = self._build_private_overwrites(guild, owner_user_id)
+
+        create_fn = getattr(guild, "create_text_channel", None)
+        if not callable(create_fn):
+            return None
+
+        try:
+            create = self._require_async_callable(create_fn, label="guild.create_text_channel")
+            kwargs: dict[str, object] = {"name": name, "overwrites": overwrites}
+            if category is not None:
+                kwargs["category"] = category
+            channel = await create(**kwargs)
+            ch_id = self._parse_optional_int(getattr(channel, "id", None))
+            if ch_id is not None:
+                logger.info("Created private Discord text channel: %s (id=%s)", name, ch_id)
+            return ch_id
+        except Exception as exc:
+            logger.warning("Failed to create private text channel '%s': %s", name, exc)
+            return None
+
+    def _build_private_overwrites(
+        self, guild: object, owner_user_id: int | None
+    ) -> dict[object, object]:
+        """Build Discord permission overwrites: deny @everyone, allow owner + bot."""
+        PermissionOverwrite = getattr(self._discord, "PermissionOverwrite", None)
+        if PermissionOverwrite is None:
+            return {}
+
+        overwrites: dict[object, object] = {}
+
+        # Deny @everyone
+        default_role = getattr(guild, "default_role", None)
+        if default_role is not None:
+            overwrites[default_role] = PermissionOverwrite(
+                view_channel=False, read_messages=False
+            )
+
+        # Allow the bot
+        bot_user = getattr(self._client, "user", None) if self._client else None
+        if bot_user is not None:
+            overwrites[bot_user] = PermissionOverwrite(
+                view_channel=True, read_messages=True, send_messages=True,
+                manage_messages=True
+            )
+
+        # Allow the person
+        if owner_user_id is not None:
+            Object = getattr(self._discord, "Object", None)
+            get_member = getattr(guild, "get_member", None)
+            member = get_member(owner_user_id) if callable(get_member) else None
+            if member is not None:
+                overwrites[member] = PermissionOverwrite(
+                    view_channel=True, read_messages=True, send_messages=True
+                )
+            elif Object is not None:
+                # Use Object as fallback (discord.py accepts it for overwrites)
+                overwrites[Object(id=owner_user_id)] = PermissionOverwrite(
+                    view_channel=True, read_messages=True, send_messages=True
+                )
+
+        return overwrites
+
+    async def _ensure_channel_private(
+        self, channel_id: int, guild: object, owner_user_id: int
+    ) -> None:
+        """Verify and fix permissions on an existing team channel."""
+        channel = await self._get_channel(channel_id)
+        if channel is None:
+            return
+
+        default_role = getattr(guild, "default_role", None)
+        if default_role is None:
+            return
+
+        overwrites = getattr(channel, "overwrites", None)
+        if overwrites and default_role in overwrites:
+            existing = overwrites[default_role]
+            view_pair = getattr(existing, "pair", lambda: (None, None))()
+            if view_pair and len(view_pair) >= 2:
+                return
+
+        # Permissions not set — apply them
+        overwrites_dict = self._build_private_overwrites(guild, owner_user_id)
+        edit_fn = getattr(channel, "edit", None)
+        if callable(edit_fn):
+            try:
+                await self._require_async_callable(edit_fn, label="channel.edit overwrites")(
+                    overwrites=overwrites_dict
+                )
+                logger.info("Applied private permissions to team channel %s", channel_id)
+            except Exception as exc:
+                logger.warning("Failed to apply private permissions to channel %s: %s", channel_id, exc)
+
     async def _resolve_guild(self) -> object | None:
         """Resolve the configured guild by ID."""
         if self._client is None or self._guild_id is None:
@@ -653,17 +946,26 @@ class DiscordAdapter(UiAdapter):
         return guild
 
     async def _find_or_create_category(self, guild: object, name: str) -> object | None:
-        """Find an existing category by name, or create one."""
-        # Search existing categories
-        categories = getattr(guild, "categories", None)
-        if isinstance(categories, list):
-            for cat in categories:
-                cat_name = getattr(cat, "name", None)
-                if isinstance(cat_name, str) and cat_name.lower() == name.lower():
-                    logger.debug("Found existing Discord category: %s (id=%s)", name, getattr(cat, "id", "?"))
-                    return cat
+        """Find an existing category by name, or create one.
 
-        # Create new category
+        Only creates when the guild cache is confirmed populated (categories is
+        a list). If the cache is unavailable (None), refuses to create to
+        prevent duplicate categories from transient gateway issues.
+        """
+        categories = getattr(guild, "categories", None)
+        if categories is None:
+            logger.warning(
+                "Guild category cache not populated; refusing to create '%s' to prevent duplicates", name
+            )
+            return None
+
+        for cat in categories:
+            cat_name = getattr(cat, "name", None)
+            if isinstance(cat_name, str) and cat_name.lower() == name.lower():
+                logger.debug("Found existing Discord category: %s (id=%s)", name, getattr(cat, "id", "?"))
+                return cat
+
+        # Cache is populated and category not found — safe to create.
         create_fn = getattr(guild, "create_category", None)
         if not callable(create_fn):
             logger.debug("Guild has no create_category method; skipping category creation")
@@ -678,19 +980,24 @@ class DiscordAdapter(UiAdapter):
             return None
 
     async def _find_or_create_forum(self, guild: object, category: object | None, name: str, topic: str) -> int | None:
-        """Find an existing forum by name, or create one under the category."""
-        # Search existing channels for a matching forum
-        channels = getattr(guild, "channels", None)
-        if isinstance(channels, list):
-            for ch in channels:
-                ch_name = getattr(ch, "name", None)
-                if isinstance(ch_name, str) and ch_name.lower() == name.lower() and self._is_forum_channel(ch):
-                    found_id = self._parse_optional_int(getattr(ch, "id", None))
-                    if found_id is not None:
-                        logger.debug("Found existing Discord forum: %s (id=%s)", name, found_id)
-                        return found_id
+        """Find an existing forum by name, or create one under the category.
 
-        # Create new forum
+        Refuses to create when the guild channel cache is not populated.
+        """
+        channels = getattr(guild, "channels", None)
+        if channels is None:
+            logger.warning("Guild channel cache not populated; refusing to create forum '%s'", name)
+            return None
+
+        for ch in channels:
+            ch_name = getattr(ch, "name", None)
+            if isinstance(ch_name, str) and ch_name.lower() == name.lower() and self._is_forum_channel(ch):
+                found_id = self._parse_optional_int(getattr(ch, "id", None))
+                if found_id is not None:
+                    logger.debug("Found existing Discord forum: %s (id=%s)", name, found_id)
+                    return found_id
+
+        # Cache is populated and forum not found — safe to create.
         create_fn = getattr(guild, "create_forum", None)
         if not callable(create_fn):
             logger.warning("Guild has no create_forum method; cannot create '%s'", name)
@@ -711,20 +1018,27 @@ class DiscordAdapter(UiAdapter):
             return None
 
     async def _find_or_create_text_channel(self, guild: object, category: object | None, name: str) -> int | None:
-        """Find an existing text channel by name, or create one under the category."""
-        channels = getattr(guild, "channels", None)
-        if isinstance(channels, list):
-            for ch in channels:
-                ch_name = getattr(ch, "name", None)
-                ch_type = getattr(ch, "type", None)
-                # discord.ChannelType.text has value 0
-                is_text = ch_type is not None and getattr(ch_type, "value", ch_type) == 0
-                if isinstance(ch_name, str) and ch_name.lower() == name.lower() and is_text:
-                    found_id = self._parse_optional_int(getattr(ch, "id", None))
-                    if found_id is not None:
-                        logger.debug("Found existing Discord text channel: %s (id=%s)", name, found_id)
-                        return found_id
+        """Find an existing text channel by name, or create one under the category.
 
+        Refuses to create when the guild channel cache is not populated.
+        """
+        channels = getattr(guild, "channels", None)
+        if channels is None:
+            logger.warning("Guild channel cache not populated; refusing to create text channel '%s'", name)
+            return None
+
+        for ch in channels:
+            ch_name = getattr(ch, "name", None)
+            ch_type = getattr(ch, "type", None)
+            # discord.ChannelType.text has value 0
+            is_text = ch_type is not None and getattr(ch_type, "value", ch_type) == 0
+            if isinstance(ch_name, str) and ch_name.lower() == name.lower() and is_text:
+                found_id = self._parse_optional_int(getattr(ch, "id", None))
+                if found_id is not None:
+                    logger.debug("Found existing Discord text channel: %s (id=%s)", name, found_id)
+                    return found_id
+
+        # Cache is populated and channel not found — safe to create.
         create_fn = getattr(guild, "create_text_channel", None)
         if not callable(create_fn):
             logger.warning("Guild has no create_text_channel method; cannot create '%s'", name)
@@ -1078,15 +1392,6 @@ class DiscordAdapter(UiAdapter):
     ) -> str:
         _ = multi_message
 
-        # Format transcribed text with delimiters (Discord compaction workaround)
-        if metadata and metadata.is_transcription:
-            prefix = 'Transcribed text:\n\n"'
-            if text.startswith(prefix) and text.endswith('"'):
-                content = text[len(prefix) : -1]
-                computer_name = config.computer.name
-                # Bold header, plain content (no italics), bottom dash
-                text = f'**DISCORD@{computer_name}:**\n\n"{content}"\n'
-
         text = self._fit_message_text(text, context="send_message")
         logger.debug("[DISCORD SEND] text=%r", text[:100])
 
@@ -1380,6 +1685,12 @@ class DiscordAdapter(UiAdapter):
         # Mark gateway readiness immediately; follow-up bootstrap can be slow.
         self._ready_event.set()
 
+        # Guard: on_ready fires on initial connect AND on RESUME failure.
+        # Re-running provisioning with a stale guild cache creates duplicates.
+        if self._infrastructure_provisioned:
+            logger.debug("Discord infrastructure already provisioned, skipping on reconnect")
+            return
+
         # Auto-provision Discord infrastructure (category + forums)
         try:
             await self._ensure_discord_infrastructure()
@@ -1411,6 +1722,8 @@ class DiscordAdapter(UiAdapter):
                     await self._post_or_update_launcher(forum_id)
                 except Exception as exc:
                     logger.warning("Failed to post launcher for forum %s: %s", forum_id, exc)
+
+        self._infrastructure_provisioned = True
 
     async def _handle_discord_dm(self, message: object) -> None:
         """Handle Direct Message (no guild) — invite token binding or bound user messaging."""
