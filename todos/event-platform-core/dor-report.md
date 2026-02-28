@@ -94,9 +94,9 @@ and demo ("The dedup cartridge dropped the duplicate").
    Phase 6 removes the entire directory. The audit step (grep for call sites) should catch
    email.py references, but it's worth the builder being aware during consolidation.
 
-2. **Orphaned pipeline_state methods:** Task 2.2 still lists `get_pipeline_state` and
-   `set_pipeline_state` CRUD methods (lines 173-174) even though the `pipeline_state`
-   table was removed. Builder should drop these methods or repurpose them.
+2. **Orphaned pipeline_state methods:** ~~Task 2.2 listed `get_pipeline_state` and
+   `set_pipeline_state` CRUD methods~~ — resolved. Implementation plan updated to remove
+   these. Consumer group tracking via Redis handles pipeline state.
 
 ## Requirement-to-Task Mapping
 
