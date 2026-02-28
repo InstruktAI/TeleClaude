@@ -215,7 +215,20 @@ then API, then wiring, then consolidation.
       or state sweep — whichever detects dor changes)
 - [ ] Verify: notifications appear in the SQLite read model after emission
 
-### Task 5.3: Initial event catalog schemas
+### Task 5.3: Telegram delivery adapter
+
+**File(s):** `teleclaude_notifications/delivery/telegram.py`, `teleclaude/daemon.py`
+
+- [ ] Create `teleclaude_notifications/delivery/` package with a `TelegramDeliveryAdapter`
+- [ ] The adapter receives notification creation callbacks from the processor
+- [ ] Filter: only deliver notifications at level >= WORKFLOW (L2) or specific event types
+      configured for Telegram delivery (e.g., `review.needs_decision`, `system.worker_crashed`)
+- [ ] Reuse the existing `send_telegram_dm` function from `teleclaude/notifications/telegram.py`
+      (copy the function into the new package before Phase 6 removes the old package)
+- [ ] Register the Telegram adapter as a second push callback alongside WebSocket in daemon startup
+- [ ] Verify: a high-level notification triggers both WebSocket push and Telegram delivery
+
+### Task 5.5: Initial event catalog schemas
 
 **File(s):** `teleclaude_notifications/schemas/`
 
@@ -229,7 +242,7 @@ then API, then wiring, then consolidation.
   - `build.completed`, `review.verdict_ready`, `review.needs_decision`
 - [ ] Register all schemas in a default catalog factory function
 
-### Task 5.4: CLI command
+### Task 5.6: CLI command
 
 **File(s):** `teleclaude/cli/` (telec events subcommand)
 

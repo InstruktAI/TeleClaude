@@ -50,7 +50,7 @@ This is a document-quality check, not a code review. The orchestrator does not r
 1. **Check for user intervention first.** If the user has sent messages, spoken to the worker directly, or changed direction since the worker was dispatched, pause and confirm with the user before proceeding. The notification's implicit instruction ("continue the loop") may be stale.
 2. Verify output matches intended outcome.
 3. Execute POST_COMPLETION steps (orchestrator responsibility):
-   - Mark phase status using `telec todo mark-phase ... --cwd <project-root>` if applicable
+   - Mark phase status using `telec todo mark-phase ...` if applicable
    - **Terminate worker session: `telec sessions end <session_id> --computer <computer>`** ← ORCHESTRATOR OWNS THIS
    - Execute any phase-specific cleanup from the state machine instruction
 4. **Suppress no-op chatter.** Do not send no-op follow-up messages (`No new input`, `No further input`, `Remain idle`, `Continue standing by`).

@@ -735,7 +735,6 @@ def handle_todo_prepare(args: list[str]) -> None:
     Examples:
       telec todo prepare
       telec todo prepare my-feature
-      telec todo prepare my-feature --cwd /path/to/project
     """
     if "--help" in args or "-h" in args:
         print(handle_todo_prepare.__doc__ or "")
