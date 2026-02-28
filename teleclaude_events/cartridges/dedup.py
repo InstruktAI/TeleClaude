@@ -25,6 +25,12 @@ class DeduplicationCartridge:
         # Stamp the key onto the envelope so downstream cartridges can use it
         event = event.model_copy(update={"idempotency_key": key})
 
+        # Updates-only schemas must not be deduplicated — each event updates the existing
+        # notification and subsequent events for the same key must reach the projector.
+        lc = schema.lifecycle
+        if lc is not None and lc.updates and not lc.creates:
+            return event
+
         if await context.db.idempotency_key_exists(key):
             logger.debug("dedup: dropping duplicate event", event=event.event, key=key)
             return None
