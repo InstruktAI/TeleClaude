@@ -1,8 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: event-platform-core
-  description: 'Core platform: package, envelope, pipeline runtime, basic cartridges,
-    SQLite state, API, WebSocket, daemon hosting, consolidation'
 - slug: integrator-wiring
   after:
   - event-platform-core

@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: event-platform-core
+  date: '2026-03-01'
+  title: 'Core platform: package, envelope, pipeline runtime, basic cartridges, SQLite
+    state, API, WebSocket, daemon hosting, consolidation'
+  description: 'Core platform: package, envelope, pipeline runtime, basic cartridges,
+    SQLite state, API, WebSocket, daemon hosting, consolidation'
 - slug: animations-full-color
   date: '2026-02-28'
   commit: 96b2b972ba9ccbab1e4f754d850b48e04701d7d0
