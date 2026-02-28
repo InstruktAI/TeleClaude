@@ -51,6 +51,8 @@ class AnimationEngine:
         self._buffers_back: dict[str, _BufferDict] = {}
         self._is_enabled: bool = True
         self._has_active_animation: bool = False
+        # Optional callback when a new animation starts
+        self.on_animation_start: Optional[Callable[[str, Animation], None]] = None
 
         # Initialize default targets
         self._ensure_target("banner")
@@ -107,6 +109,8 @@ class AnimationEngine:
             slot.priority = priority
             slot.looping = False
             self._has_active_animation = True
+            if self.on_animation_start:
+                self.on_animation_start(target_name, animation)
         else:
             slot.queue.append((animation, priority))
 
@@ -159,6 +163,8 @@ class AnimationEngine:
                             slot.frame_count = 0
                             slot.priority = next_priority
                             slot.looping = False
+                            if self.on_animation_start:
+                                self.on_animation_start(target_name, next_animation)
                         else:
                             slot.animation = None
                             back_buffer.clear()

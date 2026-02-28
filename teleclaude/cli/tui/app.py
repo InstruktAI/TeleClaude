@@ -181,6 +181,7 @@ class TelecApp(App[str | None]):
         from teleclaude.cli.tui.animation_engine import AnimationEngine
 
         self._animation_engine = AnimationEngine()
+        self._animation_engine.on_animation_start = self._show_animation_toast
         self._periodic_trigger: object | None = None
         self._activity_trigger: object | None = None
         self._animation_timer: object | None = None
@@ -987,6 +988,15 @@ class TelecApp(App[str | None]):
         self.exit(result=RELOAD_EXIT)
 
     # --- Lifecycle ---
+
+    def _show_animation_toast(self, target: str, animation: Animation) -> None:
+        """Show a toast notification when an animation starts."""
+        self.notify(
+            f"Animation: {animation.__class__.__name__}",
+            title=f"TUI {target.capitalize()}",
+            severity="information",
+            timeout=2.0,
+        )
 
     async def action_quit(self) -> None:
         self._stop_animation()
