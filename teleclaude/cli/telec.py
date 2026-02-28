@@ -401,18 +401,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="[<slug>]",
                 flags=[
                     _H,
-                    Flag("--cwd", desc="Project root directory"),
+                    Flag("--cwd", desc="Project root directory (optional)"),
                     Flag("--no-hitl", desc="Disable human-in-the-loop gate"),
                 ],
             ),
             "work": CommandDef(
                 desc="Run the Phase B (work) state machine",
                 args="[<slug>]",
-                flags=[_H],
+                flags=[_H, Flag("--cwd", desc="Project root directory (optional)")],
             ),
             "maintain": CommandDef(
                 desc="Run the Phase D (maintain) state machine",
-                flags=[_H, Flag("--cwd", desc="Project root directory (required)")],
+                flags=[_H, Flag("--cwd", desc="Project root directory (optional)")],
             ),
             "mark-phase": CommandDef(
                 desc="Mark a work phase as complete/approved in state.yaml",
@@ -421,7 +421,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _H,
                     Flag("--phase", desc="Phase: build or review"),
                     Flag("--status", desc="Status: pending, started, complete, approved, changes_requested"),
-                    Flag("--cwd", desc="Project root directory (required)"),
+                    Flag("--cwd", desc="Project root directory (optional)"),
                 ],
             ),
             "set-deps": CommandDef(
@@ -430,7 +430,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     _H,
                     Flag("--after", desc="Dependency slug (repeatable)"),
-                    Flag("--cwd", desc="Project root directory (required)"),
+                    Flag("--cwd", desc="Project root directory (optional)"),
                 ],
             ),
         },

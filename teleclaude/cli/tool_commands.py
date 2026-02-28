@@ -729,13 +729,12 @@ def handle_todo_prepare(args: list[str]) -> None:
 
     Options:
       <slug>       Work item slug (optional; auto-selects if omitted)
-      --cwd <dir>  Project root directory (default: daemon's default_working_dir)
+      --cwd <dir>  Project root directory (default: project's default_working_dir)
       --no-hitl    Disable human-in-the-loop gate prompts
 
     Examples:
       telec todo prepare
       telec todo prepare my-feature
-      telec todo prepare my-feature --cwd /path/to/project
     """
     if "--help" in args or "-h" in args:
         print(handle_todo_prepare.__doc__ or "")
