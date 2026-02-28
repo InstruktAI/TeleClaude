@@ -689,6 +689,33 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: project/spec/jobs/next-prepare
+  description: Maintenance job that continuously improves todo readiness by assessing
+    and refining requirements and implementation plans.
+  type: spec
+  scope: project
+  path: docs/project/spec/jobs/next-prepare.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/jobs/next-prepare-draft
+  description: Draft phase job for next-prepare. Builds or refines todo preparation
+    artifacts without final readiness decisions.
+  type: spec
+  scope: project
+  path: docs/project/spec/jobs/next-prepare-draft.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/spec/jobs/next-prepare-gate
+  description: Gate phase job for next-prepare. Runs formal DOR validation and is
+    the only phase allowed to authorize readiness.
+  type: spec
+  scope: project
+  path: docs/project/spec/jobs/next-prepare-gate.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: project/spec/jobs/youtube-sync-subscriptions
   description: 'YouTube subscription tagger job: nightly AI classification of untagged
     channels.'
