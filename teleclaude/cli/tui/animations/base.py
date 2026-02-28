@@ -79,7 +79,14 @@ class Animation(ABC):
 
         # Night mode logic: boost brightness if too dark
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-        r, g, b = hex_to_rgb(hex_color)
-        if (r + g + b) / 3 < 60:
-            return rgb_to_hex(max(r, 80), max(g, 80), max(b, 80))
+        try:
+            r, g, b = hex_to_rgb(hex_color)
+        except (ValueError, TypeError):
+            return hex_color
+
+        # If it's too dark (average RGB < 80), boost it to be vivid neon
+        if (r + g + b) / 3 < 80:
+            # Boost to at least 100 in each channel if it has some color,
+            # or just a bright gray if it's black.
+            return rgb_to_hex(max(r, 100), max(g, 100), max(b, 100))
         return hex_color

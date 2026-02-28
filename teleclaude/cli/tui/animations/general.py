@@ -243,7 +243,8 @@ class WordSplitBlink(Animation):
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         all_pixels = PixelMap.get_all_pixels(self.is_big)
-        split_x = 33 if self.is_big else 15
+        # Shifted +1: adjust split boundary
+        split_x = 34 if self.is_big else 16
 
         color_pair = self.palette.get(frame // 2)
         parity = frame % 2
@@ -272,7 +273,8 @@ class DiagonalSweepDR(Animation):
 
         result = {}
         for x, y in PixelMap.get_all_pixels(True):
-            if x + y == active:
+            # Shifted +1: adjust color math to match the physical cell
+            if (x - 1) + y == active:
                 result[(x, y)] = color_pair
             else:
                 result[(x, y)] = -1
@@ -296,7 +298,7 @@ class DiagonalSweepDL(Animation):
 
         result = {}
         for x, y in PixelMap.get_all_pixels(True):
-            if x - y == active:
+            if (x - 1) - y == active:
                 result[(x, y)] = color_pair
             else:
                 result[(x, y)] = -1
@@ -621,6 +623,7 @@ class CinematicPrismSweep(Animation):
         # Choose two random hue anchors
         self.hue_start = self.rng.randint(0, 360)
         self.hue_end = (self.hue_start + self.rng.randint(60, 180)) % 360
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
 
     def _hsv_to_rgb(self, h: float, s: float, v: float) -> tuple[int, int, int]:
         i = int(h * 6.0)
@@ -812,7 +815,6 @@ class Bioluminescence(Animation):
 
 # Helper to provide some animations for random selection
 GENERAL_ANIMATIONS = [
-    FullSpectrumCycle,
     LetterWaveLR,
     LetterWaveRL,
     LineSweepTopBottom,
@@ -820,8 +822,6 @@ GENERAL_ANIMATIONS = [
     MiddleOutVertical,
     WithinLetterSweepLR,
     WithinLetterSweepRL,
-    RandomPixelSparkle,
-    CheckerboardFlash,
     WordSplitBlink,
     DiagonalSweepDR,
     DiagonalSweepDL,
@@ -838,8 +838,6 @@ GENERAL_ANIMATIONS = [
     MatrixRain,
     OceanWaves,
     FireBreath,
-    SynthwaveWireframe,
-    PrismaticShimmer,
     BreathingHeart,
     IceCrystals,
     Bioluminescence,
