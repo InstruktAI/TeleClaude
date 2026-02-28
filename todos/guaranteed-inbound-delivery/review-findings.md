@@ -181,4 +181,102 @@ _(none)_
 
 ---
 
-Verdict: **APPROVE**
+Verdict: ~~APPROVE~~ (superseded by Round 3)
+
+---
+
+## Round 3 Review
+
+### Paradigm-Fit Re-Assessment
+
+1. **Data flow**: Confirmed. CAS claim, retry, cleanup lifecycle follows `hook_outbox` patterns. Schema indexes support the query patterns.
+2. **Component reuse**: Confirmed. No copy-paste duplication. `InboundQueueManager` is a new abstraction, not a duplicate of existing components.
+3. **Pattern consistency**: Confirmed. Worker lifecycle, naming conventions, and adapter boundary discipline match adjacent code.
+
+### New Findings
+
+#### Critical
+
+_(none)_
+
+#### Important
+
+##### I5: Worker terminates before retry is eligible for backoff > 5s
+
+**File:** `teleclaude/core/inbound_queue.py:155-190`
+
+After a delivery failure, `mark_inbound_failed` sets `next_retry_at = now + backoff_seconds` in the DB. The worker then sleeps only `min(backoff, 5.0)` seconds (line 190) and loops back to `fetch_inbound_pending`. The fetch query filters rows where `next_retry_at > now_iso`, so for any backoff > 5s (which applies to every retry after the first: 10s, 20s, 40s, 80s, 160s, 300s), the failed row is not eligible. The fetch returns empty. The worker logs "queue empty" and terminates.
+
+The stranded message is only recovered by:
+
+- A new message for the same session (triggers `_ensure_worker`)
+- Daemon restart (triggers `startup()`)
+
+For an isolated session with no subsequent activity, the "guaranteed delivery" promise is broken — the message stalls indefinitely.
+
+**Trace:**
+
+```
+attempt 0 → backoff=5s → sleep 5.0s → fetch succeeds (barely) ✓
+attempt 1 → backoff=10s → sleep 5.0s → fetch at now+5s, retry_at=now+10s → not eligible → worker exits ✗
+attempt 2+ → progressively worse
+```
+
+**Fix:** Sleep the full backoff period instead of capping at 5s:
+
+```python
+await asyncio.sleep(backoff)
+```
+
+This is safe: `asyncio.sleep` is cooperative (doesn't block the event loop), the worker is per-session (no cross-session impact), and `task.cancel()` correctly interrupts the sleep via `CancelledError`.
+
+##### I6: `_on_worker_done` callback can orphan a replacement worker
+
+**File:** `teleclaude/core/inbound_queue.py:130-133`
+
+`_on_worker_done` calls `self._workers.pop(session_id, None)` unconditionally without checking whether the task being cleaned up is still the registered one. Race sequence:
+
+1. Worker A completes → `done()` returns True → done callback scheduled (not yet fired)
+2. New message arrives → `enqueue` → `_ensure_worker` → sees Worker A is done → creates Worker B → `self._workers[session_id] = Worker B`
+3. Worker A's done callback fires → `self._workers.pop(session_id, None)` → **removes Worker B**
+
+Worker B is now orphaned: running but not tracked. `expire_session` and `shutdown` will miss it because it's not in `_workers`. This can also break the "at most one worker per session" invariant if a third message spawns Worker C while Worker B is still running.
+
+In asyncio's single-threaded model, done callbacks are scheduled via `call_soon` (not fired immediately), creating a real window between task completion and callback execution.
+
+**Fix:** Guard the pop with an identity check:
+
+```python
+def _on_worker_done(self, session_id: str, task: asyncio.Task[None]) -> None:
+    if self._workers.get(session_id) is task:
+        self._workers.pop(session_id, None)
+    if not task.cancelled() and task.exception() is not None:
+        logger.warning(...)
+```
+
+#### Suggestions
+
+##### S2: `shutdown` log overstates cancelled task count
+
+**File:** `teleclaude/core/inbound_queue.py:223`
+
+`len(tasks)` includes tasks that were already done. The log says "N tasks cancelled" but N is the total snapshot count, not the count of tasks that actually had `cancel()` called.
+
+##### S3: Duplicate broadcast on retry
+
+`deliver_inbound` calls `broadcast_user_input()` before tmux delivery. If delivery fails after broadcast, the retry will broadcast again, causing duplicate messages on observer platforms. Consider moving broadcast after successful delivery or tracking broadcast state.
+
+### Test Coverage Gaps (related to new findings)
+
+- **I5**: The existing `test_worker_retries_on_failure` uses `_BACKOFF_SCHEDULE = [0, 0, 0]`, which masks the premature termination. No test exercises real backoff values where `next_retry_at` outlasts the worker sleep.
+- **I6**: No test creates a scenario where a new enqueue races with a completing worker's done callback.
+
+### Deferrals Assessment
+
+Unchanged from Round 2. All three deferrals (D1-D3) remain justified.
+
+---
+
+Verdict: **REQUEST CHANGES**
+
+2 Important findings (I5, I6) require fixes before approval. Both are simple, low-risk changes (1-2 lines each).

@@ -24,10 +24,10 @@ Ownership:
 
 - [x] Requirements traced to implemented behavior (Round 2: all 9 success criteria traced)
 - [x] Deferrals justified and not hiding required scope (D1-D3: UX enhancements, not correctness)
-- [x] Findings written in `review-findings.md` (Round 2 re-review appended)
-- [x] Verdict recorded (APPROVE — Round 2 re-review confirms all fixes)
-- [x] Critical issues resolved or explicitly blocked (Round 1: 4 Important fixed; Round 2: 0 new findings)
-- [x] Test coverage and regression risk assessed (15 DB + 7 manager + 5 integration; no regression risk)
+- [x] Findings written in `review-findings.md` (Round 3: 2 new Important findings — I5, I6)
+- [ ] Verdict recorded (REQUEST CHANGES — Round 3: I5 worker premature termination, I6 done callback race)
+- [ ] Critical issues resolved or explicitly blocked (Round 3: 2 Important findings pending fix)
+- [x] Test coverage and regression risk assessed (15 DB + 7 manager + 5 integration; I5/I6 untested edge cases identified)
 
 ## Finalize Gates (Finalizer)
 
