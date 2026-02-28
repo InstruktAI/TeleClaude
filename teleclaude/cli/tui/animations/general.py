@@ -345,29 +345,15 @@ class DiagonalSweepDR(Animation):
         color_pair = self.palette.get(frame // max_val)
         safe_color = self.get_contrast_safe_color(color_pair)
         
-        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-        try:
-            if safe_color.startswith("#"):
-                r, g, b = hex_to_rgb(safe_color)
-            else:
-                r, g, b = 150, 150, 150
-        except (ValueError, TypeError, AttributeError):
-            r, g, b = 150, 150, 150
-            
-        mid_color = safe_color
-        side_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7)))
-        base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
-
         result = {}
         for x, y in self._all_pixels:
             dist = abs(((x - 1) + y) - active)
-            if dist == 0:
-                current_color = mid_color
-            elif dist == 1:
-                current_color = side_color
+            # Volumetric surge width: 3 pixels
+            if dist < 3:
+                # Intensity falloff within the surge
+                result[(x, y)] = safe_color
             else:
-                current_color = base_color
-            result[(x, y)] = current_color
+                result[(x, y)] = -1
         return result
 
 
@@ -390,29 +376,13 @@ class DiagonalSweepDL(Animation):
         color_pair = self.palette.get(frame // max_val)
         safe_color = self.get_contrast_safe_color(color_pair)
 
-        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-        try:
-            if safe_color.startswith("#"):
-                r, g, b = hex_to_rgb(safe_color)
-            else:
-                r, g, b = 150, 150, 150
-        except (ValueError, TypeError, AttributeError):
-            r, g, b = 150, 150, 150
-            
-        mid_color = safe_color
-        side_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7)))
-        base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
-
         result = {}
         for x, y in self._all_pixels:
             dist = abs(((x - 1) - y) - active)
-            if dist == 0:
-                current_color = mid_color
-            elif dist == 1:
-                current_color = side_color
+            if dist < 3:
+                result[(x, y)] = safe_color
             else:
-                current_color = base_color
-            result[(x, y)] = current_color
+                result[(x, y)] = -1
         return result
 
 
@@ -761,15 +731,20 @@ class SearchlightSweep(Animation):
         self._all_pixels = PixelMap.get_all_pixels(self.is_big)
 
     def _is_batman_mask(self, x: int, y: int, cx: int, cy: int) -> bool:
-        """Simple relative mask for a Batman-like silhouette inside the beam."""
-        dx, dy = x - cx, y - (cy - 3) # Center the mask slightly above the bottom light source
+        """High-fidelity relative mask for a Batman-like silhouette."""
+        # Normalize coordinates relative to mask center (cy-3)
+        dx, dy = x - cx, y - (cy - 3)
+        adx = abs(dx)
         
-        # Ears
-        if abs(dx) == 1 and dy == -1: return True
-        # Head/Body
-        if abs(dx) <= 1 and dy == 0: return True
-        # Wings
-        if abs(dx) <= 2 and dy == 1: return True
+        # Row-by-row mask logic
+        if dy == -1: # Ears
+            return adx == 1
+        if dy == 0:  # Head and upper body
+            return adx <= 1
+        if dy == 1:  # Upper wings
+            return adx <= 3
+        if dy == 2:  # Lower wings
+            return adx <= 2
         return False
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
@@ -781,23 +756,23 @@ class SearchlightSweep(Animation):
         
         modulation = self.get_modulation(frame)
         # Searchlight center sweeps horizontally at the bottom
-        cx = int((frame * modulation * 2) % (width + 20)) - 10
+        cx = int((frame * modulation * 2) % (width + 40)) - 20
         cy = height - 1
         
-        # Beam width oscillates
-        radius = max(1.0, 2.0 + math.sin(frame * 0.2) * 2.0)
+        # Large beam for mask visibility
+        radius = 6 + int(math.sin(frame * 0.1) * 2)
         
         result: dict[tuple[int, int], str | int] = {}
         for x, y in self._all_pixels:
             dist = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
             if dist < radius:
                 if self._is_batman_mask(x, y, cx, cy):
-                    # The Shadow silhouette
+                    # The Silhouette (Shadow)
                     result[(x, y)] = "#151515" 
                 else:
-                    # Inside the bright beam
+                    # The bright searchlight flare
                     intensity = 1.0 - (dist / radius)
-                    flare = int(200 + intensity * 55)
+                    flare = int(180 + intensity * 75)
                     result[(x, y)] = rgb_to_hex(flare, flare, flare)
             else:
                 # Outside the beam
@@ -850,9 +825,6 @@ class CinematicPrismSweep(Animation):
         color = rgb_to_hex(r, g, b)
         safe_color = self.get_contrast_safe_color(color)
         
-        # Dimmed background version (40% intensity)
-        dim_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
-        
         # Sweep position
         max_dist = width * math.cos(angle_rad) + height * math.sin(angle_rad)
         active_dist = progress * max_dist * modulation * 1.5
@@ -861,7 +833,12 @@ class CinematicPrismSweep(Animation):
         for x, y in self._all_pixels:
             # Projection onto the sweep vector
             d = x * math.cos(angle_rad) + y * math.sin(angle_rad)
-            result[(x, y)] = safe_color if abs(d - active_dist) < 2 else dim_color
+            # Volumetric beam width: 4 pixels
+            if abs(d - active_dist) < 4:
+                result[(x, y)] = safe_color
+            else:
+                # Return transparent sentinel for areas outside the beam
+                result[(x, y)] = -1
                 
         return result
 

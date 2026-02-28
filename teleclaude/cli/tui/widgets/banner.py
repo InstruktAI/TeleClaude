@@ -101,24 +101,18 @@ class Banner(TelecMixin, Widget):
                         color = engine.get_color(x, y, target="banner")
                         is_ext = engine.is_external_light(target="banner")
                         
-                        if color:
+                        if color and color != -1:
                             if not focused:
                                 color = apply_tui_haze(color)
                             
                             if is_ext:
                                 # Proportional Lighting:
-                                # Letter characters reflect more light than the billboard plate.
-                                # If it's a character cell, we use the full beam color.
-                                # The billboard background only reflects a fraction (30%) of the light.
-                                pixel_bg = blend_colors(bg_color, color, 0.3)
+                                # Letters reflect more light (50%) than the billboard plate (20%).
+                                # This ensures contrast between sign and surface.
                                 is_letter = PixelMap.get_is_letter("banner", x, y)
-                                if is_letter:
-                                    # Letter gets full color pop
-                                    result.append(char, style=Style(color=color, bgcolor=pixel_bg))
-                                else:
-                                    # Background cell: character stays gray, plate reflects light
-                                    fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
-                                    result.append(char, style=Style(color=fg, bgcolor=pixel_bg))
+                                blend_pct = 0.5 if is_letter else 0.2
+                                pixel_bg = blend_colors(bg_color, color, blend_pct)
+                                result.append(char, style=Style(color=color, bgcolor=pixel_bg))
                             else:
                                 # Internal Neon: billboard background stays at its base plate gray
                                 result.append(char, style=Style(color=color, bgcolor=bg_color))
@@ -174,18 +168,15 @@ class Banner(TelecMixin, Widget):
                         color = engine.get_color(x, y, target="logo")
                         is_ext = engine.is_external_light(target="logo")
                         
-                        if color:
+                        if color and color != -1:
                             if not focused:
                                 color = apply_tui_haze(color)
                             
                             if is_ext:
-                                pixel_bg = blend_colors(bg_color, color, 0.3)
                                 is_letter = PixelMap.get_is_letter("logo", x, y)
-                                if is_letter:
-                                    result.append(char, style=Style(color=color, bgcolor=pixel_bg))
-                                else:
-                                    fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
-                                    result.append(char, style=Style(color=fg, bgcolor=pixel_bg))
+                                blend_pct = 0.5 if is_letter else 0.2
+                                pixel_bg = blend_colors(bg_color, color, blend_pct)
+                                result.append(char, style=Style(color=color, bgcolor=pixel_bg))
                             else:
                                 result.append(char, style=Style(color=color, bgcolor=bg_color))
                         else:
