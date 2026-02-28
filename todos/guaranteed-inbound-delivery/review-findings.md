@@ -107,3 +107,16 @@ No regression risk identified beyond the findings above.
 Verdict: **REQUEST CHANGES**
 
 I1 (callback crash) and I2 (missing cleanup wiring) are correctness issues that should be fixed before merge. I3 and I4 are lower-priority but should be addressed in the same pass.
+
+---
+
+## Fixes Applied
+
+| Issue   | Fix                                                                                                                    | Commit     |
+| ------- | ---------------------------------------------------------------------------------------------------------------------- | ---------- |
+| I1 + S1 | Guard `_on_worker_done` with `task.cancelled()` check; move `timedelta` import to module level in `inbound_queue.py`   | `0d7b36d5` |
+| I3 + S1 | Remove dead first `next_retry` assignment in `mark_inbound_failed`; move `timedelta` import to module level in `db.py` | `04d8b321` |
+| I4      | Wrap `enqueue_inbound` commit in `try/except IntegrityError` returning `None` on race                                  | `9441e41c` |
+| I2      | Wire `db.cleanup_inbound(cutoff_iso)` into `MaintenanceService.periodic_cleanup()` with 72h cutoff                     | `33d5ef23` |
+
+All 4 Important issues and 1 Suggestion addressed. Tests and lint pass on each commit. Ready for re-review.
