@@ -147,11 +147,9 @@ def _log_next_work_phase(slug: str, phase: str, started_at: float, decision: str
 POST_COMPLETION: dict[str, str] = {
     "next-build": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. Verify artifact delivery: telec todo verify-artifacts {args} --phase build --cwd <project-root>
-   - If FAIL: send the failure details to the builder (do NOT end the session). Wait for fix. Repeat from step 1.
+2. Verify artifact delivery: telec todo verify-artifacts {args} --phase build   - If FAIL: send the failure details to the builder (do NOT end the session). Wait for fix. Repeat from step 1.
    - If PASS: proceed to step 3
-3. telec todo mark-phase {args} --phase build --status complete --cwd <project-root>
-4. Call {next_call} — this runs build gates (tests + demo validation)
+3. telec todo mark-phase {args} --phase build --status complete4. Call {next_call} — this runs build gates (tests + demo validation)
 5. If next_work says gates PASSED: telec sessions end <session_id> and continue
 6. If next_work says BUILD GATES FAILED:
    a. Send the builder the failure message (do NOT end the session)
@@ -164,11 +162,9 @@ POST_COMPLETION: dict[str, str] = {
 """,
     "next-bugs-fix": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
-2. Verify artifact delivery: telec todo verify-artifacts {args} --phase build --cwd <project-root>
-   - If FAIL: send the failure details to the builder (do NOT end the session). Wait for fix. Repeat from step 1.
+2. Verify artifact delivery: telec todo verify-artifacts {args} --phase build   - If FAIL: send the failure details to the builder (do NOT end the session). Wait for fix. Repeat from step 1.
    - If PASS: proceed to step 3
-3. telec todo mark-phase {args} --phase build --status complete --cwd <project-root>
-4. Call {next_call} — this runs build gates (tests + demo validation)
+3. telec todo mark-phase {args} --phase build --status complete4. Call {next_call} — this runs build gates (tests + demo validation)
 5. If next_work says gates PASSED: telec sessions end <session_id> and continue
 6. If next_work says BUILD GATES FAILED:
    a. Send the builder the failure message (do NOT end the session)
@@ -181,18 +177,15 @@ POST_COMPLETION: dict[str, str] = {
 """,
     "next-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data to extract verdict
-2. Run artifact verification: telec todo verify-artifacts {args} --phase review --cwd <project-root>
-   - If FAIL: send the failure details to the reviewer (do NOT end the session).
+2. Run artifact verification: telec todo verify-artifacts {args} --phase review   - If FAIL: send the failure details to the reviewer (do NOT end the session).
      Wait for the reviewer to address the gaps and report completion again. Repeat from step 1.
    - If PASS: proceed to step 3
 3. If verdict is APPROVE:
    a. telec sessions end <session_id>
-   b. telec todo mark-phase {args} --phase review --status approved --cwd <project-root>
-   c. Call {next_call}
+   b. telec todo mark-phase {args} --phase review --status approved   c. Call {next_call}
 4. If verdict is REQUEST CHANGES — PEER CONVERSATION PROTOCOL (keep reviewer alive):
    a. DO NOT end the reviewer session — keep it alive throughout peer iteration
-   b. telec todo mark-phase {args} --phase review --status changes_requested --cwd <project-root>
-   c. Dispatch fixer: telec sessions run --command /next-fix-review --args {args} \\
+   b. telec todo mark-phase {args} --phase review --status changes_requested   c. Dispatch fixer: telec sessions run --command /next-fix-review --args {args} \\
         --project <project-root> --subfolder trees/{args}
    d. Save <reviewer_session_id> and <fixer_session_id>
    e. Establish direct link from reviewer side (one-time, idempotent):
@@ -221,8 +214,7 @@ POST_COMPLETION: dict[str, str] = {
     "next-fix-review": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data
 2. telec sessions end <session_id>
-3. telec todo mark-phase {args} --phase review --status pending --cwd <project-root>
-4. Call {next_call}
+3. telec todo mark-phase {args} --phase review --status pending4. Call {next_call}
 5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
    - Do NOT end the session — keep it alive as a signal for human investigation
    - Report the error status and session ID to the user for manual intervention
@@ -266,7 +258,7 @@ POST_COMPLETION: dict[str, str] = {
    d. git -C "$MAIN_REPO" merge {args} --no-edit
    e. MERGE_COMMIT="$(git -C "$MAIN_REPO" rev-parse HEAD)"
    f. If "$MAIN_REPO/todos/{args}/bug.md" exists: skip delivery bookkeeping.
-      Else: telec roadmap deliver {args} --commit "$MERGE_COMMIT" --project-root "$MAIN_REPO"
+      Else: telec roadmap deliver {args} --commit "$MERGE_COMMIT"
             && git -C "$MAIN_REPO" add todos/delivered.yaml todos/roadmap.yaml
             && git -C "$MAIN_REPO" commit -m "chore({args}): record delivery"
 8. DEMO SNAPSHOT (orchestrator-owned — stamp delivery metadata while artifacts exist):
@@ -507,8 +499,7 @@ INSTRUCTIONS FOR ORCHESTRATOR:
    Do NOT end the builder session.
 2. Wait for the builder to report completion again.
 3. When the builder reports done:
-   a. telec todo mark-phase {slug} --phase build --status complete --cwd <project-root>
-   b. Call {next_call}
+   a. telec todo mark-phase {slug} --phase build --status complete   b. Call {next_call}
    If gates fail again, repeat from step 1."""
 
 

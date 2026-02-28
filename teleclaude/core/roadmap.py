@@ -254,6 +254,8 @@ def assemble_roadmap(
             continue
         if icebox_only and not is_icebox:
             continue
+        if delivered_only:
+            continue
 
         seen_slugs.add(todo_dir.name)
         # Icebox group containers get their group name; stray icebox slugs get "Icebox"

@@ -50,7 +50,7 @@ def _install_launchd_watch(project_root: Path) -> None:
     plist_path = Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
     plist_path.parent.mkdir(parents=True, exist_ok=True)
 
-    command = f"uv run --quiet --project {REPO_ROOT} -m teleclaude.cli.telec watch --project-root {project_root}"
+    command = f"uv run --quiet --project {REPO_ROOT} -m teleclaude.cli.telec watch"
     launchd_path = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
 
     _remove_stale_launchd_plists(plist_path.parent, project_root)
@@ -79,6 +79,8 @@ def _install_launchd_watch(project_root: Path) -> None:
   <dict>
     <key>Label</key>
     <string>{label}</string>
+    <key>WorkingDirectory</key>
+    <string>{project_root}</string>
     <key>ProgramArguments</key>
     <array>
       <string>/bin/zsh</string>
@@ -132,9 +134,7 @@ def _install_systemd_watch(project_root: Path) -> None:
     service_path = unit_dir / f"{unit_id}.service"
     path_path = unit_dir / f"{unit_id}.path"
 
-    command = (
-        f"uv run --quiet --project {REPO_ROOT} -m teleclaude.cli.telec sync --warn-only --project-root {project_root}"
-    )
+    command = f"uv run --quiet --project {REPO_ROOT} -m teleclaude.cli.telec sync --warn-only"
 
     service_template_path = REPO_ROOT / "templates" / "teleclaude-docs-watch.service"
     path_template_path = REPO_ROOT / "templates" / "teleclaude-docs-watch.path"
