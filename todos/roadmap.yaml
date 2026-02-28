@@ -1,6 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: animations-full-color
 - slug: event-platform-core
   description: 'Core platform: package, envelope, pipeline runtime, basic cartridges,
     SQLite state, API, WebSocket, daemon hosting, consolidation'
@@ -74,7 +73,7 @@
 - slug: event-alpha-container
   after:
   - event-platform-core
-  description: 'Docker sidecar sandbox for experimental/alpha cartridges'
+  description: Docker sidecar sandbox for experimental/alpha cartridges
 - slug: event-domain-infrastructure
   after:
   - event-system-cartridges
@@ -89,7 +88,8 @@
 - slug: event-signal-pipeline
   after:
   - event-domain-infrastructure
-  description: 'Three-stage feed aggregation: ingest, cluster, synthesize utility cartridges'
+  description: 'Three-stage feed aggregation: ingest, cluster, synthesize utility
+    cartridges'
 - slug: event-domain-pillars
   after:
   - event-domain-infrastructure

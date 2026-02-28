@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: animations-full-color
+  date: '2026-02-28'
+  commit: 96b2b972ba9ccbab1e4f754d850b48e04701d7d0
 - slug: guaranteed-inbound-delivery
   date: '2026-02-28'
   title: Core inbound queue for guaranteed user message delivery — adapter-agnostic,
