@@ -402,7 +402,6 @@ def test_is_experiment_enabled():
         ),
         creds=None,
         agents={},
-        ui=None,
         terminal=None,
         experiments=[
             ExperimentConfig(name="exp_all"),
