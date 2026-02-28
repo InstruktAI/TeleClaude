@@ -51,3 +51,24 @@ def test_refresh_mode_resets_terminal_cache(monkeypatch) -> None:
     theme.refresh_mode()
 
     assert theme._terminal_bg_cache is None
+
+
+def test_get_terminal_background_returns_fresh_value_after_mode_switch(monkeypatch) -> None:
+    """After refresh_mode() switches dark→light, get_terminal_background() returns the light value.
+
+    This covers the fix in get_css_variables(): the focused branch calls
+    get_terminal_background() directly so it always picks up the fresh value
+    rather than reading from the frozen Theme.background baked at import time.
+    """
+    # Start in dark mode with a stale cached dark background.
+    monkeypatch.setattr(theme, "_is_dark_mode", True)
+    monkeypatch.setattr(theme, "_terminal_bg_cache", "#000000")
+
+    # Switch to light mode via refresh_mode().
+    monkeypatch.setattr(theme, "_detect_dark_mode", lambda: False)
+    monkeypatch.setattr(theme, "_read_terminal_bg_from_appearance", lambda: None)
+    theme.refresh_mode()
+
+    # Cache was cleared; next call should return the light-mode baseline.
+    result = theme.get_terminal_background()
+    assert result == "#fdf6e3"  # light mode paper baseline
