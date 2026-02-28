@@ -994,9 +994,9 @@ class TelecApp(App[str | None]):
         now = time.time()
         name = animation.__class__.__name__
         
-        # Debounce: avoid duplicate toasts for the same animation within 1s
+        # Debounce: avoid duplicate toasts for the same animation within 2s
         last_name, last_time = getattr(self, "_last_anim_toast", (None, 0.0))
-        if last_name == name and (now - last_time) < 1.0:
+        if last_name == name and (now - last_time) < 2.0:
             return
         self._last_anim_toast = (name, now)
 

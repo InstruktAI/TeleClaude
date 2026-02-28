@@ -94,7 +94,7 @@ class LineSweepTopBottom(Animation):
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         active_row = frame % height
         color_pair = self.palette.get(frame // height)
-        safe_color = self.get_contrast_safe_color(color_pair)
+        safe_color = self.get_contrast_safe_color(self.get_electric_neon(color_pair))
         
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
         try:
@@ -105,23 +105,23 @@ class LineSweepTopBottom(Animation):
         except (ValueError, TypeError, AttributeError):
             r, g, b = 150, 150, 150
             
-        # Define the volumetric pulse colors
         mid_color = safe_color
         side_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7)))
         base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
 
         result = {}
-        for r in range(height):
-            dist = abs(r - active_row)
-            if dist == 0:
-                current_color = mid_color
-            elif dist == 1:
-                current_color = side_color
-            else:
-                current_color = base_color
-                
-            for p in PixelMap.get_row_pixels(self.is_big, r):
-                result[p] = current_color
+        # Ensure EVERY character in the letters is painted
+        for i, (start, end) in enumerate(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS):
+            for x in range(start, end + 1):
+                for y in range(height):
+                    dist = abs(y - active_row)
+                    if dist == 0:
+                        current_color = mid_color
+                    elif dist == 1:
+                        current_color = side_color
+                    else:
+                        current_color = base_color
+                    result[(x, y)] = current_color
         return result
 
 
@@ -132,7 +132,7 @@ class LineSweepBottomTop(Animation):
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         active_row = (height - 1) - (frame % height)
         color_pair = self.palette.get(frame // height)
-        safe_color = self.get_contrast_safe_color(color_pair)
+        safe_color = self.get_contrast_safe_color(self.get_electric_neon(color_pair))
 
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
         try:
@@ -148,17 +148,18 @@ class LineSweepBottomTop(Animation):
         base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
 
         result = {}
-        for r in range(height):
-            dist = abs(r - active_row)
-            if dist == 0:
-                current_color = mid_color
-            elif dist == 1:
-                current_color = side_color
-            else:
-                current_color = base_color
-                
-            for p in PixelMap.get_row_pixels(self.is_big, r):
-                result[p] = current_color
+        # Ensure EVERY character in the letters is painted
+        for i, (start, end) in enumerate(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS):
+            for x in range(start, end + 1):
+                for y in range(height):
+                    dist = abs(y - active_row)
+                    if dist == 0:
+                        current_color = mid_color
+                    elif dist == 1:
+                        current_color = side_color
+                    else:
+                        current_color = base_color
+                    result[(x, y)] = current_color
         return result
 
 
@@ -177,7 +178,7 @@ class MiddleOutVertical(Animation):
         step = frame % 3
         active_rows = {2 - step, 3 + step}
         color_pair = self.palette.get(frame // 3)
-        safe_color = self.get_contrast_safe_color(color_pair)
+        safe_color = self.get_contrast_safe_color(self.get_electric_neon(color_pair))
 
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
         try:
@@ -193,18 +194,19 @@ class MiddleOutVertical(Animation):
         base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
 
         result = {}
-        for r in range(height):
-            # Check proximity to ANY active row
-            min_dist = min(abs(r - ar) for ar in active_rows)
-            if min_dist == 0:
-                current_color = mid_color
-            elif min_dist == 1:
-                current_color = side_color
-            else:
-                current_color = base_color
-                
-            for p in PixelMap.get_row_pixels(self.is_big, r):
-                result[p] = current_color
+        # Ensure EVERY character in the letters is painted
+        for i, (start, end) in enumerate(BIG_BANNER_LETTERS):
+            for x in range(start, end + 1):
+                for y in range(height):
+                    # Check proximity to ANY active row
+                    min_dist = min(abs(y - ar) for ar in active_rows)
+                    if min_dist == 0:
+                        current_color = mid_color
+                    elif min_dist == 1:
+                        current_color = side_color
+                    else:
+                        current_color = base_color
+                    result[(x, y)] = current_color
         return result
 
 
@@ -353,7 +355,6 @@ class DiagonalSweepDR(Animation):
     """G11: Volumetric diagonal surge from top-left to bottom-right."""
 
     supports_small = False
-    is_external_light = True
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
@@ -383,7 +384,6 @@ class DiagonalSweepDL(Animation):
     """G12: Volumetric diagonal surge from top-right to bottom-left."""
 
     supports_small = False
-    is_external_light = True
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
@@ -739,8 +739,8 @@ class HighSunBird(Animation):
 
 
 class SearchlightSweep(Animation):
-    """TC17: Focused searchlight from below, casting upward shadows.
-    Night Mode / Dark Mode only.
+    """TC17: Fixed large searchlight from below with grounded wide Batman silhouette.
+    Rooftop event that reflects on the physical billboard.
     """
 
     theme_filter = "dark"
@@ -753,20 +753,22 @@ class SearchlightSweep(Animation):
         self._all_pixels = PixelMap.get_all_pixels(self.is_big)
 
     def _is_batman_mask(self, x: int, y: int, cx: int, cy: int) -> bool:
-        """High-fidelity relative mask for a Batman-like silhouette."""
-        # Normalize coordinates relative to mask center (cy-3)
-        dx, dy = x - cx, y - (cy - 3)
+        """Ultimate Wide & Grounded Batman Silhouette."""
+        dx, dy = x - cx, y - (cy - 4)
         adx = abs(dx)
         
-        # Row-by-row mask logic
-        if dy == -1: # Ears
-            return adx == 1
-        if dy == 0:  # Head and upper body
+        # Grounded feet/body (bottom rows of the sign)
+        if dy >= 3: # Rows 4 and 5 (bottom)
             return adx <= 1
-        if dy == 1:  # Upper wings
-            return adx <= 3
-        if dy == 2:  # Lower wings
-            return adx <= 2
+            
+        # Ears/Head (top of silhouette)
+        if dy == -1: return adx == 1
+        if dy == 0:  return adx <= 1
+        
+        # Wide Wings/Cape (middle rows)
+        if dy == 1:  return adx <= 7 # Wingspan 15 total
+        if dy == 2:  return adx <= 5 # Cape narrowing
+        
         return False
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
@@ -777,22 +779,22 @@ class SearchlightSweep(Animation):
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         
         modulation = self.get_modulation(frame)
-        # Searchlight center sweeps horizontally at the bottom
+        # Searchlight sweeps horizontally at the bottom
         cx = int((frame * modulation * 2) % (width + 40)) - 20
         cy = height - 1
         
-        # Large beam for mask visibility
-        radius = 6 + int(math.sin(frame * 0.1) * 2)
+        # FIXED large beam for visibility
+        radius = 10
         
         result: dict[tuple[int, int], str | int] = {}
         for x, y in self._all_pixels:
             dist = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
             if dist < radius:
                 if self._is_batman_mask(x, y, cx, cy):
-                    # The Silhouette (Shadow)
+                    # Grounded shadow silhouette
                     result[(x, y)] = "#151515" 
                 else:
-                    # The bright searchlight flare
+                    # Bright searchlight flare (high intensity)
                     intensity = 1.0 - (dist / radius)
                     flare = int(180 + intensity * 75)
                     result[(x, y)] = rgb_to_hex(flare, flare, flare)
@@ -1056,6 +1058,7 @@ class Bioluminescence(Animation):
     """TC15: Pitch-black sea with neon blue agents leaving glowing trails."""
 
     theme_filter = "dark"
+    is_external_light = True
     _NUM_AGENTS = 8
     _TRAIL_DECAY = 10
 

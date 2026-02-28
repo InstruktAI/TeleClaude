@@ -64,17 +64,33 @@ class Animation(ABC):
         return frame >= self.duration_frames
 
     def get_modulation(self, frame: int) -> float:
-        """Calculate an organic modulation value (0.3 -> 0.7 -> 0.5) for the frame."""
+        """Calculate an organic modulation value (0.6 -> 1.0 -> 0.8) for the frame."""
         progress = frame / max(1, self.duration_frames - 1)
-        # Simple eased curve: starts slow, peaks, settles
+        # Higher floor (0.6) to ensure movement is always visible
         if progress < 0.2:
-            return 0.3 + (progress / 0.2) * 0.4  # 0.3 -> 0.7
+            return 0.6 + (progress / 0.2) * 0.4  # 0.6 -> 1.0
         elif progress < 0.6:
-            return 0.7
+            return 1.0
         elif progress < 0.8:
-            return 0.7 - ((progress - 0.6) / 0.2) * 0.2  # 0.7 -> 0.5
+            return 1.0 - ((progress - 0.6) / 0.2) * 0.2  # 1.0 -> 0.8
         else:
-            return 0.5 - ((progress - 0.8) / 0.2) * 0.2  # 0.5 -> 0.3
+            return 0.8 - ((progress - 0.8) / 0.2) * 0.2  # 0.8 -> 0.6
+
+    def get_electric_neon(self, hex_color: str) -> str:
+        """Force a color into the high-vibrancy Electric Neon spectrum."""
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        import colorsys
+        try:
+            r, g, b = hex_to_rgb(hex_color)
+            # Convert to HSV to enforce saturation and brightness
+            h, s, v = colorsys.rgb_to_hsv(r/255.0, g/255.0, b/255.0)
+            # Enforce 95% saturation and 100% brightness for 'poppy' neon
+            s = max(s, 0.95)
+            v = 1.0
+            r, g, b = colorsys.hsv_to_rgb(h, s, v)
+            return rgb_to_hex(int(r*255), int(g*255), int(b*255))
+        except (ValueError, TypeError, AttributeError):
+            return hex_color
 
     def get_contrast_safe_color(self, hex_color: str) -> str:
         """Ensure color is readable against the billboard background."""
