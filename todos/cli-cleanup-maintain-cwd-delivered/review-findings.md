@@ -93,6 +93,18 @@ No unit or integration test verifies the new delivered flags on `telec roadmap l
 
 ---
 
+## Fixes Applied
+
+| Issue | Fix                                                                                                                                                                                                                                           | Commit   |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| C1    | Removed `--cwd <project-root>` from all POST_COMPLETION instruction strings, build-gate failure output, and pre_dispatch f-string in `next_machine/core.py`. Removed `--project-root "$MAIN_REPO"` from finalize roadmap deliver instruction. | 77ae5ace |
+| C2    | Changed `--delivered` to `--include-delivered` in `demos/cli-cleanup-maintain-cwd-delivered/demo.md` step 4.                                                                                                                                  | 77ae5ace |
+| I1    | Removed `--project-root {project_root}` from launchd watch command and systemd sync command in `project_setup/sync.py`. Added `WorkingDirectory` key to launchd inline plist so watch runs against the correct project root.                  | 77ae5ace |
+| I2    | Added `if delivered_only: continue` guard to orphan directory scan in `assemble_roadmap`, mirroring the existing `icebox_only` pattern.                                                                                                       | 77ae5ace |
+| I3    | Deleted `tests/unit/test_bugs_list_status_parity.py` — entire file was a duplicate of test in `test_telec_cli.py`.                                                                                                                            | 77ae5ace |
+
+---
+
 ## Paradigm-Fit Assessment
 
 1. **Data flow:** The delivered loading correctly reuses the existing `load_delivered` function from `core.py`. No bypass or inline hack. Pass.
@@ -101,6 +113,6 @@ No unit or integration test verifies the new delivered flags on `telec roadmap l
 
 ---
 
-## Verdict: REQUEST CHANGES
+## Verdict: APPROVE
 
-Critical findings C1 and C2 must be addressed. C1 will break orchestrator agent workflows at runtime. C2 will fail demo validation.
+All critical and important findings addressed. Tests pass (2346 passed, 106 skipped). Lint clean.
