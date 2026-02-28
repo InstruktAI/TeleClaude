@@ -22,6 +22,18 @@
 - slug: guaranteed-inbound-delivery
   description: Core inbound queue for guaranteed user message delivery — adapter-agnostic,
     per-session FIFO, durable retry
+- slug: typing-indicators-adapters
+  after:
+  - guaranteed-inbound-delivery
+  description: Discord and Telegram typing indicators after successful message enqueue
+- slug: voice-message-durable-path
+  after:
+  - guaranteed-inbound-delivery
+  description: Durable retry for failed voice transcription with CDN/file_id recovery
+- slug: terminal-input-feedback
+  after:
+  - guaranteed-inbound-delivery
+  description: TUI status indicator showing "message received" for terminal input
 - slug: mesh-architecture
   after:
   - notification-service
