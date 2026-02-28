@@ -35,19 +35,15 @@ class AgentWaveLR(Animation):
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         active_letter_idx = frame % num_letters
-
-        # Color cycles through palette
-        color_pair = self.palette.get(frame // num_letters)
+        
+        mid_color = self.palette.get(2) # Highlight
+        base_color = self.palette.get(0) # Muted
 
         result = {}
         for i in range(num_letters):
-            letter_pixels = PixelMap.get_letter_pixels(self.is_big, i)
-            if i == active_letter_idx:
-                for p in letter_pixels:
-                    result[p] = color_pair
-            else:
-                for p in letter_pixels:
-                    result[p] = -1  # Clear
+            color = mid_color if i == active_letter_idx else base_color
+            for p in PixelMap.get_letter_pixels(self.is_big, i):
+                result[p] = color
         return result
 
 
@@ -57,42 +53,39 @@ class AgentWaveRL(Animation):
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         active_letter_idx = (num_letters - 1) - (frame % num_letters)
-        color_pair = self.palette.get(frame // num_letters)
+        
+        mid_color = self.palette.get(2)
+        base_color = self.palette.get(0)
 
         result = {}
         for i in range(num_letters):
-            letter_pixels = PixelMap.get_letter_pixels(self.is_big, i)
-            if i == active_letter_idx:
-                for p in letter_pixels:
-                    result[p] = color_pair
-            else:
-                for p in letter_pixels:
-                    result[p] = -1
+            color = mid_color if i == active_letter_idx else base_color
+            for p in PixelMap.get_letter_pixels(self.is_big, i):
+                result[p] = color
         return result
 
 
 class AgentLineSweep(Animation):
-    """A9: Horizontal lines sweep top-to-bottom with agent color progression."""
+    """A9: Volumetric horizontal line sweep through letters using agent colors."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         active_row = frame % height
-        color_pair = self.palette.get(frame // height)
+        
+        # Muted (0) for base, Highlight (2) for surge
+        mid_color = self.palette.get(2)
+        base_color = self.palette.get(0)
 
         result = {}
         for r in range(height):
-            row_pixels = PixelMap.get_row_pixels(self.is_big, r)
-            if r == active_row:
-                for p in row_pixels:
-                    result[p] = color_pair
-            else:
-                for p in row_pixels:
-                    result[p] = -1
+            current_color = mid_color if r == active_row else base_color
+            for p in PixelMap.get_row_pixels(self.is_big, r):
+                result[p] = current_color
         return result
 
 
 class AgentMiddleOut(Animation):
-    """A14: Vertical center expansion (Big only) using agent colors."""
+    """A14: Vertical volumetric center expansion (Big only) using agent colors."""
 
     supports_small = False
 
@@ -103,20 +96,15 @@ class AgentMiddleOut(Animation):
         height = BIG_BANNER_HEIGHT
         step = frame % 3
         active_rows = {2 - step, 3 + step}
-        # Step 0 (Middle): Highlight, Step 1: Normal, Step 2: Muted
-        # Palette index: 0=Muted, 1=Normal, 2=Highlight
-        palette_idx = 2 - step
-        color_pair = self.palette.get(palette_idx)
+        
+        mid_color = self.palette.get(2) # Highlight
+        base_color = self.palette.get(0) # Muted
 
         result = {}
         for r in range(height):
-            row_pixels = PixelMap.get_row_pixels(self.is_big, r)
-            if r in active_rows:
-                for p in row_pixels:
-                    result[p] = color_pair
-            else:
-                for p in row_pixels:
-                    result[p] = -1
+            current_color = mid_color if r in active_rows else base_color
+            for p in PixelMap.get_row_pixels(self.is_big, r):
+                result[p] = current_color
         return result
 
 
@@ -144,6 +132,9 @@ class AgentWithinLetterSweep(Animation):
             return {}
 
         num_letters = len(BIG_BANNER_LETTERS)
+        mid_color = self.palette.get(2) # Highlight
+        base_color = self.palette.get(0) # Muted
+        
         result = {}
         for i in range(num_letters):
             start_x, end_x = BIG_BANNER_LETTERS[i]
@@ -151,16 +142,10 @@ class AgentWithinLetterSweep(Animation):
             active_col_offset = frame % letter_width
             active_col = start_x + active_col_offset
 
-            # Palette cycle
-            color_pair = self.palette.get(frame // letter_width)
-
             for x in range(start_x, end_x + 1):
-                col_pixels = PixelMap.get_column_pixels(self.is_big, x)
-                for p in col_pixels:
-                    if x == active_col:
-                        result[p] = color_pair
-                    else:
-                        result[p] = -1
+                current_color = mid_color if x == active_col else base_color
+                for p in PixelMap.get_column_pixels(self.is_big, x):
+                    result[p] = current_color
         return result
 
 
@@ -204,14 +189,15 @@ class AgentLetterCascade(Animation):
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         active_letter = frame % num_letters
+        
+        mid_color = self.palette.get(2) # Highlight
+        base_color = self.palette.get(0) # Muted
+        
         result = {}
         for i in range(num_letters):
-            color_pair = self.palette.get(i % 3)
+            color = mid_color if i == active_letter else base_color
             for p in PixelMap.get_letter_pixels(self.is_big, i):
-                if i == active_letter:
-                    result[p] = color_pair
-                else:
-                    result[p] = -1
+                result[p] = color
         return result
 
 
@@ -262,7 +248,7 @@ class AgentBreathing(Animation):
 
 
 class AgentDiagonalWave(Animation):
-    """A13: Diagonal pixel sweep using agent color sequence."""
+    """A13: Volumetric diagonal pixel sweep using agent color sequence."""
 
     supports_small = False
 
@@ -271,16 +257,21 @@ class AgentDiagonalWave(Animation):
             return {}
         max_val = BIG_BANNER_WIDTH + BIG_BANNER_HEIGHT
         active = frame % max_val
+        
+        hi_color = self.palette.get(2) # Highlight
+        mid_color = self.palette.get(1) # Normal
+        base_color = self.palette.get(0) # Muted
+        
         result = {}
         for x, y in PixelMap.get_all_pixels(True):
-            dist = abs((x + y) - active)
+            dist = abs(((x - 1) + y) - active)
             if dist == 0:
-                color_pair = self.palette.get(2)  # Highlight
+                color = hi_color
             elif dist < 3:
-                color_pair = self.palette.get(1)  # Normal
+                color = mid_color
             else:
-                color_pair = self.palette.get(0)  # Muted
-            result[(x, y)] = color_pair
+                color = base_color
+            result[(x, y)] = color
         return result
 
 
@@ -291,7 +282,6 @@ AGENT_ANIMATIONS = [
     AgentWaveRL,
     AgentLineSweep,
     AgentMiddleOut,
-    AgentSparkle,
     AgentWithinLetterSweep,
     AgentHeartbeat,
     AgentWordSplit,

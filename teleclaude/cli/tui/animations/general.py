@@ -86,8 +86,8 @@ class LetterWaveRL(Animation):
 
 
 class LineSweepTopBottom(Animation):
-    """G6: Vertical gradient sweep through neon tubes from top to bottom.
-    Entire letters remain colored; only the surge position is intensified.
+    """G6: Vertical volumetric sweep through neon tubes from top to bottom.
+    Entire letters remain colored; a 3-row surge provides high-intensity highlight.
     """
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
@@ -98,24 +98,35 @@ class LineSweepTopBottom(Animation):
         
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
         try:
-            r, g, b = hex_to_rgb(safe_color)
+            if safe_color.startswith("#"):
+                r, g, b = hex_to_rgb(safe_color)
+            else:
+                r, g, b = 150, 150, 150
         except (ValueError, TypeError, AttributeError):
-            r, g, b = 120, 120, 120 # Fallback safe neon gray
+            r, g, b = 150, 150, 150
             
-        dim_color = rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))
-        safe_dim = self.get_contrast_safe_color(dim_color)
+        # Define the volumetric pulse colors
+        mid_color = safe_color
+        side_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7)))
+        base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
 
         result = {}
         for r in range(height):
-            row_pixels = PixelMap.get_row_pixels(self.is_big, r)
-            current_color = safe_color if r == active_row else safe_dim
-            for p in row_pixels:
+            dist = abs(r - active_row)
+            if dist == 0:
+                current_color = mid_color
+            elif dist == 1:
+                current_color = side_color
+            else:
+                current_color = base_color
+                
+            for p in PixelMap.get_row_pixels(self.is_big, r):
                 result[p] = current_color
         return result
 
 
 class LineSweepBottomTop(Animation):
-    """G7: Vertical gradient sweep through neon tubes from bottom to top."""
+    """G7: Vertical volumetric sweep through neon tubes from bottom to top."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
@@ -125,24 +136,34 @@ class LineSweepBottomTop(Animation):
 
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
         try:
-            r, g, b = hex_to_rgb(safe_color)
+            if safe_color.startswith("#"):
+                r, g, b = hex_to_rgb(safe_color)
+            else:
+                r, g, b = 150, 150, 150
         except (ValueError, TypeError, AttributeError):
-            r, g, b = 120, 120, 120
+            r, g, b = 150, 150, 150
             
-        dim_color = rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))
-        safe_dim = self.get_contrast_safe_color(dim_color)
+        mid_color = safe_color
+        side_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7)))
+        base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
 
         result = {}
         for r in range(height):
-            row_pixels = PixelMap.get_row_pixels(self.is_big, r)
-            current_color = safe_color if r == active_row else safe_dim
-            for p in row_pixels:
+            dist = abs(r - active_row)
+            if dist == 0:
+                current_color = mid_color
+            elif dist == 1:
+                current_color = side_color
+            else:
+                current_color = base_color
+                
+            for p in PixelMap.get_row_pixels(self.is_big, r):
                 result[p] = current_color
         return result
 
 
 class MiddleOutVertical(Animation):
-    """G8: Vertical center expansion (Big only)."""
+    """G8: Vertical volumetric center expansion (Big only)."""
 
     supports_small = False
 
@@ -160,18 +181,29 @@ class MiddleOutVertical(Animation):
 
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
         try:
-            r, g, b = hex_to_rgb(safe_color)
+            if safe_color.startswith("#"):
+                r, g, b = hex_to_rgb(safe_color)
+            else:
+                r, g, b = 150, 150, 150
         except (ValueError, TypeError, AttributeError):
-            r, g, b = 120, 120, 120
+            r, g, b = 150, 150, 150
             
-        dim_color = rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))
-        safe_dim = self.get_contrast_safe_color(dim_color)
+        mid_color = safe_color
+        side_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7)))
+        base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
 
         result = {}
         for r in range(height):
-            row_pixels = PixelMap.get_row_pixels(self.is_big, r)
-            current_color = safe_color if r in active_rows else safe_dim
-            for p in row_pixels:
+            # Check proximity to ANY active row
+            min_dist = min(abs(r - ar) for ar in active_rows)
+            if min_dist == 0:
+                current_color = mid_color
+            elif min_dist == 1:
+                current_color = side_color
+            else:
+                current_color = base_color
+                
+            for p in PixelMap.get_row_pixels(self.is_big, r):
                 result[p] = current_color
         return result
 
@@ -296,9 +328,13 @@ class WordSplitBlink(Animation):
 
 
 class DiagonalSweepDR(Animation):
-    """G11: Pixels light up in diagonal waves top-left to bottom-right."""
+    """G11: Volumetric diagonal surge from top-left to bottom-right."""
 
     supports_small = False
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(True)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
@@ -317,18 +353,31 @@ class DiagonalSweepDR(Animation):
         except (ValueError, TypeError, AttributeError):
             r, g, b = 150, 150, 150
             
-        dim_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
+        mid_color = safe_color
+        side_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7)))
+        base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
 
         result = {}
-        for x, y in PixelMap.get_all_pixels(True):
-            result[(x, y)] = safe_color if (x - 1) + y == active else dim_color
+        for x, y in self._all_pixels:
+            dist = abs(((x - 1) + y) - active)
+            if dist == 0:
+                current_color = mid_color
+            elif dist == 1:
+                current_color = side_color
+            else:
+                current_color = base_color
+            result[(x, y)] = current_color
         return result
 
 
 class DiagonalSweepDL(Animation):
-    """G12: Pixels light up in diagonal waves top-right to bottom-left."""
+    """G12: Volumetric diagonal surge from top-right to bottom-left."""
 
     supports_small = False
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(True)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
@@ -348,11 +397,20 @@ class DiagonalSweepDL(Animation):
         except (ValueError, TypeError, AttributeError):
             r, g, b = 150, 150, 150
             
-        dim_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
+        mid_color = safe_color
+        side_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7)))
+        base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
 
         result = {}
-        for x, y in PixelMap.get_all_pixels(True):
-            result[(x, y)] = safe_color if (x - 1) - y == active else dim_color
+        for x, y in self._all_pixels:
+            dist = abs(((x - 1) - y) - active)
+            if dist == 0:
+                current_color = mid_color
+            elif dist == 1:
+                current_color = side_color
+            else:
+                current_color = base_color
+            result[(x, y)] = current_color
         return result
 
 
@@ -861,17 +919,25 @@ class FireBreath(Animation):
         result = {}
         modulation = self.get_modulation(frame)
         
-        # Procedural hue rotation for variety
-        current_hue = (self.hue_anchor + frame * 0.1) % 360 / 360.0
+        # Base hue shifts slightly per run, but stays in the fire range
+        # Red is 0, Yellow is 60. We'll shift the anchor.
+        hue_base = (self.hue_anchor % 40) / 360.0 # 0 to 40 deg
         
         for x, y in self._all_pixels:
-            y_factor = (height - 1 - y) / max(height - 1, 1) # Hotter at bottom
-            flicker = self.rng.random() * 0.4 * modulation
+            # Bottom (y=high) is hot (Yellow), Top (y=0) is cool (Red)
+            y_factor = y / max(height - 1, 1)
+            flicker = self.rng.random() * 0.3 * modulation
             intensity = min(1.0, y_factor + flicker)
             
-            r, g, b = self._hsv_to_rgb(current_hue, 0.9, intensity)
-            color = rgb_to_hex(r, g, b)
-            result[(x, y)] = self.get_contrast_safe_color(color)
+            # Hotter (bottom) = more yellow shift (up to +40 degrees)
+            # Cooler (top) = more red
+            hue = (hue_base + (y_factor * 40 / 360.0)) % 1.0
+            
+            # Value (brightness) is higher at bottom
+            val = 0.4 + (y_factor * 0.6)
+            
+            r, g, b = self._hsv_to_rgb(hue, 0.9, val)
+            result[(x, y)] = self.get_contrast_safe_color(rgb_to_hex(r, g, b))
             
         return result
 
