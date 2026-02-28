@@ -11,6 +11,75 @@ from typing import Optional
 
 from teleclaude.cli.tui.theme import get_agent_color
 
+# ---------------------------------------------------------------------------
+# 24-bit TrueColor utilities
+# ---------------------------------------------------------------------------
+
+
+def hex_to_rgb(hex_str: str) -> tuple[int, int, int]:
+    """Convert #RRGGBB hex string to (r, g, b) integer tuple."""
+    h = hex_str.lstrip("#")
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+
+def rgb_to_hex(r: int, g: int, b: int) -> str:
+    """Convert (r, g, b) integers to #RRGGBB string."""
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def interpolate_color(c1: str, c2: str, factor: float) -> str:
+    """Linearly interpolate between two hex colors.
+
+    Args:
+        c1: Start color as #RRGGBB.
+        c2: End color as #RRGGBB.
+        factor: Blend factor in [0.0, 1.0]; 0.0 returns c1, 1.0 returns c2.
+
+    Returns:
+        Interpolated #RRGGBB string.
+    """
+    factor = max(0.0, min(1.0, factor))
+    r1, g1, b1 = hex_to_rgb(c1)
+    r2, g2, b2 = hex_to_rgb(c2)
+    return rgb_to_hex(
+        int(r1 + (r2 - r1) * factor),
+        int(g1 + (g2 - g1) * factor),
+        int(b1 + (b2 - b1) * factor),
+    )
+
+
+class MultiGradient:
+    """Multi-stop gradient returning interpolated hex colors for a 0.0–1.0 factor.
+
+    Example::
+
+        grad = MultiGradient(["#FF4500", "#FFD700", "#FF00FF"])
+        color = grad.get(0.5)  # blend between orange and yellow
+    """
+
+    def __init__(self, stops: list[str]) -> None:
+        if not stops:
+            raise ValueError("MultiGradient requires at least one color stop.")
+        self._stops = [hex_to_rgb(c) for c in stops]
+
+    def get(self, factor: float) -> str:
+        """Return interpolated #RRGGBB for *factor* in [0.0, 1.0]."""
+        factor = max(0.0, min(1.0, factor))
+        n = len(self._stops)
+        if n == 1:
+            return rgb_to_hex(*self._stops[0])
+        seg = 1.0 / (n - 1)
+        idx = min(int(factor / seg), n - 2)
+        local = (factor - idx * seg) / seg
+        r1, g1, b1 = self._stops[idx]
+        r2, g2, b2 = self._stops[idx + 1]
+        return rgb_to_hex(
+            int(r1 + (r2 - r1) * local),
+            int(g1 + (g2 - g1) * local),
+            int(b1 + (b2 - b1) * local),
+        )
+
+
 # Spectrum: seven distinct colors that read well on both dark and light backgrounds.
 _SPECTRUM_COLORS = (
     "color(196)",  # Red

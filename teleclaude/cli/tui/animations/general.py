@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import math
 import random
 
+from teleclaude.cli.tui.animation_colors import MultiGradient, rgb_to_hex
 from teleclaude.cli.tui.animations.base import Animation
 from teleclaude.cli.tui.pixel_mapping import (
     BIG_BANNER_HEIGHT,
@@ -334,6 +336,299 @@ class WavePulse(Animation):
         return result
 
 
+# ---------------------------------------------------------------------------
+# TrueColor (24-bit HEX) animation suite
+# ---------------------------------------------------------------------------
+
+
+class SunsetGradient(Animation):
+    """TC1: Smooth sunset gradient sweeping left to right over time."""
+
+    _grad = MultiGradient(["#FF4500", "#FFD700", "#FF00FF"])
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
+        shift = (frame * 2) % width
+        result = {}
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            factor = ((x + shift) % width) / width
+            result[(x, y)] = self._grad.get(factor)
+        return result
+
+
+class CloudsPassing(Animation):
+    """TC2: Sky-blue background with fluffy white clouds drifting horizontally."""
+
+    _SKY = "#87CEEB"
+    _CLOUD = "#FFFFFF"
+    _NUM_CLOUDS = 3
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        result: dict[tuple[int, int], str | int] = {p: self._SKY for p in PixelMap.get_all_pixels(self.is_big)}
+        for i in range(self._NUM_CLOUDS):
+            speed = i + 1
+            cx = (frame * speed + i * (width // self._NUM_CLOUDS)) % width
+            cy = i % height
+            for dx in range(-2, 3):
+                nx = (cx + dx) % width
+                result[(nx, cy)] = self._CLOUD
+                if height > 1:
+                    result[(nx, (cy + 1) % height)] = self._CLOUD
+        return result
+
+
+class FloatingBalloons(Animation):
+    """TC3: Brightly colored clusters floating upward from the bottom."""
+
+    _COLORS = ["#FF3366", "#FFD700", "#33CC66", "#FF3366", "#FFD700"]
+    _NUM_BALLOONS = 5
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        result: dict[tuple[int, int], str | int] = {p: -1 for p in PixelMap.get_all_pixels(self.is_big)}
+        period = height + 4
+        for i in range(self._NUM_BALLOONS):
+            cx = (i * 13 + (frame // period) * 7) % width
+            cy = (height - 1) - (frame % period)
+            color = self._COLORS[i % len(self._COLORS)]
+            for dx in range(-1, 2):
+                for dy in range(-1, 1):
+                    nx, ny = cx + dx, cy + dy
+                    if 0 <= nx < width and 0 <= ny < height:
+                        result[(nx, ny)] = color
+        return result
+
+
+class NeonCyberpunk(Animation):
+    """TC4: High-contrast cyan and magenta pulsing in diagonal waves."""
+
+    _CYAN = "#00FFFF"
+    _MAGENTA = "#FF00FF"
+    _PERIOD = 8
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        half = self._PERIOD
+        full = self._PERIOD * 2
+        result = {}
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            diagonal = (x + y * 2 + frame * 2) % full
+            result[(x, y)] = self._CYAN if diagonal < half else self._MAGENTA
+        return result
+
+
+class AuroraBorealis(Animation):
+    """TC5: Wavy, organic vertical pulses of greens, blues, and purples."""
+
+    _grad = MultiGradient(["#50C878", "#00008B", "#800080"])
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        result = {}
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            wave = math.sin(x * 0.3 + frame * 0.2) * 0.3 + 0.5
+            factor = (y / max(height - 1, 1) * 0.7 + wave * 0.3) % 1.0
+            result[(x, y)] = self._grad.get(factor)
+        return result
+
+
+class LavaLamp(Animation):
+    """TC6: Slow morphing blobs of red and orange rising and falling."""
+
+    _grad = MultiGradient(["#FF4500", "#FF8C00", "#FF4500"])
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        result = {}
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            blob = math.sin(x * 0.2 + frame * 0.1) * math.cos(y * 0.5 + frame * 0.07)
+            factor = (blob + 1) / 2
+            result[(x, y)] = self._grad.get(factor)
+        return result
+
+
+class StarryNight(Animation):
+    """TC7: Midnight blue sky with randomly twinkling white and yellow stars."""
+
+    _BG = "#0B1021"
+    _STAR_WHITE = "#FFFFFF"
+    _STAR_YELLOW = "#FFFACD"
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        result = {}
+        for p in PixelMap.get_all_pixels(self.is_big):
+            if random.random() < 0.05:
+                result[p] = self._STAR_WHITE if random.random() < 0.7 else self._STAR_YELLOW
+            else:
+                result[p] = self._BG
+        return result
+
+
+class MatrixRain(Animation):
+    """TC8: Neon green raindrop columns with fading trails falling downward."""
+
+    _TRAIL = 4
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        result: dict[tuple[int, int], str | int] = {p: "#000000" for p in PixelMap.get_all_pixels(self.is_big)}
+        period = height + self._TRAIL
+        for x in range(width):
+            head_y = (frame + x * 3) % period
+            for dy in range(self._TRAIL + 1):
+                y = head_y - dy
+                if 0 <= y < height:
+                    if dy == 0:
+                        result[(x, y)] = "#39FF14"
+                    else:
+                        factor = 1.0 - dy / self._TRAIL
+                        g = int(0x64 * factor)
+                        result[(x, y)] = rgb_to_hex(0, g, 0)
+        return result
+
+
+class OceanWaves(Animation):
+    """TC9: Deep navy, teal and aqua sweeping in horizontal sine waves."""
+
+    _grad = MultiGradient(["#000080", "#008080", "#00FFFF"])
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        result = {}
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            wave = math.sin(x * 0.3 - frame * 0.3) * 0.3 + 0.5
+            factor = (y / max(height - 1, 1) * 0.5 + wave * 0.5) % 1.0
+            result[(x, y)] = self._grad.get(factor)
+        return result
+
+
+class FireBreath(Animation):
+    """TC10: Flickering fire heavy at the bottom, fading to ash near the top."""
+
+    _hot = MultiGradient(["#FF0000", "#FF4500", "#FFD700"])
+    _COOL = "#404040"
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        result = {}
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            y_factor = y / max(height - 1, 1)
+            intensity = y_factor + random.random() * 0.3
+            if intensity < 0.35:
+                result[(x, y)] = self._COOL
+            else:
+                color_factor = min(1.0, (intensity - 0.35) / 0.65)
+                result[(x, y)] = self._hot.get(color_factor)
+        return result
+
+
+class SynthwaveWireframe(Animation):
+    """TC11: Magenta horizon at bottom fading to dark purple sky at top."""
+
+    _grad = MultiGradient(["#1A0533", "#6600CC", "#FF00FF"])
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        result = {}
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            factor = y / max(height - 1, 1)
+            result[(x, y)] = self._grad.get(factor)
+        return result
+
+
+class PrismaticShimmer(Animation):
+    """TC12: Rapid, chaotic sparkling of bright jewel tones across all pixels."""
+
+    _COLORS = ["#FF0000", "#0000FF", "#00FF00", "#FF00FF", "#00FFFF", "#FFD700", "#FF69B4", "#8A2BE2"]
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        result = {}
+        for p in PixelMap.get_all_pixels(self.is_big):
+            result[p] = random.choice(self._COLORS)
+        return result
+
+
+class BreathingHeart(Animation):
+    """TC13: Crimson glow pulsing from the center outward like a heartbeat."""
+
+    _grad = MultiGradient(["#8B0000", "#DC143C"])
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        cx, cy = width / 2, height / 2
+        max_dist = math.sqrt(cx**2 + cy**2)
+        pulse = (math.sin(frame * 0.3) + 1) / 2
+        result = {}
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            dist = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
+            norm_dist = dist / max_dist if max_dist > 0 else 0
+            factor = max(0.0, min(1.0, 1.0 - norm_dist + (pulse - 0.5) * 0.4))
+            result[(x, y)] = self._grad.get(factor)
+        return result
+
+
+class IceCrystals(Animation):
+    """TC14: Frosty ice creeping inward from edges, turning everything white."""
+
+    _grad = MultiGradient(["#87CEEB", "#E0FFFF", "#FFFFFF"])
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        progress = frame / max(self.duration_frames - 1, 1)
+        coverage = progress * 1.5
+        result = {}
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            edge_x = min(x, width - 1 - x) / max(width / 2, 1)
+            edge_y = min(y, height - 1 - y) / max(height / 2, 1)
+            edge_dist = min(edge_x, edge_y)
+            factor = max(0.0, min(1.0, coverage - edge_dist))
+            result[(x, y)] = self._grad.get(factor)
+        return result
+
+
+class Bioluminescence(Animation):
+    """TC15: Pitch-black sea with neon blue agents leaving glowing trails."""
+
+    _NUM_AGENTS = 8
+    _TRAIL_DECAY = 5
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        self._agents = [[random.randint(0, width - 1), random.randint(0, height - 1)] for _ in range(self._NUM_AGENTS)]
+        self._trails: dict[tuple[int, int], int] = {}
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        # Move agents randomly
+        for agent in self._agents:
+            agent[0] = (agent[0] + random.choice([-1, 0, 1])) % width
+            agent[1] = (agent[1] + random.choice([-1, 0, 1])) % height
+        # Decay existing trails
+        for pos in list(self._trails.keys()):
+            self._trails[pos] -= 1
+            if self._trails[pos] <= 0:
+                del self._trails[pos]
+        # Stamp agent positions into trails at full intensity
+        for agent in self._agents:
+            self._trails[(agent[0], agent[1])] = self._TRAIL_DECAY
+        # Render
+        result: dict[tuple[int, int], str | int] = {p: "#000000" for p in PixelMap.get_all_pixels(self.is_big)}
+        for pos, intensity in self._trails.items():
+            factor = intensity / self._TRAIL_DECAY
+            r = int(0x46 * factor)
+            g = int(0x82 * factor)
+            b = int(0xB4 * factor)
+            result[pos] = rgb_to_hex(r, g, b)
+        return result
+
+
 # Helper to provide some animations for random selection
 GENERAL_ANIMATIONS = [
     FullSpectrumCycle,
@@ -351,4 +646,20 @@ GENERAL_ANIMATIONS = [
     DiagonalSweepDL,
     LetterShimmer,
     WavePulse,
+    # TrueColor animations
+    SunsetGradient,
+    CloudsPassing,
+    FloatingBalloons,
+    NeonCyberpunk,
+    AuroraBorealis,
+    LavaLamp,
+    StarryNight,
+    MatrixRain,
+    OceanWaves,
+    FireBreath,
+    SynthwaveWireframe,
+    PrismaticShimmer,
+    BreathingHeart,
+    IceCrystals,
+    Bioluminescence,
 ]

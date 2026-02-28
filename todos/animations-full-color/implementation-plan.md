@@ -10,9 +10,9 @@ We need to inject serious creativity into the TUI animations. The current setup 
 
 **File(s):** `teleclaude/cli/tui/animation_colors.py`
 
-- [ ] Implement `hex_to_rgb(hex_str)` and `rgb_to_hex(r, g, b)` (or use the existing `_hex_to_rgb` and `_rgb_to_hex`).
-- [ ] Create a `interpolate_color(c1, c2, factor)` function that takes two hex strings and a float `0.0-1.0` and returns the blended hex string.
-- [ ] Create a `MultiGradient` class that takes a list of hex color stops and can return an interpolated color for any float `0.0-1.0` along the gradient line.
+- [x] Implement `hex_to_rgb(hex_str)` and `rgb_to_hex(r, g, b)` (or use the existing `_hex_to_rgb` and `_rgb_to_hex`).
+- [x] Create a `interpolate_color(c1, c2, factor)` function that takes two hex strings and a float `0.0-1.0` and returns the blended hex string.
+- [x] Create a `MultiGradient` class that takes a list of hex color stops and can return an interpolated color for any float `0.0-1.0` along the gradient line.
 
 ## Phase 2: The Creative Animation Suite
 
@@ -42,7 +42,7 @@ Implement the following classes, inheriting from `Animation`. Use math (sine, mo
 
 **File(s):** `teleclaude/cli/tui/animations/general.py`
 
-- [ ] Add all 15 classes to the `GENERAL_ANIMATIONS` list, replacing or supplementing the old ones.
+- [x] Add all 15 classes to the `GENERAL_ANIMATIONS` list, replacing or supplementing the old ones.
 
 ---
 
@@ -50,17 +50,17 @@ Implement the following classes, inheriting from `Animation`. Use math (sine, mo
 
 ### Task 3.1: Tests and TUI Check
 
-- [ ] Run `make test`.
-- [ ] Run `telec` and ensure the banner cycles through or triggers these animations flawlessly, exhibiting rich 24-bit colors.
+- [x] Run `make test`.
+- [x] Run `telec` and ensure the banner cycles through or triggers these animations flawlessly, exhibiting rich 24-bit colors.
 
 ### Task 3.2: Quality Checks
 
-- [ ] Run `make lint`.
-- [ ] Ensure all implementation tasks are ticked `[x]`.
+- [x] Run `make lint`.
+- [x] Ensure all implementation tasks are ticked `[x]`.
 
 ---
 
 ## Phase 4: Review Readiness
 
-- [ ] Confirm requirements are met and all 15 creative animations are built.
-- [ ] Confirm implementation tasks are marked `[x]`.
+- [x] Confirm requirements are met and all 15 creative animations are built.
+- [x] Confirm implementation tasks are marked `[x]`.
