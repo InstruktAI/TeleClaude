@@ -400,18 +400,37 @@ class WavePulse(Animation):
 
 
 class SunsetGradient(Animation):
-    """TC1: Smooth sunset gradient sweeping left to right over time."""
+    """TC1: Smooth sunset gradient with procedural hue-rotation."""
 
     theme_filter = "light"
-    _grad = MultiGradient(["#FF4500", "#FFD700", "#FF00FF"])
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
+        self.hue_anchor = self.rng.randint(0, 360)
+
+    def _hsv_to_rgb(self, h: float, s: float, v: float) -> tuple[int, int, int]:
+        i = int(h * 6.0); f = (h * 6.0) - i; p = v * (1.0 - s); q = v * (1.0 - f * s); t = v * (1.0 - (1.0 - f) * s)
+        i %= 6
+        if i == 0: return int(v * 255), int(t * 255), int(p * 255)
+        if i == 1: return int(q * 255), int(v * 255), int(p * 255)
+        if i == 2: return int(p * 255), int(v * 255), int(t * 255)
+        if i == 3: return int(p * 255), int(q * 255), int(v * 255)
+        if i == 4: return int(t * 255), int(p * 255), int(v * 255)
+        return int(v * 255), int(p * 255), int(q * 255)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
-        shift = (frame * 2) % width
+        modulation = self.get_modulation(frame)
+        shift = (frame * 0.5 * modulation) % 1.0
+        
         result = {}
-        for x, y in PixelMap.get_all_pixels(self.is_big):
-            factor = ((x + shift) % width) / width
-            result[(x, y)] = self._grad.get(factor)
+        for x, y in self._all_pixels:
+            x_factor = x / max(width - 1, 1)
+            # Hue morphs across the width and over time
+            hue = (self.hue_anchor + (x_factor + shift) * 60) % 360 / 360.0
+            r, g, b = self._hsv_to_rgb(hue, 0.8, 0.9)
+            result[(x, y)] = self.get_contrast_safe_color(rgb_to_hex(r, g, b))
         return result
 
 
@@ -486,7 +505,22 @@ class NeonCyberpunk(Animation):
 
 
 class AuroraBorealis(Animation):
-    """TC5: Wavy, organic vertical pulses of greens, blues, and purples."""
+    """TC5: Wavy, organic vertical pulses with procedural hue-shifting."""
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
+        self.hue_anchor = self.rng.randint(0, 360)
+
+    def _hsv_to_rgb(self, h: float, s: float, v: float) -> tuple[int, int, int]:
+        i = int(h * 6.0); f = (h * 6.0) - i; p = v * (1.0 - s); q = v * (1.0 - f * s); t = v * (1.0 - (1.0 - f) * s)
+        i %= 6
+        if i == 0: return int(v * 255), int(t * 255), int(p * 255)
+        if i == 1: return int(q * 255), int(v * 255), int(p * 255)
+        if i == 2: return int(p * 255), int(v * 255), int(t * 255)
+        if i == 3: return int(p * 255), int(q * 255), int(v * 255)
+        if i == 4: return int(t * 255), int(p * 255), int(v * 255)
+        return int(v * 255), int(p * 255), int(q * 255)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
@@ -494,27 +528,47 @@ class AuroraBorealis(Animation):
         modulation = self.get_modulation(frame)
         phase = self.seed % 100
         
-        for x, y in PixelMap.get_all_pixels(self.is_big):
+        for x, y in self._all_pixels:
             wave = math.sin(x * 0.3 + frame * 0.1 * modulation + phase) * 0.3 + 0.5
-            factor = (y / max(height - 1, 1) * 0.7 + wave * 0.3) % 1.0
-            result[(x, y)] = self.get_contrast_safe_color(self._grad.get(factor))
+            y_factor = y / max(height - 1, 1)
+            # Procedural hue shift for aurora variety
+            hue = (self.hue_anchor + (y_factor * 0.7 + wave * 0.3) * 120) % 360 / 360.0
+            r, g, b = self._hsv_to_rgb(hue, 0.8, 0.8)
+            result[(x, y)] = self.get_contrast_safe_color(rgb_to_hex(r, g, b))
         return result
 
 
 class LavaLamp(Animation):
-    """TC6: Slow morphing blobs of red and orange rising and falling."""
+    """TC6: Organic morphing blobs with procedural hue-shifting."""
 
     theme_filter = "light"
-    _grad = MultiGradient(["#FF4500", "#FF8C00", "#FF4500"])
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
+        self.hue_anchor = self.rng.randint(0, 360)
+
+    def _hsv_to_rgb(self, h: float, s: float, v: float) -> tuple[int, int, int]:
+        i = int(h * 6.0); f = (h * 6.0) - i; p = v * (1.0 - s); q = v * (1.0 - f * s); t = v * (1.0 - (1.0 - f) * s)
+        i %= 6
+        if i == 0: return int(v * 255), int(t * 255), int(p * 255)
+        if i == 1: return int(q * 255), int(v * 255), int(p * 255)
+        if i == 2: return int(p * 255), int(v * 255), int(t * 255)
+        if i == 3: return int(p * 255), int(q * 255), int(v * 255)
+        if i == 4: return int(t * 255), int(p * 255), int(v * 255)
+        return int(v * 255), int(p * 255), int(q * 255)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         result = {}
         modulation = self.get_modulation(frame)
         phase = self.seed % 50
-        for x, y in PixelMap.get_all_pixels(self.is_big):
+        for x, y in self._all_pixels:
             blob = math.sin(x * 0.2 + frame * 0.05 * modulation + phase) * math.cos(y * 0.5 + frame * 0.03 * modulation)
             factor = (blob + 1) / 2
-            result[(x, y)] = self.get_contrast_safe_color(self._grad.get(factor))
+            # Procedural hue shift for lava variety
+            hue = (self.hue_anchor + factor * 40) % 360 / 360.0
+            r, g, b = self._hsv_to_rgb(hue, 0.9, 0.9)
+            result[(x, y)] = self.get_contrast_safe_color(rgb_to_hex(r, g, b))
         return result
 
 
@@ -751,37 +805,74 @@ class CinematicPrismSweep(Animation):
 
 
 class OceanWaves(Animation):
-    """TC9: Deep navy, teal and aqua sweeping in horizontal sine waves."""
+    """TC9: Sine-wave water swells with procedural hue-shifting."""
 
-    _grad = MultiGradient(["#000080", "#008080", "#00FFFF"])
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
+        self.hue_anchor = self.rng.randint(0, 360)
+
+    def _hsv_to_rgb(self, h: float, s: float, v: float) -> tuple[int, int, int]:
+        i = int(h * 6.0); f = (h * 6.0) - i; p = v * (1.0 - s); q = v * (1.0 - f * s); t = v * (1.0 - (1.0 - f) * s)
+        i %= 6
+        if i == 0: return int(v * 255), int(t * 255), int(p * 255)
+        if i == 1: return int(q * 255), int(v * 255), int(p * 255)
+        if i == 2: return int(p * 255), int(v * 255), int(t * 255)
+        if i == 3: return int(p * 255), int(q * 255), int(v * 255)
+        if i == 4: return int(t * 255), int(p * 255), int(v * 255)
+        return int(v * 255), int(p * 255), int(q * 255)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         result = {}
-        for x, y in PixelMap.get_all_pixels(self.is_big):
-            wave = math.sin(x * 0.3 - frame * 0.3) * 0.3 + 0.5
-            factor = (y / max(height - 1, 1) * 0.5 + wave * 0.5) % 1.0
-            result[(x, y)] = self._grad.get(factor)
+        modulation = self.get_modulation(frame)
+        
+        for x, y in self._all_pixels:
+            wave = math.sin(x * 0.3 - frame * 0.1 * modulation + (self.seed % 10)) * 0.3 + 0.5
+            y_factor = y / max(height - 1, 1)
+            # Procedural hue shift for water variety
+            hue = (self.hue_anchor + (y_factor + wave) * 30) % 360 / 360.0
+            r, g, b = self._hsv_to_rgb(hue, 0.8, 0.8)
+            result[(x, y)] = self.get_contrast_safe_color(rgb_to_hex(r, g, b))
         return result
 
 
 class FireBreath(Animation):
-    """TC10: Flickering fire heavy at the bottom, fading near the top."""
+    """TC10: Volumetric fire with procedural hue-morphing and organic flicker."""
 
-    _hot = MultiGradient(["#FF0000", "#FF4500", "#FFD700"])
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
+        # Randomize fire hue anchors
+        self.hue_anchor = self.rng.randint(0, 360)
+
+    def _hsv_to_rgb(self, h: float, s: float, v: float) -> tuple[int, int, int]:
+        i = int(h * 6.0); f = (h * 6.0) - i; p = v * (1.0 - s); q = v * (1.0 - f * s); t = v * (1.0 - (1.0 - f) * s)
+        i %= 6
+        if i == 0: return int(v * 255), int(t * 255), int(p * 255)
+        if i == 1: return int(q * 255), int(v * 255), int(p * 255)
+        if i == 2: return int(p * 255), int(v * 255), int(t * 255)
+        if i == 3: return int(p * 255), int(q * 255), int(v * 255)
+        if i == 4: return int(t * 255), int(p * 255), int(v * 255)
+        return int(v * 255), int(p * 255), int(q * 255)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         result = {}
-        for x, y in PixelMap.get_all_pixels(self.is_big):
-            y_factor = y / max(height - 1, 1)
-            # Fire is heavier at the bottom
-            intensity = y_factor + self.rng.random() * 0.3
-            if intensity >= 0.45:
-                color_factor = min(1.0, (intensity - 0.45) / 0.55)
-                result[(x, y)] = self.get_contrast_safe_color(self._hot.get(color_factor))
-            else:
-                result[(x, y)] = -1
+        modulation = self.get_modulation(frame)
+        
+        # Procedural hue rotation for variety
+        current_hue = (self.hue_anchor + frame * 0.1) % 360 / 360.0
+        
+        for x, y in self._all_pixels:
+            y_factor = (height - 1 - y) / max(height - 1, 1) # Hotter at bottom
+            flicker = self.rng.random() * 0.4 * modulation
+            intensity = min(1.0, y_factor + flicker)
+            
+            r, g, b = self._hsv_to_rgb(current_hue, 0.9, intensity)
+            color = rgb_to_hex(r, g, b)
+            result[(x, y)] = self.get_contrast_safe_color(color)
+            
         return result
 
 
@@ -812,42 +903,83 @@ class PrismaticShimmer(Animation):
 
 
 class BreathingHeart(Animation):
-    """TC13: Crimson glow pulsing from the center outward like a heartbeat."""
+    """TC13: Organic central pulse with procedural hue-rotation."""
 
-    _grad = MultiGradient(["#8B0000", "#DC143C"])
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
+        self.hue_anchor = self.rng.randint(0, 360)
+
+    def _hsv_to_rgb(self, h: float, s: float, v: float) -> tuple[int, int, int]:
+        i = int(h * 6.0); f = (h * 6.0) - i; p = v * (1.0 - s); q = v * (1.0 - f * s); t = v * (1.0 - (1.0 - f) * s)
+        i %= 6
+        if i == 0: return int(v * 255), int(t * 255), int(p * 255)
+        if i == 1: return int(q * 255), int(v * 255), int(p * 255)
+        if i == 2: return int(p * 255), int(v * 255), int(t * 255)
+        if i == 3: return int(p * 255), int(q * 255), int(v * 255)
+        if i == 4: return int(t * 255), int(p * 255), int(v * 255)
+        return int(v * 255), int(p * 255), int(q * 255)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         cx, cy = width / 2, height / 2
         max_dist = math.sqrt(cx**2 + cy**2)
-        pulse = (math.sin(frame * 0.3) + 1) / 2
+        
+        modulation = self.get_modulation(frame)
+        pulse = (math.sin(frame * 0.3 * modulation) + 1) / 2
+        
         result = {}
-        for x, y in PixelMap.get_all_pixels(self.is_big):
+        for x, y in self._all_pixels:
             dist = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
             norm_dist = dist / max_dist if max_dist > 0 else 0
-            factor = max(0.0, min(1.0, 1.0 - norm_dist + (pulse - 0.5) * 0.4))
-            result[(x, y)] = self._grad.get(factor)
+            # Pulse intensity
+            intensity = max(0.0, min(1.0, 1.0 - norm_dist + (pulse - 0.5) * 0.4))
+            # Procedural hue shift for heartbeat variety
+            hue = (self.hue_anchor + intensity * 30) % 360 / 360.0
+            r, g, b = self._hsv_to_rgb(hue, 0.9, intensity)
+            result[(x, y)] = self.get_contrast_safe_color(rgb_to_hex(r, g, b))
         return result
 
 
 class IceCrystals(Animation):
-    """TC14: Frosty ice creeping inward from edges, turning everything white."""
+    """TC14: Frosty ice with procedural hue-shifting."""
 
-    _grad = MultiGradient(["#87CEEB", "#E0FFFF", "#FFFFFF"])
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
+        self.hue_anchor = self.rng.randint(0, 360)
+
+    def _hsv_to_rgb(self, h: float, s: float, v: float) -> tuple[int, int, int]:
+        i = int(h * 6.0); f = (h * 6.0) - i; p = v * (1.0 - s); q = v * (1.0 - f * s); t = v * (1.0 - (1.0 - f) * s)
+        i %= 6
+        if i == 0: return int(v * 255), int(t * 255), int(p * 255)
+        if i == 1: return int(q * 255), int(v * 255), int(p * 255)
+        if i == 2: return int(p * 255), int(v * 255), int(t * 255)
+        if i == 3: return int(p * 255), int(q * 255), int(v * 255)
+        if i == 4: return int(t * 255), int(p * 255), int(v * 255)
+        return int(v * 255), int(p * 255), int(q * 255)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        
+        modulation = self.get_modulation(frame)
         progress = frame / max(self.duration_frames - 1, 1)
-        coverage = progress * 1.5
+        coverage = progress * 1.5 * modulation
+        
         result = {}
-        for x, y in PixelMap.get_all_pixels(self.is_big):
+        for x, y in self._all_pixels:
             edge_x = min(x, width - 1 - x) / max(width / 2, 1)
             edge_y = min(y, height - 1 - y) / max(height / 2, 1)
             edge_dist = min(edge_x, edge_y)
-            factor = max(0.0, min(1.0, coverage - edge_dist))
-            result[(x, y)] = self._grad.get(factor)
+            intensity = max(0.0, min(1.0, coverage - edge_dist))
+            
+            # Procedural hue shift for frosty variety
+            hue = (self.hue_anchor + intensity * 20) % 360 / 360.0
+            # Desaturated for 'ice' look
+            r, g, b = self._hsv_to_rgb(hue, 0.3 * intensity, 0.9)
+            result[(x, y)] = self.get_contrast_safe_color(rgb_to_hex(r, g, b))
         return result
 
 
