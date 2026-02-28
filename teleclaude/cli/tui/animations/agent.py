@@ -126,6 +126,7 @@ class AgentWithinLetterSweep(Animation):
     """A11: Within each letter, pixels sweep L→R using agent colors (Big only)."""
 
     supports_small = False
+    is_external_light = True
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:

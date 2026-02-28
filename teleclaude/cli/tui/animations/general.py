@@ -209,9 +209,10 @@ class MiddleOutVertical(Animation):
 
 
 class WithinLetterSweepLR(Animation):
-    """G4: Within each letter, pixels sweep horizontally left to right (Big only)."""
+    """G4: Volumetric vertical sweep L→R through neon tubes (Big only)."""
 
     supports_small = False
+    is_external_light = True
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
@@ -225,22 +226,34 @@ class WithinLetterSweepLR(Animation):
             active_col_offset = frame % letter_width
             active_col = start_x + active_col_offset
 
+            # Palette cycle
             color_pair = self.palette.get(frame // letter_width)
+            safe_color = self.get_contrast_safe_color(color_pair)
+            
+            from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+            try:
+                if safe_color.startswith("#"):
+                    r, g, b = hex_to_rgb(safe_color)
+                else:
+                    r, g, b = 150, 150, 150
+            except (ValueError, TypeError, AttributeError):
+                r, g, b = 150, 150, 150
+                
+            dim_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
 
             for x in range(start_x, end_x + 1):
-                col_pixels = PixelMap.get_column_pixels(self.is_big, x)
-                for p in col_pixels:
-                    if x == active_col:
-                        result[p] = color_pair
-                    else:
-                        result[p] = -1
+                # Only return the active column surge and keep others dimmed
+                color = safe_color if x == active_col else dim_color
+                for p in PixelMap.get_column_pixels(self.is_big, x):
+                    result[p] = color
         return result
 
 
 class WithinLetterSweepRL(Animation):
-    """G5: Within each letter, pixels sweep horizontally right to left (Big only)."""
+    """G5: Volumetric vertical sweep R→L through neon tubes (Big only)."""
 
     supports_small = False
+    is_external_light = True
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
@@ -255,14 +268,23 @@ class WithinLetterSweepRL(Animation):
             active_col = start_x + active_col_offset
 
             color_pair = self.palette.get(frame // letter_width)
+            safe_color = self.get_contrast_safe_color(color_pair)
+
+            from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+            try:
+                if safe_color.startswith("#"):
+                    r, g, b = hex_to_rgb(safe_color)
+                else:
+                    r, g, b = 150, 150, 150
+            except (ValueError, TypeError, AttributeError):
+                r, g, b = 150, 150, 150
+                
+            dim_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
 
             for x in range(start_x, end_x + 1):
-                col_pixels = PixelMap.get_column_pixels(self.is_big, x)
-                for p in col_pixels:
-                    if x == active_col:
-                        result[p] = color_pair
-                    else:
-                        result[p] = -1
+                color = safe_color if x == active_col else dim_color
+                for p in PixelMap.get_column_pixels(self.is_big, x):
+                    result[p] = color
         return result
 
 
