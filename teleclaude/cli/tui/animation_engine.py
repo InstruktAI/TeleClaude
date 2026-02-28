@@ -197,3 +197,10 @@ class AnimationEngine:
             buf.clear()
         for buf in self._buffers_back.values():
             buf.clear()
+
+    def is_external_light(self, target: str = "banner") -> bool:
+        """True if the current animation for the target is an external light source."""
+        slot = self._targets.get(target)
+        if slot and slot.animation:
+            return slot.animation.is_external_light
+        return False

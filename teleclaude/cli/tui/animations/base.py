@@ -19,6 +19,8 @@ class Animation(ABC):
     theme_filter: str | None = None
     # If True, this animation is allowed to use colors darker than the letters
     is_shadow_caster: bool = False
+    # If True, this color applies to the billboard background (reflection) as well
+    is_external_light: bool = False
 
     def __init__(
         self,

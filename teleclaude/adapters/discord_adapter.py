@@ -91,8 +91,8 @@ class DiscordAdapter(UiAdapter):
         self._forum_project_map: dict[int, str] = {}
         # forum-channel-id -> webhook cache for actor-based reflection delivery
         self._reflection_webhook_cache: dict[int, object] = {}
-        # team channel IDs — managed text channels under the Team category
-        self._team_channel_ids: set[int] = set()
+        # team channel ID -> person's home folder path
+        self._team_channel_map: dict[int, str] = {}
         self._tree: object | None = None
         self._launcher_registration_view: object | None = None
 
@@ -198,7 +198,7 @@ class DiscordAdapter(UiAdapter):
 
         # Team text channels don't use forum threads — messages go directly
         # to the channel. The channel_id is already set from the incoming message.
-        if discord_meta.channel_id is not None and discord_meta.channel_id in self._team_channel_ids:
+        if discord_meta.channel_id is not None and discord_meta.channel_id in self._team_channel_map:
             return session
 
         # Route to the correct forum based on session type.
@@ -257,10 +257,9 @@ class DiscordAdapter(UiAdapter):
         channel = getattr(message, "channel", None)
         channel_id = self._parse_optional_int(getattr(channel, "id", None))
 
-        # Team text channel — route to the person's home directory
-        if channel_id is not None and channel_id in self._team_channel_ids:
-            home = os.path.expanduser("~")
-            return "team", home
+        # Team text channel — route to the person's folder
+        if channel_id is not None and channel_id in self._team_channel_map:
+            return "team", self._team_channel_map[channel_id]
 
         # Prefer explicit parent_id attribute, then parent.id, then channel.id
         parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
@@ -819,7 +818,8 @@ class DiscordAdapter(UiAdapter):
                 guild, category, slug, discord_user_id
             )
             if ch_id is not None:
-                self._team_channel_ids.add(ch_id)
+                person_folder = os.path.join(os.path.expanduser("~"), ".teleclaude", "people", name)
+                self._team_channel_map[ch_id] = person_folder
             # Ensure permissions are correct on existing channels too
             if ch_id is not None and discord_user_id is not None:
                 await self._ensure_channel_private(ch_id, guild, discord_user_id)
@@ -1303,7 +1303,7 @@ class DiscordAdapter(UiAdapter):
             return str(discord_meta.thread_id)
 
         # Team text channels — no thread creation, output goes to the channel directly
-        if discord_meta.channel_id is not None and discord_meta.channel_id in self._team_channel_ids:
+        if discord_meta.channel_id is not None and discord_meta.channel_id in self._team_channel_map:
             return str(discord_meta.channel_id)
 
         target_forum_id = self._resolve_target_forum(session)
@@ -2068,7 +2068,7 @@ class DiscordAdapter(UiAdapter):
         channel_id = self._parse_optional_int(getattr(channel, "id", None))
 
         # Team text channels are managed
-        if channel_id is not None and channel_id in self._team_channel_ids:
+        if channel_id is not None and channel_id in self._team_channel_map:
             return True
 
         managed_ids = self._get_managed_forum_ids()

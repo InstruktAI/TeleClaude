@@ -69,17 +69,20 @@ class LetterWaveRL(Animation):
 class LineSweepTopBottom(Animation):
     """G6: Horizontal lines sweep from top to bottom."""
 
+    is_external_light = True
+
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         active_row = frame % height
         color_pair = self.palette.get(frame // height)
+        safe_color = self.get_contrast_safe_color(color_pair)
 
         result = {}
         for r in range(height):
             row_pixels = PixelMap.get_row_pixels(self.is_big, r)
             if r == active_row:
                 for p in row_pixels:
-                    result[p] = color_pair
+                    result[p] = safe_color
             else:
                 for p in row_pixels:
                     result[p] = -1
@@ -89,17 +92,20 @@ class LineSweepTopBottom(Animation):
 class LineSweepBottomTop(Animation):
     """G7: Horizontal lines sweep from bottom to top."""
 
+    is_external_light = True
+
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         active_row = (height - 1) - (frame % height)
         color_pair = self.palette.get(frame // height)
+        safe_color = self.get_contrast_safe_color(color_pair)
 
         result = {}
         for r in range(height):
             row_pixels = PixelMap.get_row_pixels(self.is_big, r)
             if r == active_row:
                 for p in row_pixels:
-                    result[p] = color_pair
+                    result[p] = safe_color
             else:
                 for p in row_pixels:
                     result[p] = -1
@@ -240,13 +246,14 @@ class WordSplitBlink(Animation):
         split_x = 34 if self.is_big else 16
 
         color_pair = self.palette.get(frame // 2)
+        safe_color = self.get_contrast_safe_color(color_pair)
         parity = frame % 2
 
         result = {}
         for x, y in all_pixels:
             is_tele = x < split_x
             if (is_tele and parity == 0) or (not is_tele and parity == 1):
-                result[(x, y)] = color_pair
+                result[(x, y)] = safe_color
             else:
                 result[(x, y)] = -1
         return result
@@ -256,6 +263,7 @@ class DiagonalSweepDR(Animation):
     """G11: Pixels light up in diagonal waves top-left to bottom-right."""
 
     supports_small = False
+    is_external_light = True
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
@@ -279,6 +287,7 @@ class DiagonalSweepDL(Animation):
     """G12: Pixels light up in diagonal waves top-right to bottom-left."""
 
     supports_small = False
+    is_external_light = True
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big:
@@ -363,6 +372,7 @@ class CloudsPassing(Animation):
     """
 
     theme_filter = "light"
+    is_external_light = True
     _CLOUD = "#FFFFFF"
     _NUM_CLOUDS = 3
 
@@ -529,6 +539,7 @@ class HighSunBird(Animation):
     theme_filter = "light"
     supports_small = True
     is_shadow_caster = True
+    is_external_light = True
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if self.dark_mode:
@@ -580,10 +591,23 @@ class SearchlightSweep(Animation):
     theme_filter = "dark"
     supports_small = True
     is_shadow_caster = True
+    is_external_light = True
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self._all_pixels = PixelMap.get_all_pixels(self.is_big)
+
+    def _is_batman_mask(self, x: int, y: int, cx: int, cy: int) -> bool:
+        """Simple relative mask for a Batman-like silhouette inside the beam."""
+        dx, dy = x - cx, y - (cy - 3) # Center the mask slightly above the bottom light source
+        
+        # Ears
+        if abs(dx) == 1 and dy == -1: return True
+        # Head/Body
+        if abs(dx) <= 1 and dy == 0: return True
+        # Wings
+        if abs(dx) <= 2 and dy == 1: return True
+        return False
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.dark_mode:
@@ -597,26 +621,32 @@ class SearchlightSweep(Animation):
         cx = int((frame * modulation * 2) % (width + 20)) - 10
         cy = height - 1
         
-        # Beam width oscillates - ensure radius >= 1.0 to avoid ZeroDivisionError
+        # Beam width oscillates
         radius = max(1.0, 2.0 + math.sin(frame * 0.2) * 2.0)
         
         result: dict[tuple[int, int], str | int] = {}
         for x, y in self._all_pixels:
             dist = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
             if dist < radius:
-                # Inside the beam
-                intensity = 1.0 - (dist / radius)
-                flare = int(200 + intensity * 55)
-                result[(x, y)] = rgb_to_hex(flare, flare, flare)
-            elif x == cx and y < cy:
-                # Upward shadow wake
-                result[(x, y)] = "#151515" 
+                if self._is_batman_mask(x, y, cx, cy):
+                    # The Shadow silhouette
+                    result[(x, y)] = "#151515" 
+                else:
+                    # Inside the bright beam
+                    intensity = 1.0 - (dist / radius)
+                    flare = int(200 + intensity * 55)
+                    result[(x, y)] = rgb_to_hex(flare, flare, flare)
+            else:
+                # Outside the beam
+                result[(x, y)] = -1
 
         return result
 
 
 class CinematicPrismSweep(Animation):
     """TC18: Volumetric beam with random hue morphing and pivoting angle."""
+
+    is_external_light = True
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)

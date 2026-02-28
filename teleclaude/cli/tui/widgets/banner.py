@@ -10,7 +10,6 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.cli.tui.base import TelecMixin
-from teleclaude.cli.tui.theme import BANNER_COLOR
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.animation_engine import AnimationEngine
@@ -98,10 +97,15 @@ class Banner(TelecMixin, Widget):
                     
                     if engine and engine.has_active_animation:
                         color = engine.get_color(x, y, target="banner")
+                        is_ext = engine.is_external_light(target="banner")
+                        
                         if color:
                             if not focused:
                                 color = apply_tui_haze(color)
-                            result.append(char, style=Style(color=color, bgcolor=bg_color))
+                            
+                            # External light reflects on the billboard plate (modifies bgcolor)
+                            pixel_bg = color if is_ext else bg_color
+                            result.append(char, style=Style(color=color, bgcolor=pixel_bg))
                         else:
                             fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
                             result.append(char, style=Style(color=fg, bgcolor=bg_color))
@@ -150,10 +154,14 @@ class Banner(TelecMixin, Widget):
 
                     if engine and engine.has_active_animation:
                         color = engine.get_color(x, y, target="logo")
+                        is_ext = engine.is_external_light(target="logo")
+                        
                         if color:
                             if not focused:
                                 color = apply_tui_haze(color)
-                            result.append(char, style=Style(color=color, bgcolor=bg_color))
+                            
+                            pixel_bg = color if is_ext else bg_color
+                            result.append(char, style=Style(color=color, bgcolor=pixel_bg))
                         else:
                             fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
                             result.append(char, style=Style(color=fg, bgcolor=bg_color))
