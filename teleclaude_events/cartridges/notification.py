@@ -25,7 +25,24 @@ class NotificationProjectorCartridge:
         was_created = False
         is_meaningful = False
 
-        if lc.creates:
+        if lc.creates and lc.updates and lc.group_key:
+            group_val = str(event.payload.get(lc.group_key, ""))
+            existing = await context.db.find_by_group_key(lc.group_key, group_val)
+            if existing:
+                notification_id = existing["id"]
+                changed_fields = set(event.payload.keys()) & set(lc.meaningful_fields)
+                is_meaningful = bool(changed_fields)
+                await context.db.update_notification_fields(
+                    notification_id,
+                    event.description,
+                    event.payload,
+                    reset_human_status=is_meaningful,
+                )
+            else:
+                notification_id, was_created = await context.db.upsert_by_idempotency_key(event, schema)
+                is_meaningful = True
+
+        elif lc.creates:
             notification_id, was_created = await context.db.upsert_by_idempotency_key(event, schema)
 
         elif lc.updates and lc.group_key:
