@@ -22,12 +22,12 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [x] Requirements traced to implemented behavior — SC-1 through SC-13 all pass (round 2)
-- [x] Deferrals justified and not hiding required scope — no deferrals.md; none needed
-- [x] Findings written in `review-findings.md`
-- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — APPROVE (round 2)
-- [x] Critical issues resolved or explicitly blocked — round 1 Important #1 fixed in eca2516e
-- [x] Test coverage and regression risk assessed — existing tests pass; no new tests justified
+- [ ] Requirements traced to implemented behavior
+- [ ] Deferrals justified and not hiding required scope
+- [ ] Findings written in `review-findings.md`
+- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
+- [ ] Critical issues resolved or explicitly blocked
+- [ ] Test coverage and regression risk assessed
 
 ## Finalize Gates (Finalizer)
 
