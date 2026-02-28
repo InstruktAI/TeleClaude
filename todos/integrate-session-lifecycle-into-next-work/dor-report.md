@@ -1,95 +1,104 @@
 # DOR Report: integrate-session-lifecycle-into-next-work
 
-## Draft Assessment
+## Gate Verdict
 
-**Assessed at:** 2026-02-28
-**Phase:** Draft (pre-gate)
-
-### Gate 1: Intent & Success
-
+**Assessed at:** 2026-02-28T14:30:00Z
+**Phase:** Gate (final)
+**Score:** 8
 **Status:** PASS
 
-The problem statement is explicit: next-work orchestration lacks session lifecycle discipline, causing context-destroying worker churn during review friction and relying on AI for repetitive artifact verification.
+---
 
-Three clear outcomes:
+### Gate 1: Intent & Success — PASS
 
-1. Direct peer conversation replaces fix-review dispatch churn
-2. Mechanical CLI gate replaces AI artifact checking
-3. Session lifecycle principle wired into orchestrator's required context
+Problem statement is explicit: next-work orchestration lacks session lifecycle discipline, causing context-destroying worker churn during review friction and relying on AI reasoning for artifact verification that should be mechanical.
 
-Success criteria are concrete and testable (CLI exit codes, observable session behavior, grep-verifiable documentation changes).
+Three outcomes:
 
-### Gate 2: Scope & Size
+1. Direct peer conversation replaces fix-review dispatch churn (R1)
+2. Mechanical CLI gate replaces AI artifact checking (R2)
+3. Session lifecycle principle wired into orchestrator context (R3)
 
-**Status:** PASS (with note)
+Eight success criteria are concrete and testable: CLI exit codes, observable session behavior, grep-verifiable documentation changes, and unit test existence.
 
-The work is broken into three independent workstreams:
+### Gate 2: Scope & Size — PASS
 
-1. Artifact verification gate (new function + CLI + integration)
-2. Direct peer conversation (POST_COMPLETION modification + command update)
-3. Session lifecycle wiring (documentation change)
+Three independent workstreams with clear build order (verification gate first, peer conversation second, principle wiring third). Changes are concentrated in:
 
-Each workstream is independently testable. The total scope is substantial but fits a single focused build session because the changes are concentrated in `core.py` with one new test file and minor documentation edits.
+- `teleclaude/core/next_machine/core.py` (verify_artifacts function + POST_COMPLETION modifications)
+- `teleclaude/cli/telec.py` + `teleclaude/cli/tool_commands.py` (CLI registration)
+- `agents/commands/next-work.md` + `agents/commands/next-fix-review.md` (documentation)
+- `tests/unit/test_next_machine_verify_artifacts.py` (new test file)
 
-### Gate 3: Verification
+Fits a single focused build session. Each workstream is independently testable.
 
-**Status:** PASS
+### Gate 3: Verification — PASS
 
-- Artifact verification: unit tests for pass/fail cases per phase
+- Artifact verification: unit tests covering pass/fail for build and review phases (Task 4.1)
 - Direct peer conversation: observable through session listing during a review cycle
 - Session lifecycle wiring: grep-verifiable in command artifact
 - Integration: existing `make test` suite covers state machine routing
 
-### Gate 4: Approach Known
+### Gate 4: Approach Known — PASS
 
-**Status:** PASS
+All patterns confirmed in codebase:
 
-All patterns exist in the codebase:
+- `run_build_gates()` at core.py:388 is the model for `verify_artifacts()`
+- `POST_COMPLETION` dict at core.py:147 already handles per-command orchestration logic
+- `telec sessions send --direct` confirmed in CLI_SURFACE with full flag/notes support
+- CLI subcommand registration pattern established; `tool_commands.py` confirmed present
+- `review_round` / `max_review_rounds` / `_is_review_round_limit_reached()` confirmed for safety cap
 
-- `run_build_gates()` is the model for `verify_artifacts()`
-- `POST_COMPLETION` dict already handles per-command orchestration logic
-- `telec sessions send --direct` exists and is documented
-- CLI command registration pattern is established in `telec.py` and `tool_commands.py`
+### Gate 5: Research Complete — N/A
 
-### Gate 5: Research Complete
+No third-party dependencies.
 
-**Status:** N/A (no third-party dependencies)
+### Gate 6: Dependencies & Preconditions — PASS
 
-### Gate 6: Dependencies & Preconditions
+All required CLI capabilities confirmed present:
 
-**Status:** PASS
+- `telec sessions send --direct` (idempotent link establishment)
+- `telec sessions run --command /next-fix-review`
+- `telec sessions end <session_id>`
+- State machine routing infrastructure in core.py
 
-No external dependencies. Required capabilities:
+No external dependencies. No unresolved config or env requirements.
 
-- `telec sessions send --direct` — already implemented
-- `telec sessions run` — already implemented
-- `telec sessions end` — already implemented
-- State machine routing — existing infrastructure in `core.py`
+### Gate 7: Integration Safety — PASS
 
-### Gate 7: Integration Safety
+Changes are incremental and backward-compatible:
 
-**Status:** PASS
+- `verify_artifacts()` is additive (new function, no modification to existing behavior)
+- POST_COMPLETION APPROVE path unchanged; REQUEST CHANGES path adds peer conversation with existing fix-review dispatch as fallback when no reviewer session is alive
+- Documentation changes are non-breaking
 
-Changes are incremental:
+### Gate 8: Tooling Impact — PASS
 
-- `verify_artifacts()` is additive — new function, doesn't modify existing behavior
-- POST_COMPLETION changes are backward-compatible — APPROVE path unchanged, REQUEST CHANGES path adds peer conversation before the existing fallback
-- Documentation change is non-breaking
+New `verify-artifacts` subcommand under `todo` follows existing subcommand pattern. `telec sync` handles command surface documentation updates.
 
-### Gate 8: Tooling Impact
+---
 
-**Status:** PASS
+## Plan-to-Requirement Fidelity
 
-New CLI subcommand `telec todo verify-artifacts` follows existing `todo` subcommand patterns. Command surface documentation will need updating but that's handled by `telec sync`.
+All implementation plan tasks trace to specific requirements:
 
-## Open Questions
+| Requirement                    | Plan Tasks    | Fidelity                                                                              |
+| ------------------------------ | ------------- | ------------------------------------------------------------------------------------- |
+| R1: Direct peer conversation   | 2.1, 2.2, 2.3 | Plan correctly keeps reviewer alive, dispatches new fixer, establishes --direct links |
+| R2: Artifact verification gate | 1.1, 1.2, 1.3 | Plan adds function, CLI, and state machine integration matching requirement spec      |
+| R3: Session lifecycle wiring   | 3.1, 3.2      | Plan adds required read and strengthens POST_COMPLETION discipline                    |
+| Validation                     | 4.1, 4.2      | Test coverage for verify_artifacts pass/fail cases                                    |
 
-1. **Review round counting during peer conversation:** Should each back-and-forth between fixer and reviewer count as a "review round" for the `max_review_rounds` limit? The current assumption is yes — the existing counter tracks how many times review transitions through REQUEST CHANGES.
+No contradictions detected between plan and requirements.
 
-2. **Fallback trigger for standard fix-review:** When exactly should the orchestrator fall back to the standard fix-review dispatch instead of peer conversation? Current assumption: only when no reviewer session ID is available (e.g., reviewer session died or was manually ended before the orchestrator processed the verdict).
+## Resolved Open Questions
 
-## Assumptions
+1. **Review round counting during peer conversation:** Each REQUEST CHANGES transition increments `review_round` via `mark_phase`. The existing `max_review_rounds` safety cap applies naturally — the orchestrator checks `_is_review_round_limit_reached()` in the state machine.
 
-- The orchestrator is capable of managing session IDs in its working memory (POST_COMPLETION instructions, not state.yaml) across the peer conversation sub-loop.
-- `telec sessions send --direct` is idempotent — sending it twice to the same pair doesn't create duplicate links.
-- Workers receiving `--direct` messages can process them alongside their primary task without disruption.
+2. **Fallback trigger for standard fix-review:** Falls back when no reviewer session ID is available (reviewer session died or was manually ended). The plan implements this as: standard fix-review dispatch is the state machine's default; peer conversation is orchestrated through POST_COMPLETION when a reviewer session is still alive.
+
+## Assumptions (validated)
+
+- Orchestrator manages session IDs in working memory via POST_COMPLETION instructions (not state.yaml). Confirmed: state.yaml schema has no session ID fields, and POST_COMPLETION instructions already use `<session_id>` placeholder.
+- `telec sessions send --direct` is idempotent. Confirmed: CLI notes say "One-time ignition: sending once with --direct establishes/reuses the link."
+- `session-lifecycle.md` exists as a resolvable doc snippet. Confirmed at `~/.teleclaude/docs/general/principle/session-lifecycle.md`.
