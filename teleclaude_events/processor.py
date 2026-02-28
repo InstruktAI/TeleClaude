@@ -85,10 +85,9 @@ class EventProcessor:
                 try:
                     envelope = EventEnvelope.from_stream_dict(data)
                     await self._pipeline.execute(envelope)
-                except Exception:  # pylint: disable=broad-exception-caught
-                    logger.exception("EventProcessor failed to process entry", entry_id=entry_id)
-                finally:
                     try:
                         await self._redis.xack(self._stream, self._group, entry_id)
                     except Exception:  # pylint: disable=broad-exception-caught
                         logger.exception("EventProcessor failed to ACK entry", entry_id=entry_id)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    logger.exception("EventProcessor failed to process entry", entry_id=entry_id)
