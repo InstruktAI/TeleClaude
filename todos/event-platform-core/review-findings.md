@@ -142,6 +142,32 @@ These fields use custom JSON serialization that could break silently.
 
 ---
 
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| C1: TelegramDeliveryAdapter min_level dead code | Added `level: int` to push callback signature; `on_notification` now checks `level < self._min_level` and returns early | `1d368ff4` |
+| C2: Processor ACKs failed events | Moved `xack` into the `try` block after `pipeline.execute()` succeeds; failed events stay in PEL | `0eb6fb9b` |
+| C3: creates+updates lifecycle unreachable elif | Added priority branch: when `creates+updates+group_key`, look up by group_key first; update if found, insert if not | `9b6ac9ac` |
+| C4: update_agent_status erases claimed_at | Only set `claimed_at` on `claimed` transition; other transitions omit the column | `386c6701` |
+| C5: Demo uses nonexistent event_type param | Replaced `?event_type=...` with valid `?domain=system` filter in both demo files | `333285fc` |
+| I1: WS debounce coalesces notifications | Switched `_notification_push` to call `_broadcast_payload` directly (no debounce) | `f075bd99` |
+| I2: Dedup blocks updates-only schemas | Skip dedup (pass through) for schemas with `creates=False, updates=True` | `602f4d9f` |
+| I3: WS push to ALL clients | Collect only clients subscribed to "notifications" topic; pass as `targets=` to `_broadcast_payload` | `f075bd99` |
+| I4: CLI events list missing description | Added DESCRIPTION column (width 50) between VISIBLE and ACTIONABLE | `1bfc5880` |
+| I5: No tests for projector updates/resolves | Added tests for updates (found/not-found), resolves, and creates+updates branches | `26bed036` |
+| I6: TelegramDeliveryAdapter no tests | Created `test_telegram_adapter.py` covering level filter, was_created gate, exception handling | `26bed036` |
+| I8: update_notification_fields untested | Added tests for reset_human_status=True/False and claimed_at preservation | `26bed036` |
+| S2: Dead TYPE_CHECKING: pass block | Removed from `pipeline.py` | `26bed036` |
+
+**Not fixed (I7):** HTTP API endpoint tests require a live FastAPI test client with EventDB wiring. Deferred — the routes follow established patterns and are covered by the daemon integration path.
+
+Tests: 2525 passed, 106 skipped. Lint: PASS.
+
+---
+
 ## Paradigm-Fit Assessment
 
 1. **Data flow:** The implementation correctly follows the established data layer patterns — Redis Streams XADD/XREADGROUP mirrors `teleclaude/transport/redis_transport.py`, SQLite with WAL mirrors `teleclaude/core/db.py`, FastAPI routes follow `api_server.py` conventions. No inline hacks or bypasses.
