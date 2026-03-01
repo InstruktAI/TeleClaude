@@ -88,13 +88,21 @@ class LetterWaveRL(Animation):
 class LineSweepTopBottom(Animation):
     """G6: Vertical volumetric sweep through neon tubes from top to bottom.
     Entire letters remain colored; a 3-row surge provides high-intensity highlight.
+    Full-grid reflection enabled.
     """
+
+    is_external_light = True
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         active_row = frame % height
         color_pair = self.palette.get(frame // height)
-        safe_color = self.get_contrast_safe_color(self.get_electric_neon(color_pair))
+        # High-intensity center
+        safe_color = self.get_electric_neon(self.get_contrast_safe_color(color_pair))
         
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
         try:
@@ -105,28 +113,25 @@ class LineSweepTopBottom(Animation):
         except (ValueError, TypeError, AttributeError):
             r, g, b = 150, 150, 150
             
+        # Volumetric colors: ALL must be Electric Neon to avoid matte/gray
         mid_color = safe_color
-        side_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7)))
-        base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
+        side_color = self.get_electric_neon(self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7))))
+        base_color = self.get_electric_neon(self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))))
 
         result = {}
-        # Ensure EVERY character in the letters is painted
-        for i, (start, end) in enumerate(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS):
-            for x in range(start, end + 1):
-                for y in range(height):
-                    dist = abs(y - active_row)
-                    if dist == 0:
-                        current_color = mid_color
-                    elif dist == 1:
-                        current_color = side_color
-                    else:
-                        current_color = base_color
-                    result[(x, y)] = current_color
+        for x, y in self._all_pixels:
+            dist = abs(y - active_row)
+            if dist == 0: color = mid_color
+            elif dist == 1: color = side_color
+            else: color = base_color
+            result[(x, y)] = color
         return result
 
 
 class LineSweepBottomTop(Animation):
     """G7: Vertical volumetric sweep through neon tubes from bottom to top."""
+
+    is_external_light = True
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
@@ -144,22 +149,16 @@ class LineSweepBottomTop(Animation):
             r, g, b = 150, 150, 150
             
         mid_color = safe_color
-        side_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7)))
-        base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
+        side_color = self.get_electric_neon(self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7))))
+        base_color = self.get_electric_neon(self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))))
 
         result = {}
-        # Ensure EVERY character in the letters is painted
-        for i, (start, end) in enumerate(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS):
-            for x in range(start, end + 1):
-                for y in range(height):
-                    dist = abs(y - active_row)
-                    if dist == 0:
-                        current_color = mid_color
-                    elif dist == 1:
-                        current_color = side_color
-                    else:
-                        current_color = base_color
-                    result[(x, y)] = current_color
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            dist = abs(y - active_row)
+            if dist == 0: color = mid_color
+            elif dist == 1: color = side_color
+            else: color = base_color
+            result[(x, y)] = color
         return result
 
 
@@ -190,23 +189,17 @@ class MiddleOutVertical(Animation):
             r, g, b = 150, 150, 150
             
         mid_color = safe_color
-        side_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7)))
-        base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
+        side_color = self.get_electric_neon(self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7))))
+        base_color = self.get_electric_neon(self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))))
 
         result = {}
-        # Ensure EVERY character in the letters is painted
-        for i, (start, end) in enumerate(BIG_BANNER_LETTERS):
-            for x in range(start, end + 1):
-                for y in range(height):
-                    # Check proximity to ANY active row
-                    min_dist = min(abs(y - ar) for ar in active_rows)
-                    if min_dist == 0:
-                        current_color = mid_color
-                    elif min_dist == 1:
-                        current_color = side_color
-                    else:
-                        current_color = base_color
-                    result[(x, y)] = current_color
+        for x, y in PixelMap.get_all_pixels(True):
+            # Check proximity to ANY active row
+            min_dist = min(abs(y - ar) for ar in active_rows)
+            if min_dist == 0: color = mid_color
+            elif min_dist == 1: color = side_color
+            else: color = base_color
+            result[(x, y)] = color
         return result
 
 
@@ -349,6 +342,7 @@ class DiagonalSweepDR(Animation):
     """G11: Volumetric diagonal surge from top-left to bottom-right."""
 
     supports_small = False
+    is_external_light = True
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
@@ -378,6 +372,7 @@ class DiagonalSweepDL(Animation):
     """G12: Volumetric diagonal surge from top-right to bottom-left."""
 
     supports_small = False
+    is_external_light = True
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
@@ -422,6 +417,10 @@ class WavePulse(Animation):
 
     is_external_light = True
 
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
+
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         modulation = self.get_modulation(frame)
@@ -439,15 +438,17 @@ class WavePulse(Animation):
         except: r, g, b = 150, 150, 150
             
         mid_color = safe_color
-        side_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7)))
-        base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
+        side_color = self.get_electric_neon(self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7))))
+        base_color = self.get_electric_neon(self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))))
 
         result = {}
-        for x, y in PixelMap.get_all_pixels(self.is_big):
+        for x, y in self._all_pixels:
             dist = abs((x - 1) - active_x)
             if dist == 0: color = mid_color
             elif dist < 3: color = side_color
-            else: color = base_color
+            else:
+                # Return transparent for non-surge areas to preserve billboard base
+                color = -1
             result[(x, y)] = color
         return result
 
