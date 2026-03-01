@@ -198,7 +198,9 @@ class AnimationEngine:
         for z in sorted(z_buffer.keys(), reverse=True):
             layer = z_buffer[z]
             color = layer.get((x, y))
-            if isinstance(color, str):
+            # Only return strings that look like colors (Hex or color(N))
+            # Skip single-character entity markers (Stars/Clouds)
+            if isinstance(color, str) and len(color) > 1:
                 return color
             # If -1 or missing, continue to lower layer
             
