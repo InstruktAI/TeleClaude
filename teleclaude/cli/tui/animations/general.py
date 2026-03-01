@@ -534,23 +534,66 @@ class CloudsPassing(Animation):
 
 
 class FloatingBalloons(Animation):
-    """TC3: Colorful balloons floating upward."""
+    """TC3: Bright colored glows rising upward through letter pixel columns."""
 
-    _COLORS = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF"]
+    _COLORS = ["#FF3333", "#33FF66", "#3366FF", "#FFFF33", "#FF33FF", "#33FFFF"]
+    _NUM = 6
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._col_pixels: dict[int, list[int]] | None = None
+        self._all_pixels: list[tuple[int, int]] | None = None
+
+    def _lazy_init(self) -> None:
+        if self._col_pixels is not None:
+            return
+        from collections import defaultdict
+        by_col: dict[int, list[int]] = defaultdict(list)
+        letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS
+        for i in range(len(letters)):
+            for px, py in PixelMap.get_letter_pixels(self.is_big, i):
+                by_col[px].append(py)
+        self._col_pixels = {x: sorted(ys) for x, ys in by_col.items()}
+        self._all_pixels = [(x, y) for x, ys in by_col.items() for y in ys]
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
+        self._lazy_init()
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         modulation = self.get_modulation(frame)
-        
-        result = {}
-        for i in range(5):
-            bx = (i * 15 + int(frame * 0.1 * modulation)) % width
-            by = (height - 1) - int(frame * 0.2 * modulation + i * 2) % (height + 5)
-            
-            if 0 <= by < height:
-                color = self.get_contrast_safe_color(self._COLORS[i % len(self._COLORS)])
-                result[(bx, by)] = color
+
+        result: dict[tuple[int, int], str | int] = {p: "#060606" for p in self._all_pixels}
+
+        cols = sorted(self._col_pixels.keys())
+        if not cols:
+            return result
+
+        for i in range(self._NUM):
+            # Each balloon drifts slowly across columns
+            col_idx = int(i * len(cols) / self._NUM + frame * 0.08 * modulation) % len(cols)
+            col_x = cols[col_idx]
+            ys = self._col_pixels.get(col_x, [])
+            if not ys:
+                continue
+
+            # Rising: progress 0=bottom, 1=top; cycles continuously
+            speed = 0.20 + i * 0.04
+            progress = (frame * speed * modulation / max(1, height) + i / self._NUM) % 1.0
+            # target_y: higher y = lower on screen; low y = top
+            target_y = int(ys[-1] - progress * (ys[-1] - ys[0] + 1))
+            target_y = max(ys[0], min(ys[-1], target_y))
+
+            color_hex = self._COLORS[i % len(self._COLORS)]
+            r0, g0, b0 = hex_to_rgb(color_hex)
+
+            for py in ys:
+                dist = abs(py - target_y)
+                if dist == 0:
+                    result[(col_x, py)] = color_hex
+                elif dist == 1:
+                    result[(col_x, py)] = rgb_to_hex(int(r0 * 0.55), int(g0 * 0.55), int(b0 * 0.55))
+                elif dist == 2:
+                    result[(col_x, py)] = rgb_to_hex(int(r0 * 0.22), int(g0 * 0.22), int(b0 * 0.22))
+
         return result
 
 
@@ -600,6 +643,10 @@ class FireBreath(Animation):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 y_factor = y / max(height - 1, 1)   # 0=top, 1=bottom
                 fire_factor = 1.0 - y_factor          # 1=bottom (hottest), 0=top (coolest)
+                # Per-column organic variation: irregular licking flames
+                col_var = (math.sin(x * 1.3 + frame * 0.45) * 0.28
+                           + math.sin(x * 2.1 + frame * 0.3) * 0.15)
+                fire_factor = max(0.0, fire_factor + col_var)
                 # Per-pixel flicker noise
                 flicker = self.rng.random() * 0.35 * modulation
                 # Heat intensity: peaks at bottom
@@ -704,7 +751,8 @@ class SearchlightSweep(Animation):
         result: dict[tuple[int, int], str | int] = {}
         for x, y in self._all_pixels:
             dist = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
-            if dist < radius:
+            effective_radius = radius - 1 if y == cy else radius
+            if dist < effective_radius:
                 if self._is_batman_mask(x, y, cx, cy):
                     # Grounded shadow silhouette
                     result[(x, y)] = "#151515" 
@@ -757,12 +805,15 @@ class CinematicPrismSweep(Animation):
         
         result: dict[tuple[int, int], str | int] = {}
         
-        # 1. Base Neon state (Vivid Dimmed 60%)
+        # 1. Beam on neon letters — beam-only, no pre-existing haze
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         for i in range(num_letters):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 d = (x - 1) * math.cos(angle_rad) + y * math.sin(angle_rad)
                 surge = 1.0 - (abs(d - active_dist) / 4.0) if abs(d - active_dist) < 4 else 0.0
+                if surge <= 0:
+                    result[(x, y)] = -1
+                    continue
                 intensity = 0.6 + (surge * 0.4)
                 r, g, b = hex_to_rgb(safe_color)
                 result[(x, y)] = rgb_to_hex(int(r * intensity), int(g * intensity), int(b * intensity))

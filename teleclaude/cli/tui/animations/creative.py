@@ -211,8 +211,7 @@ class Glitch(Animation):
                     rgb[ch] = max(0, min(255, rgb[ch] + self.rng.randint(-100, 100)))
                     result[(x, y)] = rgb_to_hex(*rgb)
                 else:
-                    v = 0.80 + self.rng.random() * 0.20
-                    result[(x, y)] = rgb_to_hex(int(r0 * v), int(g0 * v), int(b0 * v))
+                    result[(x, y)] = p["base"]
 
         return result
 
@@ -400,15 +399,17 @@ class EQBars(Animation):
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self._params: Optional[dict] = None
+        self._peaks: Optional[List[float]] = None
 
     def _lazy_init(self, num: int) -> None:
         if self._params is not None:
             return
         self._params = {
-            "freqs": [self.rng.uniform(0.06, 0.18) for _ in range(num)],
+            "freqs": [self.rng.uniform(0.04, 0.12) for _ in range(num)],
             "phases": [self.rng.uniform(0, math.pi * 2) for _ in range(num)],
-            "amps": [self.rng.uniform(0.65, 1.0) for _ in range(num)],
+            "amps": [self.rng.uniform(0.80, 1.0) for _ in range(num)],
         }
+        self._peaks = [0.0] * num
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS
@@ -420,25 +421,38 @@ class EQBars(Animation):
         result: dict[tuple[int, int], str | int] = {}
 
         for i in range(num):
-            # Fake beat: two sine harmonics
+            # Loud base keeps bars high; two harmonics add organic motion
             level = (
-                math.sin(frame * p["freqs"][i] + p["phases"][i]) * 0.5
-                + math.sin(frame * p["freqs"][i] * 2.1 + p["phases"][i] * 0.8) * 0.3
-                + 0.2
+                math.sin(frame * p["freqs"][i] + p["phases"][i]) * 0.45
+                + math.sin(frame * p["freqs"][i] * 2.1 + p["phases"][i] * 0.8) * 0.25
+                + 0.55
             ) * p["amps"][i]
             level = max(0.0, min(1.0, level))
             lit = max(1, int(level * height))
 
+            # Slow-decay peak marker that hovers above the bar
+            peaks = self._peaks
+            if level >= peaks[i]:
+                peaks[i] = level
+            else:
+                peaks[i] = max(0.0, peaks[i] - 0.018)
+            peak_row = max(0, int(peaks[i] * height) - 1)
+
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 from_bottom = height - 1 - y
-                if from_bottom < lit:
-                    # Color: green → yellow → red from bottom to top
-                    row_frac = from_bottom / max(1, lit - 1) if lit > 1 else 1.0
-                    r = min(255, int(510 * min(1.0, row_frac)))
-                    g = min(255, int(510 * (1.0 - min(1.0, row_frac))))
+                if from_bottom == peak_row and peak_row >= lit:
+                    # Peak marker: bright white dot hovering above the bar
+                    result[(x, y)] = "#FFFFFF"
+                elif from_bottom < lit:
+                    # Absolute gradient: green (bottom) → yellow → orange → red (top)
+                    row_frac = from_bottom / max(1, height - 1)
+                    if row_frac <= 0.5:
+                        r = min(255, int(510 * row_frac))
+                        g = 255
+                    else:
+                        r = 255
+                        g = min(255, int(510 * (1.0 - row_frac)))
                     b = 0
-                    if from_bottom == lit - 1:  # top of bar: bright flash
-                        r, g, b = 255, 255, 80
                     result[(x, y)] = rgb_to_hex(r, g, b)
                 else:
                     result[(x, y)] = "#080808"
@@ -525,8 +539,8 @@ class LavaLamp(Animation):
 class Firefly(Animation):
     """Tiny light points wandering between letter pixel positions."""
 
-    _NUM_FLIES = 10
-    _TRAIL = 4
+    _NUM_FLIES = 20
+    _TRAIL = 8
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
@@ -561,7 +575,7 @@ class Firefly(Animation):
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         self._lazy_init()
-        result: dict[tuple[int, int], str | int] = {p: "#010106" for p in self._pixel_list}
+        result: dict[tuple[int, int], str | int] = {p: -1 for p in self._pixel_list}
 
         for fly in self._flies:
             fly["countdown"] -= 1
@@ -576,7 +590,7 @@ class Firefly(Animation):
 
             r0, g0, b0 = hex_to_rgb(fly["color"])
             for i, tp in enumerate(fly["trail"]):
-                fade = (i + 1) / (self._TRAIL + 1) * 0.5
+                fade = (i + 1) / (self._TRAIL + 1) * 0.85
                 result[tp] = rgb_to_hex(int(r0 * fade), int(g0 * fade), int(b0 * fade))
             result[fly["pos"]] = fly["color"]
 
@@ -603,8 +617,8 @@ class ColorSweep(Animation):
         directions = ["lr", "rl", "tb", "bt", "diag_dr", "diag_dl", "radial"]
         self._params = {
             "direction": self.rng.choice(directions),
-            "spec": Spectrum([main, "#ffffff", sec]),
-            "speed": self.rng.uniform(0.8, 1.6),
+            "spec": Spectrum([main, sec]),
+            "speed": self.rng.uniform(0.3, 3.0),
         }
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
@@ -636,7 +650,7 @@ class ColorSweep(Animation):
         elif direction == "diag_dl":
             max_v = width + height
             active = (width - 1) - ((frame * speed) % (max_v + 10) - 5)
-            def pos(x, y): return x - y, (x + y) / max_v
+            def pos(x, y): return x - y, (width - 1 - x + y) / max(1, width + height - 2)
         else:  # radial
             cx, cy = width / 2, height / 2
             max_r = math.sqrt(cx ** 2 + cy ** 2)
@@ -651,10 +665,12 @@ class ColorSweep(Animation):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 pos_val, color_frac = pos(x, y)
                 surge = self.linear_surge(pos_val, active, 4.0)
+                if surge <= 0:
+                    result[(x, y)] = -1
+                    continue
                 color = self.enforce_vibrancy(spec.get_color(color_frac))
-                intensity = 0.45 + surge * 0.55
                 r0, g0, b0 = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r0 * intensity), int(g0 * intensity), int(b0 * intensity))
+                result[(x, y)] = rgb_to_hex(int(r0 * surge), int(g0 * surge), int(b0 * surge))
 
         return result
 

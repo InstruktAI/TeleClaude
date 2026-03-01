@@ -141,6 +141,10 @@ class BoxTabBar(TelecMixin, Widget):
                 # 3. Layered Compositing (Physical Occlusion)
                 final_fg = fg
                 final_bg = bg_color
+                # Tab panes use panel background, not sky atmosphere
+                if in_tab:
+                    from teleclaude.cli.tui.theme import get_billboard_background
+                    final_bg = get_billboard_background(getattr(self.app, "app_focus", True))
                 fg_char = char
                 fg_color = None
                 
@@ -158,13 +162,12 @@ class BoxTabBar(TelecMixin, Widget):
                                 elif isinstance(entity, str):
                                     fg_color = entity
                     
-                    # Atmospheric light reflection (External)
-                    if engine.has_active_animation and engine.is_external_light():
+                    # Atmospheric light reflection (External) — skip for tab panes
+                    if not in_tab and engine.has_active_animation and engine.is_external_light():
                         color = engine.get_color(x, global_y)
                         if color and color != -1:
                             color_str = str(color)
-                            blend_pct = 0.3 if in_tab else 0.1
-                            final_bg = blend_colors(str(final_bg), color_str, blend_pct)
+                            final_bg = blend_colors(str(final_bg), color_str, 0.1)
                             final_fg = blend_colors(str(final_fg), color_str, 0.5)
 
                 row_text.append(fg_char, style=Style(color=_to_color(fg_color or final_fg), bgcolor=_to_color(final_bg)))
