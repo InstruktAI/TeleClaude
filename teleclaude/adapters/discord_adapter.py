@@ -740,6 +740,7 @@ class DiscordAdapter(UiAdapter):
         if project_changes:
             self._persist_project_forum_ids(project_changes)
 
+    # guard: loose-dict-func - kwargs is a heterogeneous discord.py channel edit dict; a TypedDict would need discord-py types
     async def _sync_project_forum_positions(self, category: object | None) -> None:
         """Move forums into the category and set positions to match trusted_dirs order.
 
@@ -826,6 +827,7 @@ class DiscordAdapter(UiAdapter):
             if ch_id is not None and discord_user_id is not None:
                 await self._ensure_channel_private(ch_id, guild, discord_user_id)
 
+    # guard: loose-dict-func - kwargs is a heterogeneous discord.py channel create dict; a TypedDict would need discord-py types
     async def _find_or_create_private_text_channel(
         self,
         guild: object,

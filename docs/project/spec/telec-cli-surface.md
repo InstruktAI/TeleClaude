@@ -170,6 +170,17 @@ subcommands:
         description: 'List event schemas: type, level, domain, visibility, description, actionable.'
         flags:
           --domain: 'Filter by domain.'
+  content:
+    description: 'Manage content pipeline.'
+    subcommands:
+      dump:
+        description: 'Fire-and-forget content dump to publications inbox.'
+        args:
+          - text: 'string (description or raw content to dump)'
+        flags:
+          --slug: 'Custom slug (default: auto-generated from text).'
+          --tags: 'Comma-separated tags.'
+          --author: 'Author identity (default: terminal auth).'
   bugs:
     description: 'Manage bug reports and fixes.'
     subcommands:

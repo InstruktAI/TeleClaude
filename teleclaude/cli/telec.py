@@ -80,6 +80,7 @@ class TelecCommand(str, Enum):
     EVENTS = "events"
     AUTH = "auth"
     CONFIG = "config"
+    CONTENT = "content"
 
 
 # =============================================================================
@@ -512,6 +513,31 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "list": CommandDef(
                 desc="List in-flight bug fixes with status",
                 flags=[],
+            ),
+        },
+    ),
+    "content": CommandDef(
+        desc="Manage content pipeline",
+        subcommands={
+            "dump": CommandDef(
+                desc="Fire-and-forget content dump to publications inbox",
+                args="<description-or-text>",
+                flags=[
+                    Flag("--slug", desc="Custom slug (default: auto-generated from text)"),
+                    Flag("--tags", desc="Comma-separated tags"),
+                    Flag("--author", desc="Author identity (default: terminal auth)"),
+                ],
+                notes=[
+                    "Creates publications/inbox/YYYYMMDD-<slug>/ with content.md and meta.yaml.",
+                    "Author defaults to terminal auth identity (telec auth whoami) or 'unknown'.",
+                    "Emits a content.dumped notification event if the notification service is available.",
+                    "Slug collision is handled automatically by appending a counter suffix.",
+                ],
+                examples=[
+                    'telec content dump "My brain dump about agent shorthand"',
+                    'telec content dump "Deep dive into mesh" --slug mesh-deep-dive --tags "mesh,architecture"',
+                    'telec content dump "Content for review" --author alice',
+                ],
             ),
         },
     ),
@@ -1226,6 +1252,8 @@ def _handle_cli_command(argv: list[str]) -> None:
         _handle_auth(args)
     elif cmd_enum is TelecCommand.CONFIG:
         _handle_config(args)
+    elif cmd_enum is TelecCommand.CONTENT:
+        _handle_content(args)
     else:
         print(f"Unknown command: /{cmd}")
         print(_usage())
@@ -2877,6 +2905,86 @@ def _handle_config(args: list[str]) -> None:
         print(f"Unknown config subcommand: {subcommand}")
         print(_usage("config"))
         raise SystemExit(1)
+
+
+def _handle_content(args: list[str]) -> None:
+    """Handle telec content subcommands."""
+    if not args:
+        print(_usage("content"))
+        return
+
+    subcommand = args[0]
+    if subcommand == "dump":
+        _handle_content_dump(args[1:])
+    else:
+        print(f"Unknown content subcommand: {subcommand}")
+        print(_usage("content"))
+        raise SystemExit(1)
+
+
+def _handle_content_dump(args: list[str]) -> None:
+    """Handle telec content dump <text> [--slug <slug>] [--tags <tags>] [--author <author>]."""
+    import re
+
+    from teleclaude.content_scaffold import create_content_inbox_entry
+
+    if not args:
+        print(_usage("content", "dump"))
+        return
+
+    text: str | None = None
+    slug: str | None = None
+    tags: list[str] | None = None
+    author: str | None = None
+    project_root = Path.cwd()
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--slug" and i + 1 < len(args):
+            slug = args[i + 1]
+            i += 2
+        elif arg == "--tags" and i + 1 < len(args):
+            raw = args[i + 1]
+            tags = [t.strip() for t in raw.split(",") if t.strip()]
+            i += 2
+        elif arg == "--author" and i + 1 < len(args):
+            author = args[i + 1]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("content", "dump"))
+            raise SystemExit(1)
+        else:
+            if text is not None:
+                print("Only one text argument is allowed.")
+                print(_usage("content", "dump"))
+                raise SystemExit(1)
+            text = arg
+            i += 1
+
+    if not text:
+        print("Missing required text argument.")
+        print(_usage("content", "dump"))
+        raise SystemExit(1)
+
+    if slug:
+        # Validate and normalise provided slug
+        slug = re.sub(r"[^a-z0-9-]+", "-", slug.lower()).strip("-")
+        slug = re.sub(r"-+", "-", slug)
+
+    try:
+        entry_dir = create_content_inbox_entry(
+            project_root,
+            text,
+            slug=slug,
+            tags=tags,
+            author=author,
+        )
+        print(f"Content dumped: {entry_dir.relative_to(project_root)}")
+    except Exception as exc:
+        print(f"Error: {exc}")
+        raise SystemExit(1) from exc
 
 
 def _handle_events(args: list[str]) -> None:
