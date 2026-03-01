@@ -399,7 +399,6 @@ class EQBars(Animation):
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self._params: Optional[dict] = None
-        self._peaks: Optional[List[float]] = None
 
     def _lazy_init(self, num: int) -> None:
         if self._params is not None:
@@ -409,7 +408,6 @@ class EQBars(Animation):
             "phases": [self.rng.uniform(0, math.pi * 2) for _ in range(num)],
             "amps": [self.rng.uniform(0.80, 1.0) for _ in range(num)],
         }
-        self._peaks = [0.0] * num
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS
@@ -430,21 +428,10 @@ class EQBars(Animation):
             level = max(0.0, min(1.0, level))
             lit = max(1, int(level * height))
 
-            # Slow-decay peak marker that hovers above the bar
-            peaks = self._peaks
-            if level >= peaks[i]:
-                peaks[i] = level
-            else:
-                peaks[i] = max(0.0, peaks[i] - 0.018)
-            peak_row = max(0, int(peaks[i] * height) - 1)
-
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 from_bottom = height - 1 - y
-                if from_bottom == peak_row and peak_row >= lit:
-                    # Peak marker: bright white dot hovering above the bar
-                    result[(x, y)] = "#FFFFFF"
-                elif from_bottom < lit:
-                    # Absolute gradient: green (bottom) → yellow → orange → red (top)
+                if from_bottom < lit:
+                    # Fixed gradient: green (bottom) → yellow → orange → red (top)
                     row_frac = from_bottom / max(1, height - 1)
                     if row_frac <= 0.5:
                         r = min(255, int(510 * row_frac))
