@@ -107,8 +107,9 @@ Three-phase approach: add config field with validation, create single resolver, 
 **File(s):** `teleclaude/hooks/receiver.py`
 
 - [ ] Line 190: replace `agent_enum = AgentName.CLAUDE` fallback with `agent_enum = AgentName.from_str(get_default_agent())`
-- [ ] Or: let the ValueError propagate (fail-fast) — decide based on whether a checkpoint for an unknown agent should proceed or abort
 - [ ] Add import: `from teleclaude.core.agents import get_default_agent`
+
+**Decision:** Use the config resolver rather than letting ValueError propagate. A checkpoint for an unknown agent should still be processable — aborting would lose checkpoint data. The resolver provides the configured default instead of silently hardcoding CLAUDE.
 
 ### Scoping note: transcript parser fallbacks (deferred)
 

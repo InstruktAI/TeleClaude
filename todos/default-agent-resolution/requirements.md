@@ -23,7 +23,7 @@ Eliminate all hardcoded agent names and fragile index-based agent selection. Est
 
 - [ ] `config.yml` requires `agents.default` — daemon refuses to start without it
 - [ ] `get_default_agent()` is the only function that resolves a default agent name
-- [ ] Zero hardcoded `"claude"` / `"gemini"` / `"codex"` strings in adapter code or command mapper
+- [ ] Zero hardcoded `"claude"` / `"gemini"` / `"codex"` strings in default-resolution paths in adapter code or command mapper (explicit user selection buttons in `callback_handlers.py` are deferred — see Deferrals)
 - [ ] Zero `enabled_agents[0]` patterns anywhere in codebase
 - [ ] `AgentName.CLAUDE` not used as a default parameter in any function signature
 - [ ] Launcher threads appear pinned (sticky) at the top of every managed Discord forum
@@ -42,3 +42,7 @@ Eliminate all hardcoded agent names and fragile index-based agent selection. Est
 
 - Existing deployments without `agents.default` in config.yml will fail on daemon restart — mitigated by clear error message directing user to add the field
 - Discord forum pin limit (1 pinned thread per forum) — the launcher is the only thread we'd pin, so this is fine
+
+## Deferrals
+
+- `telegram/callback_handlers.py:465`: event_map hardcodes `"agent claude"`, `"agent gemini"`, `"agent codex"` for explicit user selection buttons. These are not default-resolution — the user tapped a specific agent button. Replacing them requires reworking the callback data format (risk of breaking existing buttons). Deferred to a follow-up cleanup.
