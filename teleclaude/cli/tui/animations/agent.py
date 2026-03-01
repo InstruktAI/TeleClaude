@@ -33,38 +33,80 @@ class AgentPulse(Animation):
 
 
 class AgentWaveLR(Animation):
-    """A2: Letter-by-letter wave using agent colors."""
+    """A2: Letter-by-letter wave using agent colors with billboard reflection."""
+
+    is_external_light = True
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
+        letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS
         active_letter_idx = frame % num_letters
         
-        mid_color = self.palette.get(2) # Highlight
+        hi_color = self.palette.get(2) # Highlight
         base_color = self.palette.get(0) # Muted
 
         result = {}
-        for i in range(num_letters):
-            color = mid_color if i == active_letter_idx else base_color
-            for p in PixelMap.get_letter_pixels(self.is_big, i):
-                result[p] = color
+        for x, y in self._all_pixels:
+            # Map x to the nearest letter column for full-grid reflection
+            # Find which letter this x belongs to, or is closest to
+            assigned_idx = -1
+            for i, (start, end) in enumerate(letters):
+                if x >= start and x <= end:
+                    assigned_idx = i
+                    break
+            
+            # If not in a letter, find the nearest one to create a continuous wave reflection
+            if assigned_idx == -1:
+                # Simple heuristic: find letter with minimal distance to start/end
+                min_dist = 999
+                for i, (start, end) in enumerate(letters):
+                    dist = min(abs(x - start), abs(x - end))
+                    if dist < min_dist:
+                        min_dist = dist
+                        assigned_idx = i
+            
+            result[(x, y)] = hi_color if assigned_idx == active_letter_idx else base_color
         return result
 
 
 class AgentWaveRL(Animation):
     """A3: Letter-by-letter wave right-to-left using agent colors."""
 
+    is_external_light = True
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
+
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
+        letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS
         active_letter_idx = (num_letters - 1) - (frame % num_letters)
         
-        mid_color = self.palette.get(2)
+        hi_color = self.palette.get(2)
         base_color = self.palette.get(0)
 
         result = {}
-        for i in range(num_letters):
-            color = mid_color if i == active_letter_idx else base_color
-            for p in PixelMap.get_letter_pixels(self.is_big, i):
-                result[p] = color
+        for x, y in self._all_pixels:
+            assigned_idx = -1
+            for i, (start, end) in enumerate(letters):
+                if x >= start and x <= end:
+                    assigned_idx = i
+                    break
+            
+            if assigned_idx == -1:
+                min_dist = 999
+                for i, (start, end) in enumerate(letters):
+                    dist = min(abs(x - start), abs(x - end))
+                    if dist < min_dist:
+                        min_dist = dist
+                        assigned_idx = i
+            
+            result[(x, y)] = hi_color if assigned_idx == active_letter_idx else base_color
         return result
 
 
