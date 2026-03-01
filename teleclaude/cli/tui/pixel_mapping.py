@@ -79,6 +79,7 @@ class TargetRegistry:
         self.register("banner", BIG_BANNER_WIDTH, BIG_BANNER_HEIGHT, BIG_BANNER_LETTERS)
         self.register("logo", LOGO_WIDTH, LOGO_HEIGHT, LOGO_LETTERS)
         self.register("tabs", BIG_BANNER_WIDTH, 3) # Tab bar (Rows 7-9)
+        self.register("header", 200, 10) # Full width atmospheric canvas
 
     def register(self, name: str, width: int, height: int, letters: Optional[List[Tuple[int, int]]] = None) -> None:
         """Register a new render target."""
@@ -100,6 +101,14 @@ class PixelMap:
         if isinstance(target_arg, bool):
             return "banner" if target_arg else "logo"
         return target_arg
+
+    @staticmethod
+    def get_is_character(target_arg: bool | str, x: int, y: int) -> bool:
+        """Check if a specific coordinate is an actual non-empty ASCII character."""
+        target_name = PixelMap._resolve_target(target_arg)
+        target = target_registry.get(target_name)
+        if not target: return False
+        return (x, y) in target.get_all_pixels()
 
     @staticmethod
     def get_is_letter(target_arg: bool | str, x: int, y: int) -> bool:

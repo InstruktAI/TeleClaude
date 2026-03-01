@@ -12,10 +12,6 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.cli.tui.base import TelecMixin
-from teleclaude.cli.tui.theme import CONNECTOR_COLOR, NEUTRAL_HIGHLIGHT_COLOR, NEUTRAL_MUTED_COLOR
-
-
-from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import (
     CONNECTOR_COLOR,
     NEUTRAL_HIGHLIGHT_COLOR,
@@ -49,6 +45,13 @@ class BoxTabBar(TelecMixin, Widget):
 
     active_tab = reactive("sessions")
 
+    class TabClicked(Message):
+        """Posted when a tab is clicked."""
+
+        def __init__(self, tab_id: str) -> None:
+            super().__init__()
+            self.tab_id = tab_id
+
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self.animation_engine: AnimationEngine | None = None
@@ -56,7 +59,6 @@ class BoxTabBar(TelecMixin, Widget):
 
     def render(self) -> Group:
         width = self.size.width or 80
-        line_color = CONNECTOR_COLOR
         engine = self.animation_engine
         from teleclaude.cli.tui.animations.base import (
             Z_SKY,
@@ -83,12 +85,10 @@ class BoxTabBar(TelecMixin, Widget):
             global_y = 7 + y_offset # Tabs start at Y=7
             
             for x in range(width):
-                # 1. Determine physical character and its base Z-layer
                 char = " "
                 z_base = Z_TABS_INACTIVE
-                base_style = NEUTRAL_MUTED_COLOR
                 
-                # Check if x,y belongs to a tab
+                # Check if x belongs to a tab
                 in_tab = False
                 active_tab_under = False
                 for c, w, label, is_active, _ in tabs:
@@ -96,7 +96,6 @@ class BoxTabBar(TelecMixin, Widget):
                         in_tab = True
                         if is_active: active_tab_under = True
                         
-                        # Character selection based on position in tab
                         rel_x = x - c
                         if y_offset == 0:
                             if rel_x == 0: char = "\u256d"
@@ -111,28 +110,25 @@ class BoxTabBar(TelecMixin, Widget):
                         break
                 
                 if not in_tab and y_offset == 2:
-                    char = "\u2500" # Bottom connector line
+                    char = "\u2500" # Connector line
                 
                 z_base = Z_TABS_ACTIVE if active_tab_under else Z_TABS_INACTIVE
                 fg = NEUTRAL_HIGHLIGHT_COLOR if active_tab_under else NEUTRAL_MUTED_COLOR
                 if not getattr(self.app, "app_focus", True):
                     fg = apply_tui_haze(fg)
 
-                # 2. Get Background Atmosphere (Sky Z-0)
-                bg_color = engine.get_layer_color(Z_SKY, x, global_y) if engine else None
+                # 2. Get Background Atmosphere (Sky Z-0) from full width header
+                bg_color = engine.get_layer_color(Z_SKY, x, global_y, target="header") if engine else None
                 if not isinstance(bg_color, str): bg_color = "#000000"
 
                 # 3. Layered Compositing (Physical Occlusion)
-                # Front-most layers can overwrite or reflect
                 final_fg = fg
                 final_bg = bg_color
                 
                 if engine:
-                    # Check for foreground entities (Z-7) - e.g. The Car
-                    entity = engine.get_layer_color(Z_FOREGROUND, x, global_y)
+                    # Check for foreground entities (Z-7) from header
+                    entity = engine.get_layer_color(Z_FOREGROUND, x, global_y, target="header")
                     
-                    # Occlusion logic:
-                    # If Z_FOREGROUND (7) > z_base (5 for inactive, 10 for active)
                     if Z_FOREGROUND > z_base:
                         if entity and entity != -1:
                             if isinstance(entity, str) and len(entity) == 1:
@@ -145,13 +141,12 @@ class BoxTabBar(TelecMixin, Widget):
                     if engine.has_active_animation and engine.is_external_light():
                         color = engine.get_color(x, global_y)
                         if color and color != -1:
-                            # Reflect light on the tab background
+                            color_str = str(color)
                             blend_pct = 0.3 if in_tab else 0.1
-                            final_bg = blend_colors(final_bg, color, blend_pct)
-                            # Also tint the foreground slightly
-                            final_fg = blend_colors(final_fg, color, 0.5)
+                            final_bg = blend_colors(str(final_bg), color_str, blend_pct)
+                            final_fg = blend_colors(str(final_fg), color_str, 0.5)
 
-                row_text.append(char, style=Style(color=final_fg, bgcolor=final_bg))
+                row_text.append(char, style=Style(color=str(final_fg), bgcolor=str(final_bg)))
             rows.append(row_text)
 
         return Group(*rows)

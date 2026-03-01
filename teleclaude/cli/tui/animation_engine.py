@@ -105,6 +105,15 @@ class AnimationEngine:
             slot.priority = priority
             slot.looping = False
             self._has_active_animation = True
+            
+            # Atmospheric Synchronization:
+            # If playing a periodic animation on the banner, also play GlobalSky on the header
+            if target_name == "banner" and priority == AnimationPriority.PERIODIC:
+                from teleclaude.cli.tui.animations.general import GlobalSky
+                from teleclaude.cli.tui.animation_colors import palette_registry
+                sky = GlobalSky(palette=palette_registry.get("spectrum"), is_big=True, duration_seconds=animation.duration_seconds)
+                self.play(sky, priority=AnimationPriority.PERIODIC, target="header")
+
             if self.on_animation_start:
                 self.on_animation_start(target_name, animation)
         else:

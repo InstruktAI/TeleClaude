@@ -154,10 +154,10 @@ class TestAnimationTriggers(unittest.TestCase):
         """Test that subset filters animations by class name."""
         from teleclaude.cli.tui.animations.general import GENERAL_ANIMATIONS
 
-        subset = ["LetterWaveLR"]
+        subset = ["LineSweepTopBottom"]
         filtered = filter_animations(GENERAL_ANIMATIONS, subset)
         self.assertEqual(len(filtered), 1)
-        self.assertEqual(filtered[0].__name__, "LetterWaveLR")
+        self.assertEqual(filtered[0].__name__, "LineSweepTopBottom")
 
     def test_filter_animations_no_match(self):
         """Test that non-matching subset returns empty list."""
