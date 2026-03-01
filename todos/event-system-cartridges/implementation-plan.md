@@ -280,7 +280,7 @@ Codebase patterns to follow:
 
 ### Task 6.1: Unit tests — trust cartridge
 
-**File(s):** `tests/test_events/test_cartridge_trust.py`
+**File(s):** `tests/unit/test_teleclaude_events/test_cartridge_trust.py`
 
 - [ ] `test_known_source_accepted`: source in known_sources → ACCEPT, payload unchanged
 - [ ] `test_unknown_source_standard_flagged`: unknown source + standard → FLAG, `_trust_flags` in payload
@@ -291,7 +291,7 @@ Codebase patterns to follow:
 
 ### Task 6.2: Unit tests — enrichment cartridge
 
-**File(s):** `tests/test_events/test_cartridge_enrichment.py`
+**File(s):** `tests/unit/test_teleclaude_events/test_cartridge_enrichment.py`
 
 - [ ] `test_no_entity_passthrough`: event with no entity → no `_enrichment` key, returned unchanged
 - [ ] `test_unknown_entity_type_passthrough`: unrecognized URI scheme → no-op
@@ -301,7 +301,7 @@ Codebase patterns to follow:
 
 ### Task 6.3: Unit tests — correlation cartridge
 
-**File(s):** `tests/test_events/test_cartridge_correlation.py`
+**File(s):** `tests/unit/test_teleclaude_events/test_cartridge_correlation.py`
 
 - [ ] `test_passes_all_events_through`: correlation never returns None
 - [ ] `test_burst_detected_emits_synthetic`: N same-type events in window → producer receives burst event
@@ -314,7 +314,7 @@ Codebase patterns to follow:
 
 ### Task 6.4: Unit tests — classification cartridge
 
-**File(s):** `tests/test_events/test_cartridge_classification.py`
+**File(s):** `tests/unit/test_teleclaude_events/test_cartridge_classification.py`
 
 - [ ] `test_known_lifecycle_schema_notification_worthy`: schema with lifecycle → treatment=notification-worthy
 - [ ] `test_actionable_schema_flagged`: actionable schema → `_classification.actionable = True`
@@ -324,7 +324,7 @@ Codebase patterns to follow:
 
 ### Task 6.5: Integration test — full 6-cartridge pipeline
 
-**File(s):** `tests/test_events/test_pipeline_integration.py`
+**File(s):** `tests/unit/test_teleclaude_events/test_pipeline_integration.py`
 
 - [ ] `test_pipeline_order_trust_drops_before_dedup`: event rejected by trust never increments dedup check
 - [ ] `test_pipeline_order_dedup_drops_before_enrichment`: duplicate event never enriched

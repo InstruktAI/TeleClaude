@@ -18,7 +18,7 @@ and classified for downstream treatment before reaching the notification project
    - Outcomes: `accept`, `flag`, `quarantine`, `reject`
    - `reject`: return None (drop from pipeline — never reaches downstream cartridges)
    - `quarantine`: store to `quarantined_events` table, return None (held for review)
-   - `flag`: annotate envelope metadata field `trust_flags: list[str]`, pass through
+   - `flag`: annotate envelope metadata field `_trust_flags: list[str]`, pass through
    - `accept`: pass through unchanged
    - Strictness configuration sourced from `PipelineContext` (e.g., per-domain override)
    - Default: `standard`
