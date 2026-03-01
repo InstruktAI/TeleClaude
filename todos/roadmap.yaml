@@ -77,7 +77,6 @@
   description: 'Out-of-box domain configs: software-dev, marketing, creative, customer-relations'
 - slug: a2ui-showcase-component
 - slug: dependency-health-guardrails
-- slug: discord-team-reflection
 - slug: integration-events-model
 - slug: terminal-input-feedback
 - slug: typing-indicators-adapters
@@ -86,3 +85,5 @@
 - slug: web-frontend-test-bugs
 - slug: youtube-scrape-channels-job
 - slug: default-agent-resolution
+- slug: config-wizrd-enrichment
+  description: Enrich config wizard with improved UX and validation
