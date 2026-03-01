@@ -86,7 +86,8 @@ class BoxTabBar(TelecMixin, Widget):
             Z_TABS_ACTIVE,
         )
 
-        # Calculate tab positions
+        # Calculate tab positions (1-char sky gap between tabs in light mode)
+        tab_gap = 2 if dark_mode else 3
         tabs: list[tuple[int, int, str, bool, str]] = []
         col = 1
         for tab_id, label in self.TABS:
@@ -94,7 +95,7 @@ class BoxTabBar(TelecMixin, Widget):
             padded = f" {label} "
             w = len(padded)
             tabs.append((col, w, padded, is_active, tab_id))
-            col += w + 2
+            col += w + tab_gap
 
         self._click_regions = [(c, c + w + 2, tid) for c, w, _, _, tid in tabs]
 
@@ -141,14 +142,15 @@ class BoxTabBar(TelecMixin, Widget):
                     fg = apply_tui_haze(fg)
 
                 # 2. Get Background Atmosphere (Sky Z-0) from full width header
+                sky_fallback = "#000000" if dark_mode else "#C8E8F8"
                 bg_color = engine.get_layer_color(Z_SKY, x, global_y, target="header") if engine else None
-                if not isinstance(bg_color, str): bg_color = "#000000"
+                if not isinstance(bg_color, str): bg_color = sky_fallback
 
                 # 3. Layered Compositing (Physical Occlusion)
                 final_fg = fg
                 final_bg = bg_color
-                # Tab panes use panel background, not sky atmosphere
-                if in_tab:
+                # Tab label row (y_offset=1) uses panel background; top/bottom rows show sky
+                if in_tab and (dark_mode or y_offset == 1):
                     from teleclaude.cli.tui.theme import get_billboard_background
                     final_bg = get_billboard_background(getattr(self.app, "app_focus", True))
                 fg_char = char

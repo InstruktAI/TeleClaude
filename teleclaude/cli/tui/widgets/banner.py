@@ -96,15 +96,19 @@ class Banner(TelecMixin, Widget):
             NEUTRAL_MUTED_COLOR,
             apply_tui_haze,
             blend_colors,
+            deepen_for_light_mode,
             get_billboard_background,
+            is_dark_mode,
             letter_color_floor,
         )
         from teleclaude.cli.tui.pixel_mapping import PixelMap
         from teleclaude.cli.tui.animations.base import Z_SKY, Z_BILLBOARD, Z_FOREGROUND
 
         focused = getattr(self.app, "app_focus", True)
+        dark_mode = is_dark_mode()
         plate_bg = get_billboard_background(focused)
         pipe_color = NEUTRAL_MUTED_COLOR if focused else apply_tui_haze(NEUTRAL_MUTED_COLOR)
+        sky_fallback = "#000000" if dark_mode else "#C8E8F8"
 
         # Full terminal width for sky
         total_width = self.size.width or 84
@@ -121,7 +125,7 @@ class Banner(TelecMixin, Widget):
                     # 1. Start with Base Atmosphere (Sky Z-0) from Global Header
                     bg_color = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
                     if not isinstance(bg_color, str):
-                        bg_color = "#000000" if focused else "#050505"
+                        bg_color = sky_fallback
                     
                     # 2. Billboard Plate (Z-3) Masks the Sky
                     # Plate spans x=0..84: one column of padding each side of the 84-char banner text
@@ -139,8 +143,8 @@ class Banner(TelecMixin, Widget):
                             if not is_on_plate:
                                 if isinstance(entity_val, str) and len(entity_val) == 1:
                                     fg_char = entity_val
-                                    color_hint = engine.get_layer_color(1, x, y, target="header")
-                                    fg_color = color_hint if isinstance(color_hint, str) and color_hint.startswith("#") else "#FFFFFF"
+                                    # Sun disc chars (█) are yellow in light mode, white otherwise
+                                    fg_color = "#FFD700" if (entity_val == "\u2588" and not dark_mode) else "#FFFFFF"
                                 elif isinstance(entity_val, str):
                                     fg_color = entity_val
 
@@ -149,15 +153,18 @@ class Banner(TelecMixin, Widget):
                         # Internal Neon Surge or External Reflective Light
                         color = engine.get_color(x, y, target="banner")
                         is_ext = engine.is_external_light(target="banner")
-                        
+
                         is_pipe_char = _is_pipe(char)
                         if color and color != -1:
                             color_str = str(color)
                             if not focused: color_str = apply_tui_haze(color_str)
-                            # Letter pixels: never darker than the base gray resting state
+                            # Letter pixels: dark mode → enforce floor; light mode → deepen for visibility
                             if is_letter:
-                                floor = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
-                                color_str = letter_color_floor(color_str, floor)
+                                if dark_mode:
+                                    floor = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
+                                    color_str = letter_color_floor(color_str, floor)
+                                else:
+                                    color_str = deepen_for_light_mode(color_str)
                             # Pipe connectors: 30% dimmer than fill pixels
                             if is_pipe_char:
                                 color_str = _dim_color(color_str, 0.8)
@@ -190,7 +197,7 @@ class Banner(TelecMixin, Widget):
                     else:
                         # 1. Sky Z-0 between pipes
                         bg = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
-                        if not isinstance(bg, str): bg = "#000000"
+                        if not isinstance(bg, str): bg = sky_fallback
                         
                         # 2. Atmospheric entities (stars/clouds) - MASKED by pipes
                         fg_char = " "
@@ -214,15 +221,19 @@ class Banner(TelecMixin, Widget):
             NEUTRAL_MUTED_COLOR,
             apply_tui_haze,
             blend_colors,
+            deepen_for_light_mode,
             get_billboard_background,
+            is_dark_mode,
             letter_color_floor,
         )
         from teleclaude.cli.tui.pixel_mapping import PixelMap
         from teleclaude.cli.tui.animations.base import Z_SKY, Z_FOREGROUND
 
         focused = getattr(self.app, "app_focus", True)
+        dark_mode = is_dark_mode()
         plate_bg = get_billboard_background(focused)
         pipe_color = NEUTRAL_MUTED_COLOR if focused else apply_tui_haze(NEUTRAL_MUTED_COLOR)
+        sky_fallback = "#000000" if dark_mode else "#C8E8F8"
 
         width = 40
         total_width = self.size.width or 40
@@ -238,7 +249,7 @@ class Banner(TelecMixin, Widget):
                     # 1. Sky Z-0 from Global Header
                     bg_color = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
                     if not isinstance(bg_color, str):
-                        bg_color = "#000000" if focused else "#050505"
+                        bg_color = sky_fallback
                     
                     # 2. Masking
                     is_on_plate = (x >= pad and x < total_width)
@@ -255,8 +266,8 @@ class Banner(TelecMixin, Widget):
                             if not is_on_plate:
                                 if isinstance(entity_val, str) and len(entity_val) == 1:
                                     fg_char = entity_val
-                                    color_hint = engine.get_layer_color(1, x, y, target="header")
-                                    fg_color = color_hint if isinstance(color_hint, str) and color_hint.startswith("#") else "#FFFFFF"
+                                    # Sun disc chars (█) are yellow in light mode, white otherwise
+                                    fg_color = "#FFD700" if (entity_val == "\u2588" and not dark_mode) else "#FFFFFF"
                                 elif isinstance(entity_val, str):
                                     fg_color = entity_val
 
@@ -268,10 +279,13 @@ class Banner(TelecMixin, Widget):
                         if color and color != -1:
                             color_str = str(color)
                             if not focused: color_str = apply_tui_haze(color_str)
-                            # Letter pixels: never darker than the base gray resting state
+                            # Letter pixels: dark mode → enforce floor; light mode → deepen for visibility
                             if is_letter:
-                                floor = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
-                                color_str = letter_color_floor(color_str, floor)
+                                if dark_mode:
+                                    floor = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
+                                    color_str = letter_color_floor(color_str, floor)
+                                else:
+                                    color_str = deepen_for_light_mode(color_str)
                             if is_pipe_char:
                                 color_str = _dim_color(color_str, 0.8)
 
@@ -298,8 +312,8 @@ class Banner(TelecMixin, Widget):
                         result.append("\u2551", style=pipe_color)
                     else:
                         bg = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
-                        if not isinstance(bg, str): bg = "#000000"
-                        
+                        if not isinstance(bg, str): bg = sky_fallback
+
                         fg_char = " "
                         fg_color = None
                         if engine:
@@ -307,7 +321,7 @@ class Banner(TelecMixin, Widget):
                             if entity_val and entity_val != -1:
                                 if isinstance(entity_val, str) and len(entity_val) == 1:
                                     fg_char = entity_val
-                                    fg_color = "#FFFFFF"
+                                    fg_color = "#FFD700" if (entity_val == "\u2588" and not dark_mode) else "#FFFFFF"
                         
                         result.append(fg_char, style=Style(color=_to_color(fg_color), bgcolor=_to_color(bg)))
 

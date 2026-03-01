@@ -157,7 +157,7 @@ class GlobalSky(Animation):
                         x = sun_x + dx
                         if ch != " ":
                             buffer.add_pixel(Z_FOREGROUND, x, y, ch)
-                            buffer.add_pixel(1, x, y, "#FFD700")  # color hint for yellow rendering
+                            pass  # character is yellow; banner.py detects full-block chars in light mode
 
         return buffer
 
@@ -218,6 +218,8 @@ class LetterWaveRL(Animation):
 class LineSweepTopBottom(Animation):
     """G6: Vertical volumetric sweep through neon tubes from top to bottom."""
 
+    theme_filter = "dark"
+
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self.spec = Spectrum(["#0000FF", "#00FFFF", "#0000FF"]) 
@@ -246,6 +248,8 @@ class LineSweepTopBottom(Animation):
 class LineSweepBottomTop(Animation):
     """G7: Vertical volumetric sweep through neon tubes from bottom to top."""
 
+    theme_filter = "dark"
+
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self.spec = Spectrum(["#FF00FF", "#FF0000", "#FF00FF"])
@@ -273,6 +277,8 @@ class LineSweepBottomTop(Animation):
 
 class MiddleOutVertical(Animation):
     """G8: Vertical volumetric center expansion (Big only)."""
+
+    theme_filter = "dark"
 
     supports_small = False
 
@@ -306,6 +312,7 @@ class MiddleOutVertical(Animation):
 class WithinLetterSweepLR(Animation):
     """G4: Vertical volumetric surge L→R through neon tubes."""
 
+    theme_filter = "dark"
     supports_small = False
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
@@ -337,6 +344,7 @@ class WithinLetterSweepLR(Animation):
 class WithinLetterSweepRL(Animation):
     """G5: Vertical volumetric surge R→L through neon tubes."""
 
+    theme_filter = "dark"
     supports_small = False
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
@@ -390,6 +398,7 @@ class WordSplitBlink(Animation):
 class DiagonalSweepDR(Animation):
     """G11: Volumetric diagonal surge from top-left to bottom-right."""
 
+    theme_filter = "dark"
     supports_small = False
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
@@ -421,6 +430,8 @@ class DiagonalSweepDR(Animation):
 
 class DiagonalSweepDL(Animation):
     """G12: Volumetric diagonal surge from top-right to bottom-left."""
+
+    theme_filter = "dark"
 
     supports_small = False
 
@@ -468,6 +479,8 @@ class LetterShimmer(Animation):
 class WavePulse(Animation):
     """G15: Volumetric color surge travels through neon tubes."""
 
+    theme_filter = "dark"
+
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self.spec = Spectrum(["#0000FF", "#00FFFF", "#FFFFFF", "#00FFFF", "#0000FF"])
@@ -496,6 +509,8 @@ class WavePulse(Animation):
 
 class BlinkSweep(Animation):
     """TC21: High-speed high-vibrancy sawtooth pulse sweeping L->R."""
+
+    theme_filter = "dark"
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
@@ -938,11 +953,8 @@ GENERAL_ANIMATIONS = [
     # Day mode atmospherics
     CloudsPassing,
     FloatingBalloons,
-    # Dark mode atmospherics
-    SearchlightSweep,   # Batman
     # Original specials
     FireBreath,         # fixed: burns from bottom
-    HighSunBird,
     CinematicPrismSweep,
     # New creative animations
     NeonFlicker,

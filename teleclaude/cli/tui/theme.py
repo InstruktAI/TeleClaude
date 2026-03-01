@@ -9,6 +9,7 @@ Detects macOS dark/light mode via system settings.
 
 from __future__ import annotations
 
+import colorsys
 import curses
 import os
 import re
@@ -734,7 +735,23 @@ PEACEFUL_MUTED_COLOR = _PEACEFUL_COLORS_DARK["muted"] if _is_dark_mode else _PEA
 
 # Banner muted color
 BANNER_COLOR = "color(240)" if _is_dark_mode else "color(244)"
-BANNER_HEX = "#585858" if _is_dark_mode else "#909090"
+BANNER_HEX = "#585858" if _is_dark_mode else "#C8C8C8"
+
+
+def deepen_for_light_mode(color_hex: str) -> str:
+    """Darken and saturate a color for readability on a white background.
+
+    In light mode, vivid neon colors look washed-out on white. This pushes
+    them darker (lower HSV value) and more saturated so they have visual weight.
+    """
+    if not _is_hex_color(color_hex):
+        return color_hex
+    r, g, b = _hex_to_rgb(color_hex)
+    h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+    s = min(1.0, s * 1.4 + 0.2)
+    v = v * 0.55
+    nr, ng, nb = colorsys.hsv_to_rgb(h, s, v)
+    return _rgb_to_hex(int(nr * 255), int(ng * 255), int(nb * 255))
 
 # Status/footer foreground
 STATUS_FG_COLOR = "#727578"
