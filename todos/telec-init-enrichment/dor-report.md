@@ -1,76 +1,89 @@
 # DOR Report: telec-init-enrichment
 
-## Draft Assessment
+## Gate Assessment
 
 **Date:** 2026-03-01
-**Phase:** Draft (pre-gate)
+**Phase:** Gate (formal DOR validation)
+**Assessor:** Architect (gate mode)
 
-### Gate Analysis
+### Gate Results
 
 #### 1. Intent & Success
 **Status:** Pass
 
-The problem statement is clear: `telec init` produces infrastructure but no intelligence
-layer. The intended outcome is explicit: generated doc snippets that make codebases
-self-describing to AI. Success criteria are concrete and testable (snippet generation,
-validation, idempotency, index inclusion).
+Problem statement is clear: `telec init` produces infrastructure but no intelligence
+layer. Intended outcome is explicit: AI-driven analysis produces doc snippets that make
+codebases self-describing. Nine success criteria are concrete and testable — snippet
+generation, validation pass, index inclusion, idempotency, human-edit preservation,
+clean session termination.
 
 #### 2. Scope & Size
-**Status:** Pass with note
+**Status:** Pass
 
-The work is substantial but atomic — it adds one capability (enrichment) to one command
-(`telec init`). The implementation plan has 5 phases with clear task boundaries. Each
-phase can be built and tested incrementally. The plan fits a single builder session
-if phases are executed sequentially.
-
-**Note:** Phase 2 (analysis session infrastructure) is the heaviest phase. The agent
-command artifact (Task 2.3) is itself a mini-design exercise. Consider whether this
-warrants a sub-spike.
+Atomic capability addition to one command. Five implementation phases with clear task
+boundaries. Each phase builds on the previous and can be tested independently. The
+heaviest phase (Phase 2: analysis session infrastructure) is well-decomposed into four
+tasks. Fits a single builder session with sequential phase execution.
 
 #### 3. Verification
 **Status:** Pass
 
-Testing strategy covers unit tests (snippet writing, merging, metadata), integration
-tests (end-to-end init with enrichment, validation, re-init idempotency), and manual
-verification. Edge cases identified: large codebases, human-edited snippets, re-analysis.
+Test strategy covers three levels: unit tests (snippet writing, merging, metadata
+detection), integration tests (end-to-end init, validation pass, re-init idempotency,
+index inclusion), and manual verification (sample project analysis). Edge cases identified:
+large codebases (sampling strategy in guidance doc), human-edited snippets (merge rules),
+re-analysis (metadata tracking).
 
 #### 4. Approach Known
 **Status:** Pass
 
-The technical path builds on existing infrastructure:
+Technical path builds entirely on proven infrastructure:
 - Session launching via `telec sessions run` (proven pattern)
 - Doc snippet authoring via existing schema (well-documented)
-- Index building via existing `docs_index.py` (proven code)
-- The new pieces are: analysis guidance (a doc), enrichment writer (a module),
-  and the analysis command (an agent artifact)
+- Index building via `docs_index.py` (confirmed: `iter_snippet_roots()` already scans
+  `docs/project/`, so `docs/project/init/*.md` snippets are auto-discovered — Task 2.4
+  is already satisfied by existing code)
+- New pieces are well-defined: guidance doc (a snippet), enrichment writer (a module),
+  analysis command (an agent artifact)
 
 No architectural decisions remain unresolved.
 
 #### 5. Research Complete
 **Status:** Pass (no new third-party dependencies)
 
-The enrichment uses existing TeleClaude infrastructure. No external libraries,
-frameworks, or integrations are introduced. The AI analysis relies on Claude's built-in
-code understanding capabilities, guided by the authorized author procedure.
+Enrichment uses existing TeleClaude infrastructure exclusively. No external libraries,
+frameworks, or integrations are introduced. AI analysis relies on Claude's built-in
+code understanding capabilities guided by the authorized author procedure.
 
 #### 6. Dependencies & Preconditions
-**Status:** Pass with deferred items
+**Status:** Needs work
 
-- `event-envelope-schema` is a roadmap dependency but only needed for event emission
-  during init — explicitly deferred and out of scope.
-- `mesh-architecture` needed only for mesh registration — explicitly deferred.
-- Core enrichment (analysis + scaffolding) has no blocking dependencies.
-- Required infrastructure: session launching, doc snippet system, sync pipeline — all
-  exist and are functional.
+**Blocker:** Roadmap declares `after: [event-envelope-schema]` for this slug, but the
+requirements explicitly defer event emission during init as out-of-scope:
+
+> "Event emission during init (`project.initialized` events) — deferred until
+> `event-envelope-schema` is delivered."
+
+The core enrichment work (analysis + scaffolding + init flow integration) has zero
+dependency on event-envelope-schema. The `after` declaration creates a false scheduling
+blocker — the orchestrator cannot dispatch build work for this todo until
+event-envelope-schema is delivered (currently DOR pass but `build: pending`).
+
+**Required action:** Remove `after: [event-envelope-schema]` from the roadmap entry
+for `telec-init-enrichment`. The deferred event emission work is already captured in
+the requirements' "out of scope" section and will become a follow-up todo when
+event-envelope-schema is delivered.
+
+All other preconditions are satisfied: session launching, doc snippet system, sync
+pipeline — all exist and are functional.
 
 #### 7. Integration Safety
 **Status:** Pass
 
-- Enrichment is additive — existing `telec init` plumbing is untouched.
-- Enrichment is optional — user can decline during init.
-- Generated snippets go into a new namespace (`project/init/*`) — no collision with
-  existing snippets.
-- Rollback: delete `docs/project/init/` directory and re-run `telec sync`.
+- Additive: existing `telec init` plumbing is untouched
+- Optional: user can decline enrichment during init
+- Namespaced: generated snippets use `project/init/*` — no collision with existing snippets
+- Rollback: delete `docs/project/init/` and re-run `telec sync`
 
 #### 8. Tooling Impact
 **Status:** Pass (not applicable)
@@ -78,17 +91,52 @@ code understanding capabilities, guided by the authorized author procedure.
 No changes to scaffolding tooling. Uses existing `telec todo`, `telec docs`, and
 `telec sessions` infrastructure.
 
-### Open Questions
+### Plan-to-Requirement Fidelity
 
-1. Should the analysis session be synchronous (user waits) or asynchronous (session
-   runs in background, user continues)? Current plan assumes synchronous for simplicity.
-2. What is the maximum codebase size the analysis can handle in a single session?
-   The authorized author guidance needs sampling thresholds.
-3. Should generated `AGENTS.md` content be appended to existing `AGENTS.md` or placed
-   in a separate file? Current plan says baseline content — needs clarification on merge
-   behavior with existing `AGENTS.md` / `AGENTS.master.md` generated files.
+All implementation plan tasks trace to requirements. One confirmed non-issue and one
+minor ambiguity:
 
-### Draft Verdict
+**Confirmed non-issue:** Task 2.4 ("Register generated snippets with the index") is
+already satisfied. Codebase verification confirms `iter_snippet_roots()` at
+`docs_index.py:372` already includes `project_root / "docs" / "project"` as a candidate.
+No code change needed — the task becomes a verification-only step.
 
-**Score:** Draft phase — pending formal gate assessment.
-**Recommendation:** Artifacts are ready for formal DOR gate validation.
+**Minor ambiguity:** AGENTS.md merge behavior. Requirements say "Project-specific baseline
+content for AGENTS.md." Plan Task 2.3 says "generates initial AGENTS.md baseline content."
+The merge behavior for projects with an existing AGENTS.md is unspecified. Reasonable
+default for the builder: create if absent, skip if present (with a log message). The
+idempotency rules from Phase 3 can extend to cover this case. Not a hard blocker, but
+the plan should note this explicitly.
+
+### Resolved Open Questions
+
+1. **Sync vs. async analysis session:** Sync is the correct default. The requirements
+   say the session produces artifacts and commits them — the user needs to know when
+   it's done. Plan correctly uses `telec sessions run` which is synchronous.
+
+2. **Maximum codebase size:** Addressed in the plan. Task 1.1 defines sampling strategy
+   for large codebases, including file count thresholds and directory prioritization.
+
+### Gate Verdict
+
+**Score:** 7
+**Status:** needs_work
+
+**Blockers:**
+1. **Roadmap dependency contradiction** — `after: [event-envelope-schema]` must be
+   removed from the roadmap entry. The requirements explicitly defer event-related work.
+   The dependency creates a false scheduling blocker that prevents build dispatch.
+
+**Actions taken:**
+- Verified codebase paths match implementation plan file references
+- Confirmed Task 2.4 is pre-satisfied by existing `iter_snippet_roots()` code
+- Validated `event-envelope-schema` state (DOR pass, build pending — not delivered)
+- Tightened DOR report with evidence-based gate findings
+
+**Actions required before pass:**
+1. Remove `after: [event-envelope-schema]` from `todos/roadmap.yaml` for slug
+   `telec-init-enrichment`
+2. Add a note to implementation plan Task 2.3 about AGENTS.md merge behavior
+   (create if absent, skip if present)
+3. Add a note to implementation plan Task 2.4 that this is verification-only
+   (existing code already handles snippet discovery)

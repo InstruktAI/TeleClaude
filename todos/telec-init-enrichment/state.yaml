@@ -5,13 +5,15 @@ breakdown:
   assessed: false
   todos: []
 dor:
-  last_assessed_at: '2026-03-01T12:00:00Z'
-  score: 0
+  last_assessed_at: '2026-03-01T16:00:00Z'
+  score: 7
   status: needs_work
   schema_version: 1
-  blockers: []
+  blockers:
+  - 'Roadmap dependency after: [event-envelope-schema] contradicts requirements scope
+    — events are explicitly deferred. Must remove to unblock scheduling.'
   actions_taken:
-    requirements_updated: true
+    requirements_updated: false
     implementation_plan_updated: true
 review_round: 0
 max_review_rounds: 3

@@ -84,18 +84,20 @@ into valid doc snippets. The existing plumbing (hooks, sync, watchers) is untouc
 - [ ] Command produces structured analysis output
 - [ ] Command calls the enrichment writer (Task 2.2) to create doc snippets
 - [ ] Command generates initial `AGENTS.md` baseline content for the project
+      (create if absent; skip with log message if AGENTS.md already exists)
 - [ ] Command commits generated snippets with a clear commit message
 - [ ] Command runs `telec sync --validate-only` to verify generated snippets
 - [ ] Session ends cleanly after completion
 
-### Task 2.4: Register generated snippets with the index
+### Task 2.4: Verify generated snippets appear in the index
 
-**File(s):** `teleclaude/docs_index.py` (minimal changes)
+**File(s):** `teleclaude/docs_index.py` (verification only — no code change expected)
 
-- [ ] Verify that `docs/project/init/` snippets are picked up by existing
-      `write_index_yaml()` — they should be, since `docs/project/` is already a
-      snippet root
-- [ ] If not, add `docs/project/init/` as a recognized snippet subdirectory
+**Note:** `iter_snippet_roots()` at `docs_index.py:372` already scans
+`project_root / "docs" / "project"`. Snippets under `docs/project/init/` will be
+auto-discovered. This task is verification-only.
+
+- [ ] Confirm `docs/project/init/` snippets are picked up by existing index build
 - [ ] Verify `telec docs index` shows generated snippets after enrichment
 
 ---
