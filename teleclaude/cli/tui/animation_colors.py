@@ -122,7 +122,7 @@ class SpectrumPalette(ColorPalette):
 
 
 class AgentPalette(ColorPalette):
-    """Agent-specific palette (subtle, muted, normal, highlight)."""
+    """Agent-specific palette (subtle, muted, normal — 3 brand colors only)."""
 
     def __init__(self, agent_name: str) -> None:
         super().__init__(f"agent_{agent_name}")
@@ -130,7 +130,6 @@ class AgentPalette(ColorPalette):
             get_agent_color(agent_name, "subtle"),
             get_agent_color(agent_name, "muted"),
             get_agent_color(agent_name, "normal"),
-            get_agent_color(agent_name, "highlight"),
         ]
 
     def get(self, index: int) -> str:
