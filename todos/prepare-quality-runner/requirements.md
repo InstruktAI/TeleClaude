@@ -2,25 +2,29 @@
 
 ## Goal
 
-Implement an event-driven notification handler that reacts to todo lifecycle events and
-maintains preparation quality. The handler consumes events from the notification service,
-assesses todo readiness using the DOR criteria, improves preparation artifacts when safe,
-and resolves the triggering notification with the assessment result.
+Implement a pipeline cartridge that reacts to todo lifecycle events, assesses DOR quality,
+improves preparation artifacts when safe, and writes assessment results to the todo folder.
 
-This is TeleClaude's first internal dog-fooding consumer of the notification service.
+The cartridge integrates with the event platform's `Pipeline` as a registered processing
+step. It runs after dedup and notification projection, operating on events that survived
+the system cartridges.
+
+This is TeleClaude's first domain-logic cartridge — it proves the pattern before
+other domain cartridges follow.
 
 ## Scope
 
 ### In scope
 
-1. Notification handler that consumes todo lifecycle events from the notification service.
-2. DOR assessment logic: score each todo's `requirements.md` and `implementation-plan.md`
-   against the Definition of Ready criteria.
-3. Safe autonomous improvement of weak preparation artifacts.
+1. Pipeline cartridge in `teleclaude_events/cartridges/` implementing the `Cartridge` protocol.
+2. DOR assessment logic: score `requirements.md` and `implementation-plan.md` against
+   the Definition of Ready criteria using a structured rubric.
+3. Safe autonomous improvement of weak preparation artifacts (within the cartridge process).
 4. DOR report output (`dor-report.md`) with score, verdict, edits, and gaps.
 5. State writeback (`state.yaml` dor section) with structured assessment metadata.
-6. Notification resolution: attach DOR score + verdict to the triggering notification.
-7. Idempotency: same slug + same commit hash = no-op (skip already-assessed state).
+6. Notification lifecycle integration: claim/resolve notifications via `EventDB` when
+   the cartridge processes relevant events.
+7. Idempotency: same slug + same commit hash = skip (already assessed).
 
 ### Out of scope
 
@@ -29,31 +33,41 @@ This is TeleClaude's first internal dog-fooding consumer of the notification ser
 - Re-prioritizing roadmap order.
 - Inventing architecture decisions by guessing.
 - Producing or consuming events outside the todo lifecycle domain.
+- AI-powered artifact rewriting (deferred to a future iteration; this version uses
+  deterministic rubric scoring and lightweight structural improvements only).
 
 ## Dependency
 
-This handler depends on `event-platform` being operational. It consumes events
-via the notification service's Redis Stream consumer infrastructure and resolves
-notifications through the notification API.
+The event platform core is delivered. This cartridge depends on:
+- `teleclaude_events.pipeline.Cartridge` protocol
+- `teleclaude_events.pipeline.PipelineContext` (catalog, db, push_callbacks)
+- `teleclaude_events.envelope.EventEnvelope`
+- `teleclaude_events.db.EventDB` for notification state operations
+- `teleclaude_events.catalog.EventCatalog` for schema lookups
+
+All of these are shipped and stable.
 
 ## Functional requirements
 
-### FR1: Event consumption
+### FR1: Cartridge integration
 
-- Register as a notification handler for the following event types:
-  - `todo.artifact_changed` — requirements.md or implementation-plan.md modified
-  - `todo.created` — new todo scaffolded (if requirements or plan exist)
-  - `todo.dumped` — brain dump via `telec todo dump`
-  - `todo.activated` — moved from icebox to active roadmap
-  - `todo.dependency_resolved` — a blocking dependency was delivered
-- Claim the notification via the notification API before starting assessment.
-- Skip events for slugs in `todos/delivered.yaml` or `todos/icebox.md`.
+- Implement `Cartridge` protocol: `name: str`, `async def process(self, event, context) -> EventEnvelope | None`.
+- Filter for `domain.software-development.planning.*` events only. Pass through all others.
+- Event types consumed:
+  - `domain.software-development.planning.artifact_changed`
+  - `domain.software-development.planning.todo_created`
+  - `domain.software-development.planning.todo_dumped`
+  - `domain.software-development.planning.todo_activated`
+  - `domain.software-development.planning.dependency_resolved`
+- Always return the event (pass-through) so downstream cartridges still run.
+- The cartridge runs after `DeduplicationCartridge` and `NotificationProjectorCartridge`
+  in the pipeline.
 
 ### FR2: Idempotency
 
-- Derive idempotency from slug + commit hash of the todo folder.
+- Derive idempotency from slug + git commit hash of the `todos/{slug}/` folder.
 - If `state.yaml` dor section shows the same commit was already assessed with
-  `status == pass`, skip processing and resolve the notification as no-op.
+  `status == pass`, skip processing.
 - If the slug's artifacts changed since last assessment, proceed with reassessment.
 
 ### FR3: Artifact assessment
@@ -75,14 +89,14 @@ notifications through the notification API.
   - `needs_decision`: score < 7 and safe improvement is exhausted
 - Record score, status, blockers, and actions taken in `state.yaml` dor section.
 
-### FR5: Autonomous improvement
+### FR5: Lightweight improvement
 
-- When score < 8 and gaps are concrete and grounded:
-  - Fill missing preparation files using codebase context.
-  - Tighten weak sections (vague criteria, missing verification steps, unclear scope).
-  - Add dependency references when discoverable from `roadmap.yaml`.
-- Do not invent behavior or architecture outside known context.
-- Stop and flag `needs_decision` when uncertainty becomes blocking.
+- When score < 8 and gaps are structural (missing sections, missing dependency refs):
+  - Add missing roadmap dependency references when discoverable from `roadmap.yaml`.
+  - Add missing verification sections to implementation plan.
+  - Flag missing requirements sections.
+- Do not rewrite prose, invent behavior, or change technical approach.
+- Stop and flag `needs_decision` when improvement requires judgment.
 - After improvement, reassess and update score.
 
 ### FR6: DOR report output
@@ -106,15 +120,17 @@ notifications through the notification API.
   - `actions_taken` (object with boolean fields)
   - `assessed_commit` (short commit hash of todo folder at assessment time)
 
-### FR8: Notification resolution
+### FR8: Notification lifecycle
 
-- On assessment completion, resolve the triggering notification via the notification API.
-- Attach structured resolution:
-  - `summary`: one-line DOR verdict (e.g., "DOR pass (8/10) for prepare-quality-runner")
-  - `resolved_by`: handler identity
-  - `resolved_at`: ISO 8601 timestamp
-- If `needs_decision`: do NOT resolve the notification. Leave it unresolved so
-  it remains visible as a signal for human attention.
+- After assessment, update the notification row via `EventDB`:
+  - Claim via `update_agent_status(id, "claimed", "prepare-quality-runner")` at start.
+  - Resolve via `resolve_notification(id, resolution)` on `pass` or `needs_work`.
+  - Leave unresolved on `needs_decision`.
+- The notification ID comes from the `NotificationProjectorCartridge` having already
+  projected the event. The cartridge looks up the notification by idempotency key or
+  group key from the DB.
+- Emit `domain.software-development.planning.dor_assessed` event via the producer
+  after assessment, carrying score and verdict in payload.
 
 ## Non-functional requirements
 
@@ -122,24 +138,29 @@ notifications through the notification API.
 2. Idempotent reruns when nothing changed.
 3. No destructive operations on unrelated files.
 4. Clear audit trail in every touched todo.
-5. Handler must be registerable with the notification service's event catalog.
+5. Pipeline pass-through: the cartridge must always return the event so downstream
+   processing is not broken.
 
 ## Acceptance criteria
 
-1. Handler processes a `todo.artifact_changed` event and produces a DOR report.
-2. Handler resolves the notification with score + verdict on `pass` or `needs_work`.
-3. Handler leaves notification unresolved on `needs_decision` with explicit blockers.
+1. Cartridge processes a `planning.artifact_changed` event and produces a DOR report.
+2. Notification row shows `agent_status=resolved` on `pass` or `needs_work`.
+3. Notification row stays unresolved on `needs_decision` with explicit blockers.
 4. Idempotency: duplicate event for same slug + same commit is skipped.
-5. A weak todo is improved and rescored above threshold.
+5. A weak todo has structural gaps filled and rescores above threshold.
 6. An ambiguous todo is flagged `needs_decision` with specific blockers.
 7. `state.yaml` dor section matches the schema contract.
-8. `make test` passes with tests covering event consumption, scoring, and resolution.
+8. `make test` passes with tests covering cartridge processing, scoring, and resolution.
 9. `make lint` passes.
+10. Pipeline integration: adding the cartridge to the daemon pipeline does not break
+    existing event processing.
 
 ## Constraints
 
-- Must use the notification service API for event consumption and resolution.
-  Direct Redis Stream access is not allowed — the notification service owns the stream.
-- Must not import from `teleclaude_notifications.*` internals. Use only the public API
-  (producer `emit`, API endpoints for claim/resolve).
-- The handler runs within the daemon process, hosted alongside the notification processor.
+- Must implement the `Cartridge` protocol from `teleclaude_events.pipeline`.
+- Must not access Redis directly — all event data arrives via the `process()` method.
+- Must not import daemon internals. Only use `teleclaude_events` public surface.
+- The cartridge runs in the daemon's event processing loop. Keep processing fast —
+  if assessment for a single slug takes > 2s, log a warning.
+- File I/O (reading todo artifacts) is acceptable within the cartridge since the
+  pipeline runs in the daemon process with filesystem access.

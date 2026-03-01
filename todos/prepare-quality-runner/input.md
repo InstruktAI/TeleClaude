@@ -9,44 +9,44 @@ That creates drift and uneven quality across `requirements.md` and
 
 ## Objective
 
-Create an event-driven handler that reacts to todo lifecycle events and maintains
+Create a pipeline cartridge that reacts to todo lifecycle events and maintains
 preparation quality:
 
 1. audits todo quality when artifacts change or new todos land,
-2. improves preparation artifacts in-place when safe,
+2. improves preparation artifacts in-place when safe (structural fixes only),
 3. writes `dor-report.md` for each assessed todo,
 4. updates `state.yaml` with a quality score and verdict,
-5. resolves the triggering notification with the assessment result.
+5. resolves the notification projection via EventDB.
 
 `input.md` is optional context, not a hard prerequisite.
 
-## Architectural direction (Feb 27 2026)
+## Architectural direction (Mar 1 2026)
 
-**Event-driven, not scheduled.** This runner is a notification consumer, not a cron job.
+**Pipeline cartridge, not a standalone handler.** The event platform core is delivered.
+This runner integrates as a `Cartridge` in the event processing pipeline.
 
-Events it consumes (via notification service):
+Events it processes (via Pipeline → Cartridge.process()):
 
-- `todo.artifact_changed` — requirements.md or implementation-plan.md modified
-- `todo.created` / `todo.dumped` — new todo scaffolded or brain-dumped
-- `todo.activated` — moved from icebox to active roadmap
-- `todo.dependency_resolved` — a blocking dependency was delivered
+- `domain.software-development.planning.artifact_changed`
+- `domain.software-development.planning.todo_created`
+- `domain.software-development.planning.todo_dumped`
+- `domain.software-development.planning.todo_activated`
+- `domain.software-development.planning.dependency_resolved`
 
-What it produces (as notification resolutions):
+What it produces:
 
-- DOR score + verdict attached to the notification
-- If artifacts improved: may trigger new `todo.artifact_changed` (deduplicated via
-  idempotency key — same slug + same commit hash = no-op)
-- If blocked: `needs_decision` with specific blockers, notification stays unresolved
+- DOR score + verdict written to `state.yaml` and `dor-report.md`
+- Notification lifecycle updates via `EventDB` (claim → resolve or leave unresolved)
+- Emits `domain.software-development.planning.dor_assessed` event for downstream consumers
+- Idempotent via slug + commit hash — same state = no-op
 
-Depends on: event-platform (the event bus that routes signals to this handler).
-
-This is TeleClaude's first internal dog-fooding consumer of the notification service.
-It proves the pattern before external integrations.
+This is TeleClaude's first domain-logic cartridge. It proves the cartridge pattern
+before external domain cartridges follow.
 
 ## Expected result
 
 - Every active todo has current, high-quality preparation artifacts.
-- Weak todos are either improved above threshold or explicitly flagged for human review.
-- The runner reacts to events, not schedules. Signal in, action out.
-- The notification service tracks the full journey: event received, agent claimed,
-  assessment complete, resolution attached.
+- Weak todos are either structurally improved above threshold or explicitly flagged.
+- The runner reacts to events via the pipeline. Signal in, action out.
+- The EventDB tracks the full journey: event received, notification projected,
+  agent claimed, assessment written, notification resolved.

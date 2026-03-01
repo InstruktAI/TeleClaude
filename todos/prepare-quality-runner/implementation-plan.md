@@ -2,191 +2,215 @@
 
 ## Overview
 
-Deliver an event-driven notification handler that reacts to todo lifecycle events,
-assesses DOR quality, improves artifacts when safe, and resolves the triggering
-notification with the assessment result.
+Deliver a pipeline cartridge that reacts to todo lifecycle events, scores DOR quality
+using a deterministic rubric, performs lightweight structural improvements, and writes
+assessment results to todo artifacts.
 
-The handler integrates with the notification service as a registered consumer.
-It uses the existing `next-prepare-draft` and `next-prepare-gate` procedures as
-the assessment model, but runs as an automated handler rather than a manual invocation.
+The cartridge sits in the event platform pipeline after system cartridges (dedup,
+notification projector). It is the first domain-logic cartridge in the codebase.
 
-## Phase 1: Handler Registration & Event Wiring
+## Phase 1: Cartridge & Event Filtering
 
-### Task 1.1: Register handler with notification service
+### Task 1.1: Create cartridge module
 
-**File(s):** `teleclaude/services/prepare_quality_handler.py` (new)
+**File(s):** `teleclaude_events/cartridges/prepare_quality.py` (new)
 
-- [ ] Create handler module with `PrepareQualityHandler` class
-- [ ] Register interest in event types: `todo.artifact_changed`, `todo.created`,
-      `todo.dumped`, `todo.activated`, `todo.dependency_resolved`
-- [ ] Implement `async handle(notification_id: int, envelope: EventEnvelope)` entry point
-- [ ] Handler claims the notification via API before starting work
-- [ ] On error: release claim, log, do not resolve
+- [ ] Implement `PrepareQualityCartridge` class with `Cartridge` protocol:
+  - `name = "prepare-quality"`
+  - `async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`
+- [ ] Filter: only process `domain.software-development.planning.*` events.
+  Pass through all other events immediately.
+- [ ] Extract slug from `event.payload["slug"]`.
+- [ ] Skip if slug is in `todos/delivered.yaml` or `todos/icebox.md`.
+- [ ] Always return the event (pass-through for downstream cartridges).
 
-**Verification:** Handler is called when a todo lifecycle event is emitted.
+**Verification:** Cartridge passes through non-planning events unchanged. Planning
+events trigger processing.
 
-### Task 1.2: Event filtering and idempotency
+### Task 1.2: Idempotency check
 
-**File(s):** `teleclaude/services/prepare_quality_handler.py`
+**File(s):** `teleclaude_events/cartridges/prepare_quality.py`
 
-- [ ] Extract slug from event payload
-- [ ] Skip if slug is in `todos/delivered.yaml` or `todos/icebox.md`
-- [ ] Compute current commit hash of `todos/{slug}/` folder
-- [ ] Compare with `state.yaml` dor `assessed_commit`:
-  - Same commit + `status == pass` → resolve notification as no-op, return
-  - Different commit or no prior assessment → proceed
-- [ ] Log skip reason when idempotency triggers
+- [ ] Compute current git commit hash of `todos/{slug}/` folder via
+  `git log -1 --format=%h -- todos/{slug}/`.
+- [ ] Read `state.yaml` dor section. If `assessed_commit` matches and `status == pass`,
+  skip processing. Log skip reason.
+- [ ] If different commit or no prior assessment, proceed.
 
 **Verification:** Duplicate event for unchanged slug is skipped. Changed slug is processed.
 
-## Phase 2: DOR Assessment Engine
+## Phase 2: DOR Scoring Engine
 
-### Task 2.1: Artifact quality scorer
+### Task 2.1: Rubric scorer
 
-**File(s):** `teleclaude/services/dor_scorer.py` (new)
+**File(s):** `teleclaude_events/cartridges/prepare_quality.py` (scorer as internal module
+or separate file `teleclaude_events/cartridges/dor_scorer.py` — builder's choice)
 
 - [ ] Define scoring rubric as structured criteria:
-  - Requirements: intent clarity (0-2), scope atomicity (0-2), testable success criteria (0-2),
-    dependency correctness (0-1), constraint specificity (0-1), verification path (0-2)
-  - Plan: concrete file targets (0-2), verification steps (0-2), risk identification (0-1),
-    task-to-requirement traceability (0-2), plan-requirement consistency (0-3)
-- [ ] `async score_requirements(content: str, slug: str) -> ScoringResult`
-- [ ] `async score_plan(content: str, requirements: str, slug: str) -> ScoringResult`
-- [ ] `ScoringResult` dataclass: `score` (int 1..10), `gaps` (list[str]),
-      `improvements_possible` (list[str]), `blockers` (list[str])
-- [ ] Combine into overall DOR score with verdict derivation:
-  - > = 8 → `pass`
-  - < 8 with improvements possible → `needs_work`
+  - Requirements dimensions:
+    - Intent clarity (0-2): problem statement and outcome explicit?
+    - Scope atomicity (0-2): fits one session? Cross-cutting called out?
+    - Success criteria (0-2): concrete, testable? Not "works" or "better"?
+    - Dependency correctness (0-1): prerequisites listed? Roadmap aligned?
+    - Constraint specificity (0-1): boundaries clear? Integration safety addressed?
+  - Plan dimensions:
+    - Concrete file targets (0-2): specific files/paths named?
+    - Verification steps (0-2): each task has a check?
+    - Risk identification (0-1): risks listed with mitigations?
+    - Task-to-requirement traceability (0-2): every task maps to a requirement?
+    - Plan-requirement consistency (0-1): no contradictions?
+  - Maximum: 16 raw points → normalized to 1..10 scale.
+- [ ] `score_requirements(content: str) -> dict` with per-dimension scores and gaps.
+- [ ] `score_plan(content: str, requirements: str) -> dict` with per-dimension scores.
+- [ ] Combine into overall DOR score with verdict:
+  - >= 8 → `pass`
+  - < 8 with improvable gaps → `needs_work`
   - < 7 with no safe improvements → `needs_decision`
 
-**Verification:** Unit tests for scoring thresholds and verdict mapping across fixture todos.
+**Verification:** Unit tests for scoring thresholds across fixture todos.
 
-### Task 2.2: Plan-requirement consistency checker
+### Task 2.2: Plan-requirement consistency check
 
-**File(s):** `teleclaude/services/dor_scorer.py`
+**File(s):** Same as 2.1.
 
-- [ ] Check every plan task traces to at least one requirement
-- [ ] Check no plan task contradicts a requirement
-- [ ] Flag contradictions as blockers (e.g., plan says "copy" when requirement says "reuse")
-- [ ] Contradiction between plan and requirements is a `needs_work` blocker
+- [ ] Parse plan tasks (markdown checkboxes / section headers).
+- [ ] Parse requirements sections (FR1..FRn).
+- [ ] Flag plan tasks that reference no requirement.
+- [ ] Flag contradictions where plan prescribes opposite of requirement.
+- [ ] Contradictions are `needs_work` blockers.
 
-**Verification:** Fixture with contradicting plan/requirement produces `needs_work` with
-specific contradiction listed.
+**Verification:** Fixture with contradicting plan/requirement produces `needs_work`.
 
-## Phase 3: Safe Improvement
+## Phase 3: Lightweight Improvement
 
-### Task 3.1: Artifact improver
+### Task 3.1: Structural gap filler
 
-**File(s):** `teleclaude/services/prepare_quality_improver.py` (new)
+**File(s):** `teleclaude_events/cartridges/prepare_quality.py`
 
-- [ ] `async improve_artifacts(slug: str, scoring: ScoringResult) -> ImprovementResult`
-- [ ] When `requirements.md` is missing: generate from `input.md` + codebase context
-- [ ] When `implementation-plan.md` is missing: generate from requirements + codebase
-- [ ] When artifacts exist but weak: tighten specific sections identified by scorer
-- [ ] Uncertainty boundary: stop and record blockers when grounding is insufficient
-- [ ] Return `ImprovementResult`: `edits_made` (list[str]), `artifacts_updated` (list[str]),
-      `remaining_gaps` (list[str])
+- [ ] When requirements.md is missing dependency section: add from `roadmap.yaml`.
+- [ ] When plan is missing verification steps: add "**Verification:** TBD" placeholders.
+- [ ] When requirements are missing constraint section: flag gap in report.
+- [ ] Do NOT rewrite prose or change technical approach.
+- [ ] Return list of edits made.
 
-**Verification:** Fixture with missing plan gets generated plan. Ambiguous fixture
-remains blocked with explicit rationale.
+**Verification:** Missing structural sections are filled. Prose is untouched.
 
 ### Task 3.2: Post-improvement reassessment
 
-**File(s):** `teleclaude/services/prepare_quality_handler.py`
+**File(s):** `teleclaude_events/cartridges/prepare_quality.py`
 
-- [ ] After improvement, re-run scorer on updated artifacts
-- [ ] Update score and verdict based on improved state
-- [ ] If still below threshold after improvement: verdict is final
+- [ ] After structural improvements, re-run scorer on updated content.
+- [ ] Update score and verdict.
+- [ ] If still below threshold: verdict is final.
 
 **Verification:** Improved artifact rescores higher. Still-weak artifact stays at lower score.
 
-## Phase 4: Output & Resolution
+## Phase 4: Output & State
 
 ### Task 4.1: DOR report writer
 
-**File(s):** `teleclaude/services/dor_report_writer.py` (new)
+**File(s):** `teleclaude_events/cartridges/prepare_quality.py`
 
-- [ ] Write `todos/{slug}/dor-report.md` with fixed template:
+- [ ] Write `todos/{slug}/dor-report.md` with template:
   - Score + verdict
   - Assessment timestamp
+  - Assessed commit hash
+  - Per-dimension scores
   - Edits performed (if any)
   - Remaining gaps
   - Blockers / decisions needed
-- [ ] Deterministic output format for machine and human readability
 
-**Verification:** Report content matches scoring result for fixture todos.
+**Verification:** Report matches scoring result for fixture todos.
 
 ### Task 4.2: State writeback
 
-**File(s):** `teleclaude/services/prepare_quality_handler.py`
+**File(s):** `teleclaude_events/cartridges/prepare_quality.py`
 
 - [ ] Read existing `state.yaml` and update dor section:
   - `last_assessed_at`, `score`, `status`, `schema_version`, `blockers`,
     `actions_taken`, `assessed_commit`
-- [ ] Preserve all non-dor keys in `state.yaml`
-- [ ] Use YAML safe dump with consistent formatting
+- [ ] Preserve all non-dor keys in `state.yaml`.
+- [ ] Use YAML safe dump with consistent formatting.
 
-**Verification:** state.yaml dor section matches schema. Non-dor keys preserved.
+**Verification:** `state.yaml` dor section matches schema. Non-dor keys preserved.
 
-### Task 4.3: Notification resolution
+### Task 4.3: Notification lifecycle
 
-**File(s):** `teleclaude/services/prepare_quality_handler.py`
+**File(s):** `teleclaude_events/cartridges/prepare_quality.py`
 
-- [ ] On `pass` or `needs_work`: resolve notification via API with structured result
-  - `summary`: "DOR {status} ({score}/10) for {slug}"
-  - `resolved_by`: "prepare-quality-runner"
-  - `resolved_at`: current timestamp
-- [ ] On `needs_decision`: do NOT resolve — leave notification unresolved
-- [ ] Emit `todo.dor_assessed` event with score and verdict for downstream consumers
+- [ ] Look up notification row from `context.db` by idempotency key or group key
+  (slug) from the event.
+- [ ] Claim: `context.db.update_agent_status(id, "claimed", "prepare-quality-runner")`.
+- [ ] On `pass` or `needs_work`: resolve via `context.db.resolve_notification(id, resolution)`.
+- [ ] On `needs_decision`: leave unresolved. Log blockers.
+- [ ] Emit `domain.software-development.planning.dor_assessed` event via producer
+  (requires producer reference — either passed via context or imported from module-level).
 
-**Verification:** Notification API shows resolved notification for pass/needs_work.
-Unresolved notification remains visible for needs_decision.
+**Verification:** Notification resolved for pass/needs_work. Unresolved for needs_decision.
 
-## Phase 5: Daemon Integration
+## Phase 5: Pipeline Wiring
 
-### Task 5.1: Wire handler into daemon startup
+### Task 5.1: Add cartridge to daemon pipeline
 
 **File(s):** `teleclaude/daemon.py`
 
-- [ ] Import and instantiate `PrepareQualityHandler`
-- [ ] Register handler with notification processor for todo lifecycle events
-- [ ] Handler lifecycle follows daemon lifecycle (start/stop)
+- [ ] Import `PrepareQualityCartridge` from `teleclaude_events.cartridges.prepare_quality`.
+- [ ] Add to pipeline construction after system cartridges:
+  ```python
+  pipeline = Pipeline(
+      [DeduplicationCartridge(), NotificationProjectorCartridge(), PrepareQualityCartridge()],
+      context,
+  )
+  ```
+- [ ] Cartridge lifecycle follows daemon lifecycle (no special start/stop needed).
 
-**Verification:** Daemon startup logs show handler registered. Event emission triggers handler.
+**Verification:** Daemon startup logs show three cartridges. Event emission triggers assessment.
+
+### Task 5.2: Export from cartridges package
+
+**File(s):** `teleclaude_events/cartridges/__init__.py`
+
+- [ ] Add `PrepareQualityCartridge` to package exports.
+
+**Verification:** Import works from both daemon and tests.
 
 ## Phase 6: Validation
 
 ### Task 6.1: Tests
 
-- [ ] Unit tests for DOR scorer (rubric evaluation, threshold mapping)
-- [ ] Unit tests for idempotency (skip logic, commit hash comparison)
-- [ ] Unit tests for artifact improver (generation, tightening, uncertainty boundary)
-- [ ] Integration test: emit event → handler claims → assesses → resolves notification
-- [ ] Test `needs_decision` path: notification left unresolved
-- [ ] Run `make test`
+- [ ] Unit tests for DOR scorer (rubric evaluation, threshold mapping).
+- [ ] Unit tests for idempotency (skip logic, commit hash comparison).
+- [ ] Unit tests for structural improver (gap filling, prose preservation).
+- [ ] Integration test: create pipeline with all three cartridges, feed a planning event,
+  verify DOR report written and state updated.
+- [ ] Test `needs_decision` path: notification left unresolved.
+- [ ] Run `make test`.
 
 ### Task 6.2: Quality checks
 
-- [ ] Run `make lint`
-- [ ] Verify handler does not import `teleclaude_notifications.*` internals
-- [ ] Verify state.yaml schema compliance across test fixtures
+- [ ] Run `make lint`.
+- [ ] Verify cartridge does not import daemon internals (only `teleclaude_events`).
+- [ ] Verify `state.yaml` schema compliance across test fixtures.
+- [ ] Verify pipeline pass-through: non-planning events are unaffected.
 
 ## Risks
 
-1. **Notification service not yet built**: this handler depends on `event-platform`.
-   Cannot be built until that dependency ships. Mitigate: design to the notification
-   service's public API contract from its requirements/plan.
-2. **Over-rewriting human-authored plans**: mitigate with bounded edits, uncertainty
-   boundary, and explicit blocker recording.
-3. **False confidence from inflated scores**: mitigate with structured rubric and
-   plan-requirement consistency checking.
-4. **Handler complexity**: the handler combines assessment, improvement, and resolution.
-   Mitigate: separate scorer, improver, and reporter into distinct modules.
+1. **Assessment latency**: File I/O + scoring in the pipeline loop could slow event
+   processing. Mitigate: measure per-slug processing time, log warnings > 2s.
+   If latency proves problematic, move to async task dispatch in a future iteration.
+2. **Deterministic scoring limitations**: Rubric-based scoring may miss nuanced quality
+   issues that AI assessment would catch. Mitigate: this is v1. AI-powered assessment
+   can be layered on in a future iteration by dispatching an agent session for
+   improvement-heavy cases.
+3. **Concurrent assessment**: Two events for the same slug arriving close together could
+   cause concurrent writes. Mitigate: idempotency check + `state.yaml` as optimistic
+   lock (read before write, check assessed_commit).
 
 ## Exit criteria
 
-1. Handler runs as part of daemon, consuming todo lifecycle events.
+1. Cartridge runs in the daemon pipeline, processing todo lifecycle events.
 2. DOR reports are written for assessed todos with correct score/verdict.
 3. Notifications are resolved (or left unresolved for needs_decision).
 4. Idempotency prevents redundant assessments.
 5. Tests pass, lint passes.
+6. Pipeline pass-through verified for non-planning events.
