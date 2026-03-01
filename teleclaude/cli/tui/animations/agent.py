@@ -17,16 +17,19 @@ from teleclaude.cli.tui.pixel_mapping import (
 
 
 class AgentPulse(Animation):
-    """A1: All pixels pulse synchronously through agent colors."""
+    """A1: All letter pixels pulse synchronously through agent colors."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        # Cycle through Muted (0), Normal (1), Highlight (2)
-        # We can use a sine wave or just simple cycling
         color_idx = frame % len(self.palette)
         color_pair = self.palette.get(color_idx)
 
-        all_pixels = PixelMap.get_all_pixels(self.is_big)
-        return {pixel: color_pair for pixel in all_pixels}
+        result = {}
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            if PixelMap.get_is_letter(self.target, x, y):
+                result[(x, y)] = color_pair
+            else:
+                result[(x, y)] = -1
+        return result
 
 
 class AgentWaveLR(Animation):
@@ -205,15 +208,20 @@ class AgentLetterCascade(Animation):
 
 
 class AgentFadeCycle(Animation):
-    """A8: All pixels smoothly transition Muted <-> Normal <-> Highlight."""
+    """A8: All letter pixels smoothly transition through agent colors."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        # Simple cycle 0-1-2-1-0
         sequence = [0, 1, 2, 1]
         color_idx = sequence[frame % len(sequence)]
         color_pair = self.palette.get(color_idx)
-        all_pixels = PixelMap.get_all_pixels(self.is_big)
-        return {p: color_pair for p in all_pixels}
+        
+        result = {}
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            if PixelMap.get_is_letter(self.target, x, y):
+                result[(x, y)] = color_pair
+            else:
+                result[(x, y)] = -1
+        return result
 
 
 class AgentSpotlight(Animation):
@@ -247,16 +255,21 @@ class AgentSpotlight(Animation):
 
 
 class AgentBreathing(Animation):
-    """A12: Gentle synchronized pulse with easing (simplified)."""
+    """A12: Gentle synchronized pulse with easing."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         # Longer sequence for "breathing" effect
-        # 0, 0, 1, 1, 2, 2, 1, 1, 0, 0
         sequence = [0, 0, 1, 1, 2, 2, 1, 1]
         color_idx = sequence[frame % len(sequence)]
         color_pair = self.palette.get(color_idx)
-        all_pixels = PixelMap.get_all_pixels(self.is_big)
-        return {p: color_pair for p in all_pixels}
+        
+        result = {}
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            if PixelMap.get_is_letter(self.target, x, y):
+                result[(x, y)] = color_pair
+            else:
+                result[(x, y)] = -1
+        return result
 
 
 class AgentDiagonalWave(Animation):

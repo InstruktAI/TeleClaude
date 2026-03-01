@@ -211,82 +211,76 @@ class MiddleOutVertical(Animation):
 
 
 class WithinLetterSweepLR(Animation):
-    """G4: Volumetric vertical sweep L→R through neon tubes (Big only)."""
+    """G4: Volumetric vertical sweep L→R through billboard sign area."""
 
     supports_small = False
     is_external_light = True
 
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(True)
+
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        if not self.is_big:
-            return {}
-
-        num_letters = len(BIG_BANNER_LETTERS)
-        result = {}
-        for i in range(num_letters):
-            start_x, end_x = BIG_BANNER_LETTERS[i]
-            letter_width = end_x - start_x + 1
-            active_col_offset = frame % letter_width
-            active_col = start_x + active_col_offset
-
-            # Palette cycle
-            color_pair = self.palette.get(frame // letter_width)
-            safe_color = self.get_contrast_safe_color(color_pair)
+        width = BIG_BANNER_WIDTH
+        modulation = self.get_modulation(frame)
+        active_x = int((frame * modulation * 1.5) % (width + 10)) - 5
+        
+        color_pair = self.palette.get(frame // width)
+        safe_color = self.get_electric_neon(self.get_contrast_safe_color(color_pair))
+        
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        try:
+            r, g, b = hex_to_rgb(safe_color)
+        except: r, g, b = 150, 150, 150
             
-            from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-            try:
-                if safe_color.startswith("#"):
-                    r, g, b = hex_to_rgb(safe_color)
-                else:
-                    r, g, b = 150, 150, 150
-            except (ValueError, TypeError, AttributeError):
-                r, g, b = 150, 150, 150
-                
-            dim_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
+        mid_color = safe_color
+        side_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7)))
+        base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
 
-            for x in range(start_x, end_x + 1):
-                # Only return the active column surge and keep others dimmed
-                color = safe_color if x == active_col else dim_color
-                for p in PixelMap.get_column_pixels(self.is_big, x):
-                    result[p] = color
+        result = {}
+        for x, y in self._all_pixels:
+            dist = abs((x - 1) - active_x)
+            if dist == 0: color = mid_color
+            elif dist == 1: color = side_color
+            else: color = base_color
+            result[(x, y)] = color
         return result
 
 
 class WithinLetterSweepRL(Animation):
-    """G5: Volumetric vertical sweep R→L through neon tubes (Big only)."""
+    """G5: Volumetric vertical sweep R→L through billboard sign area."""
 
     supports_small = False
     is_external_light = True
 
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(True)
+
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        if not self.is_big:
-            return {}
+        width = BIG_BANNER_WIDTH
+        modulation = self.get_modulation(frame)
+        active_x = width - 1 - int((frame * modulation * 1.5) % (width + 10)) + 5
+        
+        color_pair = self.palette.get(frame // width)
+        safe_color = self.get_electric_neon(self.get_contrast_safe_color(color_pair))
+        
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        try:
+            r, g, b = hex_to_rgb(safe_color)
+        except: r, g, b = 150, 150, 150
+            
+        mid_color = safe_color
+        side_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7)))
+        base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
 
-        num_letters = len(BIG_BANNER_LETTERS)
         result = {}
-        for i in range(num_letters):
-            start_x, end_x = BIG_BANNER_LETTERS[i]
-            letter_width = end_x - start_x + 1
-            active_col_offset = (letter_width - 1) - (frame % letter_width)
-            active_col = start_x + active_col_offset
-
-            color_pair = self.palette.get(frame // letter_width)
-            safe_color = self.get_contrast_safe_color(color_pair)
-
-            from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-            try:
-                if safe_color.startswith("#"):
-                    r, g, b = hex_to_rgb(safe_color)
-                else:
-                    r, g, b = 150, 150, 150
-            except (ValueError, TypeError, AttributeError):
-                r, g, b = 150, 150, 150
-                
-            dim_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
-
-            for x in range(start_x, end_x + 1):
-                color = safe_color if x == active_col else dim_color
-                for p in PixelMap.get_column_pixels(self.is_big, x):
-                    result[p] = color
+        for x, y in self._all_pixels:
+            dist = abs((x - 1) - active_x)
+            if dist == 0: color = mid_color
+            elif dist == 1: color = side_color
+            else: color = base_color
+            result[(x, y)] = color
         return result
 
 
@@ -424,25 +418,37 @@ class LetterShimmer(Animation):
 
 
 class WavePulse(Animation):
-    """G15: Color wave travels through word with trailing brightness gradient."""
+    """G15: Volumetric color surge travels through billboard sign area."""
+
+    is_external_light = True
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
-        active_x = frame % width
+        modulation = self.get_modulation(frame)
+        active_x = int((frame * modulation * 1.5) % (width + 10)) - 5
+        
+        color_pair = self.palette.get(frame // width)
+        safe_color = self.get_electric_neon(self.get_contrast_safe_color(color_pair))
+        
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        try:
+            if safe_color.startswith("#"):
+                r, g, b = hex_to_rgb(safe_color)
+            else:
+                r, g, b = 150, 150, 150
+        except: r, g, b = 150, 150, 150
+            
+        mid_color = safe_color
+        side_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7)))
+        base_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
 
         result = {}
-        for x in range(width):
-            dist = abs(x - active_x)
-            if dist == 0:
-                color_pair = self.palette.get(frame // width)
-            elif dist < 5:
-                # Dimmer trailing effect (using palette indices if possible, or just -1)
-                color_pair = self.palette.get((frame // width) - 1)
-            else:
-                color_pair = -1
-
-            for p in PixelMap.get_column_pixels(self.is_big, x):
-                result[p] = color_pair
+        for x, y in PixelMap.get_all_pixels(self.is_big):
+            dist = abs((x - 1) - active_x)
+            if dist == 0: color = mid_color
+            elif dist < 3: color = side_color
+            else: color = base_color
+            result[(x, y)] = color
         return result
 
 
@@ -753,21 +759,21 @@ class SearchlightSweep(Animation):
         self._all_pixels = PixelMap.get_all_pixels(self.is_big)
 
     def _is_batman_mask(self, x: int, y: int, cx: int, cy: int) -> bool:
-        """Ultimate Wide & Grounded Batman Silhouette."""
+        """Truly Ultimate Wide & Grounded Batman Silhouette."""
         dx, dy = x - cx, y - (cy - 4)
         adx = abs(dx)
         
-        # Grounded feet/body (bottom rows of the sign)
-        if dy >= 3: # Rows 4 and 5 (bottom)
-            return adx <= 1
+        # Grounded feet/body (bottom rows 4 and 5)
+        if dy >= 3: 
+            return adx <= 2 # Wider feet
             
         # Ears/Head (top of silhouette)
         if dy == -1: return adx == 1
         if dy == 0:  return adx <= 1
         
-        # Wide Wings/Cape (middle rows)
-        if dy == 1:  return adx <= 7 # Wingspan 15 total
-        if dy == 2:  return adx <= 5 # Cape narrowing
+        # Wide Wings/Cape (middle rows) - wingspan 19 total
+        if dy == 1:  return adx <= 9 
+        if dy == 2:  return adx <= 6 # Cape narrowing
         
         return False
 
@@ -783,8 +789,8 @@ class SearchlightSweep(Animation):
         cx = int((frame * modulation * 2) % (width + 40)) - 20
         cy = height - 1
         
-        # FIXED large beam for visibility
-        radius = 10
+        # Truly large beam for visibility
+        radius = 12
         
         result: dict[tuple[int, int], str | int] = {}
         for x, y in self._all_pixels:
@@ -1111,15 +1117,9 @@ GENERAL_ANIMATIONS = [
     SunsetGradient,
     CloudsPassing,
     FloatingBalloons,
-    AuroraBorealis,
-    LavaLamp,
     StarryNight,
     MatrixRain,
-    OceanWaves,
     FireBreath,
-    BreathingHeart,
-    IceCrystals,
-    Bioluminescence,
     HighSunBird,
     SearchlightSweep,
     CinematicPrismSweep,
