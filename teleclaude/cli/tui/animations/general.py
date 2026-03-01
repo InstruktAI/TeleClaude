@@ -71,7 +71,7 @@ class GlobalSky(Animation):
 
     # Moon shape — 6 rows, positioned near right edge for wide terminals
     _MOON_ROWS = [
-        "  ,/\u2593\u2593\u2593\u2593\u2593\u2593\u2593&.  ",
+        "  ,/\u2593\u2593\u2593\u2593\u2593\u2593&.  ",
         " \u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593&  ",
         "\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593& ",
         "\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593& ",
@@ -844,6 +844,7 @@ GENERAL_ANIMATIONS = [
     CloudsPassing,
     FloatingBalloons,
     # Dark mode atmospherics
+    Bioluminescence,
     SearchlightSweep,   # Batman
     # Original specials
     FireBreath,         # fixed: burns from bottom
