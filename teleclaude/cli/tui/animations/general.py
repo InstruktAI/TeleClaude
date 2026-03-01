@@ -58,7 +58,7 @@ class GlobalSky(Animation):
                 "pos": (self.rng.randint(0, self.width - 1), self.rng.randint(0, self.height - 1)),
                 "char": self.rng.choices(_star_types, weights=_star_weights, k=1)[0],
                 "phase": self.rng.random() * math.pi * 2,
-                "speed": 0.3 + self.rng.random() * 0.4
+                "speed": 0.010 + self.rng.random() * 0.018
             })
             
         # Drifting Clouds (Day)
@@ -97,13 +97,11 @@ class GlobalSky(Animation):
                 for x in range(self.width):
                     buffer.add_pixel(Z_SKY, x, 7 + dy, glow_color)
 
-            # 3. Stars (mode-aware twinkling)
+            # 3. Stars — always frame-animated, very slow, rarely visible but long-lasting
             for star in self.stars:
-                if is_party:
-                    twinkle = (math.sin(frame * star["speed"] + star["phase"]) + 1.0) / 2.0
-                else:
-                    twinkle = (math.sin(star["phase"]) + 1.0) / 2.0
-                if twinkle > 0.4:
+                speed = star["speed"] * (2.5 if is_party else 1.0)
+                twinkle = (math.sin(frame * speed + star["phase"]) + 1.0) / 2.0
+                if twinkle > 0.88:
                     buffer.add_pixel(Z_FOREGROUND, star["pos"][0], star["pos"][1], star["char"])
 
             # 4. Moon — right side, only when wide terminal (>= 176 cols)
