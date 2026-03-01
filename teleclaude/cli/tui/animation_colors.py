@@ -23,7 +23,8 @@ def hex_to_rgb(hex_str: str) -> tuple[int, int, int]:
 
 
 def rgb_to_hex(r: int, g: int, b: int) -> str:
-    """Convert (r, g, b) integers to #RRGGBB string."""
+    """Convert (r, g, b) integers to #RRGGBB string (clamped to 0-255)."""
+    r, g, b = max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))
     return f"#{r:02x}{g:02x}{b:02x}"
 
 

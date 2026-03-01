@@ -385,7 +385,7 @@ class Fireworks(Animation):
                 dist = math.sqrt((x - bx) ** 2 + (y - by) ** 2)
                 ring_dist = abs(dist - radius)
                 if ring_dist < 2.0:
-                    ring_fade = (1.0 - ring_dist / 1.2) * fade
+                    ring_fade = max(0.0, (1.0 - ring_dist / 1.2)) * fade
                     flash = 255 if progress < 0.12 else 0
                     r = min(255, int(r0 * ring_fade) + flash)
                     g = min(255, int(g0 * ring_fade) + flash)

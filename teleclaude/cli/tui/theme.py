@@ -245,6 +245,7 @@ def _read_terminal_bg_from_appearance() -> str | None:
 
 
 def _rgb_to_hex(r: int, g: int, b: int) -> str:
+    r, g, b = max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))
     return f"#{r:02x}{g:02x}{b:02x}"
 
 

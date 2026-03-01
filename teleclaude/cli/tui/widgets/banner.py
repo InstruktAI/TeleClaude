@@ -50,12 +50,23 @@ def _is_pipe(c: str) -> bool:
 
 
 def _dim_color(hex_color: str, factor: float) -> str:
-    """Scale a #RRGGBB color's brightness by factor (e.g. 0.7 = 30% darker)."""
-    h = hex_color.lstrip("#")
-    r = int(int(h[0:2], 16) * factor)
-    g = int(int(h[2:4], 16) * factor)
-    b = int(int(h[4:6], 16) * factor)
-    return f"#{r:02x}{g:02x}{b:02x}"
+    """Scale a #RRGGBB color's brightness by factor (e.g. 0.7 = 30% darker).
+
+    Returns color unchanged if it's not a valid hex color format (e.g., color(N) palette strings).
+    """
+    # Guard against non-hex color formats (e.g., color(N) from animation engine)
+    if not hex_color.startswith("#") or len(hex_color) != 7:
+        return hex_color
+
+    try:
+        h = hex_color.lstrip("#")
+        r = int(int(h[0:2], 16) * factor)
+        g = int(int(h[2:4], 16) * factor)
+        b = int(int(h[4:6], 16) * factor)
+        return f"#{r:02x}{g:02x}{b:02x}"
+    except ValueError:
+        # If parsing fails (malformed hex), return original color
+        return hex_color
 
 
 class Banner(TelecMixin, Widget):
