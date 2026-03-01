@@ -44,8 +44,8 @@ class GlobalSky(Animation):
         self.height = 10
         self._all_pixels = [(x, y) for y in range(self.height) for x in range(self.width)]
         
-        # Day: Azure gradient. Night: Super Dark Purple Glow.
-        self.day_sky = Spectrum(["#87CEEB", "#B0E0E6", "#E0F7FA", "#B0E0E6"])
+        # Day: Light blue at top (overhead) fading to very light blue at horizon.
+        self.day_sky = Spectrum(["#87CEEB", "#C8E8F8"])
         # From Deep Black to Super Dark Midnight Purple
         self.night_sky = Spectrum(["#000000", "#05000A", "#0F001A", "#05000A"])
         
@@ -70,10 +70,19 @@ class GlobalSky(Animation):
                 "speed": 0.25 + self.rng.random() * 0.3
             })
 
+    # Sun shape — 6 rows, bright gold disc for day mode (right-side sky margin)
+    _SUN_ROWS = [
+        "    \u2588\u2588\u2588\u2588\u2588\u2588    ",
+        "  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  ",
+        " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 ",
+        " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 ",
+        "  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  ",
+        "    \u2588\u2588\u2588\u2588\u2588\u2588    ",
+    ]
     # Moon shape — 6 rows, positioned near right edge for wide terminals
     # Uses FULL BLOCK (█) for contiguous vertical fill with no inter-row gaps
     _MOON_ROWS = [
-        "   ,/\u2588\u2588\u2588\u2588\u2588\u2588&.  ",
+        "     ,/\u2588\u2588\u2588\u2588\u2588\u2588&.  ",
         " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588&  ",
         "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588& ",
         "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588& ",
@@ -133,6 +142,22 @@ class GlobalSky(Animation):
                     for dy in range(2):
                         if 0 <= cx + dx < self.width:
                             buffer.add_pixel(Z_FOREGROUND, cx + dx, cy + dy, "\u2501")
+
+            # 3. Sun — right-side sky margin (only on wide terminals)
+            try:
+                term_width = shutil.get_terminal_size().columns
+            except Exception:
+                term_width = 200
+            sun_x = term_width - 25
+            sun_y = 1
+            if sun_x > 85:
+                for dy, row in enumerate(self._SUN_ROWS):
+                    y = sun_y + dy
+                    for dx, ch in enumerate(row):
+                        x = sun_x + dx
+                        if ch != " ":
+                            buffer.add_pixel(Z_FOREGROUND, x, y, ch)
+                            buffer.add_pixel(1, x, y, "#FFD700")  # color hint for yellow rendering
 
         return buffer
 
@@ -201,18 +226,20 @@ class LineSweepTopBottom(Animation):
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         modulation = self.get_modulation(frame)
         active_y = (frame * modulation * 0.5) % (height + 2) - 1
-        
+
         result = {}
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         for i in range(num_letters):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 surge = self.linear_surge(y, active_y, 1.5)
+                if surge <= 0:
+                    result[(x, y)] = -1
+                    continue
                 color = self.spec.get_color(y / max(1, height - 1))
                 color = self.enforce_vibrancy(color)
-                intensity = 0.6 + (surge * 0.4)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
                 r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * intensity), int(g * intensity), int(b * intensity))
+                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
         return result
 
 
@@ -227,18 +254,20 @@ class LineSweepBottomTop(Animation):
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         modulation = self.get_modulation(frame)
         active_y = (height - 1) - ((frame * modulation * 0.5) % (height + 2) - 1)
-        
+
         result = {}
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         for i in range(num_letters):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 surge = self.linear_surge(y, active_y, 1.5)
+                if surge <= 0:
+                    result[(x, y)] = -1
+                    continue
                 color = self.spec.get_color(y / max(1, height - 1))
                 color = self.enforce_vibrancy(color)
-                intensity = 0.6 + (surge * 0.4)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
                 r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * intensity), int(g * intensity), int(b * intensity))
+                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
         return result
 
 
@@ -263,12 +292,14 @@ class MiddleOutVertical(Animation):
             for x, y in PixelMap.get_letter_pixels(True, i):
                 min_dist = min(abs(y - ar) for ar in active_rows)
                 surge = 1.0 - (min_dist / 2.0) if min_dist < 2 else 0.0
+                if surge <= 0:
+                    result[(x, y)] = -1
+                    continue
                 color = self.spec.get_color(y / max(1, height - 1))
                 color = self.enforce_vibrancy(color)
-                intensity = 0.6 + (surge * 0.4)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
                 r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * intensity), int(g * intensity), int(b * intensity))
+                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
         return result
 
 
@@ -285,19 +316,21 @@ class WithinLetterSweepLR(Animation):
         width = BIG_BANNER_WIDTH
         modulation = self.get_modulation(frame)
         active_x = (frame * modulation * 1.5) % (width + 10) - 5
-        
+
         result = {}
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         for i in range(num_letters):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 surge = self.linear_surge(x - 1, active_x, 3.0)
+                if surge <= 0:
+                    result[(x, y)] = -1
+                    continue
                 color = self.spec.get_color((x-1)/width)
                 color = self.enforce_vibrancy(color)
-                intensity = 0.6 + (surge * 0.4)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
                 r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * intensity), int(g * intensity), int(b * intensity))
-            
+                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
+
         return result
 
 
@@ -314,19 +347,21 @@ class WithinLetterSweepRL(Animation):
         width = BIG_BANNER_WIDTH
         modulation = self.get_modulation(frame)
         active_x = (width - 1) - ((frame * modulation * 1.5) % (width + 10) - 5)
-        
+
         result = {}
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         for i in range(num_letters):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 surge = self.linear_surge(x - 1, active_x, 3.0)
+                if surge <= 0:
+                    result[(x, y)] = -1
+                    continue
                 color = self.spec.get_color((x-1)/width)
                 color = self.enforce_vibrancy(color)
-                intensity = 0.6 + (surge * 0.4)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
                 r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * intensity), int(g * intensity), int(b * intensity))
-            
+                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
+
         return result
 
 
@@ -373,12 +408,14 @@ class DiagonalSweepDR(Animation):
         for i in range(num_letters):
             for x, y in PixelMap.get_letter_pixels(True, i):
                 surge = self.linear_surge((x - 1) + y, active, 4.0)
+                if surge <= 0:
+                    result[(x, y)] = -1
+                    continue
                 color = self.spec.get_color(((x - 1) + y) / max_val)
                 color = self.enforce_vibrancy(color)
-                intensity = 0.6 + (surge * 0.4)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
                 r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * intensity), int(g * intensity), int(b * intensity))
+                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
         return result
 
 
@@ -403,12 +440,14 @@ class DiagonalSweepDL(Animation):
         for i in range(num_letters):
             for x, y in PixelMap.get_letter_pixels(True, i):
                 surge = self.linear_surge((x - 1) - y, active, 4.0)
+                if surge <= 0:
+                    result[(x, y)] = -1
+                    continue
                 color = self.spec.get_color(((x - 1) + y) / max_val)
                 color = self.enforce_vibrancy(color)
-                intensity = 0.6 + (surge * 0.4)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
                 r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * intensity), int(g * intensity), int(b * intensity))
+                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
         return result
 
 
@@ -443,13 +482,15 @@ class WavePulse(Animation):
         for i in range(num_letters):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 surge = self.linear_surge(x - 1, active_x, 4.0)
+                if surge <= 0:
+                    result[(x, y)] = -1
+                    continue
                 color = self.spec.get_color((x-1)/width)
                 color = self.enforce_vibrancy(color)
-                intensity = 0.6 + (surge * 0.4)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
                 r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * intensity), int(g * intensity), int(b * intensity))
-            
+                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
+
         return result
 
 
@@ -469,12 +510,14 @@ class BlinkSweep(Animation):
         for i in range(num_letters):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 surge = self.linear_surge(x - 1, active_x, 2.0)
+                if surge <= 0:
+                    result[(x, y)] = -1
+                    continue
                 color = self.spec.get_color((x-1)/width)
                 color = self.enforce_vibrancy(color)
-                intensity = 0.6 + (surge * 0.4)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
                 r, g, b = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r * intensity), int(g * intensity), int(b * intensity))
+                result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
         return result
 
 
@@ -772,6 +815,7 @@ class SearchlightSweep(Animation):
 class CinematicPrismSweep(Animation):
     """TC18: Volumetric prism beam with random hue morphing and pivoting angle."""
 
+    theme_filter = "dark"
     is_external_light = True
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
@@ -895,7 +939,6 @@ GENERAL_ANIMATIONS = [
     CloudsPassing,
     FloatingBalloons,
     # Dark mode atmospherics
-    Bioluminescence,
     SearchlightSweep,   # Batman
     # Original specials
     FireBreath,         # fixed: burns from bottom

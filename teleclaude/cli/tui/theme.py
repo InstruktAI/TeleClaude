@@ -316,10 +316,8 @@ def get_billboard_background(focused: bool) -> str:
     if _is_dark_mode:
         # Dark mode: fixed dark plate for best neon contrast
         return "#242424" if focused else "#2b2b2b"
-    # Light mode: blend toward black from terminal background
-    base_bg = get_terminal_background()
-    pct = 0.10 if focused else 0.15
-    return blend_colors(base_bg, "#000000", pct)
+    # Light mode: plain white billboard
+    return "#ffffff"
 
 
 def get_agent_pane_inactive_background(agent: str, haze_percentage: float | None = None) -> str:
@@ -736,7 +734,7 @@ PEACEFUL_MUTED_COLOR = _PEACEFUL_COLORS_DARK["muted"] if _is_dark_mode else _PEA
 
 # Banner muted color
 BANNER_COLOR = "color(240)" if _is_dark_mode else "color(244)"
-BANNER_HEX = "#585858" if _is_dark_mode else "#808080"
+BANNER_HEX = "#585858" if _is_dark_mode else "#909090"
 
 # Status/footer foreground
 STATUS_FG_COLOR = "#727578"

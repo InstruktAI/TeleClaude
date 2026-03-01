@@ -139,7 +139,8 @@ class Banner(TelecMixin, Widget):
                             if not is_on_plate:
                                 if isinstance(entity_val, str) and len(entity_val) == 1:
                                     fg_char = entity_val
-                                    fg_color = "#FFFFFF"
+                                    color_hint = engine.get_layer_color(1, x, y, target="header")
+                                    fg_color = color_hint if isinstance(color_hint, str) and color_hint.startswith("#") else "#FFFFFF"
                                 elif isinstance(entity_val, str):
                                     fg_color = entity_val
 
@@ -159,7 +160,7 @@ class Banner(TelecMixin, Widget):
                                 color_str = letter_color_floor(color_str, floor)
                             # Pipe connectors: 30% dimmer than fill pixels
                             if is_pipe_char:
-                                color_str = _dim_color(color_str, 0.7)
+                                color_str = _dim_color(color_str, 0.8)
 
                             if is_ext:
                                 # Proportional Lighting on the final background
@@ -173,13 +174,13 @@ class Banner(TelecMixin, Widget):
                             # Base State
                             fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
                             if is_pipe_char:
-                                fg = _dim_color(fg, 0.7)
+                                fg = _dim_color(fg, 0.8)
                             result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
                     else:
                         is_pipe_char = _is_pipe(char)
                         fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
                         if is_pipe_char:
-                            fg = _dim_color(fg, 0.7)
+                            fg = _dim_color(fg, 0.8)
                         result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
             else:
                 # Row 6: Pipes under E (13) and D (70)
@@ -254,7 +255,8 @@ class Banner(TelecMixin, Widget):
                             if not is_on_plate:
                                 if isinstance(entity_val, str) and len(entity_val) == 1:
                                     fg_char = entity_val
-                                    fg_color = "#FFFFFF"
+                                    color_hint = engine.get_layer_color(1, x, y, target="header")
+                                    fg_color = color_hint if isinstance(color_hint, str) and color_hint.startswith("#") else "#FFFFFF"
                                 elif isinstance(entity_val, str):
                                     fg_color = entity_val
 
@@ -271,7 +273,7 @@ class Banner(TelecMixin, Widget):
                                 floor = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
                                 color_str = letter_color_floor(color_str, floor)
                             if is_pipe_char:
-                                color_str = _dim_color(color_str, 0.7)
+                                color_str = _dim_color(color_str, 0.8)
 
                             if is_ext:
                                 blend_pct = 0.5 if is_letter else 0.2
@@ -282,12 +284,12 @@ class Banner(TelecMixin, Widget):
                         else:
                             fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
                             if is_pipe_char:
-                                fg = _dim_color(fg, 0.7)
+                                fg = _dim_color(fg, 0.8)
                             result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
                     else:
                         fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
                         if is_pipe_char:
-                            fg = _dim_color(fg, 0.7)
+                            fg = _dim_color(fg, 0.8)
                         result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
             else:
                 # Logo pipes: E(6), D(34)

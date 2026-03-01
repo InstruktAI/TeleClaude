@@ -21,6 +21,7 @@ from teleclaude.cli.tui.theme import (
     NEUTRAL_MUTED_COLOR,
     apply_tui_haze,
     blend_colors,
+    is_dark_mode,
 )
 
 if TYPE_CHECKING:
@@ -77,6 +78,7 @@ class BoxTabBar(TelecMixin, Widget):
     def _render_tabs(self) -> Group:
         width = self.size.width or 80
         engine = self.animation_engine
+        dark_mode = is_dark_mode()
         from teleclaude.cli.tui.animations.base import (
             Z_SKY,
             Z_TABS_INACTIVE,
@@ -115,19 +117,23 @@ class BoxTabBar(TelecMixin, Widget):
                         
                         rel_x = x - c
                         if y_offset == 0:
-                            if rel_x == 0: char = "\u256d"
-                            elif rel_x == w + 1: char = "\u256e"
-                            else: char = "\u2500"
+                            if dark_mode:
+                                if rel_x == 0: char = "\u256d"
+                                elif rel_x == w + 1: char = "\u256e"
+                                else: char = "\u2500"
+                            # else: space (no top border in light mode)
                         elif y_offset == 1:
-                            if rel_x == 0 or rel_x == w + 1: char = "\u2502"
+                            if rel_x == 0 or rel_x == w + 1:
+                                char = "\u2502" if dark_mode else " "
                             elif 1 <= rel_x <= w: char = label[rel_x-1]
                         elif y_offset == 2:
-                            if rel_x == 0 or rel_x == w + 1: char = "\u2534"
-                            else: char = " " if is_active else "\u2500"
+                            if rel_x == 0 or rel_x == w + 1:
+                                char = "\u2534" if dark_mode else " "
+                            else: char = " " if (is_active or not dark_mode) else "\u2500"
                         break
-                
+
                 if not in_tab and y_offset == 2:
-                    char = "\u2500" # Connector line
+                    char = "\u2500" if dark_mode else " "  # Connector line (dark only)
                 
                 z_base = Z_TABS_ACTIVE if active_tab_under else Z_TABS_INACTIVE
                 fg = NEUTRAL_HIGHLIGHT_COLOR if active_tab_under else NEUTRAL_MUTED_COLOR

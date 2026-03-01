@@ -63,6 +63,7 @@ def _all_letter_pixels(is_big: bool) -> List[Tuple[int, int]]:
 class NeonFlicker(Animation):
     """Per-letter independent neon tube buzz — bright, dim, flicker, off."""
 
+    theme_filter = "dark"
     _STATES = ["bright", "dim", "flicker", "off"]
     _TRANSITIONS = {
         "bright":  [5, 1, 1, 0.3],
@@ -431,15 +432,17 @@ class EQBars(Animation):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 from_bottom = height - 1 - y
                 if from_bottom < lit:
-                    # Fixed gradient: green (bottom) → yellow → orange → red (top)
+                    # 5-stop gradient: dark-green (bottom) → lighter-green → yellow → orange → red (top)
                     row_frac = from_bottom / max(1, height - 1)
-                    if row_frac <= 0.5:
-                        r = min(255, int(510 * row_frac))
-                        g = 255
-                    else:
-                        r = 255
-                        g = min(255, int(510 * (1.0 - row_frac)))
-                    b = 0
+                    stops = [(0, 102, 0), (0, 204, 0), (255, 255, 0), (255, 102, 0), (255, 0, 0)]
+                    seg = row_frac * (len(stops) - 1)
+                    idx = min(int(seg), len(stops) - 2)
+                    t = seg - idx
+                    r0, g0, b0 = stops[idx]
+                    r1, g1, b1 = stops[idx + 1]
+                    r = int(r0 + t * (r1 - r0))
+                    g = int(g0 + t * (g1 - g0))
+                    b = int(b0 + t * (b1 - b0))
                     result[(x, y)] = rgb_to_hex(r, g, b)
                 else:
                     result[(x, y)] = "#080808"
@@ -591,6 +594,8 @@ class Firefly(Animation):
 class ColorSweep(Animation):
     """Unified sweep: random direction, random neon hue, adjacent color stops."""
 
+    theme_filter = "dark"
+
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self._params: Optional[dict] = None
@@ -668,6 +673,7 @@ class ColorSweep(Animation):
 class LaserScan(Animation):
     """Fast precision laser: white-hot core, colored outer glow. High contrast."""
 
+    theme_filter = "dark"
     _LASER_HUE_BANDS = [(0, 15, 3), (355, 360, 3), (295, 330, 2)]
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
