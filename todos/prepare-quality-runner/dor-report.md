@@ -2,92 +2,89 @@
 
 ## Gate Verdict
 
-- **Score:** 8
+- **Score:** 9
 - **Status:** pass
-- **Assessed at:** 2026-02-28T17:15:00Z
+- **Assessed at:** 2026-03-01T12:00:00Z
+- **Assessed commit:** 21bf8e8d
 - **Schema version:** 1
-- **Gate phase:** formal DOR validation (separate from draft)
+- **Gate phase:** formal DOR validation
 
 ## Gate Assessment
 
 All eight DOR gates are satisfied:
 
-1. **Intent & success** — Clear problem (reactive DOR quality maintenance), clear outcome
-   (event-driven handler), 9 concrete acceptance criteria.
-2. **Scope & size** — Atomic: one handler with four internal modules (handler, scorer,
-   improver, reporter). In/out scope well-delineated. Fits a single build session.
-3. **Verification** — Unit tests per module, integration test for full event flow,
-   lint checks, demo scenarios covering all verdict paths.
-4. **Approach known** — Architecture settled: handler consumes events via notification
-   service API, scorer evaluates against structured rubric, improver tightens artifacts
-   within uncertainty boundary, reporter writes dor-report.md. Daemon integration via
-   startup wiring.
-5. **Research complete** — No third-party dependencies. Gate auto-satisfied.
-6. **Dependencies & preconditions** — `event-platform` listed as `after` dependency
-   in roadmap.yaml. That service has DOR pass (score 8), build pending. The dependency
-   is tracked and the handler is designed to the notification service's public API contract.
-   Build cannot start until event-platform ships — this is expected, not a blocker.
-7. **Integration safety** — Additive: new handler module wired into daemon startup.
-   No destabilization risk to existing code.
+1. **Intent & success** — Problem: reactive DOR quality maintenance via event pipeline.
+   Outcome: pipeline cartridge that scores, improves, and reports on todo preparation
+   artifacts. Ten concrete acceptance criteria (AC1-AC10).
+
+2. **Scope & size** — Atomic: one cartridge (`PrepareQualityCartridge`) with clear internal
+   structure (event filtering, idempotency, scoring, improvement, reporting, state writeback,
+   notification lifecycle). In/out scope well-delineated. Fits a single build session.
+
+3. **Verification** — Unit tests for scorer, idempotency, and improver. Integration test
+   for full pipeline flow. Demo scenarios cover all verdict paths (pass, needs_work,
+   needs_decision, idempotency skip). `make test` and `make lint` required.
+
+4. **Approach known** — Architecture settled: `Cartridge` protocol implementation, added
+   third in pipeline after `DeduplicationCartridge` and `NotificationProjectorCartridge`.
+   Deterministic rubric scoring with defined dimensions and point allocations. Structural
+   gap filling only (no prose rewriting). Wiring point confirmed: `teleclaude/daemon.py:1722`.
+
+5. **Research complete** — No third-party dependencies. All dependencies are internal
+   (`teleclaude_events.*`). Gate auto-satisfied.
+
+6. **Dependencies & preconditions** — All required interfaces are shipped and verified:
+   - `teleclaude_events.pipeline.Cartridge` protocol (pipeline.py:20)
+   - `teleclaude_events.pipeline.PipelineContext` (pipeline.py:14)
+   - `teleclaude_events.envelope.EventEnvelope` (envelope.py:32)
+   - `teleclaude_events.db.EventDB` (db.py:84)
+   - `teleclaude_events.catalog.EventCatalog` (catalog.py:32)
+   - `EventDB.update_agent_status()` (db.py:198)
+   - `EventDB.resolve_notification()` (db.py:213)
+   - `EventDB.find_by_group_key()` (db.py:243)
+   No roadmap `after` dependency — the event platform core is already delivered.
+   The `event-platform` roadmap slug represents future phases (2-7), not the core
+   infrastructure this cartridge depends on.
+
+7. **Integration safety** — Purely additive: new cartridge module wired into existing
+   pipeline list. Pass-through semantics ensure downstream cartridges are unaffected.
+   No modification to existing cartridges or pipeline logic.
+
 8. **Tooling impact** — No tooling changes. Gate auto-satisfied.
 
 ## Plan-to-Requirement Fidelity
 
 Every plan task traces to a functional requirement:
 
-| Plan task                   | Requirement      |
-| --------------------------- | ---------------- |
-| 1.1 Handler registration    | FR1              |
-| 1.2 Filtering & idempotency | FR1, FR2         |
-| 2.1 Scorer                  | FR3, FR4         |
-| 2.2 Consistency checker     | FR3              |
-| 3.1 Improver                | FR5              |
-| 3.2 Reassessment            | FR5              |
-| 4.1 Report writer           | FR6              |
-| 4.2 State writeback         | FR7              |
-| 4.3 Notification resolution | FR8              |
-| 5.1 Daemon integration      | Constraints      |
-| 6.1 Tests                   | AC8              |
-| 6.2 Quality checks          | AC9, Constraints |
+| Plan task                      | Requirement      |
+| ------------------------------ | ---------------- |
+| 1.1 Cartridge module           | FR1              |
+| 1.2 Idempotency check          | FR2              |
+| 2.1 Rubric scorer              | FR3, FR4         |
+| 2.2 Consistency checker         | FR3              |
+| 3.1 Structural gap filler       | FR5              |
+| 3.2 Post-improvement reassess   | FR5              |
+| 4.1 DOR report writer           | FR6              |
+| 4.2 State writeback             | FR7              |
+| 4.3 Notification lifecycle      | FR8              |
+| 5.1 Daemon pipeline wiring      | Constraints      |
+| 5.2 Package exports             | Infrastructure   |
+| 6.1 Tests                       | AC8              |
+| 6.2 Quality checks              | AC9, Constraints |
 
 No contradictions found. Plan respects all constraints (no direct Redis access,
-no internal imports, daemon-hosted lifecycle).
-
-## Draft Blockers Reclassified
-
-The draft report listed three blockers. Gate assessment reclassifies all three as
-implementation notes — none block readiness:
-
-1. **event-platform build pending** — Tracked `after` dependency in roadmap.yaml.
-   The handler's preparation is ready; its build waits for the dependency to ship.
-   This is normal dependency management, not a DOR failure.
-
-2. **Handler registration API** — The event-platform plan defines `EventCatalog`
-   with registration, `EventEnvelope` as the public model, and API endpoints for
-   claim/resolve. The exact dispatch pattern (push vs. pull) will solidify during
-   the event-platform build. The prepare-quality-runner requirements correctly
-   describe the behavioral contract (react to events, claim via API, assess, resolve
-   via API) without over-specifying the dispatch mechanism.
-
-3. **Scorer approach (AI vs deterministic)** — The plan defines a structured rubric
-   with point allocations per dimension. Whether evaluation runs as deterministic
-   heuristics or AI-driven prompts with the rubric as scoring criteria is a build-time
-   implementation decision. The rubric itself is the approach; the execution mechanism
-   is an engineering choice the builder makes. Not a readiness blocker.
+no daemon internal imports, pass-through semantics, <2s processing target).
 
 ## Actions Taken
 
-- Validated all 8 DOR gates against artifacts.
-- Verified plan-to-requirement traceability (12 tasks, all traced).
+- Validated all 8 DOR gates against artifacts and codebase.
+- Verified all dependency interfaces exist in shipped code (line-level confirmation).
+- Verified plan-to-requirement traceability (13 tasks, all traced).
 - Checked plan-requirement consistency (no contradictions).
-- Cross-referenced event-platform requirements and plan to validate dependency assumptions.
-- Reclassified draft blockers as implementation notes.
+- Confirmed pipeline wiring point in daemon.py.
+- Corrected previous report's stale "handler" terminology to match current "cartridge" artifacts.
+- Corrected previous report's incorrect claim of `event-platform` as roadmap `after` dependency.
 
-## Remaining Notes for Builder
+## Blockers
 
-- Build is blocked by `event-platform` roadmap dependency — do not schedule until
-  that dependency delivers.
-- The handler dispatch pattern (push callback vs. API polling) should be settled during
-  or immediately after event-platform build. Both patterns work with the current
-  requirements.
-- The scorer rubric dimensions are well-defined. Builder chooses the evaluation mechanism.
+None.
