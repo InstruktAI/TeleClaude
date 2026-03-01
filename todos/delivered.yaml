@@ -1,5 +1,10 @@
 # Delivered work items. Newest first.
 
+- slug: config-wizrd-enrichment
+  date: '2026-03-01'
+  title: Enrich config wizard with improved UX and validation
+  commit: 0414afe654900d9bc3ccc09bfca498c6c927c801
+  description: Enrich config wizard with improved UX and validation
 - slug: fix-layout-issues-sticky-removal
   date: '2026-03-01'
   title: Restore 'a' key batch-toggle sticky sessions in Textual TUI
