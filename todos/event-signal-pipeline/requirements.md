@@ -60,9 +60,12 @@ clustering + synthesis at the later stages.
    - `signal_clusters` table: cluster_id, tags, burst, novel, summary, member_count, formed_at
    - `signal_syntheses` table: synthesis_id, cluster_id, artifact (JSON), produced_at
 
-7. **Utility cartridges location**: `company/cartridges/` (per domain-infrastructure conventions)
+7. **Utility cartridges location**: `company/cartridges/` (in-repo source code path)
    — these are the first cartridges shipped under that path, serving as the reference
-   implementation for the cartridge authoring pattern.
+   implementation for the cartridge authoring pattern. When `event-domain-infrastructure`
+   ships, these cartridges will be discoverable via its runtime loader at
+   `~/.teleclaude/company/domains/signal/cartridges/`; until then they are registered
+   directly with the `Pipeline` instance.
 
 8. **`telec signals` CLI stub** (optional, low priority):
    - `telec signals status` — show last ingest time, pending clusters, and synthesis count
@@ -87,7 +90,8 @@ clustering + synthesis at the later stages.
 - [ ] `signal-synthesize` reads a cluster, deduplicates content, and produces a synthesis artifact
 - [ ] `signal.synthesis.ready` event is emitted and creates a notification
 - [ ] Source config can be loaded from OPML and CSV file references
-- [ ] All three cartridges are loadable via the domain-infrastructure cartridge loader
+- [ ] All three cartridges are loadable via direct `Pipeline` registration (domain-infrastructure
+      loader integration deferred until that todo ships)
 - [ ] `make test` passes with coverage for ingest, cluster, synthesize, and source config
 - [ ] `make lint` passes
 - [ ] No imports from `teleclaude.*` in the signal cartridge code

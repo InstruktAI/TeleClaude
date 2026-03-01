@@ -188,8 +188,8 @@ Codebase patterns to follow:
     - For each source: fetch feed, parse items, filter already-seen by idempotency key lookup
     - For each new item (up to `max_items_per_pull`): run AI enrichment concurrently
       (asyncio.gather with semaphore at `ai_concurrency`)
-    - Emit one `signal.ingest.received` envelope per new item via `context.emit_batch()`
-      (or store to signal_items table and emit)
+    - Emit one `signal.ingest.received` envelope per new item via `context.emit()`
+      (store to signal_items table, then emit; cartridge returns None — the trigger is consumed)
     - Returns None (pull trigger event is consumed, not forwarded)
   - `async def pull(self, context: PipelineContext) -> int`: explicit pull call, returns
     item count ingested; used by scheduler and tests
@@ -419,7 +419,9 @@ Codebase patterns to follow:
   2. Instantiate `DefaultSignalAIClient(self._ai_client)`
   3. Instantiate `SignalDB` (or extend `EventDB`)
   4. Instantiate the three signal cartridges
-  5. Register them with the domain-infrastructure cartridge loader for the `signal` domain
+  5. Register directly with `Pipeline(cartridges=[..., ingest, cluster, synthesize], context=...)`
+     (domain-infrastructure loader integration deferred — when it ships, registration migrates
+     to its discovery mechanism)
   6. Start `IngestScheduler` as a background task:
      ```python
      self._ingest_scheduler_task = asyncio.create_task(
