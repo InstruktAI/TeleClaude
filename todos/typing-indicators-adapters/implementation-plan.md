@@ -23,7 +23,7 @@ async def typing_indicator_callback(
     adapter = client.adapters.get(origin)
     if adapter is None or not isinstance(adapter, UiAdapter):
         return
-    session = db.get_session(session_id)
+    session = await db.get_session(session_id)
     if session is None:
         return
     await adapter.send_typing_indicator(session)
@@ -99,5 +99,5 @@ Tests for the callback function itself:
 ## Risks
 
 - **Low risk:** The `typing_callback` hook is already called inside a try/except in `enqueue()`. Even a buggy callback cannot break message delivery.
-- **Low risk:** `db.get_session()` is a synchronous DB read, fast and well-tested.
+- **Low risk:** `db.get_session()` is an async DB read, fast and well-tested.
 - **No risk to existing typing:** The `_dispatch_command` typing indicator in `ui_adapter.py` is independent and continues to work (it signals "agent processing", not "message received").
