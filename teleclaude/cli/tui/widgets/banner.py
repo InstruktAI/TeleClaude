@@ -79,6 +79,10 @@ class Banner(TelecMixin, Widget):
 
         # Full terminal width for sky
         total_width = self.size.width or 84
+        
+        def to_color(c: str | int | None) -> str | None:
+            if isinstance(c, str) and len(c) > 1: return c
+            return None
 
         for y in range(BANNER_HEIGHT):
             if y > 0:
@@ -87,7 +91,9 @@ class Banner(TelecMixin, Widget):
             if y < len(BANNER_LINES):
                 line = BANNER_LINES[y]
                 for x in range(total_width):
-                    # 1. Start with Base Atmosphere (Sky Z-0) from Global Header
+                    char = line[x] if x < len(line) else " "
+                    
+                    # 1. Base Atmosphere (Sky Z-0) from Global Header
                     bg_color = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
                     if not isinstance(bg_color, str):
                         bg_color = "#000000" if focused else "#050505"
@@ -103,7 +109,7 @@ class Banner(TelecMixin, Widget):
                     if engine:
                         entity_val = engine.get_layer_color(Z_FOREGROUND, x, y, target="header")
                         if entity_val and entity_val != -1:
-                            # PHYSICAL MASKING: Atmospheric entities (stars/clouds) only show in non-physical space
+                            # PHYSICAL MASKING: Stars/clouds ONLY show in empty space (inverse canvas)
                             if not is_on_plate:
                                 if isinstance(entity_val, str) and len(entity_val) == 1:
                                     fg_char = entity_val
@@ -113,7 +119,6 @@ class Banner(TelecMixin, Widget):
 
                     # 4. Final Compositing
                     if engine and engine.has_active_animation:
-                        # Internal Neon Surge or External Reflective Light
                         color = engine.get_color(x, y, target="banner")
                         is_ext = engine.is_external_light(target="banner")
                         
@@ -122,22 +127,22 @@ class Banner(TelecMixin, Widget):
                             if not focused: color_str = apply_tui_haze(color_str)
                             
                             if is_ext:
-                                # Proportional Lighting on the final background
+                                # Proportional Lighting
                                 blend_pct = 0.5 if is_letter else 0.2
                                 final_bg = blend_colors(str(final_bg), color_str, blend_pct)
-                                result.append(fg_char, style=Style(color=color_str, bgcolor=str(final_bg)))
+                                result.append(fg_char, style=Style(color=color_str, bgcolor=to_color(final_bg)))
                             else:
                                 # Neon Internal Surge
-                                result.append(fg_char, style=Style(color=color_str, bgcolor=str(final_bg)))
+                                result.append(fg_char, style=Style(color=color_str, bgcolor=to_color(final_bg)))
                         else:
                             # Base State
                             fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
-                            result.append(fg_char, style=Style(color=fg, bgcolor=str(final_bg)))
+                            result.append(fg_char, style=Style(color=fg, bgcolor=to_color(final_bg)))
                     else:
                         fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
-                        result.append(fg_char, style=Style(color=fg, bgcolor=str(final_bg)))
+                        result.append(fg_char, style=Style(color=fg, bgcolor=to_color(final_bg)))
             else:
-                # Pipes under E (13) and D (70)
+                # Row 6: Pipes under E (13) and D (70)
                 for x in range(total_width):
                     if x == 13 or x == 70:
                         result.append("\u2551", style=pipe_color)
@@ -146,7 +151,7 @@ class Banner(TelecMixin, Widget):
                         bg = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
                         if not isinstance(bg, str): bg = "#000000"
                         
-                        # 2. Atmospheric entities (stars/clouds)
+                        # 2. Atmospheric entities (stars/clouds) - MASKED by pipes
                         fg_char = " "
                         fg_color = None
                         if engine:
@@ -156,7 +161,9 @@ class Banner(TelecMixin, Widget):
                                     fg_char = entity_val
                                     fg_color = "#FFFFFF"
                         
-                        result.append(fg_char, style=Style(color=fg_color, bgcolor=str(bg)))
+                        result.append(fg_char, style=Style(color=to_color(fg_color), bgcolor=to_color(bg)))
+
+        return result
 
         return result
 
@@ -180,6 +187,10 @@ class Banner(TelecMixin, Widget):
         width = 40
         total_width = self.size.width or 40
         pad = max(0, total_width - width)
+        
+        def to_color(c: str | int | None) -> str | None:
+            if isinstance(c, str) and len(c) > 1: return c
+            return None
 
         for y in range(LOGO_HEIGHT):
             if y > 0:
@@ -204,7 +215,7 @@ class Banner(TelecMixin, Widget):
                     if engine:
                         entity_val = engine.get_layer_color(Z_FOREGROUND, x, y, target="header")
                         if entity_val and entity_val != -1:
-                            # PHYSICAL MASKING: Only show in non-physical space
+                            # PHYSICAL MASKING: Only show in non-physical margins
                             if not is_on_plate:
                                 if isinstance(entity_val, str) and len(entity_val) == 1:
                                     fg_char = entity_val
@@ -223,15 +234,15 @@ class Banner(TelecMixin, Widget):
                             if is_ext:
                                 blend_pct = 0.5 if is_letter else 0.2
                                 final_bg = blend_colors(str(final_bg), color_str, blend_pct)
-                                result.append(fg_char, style=Style(color=color_str, bgcolor=str(final_bg)))
+                                result.append(fg_char, style=Style(color=color_str, bgcolor=to_color(final_bg)))
                             else:
-                                result.append(fg_char, style=Style(color=color_str, bgcolor=str(final_bg)))
+                                result.append(fg_char, style=Style(color=color_str, bgcolor=to_color(final_bg)))
                         else:
                             fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
-                            result.append(fg_char, style=Style(color=fg, bgcolor=str(final_bg)))
+                            result.append(fg_char, style=Style(color=fg, bgcolor=to_color(final_bg)))
                     else:
                         fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
-                        result.append(fg_char, style=Style(color=fg, bgcolor=str(final_bg)))
+                        result.append(fg_char, style=Style(color=fg, bgcolor=to_color(final_bg)))
             else:
                 # Logo pipes: E(6), D(34)
                 for x in range(total_width):
@@ -241,7 +252,6 @@ class Banner(TelecMixin, Widget):
                         bg = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
                         if not isinstance(bg, str): bg = "#000000"
                         
-                        # Atmospheric entities between pipes
                         fg_char = " "
                         fg_color = None
                         if engine:
@@ -251,6 +261,6 @@ class Banner(TelecMixin, Widget):
                                     fg_char = entity_val
                                     fg_color = "#FFFFFF"
                         
-                        result.append(fg_char, style=Style(color=fg_color, bgcolor=str(bg)))
+                        result.append(fg_char, style=Style(color=to_color(fg_color), bgcolor=to_color(bg)))
 
         return result
