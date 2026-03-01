@@ -48,26 +48,32 @@
   description: 'Event processing platform: cartridges, domain pipelines, signal processing,
     mesh distribution (container for phases 2-7)'
 - slug: event-system-cartridges
+  group: event-platform
   description: 'System pipeline intelligence: trust evaluator, enrichment, correlation,
     classification cartridges'
 - slug: event-domain-infrastructure
+  group: event-platform
   after:
   - event-system-cartridges
   description: 'Domain pipeline: parallel per-domain processing, guardian AIs, folder
     hierarchy, personal subscriptions, autonomy matrix'
 - slug: event-signal-pipeline
+  group: event-platform
   after:
   - event-domain-infrastructure
   description: 'Three-stage feed aggregation: ingest, cluster, synthesize utility
     cartridges'
 - slug: event-alpha-container
+  group: event-platform
   description: Docker sidecar sandbox for experimental/alpha cartridges
 - slug: event-mesh-distribution
+  group: event-platform
   after:
   - mesh-architecture
   description: 'Cross-node event distribution: local/cluster/public visibility, cartridge
     publishing via mesh'
 - slug: event-domain-pillars
+  group: event-platform
   after:
   - event-domain-infrastructure
   - event-signal-pipeline
