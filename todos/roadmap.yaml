@@ -42,8 +42,6 @@
   - mesh-trust-model
   description: 'Services as events: local contracts, mesh publish, transactional capabilities'
 - slug: telec-init-enrichment
-  after:
-  - event-envelope-schema
   description: 'Rich project bootstrapping: deep analysis, doc scaffolding, intelligence
     seeding'
 - slug: event-platform
