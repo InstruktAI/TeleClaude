@@ -901,6 +901,20 @@ class TelecApp(App[str | None]):
         except Exception:
             pass
 
+    def _handle_exception(self, error: Exception) -> None:
+        """Log unhandled exceptions BEFORE Rich's traceback renderer can crash on them."""
+        import traceback as _tb
+        logger.error(
+            "Unhandled Textual exception",
+            error=repr(error),
+            traceback="".join(_tb.format_exception(type(error), error, error.__traceback__)),
+        )
+        try:
+            super()._handle_exception(error)
+        except Exception:
+            logger.exception("Textual _handle_exception crashed (Rich traceback failure) — forcing exit")
+            self.exit(1)
+
     def _animation_tick(self) -> None:
         """Periodic tick: advance engine and refresh banner if frame changed."""
         try:

@@ -38,11 +38,14 @@ class AgentWaveLR(Animation):
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         active_letter_idx = frame % num_letters
-        
+
         hi_color = self.enforce_vibrancy(self.palette.get(2))
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-        r, g, b = hex_to_rgb(hi_color)
-        dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
+        try:
+            r, g, b = hex_to_rgb(hi_color)
+            dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
+        except (ValueError, TypeError):
+            dim_color = hi_color
 
         result = {}
         for i in range(num_letters):
@@ -58,11 +61,14 @@ class AgentWaveRL(Animation):
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         active_letter_idx = (num_letters - 1) - (frame % num_letters)
-        
+
         hi_color = self.enforce_vibrancy(self.palette.get(2))
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-        r, g, b = hex_to_rgb(hi_color)
-        dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
+        try:
+            r, g, b = hex_to_rgb(hi_color)
+            dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
+        except (ValueError, TypeError):
+            dim_color = hi_color
 
         result = {}
         for i in range(num_letters):
@@ -78,11 +84,14 @@ class AgentLineSweep(Animation):
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         active_row = frame % height
-        
+
         hi_color = self.enforce_vibrancy(self.palette.get(2))
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-        r, g, b = hex_to_rgb(hi_color)
-        dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
+        try:
+            r, g, b = hex_to_rgb(hi_color)
+            dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
+        except (ValueError, TypeError):
+            dim_color = hi_color
 
         result = {}
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
@@ -100,14 +109,16 @@ class AgentMiddleOut(Animation):
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         if not self.is_big: return {}
-        height = BIG_BANNER_HEIGHT
         step = frame % 3
         active_rows = {2 - step, 3 + step}
-        
+
         hi_color = self.enforce_vibrancy(self.palette.get(2))
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-        r, g, b = hex_to_rgb(hi_color)
-        dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
+        try:
+            r, g, b = hex_to_rgb(hi_color)
+            dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
+        except (ValueError, TypeError):
+            dim_color = hi_color
 
         result = {}
         for i in range(len(BIG_BANNER_LETTERS)):
@@ -156,8 +167,11 @@ class AgentWordSplit(Animation):
         parity = frame % 2
         hi_color = self.enforce_vibrancy(self.palette.get(2))
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-        r, g, b = hex_to_rgb(hi_color)
-        dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
+        try:
+            r, g, b = hex_to_rgb(hi_color)
+            dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
+        except (ValueError, TypeError):
+            dim_color = hi_color
 
         result = {}
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
