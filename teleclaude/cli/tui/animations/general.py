@@ -88,10 +88,7 @@ class LetterWaveRL(Animation):
 class LineSweepTopBottom(Animation):
     """G6: Vertical volumetric sweep through neon tubes from top to bottom.
     Entire letters remain colored; a 3-row surge provides high-intensity highlight.
-    Full-grid reflection enabled.
     """
-
-    is_external_light = True
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
@@ -131,7 +128,9 @@ class LineSweepTopBottom(Animation):
 class LineSweepBottomTop(Animation):
     """G7: Vertical volumetric sweep through neon tubes from bottom to top."""
 
-    is_external_light = True
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
@@ -342,7 +341,6 @@ class DiagonalSweepDR(Animation):
     """G11: Volumetric diagonal surge from top-left to bottom-right."""
 
     supports_small = False
-    is_external_light = True
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
@@ -354,17 +352,28 @@ class DiagonalSweepDR(Animation):
         max_val = BIG_BANNER_WIDTH + BIG_BANNER_HEIGHT
         active = frame % max_val
         color_pair = self.palette.get(frame // max_val)
-        safe_color = self.get_contrast_safe_color(color_pair)
+        safe_color = self.get_electric_neon(self.get_contrast_safe_color(color_pair))
         
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        try:
+            if safe_color.startswith("#"):
+                r, g, b = hex_to_rgb(safe_color)
+            else:
+                r, g, b = 150, 150, 150
+        except (ValueError, TypeError, AttributeError):
+            r, g, b = 150, 150, 150
+            
+        mid_color = safe_color
+        side_color = self.get_electric_neon(self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7))))
+        base_color = self.get_electric_neon(self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))))
+
         result = {}
         for x, y in self._all_pixels:
             dist = abs(((x - 1) + y) - active)
-            # Volumetric surge width: 3 pixels
-            if dist < 3:
-                # Intensity falloff within the surge
-                result[(x, y)] = safe_color
-            else:
-                result[(x, y)] = -1
+            if dist == 0: color = mid_color
+            elif dist == 1: color = side_color
+            else: color = base_color
+            result[(x, y)] = color
         return result
 
 
@@ -372,7 +381,6 @@ class DiagonalSweepDL(Animation):
     """G12: Volumetric diagonal surge from top-right to bottom-left."""
 
     supports_small = False
-    is_external_light = True
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
@@ -385,15 +393,28 @@ class DiagonalSweepDL(Animation):
         offset = BIG_BANNER_HEIGHT
         active = (frame % max_val) - offset
         color_pair = self.palette.get(frame // max_val)
-        safe_color = self.get_contrast_safe_color(color_pair)
+        safe_color = self.get_electric_neon(self.get_contrast_safe_color(color_pair))
+
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        try:
+            if safe_color.startswith("#"):
+                r, g, b = hex_to_rgb(safe_color)
+            else:
+                r, g, b = 150, 150, 150
+        except (ValueError, TypeError, AttributeError):
+            r, g, b = 150, 150, 150
+            
+        mid_color = safe_color
+        side_color = self.get_electric_neon(self.get_contrast_safe_color(rgb_to_hex(int(r * 0.7), int(g * 0.7), int(b * 0.7))))
+        base_color = self.get_electric_neon(self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))))
 
         result = {}
         for x, y in self._all_pixels:
             dist = abs(((x - 1) - y) - active)
-            if dist < 3:
-                result[(x, y)] = safe_color
-            else:
-                result[(x, y)] = -1
+            if dist == 0: color = mid_color
+            elif dist == 1: color = side_color
+            else: color = base_color
+            result[(x, y)] = color
         return result
 
 
@@ -786,8 +807,12 @@ class SearchlightSweep(Animation):
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         
         modulation = self.get_modulation(frame)
-        # Searchlight sweeps horizontally at the bottom
-        cx = int((frame * modulation * 2) % (width + 40)) - 20
+        
+        # Alternating movement around the center
+        base_cx = width // 2
+        # Move +/- 15 characters using a slow sine wave
+        offset = math.sin(frame * 0.05 * modulation) * 15
+        cx = int(base_cx + offset)
         cy = height - 1
         
         # Truly large beam for visibility
@@ -813,9 +838,7 @@ class SearchlightSweep(Animation):
 
 
 class CinematicPrismSweep(Animation):
-    """TC18: Volumetric beam with random hue morphing and pivoting angle."""
-
-    is_external_light = True
+    """TC18: Volumetric neon beam with random hue morphing and pivoting angle."""
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
@@ -825,19 +848,14 @@ class CinematicPrismSweep(Animation):
         self._all_pixels = PixelMap.get_all_pixels(self.is_big)
 
     def _hsv_to_rgb(self, h: float, s: float, v: float) -> tuple[int, int, int]:
-        i = int(h * 6.0)
-        f = (h * 6.0) - i
-        p = v * (1.0 - s)
-        q = v * (1.0 - f * s)
-        t = v * (1.0 - (1.0 - f) * s)
+        i = int(h * 6.0); f = (h * 6.0) - i; p = v * (1.0 - s); q = v * (1.0 - f * s); t = v * (1.0 - (1.0 - f) * s)
         i %= 6
         if i == 0: return int(v * 255), int(t * 255), int(p * 255)
         if i == 1: return int(q * 255), int(v * 255), int(p * 255)
         if i == 2: return int(p * 255), int(v * 255), int(t * 255)
         if i == 3: return int(p * 255), int(q * 255), int(v * 255)
         if i == 4: return int(t * 255), int(p * 255), int(v * 255)
-        if i == 5: return int(v * 255), int(p * 255), int(q * 255)
-        return 0, 0, 0
+        return int(v * 255), int(p * 255), int(q * 255)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
@@ -854,7 +872,10 @@ class CinematicPrismSweep(Animation):
         current_hue = (self.hue_start + (self.hue_end - self.hue_start) * progress) / 360.0
         r, g, b = self._hsv_to_rgb(current_hue, 0.8, 1.0)
         color = rgb_to_hex(r, g, b)
-        safe_color = self.get_contrast_safe_color(color)
+        
+        # Volumetric colors: ALL must be Electric Neon
+        safe_color = self.get_electric_neon(self.get_contrast_safe_color(color))
+        dim_color = self.get_electric_neon(self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))))
         
         # Sweep position
         max_dist = width * math.cos(angle_rad) + height * math.sin(angle_rad)
@@ -862,14 +883,9 @@ class CinematicPrismSweep(Animation):
         
         result: dict[tuple[int, int], str | int] = {}
         for x, y in self._all_pixels:
-            # Projection onto the sweep vector
-            d = x * math.cos(angle_rad) + y * math.sin(angle_rad)
-            # Volumetric beam width: 4 pixels
-            if abs(d - active_dist) < 4:
-                result[(x, y)] = safe_color
-            else:
-                # Return transparent sentinel for areas outside the beam
-                result[(x, y)] = -1
+            # Projection onto the sweep vector (shifted +1)
+            d = (x - 1) * math.cos(angle_rad) + y * math.sin(angle_rad)
+            result[(x, y)] = safe_color if abs(d - active_dist) < 4 else dim_color
                 
         return result
 
@@ -913,7 +929,6 @@ class FireBreath(Animation):
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self._all_pixels = PixelMap.get_all_pixels(self.is_big)
-        # Randomize fire hue anchors
         self.hue_anchor = self.rng.randint(0, 360)
 
     def _hsv_to_rgb(self, h: float, s: float, v: float) -> tuple[int, int, int]:
@@ -931,25 +946,25 @@ class FireBreath(Animation):
         result = {}
         modulation = self.get_modulation(frame)
         
-        # Base hue shifts slightly per run, but stays in the fire range
-        # Red is 0, Yellow is 60. We'll shift the anchor.
-        hue_base = (self.hue_anchor % 40) / 360.0 # 0 to 40 deg
+        # Base fire hue (usually 0-40 degrees for Red-Orange-Yellow)
+        # Shift anchor per run for variety
+        hue_base = (self.hue_anchor % 40) / 360.0
         
         for x, y in self._all_pixels:
-            # Bottom (y=high) is hot (Yellow), Top (y=0) is cool (Red)
+            # Bottom (y=high) is hot, Top (y=0) is cool
             y_factor = y / max(height - 1, 1)
             flicker = self.rng.random() * 0.3 * modulation
             intensity = min(1.0, y_factor + flicker)
             
-            # Hotter (bottom) = more yellow shift (up to +40 degrees)
-            # Cooler (top) = more red
+            # Hotter (bottom) = yellow shift (+40 deg), cooler (top) = red
             hue = (hue_base + (y_factor * 40 / 360.0)) % 1.0
             
-            # Value (brightness) is higher at bottom
+            # Brightness is higher at bottom
             val = 0.4 + (y_factor * 0.6)
             
             r, g, b = self._hsv_to_rgb(hue, 0.9, val)
-            result[(x, y)] = self.get_contrast_safe_color(rgb_to_hex(r, g, b))
+            # Ensure high-vibrancy Electric Neon
+            result[(x, y)] = self.get_electric_neon(self.get_contrast_safe_color(rgb_to_hex(r, g, b)))
             
         return result
 
@@ -1124,4 +1139,5 @@ GENERAL_ANIMATIONS = [
     HighSunBird,
     SearchlightSweep,
     CinematicPrismSweep,
+    Bioluminescence,
 ]
