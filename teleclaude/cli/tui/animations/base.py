@@ -200,7 +200,7 @@ class Animation(ABC):
             if hex_color.startswith("#"):
                 r, g, b = hex_to_rgb(hex_color)
             else:
-                # Fallback for unexpected formats (like color(N))
+                # Pass through unexpected formats (like color(N)) unchanged
                 return hex_color
         except (ValueError, TypeError, AttributeError):
             return hex_color
