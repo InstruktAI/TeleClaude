@@ -17,6 +17,7 @@ from textual.widget import Widget
 
 from teleclaude.cli.config_handlers import EnvVarStatus, ValidationResult, get_person_config, set_env_var
 from teleclaude.cli.tui.base import TelecMixin
+from teleclaude.cli.tui.config_components.guidance import get_guidance_for_env
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR
 from teleclaude.config.schema import PersonEntry
 
@@ -616,6 +617,13 @@ class ConfigContent(TelecMixin, Widget):
         if step.adapter_tab is not None:
             self.active_adapter_tab = _ADAPTER_TABS.index(step.adapter_tab)
         self._clamp_current_cursor()
+        # Auto-position cursor on the first unset var so guidance expands
+        if step.subtab in ("adapters", "environment"):
+            rows = self._selectable_env_rows()
+            for idx, status in enumerate(rows):
+                if not status.is_set:
+                    self._set_current_cursor(idx)
+                    return
 
     def _auto_advance_completed_steps(self) -> None:
         while self._guided_mode and self._is_current_guided_step_complete():
@@ -641,6 +649,27 @@ class ConfigContent(TelecMixin, Widget):
         if step.subtab == "validate":
             return bool(self._validation_results) and all(result.passed for result in self._validation_results)
         return False
+
+    def _render_guidance(self, result: Text, env_name: str) -> None:
+        """Render inline guidance block for the given env var."""
+        guidance = get_guidance_for_env(env_name)
+        if guidance is None:
+            return
+        result.append("      ┌─ Guidance\n", style=_SEP)
+        for idx, step in enumerate(guidance.steps, 1):
+            result.append(f"      │ {idx}. {step}\n", style=_DIM)
+        if guidance.url:
+            url_text = Text()
+            url_text.append("      │ Link: ")
+            url_text.append(guidance.url, style=Style(color="#87afd7", link=guidance.url))
+            url_text.append("\n")
+            result.append_text(url_text)
+        if guidance.format_example:
+            result.append("      │ Format: ", style=_DIM)
+            result.append(f"{guidance.format_example}\n", style=Style(color="#87afd7", bold=True))
+        if guidance.validation_hint:
+            result.append(f"      │ Hint: {guidance.validation_hint}\n", style=_DIM)
+        result.append("      └─\n", style=_SEP)
 
     def _render_tab_bar(self, result: Text, tabs: tuple[str, ...], active: int) -> None:
         for idx, tab in enumerate(tabs):
@@ -718,6 +747,8 @@ class ConfigContent(TelecMixin, Widget):
             result.append(f"  {prefix} {icon} ", style=icon_style)
             result.append(f"{status.info.name}\n", style=row_style)
             result.append(f"      {status.info.description}\n", style=_DIM)
+            if selected:
+                self._render_guidance(result, status.info.name)
 
     def _render_people(self, result: Text) -> None:
         result.append("\n")
@@ -770,6 +801,8 @@ class ConfigContent(TelecMixin, Widget):
             result.append(f"  {prefix} {icon} ", style=icon_style)
             result.append(f"{status.info.name}", style=row_style)
             result.append(f" ({status.info.adapter})\n", style=_DIM)
+            if selected:
+                self._render_guidance(result, status.info.name)
 
     def _render_validate(self, result: Text) -> None:
         result.append("\n")

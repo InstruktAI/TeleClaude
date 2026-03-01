@@ -11,24 +11,24 @@ The GuidanceRegistry already has the right structure — we fill the gaps and co
 
 **File(s):** `teleclaude/cli/tui/config_components/guidance.py`
 
-- [ ] Add `_ENV_TO_FIELD: dict[str, str]` mapping every env var name to its field path
-- [ ] Add `get_guidance_for_env(env_var_name: str) -> FieldGuidance | None` convenience function
-- [ ] Covers all entries from `_ADAPTER_ENV_VARS` in config_handlers.py
+- [x] Add `_ENV_TO_FIELD: dict[str, str]` mapping every env var name to its field path
+- [x] Add `get_guidance_for_env(env_var_name: str) -> FieldGuidance | None` convenience function
+- [x] Covers all entries from `_ADAPTER_ENV_VARS` in config_handlers.py
 
 ### Task 1.2: Complete GuidanceRegistry entries for all missing env vars
 
 **File(s):** `teleclaude/cli/tui/config_components/guidance.py`
 
-- [ ] TELEGRAM_SUPERGROUP_ID — steps for creating/finding supergroup, getting chat ID
-- [ ] TELEGRAM_USER_IDS — steps for finding Telegram user IDs
-- [ ] DISCORD_GUILD_ID — steps for enabling developer mode, copying server ID
-- [ ] ANTHROPIC_API_KEY — steps for Anthropic console, API key creation
-- [ ] OPENAI_API_KEY — steps for OpenAI platform, API key creation
-- [ ] ELEVENLABS_API_KEY — steps for ElevenLabs dashboard, API key
-- [ ] REDIS_PASSWORD — steps for Redis setup (local or hosted)
-- [ ] WHATSAPP_TEMPLATE_NAME — steps for Meta template setup
-- [ ] WHATSAPP_TEMPLATE_LANGUAGE — format guidance
-- [ ] WHATSAPP_BUSINESS_NUMBER — steps for getting business phone number
+- [x] TELEGRAM_SUPERGROUP_ID — steps for creating/finding supergroup, getting chat ID
+- [x] TELEGRAM_USER_IDS — steps for finding Telegram user IDs
+- [x] DISCORD_GUILD_ID — steps for enabling developer mode, copying server ID
+- [x] ANTHROPIC_API_KEY — steps for Anthropic console, API key creation
+- [x] OPENAI_API_KEY — steps for OpenAI platform, API key creation
+- [x] ELEVENLABS_API_KEY — steps for ElevenLabs dashboard, API key
+- [x] REDIS_PASSWORD — steps for Redis setup (local or hosted)
+- [x] WHATSAPP_TEMPLATE_NAME — steps for Meta template setup
+- [x] WHATSAPP_TEMPLATE_LANGUAGE — format guidance
+- [x] WHATSAPP_BUSINESS_NUMBER — steps for getting business phone number
 
 ---
 
@@ -38,26 +38,26 @@ The GuidanceRegistry already has the right structure — we fill the gaps and co
 
 **File(s):** `teleclaude/cli/tui/views/config.py`
 
-- [ ] Import guidance lookup function
-- [ ] In `_render_adapters` and `_render_environment`: when a var is selected (cursor on it), render expanded guidance block below it
-- [ ] Guidance block shows: numbered steps, URL (as OSC 8 link), format example, validation hint
-- [ ] Use Rich `Text` with `Style` for visual hierarchy (steps dimmed, URL in info color, example in code style)
-- [ ] Guidance collapses when cursor moves to different var
+- [x] Import guidance lookup function
+- [x] In `_render_adapters` and `_render_environment`: when a var is selected (cursor on it), render expanded guidance block below it
+- [x] Guidance block shows: numbered steps, URL (as OSC 8 link), format example, validation hint
+- [x] Use Rich `Text` with `Style` for visual hierarchy (steps dimmed, URL in info color, example in code style)
+- [x] Guidance collapses when cursor moves to different var
 
 ### Task 2.2: OSC 8 hyperlink rendering
 
 **File(s):** `teleclaude/cli/tui/views/config.py`
 
-- [ ] Render URLs using Rich's `[link=URL]text[/link]` markup or `Text.append` with `Style(link=url)`
-- [ ] Verify fallback behavior in terminals without OSC 8 support
+- [x] Render URLs using Rich's `[link=URL]text[/link]` markup or `Text.append` with `Style(link=url)`
+- [x] Verify fallback behavior in terminals without OSC 8 support
 
 ### Task 2.3: Guided mode auto-expand integration
 
 **File(s):** `teleclaude/cli/tui/views/config.py`
 
-- [ ] When guided mode lands on an adapter step, find the first unset var and position cursor on it
-- [ ] This naturally triggers guidance expansion from Task 2.1
-- [ ] Existing `_auto_advance_completed_steps` logic remains unchanged
+- [x] When guided mode lands on an adapter step, find the first unset var and position cursor on it
+- [x] This naturally triggers guidance expansion from Task 2.1
+- [x] Existing `_auto_advance_completed_steps` logic remains unchanged
 
 ---
 
@@ -65,24 +65,24 @@ The GuidanceRegistry already has the right structure — we fill the gaps and co
 
 ### Task 3.1: Tests
 
-- [ ] Test `_ENV_TO_FIELD` mapping covers all `_ADAPTER_ENV_VARS` entries
-- [ ] Test `get_guidance_for_env` returns correct guidance for known vars, None for unknown
-- [ ] Test guidance rendering output contains expected elements (steps, URL, format)
-- [ ] Run `make test`
+- [x] Test `_ENV_TO_FIELD` mapping covers all `_ADAPTER_ENV_VARS` entries
+- [x] Test `get_guidance_for_env` returns correct guidance for known vars, None for unknown
+- [x] Test guidance rendering output contains expected elements (steps, URL, format)
+- [x] Run `make test`
 
 ### Task 3.2: Quality Checks
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
-- [ ] Manual TUI verification: navigate adapters tab, verify guidance expands/collapses
+- [x] Run `make lint`
+- [x] Verify no unchecked implementation tasks remain
+- [x] Manual TUI verification: navigate adapters tab, verify guidance expands/collapses
 
 ---
 
 ## Phase 4: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)
 
 ---
 
