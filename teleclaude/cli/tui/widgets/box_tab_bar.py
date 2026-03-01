@@ -149,8 +149,8 @@ class BoxTabBar(TelecMixin, Widget):
                 # 3. Layered Compositing (Physical Occlusion)
                 final_fg = fg
                 final_bg = bg_color
-                # Tab label row (y_offset=1) uses panel background; top/bottom rows show sky
-                if in_tab and (dark_mode or y_offset == 1):
+                # All 3 rows of a tab box use panel background; sky fills gaps between tabs
+                if in_tab:
                     from teleclaude.cli.tui.theme import get_billboard_background
                     final_bg = get_billboard_background(getattr(self.app, "app_focus", True))
                 fg_char = char
