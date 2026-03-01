@@ -15,8 +15,8 @@ Codebase patterns to follow:
 | Pattern                 | Evidence                                                               |
 | ----------------------- | ---------------------------------------------------------------------- |
 | Package layout          | `teleclaude_events/pipeline.py` (from event-platform-core)             |
-| Cartridge interface     | `teleclaude_events/cartridge.py` — `async def process(event, context)` |
-| Config loading          | `teleclaude/core/config.py` — YAML config, `get_config()`              |
+| Cartridge interface     | `teleclaude_events/pipeline.py` — `Cartridge` Protocol with `async def process(self, event, context)` |
+| Config loading          | `teleclaude/config/schema.py` + `teleclaude/config/loader.py` — YAML config, `load_config()` |
 | Dynamic module import   | `importlib.util.spec_from_file_location` pattern                       |
 | Async parallel tasks    | `asyncio.gather(*tasks, return_exceptions=True)`                       |
 | Background task hosting | `teleclaude/daemon.py` — `asyncio.create_task` + done callback         |
@@ -221,7 +221,7 @@ Codebase patterns to follow:
 
 ### Task 6.1: Autonomy matrix config keys and wizard
 
-**File(s):** `teleclaude/cli/commands/config_commands.py`, `teleclaude/config_schema.py`
+**File(s):** `teleclaude/cli/commands/config_commands.py`, `teleclaude/config/schema.py`
 
 - [ ] Add `domains` key to top-level config schema (`DomainsConfig`)
 - [ ] `telec config get domains.{name}.autonomy` returns resolved matrix

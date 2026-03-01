@@ -72,7 +72,7 @@ and role-scoped access control.
 
 ## Constraints
 
-- Cartridge interface unchanged: `async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`.
+- Cartridge interface unchanged: class implementing `Cartridge` Protocol with `async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`.
 - No new database tables unless strictly required; autonomy matrix and domain config live in
   the existing config file.
 - Domain pipeline must not block or delay the system pipeline result; runs as a fan-out.
