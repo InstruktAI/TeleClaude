@@ -50,8 +50,8 @@ class GlobalSky(Animation):
         self.night_sky = Spectrum(["#000000", "#05000A", "#0F001A", "#05000A"])
         
         # Stars — weighted heavily toward tiny dots; big sparkles are rare
-        _star_types  = ["\u00b7", ".", "+", "*", "\u2726"]  # ·  .  +  *  ✦
-        _star_weights = [50,       25,  15,   7,   3]
+        _star_types  = ["\u00b7", ".", "+", "\u2726", "*"]  # ·  .  +  ✦  *
+        _star_weights = [50,       20,  15,   10,       5]
         self.stars = []
         for _ in range(130):
             self.stars.append({
