@@ -7,12 +7,18 @@ Verifies that trigger_event builds a complete fallback chain that:
 - Handles services with no voice list (provider-name sentinel)
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from teleclaude.config import TTSConfig, TTSEventConfig, TTSServiceConfig, TTSServiceVoiceConfig
 from teleclaude.core.events import AgentHookEvents
+
+if TYPE_CHECKING:
+    from teleclaude.tts.manager import TTSManager
 from teleclaude.core.voice_assignment import VoiceConfig
 
 

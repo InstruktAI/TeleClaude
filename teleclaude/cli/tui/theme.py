@@ -266,7 +266,7 @@ def blend_colors(base_hex: str, agent_hex: str, percentage: float) -> str:
     # Robustness: ensure we are working with strings
     b_hex = str(base_hex)
     a_hex = str(agent_hex)
-    
+
     if not _is_hex_color(b_hex) or not _is_hex_color(a_hex):
         return b_hex
     br, bg, bb = _hex_to_rgb(b_hex)
@@ -752,6 +752,7 @@ def deepen_for_light_mode(color_hex: str) -> str:
     v = max(0.60, v * 0.85)  # 15% darker but never below 60% brightness
     nr, ng, nb = colorsys.hsv_to_rgb(h, s, v)
     return _rgb_to_hex(int(nr * 255), int(ng * 255), int(nb * 255))
+
 
 # Status/footer foreground
 STATUS_FG_COLOR = "#727578"

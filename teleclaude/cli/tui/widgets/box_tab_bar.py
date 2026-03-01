@@ -13,10 +13,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.cli.tui.base import TelecMixin
-
-logger = get_logger(__name__)
 from teleclaude.cli.tui.theme import (
-    CONNECTOR_COLOR,
     NEUTRAL_HIGHLIGHT_COLOR,
     NEUTRAL_MUTED_COLOR,
     apply_tui_haze,
@@ -25,6 +22,8 @@ from teleclaude.cli.tui.theme import (
     get_tui_inactive_background,
     is_dark_mode,
 )
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.animation_engine import AnimationEngine
@@ -85,10 +84,10 @@ class BoxTabBar(TelecMixin, Widget):
         dark_mode = is_dark_mode()
         focused = getattr(self.app, "app_focus", True)
         from teleclaude.cli.tui.animations.base import (
-            Z_SKY,
-            Z_TABS_INACTIVE,
             Z_FOREGROUND,
+            Z_SKY,
             Z_TABS_ACTIVE,
+            Z_TABS_INACTIVE,
         )
 
         sky_fallback = "#000000" if dark_mode else "#C8E8F8"
@@ -96,6 +95,7 @@ class BoxTabBar(TelecMixin, Widget):
         # Tab backgrounds: active vs inactive
         if dark_mode:
             from teleclaude.cli.tui.theme import get_billboard_background
+
             active_bg = get_billboard_background(focused)
             inactive_bg = get_billboard_background(False)
         else:
@@ -138,22 +138,31 @@ class BoxTabBar(TelecMixin, Widget):
 
                         if dark_mode:
                             if y_offset == 0:
-                                if rel_x == 0: char = "\u256d"        # ╭
-                                elif rel_x == w + 1: char = "\u256e"  # ╮
-                                else: char = "\u2500"                  # ─
+                                if rel_x == 0:
+                                    char = "\u256d"  # ╭
+                                elif rel_x == w + 1:
+                                    char = "\u256e"  # ╮
+                                else:
+                                    char = "\u2500"  # ─
                             elif y_offset == 1:
-                                if rel_x == 0 or rel_x == w + 1: char = "\u2502"  # │
-                                elif 1 <= rel_x <= w: char = label[rel_x - 1]
+                                if rel_x == 0 or rel_x == w + 1:
+                                    char = "\u2502"  # │
+                                elif 1 <= rel_x <= w:
+                                    char = label[rel_x - 1]
                             elif y_offset == 2:
-                                if rel_x == 0 or rel_x == w + 1: char = "\u2534"  # ┴
-                                else: char = " " if is_active else "\u2500"
+                                if rel_x == 0 or rel_x == w + 1:
+                                    char = "\u2534"  # ┴
+                                else:
+                                    char = " " if is_active else "\u2500"
                         else:
                             # Light mode
                             if y_offset == 0:
                                 char = "\u2580"  # ▀ — fg=sky (top), bg=tab (bottom)
                             elif y_offset == 1:
-                                if rel_x == 0 or rel_x == w + 1: char = " "
-                                elif 1 <= rel_x <= w: char = label[rel_x - 1]
+                                if rel_x == 0 or rel_x == w + 1:
+                                    char = " "
+                                elif 1 <= rel_x <= w:
+                                    char = label[rel_x - 1]
                         break
 
                 if dark_mode and not in_tab and y_offset == 2:
@@ -194,7 +203,7 @@ class BoxTabBar(TelecMixin, Widget):
 
                     if not in_tab and engine.has_active_animation and engine.is_external_light():
                         color = engine.get_color(x, global_y)
-                        if color and color != -1:
+                        if color:
                             color_str = str(color)
                             final_bg = blend_colors(final_bg, color_str, 0.1)
                             fg_text = blend_colors(fg_text, color_str, 0.5)

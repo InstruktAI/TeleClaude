@@ -8,31 +8,31 @@ from typing import Dict, List, Optional, Tuple
 BIG_BANNER_WIDTH = 84
 BIG_BANNER_HEIGHT = 6
 BIG_BANNER_LETTERS = [
-    (1, 9),   # T
-    (10, 17), # E
-    (18, 25), # L
-    (26, 33), # E
-    (34, 41), # C
-    (42, 49), # L
-    (50, 57), # A
-    (58, 66), # U
-    (67, 74), # D
-    (75, 82), # E
+    (1, 9),  # T
+    (10, 17),  # E
+    (18, 25),  # L
+    (26, 33),  # E
+    (34, 41),  # C
+    (42, 49),  # L
+    (50, 57),  # A
+    (58, 66),  # U
+    (67, 74),  # D
+    (75, 82),  # E
 ]
 
 LOGO_WIDTH = 40
 LOGO_HEIGHT = 3
 LOGO_LETTERS = [
-    (1, 3),   # T
-    (5, 7),   # E
+    (1, 3),  # T
+    (5, 7),  # E
     (9, 11),  # L
-    (13, 15), # E
-    (17, 19), # C
-    (21, 23), # L
-    (25, 27), # A
-    (29, 31), # U
-    (33, 35), # D
-    (37, 39), # E
+    (13, 15),  # E
+    (17, 19),  # C
+    (21, 23),  # L
+    (25, 27),  # A
+    (29, 31),  # U
+    (33, 35),  # D
+    (37, 39),  # E
 ]
 
 
@@ -44,11 +44,11 @@ class RenderTarget:
     width: int
     height: int
     letters: List[Tuple[int, int]]  # List of (start_x, end_x) tuples for each letter
-    
+
     # Cached pixel lists
     _all_pixels: Optional[List[Tuple[int, int]]] = None
-    _row_pixels: Dict[int, List[Tuple[int, int]]] = None
-    _col_pixels: Dict[int, List[Tuple[int, int]]] = None
+    _row_pixels: Optional[Dict[int, List[Tuple[int, int]]]] = None
+    _col_pixels: Optional[Dict[int, List[Tuple[int, int]]]] = None
 
     def get_all_pixels(self) -> List[Tuple[int, int]]:
         if self._all_pixels is None:
@@ -78,8 +78,8 @@ class TargetRegistry:
         # Register default targets
         self.register("banner", BIG_BANNER_WIDTH, BIG_BANNER_HEIGHT, BIG_BANNER_LETTERS)
         self.register("logo", LOGO_WIDTH, LOGO_HEIGHT, LOGO_LETTERS)
-        self.register("tabs", BIG_BANNER_WIDTH, 3) # Tab bar (Rows 7-9)
-        self.register("header", 200, 10) # Full width atmospheric canvas
+        self.register("tabs", BIG_BANNER_WIDTH, 3)  # Tab bar (Rows 7-9)
+        self.register("header", 200, 10)  # Full width atmospheric canvas
 
     def register(self, name: str, width: int, height: int, letters: Optional[List[Tuple[int, int]]] = None) -> None:
         """Register a new render target."""
@@ -107,7 +107,8 @@ class PixelMap:
         """Check if a specific coordinate is an actual non-empty ASCII character."""
         target_name = PixelMap._resolve_target(target_arg)
         target = target_registry.get(target_name)
-        if not target: return False
+        if not target:
+            return False
         return (x, y) in target.get_all_pixels()
 
     @staticmethod

@@ -774,6 +774,7 @@ class DiscordAdapter(UiAdapter):
 
             if needs_move or needs_reorder:
                 try:
+                    # guard: loose-dict - dynamic kwargs; category key conditionally added
                     kwargs: dict[str, object] = {"position": position}
                     if needs_move:
                         kwargs["category"] = category
@@ -859,6 +860,7 @@ class DiscordAdapter(UiAdapter):
 
         try:
             create = self._require_async_callable(create_fn, label="guild.create_text_channel")
+            # guard: loose-dict - dynamic kwargs; category key conditionally added
             kwargs: dict[str, object] = {"name": name, "overwrites": overwrites}
             if category is not None:
                 kwargs["category"] = category

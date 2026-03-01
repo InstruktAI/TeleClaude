@@ -55,7 +55,7 @@ class SessionsView(Widget, can_focus=True):
 
     Handles: arrow nav, Space (preview/sticky), Enter (focus pane),
     Left/Right (collapse/expand), +/- (expand/collapse all),
-    n (new session), k (kill session).
+    n (new session), k (kill session), a (toggle project sessions sticky).
     """
 
     DEFAULT_CSS = """
@@ -80,6 +80,7 @@ class SessionsView(Widget, can_focus=True):
         Binding("minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True)),
         Binding("n", "new_session", "New"),
         Binding("n", "new_project", "New Project"),
+        Binding("a", "toggle_project_sessions", "Open/Close"),
         Binding("k", "kill_session", "Kill"),
         Binding("R", "restart_session", "Restart"),
         Binding("R", "restart_project", "Restart All"),
@@ -903,6 +904,55 @@ class SessionsView(Widget, can_focus=True):
             on_result,
         )
 
+    def action_toggle_project_sessions(self) -> None:
+        """a on project header: batch-toggle all sessions for a project sticky."""
+        item = self._current_item()
+        if not isinstance(item, ProjectHeader):
+            return
+
+        project_path = item.project.path
+        project_computer = item.project.computer or "local"
+
+        project_sessions = [
+            s for s in self._sessions if s.project_path == project_path and (s.computer or "local") == project_computer
+        ]
+        project_session_ids = {s.session_id for s in project_sessions}
+
+        sticky_project_ids = [sid for sid in self._sticky_session_ids if sid in project_session_ids]
+
+        if sticky_project_ids:
+            # Toggle OFF: remove all sticky for this project
+            if self.preview_session_id in project_session_ids:
+                self.preview_session_id = None
+                self.post_message(PreviewChanged(None, request_focus=False))
+            for sid in sticky_project_ids:
+                self._sticky_session_ids.remove(sid)
+        else:
+            # Toggle ON: make first available eligible sessions sticky
+            eligible = [s for s in project_sessions if s.tmux_session_name]
+            if not eligible:
+                self.app.notify("No attachable sessions found for project", severity="warning")
+                return
+            slots = MAX_STICKY - len(self._sticky_session_ids)
+            if slots <= 0:
+                self.app.notify(f"Maximum {MAX_STICKY} sticky sessions reached", severity="warning")
+                return
+            to_add = eligible[:slots]
+            if len(eligible) > slots:
+                self.app.notify(
+                    f"Showing first {slots} of {len(eligible)} sessions (max {MAX_STICKY} sticky panes)",
+                    severity="warning",
+                )
+            for s in to_add:
+                self._sticky_session_ids.append(s.session_id)
+
+        for widget in self._nav_items:
+            if isinstance(widget, SessionRow):
+                widget.is_sticky = widget.session_id in self._sticky_session_ids
+
+        self.post_message(StickyChanged(self._sticky_session_ids.copy()))
+        self._notify_state_changed()
+
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Enable/hide actions based on current tree node type."""
         del parameters
@@ -916,7 +966,7 @@ class SessionsView(Widget, can_focus=True):
             return isinstance(item, (ProjectHeader, ComputerHeader, SessionRow))
         if action in {"kill_session", "restart_session", "toggle_preview"}:
             return isinstance(item, SessionRow)
-        if action == "restart_project":
+        if action in {"restart_project", "toggle_project_sessions"}:
             return isinstance(item, ProjectHeader)
         if action == "restart_all":
             return isinstance(item, ComputerHeader)

@@ -12,7 +12,9 @@ from teleclaude.cli.tui.animations.base import Animation
 from teleclaude.cli.tui.animations.general import GENERAL_ANIMATIONS
 
 
-def filter_animations(animations: list[type[Animation]], subset: list[str], dark_mode: bool = True) -> list[type[Animation]]:
+def filter_animations(
+    animations: list[type[Animation]], subset: list[str], dark_mode: bool = True
+) -> list[type[Animation]]:
     """Filter animation classes by name subset and current theme mode.
 
     Args:
@@ -25,9 +27,9 @@ def filter_animations(animations: list[type[Animation]], subset: list[str], dark
     """
     mode_str = "dark" if dark_mode else "light"
     return [
-        cls for cls in animations 
-        if (not subset or cls.__name__ in subset) and 
-           (cls.theme_filter is None or cls.theme_filter == mode_str)
+        cls
+        for cls in animations
+        if (not subset or cls.__name__ in subset) and (cls.theme_filter is None or cls.theme_filter == mode_str)
     ]
 
 
@@ -48,6 +50,7 @@ class PeriodicTrigger:
                 continue
 
             from teleclaude.cli.tui.theme import is_dark_mode
+
             dark = is_dark_mode()
             palette = palette_registry.get("spectrum")
             duration = random.uniform(12, 20)
@@ -58,7 +61,7 @@ class PeriodicTrigger:
 
             # Synchronize: pick ONE animation for both big and small targets
             anim_class = random.choice(filtered_animations)
-            
+
             self.engine.play(
                 anim_class(palette=palette, is_big=True, duration_seconds=duration),
                 priority=AnimationPriority.PERIODIC,
@@ -89,6 +92,7 @@ class ActivityTrigger:
             return
 
         from teleclaude.cli.tui.theme import is_dark_mode
+
         animations = filter_animations(AGENT_ANIMATIONS, self.animations_subset, is_dark_mode())
         if not animations:
             return

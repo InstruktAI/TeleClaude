@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import colorsys
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from teleclaude.cli.tui.animations.base import Animation, RenderBuffer, Spectrum, Z_BILLBOARD, Z_FOREGROUND, Z_SKY
 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+from teleclaude.cli.tui.animations.base import Animation, Spectrum
 from teleclaude.cli.tui.pixel_mapping import (
     BIG_BANNER_HEIGHT,
     BIG_BANNER_LETTERS,
@@ -19,7 +19,7 @@ from teleclaude.cli.tui.pixel_mapping import (
 )
 
 if TYPE_CHECKING:
-    from teleclaude.cli.tui.animation_colors import ColorPalette
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -30,14 +30,14 @@ _HUE_BANDS = [
     (175, 200, 3),  # Cyan / Teal
     (295, 330, 3),  # Hot Pink / Magenta
     (115, 140, 2),  # Electric Lime
-    (18,   38, 2),  # Electric Orange
+    (18, 38, 2),  # Electric Orange
     (258, 278, 2),  # Electric Purple
     (210, 235, 1),  # White-leaning Blue
 ]
 _HUE_WEIGHTS = [b[2] for b in _HUE_BANDS]
 
 
-def _pick_hue(rng) -> float:
+def _pick_hue(rng: Any) -> float:
     """Pick a random neon-safe hue (degrees) from weighted bands."""
     band = rng.choices(_HUE_BANDS, weights=_HUE_WEIGHTS)[0]
     return rng.uniform(band[0], band[1])
@@ -60,16 +60,17 @@ def _all_letter_pixels(is_big: bool) -> List[Tuple[int, int]]:
 # NeonFlicker
 # ---------------------------------------------------------------------------
 
+
 class NeonFlicker(Animation):
     """Per-letter independent neon tube buzz — bright, dim, flicker, off."""
 
     theme_filter = "dark"
     _STATES = ["bright", "dim", "flicker", "off"]
     _TRANSITIONS = {
-        "bright":  [5, 1, 1, 0.3],
-        "dim":     [3, 2, 1, 0.2],
+        "bright": [5, 1, 1, 0.3],
+        "dim": [3, 2, 1, 0.2],
         "flicker": [2, 1, 3, 0.1],
-        "off":     [2, 1, 0.5, 0.1],
+        "off": [2, 1, 0.5, 0.1],
     }
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
@@ -84,10 +85,7 @@ class NeonFlicker(Animation):
             return
         self._initialized = True
         self._main_color = _hue_to_hex(_pick_hue(self.rng))
-        self._states = [
-            self.rng.choices(self._STATES, weights=[5, 1, 0.3, 0])[0]
-            for _ in range(num_letters)
-        ]
+        self._states = [self.rng.choices(self._STATES, weights=[5, 1, 0.3, 0])[0] for _ in range(num_letters)]
         self._timers = [self.rng.randint(5, 20) for _ in range(num_letters)]
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
@@ -132,12 +130,13 @@ class NeonFlicker(Animation):
 # Plasma
 # ---------------------------------------------------------------------------
 
+
 class Plasma(Animation):
     """Demo-scene plasma: overlapping sine waves form a boiling color field."""
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self._params: Optional[dict] = None
+        self._params: Optional[dict[str, Any]] = None  # guard: loose-dict - animation state; shape varies per subclass
 
     def _lazy_init(self) -> None:
         if self._params is not None:
@@ -174,12 +173,13 @@ class Plasma(Animation):
 # Glitch
 # ---------------------------------------------------------------------------
 
+
 class Glitch(Animation):
     """Digital corruption: random channel shifts and wrong-color bursts."""
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self._params: Optional[dict] = None
+        self._params: Optional[dict[str, Any]] = None  # guard: loose-dict - animation state; shape varies per subclass
 
     def _lazy_init(self) -> None:
         if self._params is not None:
@@ -221,6 +221,7 @@ class Glitch(Animation):
 # ChromaticAberration
 # ---------------------------------------------------------------------------
 
+
 class ChromaticAberration(Animation):
     """RGB channels offset horizontally — neon edge fringing."""
 
@@ -228,7 +229,7 @@ class ChromaticAberration(Animation):
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self._params: Optional[dict] = None
+        self._params: Optional[dict[str, Any]] = None  # guard: loose-dict - animation state; shape varies per subclass
         self._pixel_set: set[tuple[int, int]] = set()
 
     def _lazy_init(self) -> None:
@@ -280,12 +281,13 @@ class ChromaticAberration(Animation):
 # Comet
 # ---------------------------------------------------------------------------
 
+
 class Comet(Animation):
     """Bright comet streak — white core, colored trail, letter flare on contact."""
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self._params: Optional[dict] = None
+        self._params: Optional[dict[str, Any]] = None  # guard: loose-dict - animation state; shape varies per subclass
 
     def _lazy_init(self) -> None:
         if self._params is not None:
@@ -333,12 +335,13 @@ class Comet(Animation):
 # Fireworks
 # ---------------------------------------------------------------------------
 
+
 class Fireworks(Animation):
     """Expanding color bursts from random letter pixel positions."""
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self._bursts: List[dict] = []
+        self._bursts: List[dict[str, Any]] = []  # guard: loose-dict - burst state; shape defined at append site
         self._next_burst: int = 0
         self._pixels: Optional[List[Tuple[int, int]]] = None
 
@@ -355,13 +358,15 @@ class Fireworks(Animation):
         # Spawn
         if frame >= self._next_burst and len(self._bursts) < 15 and pixels:
             hue = _pick_hue(self.rng)
-            self._bursts.append({
-                "center": self.rng.choice(pixels),
-                "color": _hue_to_hex(hue),
-                "start": frame,
-                "max_r": self.rng.uniform(5.0, 12.0),
-                "life": self.rng.randint(18, 28),
-            })
+            self._bursts.append(
+                {
+                    "center": self.rng.choice(pixels),
+                    "color": _hue_to_hex(hue),
+                    "start": frame,
+                    "max_r": self.rng.uniform(5.0, 12.0),
+                    "life": self.rng.randint(18, 28),
+                }
+            )
             self._next_burst = frame + self.rng.randint(3, 7)
 
         self._bursts = [b for b in self._bursts if frame - b["start"] < b["life"]]
@@ -394,12 +399,13 @@ class Fireworks(Animation):
 # EQBars
 # ---------------------------------------------------------------------------
 
+
 class EQBars(Animation):
     """Audio equalizer bars — per-letter column pulses driven by fake beat."""
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self._params: Optional[dict] = None
+        self._params: Optional[dict[str, Any]] = None  # guard: loose-dict - animation state; shape varies per subclass
 
     def _lazy_init(self, num: int) -> None:
         if self._params is not None:
@@ -454,6 +460,7 @@ class EQBars(Animation):
 # LavaLamp
 # ---------------------------------------------------------------------------
 
+
 class LavaLamp(Animation):
     """Slow metaball color blobs drifting through letter pixels."""
 
@@ -461,7 +468,8 @@ class LavaLamp(Animation):
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self._blobs: Optional[List[dict]] = None
+        # guard: loose-dict - blob state; shape defined at lazy init
+        self._blobs: Optional[List[dict[str, Any]]] = None
         self._w = 0
         self._h = 0
 
@@ -474,14 +482,16 @@ class LavaLamp(Animation):
         self._blobs = []
         for _ in range(self._NUM_BLOBS):
             hue = _pick_hue(self.rng)
-            self._blobs.append({
-                "color": _hue_to_hex(hue),
-                "cx_phase": self.rng.uniform(0, math.pi * 2),
-                "cy_phase": self.rng.uniform(0, math.pi * 2),
-                "cx_speed": self.rng.uniform(0.018, 0.045),
-                "cy_speed": self.rng.uniform(0.025, 0.060),
-                "radius": self.rng.uniform(10, 18),
-            })
+            self._blobs.append(
+                {
+                    "color": _hue_to_hex(hue),
+                    "cx_phase": self.rng.uniform(0, math.pi * 2),
+                    "cy_phase": self.rng.uniform(0, math.pi * 2),
+                    "cx_speed": self.rng.uniform(0.018, 0.045),
+                    "cy_speed": self.rng.uniform(0.025, 0.060),
+                    "radius": self.rng.uniform(10, 18),
+                }
+            )
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         self._lazy_init()
@@ -526,6 +536,7 @@ class LavaLamp(Animation):
 # Firefly
 # ---------------------------------------------------------------------------
 
+
 class Firefly(Animation):
     """Tiny light points wandering between letter pixel positions."""
 
@@ -534,7 +545,8 @@ class Firefly(Animation):
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self._flies: Optional[List[dict]] = None
+        # guard: loose-dict - fly state; shape defined at lazy init
+        self._flies: Optional[List[dict[str, Any]]] = None
         self._pixel_list: Optional[List[Tuple[int, int]]] = None
         self._neighbors: Optional[Dict[Tuple[int, int], List[Tuple[int, int]]]] = None
 
@@ -547,21 +559,27 @@ class Firefly(Animation):
         # Build adjacency within Manhattan distance 2
         self._neighbors = {}
         for x, y in self._pixel_list:
-            nb = [(x + dx, y + dy) for dx in range(-2, 3) for dy in range(-2, 3)
-                  if (dx, dy) != (0, 0) and (x + dx, y + dy) in ps]
+            nb = [
+                (x + dx, y + dy)
+                for dx in range(-2, 3)
+                for dy in range(-2, 3)
+                if (dx, dy) != (0, 0) and (x + dx, y + dy) in ps
+            ]
             self._neighbors[(x, y)] = nb if nb else self._pixel_list[:5]
 
         self._flies = []
         for _ in range(self._NUM_FLIES):
             pos = self.rng.choice(self._pixel_list)
             hue = _pick_hue(self.rng)
-            self._flies.append({
-                "pos": pos,
-                "trail": [],
-                "color": _hue_to_hex(hue),
-                "speed": self.rng.randint(1, 3),
-                "countdown": self.rng.randint(1, 3),
-            })
+            self._flies.append(
+                {
+                    "pos": pos,
+                    "trail": [],
+                    "color": _hue_to_hex(hue),
+                    "speed": self.rng.randint(1, 3),
+                    "countdown": self.rng.randint(1, 3),
+                }
+            )
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         self._lazy_init()
@@ -591,6 +609,7 @@ class Firefly(Animation):
 # ColorSweep — consolidated directional sweep with hue randomization
 # ---------------------------------------------------------------------------
 
+
 class ColorSweep(Animation):
     """Unified sweep: random direction, random neon hue, adjacent color stops."""
 
@@ -598,7 +617,7 @@ class ColorSweep(Animation):
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self._params: Optional[dict] = None
+        self._params: Optional[dict[str, Any]] = None  # guard: loose-dict - animation state; shape varies per subclass
 
     def _lazy_init(self) -> None:
         if self._params is not None:
@@ -625,31 +644,43 @@ class ColorSweep(Animation):
 
         if direction == "lr":
             active = (frame * speed) % (width + 10) - 5
-            def pos(x, y): return x, x / width
+
+            def pos(x: int, y: int) -> tuple[float, float]:  # pyright: ignore[reportRedeclaration]
+                return x, x / width
         elif direction == "rl":
             active = (width - 1) - ((frame * speed) % (width + 10) - 5)
-            def pos(x, y): return x, (width - x) / width
+
+            def pos(x: int, y: int) -> tuple[float, float]:  # pyright: ignore[reportRedeclaration]
+                return x, (width - x) / width
         elif direction == "tb":
             active = (frame * speed * 0.5) % (height + 4) - 2
-            def pos(x, y): return y, y / max(1, height - 1)
+
+            def pos(x: int, y: int) -> tuple[float, float]:  # pyright: ignore[reportRedeclaration]
+                return y, y / max(1, height - 1)
         elif direction == "bt":
             active = (height - 1) - ((frame * speed * 0.5) % (height + 4) - 2)
-            def pos(x, y): return y, (height - 1 - y) / max(1, height - 1)
+
+            def pos(x: int, y: int) -> tuple[float, float]:  # pyright: ignore[reportRedeclaration]
+                return y, (height - 1 - y) / max(1, height - 1)
         elif direction == "diag_dr":
             max_v = width + height
             active = (frame * speed) % (max_v + 10) - 5
-            def pos(x, y): return x + y, (x + y) / max_v
+
+            def pos(x: int, y: int) -> tuple[float, float]:  # pyright: ignore[reportRedeclaration]
+                return x + y, (x + y) / max_v
         elif direction == "diag_dl":
             max_v = width + height
             active = (width - 1) - ((frame * speed) % (max_v + 10) - 5)
-            def pos(x, y): return x - y, (width - 1 - x + y) / max(1, width + height - 2)
+
+            def pos(x: int, y: int) -> tuple[float, float]:  # pyright: ignore[reportRedeclaration]
+                return x - y, (width - 1 - x + y) / max(1, width + height - 2)
         else:  # radial
             cx, cy = width / 2, height / 2
-            max_r = math.sqrt(cx ** 2 + cy ** 2)
+            max_r = math.sqrt(cx**2 + cy**2)
             active = (frame * speed * 0.35) % (max_r + 5)
-            def pos(x, y):
-                return math.sqrt((x - cx) ** 2 + (y - cy) ** 2), \
-                       math.sqrt((x - cx) ** 2 + (y - cy) ** 2) / max_r
+
+            def pos(x: int, y: int) -> tuple[float, float]:  # pyright: ignore[reportRedeclaration]
+                return math.sqrt((x - cx) ** 2 + (y - cy) ** 2), math.sqrt((x - cx) ** 2 + (y - cy) ** 2) / max_r
 
         result: dict[tuple[int, int], str | int] = {}
         letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS
@@ -669,6 +700,7 @@ class ColorSweep(Animation):
 # ---------------------------------------------------------------------------
 # LaserScan — the "hitman" beam
 # ---------------------------------------------------------------------------
+
 
 class LaserScan(Animation):
     """Fast precision laser: white-hot core, colored outer glow. High contrast."""
