@@ -48,7 +48,8 @@ Codebase patterns to follow:
   - `cartridge_path: str | None = None` # defaults to `~/.teleclaude/company/domains/{name}/cartridges/`
   - `guardian: DomainGuardianConfig = Field(default_factory=DomainGuardianConfig)`
   - `autonomy: AutonomyMatrix = Field(default_factory=AutonomyMatrix)`
-- [ ] Define `DomainsConfig` Pydantic model (top-level config key `domains`):
+- [ ] Define `DomainsConfig` Pydantic model (top-level config key `event_domains` — avoids
+      collision with existing `BusinessConfig.domains`):
   - `enabled: bool = True`
   - `base_path: str = "~/.teleclaude/company"`
   - `personal_base_path: str = "~/.teleclaude/personal"`
@@ -66,7 +67,8 @@ Codebase patterns to follow:
   - `get(name: str) -> DomainConfig | None`
   - `list_enabled() -> list[DomainConfig]`
   - `cartridge_path_for(domain_name: str) -> Path` — expand `~`, apply override or default
-  - `personal_path_for(member_id: str) -> Path`
+  - `personal_path_for(member_id: str) -> Path` — `member_id` is derived from
+    `PersonEntry.email` (slugified). The registry resolves member email → filesystem path.
 - [ ] Unit test: `cartridge_path_for` with override and default
 
 ---
@@ -206,13 +208,17 @@ Codebase patterns to follow:
 
 ### Task 5.2: `telec config` CLI surface for lifecycle
 
-**File(s):** `teleclaude/cli/commands/config_commands.py` (or equivalent CLI entrypoint)
+**File(s):** `teleclaude/cli/cartridge_cli.py` (new), `teleclaude/cli/telec.py` (wire dispatcher)
+
+The CLI dispatcher is `_handle_config()` in `teleclaude/cli/telec.py`. Add `"cartridges"` to the
+subcommand switch and route to a new `teleclaude/cli/cartridge_cli.py` module (following the
+pattern of `config_cmd.py` / `config_cli.py`).
 
 - [ ] `telec config cartridges install --path <src> --scope <scope> --target <name>`
 - [ ] `telec config cartridges remove --id <id> --scope <scope> --target <name>`
 - [ ] `telec config cartridges promote --id <id> --from <scope> --to <scope> --domain <name>`
 - [ ] `telec config cartridges list [--domain <name>] [--member <id>]`
-- [ ] Each command calls `LifecycleManager`; prints structured result
+- [ ] Each command calls `LifecycleManager` via the daemon API; prints structured result
 - [ ] Permission error produces clear message: "This operation requires admin role."
 
 ---
@@ -221,11 +227,15 @@ Codebase patterns to follow:
 
 ### Task 6.1: Autonomy matrix config keys and wizard
 
-**File(s):** `teleclaude/cli/commands/config_commands.py`, `teleclaude/config/schema.py`
+**File(s):** `teleclaude/config/schema.py`, `teleclaude/cli/cartridge_cli.py`, `teleclaude/cli/telec.py`
 
-- [ ] Add `domains` key to top-level config schema (`DomainsConfig`)
-- [ ] `telec config get domains.{name}.autonomy` returns resolved matrix
-- [ ] `telec config patch --yaml 'domains.software-development.autonomy.global_default: autonomous'`
+Note: `BusinessConfig.domains: Dict[str, str]` already exists in `schema.py` for business domain
+labels. The event domain processing config must use a distinct key — `event_domains` — to avoid
+collision. `DomainsConfig` maps to `GlobalConfig.event_domains`.
+
+- [ ] Add `event_domains` key to `GlobalConfig` (type: `DomainsConfig`)
+- [ ] `telec config get event_domains.{name}.autonomy` returns resolved matrix
+- [ ] `telec config patch --yaml 'event_domains.software-development.autonomy.global_default: autonomous'`
       updates config file
 - [ ] Config wizard: new section "Domain Autonomy" — prompts for global default, then
       optionally per-domain overrides

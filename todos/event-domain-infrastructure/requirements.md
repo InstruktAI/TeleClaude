@@ -36,9 +36,13 @@ and role-scoped access control.
 - **Roles/permissions:** admin scope — install/remove/promote domain or platform cartridges,
   modify domain guardian config, set autonomy overrides. Member scope — install/remove personal
   cartridges only.
-- **`telec config` integration:** new config keys under `domains.{name}.autonomy`,
-  `domains.{name}.guardian`, `domains.{name}.cartridges`. Config wizard sections for autonomy
-  management.
+- **`telec config` integration:** new config keys under `event_domains.{name}.autonomy`,
+  `event_domains.{name}.guardian`, `event_domains.{name}.cartridges`. Config wizard sections
+  for autonomy management. Note: `event_domains` avoids collision with the existing
+  `BusinessConfig.domains` key which holds business domain labels.
+- **Member identity mapping:** personal cartridge paths use `PersonEntry.email` as the
+  member identifier (the natural key from the existing `people` config). Path derivation:
+  email → slugified form for filesystem paths.
 
 ### Out of scope
 

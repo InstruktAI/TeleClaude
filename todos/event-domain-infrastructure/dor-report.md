@@ -2,12 +2,13 @@
 
 ## Assessment Date
 
-2026-03-01 (draft)
+2026-03-01 (gate)
 
 ## Gate Status
 
-**NEEDS WORK** — artifacts are substantial but have one structural blocker and several
-factual corrections needed.
+**PASS** (score: 8) — artifacts are strong. All draft-phase open questions resolved.
+Three factual corrections applied during gate. Upstream dependency confirmed soft;
+roadmap `after` can be relaxed.
 
 ## Gate Analysis
 
@@ -42,21 +43,22 @@ factual corrections needed.
 - No new third-party dependencies. All patterns use stdlib + existing deps (Pydantic,
   asyncio, importlib).
 
-### 6. Dependencies & Preconditions — BLOCKER
+### 6. Dependencies & Preconditions — PASS
 
-- **`event-system-cartridges` is a roadmap dependency** (`after: [event-system-cartridges]`)
-  and is currently unbuilt (DOR score 0, build pending).
-- The domain infrastructure plan assumes the system pipeline is fully operational with
-  trust/enrichment/correlation/classification cartridges. Specifically:
-  - `PipelineContext` may gain fields from `event-system-cartridges` (trust_config,
-    correlation_config, producer) that domain pipeline context extends.
-  - The "after system pipeline completes" fan-out assumes the full 6-cartridge system
-    chain exists.
-- **Question:** Can domain infrastructure be built against the current 2-cartridge system
-  pipeline (dedup + notification), with the fan-out point being after whatever system
-  cartridges exist? If yes, the dependency is soft and domain infra can proceed. If the
-  plan requires trust/enrichment/classification outputs in domain cartridges, the dependency
-  is hard.
+- **Upstream dependency resolved:** `event-system-cartridges` dependency is **soft**. Code
+  analysis confirms: `Pipeline.execute()` in `teleclaude_events/pipeline.py` runs whatever
+  cartridges are registered and returns an `EventEnvelope`. The domain fan-out point is
+  "after system pipeline completes" — this works against any system pipeline length (even
+  the current 2-cartridge pipeline). No domain cartridge in this scope consumes
+  trust/enrichment/classification outputs (that's `event-domain-pillars`). The roadmap
+  `after: [event-system-cartridges]` can be relaxed or removed.
+- **Config collision resolved:** `BusinessConfig.domains: Dict[str, str]` exists for business
+  domain labels. The event domain processing config uses `event_domains` as the config key,
+  avoiding collision. Updated in requirements and implementation plan.
+- **Member identity resolved:** `PersonEntry.email` is the natural key from the existing
+  `people` config. Personal cartridge paths derive `member_id` from the email (slugified).
+  Documented in requirements and implementation plan.
+- All new config keys (`event_domains.*`) are listed explicitly in requirements.
 
 ### 7. Integration Safety — PASS
 
@@ -64,13 +66,17 @@ factual corrections needed.
 - Startup errors disable domain pipeline without crashing daemon.
 - Cartridge exception isolation prevents cascading failures.
 
-### 8. Tooling Impact — NEEDS REVIEW
+### 8. Tooling Impact — PASS
 
-- New `telec config cartridges` subcommands are introduced. The CLI surface expansion
-  should be verified against the existing config command structure.
-- Config wizard gains a "Domain Autonomy" section — wizard testing needed.
+- CLI surface for `telec config cartridges` subcommands: implementation plan now correctly
+  references `teleclaude/cli/cartridge_cli.py` (new module) wired through the
+  `_handle_config()` dispatcher in `teleclaude/cli/telec.py`, following the existing pattern
+  of `config_cmd.py` and `config_cli.py`.
+- Config wizard gains a "Domain Autonomy" section — testable as part of Phase 6.
 
-## Corrections Applied (Draft Phase)
+## Corrections Applied
+
+### Draft Phase (prior session)
 
 1. **Fixed:** Implementation plan referenced `teleclaude_events/cartridge.py` — actual
    Cartridge Protocol is in `teleclaude_events/pipeline.py`.
@@ -82,24 +88,40 @@ factual corrections needed.
    to class-based Protocol with `self` parameter.
 5. **Added:** Fleshed out `demo.md` with concrete validation commands and guided presentation.
 
+### Gate Phase (this session)
+
+6. **Fixed:** Implementation plan Tasks 5.2 and 6.1 referenced nonexistent
+   `teleclaude/cli/commands/config_commands.py`. Corrected to actual CLI structure:
+   new `teleclaude/cli/cartridge_cli.py` wired via `telec.py` dispatcher.
+7. **Fixed:** Config key collision — `DomainsConfig` now maps to `event_domains` top-level
+   key, avoiding collision with `BusinessConfig.domains: Dict[str, str]`.
+8. **Resolved:** Member identity mapping — `member_id` derives from `PersonEntry.email`
+   (slugified). Documented in requirements and implementation plan.
+9. **Resolved:** Upstream dependency confirmed soft — domain infrastructure fans out after
+   any system pipeline length. Roadmap `after` can be relaxed.
+
 ## Open Questions
 
-1. Is the `event-system-cartridges` dependency hard or soft? Can domain infrastructure
-   work against the current 2-cartridge pipeline?
-2. The plan adds `DomainsConfig` to the top-level config schema — should this be a new
-   top-level key in `GlobalConfig`, or nested under an existing section?
-3. Member identity: personal pipelines reference `member_id` but the current config uses
-   `PersonConfig` with `invite_token`. How does member identity map to personal cartridge
-   paths?
+None remaining. All draft-phase questions resolved during gate.
 
 ## Blockers
 
-1. **Upstream dependency `event-system-cartridges`** — roadmap declares hard dependency;
-   needs decision on whether to proceed or wait.
+None.
+
+## Plan-to-Requirement Fidelity
+
+Verified: every implementation plan task traces to a requirement. No contradictions found.
+Key checks:
+- Cartridge Protocol unchanged (class-based with `self`) — plan uses Protocol correctly.
+- No new database tables — autonomy matrix and domain config in config file.
+- Domain pipeline fire-and-forget — plan's Task 3.2 confirms.
+- Personal cartridges always leaf nodes — plan's Task 4.1 enforces.
+- `sys.path` isolation — plan uses `importlib.util.spec_from_file_location`.
+- `telec config` integration with `event_domains` key — plan Tasks 6.1 aligns.
 
 ## Recommendations
 
-- If the dependency is soft (domain infra can work against any system pipeline length),
-  remove or relax the roadmap dependency and proceed.
-- If hard, prepare `event-system-cartridges` first.
-- Regardless, the artifacts are gate-ready once the dependency question is resolved.
+- Relax or remove the `after: [event-system-cartridges]` dependency in `roadmap.yaml`
+  before dispatching build work.
+- Consider splitting into two build sessions if context limits are a concern: Phases 1-4
+  (core runtime) and Phases 5-8 (lifecycle, autonomy, wiring).
