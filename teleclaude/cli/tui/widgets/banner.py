@@ -207,8 +207,8 @@ class Banner(TelecMixin, Widget):
                             if entity_val and entity_val != -1:
                                 if isinstance(entity_val, str) and len(entity_val) == 1:
                                     fg_char = entity_val
-                                    fg_color = "#FFFFFF"
-                        
+                                    fg_color = "#FFD700" if (entity_val == "\u2588" and not dark_mode) else "#FFFFFF"
+
                         result.append(fg_char, style=Style(color=_to_color(fg_color), bgcolor=_to_color(bg)))
 
         return result
