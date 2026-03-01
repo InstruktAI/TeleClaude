@@ -1,5 +1,9 @@
 # Delivered work items. Newest first.
 
+- slug: fix-layout-issues-sticky-removal
+  date: '2026-03-01'
+  title: Restore 'a' key batch-toggle sticky sessions in Textual TUI
+  description: Restore 'a' key batch-toggle sticky sessions in Textual TUI
 - slug: content-dump-command
   date: '2026-03-01'
   title: telec content dump — fire-and-forget content dump with notification trigger
