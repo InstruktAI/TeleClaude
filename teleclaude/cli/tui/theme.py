@@ -738,11 +738,20 @@ BANNER_HEX = "#585858" if _is_dark_mode else "#C8C8C8"
 
 
 def deepen_for_light_mode(color_hex: str) -> str:
-    """Reduce brightness by 15% for readability on a white background."""
+    """15% brightness reduction with minimum floor so neon never goes dark on white.
+
+    Resting (off) state is the grey BANNER_HEX. Any animated color must be
+    clearly above that — vivid and bright, never approaching black or grey.
+    """
+    import colorsys
+
     if not _is_hex_color(color_hex):
         return color_hex
     r, g, b = _hex_to_rgb(color_hex)
-    return _rgb_to_hex(int(r * 0.85), int(g * 0.85), int(b * 0.85))
+    h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+    v = max(0.60, v * 0.85)  # 15% darker but never below 60% brightness
+    nr, ng, nb = colorsys.hsv_to_rgb(h, s, v)
+    return _rgb_to_hex(int(nr * 255), int(ng * 255), int(nb * 255))
 
 # Status/footer foreground
 STATUS_FG_COLOR = "#727578"
