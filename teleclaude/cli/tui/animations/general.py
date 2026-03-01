@@ -90,10 +90,6 @@ class LineSweepTopBottom(Animation):
     Entire letters remain colored; a 3-row surge provides high-intensity highlight.
     """
 
-    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
-        super().__init__(*args, **kwargs)
-        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
-
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         active_row = frame % height
@@ -116,12 +112,15 @@ class LineSweepTopBottom(Animation):
         base_color = self.get_electric_neon(self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))))
 
         result = {}
-        for x, y in self._all_pixels:
-            dist = abs(y - active_row)
-            if dist == 0: color = mid_color
-            elif dist == 1: color = side_color
-            else: color = base_color
-            result[(x, y)] = color
+        # Only paint letter pixels to avoid affecting the billboard background
+        num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
+        for i in range(num_letters):
+            for x, y in PixelMap.get_letter_pixels(self.is_big, i):
+                dist = abs(y - active_row)
+                if dist == 0: color = mid_color
+                elif dist == 1: color = side_color
+                else: color = base_color
+                result[(x, y)] = color
         return result
 
 
