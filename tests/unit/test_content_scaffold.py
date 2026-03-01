@@ -43,8 +43,7 @@ class TestDeriveSlug:
 
 class TestCreateContentInboxEntry:
     def test_creates_folder_structure(self, tmp_path: Path) -> None:
-        with patch("teleclaude.content_scaffold._emit_content_dumped"):
-            entry = create_content_inbox_entry(tmp_path, "Hello world content")
+        entry = create_content_inbox_entry(tmp_path, "Hello world content")
 
         assert entry.exists()
         assert (entry / "content.md").exists()
@@ -52,19 +51,17 @@ class TestCreateContentInboxEntry:
 
     def test_content_md_contains_text(self, tmp_path: Path) -> None:
         text = "My brain dump about agent shorthand"
-        with patch("teleclaude.content_scaffold._emit_content_dumped"):
-            entry = create_content_inbox_entry(tmp_path, text)
+        entry = create_content_inbox_entry(tmp_path, text)
 
         assert (entry / "content.md").read_text() == text
 
     def test_meta_yaml_fields(self, tmp_path: Path) -> None:
-        with patch("teleclaude.content_scaffold._emit_content_dumped"):
-            with patch("teleclaude.content_scaffold._resolve_author", return_value="test-author"):
-                entry = create_content_inbox_entry(
-                    tmp_path,
-                    "Some content",
-                    tags=["tag1", "tag2"],
-                )
+        with patch("teleclaude.content_scaffold._resolve_author", return_value="test-author"):
+            entry = create_content_inbox_entry(
+                tmp_path,
+                "Some content",
+                tags=["tag1", "tag2"],
+            )
 
         meta = yaml.safe_load((entry / "meta.yaml").read_text())
         assert meta["author"] == "test-author"
@@ -72,14 +69,12 @@ class TestCreateContentInboxEntry:
         assert "created_at" in meta
 
     def test_custom_slug_used(self, tmp_path: Path) -> None:
-        with patch("teleclaude.content_scaffold._emit_content_dumped"):
-            entry = create_content_inbox_entry(tmp_path, "Some content", slug="my-custom-slug")
+        entry = create_content_inbox_entry(tmp_path, "Some content", slug="my-custom-slug")
 
         assert entry.name.endswith("-my-custom-slug")
 
     def test_auto_slug_from_text(self, tmp_path: Path) -> None:
-        with patch("teleclaude.content_scaffold._emit_content_dumped"):
-            entry = create_content_inbox_entry(tmp_path, "Deep dive into mesh architecture")
+        entry = create_content_inbox_entry(tmp_path, "Deep dive into mesh architecture")
 
         assert "deep" in entry.name or "dive" in entry.name
 
@@ -87,60 +82,56 @@ class TestCreateContentInboxEntry:
         from datetime import UTC, datetime
 
         today = datetime.now(UTC).strftime("%Y%m%d")
-        with patch("teleclaude.content_scaffold._emit_content_dumped"):
-            entry = create_content_inbox_entry(tmp_path, "Some content")
+        entry = create_content_inbox_entry(tmp_path, "Some content")
 
         assert entry.name.startswith(today)
 
     def test_collision_appends_counter(self, tmp_path: Path) -> None:
-        with patch("teleclaude.content_scaffold._emit_content_dumped"):
-            entry1 = create_content_inbox_entry(tmp_path, "Same content", slug="same-slug")
-            entry2 = create_content_inbox_entry(tmp_path, "Same content", slug="same-slug")
+        entry1 = create_content_inbox_entry(tmp_path, "Same content", slug="same-slug")
+        entry2 = create_content_inbox_entry(tmp_path, "Same content", slug="same-slug")
 
         assert entry1 != entry2
         assert entry2.name.endswith("-2")
 
     def test_collision_counter_increments(self, tmp_path: Path) -> None:
-        with patch("teleclaude.content_scaffold._emit_content_dumped"):
-            create_content_inbox_entry(tmp_path, "X", slug="slug-x")
-            create_content_inbox_entry(tmp_path, "X", slug="slug-x")
-            entry3 = create_content_inbox_entry(tmp_path, "X", slug="slug-x")
+        create_content_inbox_entry(tmp_path, "X", slug="slug-x")
+        create_content_inbox_entry(tmp_path, "X", slug="slug-x")
+        entry3 = create_content_inbox_entry(tmp_path, "X", slug="slug-x")
 
         assert entry3.name.endswith("-3")
 
     def test_author_override(self, tmp_path: Path) -> None:
-        with patch("teleclaude.content_scaffold._emit_content_dumped"):
-            entry = create_content_inbox_entry(tmp_path, "Content", author="override-author")
+        entry = create_content_inbox_entry(tmp_path, "Content", author="override-author")
 
         meta = yaml.safe_load((entry / "meta.yaml").read_text())
         assert meta["author"] == "override-author"
 
     def test_unknown_author_fallback(self, tmp_path: Path) -> None:
-        with patch("teleclaude.content_scaffold._emit_content_dumped"):
-            with patch("teleclaude.content_scaffold._resolve_author", return_value="unknown"):
-                entry = create_content_inbox_entry(tmp_path, "Content")
+        with patch("teleclaude.content_scaffold._resolve_author", return_value="unknown"):
+            entry = create_content_inbox_entry(tmp_path, "Content")
 
         meta = yaml.safe_load((entry / "meta.yaml").read_text())
         assert meta["author"] == "unknown"
 
     def test_empty_tags_default(self, tmp_path: Path) -> None:
-        with patch("teleclaude.content_scaffold._emit_content_dumped"):
-            entry = create_content_inbox_entry(tmp_path, "Content")
+        entry = create_content_inbox_entry(tmp_path, "Content")
 
         meta = yaml.safe_load((entry / "meta.yaml").read_text())
         assert meta["tags"] == []
 
-    def test_notification_called_with_correct_args(self, tmp_path: Path) -> None:
-        mock_emit = MagicMock()
-        with patch("teleclaude.content_scaffold._emit_content_dumped", mock_emit):
-            with patch("teleclaude.content_scaffold._resolve_author", return_value="test-user"):
-                create_content_inbox_entry(tmp_path, "Content", slug="notify-slug", tags=["a", "b"])
+    def test_folder_date_and_created_at_match(self, tmp_path: Path) -> None:
+        """date prefix and created_at must come from the same datetime.now() call."""
+        entry = create_content_inbox_entry(tmp_path, "Content", slug="ts-check")
+        meta = yaml.safe_load((entry / "meta.yaml").read_text())
+        folder_date = entry.name[:8]
+        meta_date = meta["created_at"][:10].replace("-", "")
+        assert folder_date == meta_date
 
-        mock_emit.assert_called_once()
-        _, kwargs = mock_emit.call_args
-        assert kwargs["author"] == "test-user"
-        assert kwargs["tags"] == ["a", "b"]
-        assert "notify-slug" in kwargs["inbox_path"]
+    def test_no_notification_side_effect(self, tmp_path: Path) -> None:
+        """Scaffold is pure — it must not call _emit_content_dumped."""
+        with patch("teleclaude.content_scaffold._emit_content_dumped") as mock_emit:
+            create_content_inbox_entry(tmp_path, "Content", slug="pure-check")
+        mock_emit.assert_not_called()
 
 
 class TestContentDumpCliArgs:
@@ -180,8 +171,8 @@ class TestContentDumpCliArgs:
         got = self._run(["My brain dump text"], tmp_path)
         assert got["text"] == "My brain dump text"
         assert got["slug"] is None
-        assert got["tags"] is None
-        assert got["author"] is None
+        assert got["tags"] == []
+        assert got["author"] is not None  # resolved from auth or "unknown"
 
     def test_all_flags(self, tmp_path: Path) -> None:
         got = self._run(
@@ -197,3 +188,25 @@ class TestContentDumpCliArgs:
         """Flags-only invocation (no positional text) should exit with error."""
         with pytest.raises(SystemExit):
             self._run(["--tags", "foo"], tmp_path)
+
+    def test_notification_called_from_cli(self, tmp_path: Path) -> None:
+        """CLI handler must call _emit_content_dumped after scaffolding."""
+        mock_emit = MagicMock()
+        fake_dir = tmp_path / "publications" / "inbox" / "fake"
+
+        def fake_create(_root: Path, _text: str, *, slug: str | None = None, tags: list[str] | None = None, author: str | None = None) -> Path:
+            fake_dir.mkdir(parents=True, exist_ok=True)
+            return fake_dir
+
+        with patch("teleclaude.content_scaffold.create_content_inbox_entry", fake_create):
+            with patch("teleclaude.content_scaffold._emit_content_dumped", mock_emit):
+                with patch("teleclaude.content_scaffold._resolve_author", return_value="test-user"):
+                    with patch.object(Path, "cwd", return_value=tmp_path):
+                        import teleclaude.cli.telec as m
+
+                        m._handle_content_dump(["Some content", "--tags", "x,y"])
+
+        mock_emit.assert_called_once()
+        _, kwargs = mock_emit.call_args
+        assert kwargs["author"] == "test-user"
+        assert kwargs["tags"] == ["x", "y"]

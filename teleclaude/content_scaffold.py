@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 def _derive_slug(text: str) -> str:
@@ -65,7 +68,7 @@ def _emit_content_dumped(inbox_path: str, author: str, tags: list[str]) -> None:
         }
         r.xadd("teleclaude:events", payload, maxlen=10000)
     except Exception:
-        print("Warning: Notification service not available, skipping event emission")
+        logger.warning("Notification service not available, skipping content.dumped emission")
 
 
 def create_content_inbox_entry(
@@ -76,14 +79,16 @@ def create_content_inbox_entry(
     tags: list[str] | None = None,
     author: str | None = None,
 ) -> Path:
-    """Create a publications inbox entry and emit a content.dumped notification.
+    """Create a publications inbox entry (files only).
 
-    Returns the created directory path.
+    Returns the created directory path. Notification emission is the
+    caller's responsibility.
     """
     resolved_author = author if author is not None else _resolve_author()
     resolved_tags = tags or []
 
-    date_prefix = datetime.now(UTC).strftime("%Y%m%d")
+    now = datetime.now(UTC)
+    date_prefix = now.strftime("%Y%m%d")
     base_slug = slug if slug else _derive_slug(text)
     folder_name = f"{date_prefix}-{base_slug}"
 
@@ -104,14 +109,8 @@ def create_content_inbox_entry(
     meta: _MetaPayload = {
         "author": resolved_author,
         "tags": resolved_tags,
-        "created_at": datetime.now(UTC).isoformat(),
+        "created_at": now.isoformat(),
     }
     (entry_dir / "meta.yaml").write_text(yaml.dump(meta, default_flow_style=False), encoding="utf-8")
-
-    _emit_content_dumped(
-        inbox_path=str(entry_dir.relative_to(project_root)),
-        author=resolved_author,
-        tags=resolved_tags,
-    )
 
     return entry_dir
