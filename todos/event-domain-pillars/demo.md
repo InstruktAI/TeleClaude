@@ -125,5 +125,5 @@ Observe: `domain_affinity`, `depends_on`, explicit `event_types` list — no wil
 
 ### Step 6: Domain config seeding
 
-Run `telec config get domains` and observe that all four pillars are configured with
+Run `telec config get event_domains` and observe that all four pillars are configured with
 guardian settings. Note `customer-relations` has `trust_threshold: strict`.

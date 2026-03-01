@@ -36,6 +36,7 @@ Until `CartridgeManifest` ships, manifests are authored as YAML matching these f
 | `domain_affinity`  | `list[str]`  | Domains this cartridge runs in; empty = any        |
 | `depends_on`       | `list[str]`  | Cartridge IDs within same domain                   |
 | `output_slots`     | `list[str]`  | Conflict detection keys                            |
+| `event_types`      | `list[str]`  | Explicit event types this cartridge subscribes to (no wildcards) |
 | `module`           | `str`        | Python module filename (without `.py`), default `cartridge` |
 
 ### Cross-domain bridging pattern

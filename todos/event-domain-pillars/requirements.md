@@ -76,7 +76,7 @@ so that `telec init` can seed these domains with zero manual authoring.
 - All `EventSchema` entries must specify `domain`, `default_level`, `lifecycle`, and
   `idempotency_fields`
 - Cartridge manifests follow the `CartridgeManifest` schema from `event-domain-infrastructure`:
-  `id`, `description`, `domain_affinity`, `depends_on`, `output_slots`, `module`
+  `id`, `description`, `domain_affinity`, `depends_on`, `event_types`, `output_slots`, `module`
 - Cartridge handler functions conform to the `Cartridge` protocol:
   `async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`
 - No wildcard event subscriptions — cartridge manifests declare explicit `event_types`

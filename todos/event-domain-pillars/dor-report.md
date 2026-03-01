@@ -1,9 +1,9 @@
 # DOR Report: event-domain-pillars
 
-## Gate Verdict: needs_work — Score 6/10
+## Gate Verdict: pass — Score 8/10
 
-**Assessed at:** 2026-03-01T16:00:00Z
-**Assessed by:** Architect (gate mode)
+**Assessed at:** 2026-03-01T16:30:00Z
+**Assessed by:** Architect (gate mode, re-assessment after blocker fixes)
 
 ---
 
@@ -17,8 +17,8 @@ in `input.md` and `requirements.md`.
 
 ### Gate 2: Scope & size — PASS (marginal)
 
-6 phases, ~19 tasks. Phases 2–5 are independent pattern repetitions of the same structure
-(schema + cartridges + config). The plan notes parallelizability. Fits a single session
+6 phases, ~20 tasks. Phases 2–5 are independent pattern repetitions of the same structure
+(schema + cartridges + config). Plan notes parallelizability. Fits a single session
 due to repetitive pattern, but is at the upper bound.
 
 ### Gate 3: Verification — PASS
@@ -30,113 +30,87 @@ Demo has 5 concrete Python assertion blocks against the catalog. Tests defined i
 
 Schema registration pattern is proven by 9 existing events in
 `teleclaude_events/schemas/software_development.py`. Cartridge convention depends on
-upstream types not yet built — the stub strategy in Task 1.1 is adequate.
+upstream types not yet built — the stub strategy in Task 1.1 is adequate. Assumed
+CartridgeManifest fields are now documented in the plan overview.
 
 ### Gate 5: Research complete — PASS (auto-satisfied)
 
 No third-party dependencies.
 
-### Gate 6: Dependencies & preconditions — NEEDS_WORK
+### Gate 6: Dependencies & preconditions — PASS
 
-Two roadmap dependencies are unbuilt:
-- `event-domain-infrastructure`: DOR needs_work (score 0), itself blocked by
-  `event-system-cartridges` (DOR pass, build pending)
-- `event-signal-pipeline`: DOR needs_work (score 0), blocked by infrastructure
-
-The plan accounts for this with stubs (Task 1.1), which is good. However:
-- The config key namespace is wrong. Infrastructure requirements specify `event_domains`
-  to avoid collision with existing `BusinessConfig.domains: Dict[str, str]` at
-  `teleclaude/config/schema.py:96`. The pillars plan uses `domains:` in all YAML examples
-  (Task 1.3, 2.3, etc.), which would collide. Must use `event_domains`.
-- `telec init` domain seeding mechanism is unspecified. The current `init_flow.py` has no
-  domain config hook. Task 1.3 says "Wire into telec init" but doesn't describe how. This
-  is a meaningful tooling change that needs a concrete approach.
+Two roadmap dependencies are unbuilt (`event-domain-infrastructure`, `event-signal-pipeline`).
+Plan handles this appropriately:
+- Task 1.1 verifies upstream types and falls back to YAML data files if not available.
+- Marketing `feed-monitor` ships as stub if signal pipeline hasn't landed.
+- Config namespace correctly uses `event_domains` (not `domains`), aligned with infrastructure
+  requirements and avoiding `BusinessConfig.domains` collision.
+- `telec init` seeding mechanism is now fully specified: `seed_event_domains()` function in
+  `teleclaude/project_setup/domain_seeds.py`, called in `init_project()`, with merge-not-overwrite
+  semantics and idempotency.
 
 ### Gate 7: Integration safety — PASS
 
-Pure content addition. Schema modules extend `register_all()`. No runtime changes to
-existing code beyond `telec init` extension.
+Pure content addition. Schema modules extend `register_all()`. The only runtime change
+is adding `seed_event_domains()` to `init_project()`, which is additive and guarded by
+a no-op check when config already has entries.
 
-### Gate 8: Tooling impact — NEEDS_WORK
+### Gate 8: Tooling impact — PASS
 
-`telec init` changes are proposed but the implementation mechanism is not detailed. No
-scaffolding procedure update mentioned.
-
----
-
-## Plan-to-Requirement Contradictions (Blockers)
-
-### 1. Wildcard event subscription in plan contradicts requirements constraint
-
-**Requirements constraint:** "No wildcard event subscriptions — cartridge manifests declare
-explicit `event_types`"
-
-**Plan Task 2.2:** `todo-lifecycle/manifest.yaml` specifies
-`event_types=[domain.software-development.planning.*]` — this is a wildcard.
-
-**Fix:** Replace with explicit enumeration of the 6 planning event types:
-`[domain.software-development.planning.todo_created, .todo_dumped, .todo_activated,
-.artifact_changed, .dependency_resolved, .dor_assessed]`.
-
-The same check should be applied to all other cartridge manifests to ensure no wildcards
-appear anywhere in the plan.
-
-### 2. Config namespace collision
-
-**Infrastructure requirements** (upstream): `event_domains.{name}` namespace, explicitly
-to avoid collision with `BusinessConfig.domains`.
-
-**Pillars plan** Task 1.3 and all domain config examples: uses `domains:` as the top-level
-key.
-
-**Fix:** All config YAML blocks and references must use `event_domains:` as the namespace.
-Update Task 1.3 seed data and Tasks 2.3, 3.3, 4.3, 5.3 config entries.
+`telec init` domain seeding mechanism is now specified with concrete implementation details
+(file placement, function signature, merge semantics, position in init flow). The change
+is additive — existing `telec init` behavior is preserved.
 
 ---
 
-## Missing Coverage
+## Resolved Blockers (from previous assessment)
 
-### 3. Documentation task absent
+### 1. Wildcard event subscriptions — RESOLVED
 
-Requirements scope includes "Documentation for each pillar's event taxonomy and cartridge
-composition." The implementation plan has no documentation task. Either:
-- Add a Phase 6 task for documentation, or
-- Clarify that schema modules + manifest files serve as documentation (and update
-  requirements to say so).
+All 10 cartridge manifests across 4 pillars now declare explicit `event_types` lists.
+No wildcards remain. Verified across Tasks 2.2, 3.2, 4.2, 5.2.
 
-### 4. `telec init` seeding mechanism needs specification
+### 2. Config namespace collision — RESOLVED
 
-Task 1.3 says "Wire into telec init so domain configs are seeded on project bootstrap" but
-`teleclaude/project_setup/init_flow.py` has no domain config seeding step. The plan must
-specify:
-- Which function seeds domain config (new function in `init_flow.py`?).
-- How config is merged (via `telec config patch` internally, or direct file write?).
-- What happens if domains already exist in config (merge vs. overwrite).
+All YAML blocks, config references, and Task descriptions use `event_domains` namespace.
+Requirements constraint now explicitly states `event_domains` with rationale.
+
+### 3. `telec init` seeding mechanism — RESOLVED
+
+Task 1.3 now specifies: `DEFAULT_EVENT_DOMAINS` constant, `seed_event_domains()` function,
+config loader integration, merge-not-overwrite semantics, idempotency test, and exact
+position in `init_project()` flow.
+
+## Resolved Minor Items
+
+### 4. Documentation task — RESOLVED
+
+Task 6.3 added. Requirements scope clarified: schema modules and manifests are primary docs.
+
+### 5. Assumed CartridgeManifest fields — RESOLVED
+
+Fields table added to plan overview. `event_types` field added to both the table and
+the requirements constraint field list.
+
+### 6. Cross-domain bridging pattern — RESOLVED
+
+Documented in plan overview as an assumed pattern.
+
+## Gate Tightening (this assessment)
+
+Two residual inconsistencies tightened:
+- Added `event_types` to assumed CartridgeManifest fields table (was used in all manifests
+  but missing from the table).
+- Fixed demo Step 6: `telec config get domains` → `telec config get event_domains`.
+- Added `event_types` to requirements constraint field enumeration.
 
 ---
 
-## Open Questions (from draft, still unresolved)
+## Remaining Notes
 
-1. **`event_types` field on CartridgeManifest:** This type doesn't exist yet. The
-   infrastructure requirements describe cartridge manifests but the exact schema fields
-   are defined in the implementation plan for `event-domain-infrastructure`, not this todo.
-   The pillars plan should document the assumed manifest fields and validate once
-   infrastructure ships.
-
-2. **Cross-domain pattern for signal→marketing bridge:** Marketing's `feed-monitor`
-   cartridge subscribes to `signal.synthesis.ready` (signal pipeline) and maps to
-   `domain.marketing.feed.synthesis_ready`. This cross-domain bridging pattern is not
-   formalized in any upstream design. Document it as an assumed pattern.
-
----
-
-## Actions Required Before Pass
-
-| # | Fix | Severity |
-|---|-----|----------|
-| 1 | Replace wildcard `planning.*` with explicit event type list in Task 2.2 manifest | Blocker |
-| 2 | Change config namespace from `domains:` to `event_domains:` across all YAML blocks | Blocker |
-| 3 | Add documentation task or clarify documentation scope in requirements | Minor |
-| 4 | Specify `telec init` seeding mechanism in Task 1.3 | Blocker |
-| 5 | Document assumed CartridgeManifest fields used in manifest YAMLs | Minor |
-| 6 | Document cross-domain signal→marketing bridging pattern | Minor |
+- Upstream dependencies (`event-domain-infrastructure`, `event-signal-pipeline`) must ship
+  before this todo can be built at full fidelity. The stub strategy is adequate for
+  unblocked build, but the builder should verify manifest fields against the actual
+  `CartridgeManifest` schema once it exists.
+- Scope is at the upper bound for a single session. If the builder finds it exceeding
+  context, the pillar phases (2–5) can be split into separate worker sessions.
