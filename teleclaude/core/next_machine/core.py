@@ -2051,7 +2051,7 @@ def _commit_synced_todo_artifacts(worktree_cwd: str, slug: str) -> None:
     result = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=worktree_cwd)
     if result.returncode != 0:
         subprocess.run(
-            ["git", "commit", "-m", f"chore: seed planning artifacts from main"],
+            ["git", "commit", "-m", "chore: seed planning artifacts from main"],
             cwd=worktree_cwd,
             check=True,
         )

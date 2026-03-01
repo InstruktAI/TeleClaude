@@ -3,8 +3,6 @@
 import json
 from datetime import datetime
 
-import pytest
-
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.models import Recording, Session
 from teleclaude.core.origins import InputOrigin

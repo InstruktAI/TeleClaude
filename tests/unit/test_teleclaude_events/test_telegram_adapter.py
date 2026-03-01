@@ -43,9 +43,7 @@ async def test_sends_when_created_and_level_meets_threshold(
 
 
 @pytest.mark.asyncio
-async def test_skips_when_not_created(
-    adapter: TelegramDeliveryAdapter, send_fn: AsyncMock
-) -> None:
+async def test_skips_when_not_created(adapter: TelegramDeliveryAdapter, send_fn: AsyncMock) -> None:
     await adapter.on_notification(
         notification_id=2,
         event_type="test.event",
@@ -57,9 +55,7 @@ async def test_skips_when_not_created(
 
 
 @pytest.mark.asyncio
-async def test_skips_when_level_below_min(
-    adapter: TelegramDeliveryAdapter, send_fn: AsyncMock
-) -> None:
+async def test_skips_when_level_below_min(adapter: TelegramDeliveryAdapter, send_fn: AsyncMock) -> None:
     await adapter.on_notification(
         notification_id=3,
         event_type="system.daemon.restarted",
@@ -71,9 +67,7 @@ async def test_skips_when_level_below_min(
 
 
 @pytest.mark.asyncio
-async def test_sends_when_level_above_min(
-    adapter: TelegramDeliveryAdapter, send_fn: AsyncMock
-) -> None:
+async def test_sends_when_level_above_min(adapter: TelegramDeliveryAdapter, send_fn: AsyncMock) -> None:
     await adapter.on_notification(
         notification_id=4,
         event_type="business.event",

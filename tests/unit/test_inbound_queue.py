@@ -15,7 +15,6 @@ from teleclaude.core.inbound_queue import (
     InboundQueueManager,
     _backoff_for_attempt,
     init_inbound_queue_manager,
-    reset_inbound_queue_manager,
 )
 
 # ── Helpers ──────────────────────────────────────────────────────────

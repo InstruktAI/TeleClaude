@@ -266,9 +266,9 @@ class TelecApp(App[str | None]):
         try:
             tabs = self.query_one(BoxTabBar)
             tabs.animation_engine = self._animation_engine
-        except:
-            pass # Tab bar might not be mounted in some modes
-        
+        except Exception:
+            pass  # Tab bar might not be mounted in some modes
+
         self._start_animation_mode(status_bar.animation_mode)
 
         # Switch to starting tab
@@ -486,7 +486,6 @@ class TelecApp(App[str | None]):
 
         elif isinstance(event, SessionUpdatedEvent):
             session = event.data
-            old_status = self._session_status_cache.get(session.session_id)
             # Silence redundant status toasts; they are visible in the UI
             self._session_status_cache[session.session_id] = session.status
             self.post_message(SessionUpdated(session))
@@ -862,9 +861,10 @@ class TelecApp(App[str | None]):
 
         if mode in ("periodic", "party"):
             # Always ensure GlobalSky is running on the header in active modes
+            from teleclaude.cli.tui.animation_colors import palette_registry
             from teleclaude.cli.tui.animation_engine import AnimationPriority
             from teleclaude.cli.tui.animations.general import GlobalSky
-            from teleclaude.cli.tui.animation_colors import palette_registry
+
             sky = GlobalSky(palette=palette_registry.get("spectrum"), is_big=True, duration_seconds=3600)
             self._animation_engine.play(sky, priority=AnimationPriority.PERIODIC, target="header")
             self._animation_engine.set_looping("header", True)
@@ -906,6 +906,7 @@ class TelecApp(App[str | None]):
     def _handle_exception(self, error: Exception) -> None:
         """Log unhandled exceptions BEFORE Rich's traceback renderer can crash on them."""
         import traceback as _tb
+
         logger.error(
             "Unhandled Textual exception",
             error=repr(error),
@@ -1026,9 +1027,10 @@ class TelecApp(App[str | None]):
     def _show_animation_toast(self, target: str, animation: Animation) -> None:
         """Show a toast notification when an animation starts."""
         import time
+
         now = time.time()
         name = animation.__class__.__name__
-        
+
         # Debounce: avoid duplicate toasts for the same animation within 2s
         last_name, last_time = getattr(self, "_last_anim_toast", (None, 0.0))
         if last_name == name and (now - last_time) < 2.0:

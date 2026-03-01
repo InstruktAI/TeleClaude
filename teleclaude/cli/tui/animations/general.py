@@ -5,15 +5,28 @@ from __future__ import annotations
 import math
 import random
 import shutil
-from typing import TYPE_CHECKING, Dict, List, Tuple
+from typing import TYPE_CHECKING
 
+from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
 from teleclaude.cli.tui.animations.base import (
+    Z_FOREGROUND,
+    Z_SKY,
     Animation,
     RenderBuffer,
     Spectrum,
-    Z_BILLBOARD,
-    Z_FOREGROUND,
-    Z_SKY,
+)
+from teleclaude.cli.tui.animations.creative import (
+    ChromaticAberration,
+    ColorSweep,
+    Comet,
+    EQBars,
+    Firefly,
+    Fireworks,
+    Glitch,
+    LaserScan,
+    LavaLamp,
+    NeonFlicker,
+    Plasma,
 )
 from teleclaude.cli.tui.pixel_mapping import (
     BIG_BANNER_HEIGHT,
@@ -25,10 +38,8 @@ from teleclaude.cli.tui.pixel_mapping import (
     PixelMap,
 )
 
-from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-
 if TYPE_CHECKING:
-    from teleclaude.cli.tui.animation_colors import ColorPalette
+    pass
 
 
 class GlobalSky(Animation):
@@ -43,32 +54,36 @@ class GlobalSky(Animation):
         self.width = 400
         self.height = 10
         self._all_pixels = [(x, y) for y in range(self.height) for x in range(self.width)]
-        
+
         # Day: Light blue at top (overhead) fading to very light blue at horizon.
         self.day_sky = Spectrum(["#87CEEB", "#C8E8F8"])
         # From Deep Black to Super Dark Midnight Purple
         self.night_sky = Spectrum(["#000000", "#05000A", "#0F001A", "#05000A"])
-        
+
         # Stars — weighted heavily toward tiny dots; big sparkles are rare
-        _star_types  = ["\u00b7", ".", "+", "\u2726", "*"]  # ·  .  +  ✦  *
-        _star_weights = [50,       20,  15,   10,       5]
+        _star_types = ["\u00b7", ".", "+", "\u2726", "*"]  # ·  .  +  ✦  *
+        _star_weights = [50, 20, 15, 10, 5]
         self.stars = []
         for _ in range(130):
-            self.stars.append({
-                "pos": (self.rng.randint(0, self.width - 1), self.rng.randint(0, self.height - 1)),
-                "char": self.rng.choices(_star_types, weights=_star_weights, k=1)[0],
-                "phase": self.rng.random() * math.pi * 2,
-                "speed": 0.010 + self.rng.random() * 0.018
-            })
-            
+            self.stars.append(
+                {
+                    "pos": (self.rng.randint(0, self.width - 1), self.rng.randint(0, self.height - 1)),
+                    "char": self.rng.choices(_star_types, weights=_star_weights, k=1)[0],
+                    "phase": self.rng.random() * math.pi * 2,
+                    "speed": 0.010 + self.rng.random() * 0.018,
+                }
+            )
+
         # Drifting Clouds (Day)
         self.clouds = []
         for _ in range(6):
-            self.clouds.append({
-                "x": self.rng.randint(0, self.width),
-                "y": self.rng.randint(0, self.height - 3),
-                "speed": 0.25 + self.rng.random() * 0.3
-            })
+            self.clouds.append(
+                {
+                    "x": self.rng.randint(0, self.width),
+                    "y": self.rng.randint(0, self.height - 3),
+                    "speed": 0.25 + self.rng.random() * 0.3,
+                }
+            )
 
     # Sun shape — 6 rows, bright gold disc for day mode (right-side sky margin)
     _SUN_ROWS = [
@@ -180,9 +195,10 @@ class LetterWaveLR(Animation):
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         active_letter_idx = frame % num_letters
         color_pair = self.palette.get(frame // num_letters)
-        
+
         base_color = self.enforce_vibrancy(self.get_contrast_safe_color(color_pair))
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
         r, g, b = hex_to_rgb(base_color)
         dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
 
@@ -201,9 +217,10 @@ class LetterWaveRL(Animation):
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         active_letter_idx = (num_letters - 1) - (frame % num_letters)
         color_pair = self.palette.get(frame // num_letters)
-        
+
         base_color = self.enforce_vibrancy(self.get_contrast_safe_color(color_pair))
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
         r, g, b = hex_to_rgb(base_color)
         dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
 
@@ -222,7 +239,7 @@ class LineSweepTopBottom(Animation):
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self.spec = Spectrum(["#0000FF", "#00FFFF", "#0000FF"]) 
+        self.spec = Spectrum(["#0000FF", "#00FFFF", "#0000FF"])
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
@@ -240,6 +257,7 @@ class LineSweepTopBottom(Animation):
                 color = self.spec.get_color(y / max(1, height - 1))
                 color = self.enforce_vibrancy(color)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
         return result
@@ -270,6 +288,7 @@ class LineSweepBottomTop(Animation):
                 color = self.spec.get_color(y / max(1, height - 1))
                 color = self.enforce_vibrancy(color)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
         return result
@@ -287,12 +306,13 @@ class MiddleOutVertical(Animation):
         self.spec = Spectrum(["#FF0000", "#FFFF00", "#FF0000"])
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        if not self.is_big: return {}
+        if not self.is_big:
+            return {}
         height = BIG_BANNER_HEIGHT
         modulation = self.get_modulation(frame)
         active_step = (frame * modulation * 0.5) % 4
         active_rows = {2 - int(active_step), 3 + int(active_step)}
-        
+
         result = {}
         for i in range(len(BIG_BANNER_LETTERS)):
             for x, y in PixelMap.get_letter_pixels(True, i):
@@ -304,6 +324,7 @@ class MiddleOutVertical(Animation):
                 color = self.spec.get_color(y / max(1, height - 1))
                 color = self.enforce_vibrancy(color)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
         return result
@@ -332,9 +353,10 @@ class WithinLetterSweepLR(Animation):
                 if surge <= 0:
                     result[(x, y)] = -1
                     continue
-                color = self.spec.get_color((x-1)/width)
+                color = self.spec.get_color((x - 1) / width)
                 color = self.enforce_vibrancy(color)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
 
@@ -350,7 +372,7 @@ class WithinLetterSweepRL(Animation):
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self.spec = Spectrum(["#00FFFF", "#0000FF", "#00FFFF"])
-    
+
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH
         modulation = self.get_modulation(frame)
@@ -364,9 +386,10 @@ class WithinLetterSweepRL(Animation):
                 if surge <= 0:
                     result[(x, y)] = -1
                     continue
-                color = self.spec.get_color((x-1)/width)
+                color = self.spec.get_color((x - 1) / width)
                 color = self.enforce_vibrancy(color)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
 
@@ -390,6 +413,7 @@ class WordSplitBlink(Animation):
                     result[(x, y)] = safe_color
                 else:
                     from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
                     r, g, b = hex_to_rgb(safe_color)
                     result[(x, y)] = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
         return result
@@ -406,12 +430,13 @@ class DiagonalSweepDR(Animation):
         self.spec = Spectrum(["#00FF00", "#FFFF00", "#00FF00"])
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        if not self.is_big: return {}
+        if not self.is_big:
+            return {}
         width, height = BIG_BANNER_WIDTH, BIG_BANNER_HEIGHT
         max_val = width + height
         modulation = self.get_modulation(frame)
         active = (frame * modulation * 1.5) % (max_val + 10) - 5
-        
+
         result = {}
         num_letters = len(BIG_BANNER_LETTERS)
         for i in range(num_letters):
@@ -423,6 +448,7 @@ class DiagonalSweepDR(Animation):
                 color = self.spec.get_color(((x - 1) + y) / max_val)
                 color = self.enforce_vibrancy(color)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
         return result
@@ -440,12 +466,13 @@ class DiagonalSweepDL(Animation):
         self.spec = Spectrum(["#FF00FF", "#00FFFF", "#FF00FF"])
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        if not self.is_big: return {}
+        if not self.is_big:
+            return {}
         width, height = BIG_BANNER_WIDTH, BIG_BANNER_HEIGHT
         max_val = width + height
         modulation = self.get_modulation(frame)
         active = (width - 1) - ((frame * modulation * 1.5) % (max_val + 10) - 5)
-        
+
         result = {}
         num_letters = len(BIG_BANNER_LETTERS)
         for i in range(num_letters):
@@ -457,6 +484,7 @@ class DiagonalSweepDL(Animation):
                 color = self.spec.get_color(((x - 1) + y) / max_val)
                 color = self.enforce_vibrancy(color)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
         return result
@@ -489,7 +517,7 @@ class WavePulse(Animation):
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         modulation = self.get_modulation(frame)
         active_x = (frame * modulation * 1.5) % (width + 10) - 5
-        
+
         result = {}
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         for i in range(num_letters):
@@ -498,9 +526,10 @@ class WavePulse(Animation):
                 if surge <= 0:
                     result[(x, y)] = -1
                     continue
-                color = self.spec.get_color((x-1)/width)
+                color = self.spec.get_color((x - 1) / width)
                 color = self.enforce_vibrancy(color)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
 
@@ -514,12 +543,12 @@ class BlinkSweep(Animation):
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self.spec = Spectrum(["#FFFFFF", "#00FFFF", "#0000FF"]) 
+        self.spec = Spectrum(["#FFFFFF", "#00FFFF", "#0000FF"])
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         active_x = (frame * 2.0) % (width + 5) - 2
-        
+
         result = {}
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         for i in range(num_letters):
@@ -528,9 +557,10 @@ class BlinkSweep(Animation):
                 if surge <= 0:
                     result[(x, y)] = -1
                     continue
-                color = self.spec.get_color((x-1)/width)
+                color = self.spec.get_color((x - 1) / width)
                 color = self.enforce_vibrancy(color)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
         return result
@@ -546,8 +576,8 @@ class SunsetGradient(Animation):
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
-        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
-        
+        _height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+
         modulation = self.get_modulation(frame)
         result = {}
         for x, y in PixelMap.get_all_pixels(self.is_big):
@@ -572,13 +602,13 @@ class CloudsPassing(Animation):
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         modulation = self.get_modulation(frame)
-        
+
         # Multiple cloud anchors
         clouds = [
             int(frame * 0.2 * modulation) % (width + 20) - 10,
             int(frame * 0.15 * modulation + 30) % (width + 20) - 10,
         ]
-        
+
         result = {}
         for x, y in PixelMap.get_all_pixels(self.is_big):
             # Check proximity to any cloud
@@ -606,6 +636,7 @@ class FloatingBalloons(Animation):
         if self._col_pixels is not None:
             return
         from collections import defaultdict
+
         by_col: dict[int, list[int]] = defaultdict(list)
         letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS
         for i in range(len(letters)):
@@ -666,17 +697,17 @@ class MatrixRain(Animation):
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         result: dict[tuple[int, int], str | int] = {}
-        
+
         for x in range(self.width):
             self._columns[x] += 1
             if self._columns[x] > height + 10:
                 self._columns[x] = random.randint(-10, 0)
-            
+
             head = self._columns[x]
             for y in range(height):
                 dist = head - y
                 if dist == 0:
-                    result[(x, y)] = "#FFFFFF" # Bright head
+                    result[(x, y)] = "#FFFFFF"  # Bright head
                 elif 0 < dist < 8:
                     intensity = int(255 * (1.0 - dist / 8.0))
                     result[(x, y)] = rgb_to_hex(0, intensity, 0)
@@ -699,11 +730,10 @@ class FireBreath(Animation):
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         for i in range(num_letters):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
-                y_factor = y / max(height - 1, 1)   # 0=top, 1=bottom
-                fire_factor = 1.0 - y_factor          # 1=bottom (hottest), 0=top (coolest)
+                y_factor = y / max(height - 1, 1)  # 0=top, 1=bottom
+                fire_factor = 1.0 - y_factor  # 1=bottom (hottest), 0=top (coolest)
                 # Per-column organic variation: irregular licking flames
-                col_var = (math.sin(x * 1.3 + frame * 0.45) * 0.28
-                           + math.sin(x * 2.1 + frame * 0.3) * 0.15)
+                col_var = math.sin(x * 1.3 + frame * 0.45) * 0.28 + math.sin(x * 2.1 + frame * 0.3) * 0.15
                 fire_factor = max(0.0, fire_factor + col_var)
                 # Per-pixel flicker noise
                 flicker = self.rng.random() * 0.35 * modulation
@@ -713,6 +743,7 @@ class FireBreath(Animation):
                 color = self.spec.get_color(fire_factor)
                 color = self.enforce_vibrancy(color)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
                 r, g, b = hex_to_rgb(color)
                 # 0.3 base so even cool top pixels have faint glow
                 v = 0.3 + intensity * 0.7
@@ -733,19 +764,19 @@ class HighSunBird(Animation):
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
-        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
-        
+        _height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+
         modulation = self.get_modulation(frame)
         # Bird moves horizontally
         bx = int((frame * modulation * 2) % (width + 40)) - 20
         by = 2
-        
+
         result: dict[tuple[int, int], str | int] = {}
         for x, y in self._all_pixels:
             # The Sun (High intensity yellow flare)
-            dist_sun = math.sqrt((x - 10)**2 + (y - 1)**2)
+            dist_sun = math.sqrt((x - 10) ** 2 + (y - 1) ** 2)
             if dist_sun < 5:
-                color = rgb_to_hex(255, 255, int(200 * (dist_sun/5)))
+                color = rgb_to_hex(255, 255, int(200 * (dist_sun / 5)))
                 result[(x, y)] = self.get_contrast_safe_color(color)
             # The Bird (V-shape silhouette)
             elif abs(x - bx) < 3 and abs(y - by) < 1:
@@ -773,19 +804,23 @@ class SearchlightSweep(Animation):
         """Truly Ultimate Wide & Grounded Batman Silhouette."""
         dx, dy = x - cx, y - (cy - 4)
         adx = abs(dx)
-        
+
         # Grounded feet/body (bottom rows 4 and 5)
-        if dy >= 3: 
-            return adx <= 2 # Wider feet
-            
+        if dy >= 3:
+            return adx <= 2  # Wider feet
+
         # Ears/Head (top of silhouette)
-        if dy == -1: return adx == 1
-        if dy == 0:  return adx <= 1
-        
+        if dy == -1:
+            return adx == 1
+        if dy == 0:
+            return adx <= 1
+
         # Wide Wings/Cape (middle rows) - wingspan 19 total
-        if dy == 1:  return adx <= 9 
-        if dy == 2:  return adx <= 6 # Cape narrowing
-        
+        if dy == 1:
+            return adx <= 9
+        if dy == 2:
+            return adx <= 6  # Cape narrowing
+
         return False
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
@@ -794,18 +829,18 @@ class SearchlightSweep(Animation):
 
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
-        
+
         modulation = self.get_modulation(frame)
-        
+
         # Smooth Oscillation around center
         base_cx = width // 2
         offset = math.sin(frame * 0.05 * modulation) * 15
         cx = int(base_cx + offset)
         cy = height - 1
-        
+
         # Truly large beam for visibility
         radius = 12
-        
+
         result: dict[tuple[int, int], str | int] = {}
         for x, y in self._all_pixels:
             dist = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
@@ -813,12 +848,13 @@ class SearchlightSweep(Animation):
             if dist < effective_radius:
                 if self._is_batman_mask(x, y, cx, cy):
                     # Grounded shadow silhouette
-                    result[(x, y)] = "#060606" 
+                    result[(x, y)] = "#060606"
                 else:
                     # Bright searchlight flare (high intensity)
                     intensity = 1.0 - (dist / radius)
                     flare = int(180 + intensity * 75)
                     from teleclaude.cli.tui.animation_colors import rgb_to_hex
+
                     result[(x, y)] = rgb_to_hex(flare, flare, flare)
             else:
                 # Outside the beam
@@ -841,29 +877,31 @@ class CinematicPrismSweep(Animation):
 
     def _hsv_to_rgb(self, h: float, s: float, v: float) -> tuple[int, int, int]:
         import colorsys
+
         r, g, b = colorsys.hsv_to_rgb(h, s, v)
         return int(r * 255), int(g * 255), int(b * 255)
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
-        
+
         modulation = self.get_modulation(frame)
         progress = frame / self.duration_frames
         angle_deg = 30 + (progress * 30)
         angle_rad = math.radians(angle_deg)
-        
+
         current_hue = (self.hue_start + (self.hue_end - self.hue_start) * progress) / 360.0
         r, g, b = self._hsv_to_rgb(current_hue, 0.8, 1.0)
-        from teleclaude.cli.tui.animation_colors import rgb_to_hex, hex_to_rgb
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
         color = rgb_to_hex(r, g, b)
         safe_color = self.get_electric_neon(self.get_contrast_safe_color(color))
-        
+
         max_dist = width * math.cos(angle_rad) + height * math.sin(angle_rad)
         active_dist = progress * max_dist * modulation * 1.5
-        
+
         result: dict[tuple[int, int], str | int] = {}
-        
+
         # 1. Beam on neon letters — beam-only, no pre-existing haze
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         for i in range(num_letters):
@@ -879,7 +917,8 @@ class CinematicPrismSweep(Animation):
 
         # 2. Billboard Reflection (only where beam hits)
         for x, y in self._all_pixels:
-            if (x, y) in result: continue # Skip neon (already handled)
+            if (x, y) in result:
+                continue  # Skip neon (already handled)
             d = (x - 1) * math.cos(angle_rad) + y * math.sin(angle_rad)
             surge = 1.0 - (abs(d - active_dist) / 4.0) if abs(d - active_dist) < 4 else 0.0
             if surge > 0.1:
@@ -887,7 +926,7 @@ class CinematicPrismSweep(Animation):
                 result[(x, y)] = rgb_to_hex(int(r * surge * 0.4), int(g * surge * 0.4), int(b * surge * 0.4))
             else:
                 result[(x, y)] = -1
-                
+
         return result
 
 
@@ -904,7 +943,9 @@ class Bioluminescence(Animation):
         self.width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
         self.height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         self._all_pixels = PixelMap.get_all_pixels(self.is_big)
-        self._agents = [[random.randint(0, self.width - 1), random.randint(0, self.height - 1)] for _ in range(self._NUM_AGENTS)]
+        self._agents = [
+            [random.randint(0, self.width - 1), random.randint(0, self.height - 1)] for _ in range(self._NUM_AGENTS)
+        ]
         self._trails: dict[tuple[int, int], int] = {}
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
@@ -926,21 +967,6 @@ class Bioluminescence(Animation):
         return result
 
 
-# Helper to provide some animations for random selection
-from teleclaude.cli.tui.animations.creative import (
-    ChromaticAberration,
-    Comet,
-    ColorSweep,
-    EQBars,
-    Firefly,
-    Fireworks,
-    Glitch,
-    LaserScan,
-    LavaLamp,
-    NeonFlicker,
-    Plasma,
-)
-
 GENERAL_ANIMATIONS = [
     # Letter classics (restored)
     FullSpectrumCycle,
@@ -954,7 +980,7 @@ GENERAL_ANIMATIONS = [
     CloudsPassing,
     FloatingBalloons,
     # Original specials
-    FireBreath,         # fixed: burns from bottom
+    FireBreath,  # fixed: burns from bottom
     CinematicPrismSweep,
     # New creative animations
     NeonFlicker,

@@ -24,7 +24,6 @@ from teleclaude.types.commands import (
     HandleFileCommand,
     HandleVoiceCommand,
     KeysCommand,
-    ProcessMessageCommand,
     RestartAgentCommand,
     ResumeAgentCommand,
     RunAgentCommand,

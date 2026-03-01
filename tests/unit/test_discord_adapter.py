@@ -15,10 +15,8 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.events import SessionStatusContext, SessionUpdatedContext
-from teleclaude.core.identity import IdentityContext
 from teleclaude.core.models import (
     ChannelMetadata,
-    DiscordAdapterMetadata,
     MessageMetadata,
     Session,
     SessionAdapterMetadata,

@@ -6,11 +6,11 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Deque, Optional, Tuple
+from typing import Callable, Deque, Optional, Tuple
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.tui.animations.base import Animation, RenderBuffer, Z_BILLBOARD, Z_SKY
+from teleclaude.cli.tui.animations.base import Z_BILLBOARD, Animation, RenderBuffer
 
 logger = get_logger(__name__)
 
@@ -99,8 +99,9 @@ class AnimationEngine:
         if not self._is_enabled:
             return
 
-        from teleclaude.cli.tui.theme import is_dark_mode, get_terminal_background
         import random
+
+        from teleclaude.cli.tui.theme import get_terminal_background, is_dark_mode
 
         target_name = target or animation.target
         slot = self._ensure_target(target_name)
@@ -119,7 +120,7 @@ class AnimationEngine:
             slot.priority = priority
             slot.looping = False
             self._has_active_animation = True
-            
+
             if self.on_animation_start:
                 self.on_animation_start(target_name, animation)
         else:
@@ -176,13 +177,15 @@ class AnimationEngine:
                     if isinstance(result, RenderBuffer):
                         # Multi-layer update
                         for z, pixels in result.layers.items():
-                            if z not in back_buffer: back_buffer[z] = {}
+                            if z not in back_buffer:
+                                back_buffer[z] = {}
                             back_buffer[z].update(pixels)
                     else:
                         # Legacy single-layer update (default to billboard level)
-                        if Z_BILLBOARD not in back_buffer: back_buffer[Z_BILLBOARD] = {}
+                        if Z_BILLBOARD not in back_buffer:
+                            back_buffer[Z_BILLBOARD] = {}
                         back_buffer[Z_BILLBOARD].update(result)
-                        
+
                     slot.frame_count += 1
                     slot.last_update_ms = current_time_ms
                     changed = True
@@ -229,7 +232,7 @@ class AnimationEngine:
             if isinstance(color, str) and len(color) > 1:
                 return color
             # If -1 or missing, continue to lower layer
-            
+
         return None
 
     def get_layer_color(self, z: int, x: int, y: int, target: str = "banner") -> str | int | None:

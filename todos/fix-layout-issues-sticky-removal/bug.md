@@ -58,3 +58,33 @@ Three changes in a single commit:
 5. **`tests/unit/test_sessions_view_toggle_project.py`**
    New test file with 9 unit tests covering toggle-on, toggle-off, preview clearing,
    MAX_STICKY limit enforcement, headless-session skipping, and project+computer scoping.
+
+## Additional Lint Fixes (make lint pass)
+
+Pre-existing lint failures across the codebase required resolution before the build gate
+could be satisfied. All changes are minimal type/style corrections:
+
+- **`tests/unit/test_animations.py`**: Updated `test_filter_animations_by_name` to use
+  `Comet` instead of `LineSweepTopBottom` (removed from `GENERAL_ANIMATIONS` in a prior
+  commit consolidating sweep animations).
+- **`teleclaude/adapters/discord_adapter.py`**: Added `# guard: loose-dict` markers to
+  two `dict[str, object]` usages to satisfy the guardrail policy.
+- **`pyproject.toml`**: Added `E402` to `tests/**` per-file-ignores for sys.path
+  manipulation before imports in test files.
+- **`teleclaude/cli/tui/animation_engine.py`**: Added `Callable` to typing imports (F821).
+- **`teleclaude/cli/tui/animations/base.py`**: Changed bare `except:` → `except Exception:` (E722).
+- **`teleclaude/cli/tui/animations/creative.py`**: Fixed type annotations (`Optional[dict]`
+  → `Optional[dict[str, Any]]`, `List[dict]` → `List[dict[str, Any]]`, `_pick_hue` param),
+  added `# guard: loose-dict` markers, fixed `def pos(x, y)` redeclarations with type
+  annotations and `# pyright: ignore[reportRedeclaration]`.
+- **`teleclaude/cli/tui/animations/general.py`**: Moved creative imports to top-level,
+  renamed two genuinely unused `height` vars to `_height` (F841), fixed E402 ordering.
+- **`teleclaude/cli/tui/app.py`**: Changed bare `except:` → `except Exception:`, removed
+  unused `old_status` variable (F841).
+- **`teleclaude/cli/tui/pixel_mapping.py`**: Fixed `Optional[Dict]` for `_row_pixels` and
+  `_col_pixels` fields (pyright reportOptionalMemberAccess).
+- **`teleclaude/cli/tui/widgets/banner.py`**, **`box_tab_bar.py`**: Removed unnecessary
+  `color != -1` comparisons (pyright reportUnnecessaryComparison); fixed import ordering.
+- **`tests/unit/test_agent_coordinator.py`**: Removed duplicate `from typing import Mapping` (F811).
+- **`tests/unit/test_tts_fallback_saturation.py`**: Added `TYPE_CHECKING` guard for
+  `TTSManager` string annotation (F821).

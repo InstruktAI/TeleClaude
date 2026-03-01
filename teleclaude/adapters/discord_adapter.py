@@ -769,12 +769,11 @@ class DiscordAdapter(UiAdapter):
 
             if needs_move or needs_reorder:
                 try:
+                    # guard: loose-dict - dynamic kwargs; category key conditionally added
                     kwargs: dict[str, object] = {"position": position}
                     if needs_move:
                         kwargs["category"] = category
-                    await self._require_async_callable(edit_fn, label="forum sync")(
-                        **kwargs
-                    )
+                    await self._require_async_callable(edit_fn, label="forum sync")(**kwargs)
                     if needs_move:
                         logger.info("Moved forum '%s' into category %s at position %d", td.name, category_id, position)
                     elif needs_reorder:
@@ -814,9 +813,7 @@ class DiscordAdapter(UiAdapter):
             except Exception:
                 pass
 
-            ch_id = await self._find_or_create_private_text_channel(
-                guild, category, slug, discord_user_id
-            )
+            ch_id = await self._find_or_create_private_text_channel(guild, category, slug, discord_user_id)
             if ch_id is not None:
                 person_folder = os.path.join(os.path.expanduser("~"), ".teleclaude", "people", name)
                 self._team_channel_map[ch_id] = person_folder
@@ -858,6 +855,7 @@ class DiscordAdapter(UiAdapter):
 
         try:
             create = self._require_async_callable(create_fn, label="guild.create_text_channel")
+            # guard: loose-dict - dynamic kwargs; category key conditionally added
             kwargs: dict[str, object] = {"name": name, "overwrites": overwrites}
             if category is not None:
                 kwargs["category"] = category
@@ -870,9 +868,7 @@ class DiscordAdapter(UiAdapter):
             logger.warning("Failed to create private text channel '%s': %s", name, exc)
             return None
 
-    def _build_private_overwrites(
-        self, guild: object, owner_user_id: int | None
-    ) -> dict[object, object]:
+    def _build_private_overwrites(self, guild: object, owner_user_id: int | None) -> dict[object, object]:
         """Build Discord permission overwrites: deny @everyone, allow owner + bot."""
         PermissionOverwrite = getattr(self._discord, "PermissionOverwrite", None)
         if PermissionOverwrite is None:
@@ -883,16 +879,13 @@ class DiscordAdapter(UiAdapter):
         # Deny @everyone
         default_role = getattr(guild, "default_role", None)
         if default_role is not None:
-            overwrites[default_role] = PermissionOverwrite(
-                view_channel=False, read_messages=False
-            )
+            overwrites[default_role] = PermissionOverwrite(view_channel=False, read_messages=False)
 
         # Allow the bot
         bot_user = getattr(self._client, "user", None) if self._client else None
         if bot_user is not None:
             overwrites[bot_user] = PermissionOverwrite(
-                view_channel=True, read_messages=True, send_messages=True,
-                manage_messages=True
+                view_channel=True, read_messages=True, send_messages=True, manage_messages=True
             )
 
         # Allow the person
@@ -901,9 +894,7 @@ class DiscordAdapter(UiAdapter):
             get_member = getattr(guild, "get_member", None)
             member = get_member(owner_user_id) if callable(get_member) else None
             if member is not None:
-                overwrites[member] = PermissionOverwrite(
-                    view_channel=True, read_messages=True, send_messages=True
-                )
+                overwrites[member] = PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True)
             elif Object is not None:
                 # Use Object as fallback (discord.py accepts it for overwrites)
                 overwrites[Object(id=owner_user_id)] = PermissionOverwrite(
@@ -912,9 +903,7 @@ class DiscordAdapter(UiAdapter):
 
         return overwrites
 
-    async def _ensure_channel_private(
-        self, channel_id: int, guild: object, owner_user_id: int
-    ) -> None:
+    async def _ensure_channel_private(self, channel_id: int, guild: object, owner_user_id: int) -> None:
         """Verify and fix permissions on an existing team channel."""
         channel = await self._get_channel(channel_id)
         if channel is None:
@@ -936,9 +925,7 @@ class DiscordAdapter(UiAdapter):
         edit_fn = getattr(channel, "edit", None)
         if callable(edit_fn):
             try:
-                await self._require_async_callable(edit_fn, label="channel.edit overwrites")(
-                    overwrites=overwrites_dict
-                )
+                await self._require_async_callable(edit_fn, label="channel.edit overwrites")(overwrites=overwrites_dict)
                 logger.info("Applied private permissions to team channel %s", channel_id)
             except Exception as exc:
                 logger.warning("Failed to apply private permissions to channel %s: %s", channel_id, exc)
@@ -970,9 +957,7 @@ class DiscordAdapter(UiAdapter):
         """
         categories = getattr(guild, "categories", None)
         if categories is None:
-            logger.warning(
-                "Guild category cache not populated; refusing to create '%s' to prevent duplicates", name
-            )
+            logger.warning("Guild category cache not populated; refusing to create '%s' to prevent duplicates", name)
             return None
 
         for cat in categories:

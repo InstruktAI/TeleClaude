@@ -460,8 +460,6 @@ async def test_local_session_lifecycle_to_websocket(
     api_server.client = real_client
 
     # Re-register event handlers on global event bus
-    from teleclaude.core.event_bus import event_bus
-    from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 
     event_bus.clear()
     event_bus.subscribe("session_started", api_server._handle_session_started_event)

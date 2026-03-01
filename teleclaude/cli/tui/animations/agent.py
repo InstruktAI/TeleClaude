@@ -8,10 +8,8 @@ from teleclaude.cli.tui.animations.base import Animation
 from teleclaude.cli.tui.pixel_mapping import (
     BIG_BANNER_HEIGHT,
     BIG_BANNER_LETTERS,
-    BIG_BANNER_WIDTH,
     LOGO_HEIGHT,
     LOGO_LETTERS,
-    LOGO_WIDTH,
     PixelMap,
 )
 
@@ -41,6 +39,7 @@ class AgentWaveLR(Animation):
 
         hi_color = self.enforce_vibrancy(self.palette.get(2))
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
         try:
             r, g, b = hex_to_rgb(hi_color)
             dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
@@ -64,6 +63,7 @@ class AgentWaveRL(Animation):
 
         hi_color = self.enforce_vibrancy(self.palette.get(2))
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
         try:
             r, g, b = hex_to_rgb(hi_color)
             dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
@@ -87,6 +87,7 @@ class AgentLineSweep(Animation):
 
         hi_color = self.enforce_vibrancy(self.palette.get(2))
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
         try:
             r, g, b = hex_to_rgb(hi_color)
             dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
@@ -108,12 +109,14 @@ class AgentMiddleOut(Animation):
     supports_small = False
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        if not self.is_big: return {}
+        if not self.is_big:
+            return {}
         step = frame % 3
         active_rows = {2 - step, 3 + step}
 
         hi_color = self.enforce_vibrancy(self.palette.get(2))
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
         try:
             r, g, b = hex_to_rgb(hi_color)
             dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
@@ -167,6 +170,7 @@ class AgentWordSplit(Animation):
         parity = frame % 2
         hi_color = self.enforce_vibrancy(self.palette.get(2))
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+
         try:
             r, g, b = hex_to_rgb(hi_color)
             dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
@@ -190,7 +194,7 @@ class AgentFadeCycle(Animation):
         sequence = [0, 1, 2, 1]
         color_idx = sequence[frame % len(sequence)]
         color_pair = self.enforce_vibrancy(self.palette.get(color_idx))
-        
+
         result = {}
         for i in range(len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)):
             for p in PixelMap.get_letter_pixels(self.is_big, i):
@@ -205,7 +209,7 @@ class AgentBreathing(Animation):
         sequence = [0, 0, 1, 1, 2, 2, 1, 1]
         color_idx = sequence[frame % len(sequence)]
         color_pair = self.enforce_vibrancy(self.palette.get(color_idx))
-        
+
         result = {}
         for i in range(len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)):
             for p in PixelMap.get_letter_pixels(self.is_big, i):

@@ -914,9 +914,7 @@ class SessionsView(Widget, can_focus=True):
         project_computer = item.project.computer or "local"
 
         project_sessions = [
-            s
-            for s in self._sessions
-            if s.project_path == project_path and (s.computer or "local") == project_computer
+            s for s in self._sessions if s.project_path == project_path and (s.computer or "local") == project_computer
         ]
         project_session_ids = {s.session_id for s in project_sessions}
 
