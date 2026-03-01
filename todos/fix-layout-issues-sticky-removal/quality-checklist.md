@@ -116,26 +116,23 @@
 ## Build Gates
 
 ### Test Gate
-- **Status:** ✓ PASSING
-- **Command:** `make test`
-- **Results:** 2534 passed, 106 skipped
-- **Failures:** 0
-- **Warnings:** 2 (unrelated pydantic/asyncio deprecations)
+- [x] Tests pass: 2534 passed, 106 skipped
+- [x] No test failures (0 failures)
+- [x] Warnings are unrelated (pydantic/asyncio deprecations only)
+- [x] Command: `make test` executed successfully
 
 ### Lint Gate
-- **Status:** ✓ PASSING
-- **Command:** `make lint`
-- **Ruff Format:** 324 files already formatted
-- **Ruff Check:** All checks passed
-- **Pyright:** 0 errors, 0 warnings, 0 informations
-- **Markdown Validation:** Passed
-- **Guardrails:** All passed
+- [x] Ruff format: 324 files already formatted
+- [x] Ruff check: all checks passed
+- [x] Pyright: 0 errors, 0 warnings, 0 informations
+- [x] Markdown validation: passed
+- [x] Guardrails: all passed
+- [x] Command: `make lint` executed successfully
 
 ### Integration Gate
-- **Status:** ✓ PASSING
-- **Verified:** No regressions in existing functionality
-- **Verified:** New tests specifically for `action_toggle_project_sessions` passing
-- **Verified:** No breaking changes to SessionsView API
+- [x] No regressions in existing functionality
+- [x] New tests for `action_toggle_project_sessions` passing
+- [x] No breaking changes to SessionsView API
 
 ## Sign-Off
 
