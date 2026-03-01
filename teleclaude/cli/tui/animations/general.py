@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import random
+import shutil
 from typing import TYPE_CHECKING, Dict, List, Tuple
 
 from teleclaude.cli.tui.animations.base import (
@@ -38,8 +39,8 @@ class GlobalSky(Animation):
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         kwargs.setdefault("target", "header")
         super().__init__(*args, **kwargs)
-        # Full possible terminal width
-        self.width = 200
+        # Cover any reasonable terminal width (up to 400 cols)
+        self.width = 400
         self.height = 10
         self._all_pixels = [(x, y) for y in range(self.height) for x in range(self.width)]
         
@@ -68,36 +69,70 @@ class GlobalSky(Animation):
                 "speed": 0.25 + self.rng.random() * 0.3
             })
 
+    # Moon shape — 6 rows, positioned near right edge for wide terminals
+    _MOON_ROWS = [
+        "  ,/M\u2593\u2593\u2593\u2593\u2593\u2593&.  ",
+        " M\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593&  ",
+        "M\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593& ",
+        "M\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593& ",
+        "'M\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593&' ",
+        "  'M\u2593\u2593\u2593\u2593\u2593\u2593&'  ",
+    ]
+    _MOON_BG = "#C8A050"
+    _MOON_GLOW = "#1A1208"
+    # City glow: 3 rows behind tab bar (y=7,8,9)
+    _CITY_GLOW = ["#0A0010", "#1A0035", "#0A0010"]
+
     def update(self, frame: int) -> RenderBuffer:
         buffer = RenderBuffer()
         is_party = self.animation_mode == "party"
-        
+
         if self.dark_mode:
             # 1. Background Super Dark Purple Gradient
             for x, y in self._all_pixels:
                 pos_factor = y / max(1, self.height - 1)
                 buffer.add_pixel(Z_SKY, x, y, self.night_sky.get_color(pos_factor))
-            
-            # 2. Stars (Mode Aware Twinkling)
+
+            # 2. City glow horizon behind tab bar (rows 7-9)
+            for dy, glow_color in enumerate(self._CITY_GLOW):
+                for x in range(self.width):
+                    buffer.add_pixel(Z_SKY, x, 7 + dy, glow_color)
+
+            # 3. Stars (mode-aware twinkling)
             for star in self.stars:
                 if is_party:
-                    # Animate twinkling in Party Mode
                     twinkle = (math.sin(frame * star["speed"] + star["phase"]) + 1.0) / 2.0
                 else:
-                    # Fixed stars in Periodic Mode (based on unique phase)
                     twinkle = (math.sin(star["phase"]) + 1.0) / 2.0
-                
                 if twinkle > 0.4:
                     buffer.add_pixel(Z_FOREGROUND, star["pos"][0], star["pos"][1], star["char"])
+
+            # 4. Moon — right side, only when wide terminal (>= 176 cols)
+            try:
+                term_width = shutil.get_terminal_size().columns
+            except Exception:
+                term_width = 200
+            moon_x = term_width - 16
+            moon_y = 1
+            if moon_x >= 160:
+                for dy, row in enumerate(self._MOON_ROWS):
+                    y = moon_y + dy
+                    for dx, ch in enumerate(row):
+                        x = moon_x + dx
+                        if ch != " ":
+                            buffer.add_pixel(Z_SKY, x, y, self._MOON_BG)
+                            buffer.add_pixel(Z_FOREGROUND, x, y, ch)
+                        elif 0 < dx < len(row) - 1:
+                            # Interior spaces get a subtle glow bg
+                            buffer.add_pixel(Z_SKY, x, y, self._MOON_GLOW)
         else:
             # 1. Background Blue Gradient
             for x, y in self._all_pixels:
                 pos_factor = y / max(1, self.height - 1)
                 buffer.add_pixel(Z_SKY, x, y, self.day_sky.get_color(pos_factor))
-                
+
             # 2. Drifting Vapor Clouds
             for cloud in self.clouds:
-                # Clouds drift in both modes
                 cx = int(cloud["x"] + frame * cloud["speed"]) % (self.width + 40) - 20
                 cy = cloud["y"]
                 for dx in range(12):
@@ -554,34 +589,36 @@ class MatrixRain(Animation):
 
 
 class FireBreath(Animation):
-    """TC10: Volumetric fireplace effect across all neon tubes."""
+    """TC10: Volumetric fireplace effect — letters burn from the bottom up."""
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self.spec = Spectrum(["#FF0000", "#FF4500", "#FFFF00", "#FF4500", "#FF0000"])
+        # Bottom = white hot, mid = orange, top = dark red
+        self.spec = Spectrum(["#400000", "#FF0000", "#FF4500", "#FFFF00", "#FFFFFF"])
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         result = {}
         modulation = self.get_modulation(frame)
-        
+
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         for i in range(num_letters):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
-                y_factor = y / max(height - 1, 1)
-                # Organic flicker (per-pixel noise)
-                flicker = self.rng.random() * 0.4 * modulation
-                # Heat intensity: 1.0 at bottom, 0.0 at top
-                intensity = min(1.0, (1.0 - y_factor) + flicker)
-                
-                color = self.spec.get_color(y_factor)
+                y_factor = y / max(height - 1, 1)   # 0=top, 1=bottom
+                fire_factor = 1.0 - y_factor          # 1=bottom (hottest), 0=top (coolest)
+                # Per-pixel flicker noise
+                flicker = self.rng.random() * 0.35 * modulation
+                # Heat intensity: peaks at bottom
+                intensity = min(1.0, fire_factor + flicker)
+
+                color = self.spec.get_color(fire_factor)
                 color = self.enforce_vibrancy(color)
                 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
                 r, g, b = hex_to_rgb(color)
-                # Vivid Dimmed base 60% + heat highlight
-                v = 0.6 + (intensity * 0.4)
+                # 0.3 base so even cool top pixels have faint glow
+                v = 0.3 + intensity * 0.7
                 result[(x, y)] = rgb_to_hex(int(r * v), int(g * v), int(b * v))
-            
+
         return result
 
 
@@ -786,19 +823,51 @@ class Bioluminescence(Animation):
 
 
 # Helper to provide some animations for random selection
+from teleclaude.cli.tui.animations.creative import (
+    ChromaticAberration,
+    Comet,
+    ColorSweep,
+    EQBars,
+    Firefly,
+    Fireworks,
+    Glitch,
+    LaserScan,
+    LavaLamp,
+    NeonFlicker,
+    Plasma,
+)
+
 GENERAL_ANIMATIONS = [
-    # Neon Core
-    LineSweepTopBottom,
-    MiddleOutVertical,
-    WithinLetterSweepLR,
-    WordSplitBlink,
+    # Letter classics (restored)
+    FullSpectrumCycle,
+    LetterWaveLR,
+    LetterWaveRL,
     LetterShimmer,
-    WavePulse,
-    BlinkSweep,
-    # Unified Atmosphere
-    GlobalSky,
-    FireBreath,
+    WordSplitBlink,
+    # Moving gradients
+    SunsetGradient,
+    # Day mode atmospherics
+    CloudsPassing,
+    FloatingBalloons,
+    # Dark mode atmospherics
+    Bioluminescence,
+    SearchlightSweep,   # Batman
+    # Original specials
+    FireBreath,         # fixed: burns from bottom
     HighSunBird,
-    SearchlightSweep,
     CinematicPrismSweep,
+    # New creative animations
+    NeonFlicker,
+    Plasma,
+    Glitch,
+    ChromaticAberration,
+    Comet,
+    Fireworks,
+    EQBars,
+    LavaLamp,
+    Firefly,
+    # Sweeps — consolidated (2 only)
+    ColorSweep,
+    LaserScan,
+    # GlobalSky is lifecycle-managed (always-on), NOT in rotation pool
 ]

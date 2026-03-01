@@ -300,18 +300,13 @@ def apply_tui_haze(hex_color: str) -> str:
 
 def get_billboard_background(focused: bool) -> str:
     """Get billboard background color, ensuring it plays along with TUI focus state."""
-    base_bg = get_terminal_background()
-    blend_target = "#ffffff" if _is_dark_mode else "#000000"
-    
     if _is_dark_mode:
-        # Focused: 20% shift (#333333) - Clear physical surface
-        # Unfocused: 25% shift (#404040) - Subtle haze, not too light
-        pct = 0.20 if focused else 0.25
-    else:
-        # Light mode: 10% and 15% shift toward black
-        pct = 0.10 if focused else 0.15
-        
-    return blend_colors(base_bg, blend_target, pct)
+        # Dark mode: fixed dark plate for best neon contrast
+        return "#242424" if focused else "#2b2b2b"
+    # Light mode: blend toward black from terminal background
+    base_bg = get_terminal_background()
+    pct = 0.10 if focused else 0.15
+    return blend_colors(base_bg, "#000000", pct)
 
 
 def get_agent_pane_inactive_background(agent: str, haze_percentage: float | None = None) -> str:

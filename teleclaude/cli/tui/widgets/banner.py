@@ -109,7 +109,8 @@ class Banner(TelecMixin, Widget):
                         bg_color = "#000000" if focused else "#050505"
                     
                     # 2. Billboard Plate (Z-3) Masks the Sky
-                    is_on_plate = (x >= 1 and x < 83)
+                    # Plate spans x=0..84: one column of padding each side of the 84-char banner text
+                    is_on_plate = (x < 85)
                     is_letter = PixelMap.get_is_letter("banner", x, y) if is_on_plate else False
                     final_bg = plate_bg if is_on_plate else bg_color
 
