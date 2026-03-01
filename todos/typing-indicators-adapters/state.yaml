@@ -1,0 +1,10 @@
+phase: prepare
+dor:
+  last_assessed_at: "2026-03-01T12:00:00Z"
+  score: 9
+  status: pass
+  schema_version: 1
+  blockers: []
+  actions_taken:
+    requirements_updated: true
+    implementation_plan_updated: true
