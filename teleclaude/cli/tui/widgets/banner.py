@@ -83,6 +83,7 @@ class Banner(TelecMixin, Widget):
             apply_tui_haze,
             blend_colors,
             get_billboard_background,
+            letter_color_floor,
         )
         from teleclaude.cli.tui.pixel_mapping import PixelMap
         from teleclaude.cli.tui.animations.base import Z_SKY, Z_BILLBOARD, Z_FOREGROUND
@@ -137,7 +138,11 @@ class Banner(TelecMixin, Widget):
                         if color and color != -1:
                             color_str = str(color)
                             if not focused: color_str = apply_tui_haze(color_str)
-                            
+                            # Letter pixels: never darker than the base gray resting state
+                            if is_letter:
+                                floor = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
+                                color_str = letter_color_floor(color_str, floor)
+
                             if is_ext:
                                 # Proportional Lighting on the final background
                                 blend_pct = 0.5 if is_letter else 0.2
@@ -186,6 +191,7 @@ class Banner(TelecMixin, Widget):
             apply_tui_haze,
             blend_colors,
             get_billboard_background,
+            letter_color_floor,
         )
         from teleclaude.cli.tui.pixel_mapping import PixelMap
         from teleclaude.cli.tui.animations.base import Z_SKY, Z_FOREGROUND
@@ -236,7 +242,11 @@ class Banner(TelecMixin, Widget):
                         if color and color != -1:
                             color_str = str(color)
                             if not focused: color_str = apply_tui_haze(color_str)
-                            
+                            # Letter pixels: never darker than the base gray resting state
+                            if is_letter:
+                                floor = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
+                                color_str = letter_color_floor(color_str, floor)
+
                             if is_ext:
                                 blend_pct = 0.5 if is_letter else 0.2
                                 final_bg = blend_colors(str(final_bg), color_str, blend_pct)

@@ -248,6 +248,19 @@ def _rgb_to_hex(r: int, g: int, b: int) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+def letter_color_floor(color_hex: str, floor_hex: str) -> str:
+    """Return color with each RGB channel clamped to at least the floor color.
+
+    Prevents animation colors on letter pixels from appearing darker than the
+    letter's resting base gray (BANNER_HEX).
+    """
+    if not _is_hex_color(color_hex) or not _is_hex_color(floor_hex):
+        return color_hex
+    cr, cg, cb = _hex_to_rgb(color_hex)
+    fr, fg, fb = _hex_to_rgb(floor_hex)
+    return _rgb_to_hex(max(cr, fr), max(cg, fg), max(cb, fb))
+
+
 def blend_colors(base_hex: str, agent_hex: str, percentage: float) -> str:
     """Blend two hex colors. new = base*(1-pct) + agent*pct"""
     # Robustness: ensure we are working with strings
