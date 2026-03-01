@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from instrukt_ai_logging import get_logger
 from rich.console import Group
 from rich.style import Style
 from rich.text import Text
@@ -12,6 +13,8 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.cli.tui.base import TelecMixin
+
+logger = get_logger(__name__)
 from teleclaude.cli.tui.theme import (
     CONNECTOR_COLOR,
     NEUTRAL_HIGHLIGHT_COLOR,
@@ -65,6 +68,13 @@ class BoxTabBar(TelecMixin, Widget):
         self._click_regions: list[tuple[int, int, str]] = []
 
     def render(self) -> Group:
+        try:
+            return self._render_tabs()
+        except Exception:
+            logger.exception("BoxTabBar render crashed")
+            return Group()
+
+    def _render_tabs(self) -> Group:
         width = self.size.width or 80
         engine = self.animation_engine
         from teleclaude.cli.tui.animations.base import (

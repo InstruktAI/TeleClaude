@@ -8,7 +8,11 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Deque, Optional, Tuple
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.cli.tui.animations.base import Animation, RenderBuffer, Z_BILLBOARD, Z_SKY
+
+logger = get_logger(__name__)
 
 
 class AnimationPriority(IntEnum):
@@ -155,8 +159,19 @@ class AnimationEngine:
                 any_active = True
                 elapsed_ms = current_time_ms - slot.last_update_ms
                 if elapsed_ms >= slot.animation.speed_ms:
-                    result = slot.animation.update(slot.frame_count)
-                    
+                    try:
+                        result = slot.animation.update(slot.frame_count)
+                    except Exception:
+                        logger.exception(
+                            "Animation update crashed",
+                            animation=type(slot.animation).__name__,
+                            target=target_name,
+                            frame=slot.frame_count,
+                        )
+                        slot.animation = None
+                        back_buffer.clear()
+                        continue
+
                     back_buffer.clear()
                     if isinstance(result, RenderBuffer):
                         # Multi-layer update

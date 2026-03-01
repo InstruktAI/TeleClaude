@@ -903,11 +903,16 @@ class TelecApp(App[str | None]):
 
     def _animation_tick(self) -> None:
         """Periodic tick: advance engine and refresh banner if frame changed."""
-        if self._animation_engine.update():
+        try:
+            changed = self._animation_engine.update()
+        except Exception:
+            logger.exception("Animation engine tick crashed")
+            return
+        if changed:
             try:
                 self.query_one(Banner).refresh()
             except Exception:
-                pass
+                logger.exception("Banner refresh failed after animation tick")
 
     def _cycle_animation(self, new_mode: str) -> None:
         """Set animation mode, reconfigure engine, and update status bar."""

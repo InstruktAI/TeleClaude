@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from instrukt_ai_logging import get_logger
 from rich.style import Style
 from rich.text import Text
 from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.cli.tui.base import TelecMixin
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.animation_engine import AnimationEngine
@@ -63,9 +66,13 @@ class Banner(TelecMixin, Widget):
         self.styles.height = LOGO_HEIGHT if value else BANNER_HEIGHT
 
     def render(self) -> Text:
-        if self.is_compact:
-            return self._render_logo()
-        return self._render_banner()
+        try:
+            if self.is_compact:
+                return self._render_logo()
+            return self._render_banner()
+        except Exception:
+            logger.exception("Banner render crashed")
+            return Text("TELECLAUDE")
 
     def _render_banner(self) -> Text:
         result = Text()
@@ -244,7 +251,7 @@ class Banner(TelecMixin, Widget):
             else:
                 # Logo pipes: E(6), D(34)
                 for x in range(total_width):
-                    if is_on_plate and (x - pad == 6 or x - pad == 34):
+                    if (x >= pad and x < total_width) and (x - pad == 6 or x - pad == 34):
                         result.append("\u2551", style=pipe_color)
                     else:
                         bg = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None

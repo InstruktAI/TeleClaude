@@ -390,7 +390,7 @@ class LetterShimmer(Animation):
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         result = {}
         for i in range(num_letters):
-            color_pair = self.palette.get((frame + i * 3) / max(1, self.duration_frames))
+            color_pair = self.palette.get((frame + i * 3) % len(self.palette))
             color = self.enforce_vibrancy(self.get_contrast_safe_color(color_pair))
             for p in PixelMap.get_letter_pixels(self.is_big, i):
                 result[p] = color
