@@ -27,9 +27,11 @@ so that `telec init` can seed these domains with zero manual authoring.
   `depends_on: [signal-ingest, signal-cluster, signal-synthesize]` in its manifest
 - **Customer relations jailing**: domain config sets `trust_threshold: strict` via
   `DomainGuardianConfig`; cartridge manifests tag external-input handlers
-- **`telec init` domain seeding**: provides default YAML config blocks for each pillar that
-  `telec init` writes into the `domains` section of the config file
-- Documentation for each pillar's event taxonomy and cartridge composition
+- **`telec init` domain seeding**: a `seed_event_domains()` step in `init_flow.py` that
+  checks if the `event_domains` config section is missing/empty and, if so, merges default
+  pillar config blocks via the config loader (merge, not overwrite — preserves user edits)
+- Documentation: schema modules and cartridge manifests serve as the primary documentation;
+  each schema module has a module-level docstring describing the pillar's event taxonomy
 
 ### Out of scope
 
@@ -59,7 +61,8 @@ so that `telec init` can seed these domains with zero manual authoring.
 - [ ] Marketing domain feed-monitor cartridge manifest declares
       `depends_on: [signal-ingest, signal-cluster, signal-synthesize]`
 - [ ] Customer relations domain config has `guardian.trust_threshold: strict`
-- [ ] `telec init` seeds all four domain config blocks into the config file
+- [ ] `telec init` calls `seed_event_domains()` which merges default pillar configs into
+      the `event_domains` section of the config file (no-op if already populated)
 - [ ] All new event type strings emitted by starter cartridges are registered in the catalog
 - [ ] Existing `domain.software-development.planning.*` emitters resolve against the catalog
       without change
@@ -78,6 +81,8 @@ so that `telec init` can seed these domains with zero manual authoring.
   `async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`
 - No wildcard event subscriptions — cartridge manifests declare explicit `event_types`
 - Guardian config is a `DomainGuardianConfig` within `DomainConfig`, not a separate file
+- Config key namespace is `event_domains` (not `domains`) to avoid collision with
+  `BusinessConfig.domains: Dict[str, str]` at `teleclaude/config/schema.py:96`
 - Config seeding uses the same YAML structure as `telec config patch` operates on
 - Cartridge I/O is via declared emitters only — no direct filesystem or network access
 

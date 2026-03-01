@@ -21,7 +21,30 @@ and parallelizable), then validation.
 | Cartridge interface    | `teleclaude_events/pipeline.py` — `Cartridge` Protocol: `async def process(event, context)` |
 | Cartridge manifest     | `teleclaude_events/cartridge_manifest.py` (from `event-domain-infrastructure`)     |
 | Domain config          | `teleclaude_events/domain_config.py` — `DomainConfig`, `DomainGuardianConfig`      |
+| Config namespace       | `event_domains` top-level key (avoids `BusinessConfig.domains: Dict[str, str]` at `schema.py:96`) |
 | Schema module pattern  | `teleclaude_events/schemas/__init__.py` — `register_all()` calls domain functions  |
+
+### Assumed CartridgeManifest fields (from `event-domain-infrastructure` plan)
+
+Until `CartridgeManifest` ships, manifests are authored as YAML matching these fields:
+
+| Field              | Type         | Description                                       |
+| ------------------ | ------------ | ------------------------------------------------- |
+| `id`               | `str`        | Unique within domain, e.g. `todo-lifecycle`        |
+| `description`      | `str`        | Short description                                  |
+| `version`          | `str`        | Semver, default `0.1.0`                            |
+| `domain_affinity`  | `list[str]`  | Domains this cartridge runs in; empty = any        |
+| `depends_on`       | `list[str]`  | Cartridge IDs within same domain                   |
+| `output_slots`     | `list[str]`  | Conflict detection keys                            |
+| `module`           | `str`        | Python module filename (without `.py`), default `cartridge` |
+
+### Cross-domain bridging pattern
+
+Marketing's `feed-monitor` subscribes to signal pipeline events (`signal.synthesis.ready`)
+and re-emits them as domain events (`domain.marketing.feed.synthesis_ready`). This is the
+assumed cross-domain pattern: a domain cartridge consumes events from another domain's
+namespace and translates them into its own. The signal pipeline emits under `signal.*`;
+the marketing domain translates into `domain.marketing.feed.*`.
 
 ---
 
@@ -47,13 +70,14 @@ and parallelizable), then validation.
   - creative-production: `asset`, `format`
   - customer-relations: `helpdesk`, `satisfaction`, `escalation`
 
-### Task 1.3: Create `telec init` domain seeding data
+### Task 1.3: Create `telec init` domain seeding mechanism
 
-**File(s):** `teleclaude_events/domain_seeds.py` (or YAML data files)
+**File(s):** `teleclaude_events/domain_seeds.py`, `teleclaude/project_setup/init_flow.py`
 
-- [ ] Define default config YAML blocks for each pillar, structured as `DomainConfig` entries:
+- [ ] Define `DEFAULT_EVENT_DOMAINS: dict` in `teleclaude_events/domain_seeds.py` containing
+      default pillar configs as Python dicts (matching `DomainConfig` structure):
   ```yaml
-  domains:
+  event_domains:
     software-development:
       enabled: true
       guardian:
@@ -80,7 +104,15 @@ and parallelizable), then validation.
         enabled: true
         trust_threshold: strict
   ```
-- [ ] Wire into `telec init` so domain configs are seeded on project bootstrap
+- [ ] Define `seed_event_domains(project_root: Path) -> None` in
+      `teleclaude/project_setup/domain_seeds.py`:
+  - Load current config via `load_config()`
+  - If `event_domains` section is missing or empty, merge `DEFAULT_EVENT_DOMAINS`
+  - If `event_domains` already has entries, skip (no-op — preserves user edits)
+  - Write updated config via the config loader's save mechanism
+- [ ] Add `seed_event_domains(project_root)` call to `init_project()` in `init_flow.py`
+      (after `sync_project_artifacts`, before `install_docs_watch`)
+- [ ] Test: `seed_event_domains` is idempotent — calling twice produces same result
 
 ---
 
@@ -133,35 +165,44 @@ New event schemas to add:
 ```
 
 - [ ] `todo-lifecycle/manifest.yaml`: id=todo-lifecycle, domain_affinity=[software-development],
-      depends_on=[], event_types=[domain.software-development.planning.*]
+      depends_on=[], event_types=[domain.software-development.planning.todo_created,
+      domain.software-development.planning.todo_dumped,
+      domain.software-development.planning.todo_activated,
+      domain.software-development.planning.artifact_changed,
+      domain.software-development.planning.dependency_resolved,
+      domain.software-development.planning.dor_assessed]
 - [ ] `todo-lifecycle/cartridge.py`: subscribes to planning events, emits downstream state
       transitions, notifies on `dor_assessed` and `todo_activated`
 - [ ] `build-notifier/manifest.yaml`: id=build-notifier, domain_affinity=[software-development],
-      depends_on=[], event_types=[domain.software-development.build.*]
+      depends_on=[], event_types=[domain.software-development.build.completed]
 - [ ] `build-notifier/cartridge.py`: subscribes to `build.completed` (checks payload for
       failure), notifies assigned developer
 - [ ] `deploy-tracker/manifest.yaml`: id=deploy-tracker, domain_affinity=[software-development],
-      depends_on=[], event_types=[domain.software-development.deploy.*]
+      depends_on=[], event_types=[domain.software-development.deploy.triggered,
+      domain.software-development.deploy.succeeded,
+      domain.software-development.deploy.failed]
 - [ ] `deploy-tracker/cartridge.py`: subscribes to deploy events, maintains rolling log,
       notifies on failure
 
 ### Task 2.3: Domain config entry
 
-**Data:** YAML block for `telec init` seeding
+**Data:** YAML block for `event_domains` config seeding
 
-- [ ] `DomainConfig` block:
+- [ ] `DomainConfig` block (under `event_domains.software-development`):
   ```yaml
-  software-development:
-    enabled: true
-    guardian:
-      agent: claude
-      mode: med
+  event_domains:
+    software-development:
       enabled: true
-      evaluation_prompt: "Software development domain guardian: monitor todo lifecycle,
-        build health, and deployment patterns. Detect stalled todos, repeated build
-        failures, and deployment anomalies."
+      guardian:
+        agent: claude
+        mode: med
+        enabled: true
+        evaluation_prompt: "Software development domain guardian: monitor todo lifecycle,
+          build health, and deployment patterns. Detect stalled todos, repeated build
+          failures, and deployment anomalies."
   ```
-- [ ] Autonomy defaults (seeded via `telec config patch`):
+- [ ] Autonomy defaults (seeded via `telec config patch` under
+      `event_domains.software-development.autonomy`):
   - todo-lifecycle: `auto_notify`
   - build-notifier: `notify`
   - deploy-tracker: `notify`
@@ -206,17 +247,23 @@ New event schemas to add:
 ```
 
 - [ ] `content-pipeline/manifest.yaml`: id=content-pipeline,
-      domain_affinity=[marketing], depends_on=[]
-- [ ] `content-pipeline/cartridge.py`: subscribes to `content.*`, orchestrates
+      domain_affinity=[marketing], depends_on=[],
+      event_types=[domain.marketing.content.brief_created,
+      domain.marketing.content.draft_ready,
+      domain.marketing.content.published,
+      domain.marketing.content.performance_reported]
+- [ ] `content-pipeline/cartridge.py`: subscribes to content events, orchestrates
       brief -> draft -> publish lifecycle transitions
 - [ ] `campaign-budget-monitor/manifest.yaml`: id=campaign-budget-monitor,
-      domain_affinity=[marketing], depends_on=[]
+      domain_affinity=[marketing], depends_on=[],
+      event_types=[domain.marketing.campaign.budget_threshold_hit]
 - [ ] `campaign-budget-monitor/cartridge.py`: subscribes to
       `campaign.budget_threshold_hit`, evaluates spend rate
 - [ ] `feed-monitor/manifest.yaml`: id=feed-monitor, domain_affinity=[marketing],
-      depends_on=[signal-ingest, signal-cluster, signal-synthesize]
-- [ ] `feed-monitor/cartridge.py`: subscribes to `signal.synthesis.ready` (from signal
-      pipeline), maps to `domain.marketing.feed.synthesis_ready` domain events
+      depends_on=[signal-ingest, signal-cluster, signal-synthesize],
+      event_types=[signal.synthesis.ready]
+- [ ] `feed-monitor/cartridge.py`: subscribes to `signal.synthesis.ready` (cross-domain
+      bridge — see overview), maps to `domain.marketing.feed.synthesis_ready` domain events
 
 ### Task 3.3: Domain config entry
 
@@ -264,11 +311,18 @@ New event schemas to add:
 ```
 
 - [ ] `asset-lifecycle/manifest.yaml`: id=asset-lifecycle,
-      domain_affinity=[creative-production], depends_on=[]
-- [ ] `asset-lifecycle/cartridge.py`: subscribes to `asset.*`, tracks brief-to-delivery
-      chain, notifies stakeholders at each gate
+      domain_affinity=[creative-production], depends_on=[],
+      event_types=[domain.creative-production.asset.brief_created,
+      domain.creative-production.asset.draft_submitted,
+      domain.creative-production.asset.review_requested,
+      domain.creative-production.asset.revision_requested,
+      domain.creative-production.asset.approved,
+      domain.creative-production.asset.delivered]
+- [ ] `asset-lifecycle/cartridge.py`: subscribes to asset lifecycle events, tracks
+      brief-to-delivery chain, notifies stakeholders at each gate
 - [ ] `review-gatekeeper/manifest.yaml`: id=review-gatekeeper,
-      domain_affinity=[creative-production], depends_on=[asset-lifecycle]
+      domain_affinity=[creative-production], depends_on=[asset-lifecycle],
+      event_types=[domain.creative-production.asset.review_requested]
 - [ ] `review-gatekeeper/cartridge.py`: subscribes to `asset.review_requested`, routes
       to reviewer, enforces SLA timer
 
@@ -322,24 +376,29 @@ New event schemas to add:
 ```
 
 - [ ] `helpdesk-triage/manifest.yaml`: id=helpdesk-triage,
-      domain_affinity=[customer-relations], depends_on=[]
+      domain_affinity=[customer-relations], depends_on=[],
+      event_types=[domain.customer-relations.helpdesk.ticket_created]
       Note in manifest metadata: `trust_required: strict`
 - [ ] `helpdesk-triage/cartridge.py`: subscribes to `helpdesk.ticket_created`, classifies
       urgency, notifies on-call
 - [ ] `escalation-handler/manifest.yaml`: id=escalation-handler,
-      domain_affinity=[customer-relations], depends_on=[helpdesk-triage]
+      domain_affinity=[customer-relations], depends_on=[helpdesk-triage],
+      event_types=[domain.customer-relations.helpdesk.ticket_escalated,
+      domain.customer-relations.escalation.triggered]
       Note: `trust_required: strict`
 - [ ] `escalation-handler/cartridge.py`: subscribes to `helpdesk.ticket_escalated` and
       `escalation.triggered`, notifies admin
 - [ ] `satisfaction-tracker/manifest.yaml`: id=satisfaction-tracker,
-      domain_affinity=[customer-relations], depends_on=[]
+      domain_affinity=[customer-relations], depends_on=[],
+      event_types=[domain.customer-relations.satisfaction.response_received]
       Note: `trust_required: strict`
 - [ ] `satisfaction-tracker/cartridge.py`: subscribes to `satisfaction.response_received`,
       aggregates scores, emits `satisfaction.score_recorded`
 
 ### Task 5.3: Domain config entry
 
-- [ ] `DomainConfig` block with `guardian.trust_threshold: strict`
+- [ ] `DomainConfig` block under `event_domains.customer-relations` with
+      `guardian.trust_threshold: strict`
 - [ ] Guardian evaluation prompt: external input threat model, escalation decision criteria,
       customer data sensitivity, explicit instruction to require human confirmation
 - [ ] Autonomy defaults: helpdesk-triage -> `ask`, escalation-handler -> `ask`,
@@ -371,7 +430,14 @@ New event schemas to add:
 - [ ] Config seeding: verify domain config blocks are valid `DomainConfig` structures
 - [ ] Run `make test`
 
-### Task 6.3: Quality checks
+### Task 6.3: Documentation
+
+- [ ] Each schema module (`marketing.py`, `creative_production.py`, `customer_relations.py`)
+      has a module-level docstring describing the pillar's event taxonomy
+- [ ] Each cartridge manifest `description` field explains what the cartridge does
+- [ ] Schema modules and manifests serve as the primary documentation (no separate docs)
+
+### Task 6.4: Quality checks
 
 - [ ] Run `make lint`
 - [ ] Verify no starter cartridge uses wildcard event subscriptions
