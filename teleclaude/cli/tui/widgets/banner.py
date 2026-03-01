@@ -80,6 +80,7 @@ class Banner(TelecMixin, Widget):
             get_billboard_background,
         )
         from teleclaude.cli.tui.pixel_mapping import PixelMap
+        from teleclaude.cli.tui.animations.base import Z_SKY, Z_BILLBOARD, Z_FOREGROUND
 
         focused = getattr(self.app, "app_focus", True)
         plate_bg = get_billboard_background(focused)
@@ -95,33 +96,59 @@ class Banner(TelecMixin, Widget):
                 line = BANNER_LINES[y]
                 for x in range(width):
                     char = line[x] if x < len(line) else " "
-                    bg_color = plate_bg
                     
+                    # 1. Start with Base Atmosphere (Sky Z-0)
+                    bg_color = engine.get_layer_color(Z_SKY, x, y, target="banner") if engine else None
+                    if not isinstance(bg_color, str):
+                        bg_color = "#000000" if focused else "#050505"
+                    
+                    # 2. Billboard Plate (Z-3) Masks the Sky
+                    # If it's a letter or within sign rectangle, apply billboard logic
+                    is_letter = PixelMap.get_is_letter("banner", x, y)
+                    is_on_plate = (x >= 1 and x < 83) # Rectangle boundary
+                    
+                    if is_on_plate:
+                        final_bg = plate_bg
+                    else:
+                        final_bg = bg_color
+
+                    # 3. Foreground / Entities (Z-7) - e.g. Stars, Clouds, Batman
+                    fg_char = char
+                    fg_color = None
+                    if engine:
+                        entity_color = engine.get_layer_color(Z_FOREGROUND, x, y, target="banner")
+                        if entity_color and entity_color != -1:
+                            if isinstance(entity_color, str) and len(entity_color) == 1:
+                                # It's a special character (Star/Cloud)
+                                fg_char = entity_color
+                                fg_color = "#FFFFFF"
+                            elif isinstance(entity_color, str):
+                                fg_color = entity_color
+
+                    # 4. Final Compositing
                     if engine and engine.has_active_animation:
+                        # Internal Neon Surge or External Reflective Light
                         color = engine.get_color(x, y, target="banner")
                         is_ext = engine.is_external_light(target="banner")
                         
                         if color and color != -1:
-                            if not focused:
-                                color = apply_tui_haze(color)
+                            if not focused: color = apply_tui_haze(color)
                             
                             if is_ext:
-                                # Proportional Lighting:
-                                # Letters reflect more light (50%) than the billboard plate (20%).
-                                # This ensures contrast between sign and surface.
-                                is_letter = PixelMap.get_is_letter("banner", x, y)
+                                # Proportional Lighting on the final background
                                 blend_pct = 0.5 if is_letter else 0.2
-                                pixel_bg = blend_colors(bg_color, color, blend_pct)
-                                result.append(char, style=Style(color=color, bgcolor=pixel_bg))
+                                final_bg = blend_colors(final_bg, color, blend_pct)
+                                result.append(fg_char if fg_color else char, style=Style(color=color, bgcolor=final_bg))
                             else:
-                                # Internal Neon: billboard background stays at its base plate gray
-                                result.append(char, style=Style(color=color, bgcolor=bg_color))
+                                # Neon Internal Surge
+                                result.append(fg_char if fg_color else char, style=Style(color=color, bgcolor=final_bg))
                         else:
-                            fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
-                            result.append(char, style=Style(color=fg, bgcolor=bg_color))
+                            # Base State
+                            fg = fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX))
+                            result.append(fg_char, style=Style(color=fg, bgcolor=final_bg))
                     else:
-                        fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
-                        result.append(char, style=Style(color=fg, bgcolor=bg_color))
+                        fg = fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX))
+                        result.append(fg_char, style=Style(color=fg, bgcolor=final_bg))
             else:
                 # Pipes under E (13) and D (70)
                 for x in range(width):
@@ -143,6 +170,7 @@ class Banner(TelecMixin, Widget):
             get_billboard_background,
         )
         from teleclaude.cli.tui.pixel_mapping import PixelMap
+        from teleclaude.cli.tui.animations.base import Z_SKY, Z_FOREGROUND
 
         focused = getattr(self.app, "app_focus", True)
         plate_bg = get_billboard_background(focused)
@@ -162,29 +190,48 @@ class Banner(TelecMixin, Widget):
                 line = LOGO_LINES[y]
                 for x in range(width):
                     char = line[x] if x < len(line) else " "
-                    bg_color = plate_bg
+                    
+                    # 1. Sky Z-0
+                    bg_color = engine.get_layer_color(Z_SKY, x, y, target="logo") if engine else None
+                    if not isinstance(bg_color, str):
+                        bg_color = "#000000" if focused else "#050505"
+                    
+                    # 2. Masking
+                    is_letter = PixelMap.get_is_letter("logo", x, y)
+                    is_on_plate = (x >= 0 and x < 40)
+                    final_bg = plate_bg if is_on_plate else bg_color
+
+                    # 3. Entities Z-7
+                    fg_char = char
+                    fg_color = None
+                    if engine:
+                        entity_color = engine.get_layer_color(Z_FOREGROUND, x, y, target="logo")
+                        if entity_color and entity_color != -1:
+                            if isinstance(entity_color, str) and len(entity_color) == 1:
+                                fg_char = entity_color
+                                fg_color = "#FFFFFF"
+                            elif isinstance(entity_color, str):
+                                fg_color = entity_color
 
                     if engine and engine.has_active_animation:
                         color = engine.get_color(x, y, target="logo")
                         is_ext = engine.is_external_light(target="logo")
                         
                         if color and color != -1:
-                            if not focused:
-                                color = apply_tui_haze(color)
+                            if not focused: color = apply_tui_haze(color)
                             
                             if is_ext:
-                                is_letter = PixelMap.get_is_letter("logo", x, y)
                                 blend_pct = 0.5 if is_letter else 0.2
-                                pixel_bg = blend_colors(bg_color, color, blend_pct)
-                                result.append(char, style=Style(color=color, bgcolor=pixel_bg))
+                                final_bg = blend_colors(final_bg, color, blend_pct)
+                                result.append(fg_char if fg_color else char, style=Style(color=color, bgcolor=final_bg))
                             else:
-                                result.append(char, style=Style(color=color, bgcolor=bg_color))
+                                result.append(fg_char if fg_color else char, style=Style(color=color, bgcolor=final_bg))
                         else:
-                            fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
-                            result.append(char, style=Style(color=fg, bgcolor=bg_color))
+                            fg = fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX))
+                            result.append(fg_char, style=Style(color=fg, bgcolor=final_bg))
                     else:
-                        fg = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
-                        result.append(char, style=Style(color=fg, bgcolor=bg_color))
+                        fg = fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX))
+                        result.append(fg_char, style=Style(color=fg, bgcolor=final_bg))
             else:
                 # Logo pipes: E(6), D(34)
                 for x in range(width):

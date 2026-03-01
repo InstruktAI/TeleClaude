@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Deque, Optional, Tuple
 
-from teleclaude.cli.tui.animations.base import Animation
+from teleclaude.cli.tui.animations.base import Animation, RenderBuffer, Z_BILLBOARD, Z_SKY
 
 
 class AnimationPriority(IntEnum):
@@ -30,25 +30,21 @@ class AnimationSlot:
     looping: bool = False
 
 
-# Buffer values are Rich color strings (from palettes) or -1 (clear sentinel).
-_BufferDict = dict[tuple[int, int], str | int]
+# A buffer maps Z-level -> (pixel -> color)
+_ZBufferDict = dict[int, dict[tuple[int, int], str | int]]
 
 
 class AnimationEngine:
     """Manages animation state and timing for multiple render targets.
 
-    Supports priority-based animation queuing per target:
-    - Activity animations (higher priority) interrupt periodic animations
-    - Periodic animations queue behind activity animations
-
-    Color values are Rich-compatible color strings (e.g., "color(196)", "#ff5f5f").
-    The sentinel value -1 means "no animation color" (clear pixel).
+    Supports priority-based animation queuing per target.
+    Handles layered Z-Buffer compositing for physical occlusion.
     """
 
     def __init__(self) -> None:
         self._targets: dict[str, AnimationSlot] = {}
-        self._buffers_front: dict[str, _BufferDict] = {}
-        self._buffers_back: dict[str, _BufferDict] = {}
+        self._buffers_front: dict[str, _ZBufferDict] = {}
+        self._buffers_back: dict[str, _ZBufferDict] = {}
         self._is_enabled: bool = True
         self._has_active_animation: bool = False
         # Optional callback when a new animation starts
@@ -148,8 +144,19 @@ class AnimationEngine:
                 any_active = True
                 elapsed_ms = current_time_ms - slot.last_update_ms
                 if elapsed_ms >= slot.animation.speed_ms:
-                    new_colors = slot.animation.update(slot.frame_count)
-                    back_buffer.update(new_colors)
+                    result = slot.animation.update(slot.frame_count)
+                    
+                    back_buffer.clear()
+                    if isinstance(result, RenderBuffer):
+                        # Multi-layer update
+                        for z, pixels in result.layers.items():
+                            if z not in back_buffer: back_buffer[z] = {}
+                            back_buffer[z].update(pixels)
+                    else:
+                        # Legacy single-layer update (default to billboard level)
+                        if Z_BILLBOARD not in back_buffer: back_buffer[Z_BILLBOARD] = {}
+                        back_buffer[Z_BILLBOARD].update(result)
+                        
                     slot.frame_count += 1
                     slot.last_update_ms = current_time_ms
                     changed = True
@@ -177,24 +184,31 @@ class AnimationEngine:
         return changed
 
     def get_color(self, x: int, y: int, target: str = "banner") -> str | None:
-        """Get the Rich color string for a specific pixel.
-
-        Reads from front buffer (stable snapshot during rendering).
-
-        Returns:
-            Rich color string or None if no animation color is set.
+        """Get the composited Rich color string for a specific pixel.
+        Traverses Z-layers from front to back (10 -> 0).
         """
         if not self._is_enabled:
             return None
 
-        colors = self._buffers_front.get(target)
-        if colors is None:
+        z_buffer = self._buffers_front.get(target)
+        if not z_buffer:
             return None
 
-        color = colors.get((x, y))
-        # Only return actual color strings; -1 sentinel and missing = no color
-        if isinstance(color, str):
-            return color
+        # Compositor: Traverse layers from front-most (10) to back-most (0)
+        for z in sorted(z_buffer.keys(), reverse=True):
+            layer = z_buffer[z]
+            color = layer.get((x, y))
+            if isinstance(color, str):
+                return color
+            # If -1 or missing, continue to lower layer
+            
+        return None
+
+    def get_layer_color(self, z: int, x: int, y: int, target: str = "banner") -> str | int | None:
+        """Get the raw color value for a specific Z-layer."""
+        z_buffer = self._buffers_front.get(target)
+        if z_buffer and z in z_buffer:
+            return z_buffer[z].get((x, y))
         return None
 
     def clear_colors(self) -> None:
