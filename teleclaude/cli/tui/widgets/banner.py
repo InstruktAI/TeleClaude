@@ -98,17 +98,18 @@ class Banner(TelecMixin, Widget):
                     final_bg = plate_bg if is_on_plate else bg_color
 
                     # 3. Foreground / Entities (Z-7) from Global Header
-                    fg_char = line[x] if x < len(line) else " "
+                    fg_char = char
                     fg_color = None
                     if engine:
                         entity_val = engine.get_layer_color(Z_FOREGROUND, x, y, target="header")
                         if entity_val and entity_val != -1:
-                            if isinstance(entity_val, str) and len(entity_val) == 1:
-                                # It's a special character (Star/Cloud)
-                                fg_char = entity_val
-                                fg_color = "#FFFFFF"
-                            elif isinstance(entity_val, str):
-                                fg_color = entity_val
+                            # PHYSICAL MASKING: Atmospheric entities (stars/clouds) only show in non-physical space
+                            if not is_on_plate:
+                                if isinstance(entity_val, str) and len(entity_val) == 1:
+                                    fg_char = entity_val
+                                    fg_color = "#FFFFFF"
+                                elif isinstance(entity_val, str):
+                                    fg_color = entity_val
 
                     # 4. Final Compositing
                     if engine and engine.has_active_animation:
@@ -141,9 +142,21 @@ class Banner(TelecMixin, Widget):
                     if x == 13 or x == 70:
                         result.append("\u2551", style=pipe_color)
                     else:
+                        # 1. Sky Z-0 between pipes
                         bg = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
                         if not isinstance(bg, str): bg = "#000000"
-                        result.append(" ", style=Style(bgcolor=str(bg)))
+                        
+                        # 2. Atmospheric entities (stars/clouds)
+                        fg_char = " "
+                        fg_color = None
+                        if engine:
+                            entity_val = engine.get_layer_color(Z_FOREGROUND, x, y, target="header")
+                            if entity_val and entity_val != -1:
+                                if isinstance(entity_val, str) and len(entity_val) == 1:
+                                    fg_char = entity_val
+                                    fg_color = "#FFFFFF"
+                        
+                        result.append(fg_char, style=Style(color=fg_color, bgcolor=str(bg)))
 
         return result
 
@@ -191,11 +204,13 @@ class Banner(TelecMixin, Widget):
                     if engine:
                         entity_val = engine.get_layer_color(Z_FOREGROUND, x, y, target="header")
                         if entity_val and entity_val != -1:
-                            if isinstance(entity_val, str) and len(entity_val) == 1:
-                                fg_char = entity_val
-                                fg_color = "#FFFFFF"
-                            elif isinstance(entity_val, str):
-                                fg_color = entity_val
+                            # PHYSICAL MASKING: Only show in non-physical space
+                            if not is_on_plate:
+                                if isinstance(entity_val, str) and len(entity_val) == 1:
+                                    fg_char = entity_val
+                                    fg_color = "#FFFFFF"
+                                elif isinstance(entity_val, str):
+                                    fg_color = entity_val
 
                     if engine and engine.has_active_animation:
                         color = engine.get_color(x - pad, y, target="logo") if is_on_plate else None
@@ -225,6 +240,17 @@ class Banner(TelecMixin, Widget):
                     else:
                         bg = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
                         if not isinstance(bg, str): bg = "#000000"
-                        result.append(" ", style=Style(bgcolor=str(bg)))
+                        
+                        # Atmospheric entities between pipes
+                        fg_char = " "
+                        fg_color = None
+                        if engine:
+                            entity_val = engine.get_layer_color(Z_FOREGROUND, x, y, target="header")
+                            if entity_val and entity_val != -1:
+                                if isinstance(entity_val, str) and len(entity_val) == 1:
+                                    fg_char = entity_val
+                                    fg_color = "#FFFFFF"
+                        
+                        result.append(fg_char, style=Style(color=fg_color, bgcolor=str(bg)))
 
         return result

@@ -124,6 +124,8 @@ class BoxTabBar(TelecMixin, Widget):
                 # 3. Layered Compositing (Physical Occlusion)
                 final_fg = fg
                 final_bg = bg_color
+                fg_char = char
+                fg_color = None
                 
                 if engine:
                     # Check for foreground entities (Z-7) from header
@@ -131,11 +133,13 @@ class BoxTabBar(TelecMixin, Widget):
                     
                     if Z_FOREGROUND > z_base:
                         if entity and entity != -1:
-                            if isinstance(entity, str) and len(entity) == 1:
-                                char = entity
-                                final_fg = "#FFFFFF"
-                            elif isinstance(entity, str):
-                                final_fg = entity
+                            # PHYSICAL MASKING: Only show in non-physical space (not in tab or on line)
+                            if not in_tab and not (not in_tab and y_offset == 2):
+                                if isinstance(entity, str) and len(entity) == 1:
+                                    fg_char = entity
+                                    fg_color = "#FFFFFF"
+                                elif isinstance(entity, str):
+                                    fg_color = entity
                     
                     # Atmospheric light reflection (External)
                     if engine.has_active_animation and engine.is_external_light():
@@ -146,7 +150,7 @@ class BoxTabBar(TelecMixin, Widget):
                             final_bg = blend_colors(str(final_bg), color_str, blend_pct)
                             final_fg = blend_colors(str(final_fg), color_str, 0.5)
 
-                row_text.append(char, style=Style(color=str(final_fg), bgcolor=str(final_bg)))
+                row_text.append(fg_char, style=Style(color=str(fg_color or final_fg), bgcolor=str(final_bg)))
             rows.append(row_text)
 
         return Group(*rows)
