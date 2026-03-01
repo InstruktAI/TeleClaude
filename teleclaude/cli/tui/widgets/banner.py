@@ -44,6 +44,20 @@ def _to_color(c: str | int | None) -> str | None:
     return None
 
 
+def _is_pipe(c: str) -> bool:
+    """True for double-line box-drawing connector characters (U+2550–U+256C)."""
+    return len(c) == 1 and 0x2550 <= ord(c) <= 0x256C
+
+
+def _dim_color(hex_color: str, factor: float) -> str:
+    """Scale a #RRGGBB color's brightness by factor (e.g. 0.7 = 30% darker)."""
+    h = hex_color.lstrip("#")
+    r = int(int(h[0:2], 16) * factor)
+    g = int(int(h[2:4], 16) * factor)
+    b = int(int(h[4:6], 16) * factor)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 class Banner(TelecMixin, Widget):
     """ASCII art banner for the TUI header."""
 
@@ -135,6 +149,7 @@ class Banner(TelecMixin, Widget):
                         color = engine.get_color(x, y, target="banner")
                         is_ext = engine.is_external_light(target="banner")
                         
+                        is_pipe_char = _is_pipe(char)
                         if color and color != -1:
                             color_str = str(color)
                             if not focused: color_str = apply_tui_haze(color_str)
@@ -142,6 +157,9 @@ class Banner(TelecMixin, Widget):
                             if is_letter:
                                 floor = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
                                 color_str = letter_color_floor(color_str, floor)
+                            # Pipe connectors: 30% dimmer than fill pixels
+                            if is_pipe_char:
+                                color_str = _dim_color(color_str, 0.7)
 
                             if is_ext:
                                 # Proportional Lighting on the final background
@@ -154,9 +172,14 @@ class Banner(TelecMixin, Widget):
                         else:
                             # Base State
                             fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
+                            if is_pipe_char:
+                                fg = _dim_color(fg, 0.7)
                             result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
                     else:
+                        is_pipe_char = _is_pipe(char)
                         fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
+                        if is_pipe_char:
+                            fg = _dim_color(fg, 0.7)
                         result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
             else:
                 # Row 6: Pipes under E (13) and D (70)
@@ -235,10 +258,11 @@ class Banner(TelecMixin, Widget):
                                 elif isinstance(entity_val, str):
                                     fg_color = entity_val
 
+                    is_pipe_char = _is_pipe(fg_char)
                     if engine and engine.has_active_animation:
                         color = engine.get_color(x - pad, y, target="logo") if is_on_plate else None
                         is_ext = engine.is_external_light(target="logo")
-                        
+
                         if color and color != -1:
                             color_str = str(color)
                             if not focused: color_str = apply_tui_haze(color_str)
@@ -246,6 +270,8 @@ class Banner(TelecMixin, Widget):
                             if is_letter:
                                 floor = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
                                 color_str = letter_color_floor(color_str, floor)
+                            if is_pipe_char:
+                                color_str = _dim_color(color_str, 0.7)
 
                             if is_ext:
                                 blend_pct = 0.5 if is_letter else 0.2
@@ -255,9 +281,13 @@ class Banner(TelecMixin, Widget):
                                 result.append(fg_char, style=Style(color=color_str, bgcolor=_to_color(final_bg)))
                         else:
                             fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
+                            if is_pipe_char:
+                                fg = _dim_color(fg, 0.7)
                             result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
                     else:
                         fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
+                        if is_pipe_char:
+                            fg = _dim_color(fg, 0.7)
                         result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
             else:
                 # Logo pipes: E(6), D(34)

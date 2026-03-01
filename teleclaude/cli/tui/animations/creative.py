@@ -352,16 +352,16 @@ class Fireworks(Animation):
         pixels = self._pixels
 
         # Spawn
-        if frame >= self._next_burst and len(self._bursts) < 3 and pixels:
+        if frame >= self._next_burst and len(self._bursts) < 15 and pixels:
             hue = _pick_hue(self.rng)
             self._bursts.append({
                 "center": self.rng.choice(pixels),
                 "color": _hue_to_hex(hue),
                 "start": frame,
-                "max_r": self.rng.uniform(3.5, 6.0),
+                "max_r": self.rng.uniform(5.0, 12.0),
                 "life": self.rng.randint(18, 28),
             })
-            self._next_burst = frame + self.rng.randint(10, 22)
+            self._next_burst = frame + self.rng.randint(3, 7)
 
         self._bursts = [b for b in self._bursts if frame - b["start"] < b["life"]]
 
@@ -378,7 +378,7 @@ class Fireworks(Animation):
             for x, y in pixels:
                 dist = math.sqrt((x - bx) ** 2 + (y - by) ** 2)
                 ring_dist = abs(dist - radius)
-                if ring_dist < 1.2:
+                if ring_dist < 2.0:
                     ring_fade = (1.0 - ring_dist / 1.2) * fade
                     flash = 255 if progress < 0.12 else 0
                     r = min(255, int(r0 * ring_fade) + flash)
@@ -652,10 +652,11 @@ class ColorSweep(Animation):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 pos_val, color_frac = pos(x, y)
                 surge = self.linear_surge(pos_val, active, 4.0)
+                if surge <= 0:
+                    continue  # transparent outside beam — base color shows through
                 color = self.enforce_vibrancy(spec.get_color(color_frac))
-                intensity = 0.45 + surge * 0.55
                 r0, g0, b0 = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r0 * intensity), int(g0 * intensity), int(b0 * intensity))
+                result[(x, y)] = rgb_to_hex(int(r0 * surge), int(g0 * surge), int(b0 * surge))
 
         return result
 
