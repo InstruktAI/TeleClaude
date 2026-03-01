@@ -20,7 +20,7 @@ BANNER_LINES = [
     "    \u2588\u2588\u2551   \u2588\u2588\u2588\u2588\u2588\u2557  \u2588\u2588\u2551     \u2588\u2588\u2588\u2588\u2588\u2557  \u2588\u2588\u2551     \u2588\u2588\u2551     \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551\u2588\u2588\u2551   \u2588\u2588\u2551\u2588\u2588\u2551  \u2588\u2588\u2551\u2588\u2588\u2588\u2588\u2588\u2557  ",
     "    \u2588\u2588\u2551   \u2588\u2588\u2554\u2550\u2550\u255d  \u2588\u2588\u2551     \u2588\u2588\u2554\u2550\u2550\u255d  \u2588\u2588\u2551     \u2588\u2588\u2551     \u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557\u2588\u2588\u2551   \u2588\u2588\u2551\u2588\u2588\u2551  \u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u255d  ",
     "    \u2588\u2588\u2551   \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u255a\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2551  \u2588\u2588\u2551\u255a\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255d\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255d\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557",
-    "    \u255a\u2550\u255d   \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u255d\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d\u255a\u2550\u255d  \u255a\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d",
+    "    \u255a\u255d   \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u255d\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d\u255a\u2550\u255d  \u255a\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d",
 ]
 
 LOGO_LINES = [
@@ -32,6 +32,13 @@ LOGO_LINES = [
 BANNER_HEIGHT = len(BANNER_LINES) + 1
 LOGO_HEIGHT = len(LOGO_LINES) + 1
 LOGO_WIDTH = 40
+
+
+def _to_color(c: str | int | None) -> str | None:
+    """Helper to ensure Style receives a valid color string or None."""
+    if isinstance(c, str) and len(c) > 1:
+        return c
+    return None
 
 
 class Banner(TelecMixin, Widget):
@@ -79,10 +86,6 @@ class Banner(TelecMixin, Widget):
 
         # Full terminal width for sky
         total_width = self.size.width or 84
-        
-        def to_color(c: str | int | None) -> str | None:
-            if isinstance(c, str) and len(c) > 1: return c
-            return None
 
         for y in range(BANNER_HEIGHT):
             if y > 0:
@@ -93,7 +96,7 @@ class Banner(TelecMixin, Widget):
                 for x in range(total_width):
                     char = line[x] if x < len(line) else " "
                     
-                    # 1. Base Atmosphere (Sky Z-0) from Global Header
+                    # 1. Start with Base Atmosphere (Sky Z-0) from Global Header
                     bg_color = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
                     if not isinstance(bg_color, str):
                         bg_color = "#000000" if focused else "#050505"
@@ -119,6 +122,7 @@ class Banner(TelecMixin, Widget):
 
                     # 4. Final Compositing
                     if engine and engine.has_active_animation:
+                        # Internal Neon Surge or External Reflective Light
                         color = engine.get_color(x, y, target="banner")
                         is_ext = engine.is_external_light(target="banner")
                         
@@ -127,20 +131,20 @@ class Banner(TelecMixin, Widget):
                             if not focused: color_str = apply_tui_haze(color_str)
                             
                             if is_ext:
-                                # Proportional Lighting
+                                # Proportional Lighting on the final background
                                 blend_pct = 0.5 if is_letter else 0.2
                                 final_bg = blend_colors(str(final_bg), color_str, blend_pct)
-                                result.append(fg_char, style=Style(color=color_str, bgcolor=to_color(final_bg)))
+                                result.append(fg_char, style=Style(color=color_str, bgcolor=_to_color(final_bg)))
                             else:
                                 # Neon Internal Surge
-                                result.append(fg_char, style=Style(color=color_str, bgcolor=to_color(final_bg)))
+                                result.append(fg_char, style=Style(color=color_str, bgcolor=_to_color(final_bg)))
                         else:
                             # Base State
                             fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
-                            result.append(fg_char, style=Style(color=fg, bgcolor=to_color(final_bg)))
+                            result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
                     else:
                         fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
-                        result.append(fg_char, style=Style(color=fg, bgcolor=to_color(final_bg)))
+                        result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
             else:
                 # Row 6: Pipes under E (13) and D (70)
                 for x in range(total_width):
@@ -161,9 +165,7 @@ class Banner(TelecMixin, Widget):
                                     fg_char = entity_val
                                     fg_color = "#FFFFFF"
                         
-                        result.append(fg_char, style=Style(color=to_color(fg_color), bgcolor=to_color(bg)))
-
-        return result
+                        result.append(fg_char, style=Style(color=_to_color(fg_color), bgcolor=_to_color(bg)))
 
         return result
 
@@ -187,10 +189,6 @@ class Banner(TelecMixin, Widget):
         width = 40
         total_width = self.size.width or 40
         pad = max(0, total_width - width)
-        
-        def to_color(c: str | int | None) -> str | None:
-            if isinstance(c, str) and len(c) > 1: return c
-            return None
 
         for y in range(LOGO_HEIGHT):
             if y > 0:
@@ -234,15 +232,15 @@ class Banner(TelecMixin, Widget):
                             if is_ext:
                                 blend_pct = 0.5 if is_letter else 0.2
                                 final_bg = blend_colors(str(final_bg), color_str, blend_pct)
-                                result.append(fg_char, style=Style(color=color_str, bgcolor=to_color(final_bg)))
+                                result.append(fg_char, style=Style(color=color_str, bgcolor=_to_color(final_bg)))
                             else:
-                                result.append(fg_char, style=Style(color=color_str, bgcolor=to_color(final_bg)))
+                                result.append(fg_char, style=Style(color=color_str, bgcolor=_to_color(final_bg)))
                         else:
                             fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
-                            result.append(fg_char, style=Style(color=fg, bgcolor=to_color(final_bg)))
+                            result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
                     else:
                         fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
-                        result.append(fg_char, style=Style(color=fg, bgcolor=to_color(final_bg)))
+                        result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
             else:
                 # Logo pipes: E(6), D(34)
                 for x in range(total_width):
@@ -261,6 +259,6 @@ class Banner(TelecMixin, Widget):
                                     fg_char = entity_val
                                     fg_color = "#FFFFFF"
                         
-                        result.append(fg_char, style=Style(color=to_color(fg_color), bgcolor=to_color(bg)))
+                        result.append(fg_char, style=Style(color=_to_color(fg_color), bgcolor=_to_color(bg)))
 
         return result

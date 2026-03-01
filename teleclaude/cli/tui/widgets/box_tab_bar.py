@@ -24,6 +24,13 @@ if TYPE_CHECKING:
     from teleclaude.cli.tui.animation_engine import AnimationEngine
 
 
+def _to_color(c: str | int | None) -> str | None:
+    """Helper to ensure Style receives a valid color string or None."""
+    if isinstance(c, str) and len(c) > 1:
+        return c
+    return None
+
+
 class BoxTabBar(TelecMixin, Widget):
     """3-row tab bar with box-drawing characters.
     Integrated with the Layered Animation Engine for physical occlusion.
@@ -150,7 +157,7 @@ class BoxTabBar(TelecMixin, Widget):
                             final_bg = blend_colors(str(final_bg), color_str, blend_pct)
                             final_fg = blend_colors(str(final_fg), color_str, 0.5)
 
-                row_text.append(fg_char, style=Style(color=str(fg_color or final_fg), bgcolor=str(final_bg)))
+                row_text.append(fg_char, style=Style(color=_to_color(fg_color or final_fg), bgcolor=_to_color(final_bg)))
             rows.append(row_text)
 
         return Group(*rows)
