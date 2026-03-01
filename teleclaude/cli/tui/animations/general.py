@@ -78,8 +78,6 @@ class GlobalSky(Animation):
         "'M\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593\u2593&' ",
         "  'M\u2593\u2593\u2593\u2593\u2593\u2593&'  ",
     ]
-    _MOON_BG = "#C8A050"
-    _MOON_GLOW = "#1A1208"
     # City glow: 3 rows behind tab bar (y=7,8,9)
     _CITY_GLOW = ["#0A0010", "#1A0035", "#0A0010"]
 
@@ -120,11 +118,7 @@ class GlobalSky(Animation):
                     for dx, ch in enumerate(row):
                         x = moon_x + dx
                         if ch != " ":
-                            buffer.add_pixel(Z_SKY, x, y, self._MOON_BG)
                             buffer.add_pixel(Z_FOREGROUND, x, y, ch)
-                        elif 0 < dx < len(row) - 1:
-                            # Interior spaces get a subtle glow bg
-                            buffer.add_pixel(Z_SKY, x, y, self._MOON_GLOW)
         else:
             # 1. Background Blue Gradient
             for x, y in self._all_pixels:
@@ -850,7 +844,6 @@ GENERAL_ANIMATIONS = [
     CloudsPassing,
     FloatingBalloons,
     # Dark mode atmospherics
-    Bioluminescence,
     SearchlightSweep,   # Batman
     # Original specials
     FireBreath,         # fixed: burns from bottom
