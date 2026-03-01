@@ -78,6 +78,7 @@ class TargetRegistry:
         # Register default targets
         self.register("banner", BIG_BANNER_WIDTH, BIG_BANNER_HEIGHT, BIG_BANNER_LETTERS)
         self.register("logo", LOGO_WIDTH, LOGO_HEIGHT, LOGO_LETTERS)
+        self.register("tabs", BIG_BANNER_WIDTH, 3) # Tab bar (Rows 7-9)
 
     def register(self, name: str, width: int, height: int, letters: Optional[List[Tuple[int, int]]] = None) -> None:
         """Register a new render target."""

@@ -259,9 +259,15 @@ class TelecApp(App[str | None]):
         theme.set_pane_theming_mode(status_bar.pane_theming_mode)
         self._apply_app_theme_for_mode(status_bar.pane_theming_mode)
 
-        # Wire animation engine to banner
+        # Wire animation engine to banner and tabs
         banner = self.query_one(Banner)
         banner.animation_engine = self._animation_engine
+        try:
+            tabs = self.query_one(BoxTabBar)
+            tabs.animation_engine = self._animation_engine
+        except:
+            pass # Tab bar might not be mounted in some modes
+        
         self._start_animation_mode(status_bar.animation_mode)
 
         # Switch to starting tab

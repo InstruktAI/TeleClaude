@@ -113,22 +113,16 @@ class LetterWaveLR(Animation):
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         active_letter_idx = frame % num_letters
         color_pair = self.palette.get(frame // num_letters)
-        safe_color = self.get_contrast_safe_color(color_pair)
         
+        # Force high vibrancy
+        base_color = self.enforce_vibrancy(self.get_contrast_safe_color(color_pair))
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-        try:
-            if safe_color.startswith("#"):
-                r, g, b = hex_to_rgb(safe_color)
-            else:
-                r, g, b = 150, 150, 150
-        except (ValueError, TypeError, AttributeError):
-            r, g, b = 150, 150, 150
-            
-        dim_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
+        r, g, b = hex_to_rgb(base_color)
+        dim_color = rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))
 
         result = {}
         for i in range(num_letters):
-            color = safe_color if i == active_letter_idx else dim_color
+            color = base_color if i == active_letter_idx else dim_color
             for p in PixelMap.get_letter_pixels(self.is_big, i):
                 result[p] = color
         return result
@@ -141,24 +135,52 @@ class LetterWaveRL(Animation):
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         active_letter_idx = (num_letters - 1) - (frame % num_letters)
         color_pair = self.palette.get(frame // num_letters)
-        safe_color = self.get_contrast_safe_color(color_pair)
-
+        
+        base_color = self.enforce_vibrancy(self.get_contrast_safe_color(color_pair))
         from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-        try:
-            if safe_color.startswith("#"):
-                r, g, b = hex_to_rgb(safe_color)
-            else:
-                r, g, b = 150, 150, 150
-        except (ValueError, TypeError, AttributeError):
-            r, g, b = 150, 150, 150
-            
-        dim_color = self.get_contrast_safe_color(rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4)))
+        r, g, b = hex_to_rgb(base_color)
+        dim_color = rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))
 
         result = {}
         for i in range(num_letters):
-            color = safe_color if i == active_letter_idx else dim_color
+            color = base_color if i == active_letter_idx else dim_color
             for p in PixelMap.get_letter_pixels(self.is_big, i):
                 result[p] = color
+        return result
+
+
+class BlinkSweep(Animation):
+    """TC21: High-speed high-vibrancy sawtooth pulse sweeping L->R."""
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self.spec = Spectrum(["#FFFFFF", "#00FFFF", "#0000FF"]) # White -> Cyan -> Blue
+        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
+
+    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
+        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
+        # Very fast sweep: 2x speed
+        active_x = (frame * 2.0) % (width + 5) - 2
+        
+        result = {}
+        for x, y in self._all_pixels:
+            is_letter = PixelMap.get_is_letter(self.target, x, y)
+            # Sawtooth pulse intensity: very sharp (width 2.0)
+            surge = self.linear_surge(x - 1, active_x, 2.0)
+            
+            if surge > 0 or is_letter:
+                color = self.spec.get_color((x-1)/width)
+                color = self.enforce_vibrancy(color)
+                # Material response: 40% dimmed neon base, surge adds up to 60%
+                intensity = (0.4 if is_letter else 0.0) + (surge * 0.6)
+                if intensity > 0:
+                    from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                    r, g, b = hex_to_rgb(color)
+                    result[(x, y)] = rgb_to_hex(int(r * intensity), int(g * intensity), int(b * intensity))
+                else:
+                    result[(x, y)] = -1
+            else:
+                result[(x, y)] = -1
         return result
 
 
@@ -374,21 +396,21 @@ class WordSplitBlink(Animation):
     """G9: "TELE" vs "CLAUDE" blink alternately."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        all_pixels = PixelMap.get_all_pixels(self.is_big)
-        # Shifted +1: adjust split boundary
-        split_x = 34 if self.is_big else 16
-
         color_pair = self.palette.get(frame // 2)
-        safe_color = self.get_contrast_safe_color(color_pair)
+        safe_color = self.enforce_vibrancy(self.get_contrast_safe_color(color_pair))
         parity = frame % 2
 
         result = {}
-        for x, y in all_pixels:
-            is_tele = x < split_x
-            if (is_tele and parity == 0) or (not is_tele and parity == 1):
-                result[(x, y)] = safe_color
-            else:
-                result[(x, y)] = -1
+        num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
+        for i in range(num_letters):
+            is_first_word = i < 4
+            for x, y in PixelMap.get_letter_pixels(self.is_big, i):
+                if (is_first_word and parity == 0) or (not is_first_word and parity == 1):
+                    result[(x, y)] = safe_color
+                else:
+                    from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                    r, g, b = hex_to_rgb(safe_color)
+                    result[(x, y)] = rgb_to_hex(int(r * 0.4), int(g * 0.4), int(b * 0.4))
         return result
 
 
@@ -476,8 +498,9 @@ class LetterShimmer(Animation):
             # Each letter has its own random-ish phase
             color_idx = (frame + i * 3) % len(self.palette)
             color_pair = self.palette.get(color_idx)
+            color = self.enforce_vibrancy(self.get_contrast_safe_color(color_pair))
             for p in PixelMap.get_letter_pixels(self.is_big, i):
-                result[p] = color_pair
+                result[p] = color
         return result
 
 
@@ -1166,6 +1189,7 @@ GENERAL_ANIMATIONS = [
     DiagonalSweepDL,
     LetterShimmer,
     WavePulse,
+    BlinkSweep,
     # Unified Atmosphere
     GlobalSky,
     FireBreath,
