@@ -826,6 +826,12 @@ async def handle_voice(
         if not session:
             logger.warning("Session %s not found for voice status", session_id[:8])
             return None
+        # Inject actor info into transcription displays so adapters can
+        # attribute the transcription to the sender (e.g. Discord webhook).
+        if metadata.is_transcription and cmd.actor_name:
+            metadata.reflection_actor_id = cmd.actor_id
+            metadata.reflection_actor_name = cmd.actor_name
+            metadata.reflection_actor_avatar_url = cmd.actor_avatar_url
         return await client.send_message(
             session,
             message,
@@ -865,7 +871,7 @@ async def handle_voice(
 
     logger.debug("Forwarding transcribed voice to agent: %s...", transcribed[:50])
 
-    # Reset threaded output state to ensure "Transcribed text" acts as a visual boundary.
+    # Reset threaded output state so the next agent output starts a fresh message.
     # The next agent output will start a fresh message block at the bottom.
     session = await db.get_session(cmd.session_id)
     if session:

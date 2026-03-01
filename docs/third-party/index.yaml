@@ -96,6 +96,10 @@ snippets:
   description: Discord Gateway
   scope: project
   path: discord/gateway-delivery-guarantees.md
+- id: third-party/discord/message-formatting
+  description: Discord Message Formatting
+  scope: project
+  path: discord/message-formatting.md
 - id: third-party/gemini-cli/commands
   description: Gemini CLI Commands
   scope: project

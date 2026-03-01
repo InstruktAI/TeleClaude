@@ -430,7 +430,23 @@ class AdapterClient:
 
         Each adapter clears its own output_message_id and char_offset in its
         metadata namespace. Broadcast is serialized to prevent blob clobbering.
+
+        Also drops pending QoS payloads to prevent stale output from being
+        dispatched after the user's new input.
         """
+        # Drop pending QoS payloads before clearing adapter state to prevent
+        # stale output from racing past the turn break.
+        for adapter in self.adapters.values():
+            scheduler = getattr(adapter, "_qos_scheduler", None)
+            if scheduler is not None:
+                dropped = scheduler.drop_pending(session.session_id)
+                if dropped:
+                    logger.debug(
+                        "Dropped %d pending QoS payload(s) on turn break: session=%s adapter=%s",
+                        dropped,
+                        session.session_id[:8],
+                        getattr(adapter, "ADAPTER_KEY", "unknown"),
+                    )
 
         async def _reset_adapter_state(adapter: UiAdapter, s: "Session") -> None:
             await adapter._clear_output_message_id(s)
@@ -445,7 +461,7 @@ class AdapterClient:
         multi_message: bool = False,
     ) -> str | None:
         """Send threaded output to all UI adapters (edit if exists, else new)."""
-        # Cleanup feedback messages (like "Transcribed text...") when threaded output starts.
+        # Cleanup feedback messages (e.g. transcription display) when threaded output starts.
         pending = await db.get_pending_deletions(session.session_id, deletion_type="feedback")
         if pending:
             logger.debug(
@@ -553,7 +569,7 @@ class AdapterClient:
             is_final,
         )
 
-        # Cleanup feedback messages (like "Transcribed text...") when output starts.
+        # Cleanup feedback messages (e.g. transcription display) when output starts.
         # This keeps the thread clean by removing intermediate status updates
         # once the real agent output begins.
         pending = await db.get_pending_deletions(session.session_id, deletion_type="feedback")

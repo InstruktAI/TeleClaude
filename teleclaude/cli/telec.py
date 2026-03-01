@@ -440,7 +440,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         desc="Manage the work item roadmap",
         subcommands={
             "list": CommandDef(
-                desc="List roadmap entries",
+                desc="List roadmap entries (source of truth for todo status)",
                 flags=[
                     Flag("--include-icebox", "-i", "Include icebox items"),
                     Flag("--icebox-only", "-o", "Show only icebox items"),

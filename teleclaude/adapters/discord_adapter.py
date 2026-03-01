@@ -105,6 +105,11 @@ class DiscordAdapter(UiAdapter):
         qos_policy = discord_policy(config.discord.qos)
         self._qos_scheduler: OutputQoSScheduler = OutputQoSScheduler(qos_policy)
 
+        # Threaded output buffer: accumulates rendered text during streaming,
+        # flushed as a single message on turn completion (is_final=True).
+        # Discord does not use edit-in-place — each turn produces one new message.
+        self._threaded_buffers: dict[str, str] = {}
+
     async def start(self) -> None:
         """Initialize Discord client and start gateway task."""
         if not self._token:
@@ -772,9 +777,7 @@ class DiscordAdapter(UiAdapter):
                     kwargs: dict[str, object] = {"position": position}
                     if needs_move:
                         kwargs["category"] = category
-                    await self._require_async_callable(edit_fn, label="forum sync")(
-                        **kwargs
-                    )
+                    await self._require_async_callable(edit_fn, label="forum sync")(**kwargs)
                     if needs_move:
                         logger.info("Moved forum '%s' into category %s at position %d", td.name, category_id, position)
                     elif needs_reorder:
@@ -814,9 +817,7 @@ class DiscordAdapter(UiAdapter):
             except Exception:
                 pass
 
-            ch_id = await self._find_or_create_private_text_channel(
-                guild, category, slug, discord_user_id
-            )
+            ch_id = await self._find_or_create_private_text_channel(guild, category, slug, discord_user_id)
             if ch_id is not None:
                 person_folder = os.path.join(os.path.expanduser("~"), ".teleclaude", "people", name)
                 self._team_channel_map[ch_id] = person_folder
@@ -870,9 +871,7 @@ class DiscordAdapter(UiAdapter):
             logger.warning("Failed to create private text channel '%s': %s", name, exc)
             return None
 
-    def _build_private_overwrites(
-        self, guild: object, owner_user_id: int | None
-    ) -> dict[object, object]:
+    def _build_private_overwrites(self, guild: object, owner_user_id: int | None) -> dict[object, object]:
         """Build Discord permission overwrites: deny @everyone, allow owner + bot."""
         PermissionOverwrite = getattr(self._discord, "PermissionOverwrite", None)
         if PermissionOverwrite is None:
@@ -883,16 +882,13 @@ class DiscordAdapter(UiAdapter):
         # Deny @everyone
         default_role = getattr(guild, "default_role", None)
         if default_role is not None:
-            overwrites[default_role] = PermissionOverwrite(
-                view_channel=False, read_messages=False
-            )
+            overwrites[default_role] = PermissionOverwrite(view_channel=False, read_messages=False)
 
         # Allow the bot
         bot_user = getattr(self._client, "user", None) if self._client else None
         if bot_user is not None:
             overwrites[bot_user] = PermissionOverwrite(
-                view_channel=True, read_messages=True, send_messages=True,
-                manage_messages=True
+                view_channel=True, read_messages=True, send_messages=True, manage_messages=True
             )
 
         # Allow the person
@@ -901,9 +897,7 @@ class DiscordAdapter(UiAdapter):
             get_member = getattr(guild, "get_member", None)
             member = get_member(owner_user_id) if callable(get_member) else None
             if member is not None:
-                overwrites[member] = PermissionOverwrite(
-                    view_channel=True, read_messages=True, send_messages=True
-                )
+                overwrites[member] = PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True)
             elif Object is not None:
                 # Use Object as fallback (discord.py accepts it for overwrites)
                 overwrites[Object(id=owner_user_id)] = PermissionOverwrite(
@@ -912,9 +906,7 @@ class DiscordAdapter(UiAdapter):
 
         return overwrites
 
-    async def _ensure_channel_private(
-        self, channel_id: int, guild: object, owner_user_id: int
-    ) -> None:
+    async def _ensure_channel_private(self, channel_id: int, guild: object, owner_user_id: int) -> None:
         """Verify and fix permissions on an existing team channel."""
         channel = await self._get_channel(channel_id)
         if channel is None:
@@ -936,9 +928,7 @@ class DiscordAdapter(UiAdapter):
         edit_fn = getattr(channel, "edit", None)
         if callable(edit_fn):
             try:
-                await self._require_async_callable(edit_fn, label="channel.edit overwrites")(
-                    overwrites=overwrites_dict
-                )
+                await self._require_async_callable(edit_fn, label="channel.edit overwrites")(overwrites=overwrites_dict)
                 logger.info("Applied private permissions to team channel %s", channel_id)
             except Exception as exc:
                 logger.warning("Failed to apply private permissions to channel %s: %s", channel_id, exc)
@@ -970,9 +960,7 @@ class DiscordAdapter(UiAdapter):
         """
         categories = getattr(guild, "categories", None)
         if categories is None:
-            logger.warning(
-                "Guild category cache not populated; refusing to create '%s' to prevent duplicates", name
-            )
+            logger.warning("Guild category cache not populated; refusing to create '%s' to prevent duplicates", name)
             return None
 
         for cat in categories:
@@ -1152,6 +1140,7 @@ class DiscordAdapter(UiAdapter):
         logger.debug("Stored discord output_message_id: session=%s message_id=%s", session.session_id[:8], message_id)
 
     async def _clear_output_message_id(self, session: "Session") -> None:
+        self._threaded_buffers.pop(session.session_id, None)
         meta = session.get_metadata().get_ui().get_discord()
         meta.output_message_id = None
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
@@ -1182,10 +1171,33 @@ class DiscordAdapter(UiAdapter):
     ) -> Optional[str]:
         """Route Discord output update through the QoS scheduler.
 
-        When QoS is off, delegates directly to the parent implementation.
-        When QoS is active, enqueues the payload for coalesced dispatch and
-        returns None immediately.
+        For threaded sessions: the base class suppresses send_output_update
+        entirely. Discord overrides this to flush the threaded output buffer
+        as a single new message when is_final=True.
+
+        For non-threaded sessions: delegates to QoS scheduler as before.
         """
+        from teleclaude.core.feature_flags import is_threaded_output_enabled
+
+        is_threaded = is_threaded_output_enabled(session.active_agent, adapter=self.ADAPTER_KEY)
+
+        if is_threaded:
+            if is_final:
+                # Flush buffered threaded output as a single new message.
+                buffered = self._threaded_buffers.pop(session.session_id, None)
+                if buffered:
+                    await self._clear_output_message_id(session)
+                    metadata = self._build_metadata_for_thread()
+                    new_id = await self.send_message(session, buffered, metadata=metadata, multi_message=True)
+                    logger.debug(
+                        "[DISCORD] Flushed threaded buffer on turn end: session=%s len=%d message_id=%s",
+                        session.session_id[:8],
+                        len(buffered),
+                        new_id,
+                    )
+            return None
+
+        # Non-threaded: existing QoS path.
         if self._qos_scheduler._policy.mode == "off":
             return await UiAdapter.send_output_update(
                 self, session, output, started_at, last_output_changed_at, is_final, exit_code, render_markdown
@@ -1212,26 +1224,25 @@ class DiscordAdapter(UiAdapter):
         self,
         session: "Session",
         text: str,
-        multi_message: bool = False,
+        multi_message: bool = False,  # noqa: ARG002 — interface compat; flush uses multi_message
     ) -> Optional[str]:
-        """Route Discord threaded output through the QoS scheduler.
+        """Buffer threaded output for turn-end delivery.
 
-        Threaded output payloads are coalesced (latest-only) so only the
-        most recent accumulated text is dispatched per scheduler tick.
+        Discord does not use edit-in-place for streaming output. Instead,
+        the latest accumulated text is buffered here and flushed as a single
+        new message when send_output_update(is_final=True) fires.
+
+        A sentinel output_message_id is stored to prevent the coordinator
+        from advancing its cursor (preserving the accumulation model).
         """
-        if self._qos_scheduler._policy.mode == "off":
-            return await UiAdapter.send_threaded_output(self, session, text, multi_message)
+        self._threaded_buffers[session.session_id] = text
 
-        _self = self
-        _session = session
-        _text = text
-        _multi = multi_message
+        # Set sentinel output_message_id to prevent cursor advancement
+        # in the coordinator. Only set once per turn (first call).
+        if not await self._get_output_message_id(session):
+            await self._store_output_message_id(session, "discord-buffering")
 
-        async def _dispatch() -> Optional[str]:
-            return await UiAdapter.send_threaded_output(_self, _session, _text, _multi)
-
-        self._qos_scheduler.enqueue(session.session_id, _dispatch, is_final=False)
-        return None  # Delivery is deferred.
+        return "discord-buffering"
 
     async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
         """Send or edit the tracked status message in the Discord thread."""
@@ -1402,6 +1413,29 @@ class DiscordAdapter(UiAdapter):
             logger.warning("Failed to delete Discord thread %s: %s", discord_meta.thread_id, exc)
             return False
 
+    def _split_message_chunks(self, text: str) -> list[str]:
+        """Split text into chunks that fit within Discord's message size limit.
+
+        Splits on newline boundaries when possible, falling back to hard
+        splits at max_message_size.
+        """
+        limit = self.max_message_size
+        if len(text) <= limit:
+            return [text]
+
+        chunks: list[str] = []
+        while text:
+            if len(text) <= limit:
+                chunks.append(text)
+                break
+            # Try to split at a newline within the limit
+            split_at = text.rfind("\n", 0, limit)
+            if split_at <= 0:
+                split_at = limit
+            chunks.append(text[:split_at])
+            text = text[split_at:].lstrip("\n")
+        return chunks
+
     async def send_message(
         self,
         session: "Session",
@@ -1410,12 +1444,27 @@ class DiscordAdapter(UiAdapter):
         metadata: "MessageMetadata | None" = None,
         multi_message: bool = False,
     ) -> str:
-        _ = multi_message
+        destination = await self._resolve_destination_channel(session, metadata=metadata)
+
+        if multi_message and len(text) > self.max_message_size:
+            chunks = self._split_message_chunks(text)
+            logger.debug("[DISCORD SEND] multi_message: splitting %d chars into %d chunks", len(text), len(chunks))
+            last_id = ""
+            for chunk in chunks:
+                last_id = await self._send_single_message(destination, chunk, metadata=metadata)
+            return last_id
 
         text = self._fit_message_text(text, context="send_message")
         logger.debug("[DISCORD SEND] text=%r", text[:100])
+        return await self._send_single_message(destination, text, metadata=metadata)
 
-        destination = await self._resolve_destination_channel(session, metadata=metadata)
+    async def _send_single_message(
+        self,
+        destination: object,
+        text: str,
+        *,
+        metadata: "MessageMetadata | None" = None,
+    ) -> str:
         if metadata and metadata.reflection_actor_name:
             webhook_message_id = await self._send_reflection_via_webhook(destination, text, metadata)
             if webhook_message_id:

@@ -167,7 +167,7 @@ def test_render_agent_output_include_tools(tmp_path):
     )
 
     result, _ts = render_agent_output(str(transcript_path), AgentName.CLAUDE, include_tools=True)
-    assert "🔧 **`test_tool`**" in result
+    assert "**`test_tool`**" in result
     assert "Tool used" in result
 
 
@@ -482,8 +482,8 @@ def test_heavy_fixture_with_tools_includes_tool_emoji():
         include_tool_results=False,
     )
     assert result is not None
-    # Heavy fixture has tool calls, so we expect tool emoji
-    assert "🔧" in result, "Expected tool emoji in output with include_tools=True"
+    # Heavy fixture has tool calls, so we expect bold tool names
+    assert "**`" in result, "Expected bold tool name in output with include_tools=True"
 
 
 def test_heavy_fixture_contains_diverse_content():
@@ -498,7 +498,7 @@ def test_heavy_fixture_contains_diverse_content():
     # Check for diverse content markers
     has_thinking = "*" in result  # Italics from thinking blocks
     has_headers = "###" in result or "**" in result  # Bold/headers
-    has_tool = "🔧" in result
+    has_tool = "**`" in result
     has_text = len(result) > 500
     diversity = sum([has_thinking, has_headers, has_tool, has_text])
     assert diversity >= 3, f"Expected diverse content types, got only {diversity}/4"

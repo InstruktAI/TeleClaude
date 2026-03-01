@@ -751,6 +751,9 @@ class AgentCoordinator:
         existing_input = (session.last_message_sent or "").strip()
         existing_origin = (session.last_input_origin or "").strip().lower()
         existing_at = session.last_message_sent_at
+        # deliver_inbound truncates last_message_sent to 200 chars; compare at that
+        # boundary so the echo guard still fires for long messages.
+        _CMP_LEN = 200
         is_recent_routed_echo = (
             session.lifecycle_status != "headless"
             and not is_codex_synthetic
@@ -760,8 +763,18 @@ class AgentCoordinator:
             and (now - existing_at).total_seconds() <= 20
             and existing_input
             and incoming_input
-            and existing_input == incoming_input
+            and existing_input[:_CMP_LEN] == incoming_input[:_CMP_LEN]
         )
+        if not is_recent_routed_echo and existing_origin and existing_origin != InputOrigin.TERMINAL.value:
+            logger.debug(
+                "Echo guard miss for session %s: origin=%s age=%.1fs text_match=%s existing=%r incoming=%r",
+                session_id[:8],
+                existing_origin,
+                (now - existing_at).total_seconds() if isinstance(existing_at, datetime) else -1,
+                existing_input[:50] == incoming_input[:50] if existing_input and incoming_input else "N/A",
+                existing_input[:50] if existing_input else None,
+                incoming_input[:50],
+            )
         if is_recent_routed_echo:
             should_update_last_message = False
             logger.debug(

@@ -40,16 +40,15 @@ This is for **peer collaboration** — agents that need to discuss, harmonize, o
    ```
    telec sessions start(computer="local", ..., message="...", direct=true)
    ```
-   The `direct` flag bypasses automatic listener registration. No notification subscription is created. Include in the message:
-   - Your own session ID (so the other agent can message you back).
+   The `direct` flag establishes a direct link between the two sessions. Once established, each agent's turn-complete output is automatically shared with the peer — no further tool calls needed. Include in the introduction message:
+   - Your own session ID (for the peer's reference).
    - The topic or context for the conversation.
-   - An explicit instruction: "Send messages directly to my session via `telec sessions send` with `direct=true`. Do not poll or subscribe to my output."
    - **Protocol negotiation line** — declare the communication register:
      - Agent-dispatched (no human observing): `PROTOCOL: phase-locked (L4 inhale/hold, L3 exhale), artifacts in L1 prose`
      - Human initiated or observing: `PROTOCOL: L1 prose, human in loop` (ask the human what level they prefer)
      - If unsure: omit the protocol line; default to L1 prose. The peer can propose compression.
        See the Agent Shorthand principle for the four compression levels, phase-locked switching, and symbol vocabulary.
-3. **Converse.** Both agents exchange messages via `telec sessions send(direct=true)` using each other's session IDs. No polling, no tail queries, no notification chains.
+3. **Converse by talking, not by tooling.** Once the direct link is established, your regular text output IS your message. The system automatically delivers your turn-complete output to the peer. **Do NOT use `telec sessions send` for follow-up messages** — it hides your output inside a tool call, making it invisible to human observers. Just speak. Your words arrive.
 4. **Close.** When the conversation is complete, no cleanup is needed. No subscriptions were created.
 
 ### Fallback: manual unsubscribe
@@ -92,6 +91,8 @@ Rules:
 > **Note To Self:** The heartbeat is just a pinch. Am I on track? Yes — continue. No — adjust. That's it. Don't overthink it.
 
 ### Message discipline
+
+**CRITICAL: After link establishment, NEVER use `telec sessions send` to converse.** Your turn-complete text output is the message — the direct link delivers it automatically. Using the send tool obfuscates your output from human observers who are watching the conversation. The only tool call in the entire conversation is the initial `telec sessions send --direct` or `telec sessions start --direct` that creates the link. Everything after that is just talking.
 
 Every message costs tokens and context for the receiving agent. Apply strict economy:
 

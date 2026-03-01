@@ -434,18 +434,15 @@ def _process_tool_use_block(
     tool_name_safe = tool_name.split("\n")[0].split("(")[0].split("{")[0].strip()
 
     # 1. Start with the base decoration
-    # 🔧 **`tool_name`**
-    prefix_and_icon = f"{time_prefix}🔧 "
+    # **`tool_name`**
+    prefix = time_prefix
     formatted_name = f"**`{tool_name_safe}`**"
 
     # 2. Extract subject and calculate budget
     subject = _extract_tool_subject(block)
 
-    # Length budget calculation:
-    # We want TOTAL length (icon + spaces + name + subject decoration) <= 70.
-    # Base overhead: 🔧 (2) + space (1) + name length + colon-space (2) + backticks/bold (approx handled by name)
-    # Note: '🔧' is often 2-wide in terminal/monospaced fonts.
-    base_len = len(time_prefix) + 2 + 1 + len(tool_name_safe)
+    # Length budget: TOTAL length (prefix + name + subject decoration) <= 70.
+    base_len = len(time_prefix) + len(tool_name_safe)
     if subject:
         base_len += 2  # for ': '
 
@@ -459,7 +456,7 @@ def _process_tool_use_block(
         content = formatted_name
 
     lines.append("")
-    lines.append(f"{prefix_and_icon}{content}")
+    lines.append(f"{prefix}{content}")
     return "tool_use"
 
 
@@ -556,12 +553,11 @@ def render_clean_agent_output(
                 tool_name_safe = tool_name.split("\n")[0].split("(")[0].split("{")[0].strip()
 
                 # Format using enriched subject logic
-                prefix_and_icon = "🔧 "
                 formatted_name = f"**`{tool_name_safe}`**"
                 subject = _extract_tool_subject(block)
 
-                # Length budget calculation (icon[2] + space[1] + name + colon-space[2])
-                base_len = 2 + 1 + len(tool_name_safe)
+                # Length budget calculation (name + colon-space[2])
+                base_len = len(tool_name_safe)
                 if subject:
                     base_len += 2
                 budget = max(0, 70 - base_len)
@@ -575,7 +571,7 @@ def render_clean_agent_output(
 
                 if lines:
                     lines.append("")
-                lines.append(f"{prefix_and_icon}{content}")
+                lines.append(content)
                 emitted = True
             # Tool results are completely omitted in this "clean" renderer
 

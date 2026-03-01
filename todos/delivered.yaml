@@ -1,5 +1,10 @@
 # Delivered work items. Newest first.
 
+- slug: content-dump-command
+  date: '2026-03-01'
+  title: telec content dump — fire-and-forget content dump with notification trigger
+  description: telec content dump — fire-and-forget content dump with notification
+    trigger
 - slug: event-platform-core
   date: '2026-03-01'
   title: 'Core platform: package, envelope, pipeline runtime, basic cartridges, SQLite

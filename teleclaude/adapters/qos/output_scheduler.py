@@ -121,6 +121,25 @@ class OutputQoSScheduler:
         logger.info("OutputQoSScheduler stopped: adapter=%s", self._policy.adapter_key)
 
     # ------------------------------------------------------------------
+    # Session control
+    # ------------------------------------------------------------------
+
+    def drop_pending(self, session_id: str) -> int:
+        """Drop all pending (non-final) payloads for a session.
+
+        Called on turn breaks to prevent stale output from being dispatched
+        after the user's new input.
+
+        Returns:
+            Number of payloads dropped.
+        """
+        dropped = 0
+        if session_id in self._normal_slots:
+            del self._normal_slots[session_id]
+            dropped += 1
+        return dropped
+
+    # ------------------------------------------------------------------
     # Enqueueing
     # ------------------------------------------------------------------
 

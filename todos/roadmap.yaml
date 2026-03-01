@@ -10,9 +10,6 @@
   description: Public website with landing page and blog for InstruktAI/TeleClaude
 - slug: todo-dump-command
   description: telec todo dump — fire-and-forget brain dump with notification trigger
-- slug: content-dump-command
-  description: telec content dump — fire-and-forget content dump with notification
-    trigger
 - slug: mesh-architecture
   description: 'P2P mesh: DNS bootstrap, gossip discovery, HTTPS transport, burst
     mitigation'

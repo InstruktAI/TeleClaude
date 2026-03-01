@@ -220,13 +220,11 @@ async def handle_voice(
         )
         return None
 
-    # Send transcribed text back to UI (Raw).
-    # Adapters will format/escape based on is_transcription flag.
-    transcribed_message = f'Transcribed text:\n\n"{text}"'
-    # Mark as "next_turn" so it persists as user input until next turn
+    # Send transcribed text back to UI — plain text attributed to the sender.
+    # Mark as "next_turn" so it persists as user input until next turn.
     await send_message(
         session_id,
-        transcribed_message,
+        text,
         MessageMetadata(parse_mode=None, is_transcription=True, cleanup_trigger="next_turn"),
     )
 

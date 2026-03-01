@@ -11,6 +11,8 @@ description: 'AI-safe telec CLI commands for project work, docs sync, todo scaff
 
 AI-safe `telec` commands for project work. Run `telec <subcommand> --help` for details on any subcommand.
 
+> **Source:** `teleclaude/cli/telec.py` — edit `CLI_SURFACE` dict and `CommandDef` entries to change commands, descriptions, and flags.
+
 ## CLI surface
 
 <!-- @exec: telec -h -->
