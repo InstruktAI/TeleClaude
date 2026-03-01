@@ -2974,12 +2974,21 @@ def _handle_content_dump(args: list[str]) -> None:
         slug = re.sub(r"-+", "-", slug)
 
     try:
+        from teleclaude.content_scaffold import _emit_content_dumped, _resolve_author
+
+        resolved_author = author if author is not None else _resolve_author()
+        resolved_tags = tags or []
         entry_dir = create_content_inbox_entry(
             project_root,
             text,
             slug=slug,
-            tags=tags,
-            author=author,
+            tags=resolved_tags,
+            author=resolved_author,
+        )
+        _emit_content_dumped(
+            inbox_path=str(entry_dir.relative_to(project_root)),
+            author=resolved_author,
+            tags=resolved_tags,
         )
         print(f"Content dumped: {entry_dir.relative_to(project_root)}")
     except Exception as exc:
