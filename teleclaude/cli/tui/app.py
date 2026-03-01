@@ -857,8 +857,16 @@ class TelecApp(App[str | None]):
         from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger
 
         self._animation_engine.is_enabled = True
+        self._animation_engine.animation_mode = mode
 
         if mode in ("periodic", "party"):
+            # Always ensure GlobalSky is running on the header in active modes
+            from teleclaude.cli.tui.animations.general import GlobalSky
+            from teleclaude.cli.tui.animation_colors import palette_registry
+            sky = GlobalSky(palette=palette_registry.get("spectrum"), is_big=True, duration_seconds=3600)
+            self._animation_engine.play(sky, priority=AnimationPriority.PERIODIC, target="header")
+            self._animation_engine.set_looping("header", True)
+
             interval = 10 if mode == "party" else 60
             trigger = PeriodicTrigger(self._animation_engine, interval_sec=interval)
             trigger.task = asyncio.ensure_future(trigger.start())

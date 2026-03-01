@@ -41,20 +41,20 @@ class GlobalSky(Animation):
         self.height = 10
         self._all_pixels = [(x, y) for y in range(self.height) for x in range(self.width)]
         
-        # Day: Azure gradient. Night: Midnight gradient.
-        # Use 4 stops for smoother horizontal flow
+        # Day: Azure gradient. Night: Super Dark Purple Glow.
         self.day_sky = Spectrum(["#87CEEB", "#B0E0E6", "#E0F7FA", "#B0E0E6"])
-        self.night_sky = Spectrum(["#000000", "#08001A", "#191970", "#08001A"])
+        # From Deep Black to Super Dark Midnight Purple
+        self.night_sky = Spectrum(["#000000", "#05000A", "#0F001A", "#05000A"])
         
-        # Symmetric Stars (Dot, Plus, Star, Sparkle)
-        self.star_types = [".", "+", "*", "\u2022", "\u2726"]
+        # Symmetric Stars ONLY (No moons/dots)
+        self.star_types = ["+", "*", "\u2726"] # Plus, Star, Sparkle
         self.stars = []
         for _ in range(80):
             self.stars.append({
                 "pos": (self.rng.randint(0, self.width - 1), self.rng.randint(0, self.height - 1)),
                 "char": self.rng.choice(self.star_types),
                 "phase": self.rng.random() * math.pi * 2,
-                "speed": 0.3 + self.rng.random() * 0.4 # Fast enough to see
+                "speed": 0.3 + self.rng.random() * 0.4
             })
             
         # Drifting Clouds (Day)
@@ -68,16 +68,23 @@ class GlobalSky(Animation):
 
     def update(self, frame: int) -> RenderBuffer:
         buffer = RenderBuffer()
+        is_party = self.animation_mode == "party"
         
         if self.dark_mode:
-            # 1. Background Purple/Black Gradient
+            # 1. Background Super Dark Purple Gradient
             for x, y in self._all_pixels:
                 pos_factor = y / max(1, self.height - 1)
                 buffer.add_pixel(Z_SKY, x, y, self.night_sky.get_color(pos_factor))
             
-            # 2. Twinkling Stars
+            # 2. Stars (Mode Aware Twinkling)
             for star in self.stars:
-                twinkle = (math.sin(frame * star["speed"] + star["phase"]) + 1.0) / 2.0
+                if is_party:
+                    # Animate twinkling in Party Mode
+                    twinkle = (math.sin(frame * star["speed"] + star["phase"]) + 1.0) / 2.0
+                else:
+                    # Fixed stars in Periodic Mode (based on unique phase)
+                    twinkle = (math.sin(star["phase"]) + 1.0) / 2.0
+                
                 if twinkle > 0.4:
                     buffer.add_pixel(Z_FOREGROUND, star["pos"][0], star["pos"][1], star["char"])
         else:
@@ -88,9 +95,10 @@ class GlobalSky(Animation):
                 
             # 2. Drifting Vapor Clouds
             for cloud in self.clouds:
+                # Clouds drift in both modes
                 cx = int(cloud["x"] + frame * cloud["speed"]) % (self.width + 40) - 20
                 cy = cloud["y"]
-                for dx in range(12): # Wider clouds
+                for dx in range(12):
                     for dy in range(2):
                         if 0 <= cx + dx < self.width:
                             buffer.add_pixel(Z_FOREGROUND, cx + dx, cy + dy, "\u2501")

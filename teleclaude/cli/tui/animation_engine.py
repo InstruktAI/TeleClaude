@@ -46,6 +46,7 @@ class AnimationEngine:
         self._buffers_front: dict[str, _ZBufferDict] = {}
         self._buffers_back: dict[str, _ZBufferDict] = {}
         self._is_enabled: bool = True
+        self._animation_mode: str = "periodic"
         self._has_active_animation: bool = False
         # Optional callback when a new animation starts
         self.on_animation_start: Optional[Callable[[str, Animation], None]] = None
@@ -63,6 +64,14 @@ class AnimationEngine:
         self._is_enabled = value
         if not value:
             self.stop()
+
+    @property
+    def animation_mode(self) -> str:
+        return self._animation_mode
+
+    @animation_mode.setter
+    def animation_mode(self, value: str) -> None:
+        self._animation_mode = value
 
     @property
     def has_active_animation(self) -> bool:
@@ -95,6 +104,7 @@ class AnimationEngine:
         # Update animation with current theme context before starting
         animation.dark_mode = is_dark_mode()
         animation.background_hex = get_terminal_background()
+        animation.animation_mode = self._animation_mode
         animation.seed = random.randint(0, 1000000)
         animation.rng = random.Random(animation.seed)
 
@@ -106,14 +116,6 @@ class AnimationEngine:
             slot.looping = False
             self._has_active_animation = True
             
-            # Atmospheric Synchronization:
-            # If playing a periodic animation on the banner, also play GlobalSky on the header
-            if target_name == "banner" and priority == AnimationPriority.PERIODIC:
-                from teleclaude.cli.tui.animations.general import GlobalSky
-                from teleclaude.cli.tui.animation_colors import palette_registry
-                sky = GlobalSky(palette=palette_registry.get("spectrum"), is_big=True, duration_seconds=animation.duration_seconds)
-                self.play(sky, priority=AnimationPriority.PERIODIC, target="header")
-
             if self.on_animation_start:
                 self.on_animation_start(target_name, animation)
         else:

@@ -97,6 +97,7 @@ class Animation(ABC):
         target: str | None = None,
         dark_mode: bool = True,
         background_hex: str = "#000000",
+        animation_mode: str = "periodic",
         seed: int | None = None,
     ):
         """
@@ -108,6 +109,7 @@ class Animation(ABC):
             target: Target render area name
             dark_mode: Current theme mode
             background_hex: Current terminal background color
+            animation_mode: Current animation mode ('periodic' or 'party')
             seed: Randomization seed for organic variety
         """
         self.palette = palette
@@ -118,6 +120,7 @@ class Animation(ABC):
         self.target = target or ("banner" if is_big else "logo")
         self.dark_mode = dark_mode
         self.background_hex = background_hex
+        self.animation_mode = animation_mode
         self.seed = seed if seed is not None else random.randint(0, 1000000)
         self.rng = random.Random(self.seed)
 
