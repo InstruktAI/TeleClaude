@@ -119,24 +119,21 @@ the plan should note this explicitly.
 
 ### Gate Verdict
 
-**Score:** 7
-**Status:** needs_work
+**Score:** 8
+**Status:** pass
 
-**Blockers:**
-1. **Roadmap dependency contradiction** — `after: [event-envelope-schema]` must be
-   removed from the roadmap entry. The requirements explicitly defer event-related work.
-   The dependency creates a false scheduling blocker that prevents build dispatch.
+**All blockers resolved:**
+1. ~~Roadmap dependency contradiction~~ — `after: [event-envelope-schema]` removed
+   from roadmap (377b8482). Core enrichment has no dependency on event-envelope-schema.
+2. ~~AGENTS.md merge behavior~~ — Plan Task 2.3 tightened: create if absent, skip
+   if present (d526c473).
+3. ~~Task 2.4 scope~~ — Marked verification-only; `iter_snippet_roots()` already
+   discovers `docs/project/` snippets (d526c473).
 
 **Actions taken:**
 - Verified codebase paths match implementation plan file references
 - Confirmed Task 2.4 is pre-satisfied by existing `iter_snippet_roots()` code
 - Validated `event-envelope-schema` state (DOR pass, build pending — not delivered)
 - Tightened DOR report with evidence-based gate findings
-
-**Actions required before pass:**
-1. Remove `after: [event-envelope-schema]` from `todos/roadmap.yaml` for slug
-   `telec-init-enrichment`
-2. Add a note to implementation plan Task 2.3 about AGENTS.md merge behavior
-   (create if absent, skip if present)
-3. Add a note to implementation plan Task 2.4 that this is verification-only
-   (existing code already handles snippet discovery)
+- Tightened implementation plan Tasks 2.3 and 2.4 with codebase-verified notes
+- Confirmed roadmap dependency removal (377b8482) resolves scheduling blocker
