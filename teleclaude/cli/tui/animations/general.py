@@ -992,7 +992,9 @@ GENERAL_ANIMATIONS = [
     EQBars,
     LavaLamp,
     Firefly,
-    # Sweeps — consolidated (2 only)
+    # Sweeps
+    LineSweepTopBottom,
+    LineSweepBottomTop,
     ColorSweep,
     LaserScan,
     # GlobalSky is lifecycle-managed (always-on), NOT in rotation pool
