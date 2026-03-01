@@ -79,7 +79,7 @@ class GlobalSky(Animation):
         "  '\u2593\u2593\u2593\u2593\u2593\u2593\u2593&'  ",
     ]
     # City glow: 3 rows behind tab bar (y=7,8,9)
-    _CITY_GLOW = ["#0A0010", "#1A0035", "#0A0010"]
+    _CITY_GLOW = ["#1A0035", "#270055", "#0A0010"]
 
     def update(self, frame: int) -> RenderBuffer:
         buffer = RenderBuffer()
