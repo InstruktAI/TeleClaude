@@ -2,19 +2,33 @@
 
 ## Goal
 
-Ship production-ready domain configurations for four business pillars (software development, marketing, creative production, customer relations). Each pillar provides event schemas, starter cartridges, and a guardian AI config that together make the domain operational from `telec init` without manual schema authoring.
+Ship production-ready domain configurations for four business pillars (software development,
+marketing, creative production, customer relations). Each pillar provides catalog-registered
+event schemas, starter cartridges (following the `CartridgeManifest` + module convention from
+`event-domain-infrastructure`), and domain config entries (including `DomainGuardianConfig`)
+so that `telec init` can seed these domains with zero manual authoring.
 
 ## Scope
 
 ### In scope
 
-- Event schema definitions for all four pillars under `teleclaude_events/schemas/domain/`
-- Starter cartridges for each pillar under `company/domains/{name}/cartridges/`
-- Guardian AI config per domain at `company/domains/{name}/guardian.yaml`
-- `telec init` discovery manifest entries so domains are listed and installable
-- Marketing pillar composition of `signal-ingest`, `signal-cluster`, and `signal-synthesize` utility cartridges for feed monitoring
-- Customer relations jailing: event producers in the help desk domain are treated as untrusted external input and run through the trust evaluator with stricter thresholds
-- Software development formalization: existing todo lifecycle events (`todo.dor_assessed`, `todo.work.*`, etc.) elevated to first-class domain schemas
+- **Event schema registrations** for all four pillars added to
+  `teleclaude_events/schemas/` modules, following the existing catalog registration pattern
+  (`EventSchema` + `EventCatalog.register()`)
+- **Software development pillar**: extend the existing 9 schemas in
+  `teleclaude_events/schemas/software_development.py` with additional lifecycle events
+  (deploy, ops, maintenance) — do not duplicate existing registrations
+- **Starter cartridges** per pillar under `~/.teleclaude/company/domains/{name}/cartridges/`,
+  each as a subdirectory with `manifest.yaml` (conforming to `CartridgeManifest` schema) and
+  a Python module implementing `async def process(event, context)`
+- **Domain config entries** per pillar: `DomainConfig` blocks with `DomainGuardianConfig`
+  nested, seeded into the main config via `telec init` or `telec config patch`
+- **Marketing pillar** composition: feed-monitor cartridge declares
+  `depends_on: [signal-ingest, signal-cluster, signal-synthesize]` in its manifest
+- **Customer relations jailing**: domain config sets `trust_threshold: strict` via
+  `DomainGuardianConfig`; cartridge manifests tag external-input handlers
+- **`telec init` domain seeding**: provides default YAML config blocks for each pillar that
+  `telec init` writes into the `domains` section of the config file
 - Documentation for each pillar's event taxonomy and cartridge composition
 
 ### Out of scope
@@ -24,37 +38,58 @@ Ship production-ready domain configurations for four business pillars (software 
 - Mesh distribution of domain events (done in `event-mesh-distribution`)
 - Alpha container execution
 - Per-member personal subscription micro-cartridges
-- UI/TUI changes beyond `telec init` discovery
+- UI/TUI changes beyond `telec init` config seeding
 
 ## Success Criteria
 
-- [ ] `teleclaude_events/schemas/domain/software_development.py` declares all lifecycle event types (todo, build, review, deployment, operations, maintenance)
-- [ ] `teleclaude_events/schemas/domain/marketing.py` declares content lifecycle, campaign, and feed monitoring event types
-- [ ] `teleclaude_events/schemas/domain/creative_production.py` declares asset lifecycle event types (brief → draft → review → approval → delivery)
-- [ ] `teleclaude_events/schemas/domain/customer_relations.py` declares help desk, escalation, and satisfaction tracking event types
-- [ ] Each pillar has at least one starter cartridge that handles its primary lifecycle event
-- [ ] Each pillar has a `guardian.yaml` with domain-appropriate AI config (model, prompt framing, autonomy defaults)
-- [ ] Marketing domain cartridge composes signal pipeline utility cartridges via declared dependencies
-- [ ] Customer relations guardian config enforces stricter trust thresholds for external input
-- [ ] `telec init` lists all four domains and can install any of them
-- [ ] Schema catalog registers all domain event types (no unregistered events emitted by starter cartridges)
-- [ ] Existing internal event emitters (`todo.dor_assessed`) resolve against the new software-development schema without change
-- [ ] Tests cover schema instantiation, cartridge handler dispatch, and guardian config loading for each pillar
+- [ ] `teleclaude_events/schemas/software_development.py` is extended with deploy, ops, and
+      maintenance event types (existing 9 schemas untouched)
+- [ ] `teleclaude_events/schemas/marketing.py` registers content lifecycle, campaign, and
+      feed monitoring event types using `catalog.register(EventSchema(...))`
+- [ ] `teleclaude_events/schemas/creative_production.py` registers asset lifecycle event
+      types (brief, draft, review, approval, delivery)
+- [ ] `teleclaude_events/schemas/customer_relations.py` registers help desk, escalation,
+      and satisfaction tracking event types
+- [ ] `teleclaude_events/schemas/__init__.py` `register_all()` calls all four domain
+      registration functions
+- [ ] Each pillar has at least one starter cartridge as a subdirectory with valid
+      `manifest.yaml` conforming to `CartridgeManifest` and a Python module
+- [ ] Each pillar has a `DomainConfig` YAML block (with `DomainGuardianConfig`) ready for
+      config seeding
+- [ ] Marketing domain feed-monitor cartridge manifest declares
+      `depends_on: [signal-ingest, signal-cluster, signal-synthesize]`
+- [ ] Customer relations domain config has `guardian.trust_threshold: strict`
+- [ ] `telec init` seeds all four domain config blocks into the config file
+- [ ] All new event type strings emitted by starter cartridges are registered in the catalog
+- [ ] Existing `domain.software-development.planning.*` emitters resolve against the catalog
+      without change
+- [ ] Tests cover schema registration, cartridge manifest loading, and config seeding
 - [ ] `make lint` and `make test` pass
 
 ## Constraints
 
-- Domain cartridges must declare their `event_types` subscription list explicitly — no wildcard subscriptions
-- Guardian AI configs must specify `autonomy_default` (one of: `notify`, `ask`, `act`) per cartridge
-- Customer relations cartridges that handle external input must be tagged `trust_required: strict`
-- Marketing cartridges composing the signal pipeline must declare `depends_on: [signal-ingest, signal-cluster, signal-synthesize]`
-- Cartridge handler functions must be pure with respect to side effects — I/O via declared emitters only
-- All schema models extend `DomainEvent` base from `teleclaude_events/schemas/base.py`
-- `telec init` manifest is YAML; discovery entries follow the format established by `event-domain-infrastructure`
+- Domain event schemas use the `EventSchema` + `EventCatalog` registration pattern — no
+  Pydantic event subclasses (`EventEnvelope` is the single event data model)
+- All `EventSchema` entries must specify `domain`, `default_level`, `lifecycle`, and
+  `idempotency_fields`
+- Cartridge manifests follow the `CartridgeManifest` schema from `event-domain-infrastructure`:
+  `id`, `description`, `domain_affinity`, `depends_on`, `output_slots`, `module`
+- Cartridge handler functions conform to the `Cartridge` protocol:
+  `async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`
+- No wildcard event subscriptions — cartridge manifests declare explicit `event_types`
+- Guardian config is a `DomainGuardianConfig` within `DomainConfig`, not a separate file
+- Config seeding uses the same YAML structure as `telec config patch` operates on
+- Cartridge I/O is via declared emitters only — no direct filesystem or network access
 
 ## Risks
 
-- Software development schema may conflict with existing ad-hoc event strings in the codebase — requires an audit pass
-- Customer relations jailing scope is not fully defined upstream; if `event-domain-infrastructure` doesn't implement the trust threshold override per domain, we must add a compatibility shim
-- Marketing cartridge DAG depends on `event-signal-pipeline` being complete; if signal pipeline tasks slip, marketing starter cartridges ship as stubs with clear TODO markers
-- Four pillars in parallel creates broad surface area; risk of inconsistent guardian config conventions across pillars — mitigate with a shared `guardian_config_schema.py` they all validate against
+- Software development schema extension may conflict with existing event type strings if
+  naming convention diverges — requires audit of existing 9 event types before adding new ones
+- Customer relations trust threshold depends on `event-domain-infrastructure` implementing
+  the `DomainGuardianConfig` with trust threshold support; if not available, document as a
+  stub and create a follow-up todo
+- Marketing cartridge DAG depends on `event-signal-pipeline` shipping the signal utility
+  cartridges; if signal pipeline slips, marketing starter cartridges ship as stubs with
+  clear dependency documentation
+- Cartridge subdirectory convention must match what `event-domain-infrastructure`'s
+  `discover_cartridges()` expects — verify during implementation
