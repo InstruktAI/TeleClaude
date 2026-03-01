@@ -88,7 +88,11 @@ New code lives in `teleclaude_events/trust/` to keep the trust domain self-conta
           `interaction_count`.
       11. Return: `None` (drop), event (accept), or event with `visibility`
           downgraded to `LOCAL` (attenuate).
-- [ ] Emit observation events via `context.push_callbacks` for trust actions.
+- [ ] Emit observation events by publishing to the Redis event stream (same
+      mechanism the daemon uses to ingest events). Observation events have
+      `visibility: LOCAL` so they re-enter the pipeline and bypass the trust
+      evaluator at step 1. Do NOT use `context.push_callbacks` — those are
+      delivery adapters, not pipeline re-entry.
 
 ### Task 2.2: Observation event schemas
 
