@@ -22,339 +22,192 @@ class AgentPulse(Animation):
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         color_idx = frame % len(self.palette)
         color_pair = self.palette.get(color_idx)
+        # Force high vibrancy
+        safe_color = self.enforce_vibrancy(color_pair)
 
         result = {}
-        for x, y in PixelMap.get_all_pixels(self.is_big):
-            if PixelMap.get_is_letter(self.target, x, y):
-                result[(x, y)] = color_pair
-            else:
-                result[(x, y)] = -1
+        for i in range(len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)):
+            for x, y in PixelMap.get_letter_pixels(self.is_big, i):
+                result[(x, y)] = safe_color
         return result
 
 
 class AgentWaveLR(Animation):
-    """A2: Letter-by-letter wave using agent colors with billboard reflection."""
-
-    is_external_light = True
-
-    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
-        super().__init__(*args, **kwargs)
-        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
+    """A2: Letter-by-letter wave using agent colors."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
-        letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS
         active_letter_idx = frame % num_letters
         
-        hi_color = self.palette.get(2) # Highlight
-        base_color = self.palette.get(0) # Muted
+        hi_color = self.enforce_vibrancy(self.palette.get(2))
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        r, g, b = hex_to_rgb(hi_color)
+        dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
 
         result = {}
-        for x, y in self._all_pixels:
-            # Map x to the nearest letter column for full-grid reflection
-            # Find which letter this x belongs to, or is closest to
-            assigned_idx = -1
-            for i, (start, end) in enumerate(letters):
-                if x >= start and x <= end:
-                    assigned_idx = i
-                    break
-            
-            # If not in a letter, find the nearest one to create a continuous wave reflection
-            if assigned_idx == -1:
-                # Simple heuristic: find letter with minimal distance to start/end
-                min_dist = 999
-                for i, (start, end) in enumerate(letters):
-                    dist = min(abs(x - start), abs(x - end))
-                    if dist < min_dist:
-                        min_dist = dist
-                        assigned_idx = i
-            
-            result[(x, y)] = hi_color if assigned_idx == active_letter_idx else base_color
+        for i in range(num_letters):
+            color = hi_color if i == active_letter_idx else dim_color
+            for p in PixelMap.get_letter_pixels(self.is_big, i):
+                result[p] = color
         return result
 
 
 class AgentWaveRL(Animation):
     """A3: Letter-by-letter wave right-to-left using agent colors."""
 
-    is_external_light = True
-
-    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
-        super().__init__(*args, **kwargs)
-        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
-
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
-        letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS
         active_letter_idx = (num_letters - 1) - (frame % num_letters)
         
-        hi_color = self.palette.get(2)
-        base_color = self.palette.get(0)
+        hi_color = self.enforce_vibrancy(self.palette.get(2))
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        r, g, b = hex_to_rgb(hi_color)
+        dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
 
         result = {}
-        for x, y in self._all_pixels:
-            assigned_idx = -1
-            for i, (start, end) in enumerate(letters):
-                if x >= start and x <= end:
-                    assigned_idx = i
-                    break
-            
-            if assigned_idx == -1:
-                min_dist = 999
-                for i, (start, end) in enumerate(letters):
-                    dist = min(abs(x - start), abs(x - end))
-                    if dist < min_dist:
-                        min_dist = dist
-                        assigned_idx = i
-            
-            result[(x, y)] = hi_color if assigned_idx == active_letter_idx else base_color
+        for i in range(num_letters):
+            color = hi_color if i == active_letter_idx else dim_color
+            for p in PixelMap.get_letter_pixels(self.is_big, i):
+                result[p] = color
         return result
 
 
 class AgentLineSweep(Animation):
-    """A9: Volumetric horizontal line sweep through letters using agent colors."""
-
-    is_external_light = True
+    """A9: Volumetric horizontal line sweep through neon tubes."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         active_row = frame % height
         
-        # Muted (0) for base, Highlight (2) for surge
-        mid_color = self.palette.get(2)
-        base_color = self.palette.get(0)
+        hi_color = self.enforce_vibrancy(self.palette.get(2))
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        r, g, b = hex_to_rgb(hi_color)
+        dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
 
         result = {}
-        for r in range(height):
-            current_color = mid_color if r == active_row else base_color
-            for p in PixelMap.get_row_pixels(self.is_big, r):
-                result[p] = current_color
+        num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
+        for i in range(num_letters):
+            for x, y in PixelMap.get_letter_pixels(self.is_big, i):
+                color = hi_color if y == active_row else dim_color
+                result[(x, y)] = color
         return result
 
 
 class AgentMiddleOut(Animation):
-    """A14: Vertical volumetric center expansion (Big only) using agent colors."""
+    """A14: Vertical volumetric center expansion (Big only)."""
 
     supports_small = False
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        if not self.is_big:
-            return {}
-
+        if not self.is_big: return {}
         height = BIG_BANNER_HEIGHT
         step = frame % 3
         active_rows = {2 - step, 3 + step}
         
-        mid_color = self.palette.get(2) # Highlight
-        base_color = self.palette.get(0) # Muted
+        hi_color = self.enforce_vibrancy(self.palette.get(2))
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        r, g, b = hex_to_rgb(hi_color)
+        dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
 
         result = {}
-        for r in range(height):
-            current_color = mid_color if r in active_rows else base_color
-            for p in PixelMap.get_row_pixels(self.is_big, r):
-                result[p] = current_color
+        for i in range(len(BIG_BANNER_LETTERS)):
+            for x, y in PixelMap.get_letter_pixels(True, i):
+                color = hi_color if y in active_rows else dim_color
+                result[(x, y)] = color
         return result
 
 
 class AgentSparkle(Animation):
-    """A7: Random pixels flash with random agent colors."""
+    """A7: Random pixels flash with agent colors."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         all_pixels = PixelMap.get_all_pixels(self.is_big)
         num_sparkles = len(all_pixels) // 15
 
         result: dict[tuple[int, int], str | int] = {p: -1 for p in all_pixels}
-        sparkle_pixels = random.sample(all_pixels, num_sparkles)
+        # Only sparkle on letters
+        letter_pixels = [p for p in all_pixels if PixelMap.get_is_letter(self.target, p[0], p[1])]
+        sparkle_pixels = random.sample(letter_pixels, min(num_sparkles, len(letter_pixels)))
         for p in sparkle_pixels:
-            result[p] = self.palette.get(random.randint(0, len(self.palette) - 1))
-        return result
-
-
-class AgentWithinLetterSweep(Animation):
-    """A11: Within each letter, pixels sweep L→R using agent colors (Big only)."""
-
-    supports_small = False
-    is_external_light = True
-
-    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        if not self.is_big:
-            return {}
-
-        num_letters = len(BIG_BANNER_LETTERS)
-        mid_color = self.palette.get(2) # Highlight
-        base_color = self.palette.get(0) # Muted
-        
-        result = {}
-        for i in range(num_letters):
-            start_x, end_x = BIG_BANNER_LETTERS[i]
-            letter_width = end_x - start_x + 1
-            active_col_offset = frame % letter_width
-            active_col = start_x + active_col_offset
-
-            for x in range(start_x, end_x + 1):
-                current_color = mid_color if x == active_col else base_color
-                for p in PixelMap.get_column_pixels(self.is_big, x):
-                    result[p] = current_color
+            result[p] = self.enforce_vibrancy(self.palette.get(random.randint(0, len(self.palette) - 1)))
         return result
 
 
 class AgentHeartbeat(Animation):
-    """A4: All pixels pulse with strong beat (Highlight) then rest (Muted)."""
+    """A4: Strong beat highlight on neon tubes."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        # Beat pattern: Highlight, Muted, Highlight, Muted, Muted, Muted
         pattern = [2, 0, 2, 0, 0, 0]
         color_idx = pattern[frame % len(pattern)]
-        color_pair = self.palette.get(color_idx)
-
-        all_pixels = PixelMap.get_all_pixels(self.is_big)
-        return {pixel: color_pair for pixel in all_pixels}
-
-
-class AgentWordSplit(Animation):
-    """A6: "TELE" and "CLAUDE" alternate between Muted and Normal/Highlight."""
-
-    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        all_pixels = PixelMap.get_all_pixels(self.is_big)
-        split_x = 33 if self.is_big else 15
-
-        # Parity 0: TELE Highlight, CLAUDE Muted
-        # Parity 1: TELE Muted, CLAUDE Highlight
-        parity = frame % 2
+        color_pair = self.enforce_vibrancy(self.palette.get(color_idx))
 
         result = {}
-        for x, y in all_pixels:
-            is_tele = x < split_x
-            if (is_tele and parity == 0) or (not is_tele and parity == 1):
-                result[(x, y)] = self.palette.get(2)  # Highlight
-            else:
-                result[(x, y)] = self.palette.get(0)  # Muted
+        num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
+        for i in range(num_letters):
+            for p in PixelMap.get_letter_pixels(self.is_big, i):
+                result[p] = color_pair
         return result
 
 
-class AgentLetterCascade(Animation):
-    """A5: Letters light up sequentially, each using one of the agent colors."""
+class AgentWordSplit(Animation):
+    """A6: \"TELE\" and \"CLAUDE\" blink alternately."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
-        active_letter = frame % num_letters
-        
-        mid_color = self.palette.get(2) # Highlight
-        base_color = self.palette.get(0) # Muted
-        
+        parity = frame % 2
+        hi_color = self.enforce_vibrancy(self.palette.get(2))
+        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        r, g, b = hex_to_rgb(hi_color)
+        dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
+
         result = {}
+        num_letters = len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)
         for i in range(num_letters):
-            color = mid_color if i == active_letter else base_color
+            is_tele = i < 4
+            color = hi_color if (is_tele and parity == 0) or (not is_tele and parity == 1) else dim_color
             for p in PixelMap.get_letter_pixels(self.is_big, i):
                 result[p] = color
         return result
 
 
 class AgentFadeCycle(Animation):
-    """A8: All letter pixels smoothly transition through agent colors."""
+    """A8: Smooth transition through agent colors on neon tubes."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         sequence = [0, 1, 2, 1]
         color_idx = sequence[frame % len(sequence)]
-        color_pair = self.palette.get(color_idx)
+        color_pair = self.enforce_vibrancy(self.palette.get(color_idx))
         
         result = {}
-        for x, y in PixelMap.get_all_pixels(self.is_big):
-            if PixelMap.get_is_letter(self.target, x, y):
-                result[(x, y)] = color_pair
-            else:
-                result[(x, y)] = -1
-        return result
-
-
-class AgentSpotlight(Animation):
-    """A10: Volumetric spotlight travels through the sign area."""
-
-    is_external_light = True
-
-    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
-        super().__init__(*args, **kwargs)
-        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
-
-    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
-        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
-        active_x = frame % width
-        radius = 6
-        
-        hi_color = self.palette.get(2) # Highlight
-        mid_color = self.palette.get(1) # Normal
-        base_color = self.palette.get(0) # Muted
-
-        result = {}
-        for x, y in self._all_pixels:
-            dist = abs(x - active_x)
-            if dist < radius:
-                color = hi_color if dist < 2 else mid_color
-            else:
-                color = base_color
-            result[(x, y)] = color
+        for i in range(len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)):
+            for p in PixelMap.get_letter_pixels(self.is_big, i):
+                result[p] = color_pair
         return result
 
 
 class AgentBreathing(Animation):
-    """A12: Gentle synchronized pulse with easing."""
+    """A12: Gentle synchronized pulse on neon tubes."""
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        # Longer sequence for "breathing" effect
         sequence = [0, 0, 1, 1, 2, 2, 1, 1]
         color_idx = sequence[frame % len(sequence)]
-        color_pair = self.palette.get(color_idx)
+        color_pair = self.enforce_vibrancy(self.palette.get(color_idx))
         
         result = {}
-        for x, y in PixelMap.get_all_pixels(self.is_big):
-            if PixelMap.get_is_letter(self.target, x, y):
-                result[(x, y)] = color_pair
-            else:
-                result[(x, y)] = -1
+        for i in range(len(BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS)):
+            for p in PixelMap.get_letter_pixels(self.is_big, i):
+                result[p] = color_pair
         return result
 
 
-class AgentDiagonalWave(Animation):
-    """A13: Volumetric diagonal pixel sweep using agent color sequence."""
-
-    supports_small = False
-
-    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        if not self.is_big:
-            return {}
-        max_val = BIG_BANNER_WIDTH + BIG_BANNER_HEIGHT
-        active = frame % max_val
-        
-        hi_color = self.palette.get(2) # Highlight
-        mid_color = self.palette.get(1) # Normal
-        base_color = self.palette.get(0) # Muted
-        
-        result = {}
-        for x, y in PixelMap.get_all_pixels(True):
-            dist = abs(((x - 1) + y) - active)
-            if dist == 0:
-                color = hi_color
-            elif dist < 3:
-                color = mid_color
-            else:
-                color = base_color
-            result[(x, y)] = color
-        return result
-
-
-# Helper to provide some animations for random selection
+# Selection list for randomizer
 AGENT_ANIMATIONS = [
     AgentPulse,
     AgentWaveLR,
     AgentWaveRL,
     AgentLineSweep,
     AgentMiddleOut,
-    AgentWithinLetterSweep,
     AgentHeartbeat,
     AgentWordSplit,
-    AgentLetterCascade,
     AgentFadeCycle,
-    AgentSpotlight,
     AgentBreathing,
-    AgentDiagonalWave,
 ]

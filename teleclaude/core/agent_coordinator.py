@@ -996,10 +996,14 @@ class AgentCoordinator:
 
         # Clear threaded output state for this turn (only for threaded sessions).
         # Non-threaded sessions rely on the poller's output_message_id for in-place edits.
+        # NOTE: Do NOT clear _incremental_render_digests here. The poller may
+        # fire one more OutputChanged tick after this point; keeping the digest
+        # lets the deduplication check prevent a duplicate message send.
+        # The digest is naturally invalidated on the next user turn when new
+        # assistant content changes the hash.
         session = await db.get_session(session_id)  # Refresh to get latest metadata
         if session and is_threaded_output_enabled(session.active_agent):
             await self.client.break_threaded_turn(session)
-            self._incremental_render_digests.pop(session_id, None)
 
         # Clear turn-specific cursor at turn completion
         await db.update_session(session_id, last_tool_done_at=None)

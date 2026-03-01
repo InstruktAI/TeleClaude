@@ -250,10 +250,14 @@ def _rgb_to_hex(r: int, g: int, b: int) -> str:
 
 def blend_colors(base_hex: str, agent_hex: str, percentage: float) -> str:
     """Blend two hex colors. new = base*(1-pct) + agent*pct"""
-    if not _is_hex_color(base_hex) or not _is_hex_color(agent_hex):
-        return base_hex
-    br, bg, bb = _hex_to_rgb(base_hex)
-    ar, ag, ab = _hex_to_rgb(agent_hex)
+    # Robustness: ensure we are working with strings
+    b_hex = str(base_hex)
+    a_hex = str(agent_hex)
+    
+    if not _is_hex_color(b_hex) or not _is_hex_color(a_hex):
+        return b_hex
+    br, bg, bb = _hex_to_rgb(b_hex)
+    ar, ag, ab = _hex_to_rgb(a_hex)
     return _rgb_to_hex(
         int(br * (1 - percentage) + ar * percentage),
         int(bg * (1 - percentage) + ag * percentage),
