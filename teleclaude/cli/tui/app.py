@@ -71,6 +71,7 @@ from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 
 if TYPE_CHECKING:
     from teleclaude.cli.api_client import TelecAPIClient
+    from teleclaude.cli.tui.animations.base import Animation
 
 logger = get_logger(__name__)
 
@@ -861,6 +862,7 @@ class TelecApp(App[str | None]):
 
         if mode in ("periodic", "party"):
             # Always ensure GlobalSky is running on the header in active modes
+            from teleclaude.cli.tui.animation_engine import AnimationPriority
             from teleclaude.cli.tui.animations.general import GlobalSky
             from teleclaude.cli.tui.animation_colors import palette_registry
             sky = GlobalSky(palette=palette_registry.get("spectrum"), is_big=True, duration_seconds=3600)
