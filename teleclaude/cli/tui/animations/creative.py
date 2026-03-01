@@ -617,7 +617,7 @@ class ColorSweep(Animation):
         directions = ["lr", "rl", "tb", "bt", "diag_dr", "diag_dl", "radial"]
         self._params = {
             "direction": self.rng.choice(directions),
-            "spec": Spectrum([main, sec]),
+            "spec": Spectrum([main, "#ffffff", sec]),
             "speed": self.rng.uniform(0.3, 3.0),
         }
 
@@ -665,12 +665,10 @@ class ColorSweep(Animation):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 pos_val, color_frac = pos(x, y)
                 surge = self.linear_surge(pos_val, active, 4.0)
-                if surge <= 0:
-                    result[(x, y)] = -1
-                    continue
                 color = self.enforce_vibrancy(spec.get_color(color_frac))
+                intensity = 0.45 + surge * 0.55
                 r0, g0, b0 = hex_to_rgb(color)
-                result[(x, y)] = rgb_to_hex(int(r0 * surge), int(g0 * surge), int(b0 * surge))
+                result[(x, y)] = rgb_to_hex(int(r0 * intensity), int(g0 * intensity), int(b0 * intensity))
 
         return result
 

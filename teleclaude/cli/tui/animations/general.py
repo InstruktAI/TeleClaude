@@ -49,13 +49,14 @@ class GlobalSky(Animation):
         # From Deep Black to Super Dark Midnight Purple
         self.night_sky = Spectrum(["#000000", "#05000A", "#0F001A", "#05000A"])
         
-        # Symmetric Stars ONLY (No moons/dots)
-        self.star_types = ["+", "*", "\u2726"] # Plus, Star, Sparkle
+        # Stars — weighted heavily toward tiny dots; big sparkles are rare
+        _star_types  = ["\u00b7", ".", "+", "*", "\u2726"]  # ·  .  +  *  ✦
+        _star_weights = [50,       25,  15,   7,   3]
         self.stars = []
-        for _ in range(80):
+        for _ in range(130):
             self.stars.append({
                 "pos": (self.rng.randint(0, self.width - 1), self.rng.randint(0, self.height - 1)),
-                "char": self.rng.choice(self.star_types),
+                "char": self.rng.choices(_star_types, weights=_star_weights, k=1)[0],
                 "phase": self.rng.random() * math.pi * 2,
                 "speed": 0.3 + self.rng.random() * 0.4
             })
@@ -755,7 +756,7 @@ class SearchlightSweep(Animation):
             if dist < effective_radius:
                 if self._is_batman_mask(x, y, cx, cy):
                     # Grounded shadow silhouette
-                    result[(x, y)] = "#151515" 
+                    result[(x, y)] = "#060606" 
                 else:
                     # Bright searchlight flare (high intensity)
                     intensity = 1.0 - (dist / radius)
