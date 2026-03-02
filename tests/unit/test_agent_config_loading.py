@@ -49,8 +49,6 @@ def test_agent_config_loading_defaults(mock_tmux, mock_binary, mock_agent_protoc
         config = _build_config(raw_config)
         agent = config.agents["test_agent"]
         assert agent.enabled is True
-        assert agent.strengths == ""
-        assert agent.avoid == ""
 
 
 @patch("teleclaude.config.resolve_agent_binary", return_value="test_bin")
@@ -100,14 +98,12 @@ def test_agent_config_loading_overrides(mock_tmux, mock_binary, mock_agent_proto
             "polling": {"directory_check_interval": 10},
             "redis": {"enabled": False, "url": "redis://localhost", "password": None},
             "telegram": {"trusted_bots": []},
-            "agents": {"test_agent": {"enabled": True, "strengths": "Testing", "avoid": "Production"}},
+            "agents": {"test_agent": {"enabled": True}},
         }
 
         config = _build_config(raw_config)
         agent = config.agents["test_agent"]
         assert agent.enabled is True
-        assert agent.strengths == "Testing"
-        assert agent.avoid == "Production"
 
 
 @patch("teleclaude.config.resolve_agent_binary", return_value="test_bin")

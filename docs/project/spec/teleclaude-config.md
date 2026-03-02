@@ -22,16 +22,10 @@ config_keys:
   agents:
     claude:
       enabled: boolean
-      strengths: string
-      avoid: string
     gemini:
       enabled: boolean
-      strengths: string
-      avoid: string
     codex:
       enabled: boolean
-      strengths: string
-      avoid: string
   redis:
     enabled: boolean
     host: string

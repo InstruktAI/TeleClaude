@@ -1,6 +1,14 @@
 project_root: /Users/Morriz/.teleclaude
 snippets_root: /Users/Morriz/.teleclaude/docs
 snippets:
+- id: general/concept/agent-characteristics
+  description: Cognitive profiles and collaboration selection heuristics for AI agents.
+  type: concept
+  scope: global
+  path: docs/general/concept/agent-characteristics.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/concept/agent-invocation-modes
   description: Standardized invocation patterns for AI agent CLIs, separating structured
     extraction from autonomous execution.
@@ -313,11 +321,20 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/maintenance/next-prepare
-  description: Orchestration procedure for next-prepare. Routes work to draft or gate
-    procedures with strict phase separation and session lifecycle management.
+  description: Orchestration procedure for next-prepare. Routes work to discovery,
+    draft, or gate with strict phase separation and session lifecycle management.
   type: procedure
   scope: global
   path: docs/general/procedure/maintenance/next-prepare.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: general/procedure/maintenance/next-prepare-discovery
+  description: Collaborative discovery phase for next-prepare. Two agents research
+    in parallel and converge to produce preparation artifacts when input is thin.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/maintenance/next-prepare-discovery.md
   role: member
   visibility: internal
   source_project: TeleClaude

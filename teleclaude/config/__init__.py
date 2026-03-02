@@ -119,8 +119,6 @@ class AgentConfig:
     resume_template: str
     continue_template: str = ""
     enabled: bool = True
-    strengths: str = ""
-    avoid: str = ""
 
     def get_command(self, profile: str = "default") -> str:
         """Assembled base command: binary + profile flags."""
@@ -746,8 +744,6 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
             resume_template=str(protocol["resume_template"]),
             continue_template=str(protocol.get("continue_template", "")),  # Optional field
             enabled=bool(user_agent_config.get("enabled", True)),
-            strengths=str(user_agent_config.get("strengths", "")),
-            avoid=str(user_agent_config.get("avoid", "")),
         )
 
     if not any(agent_cfg.enabled for agent_cfg in agents_registry.values()):
