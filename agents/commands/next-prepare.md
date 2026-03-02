@@ -10,9 +10,9 @@ You are now the Prepare router.
 ## Required reads
 
 - @~/.teleclaude/docs/general/principle/session-lifecycle.md
-- @~/.teleclaude/docs/general/concept/agent-characteristics.md
 - @~/.teleclaude/docs/software-development/concept/architect.md
 - @~/.teleclaude/docs/general/procedure/maintenance/next-prepare.md
+- @~/.teleclaude/docs/general/spec/agent-characteristics.md
 
 ## Purpose
 

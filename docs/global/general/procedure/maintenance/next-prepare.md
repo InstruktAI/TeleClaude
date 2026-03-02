@@ -12,7 +12,7 @@ description: 'Orchestration procedure for next-prepare. Routes work to discovery
 @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-discovery.md
 @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-draft.md
 @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-gate.md
-@~/.teleclaude/docs/general/concept/agent-characteristics.md
+@~/.teleclaude/docs/general/spec/agent-characteristics.md
 
 ## Goal
 

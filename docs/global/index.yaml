@@ -1,14 +1,6 @@
 project_root: /Users/Morriz/.teleclaude
 snippets_root: /Users/Morriz/.teleclaude/docs
 snippets:
-- id: general/concept/agent-characteristics
-  description: Cognitive profiles and collaboration selection heuristics for AI agents.
-  type: concept
-  scope: global
-  path: docs/general/concept/agent-characteristics.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
 - id: general/concept/agent-invocation-modes
   description: Standardized invocation patterns for AI agent CLIs, separating structured
     extraction from autonomous execution.
@@ -68,6 +60,15 @@ snippets:
   type: concept
   scope: global
   path: docs/general/concept/skill-taxonomy.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: general/policy/agent-dispatch
+  description: Role-to-agent dispatch assignments. Designates which agent holds each
+    operational role.
+  type: policy
+  scope: global
+  path: docs/general/policy/agent-dispatch.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -426,6 +427,15 @@ snippets:
   type: spec
   scope: global
   path: docs/general/spec/agent-artifacts.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: general/spec/agent-characteristics
+  description: Cognitive profiles, capability boundaries, and collaboration pairs
+    for AI agents in the system.
+  type: spec
+  scope: global
+  path: docs/general/spec/agent-characteristics.md
   role: member
   visibility: internal
   source_project: TeleClaude
