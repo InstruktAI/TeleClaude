@@ -1691,3 +1691,41 @@ async def test_stream_sse_closed_session_emits_closed_status() -> None:  # type:
     assert status_events[0]["status"] == "closed", (
         f"Expected 'closed' for lifecycle_status='closed', got {status_events[0]['status']!r}"
     )
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_user_message_uses_canonical_process_message_route() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """Web SSE lane routes user_message through canonical process_message, not tmux_bridge directly."""
+    from unittest.mock import AsyncMock, patch
+
+    from teleclaude.api.streaming import _stream_sse
+    from teleclaude.core.db_models import Session
+
+    session = Session(
+        session_id="test-session-id-1234",
+        lifecycle_status="active",
+        computer_name="local",
+    )
+
+    mock_process_message = AsyncMock()
+    mock_service = MagicMock()
+    mock_service.process_message = mock_process_message
+
+    with patch(
+        "teleclaude.core.command_registry.get_command_service",
+        return_value=mock_service,
+    ):
+        events: list[str] = []
+        async for event in _stream_sse(
+            session=session,
+            session_id="test-session-id-1234",
+            since_timestamp=None,
+            user_message="Hello, agent!",
+        ):
+            events.append(event)
+
+    mock_process_message.assert_awaited_once()
+    cmd = mock_process_message.await_args.args[0]
+    assert cmd.session_id == "test-session-id-1234"
+    assert cmd.text == "Hello, agent!"
+    assert cmd.origin == "web"
