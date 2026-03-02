@@ -100,8 +100,8 @@ def test_toggle_off_clears_preview_when_in_project(monkeypatch) -> None:
     assert preview_msgs[0].request_focus is False
 
 
-def test_toggle_off_does_not_clear_preview_outside_project(monkeypatch) -> None:
-    """'a' toggle-off preserves the preview if it belongs to a different project."""
+def test_toggle_off_always_clears_preview(monkeypatch) -> None:
+    """'a' toggle-off always clears the preview to prevent ghost panes."""
     header = _make_project_header()
     sessions = [_make_session("s1")]
     view = SessionsView()
@@ -117,8 +117,10 @@ def test_toggle_off_does_not_clear_preview_outside_project(monkeypatch) -> None:
 
     view.action_toggle_sticky_sessions()
 
-    assert view.preview_session_id == "other-session"
-    assert not any(isinstance(m, PreviewChanged) for m in posted_messages)
+    assert view.preview_session_id is None
+    preview_msgs = [m for m in posted_messages if isinstance(m, PreviewChanged)]
+    assert preview_msgs, "PreviewChanged(None) should be posted"
+    assert preview_msgs[0].session_id is None
 
 
 def test_toggle_on_respects_max_sticky_limit(monkeypatch) -> None:

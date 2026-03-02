@@ -401,11 +401,14 @@ class TelecApp(App[str | None]):
         self._session_status_cache = {s.session_id: s.status for s in message.sessions}
 
         # Forward to pane bridge (sibling — messages don't reach it via bubbling).
-        # Sync bridge state from sessions view first so seed_for_reload() has
-        # correct active/sticky IDs on SIGUSR2 reload.
+        # Sync bridge state from sessions view on initial load so seed_for_reload()
+        # has correct IDs before _apply() has been called.  After the first load,
+        # layout state is owned exclusively by StickyChanged/PreviewChanged messages;
+        # writing directly here would bypass _apply() and diverge pane_manager state.
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
-        pane_bridge._preview_session_id = sessions_view.preview_session_id
-        pane_bridge._sticky_session_ids = sessions_view._sticky_session_ids.copy()
+        if not self._initial_layout_applied:
+            pane_bridge._preview_session_id = sessions_view.preview_session_id
+            pane_bridge._sticky_session_ids = sessions_view._sticky_session_ids.copy()
         pane_bridge.on_data_refreshed(message)
 
         # On first data load, apply layout with persisted preview/sticky state.

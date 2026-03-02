@@ -154,10 +154,13 @@ class SessionsView(Widget, can_focus=True):
             self._logger.info("Pruning %d stale sticky IDs: %s", len(stale_sticky), [s[:8] for s in stale_sticky])
             self._sticky_session_ids = [sid for sid in self._sticky_session_ids if sid in new_ids]
             state_changed = True
+            # Notify bridge so panes for dead sessions are actually removed.
+            self.post_message(StickyChanged(self._sticky_session_ids.copy()))
         if self.preview_session_id and self.preview_session_id not in new_ids:
             self._logger.info("Pruning stale preview ID: %s", self.preview_session_id[:8])
             self.preview_session_id = None
             state_changed = True
+            self.post_message(PreviewChanged(None, request_focus=False))
 
         if old_ids != new_ids or not self._nav_items:
             # Session list changed — full rebuild (includes _apply_pending_selection)
@@ -528,8 +531,9 @@ class SessionsView(Widget, can_focus=True):
 
         # Double-click detection
         if self._last_click_session == session_id and (now - self._last_click_time) < DOUBLE_PRESS_THRESHOLD:
+            was_sticky = session_id in self._sticky_session_ids
             self._toggle_sticky(session_id)
-            if session_id not in self._sticky_session_ids:
+            if was_sticky:
                 # Preserve pane-slot stability: removed sticky immediately becomes preview.
                 self.preview_session_id = session_id
                 self.post_message(PreviewChanged(session_id, request_focus=False))
@@ -928,8 +932,10 @@ class SessionsView(Widget, can_focus=True):
         sticky_in_scope = [sid for sid in self._sticky_session_ids if sid in scope_ids]
 
         if sticky_in_scope:
-            # Toggle OFF: remove sticky for all sessions in scope
-            if self.preview_session_id in scope_ids:
+            # Toggle OFF: remove sticky for all sessions in scope.
+            # Always clear preview — any active preview may belong to a pane that is
+            # about to be torn down, and leaving it set causes ghost previews.
+            if self.preview_session_id is not None:
                 self.preview_session_id = None
                 self.post_message(PreviewChanged(None, request_focus=False))
             for sid in sticky_in_scope:
