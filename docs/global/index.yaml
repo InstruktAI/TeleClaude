@@ -302,6 +302,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: general/procedure/skill-authoring
+  description: Create skills as thin wrappers around doc snippets, with optional scripts
+    for deterministic tooling.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/skill-authoring.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/procedure/socratic-design-refinement
   description: Refine ideas into explicit, approved designs through focused questioning
     and trade-off analysis before writing implementation code.
@@ -565,6 +574,15 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/python/logging.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/policy/regression-zero-tolerance
+  description: Regression is the supreme red flag. No change that introduces unscoped
+    modifications may be merged, finalized, or approved under any circumstance.
+  type: policy
+  scope: global
+  path: docs/software-development/policy/regression-zero-tolerance.md
   role: member
   visibility: internal
   source_project: TeleClaude

@@ -1,6 +1,6 @@
 """Color palette management for TUI animations.
 
-Palettes return Rich-compatible color strings (e.g., "color(196)", "#ff5f5f")
+Palettes return Rich-compatible hex color strings (e.g., "#ff5f5f")
 that can be used directly in Rich Style objects for Textual rendering.
 """
 
@@ -9,54 +9,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Optional
 
+from teleclaude.cli.tui.color_utils import hex_to_rgb, rgb_to_hex
 from teleclaude.cli.tui.theme import get_agent_color
-
-# ---------------------------------------------------------------------------
-# 24-bit TrueColor utilities
-# ---------------------------------------------------------------------------
-
-
-def hex_to_rgb(hex_str: str) -> tuple[int, int, int]:
-    """Convert #RRGGBB hex string to (r, g, b) integer tuple."""
-    h = hex_str.lstrip("#")
-    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-
-
-def rgb_to_hex(r: int, g: int, b: int) -> str:
-    """Convert (r, g, b) integers to #RRGGBB string (clamped to 0-255)."""
-    r, g, b = max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))
-    return f"#{r:02x}{g:02x}{b:02x}"
-
-
-def interpolate_color(c1: str, c2: str, factor: float) -> str:
-    """Linearly interpolate between two hex colors.
-
-    Args:
-        c1: Start color as #RRGGBB.
-        c2: End color as #RRGGBB.
-        factor: Blend factor in [0.0, 1.0]; 0.0 returns c1, 1.0 returns c2.
-
-    Returns:
-        Interpolated #RRGGBB string.
-    """
-    factor = max(0.0, min(1.0, factor))
-    r1, g1, b1 = hex_to_rgb(c1)
-    r2, g2, b2 = hex_to_rgb(c2)
-    return rgb_to_hex(
-        int(r1 + (r2 - r1) * factor),
-        int(g1 + (g2 - g1) * factor),
-        int(b1 + (b2 - b1) * factor),
-    )
 
 
 class MultiGradient:
-    """Multi-stop gradient returning interpolated hex colors for a 0.0–1.0 factor.
-
-    Example::
-
-        grad = MultiGradient(["#FF4500", "#FFD700", "#FF00FF"])
-        color = grad.get(0.5)  # blend between orange and yellow
-    """
+    """Multi-stop gradient returning interpolated hex colors for a 0.0-1.0 factor."""
 
     def __init__(self, stops: list[str]) -> None:
         if not stops:
@@ -82,7 +40,6 @@ class MultiGradient:
 
 
 # Spectrum: seven distinct colors that read well on both dark and light backgrounds.
-# Converted to HEX to support contrast guard math.
 _SPECTRUM_COLORS = (
     "#ff0000",  # Red
     "#ffff00",  # Yellow

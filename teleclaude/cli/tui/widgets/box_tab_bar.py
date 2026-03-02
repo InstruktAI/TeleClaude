@@ -14,10 +14,9 @@ from textual.widget import Widget
 
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import (
-    NEUTRAL_HIGHLIGHT_COLOR,
-    NEUTRAL_MUTED_COLOR,
     apply_tui_haze,
     blend_colors,
+    get_neutral_color,
     get_terminal_background,
     get_tui_inactive_background,
     is_dark_mode,
@@ -49,7 +48,7 @@ class BoxTabBar(TelecMixin, Widget):
     DEFAULT_CSS = """
     BoxTabBar {
         width: 100%;
-        height: 3;
+        height: 4;
     }
     """
 
@@ -69,7 +68,7 @@ class BoxTabBar(TelecMixin, Widget):
 
     def on_mount(self) -> None:
         if not is_dark_mode():
-            self.styles.height = 2
+            self.styles.height = 3
 
     def render(self) -> Group:
         try:
@@ -102,10 +101,13 @@ class BoxTabBar(TelecMixin, Widget):
             active_bg = get_terminal_background()
             inactive_bg = get_tui_inactive_background()
 
-        # Dark mode: 3 rows (box-drawing), 2-char gap (borders touch)
-        # Light mode: 2 rows (▀ half-block + label), 3-char gap (1-char sky between tabs)
-        num_rows = 3 if dark_mode else 2
+        # Dark mode: 3 rows (box-drawing) + 1 transition, 2-char gap (borders touch)
+        # Light mode: 2 rows (▀ half-block + label) + 1 transition, 3-char gap (1-char sky between tabs)
+        num_rows = 4 if dark_mode else 3
         tab_gap = 2 if dark_mode else 3
+
+        # Pane content background for the transition row
+        pane_bg = get_terminal_background() if focused else get_tui_inactive_background()
 
         tabs: list[tuple[int, int, str, bool, str]] = []
         col = 1
@@ -173,8 +175,22 @@ class BoxTabBar(TelecMixin, Widget):
                 if not isinstance(sky_color, str):
                     sky_color = sky_fallback
 
+                # Transition row: ▄ half-block creating smooth edge between tab bar and content
+                if y_offset == num_rows - 1:
+                    if not in_tab:
+                        # Sample sky from the row above for seamless visual continuity
+                        sky_above = engine.get_layer_color(Z_SKY, x, global_y - 1, target="header") if engine else None
+                        if isinstance(sky_above, str):
+                            sky_color = sky_above
+                    bg_above = tab_bg if in_tab else sky_color
+                    row_text.append(
+                        "\u2584",
+                        style=Style(color=_to_color(pane_bg), bgcolor=_to_color(bg_above)),
+                    )
+                    continue
+
                 z_base = Z_TABS_ACTIVE if active_tab_under else Z_TABS_INACTIVE
-                fg_text = NEUTRAL_HIGHLIGHT_COLOR if active_tab_under else NEUTRAL_MUTED_COLOR
+                fg_text = get_neutral_color("highlight") if active_tab_under else get_neutral_color("muted")
                 if not focused:
                     fg_text = apply_tui_haze(fg_text)
 

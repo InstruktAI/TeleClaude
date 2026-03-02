@@ -11,7 +11,7 @@ from textual.widget import Widget
 
 from teleclaude.cli.models import AgentAvailabilityInfo
 from teleclaude.cli.tui.messages import SettingsChanged, StateChanged
-from teleclaude.cli.tui.theme import NEUTRAL_HIGHLIGHT_COLOR, get_agent_color, get_agent_style
+from teleclaude.cli.tui.theme import get_agent_color, get_agent_style, get_neutral_color
 from teleclaude.cli.tui.utils.formatters import format_countdown
 
 
@@ -93,7 +93,7 @@ class TelecFooter(Widget):
         label = tooltip or binding.description
 
         text = Text()
-        key_style = Style(bold=True, dim=True) if not enabled else Style(bold=True, color=NEUTRAL_HIGHLIGHT_COLOR)
+        key_style = Style(bold=True, dim=True) if not enabled else Style(bold=True, color=get_neutral_color("highlight"))
         label_style = Style(dim=True)
         text.append(str(key), style=key_style)
         if label:

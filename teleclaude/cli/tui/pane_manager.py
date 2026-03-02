@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Callable, Literal
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.tui import theme
+from teleclaude.cli.tui.color_utils import hex_to_nearest_xterm256
 from teleclaude.config import config
 
 if TYPE_CHECKING:
@@ -1066,7 +1067,7 @@ class TmuxPaneManager:
                 bg_color = theme.get_agent_pane_selected_background(agent)
             else:
                 bg_color = theme.get_agent_pane_inactive_background(agent)
-            fg = f"colour{theme.get_agent_normal_color(agent)}"
+            fg = f"colour{hex_to_nearest_xterm256(theme.get_agent_normal_color(agent))}"
             active_bg = theme.get_agent_pane_active_background(agent)
             self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg={fg},bg={bg_color}")
             self._run_tmux("set", "-p", "-t", pane_id, "window-active-style", f"fg={fg},bg={active_bg}")
@@ -1122,7 +1123,7 @@ class TmuxPaneManager:
             inactive_bg = theme.get_tui_inactive_background()
             terminal_bg = theme.get_terminal_background()
             if agent:
-                fg = f"colour{theme.get_agent_normal_color(agent)}"
+                fg = f"colour{hex_to_nearest_xterm256(theme.get_agent_normal_color(agent))}"
                 self._run_tmux("set", "-p", "-t", pane_id, "window-style", f"fg={fg},bg={inactive_bg}")
                 self._run_tmux("set", "-p", "-t", pane_id, "window-active-style", f"fg={fg},bg={terminal_bg}")
             else:

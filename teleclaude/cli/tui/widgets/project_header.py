@@ -10,7 +10,7 @@ from textual.widget import Widget
 
 from teleclaude.cli.models import ProjectInfo
 from teleclaude.cli.tui.base import TelecMixin
-from teleclaude.cli.tui.theme import CONNECTOR_COLOR, NEUTRAL_MUTED_COLOR
+from teleclaude.cli.tui.theme import CONNECTOR_COLOR, get_neutral_color
 from teleclaude.cli.tui.utils.formatters import shorten_path
 
 
@@ -52,7 +52,7 @@ class ProjectHeader(TelecMixin, Widget):
         if is_selected:
             base_style = Style(reverse=True)
         elif not self.session_count:
-            base_style = Style(color=NEUTRAL_MUTED_COLOR)
+            base_style = Style(color=get_neutral_color("muted"))
         else:
             base_style = Style()
 

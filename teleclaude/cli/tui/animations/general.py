@@ -87,7 +87,7 @@ class GlobalSky(Animation):
 
     # Sun shape — 6 rows, bright gold disc for day mode (right-side sky margin)
     _SUN_ROWS = [
-        "   \u2588\u2588\u2588\u2588\u2588\u2588\u2588    ",
+        "    \u2588\u2588\u2588\u2588\u2588\u2588    ",
         "  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  ",
         " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 ",
         " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 ",

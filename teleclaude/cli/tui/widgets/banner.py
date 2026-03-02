@@ -105,12 +105,12 @@ class Banner(TelecMixin, Widget):
         from teleclaude.cli.tui.animations.base import Z_FOREGROUND, Z_SKY
         from teleclaude.cli.tui.pixel_mapping import PixelMap
         from teleclaude.cli.tui.theme import (
-            BANNER_HEX,
-            NEUTRAL_MUTED_COLOR,
             apply_tui_haze,
             blend_colors,
             deepen_for_light_mode,
+            get_banner_hex,
             get_billboard_background,
+            get_neutral_color,
             is_dark_mode,
             letter_color_floor,
         )
@@ -118,7 +118,7 @@ class Banner(TelecMixin, Widget):
         focused = getattr(self.app, "app_focus", True)
         dark_mode = is_dark_mode()
         plate_bg = get_billboard_background(focused)
-        pipe_color = NEUTRAL_MUTED_COLOR if focused else apply_tui_haze(NEUTRAL_MUTED_COLOR)
+        pipe_color = get_neutral_color("muted") if focused else apply_tui_haze(get_neutral_color("muted"))
         sky_fallback = "#000000" if dark_mode else "#C8E8F8"
 
         # Full terminal width for sky
@@ -173,7 +173,7 @@ class Banner(TelecMixin, Widget):
                             # Letter pixels: dark mode → enforce floor; light mode → deepen for visibility
                             if is_letter:
                                 if dark_mode:
-                                    floor = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
+                                    floor = get_banner_hex() if focused else apply_tui_haze(get_banner_hex())
                                     color_str = letter_color_floor(color_str, floor)
                                 else:
                                     color_str = deepen_for_light_mode(color_str)
@@ -191,13 +191,13 @@ class Banner(TelecMixin, Widget):
                                 result.append(fg_char, style=Style(color=color_str, bgcolor=_to_color(final_bg)))
                         else:
                             # Base State
-                            fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
+                            fg = str(fg_color or (get_banner_hex() if focused else apply_tui_haze(get_banner_hex())))
                             if is_pipe_char:
                                 fg = _dim_color(fg, 0.8)
                             result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
                     else:
                         is_pipe_char = _is_pipe(char)
-                        fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
+                        fg = str(fg_color or (get_banner_hex() if focused else apply_tui_haze(get_banner_hex())))
                         if is_pipe_char:
                             fg = _dim_color(fg, 0.8)
                         result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
@@ -232,12 +232,12 @@ class Banner(TelecMixin, Widget):
         from teleclaude.cli.tui.animations.base import Z_FOREGROUND, Z_SKY
         from teleclaude.cli.tui.pixel_mapping import PixelMap
         from teleclaude.cli.tui.theme import (
-            BANNER_HEX,
-            NEUTRAL_MUTED_COLOR,
             apply_tui_haze,
             blend_colors,
             deepen_for_light_mode,
+            get_banner_hex,
             get_billboard_background,
+            get_neutral_color,
             is_dark_mode,
             letter_color_floor,
         )
@@ -245,7 +245,7 @@ class Banner(TelecMixin, Widget):
         focused = getattr(self.app, "app_focus", True)
         dark_mode = is_dark_mode()
         plate_bg = get_billboard_background(focused)
-        pipe_color = NEUTRAL_MUTED_COLOR if focused else apply_tui_haze(NEUTRAL_MUTED_COLOR)
+        pipe_color = get_neutral_color("muted") if focused else apply_tui_haze(get_neutral_color("muted"))
         sky_fallback = "#000000" if dark_mode else "#C8E8F8"
 
         width = 40
@@ -296,7 +296,7 @@ class Banner(TelecMixin, Widget):
                             # Letter pixels: dark mode → enforce floor; light mode → deepen for visibility
                             if is_letter:
                                 if dark_mode:
-                                    floor = BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)
+                                    floor = get_banner_hex() if focused else apply_tui_haze(get_banner_hex())
                                     color_str = letter_color_floor(color_str, floor)
                                 else:
                                     color_str = deepen_for_light_mode(color_str)
@@ -310,12 +310,12 @@ class Banner(TelecMixin, Widget):
                             else:
                                 result.append(fg_char, style=Style(color=color_str, bgcolor=_to_color(final_bg)))
                         else:
-                            fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
+                            fg = str(fg_color or (get_banner_hex() if focused else apply_tui_haze(get_banner_hex())))
                             if is_pipe_char:
                                 fg = _dim_color(fg, 0.8)
                             result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
                     else:
-                        fg = str(fg_color or (BANNER_HEX if focused else apply_tui_haze(BANNER_HEX)))
+                        fg = str(fg_color or (get_banner_hex() if focused else apply_tui_haze(get_banner_hex())))
                         if is_pipe_char:
                             fg = _dim_color(fg, 0.8)
                         result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))

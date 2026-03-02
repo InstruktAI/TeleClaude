@@ -90,7 +90,7 @@ def test_set_pane_background_overrides_only_at_paint_theming_level():
         patch.object(theme, "should_apply_paint_pane_theming", return_value=True),
         patch.object(theme, "get_agent_pane_inactive_background", return_value="#101010"),
         patch.object(theme, "get_agent_pane_active_background", return_value="#000000"),
-        patch.object(theme, "get_agent_normal_color", return_value=222),
+        patch.object(theme, "get_agent_normal_color", return_value="#ffd787"),
     ):
         manager._set_pane_background("%9", "tc_test", "claude")
 
@@ -130,7 +130,7 @@ def test_set_pane_background_uses_selected_haze_for_tree_selection():
         patch.object(theme, "get_agent_pane_inactive_background", return_value="#101010"),
         patch.object(theme, "get_agent_pane_selected_background", return_value="#060606") as get_selected,
         patch.object(theme, "get_agent_pane_active_background", return_value="#000000"),
-        patch.object(theme, "get_agent_normal_color", return_value=222),
+        patch.object(theme, "get_agent_normal_color", return_value="#ffd787"),
     ):
         manager._set_pane_background("%9", "tc_test", "claude", is_tree_selected=True)
 
@@ -171,7 +171,7 @@ def test_doc_pane_background_is_tinted_when_paint_theming_is_enabled():
         patch.object(theme, "should_apply_paint_pane_theming", return_value=True),
         patch.object(theme, "get_tui_inactive_background", return_value="#e8e2d0"),
         patch.object(theme, "get_terminal_background", return_value="#fdf6e3"),
-        patch.object(theme, "get_agent_normal_color", return_value=222),
+        patch.object(theme, "get_agent_normal_color", return_value="#ffd787"),
     ):
         manager._set_doc_pane_background("%42", agent="claude")
 
@@ -192,7 +192,7 @@ def test_doc_pane_background_uses_native_foreground_for_anonymous_paints_in_them
         patch.object(theme, "should_apply_paint_pane_theming", return_value=True),
         patch.object(theme, "get_tui_inactive_background", return_value="#e8e2d0"),
         patch.object(theme, "get_terminal_background", return_value="#fdf6e3"),
-        patch.object(theme, "get_agent_normal_color", return_value=222),
+        patch.object(theme, "get_agent_normal_color", return_value="#ffd787"),
     ):
         manager._set_doc_pane_background("%42")
 
@@ -409,7 +409,7 @@ def test_render_layout_split_windows_do_not_capture_focus_with_d_flag():
         patch.object(manager, "_get_pane_exists", return_value=True),
         patch.object(theme, "get_agent_pane_inactive_background", return_value="#101010"),
         patch.object(theme, "get_agent_pane_active_background", return_value="#000000"),
-        patch.object(theme, "get_agent_normal_color", return_value=15),
+        patch.object(theme, "get_agent_normal_color", return_value="#ffffff"),
         patch.object(theme, "get_tui_inactive_background", return_value="#e8e2d0"),
         patch.object(theme, "get_terminal_background", return_value="#fbf8f1"),
     ):

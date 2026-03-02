@@ -1,17 +1,17 @@
 """Agent colors and styling for TUI.
 
+Single hex-based color palette as the source of truth. Everything derived from it.
+
 Dual-audience module:
-- Tmux pane manager: xterm256 codes and hex colors for terminal escape sequences
-- Textual widgets: Rich Style objects and CSS-compatible color definitions
+- Tmux pane manager: hex colors (converted to xterm256 only at the tmux boundary)
+- Textual widgets: Rich Style objects and CSS-compatible hex color definitions
 
 Detects macOS dark/light mode via system settings.
 """
 
 from __future__ import annotations
 
-import curses
 import os
-import re
 import subprocess
 import sys
 from typing import Optional
@@ -19,7 +19,17 @@ from typing import Optional
 from rich.style import Style
 from textual.theme import Theme
 
+from teleclaude.cli.tui.color_utils import (
+    blend,
+    deepen_for_light_mode,
+    is_hex_color,
+    letter_color_floor,
+    relative_luminance,
+)
 from teleclaude.config import config
+
+# Re-export color utilities that consumers import from theme
+__all_reexports__ = [blend, deepen_for_light_mode, letter_color_floor]
 
 # --- Theme Mode Detection ---
 
@@ -130,22 +140,54 @@ def refresh_mode() -> None:
     _build_rich_colors()
 
 
-# --- Agent xterm256 Color Codes ---
-# Used by pane_manager for tmux foreground and external references.
+# =============================================================================
+# THE PALETTE — every color consumer derives from this.
+# =============================================================================
+
+AGENT_PALETTE: dict[str, dict[str, dict[str, str]]] = {
+    "dark": {
+        "claude": {"subtle": "#875f00", "muted": "#af875f", "normal": "#d7af87", "highlight": "#ffffff"},
+        "gemini": {"subtle": "#8787af", "muted": "#af87ff", "normal": "#d7afff", "highlight": "#ffffff"},
+        "codex": {"subtle": "#5f87af", "muted": "#87afd7", "normal": "#afd7ff", "highlight": "#ffffff"},
+    },
+    "light": {
+        "claude": {"subtle": "#d7af87", "muted": "#af875f", "normal": "#875f00", "highlight": "#000000"},
+        "gemini": {"subtle": "#d787ff", "muted": "#af5fff", "normal": "#870087", "highlight": "#000000"},
+        "codex": {"subtle": "#87afd7", "muted": "#5f87af", "normal": "#005f87", "highlight": "#000000"},
+    },
+}
+
+STRUCTURAL_PALETTE: dict[str, dict[str, str]] = {
+    "dark": {
+        "connector": "#808080",
+        "separator": "#585858",
+        "input_border": "#444444",
+        "banner": "#585858",
+        "status_fg": "#727578",
+    },
+    "light": {
+        "connector": "#808080",
+        "separator": "#a0a0a0",
+        "input_border": "#c0c0c0",
+        "banner": "#a0a0a0",
+        "status_fg": "#727578",
+    },
+}
+
+NEUTRAL_PALETTE: dict[str, dict[str, str]] = {
+    "dark": {"subtle": "#484848", "muted": "#707070", "normal": "#a0a0a0", "highlight": "#e0e0e0"},
+    "light": {"subtle": "#b8b8b8", "muted": "#909090", "normal": "#606060", "highlight": "#202020"},
+}
+
+PEACEFUL_PALETTE: dict[str, dict[str, str]] = {
+    "dark": {"subtle": "#303030", "muted": "#585858", "normal": "#bcbcbc", "highlight": "#eeeeee"},
+    "light": {"subtle": "#e4e4e4", "muted": "#808080", "normal": "#444444", "highlight": "#080808"},
+}
+
+
+# --- Palette accessors ---
 
 _KNOWN_AGENTS = frozenset(("claude", "gemini", "codex"))
-
-_AGENT_SUBTLE_DARK = {"claude": 94, "gemini": 103, "codex": 67}
-_AGENT_SUBTLE_LIGHT = {"claude": 180, "gemini": 177, "codex": 110}
-
-_AGENT_MUTED_DARK = {"claude": 137, "gemini": 141, "codex": 110}
-_AGENT_MUTED_LIGHT = {"claude": 137, "gemini": 135, "codex": 67}
-
-_AGENT_NORMAL_DARK = {"claude": 180, "gemini": 183, "codex": 153}
-_AGENT_NORMAL_LIGHT = {"claude": 94, "gemini": 90, "codex": 24}
-
-_AGENT_HIGHLIGHT_DARK = {"claude": 231, "gemini": 231, "codex": 231}
-_AGENT_HIGHLIGHT_LIGHT = {"claude": 16, "gemini": 16, "codex": 16}
 
 
 def _safe_agent(agent: str) -> str:
@@ -155,43 +197,67 @@ def _safe_agent(agent: str) -> str:
     return agent
 
 
-def get_agent_normal_color(agent: str) -> int:
-    """xterm256 code for agent's normal text color."""
-    key = _safe_agent(agent)
-    return _AGENT_NORMAL_DARK[key] if _is_dark_mode else _AGENT_NORMAL_LIGHT[key]
+def _mode_key() -> str:
+    return "dark" if _is_dark_mode else "light"
 
 
-def get_agent_highlight_color(agent: str) -> int:
-    """xterm256 code for agent's highlight color (maximum contrast)."""
-    key = _safe_agent(agent)
-    return _AGENT_HIGHLIGHT_DARK[key] if _is_dark_mode else _AGENT_HIGHLIGHT_LIGHT[key]
+def get_agent_hex(agent: str, tier: str = "normal") -> str:
+    """Hex color for an agent at a given tier."""
+    return AGENT_PALETTE[_mode_key()][_safe_agent(agent)][tier]
 
 
-def get_agent_muted_color(agent: str) -> int:
-    """xterm256 code for agent's muted text color."""
-    key = _safe_agent(agent)
-    return _AGENT_MUTED_DARK[key] if _is_dark_mode else _AGENT_MUTED_LIGHT[key]
+def get_agent_normal_color(agent: str) -> str:
+    """Hex color for agent's normal text color."""
+    return get_agent_hex(agent, "normal")
 
 
-def get_agent_subtle_color(agent: str) -> int:
-    """xterm256 code for agent's subtle background tint."""
-    key = _safe_agent(agent)
-    return _AGENT_SUBTLE_DARK[key] if _is_dark_mode else _AGENT_SUBTLE_LIGHT[key]
+def get_agent_highlight_color(agent: str) -> str:
+    """Hex color for agent's highlight color (maximum contrast)."""
+    return get_agent_hex(agent, "highlight")
+
+
+def get_agent_muted_color(agent: str) -> str:
+    """Hex color for agent's muted text color."""
+    return get_agent_hex(agent, "muted")
+
+
+def get_agent_subtle_color(agent: str) -> str:
+    """Hex color for agent's subtle background tint."""
+    return get_agent_hex(agent, "subtle")
+
+
+def get_neutral_color(tier: str = "normal") -> str:
+    """Hex color from neutral palette for the current mode."""
+    return NEUTRAL_PALETTE[_mode_key()].get(tier, NEUTRAL_PALETTE[_mode_key()]["normal"])
+
+
+def get_peaceful_color(tier: str = "normal") -> str:
+    """Hex color from peaceful palette for the current mode."""
+    return PEACEFUL_PALETTE[_mode_key()].get(tier, PEACEFUL_PALETTE[_mode_key()]["normal"])
+
+
+def get_structural_color(key: str) -> str:
+    """Hex color from structural palette for the current mode."""
+    return STRUCTURAL_PALETTE[_mode_key()][key]
+
+
+def get_connector_color() -> str:
+    return get_structural_color("connector")
+
+
+def get_banner_hex() -> str:
+    return get_structural_color("banner")
+
+
+def get_status_fg() -> str:
+    return get_structural_color("status_fg")
+
+
+# Backward-compat constant — connector is #808080 in both modes
+CONNECTOR_COLOR = "#808080"
 
 
 # --- Agent Hex Colors (for tmux pane backgrounds) ---
-
-_AGENT_HEX_COLORS_DARK: dict[str, str] = {
-    "claude": "#af875f",
-    "gemini": "#af87ff",
-    "codex": "#87afaf",
-}
-
-_AGENT_HEX_COLORS_LIGHT: dict[str, str] = {
-    "claude": "#af875f",
-    "gemini": "#af5fff",
-    "codex": "#5f8787",
-}
 
 _LIGHT_MODE_PAPER_BG = "#fdf6e3"
 
@@ -207,27 +273,7 @@ _TERMINAL_HINT_WEIGHT = 0.35
 _DARK_HINT_MAX_LUMINANCE = 0.45
 _LIGHT_HINT_MIN_LUMINANCE = 0.55
 
-_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 _terminal_bg_cache: str | None = None
-
-
-def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
-    h = hex_color.lstrip("#")
-    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-
-
-def _is_hex_color(value: str) -> bool:
-    return bool(_HEX_COLOR_RE.match(value or ""))
-
-
-def _relative_luminance(hex_color: str) -> float:
-    r8, g8, b8 = _hex_to_rgb(hex_color)
-
-    def _srgb_to_linear(v: int) -> float:
-        c = v / 255.0
-        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
-
-    return 0.2126 * _srgb_to_linear(r8) + 0.7152 * _srgb_to_linear(g8) + 0.0722 * _srgb_to_linear(b8)
 
 
 def _read_terminal_bg_from_appearance() -> str | None:
@@ -241,42 +287,11 @@ def _read_terminal_bg_from_appearance() -> str | None:
     if result.returncode != 0:
         return None
     value = (result.stdout or "").strip()
-    return value if _is_hex_color(value) else None
+    return value if is_hex_color(value) else None
 
 
-def _rgb_to_hex(r: int, g: int, b: int) -> str:
-    r, g, b = max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))
-    return f"#{r:02x}{g:02x}{b:02x}"
-
-
-def letter_color_floor(color_hex: str, floor_hex: str) -> str:
-    """Return color with each RGB channel clamped to at least the floor color.
-
-    Prevents animation colors on letter pixels from appearing darker than the
-    letter's resting base gray (BANNER_HEX).
-    """
-    if not _is_hex_color(color_hex) or not _is_hex_color(floor_hex):
-        return color_hex
-    cr, cg, cb = _hex_to_rgb(color_hex)
-    fr, fg, fb = _hex_to_rgb(floor_hex)
-    return _rgb_to_hex(max(cr, fr), max(cg, fg), max(cb, fb))
-
-
-def blend_colors(base_hex: str, agent_hex: str, percentage: float) -> str:
-    """Blend two hex colors. new = base*(1-pct) + agent*pct"""
-    # Robustness: ensure we are working with strings
-    b_hex = str(base_hex)
-    a_hex = str(agent_hex)
-
-    if not _is_hex_color(b_hex) or not _is_hex_color(a_hex):
-        return b_hex
-    br, bg, bb = _hex_to_rgb(b_hex)
-    ar, ag, ab = _hex_to_rgb(a_hex)
-    return _rgb_to_hex(
-        int(br * (1 - percentage) + ar * percentage),
-        int(bg * (1 - percentage) + ag * percentage),
-        int(bb * (1 - percentage) + ab * percentage),
-    )
+# Keep blend_colors as public alias for backward compat (used by banner.py)
+blend_colors = blend
 
 
 def get_terminal_background() -> str:
@@ -287,12 +302,12 @@ def get_terminal_background() -> str:
     mode_default_bg = "#000000" if _is_dark_mode else _LIGHT_MODE_PAPER_BG
     hint = _read_terminal_bg_from_appearance()
     if hint:
-        lum = _relative_luminance(hint)
+        lum = relative_luminance(hint)
         if _is_dark_mode and lum <= _DARK_HINT_MAX_LUMINANCE:
-            _terminal_bg_cache = blend_colors(mode_default_bg, hint, _TERMINAL_HINT_WEIGHT)
+            _terminal_bg_cache = blend(mode_default_bg, hint, _TERMINAL_HINT_WEIGHT)
             return _terminal_bg_cache
         elif not _is_dark_mode and lum >= _LIGHT_HINT_MIN_LUMINANCE:
-            _terminal_bg_cache = blend_colors(mode_default_bg, hint, _TERMINAL_HINT_WEIGHT)
+            _terminal_bg_cache = blend(mode_default_bg, hint, _TERMINAL_HINT_WEIGHT)
             return _terminal_bg_cache
     _terminal_bg_cache = mode_default_bg
     return _terminal_bg_cache
@@ -302,35 +317,37 @@ def get_tui_inactive_background() -> str:
     base_bg = get_terminal_background()
     blend_target = "#ffffff" if _is_dark_mode else "#000000"
     pct = _TUI_INACTIVE_HAZE_PERCENTAGE_DARK if _is_dark_mode else _TUI_INACTIVE_HAZE_PERCENTAGE_LIGHT
-    return blend_colors(base_bg, blend_target, pct)
+    return blend(base_bg, blend_target, pct)
 
 
 def apply_tui_haze(hex_color: str) -> str:
     """Apply the TUI inactive haze to a color based on current mode."""
     blend_target = "#ffffff" if _is_dark_mode else "#000000"
     pct = _TUI_INACTIVE_HAZE_PERCENTAGE_DARK if _is_dark_mode else _TUI_INACTIVE_HAZE_PERCENTAGE_LIGHT
-    return blend_colors(hex_color, blend_target, pct)
+    return blend(hex_color, blend_target, pct)
 
 
 def get_billboard_background(focused: bool) -> str:
     """Get billboard background color, ensuring it plays along with TUI focus state."""
     if _is_dark_mode:
-        # Dark mode: fixed dark plate for best neon contrast
         return "#242424" if focused else "#2b2b2b"
-    # Light mode: plain white billboard
     return "#ffffff"
 
 
+def _get_agent_pane_hex(agent: str) -> str:
+    """Get the agent's muted hex color for pane background blending."""
+    return get_agent_muted_color(agent)
+
+
 def get_agent_pane_inactive_background(agent: str, haze_percentage: float | None = None) -> str:
-    colors = _AGENT_HEX_COLORS_DARK if _is_dark_mode else _AGENT_HEX_COLORS_LIGHT
     base_bg = get_terminal_background()
-    agent_color = colors[_safe_agent(agent)]
+    agent_color = _get_agent_pane_hex(agent)
     pct = (
         (_AGENT_PANE_INACTIVE_HAZE_PERCENTAGE_DARK if _is_dark_mode else _AGENT_PANE_INACTIVE_HAZE_PERCENTAGE_LIGHT)
         if haze_percentage is None
         else haze_percentage
     )
-    return blend_colors(base_bg, agent_color, pct)
+    return blend(base_bg, agent_color, pct)
 
 
 def get_agent_pane_selected_background(agent: str) -> str:
@@ -349,118 +366,99 @@ def get_agent_pane_active_background(agent: str) -> str:
 
 
 def get_agent_status_background(agent: str) -> str:
-    colors = _AGENT_HEX_COLORS_DARK if _is_dark_mode else _AGENT_HEX_COLORS_LIGHT
     base_bg = get_terminal_background()
-    return blend_colors(base_bg, colors[_safe_agent(agent)], _AGENT_STATUS_HAZE_PERCENTAGE)
+    return blend(base_bg, _get_agent_pane_hex(agent), _AGENT_STATUS_HAZE_PERCENTAGE)
 
 
 # --- Textual Themes ---
 
+
+def _build_theme_variables(mode: str) -> dict[str, str]:
+    """Build theme variables dict from palettes for a given mode."""
+    agents = AGENT_PALETTE[mode]
+    neutral = NEUTRAL_PALETTE[mode]
+    structural = STRUCTURAL_PALETTE[mode]
+
+    variables: dict[str, str] = {
+        "block-cursor-text-style": "reverse",
+        "scrollbar-background": get_terminal_background(),
+    }
+
+    # Agent colors
+    for agent_name, tiers in agents.items():
+        for tier, hex_val in tiers.items():
+            variables[f"{agent_name}-{tier}"] = hex_val
+
+    # Neutral gradient
+    for tier, hex_val in neutral.items():
+        variables[f"neutral-{tier}"] = hex_val
+
+    # Structural
+    variables["connector"] = structural["connector"]
+    variables["separator"] = structural["separator"]
+    variables["input-border"] = structural["input_border"]
+    variables["banner-color"] = structural["banner"]
+    variables["status-fg"] = structural["status_fg"]
+
+    # Mode-specific UI chrome
+    if mode == "dark":
+        variables["input-selection-background"] = "#585858 50%"
+        variables["scrollbar-color"] = "#444444"
+        # Toast colors (blended from theme base colors)
+        variables["warning-bg"] = "#3a3520"
+        variables["warning-border"] = "#8a7530"
+        variables["error-bg"] = "#3a2020"
+        variables["error-border"] = "#8a3030"
+    else:
+        variables["input-selection-background"] = "#a0a0a0 50%"
+        variables["scrollbar-color"] = "#c0c0c0"
+        # Toast colors for light mode
+        variables["warning-bg"] = "#f5ecd0"
+        variables["warning-border"] = "#c8a840"
+        variables["error-bg"] = "#f5d0d0"
+        variables["error-border"] = "#c84040"
+
+    return variables
+
+
 _TELECLAUDE_DARK_THEME = Theme(
     name="teleclaude-dark",
-    # Neutral structural colors — NOT agent-specific.
-    # Buttons, inputs, selects inherit from these.
-    primary="#808080",  # Neutral gray for UI chrome
-    secondary="#626262",  # Slightly darker neutral
-    accent="#585858",  # Muted focus indicator
-    foreground="#d0d0d0",  # Soft light gray — highlight end
-    background=get_terminal_background(),  # Dynamic — matches tmux pane background
-    success="#5faf5f",  # Muted green
-    warning="#d7af5f",  # Warm gold
-    error="#d75f5f",  # Muted red
-    surface="#262626",  # Panel surface
-    panel="#303030",  # Slightly lighter panel
+    primary="#808080",
+    secondary="#626262",
+    accent="#585858",
+    foreground="#d0d0d0",
+    background=get_terminal_background(),
+    success="#5faf5f",
+    warning="#d7af5f",
+    error="#d75f5f",
+    surface="#262626",
+    panel="#303030",
     dark=True,
-    variables={
-        "block-cursor-text-style": "reverse",
-        "input-selection-background": "#585858 50%",
-        "scrollbar-color": "#444444",
-        "scrollbar-background": get_terminal_background(),
-        # --- Agent colors: Claude (dark: subtle→highlight = dark→bright) ---
-        "claude-subtle": "#875f00",
-        "claude-muted": "#af875f",
-        "claude-normal": "#d7af87",
-        "claude-highlight": "#ffffff",
-        # --- Agent colors: Gemini ---
-        "gemini-subtle": "#8787af",
-        "gemini-muted": "#af87ff",
-        "gemini-normal": "#d7afff",
-        "gemini-highlight": "#ffffff",
-        # --- Agent colors: Codex ---
-        "codex-subtle": "#5f87af",
-        "codex-muted": "#87afd7",
-        "codex-normal": "#afd7ff",
-        "codex-highlight": "#ffffff",
-        # --- Neutral structural gradient (white → dark gray) ---
-        "neutral-highlight": "#e0e0e0",
-        "neutral-normal": "#a0a0a0",
-        "neutral-muted": "#707070",
-        "neutral-subtle": "#484848",
-        # --- Structural colors ---
-        "connector": "#808080",  # Tree lines (xterm 244)
-        "separator": "#585858",  # Thin separators
-        "input-border": "#444444",  # Input/select borders
-        "banner-color": "#585858",  # Banner muted
-        "status-fg": "#727578",  # Status bar text
-    },
+    variables=_build_theme_variables("dark"),
 )
 
 _TELECLAUDE_LIGHT_THEME = Theme(
     name="teleclaude-light",
-    # Light mode: inverted gray gradient — black highlight, grading lighter.
-    primary="#808080",  # Neutral gray for UI chrome
-    secondary="#9e9e9e",  # Slightly lighter neutral
-    accent="#a8a8a8",  # Muted focus indicator
-    foreground="#303030",  # Near-black text — highlight end
-    background=get_terminal_background(),  # Dynamic — matches tmux pane background
-    success="#3a8a3a",  # Darker green for light bg
-    warning="#8a6a1a",  # Darker gold for light bg
-    error="#b03030",  # Darker red for light bg
-    surface="#f0ead8",  # Slightly darker paper
-    panel="#e8e0cc",  # Panel surface
+    primary="#808080",
+    secondary="#9e9e9e",
+    accent="#a8a8a8",
+    foreground="#303030",
+    background=get_terminal_background(),
+    success="#3a8a3a",
+    warning="#8a6a1a",
+    error="#b03030",
+    surface="#f0ead8",
+    panel="#e8e0cc",
     dark=False,
-    variables={
-        "block-cursor-text-style": "reverse",
-        "input-selection-background": "#a0a0a0 50%",
-        "scrollbar-color": "#c0c0c0",
-        "scrollbar-background": get_terminal_background(),
-        # --- Agent colors: Claude (light: subtle→highlight = light→dark) ---
-        "claude-subtle": "#d7af87",  # xterm 180
-        "claude-muted": "#af875f",  # xterm 137
-        "claude-normal": "#875f00",  # xterm 94
-        "claude-highlight": "#000000",
-        # --- Agent colors: Gemini (inverted) ---
-        "gemini-subtle": "#d787ff",  # xterm 177
-        "gemini-muted": "#af5fff",  # xterm 135
-        "gemini-normal": "#870087",  # xterm 90
-        "gemini-highlight": "#000000",
-        # --- Agent colors: Codex (inverted) ---
-        "codex-subtle": "#87afd7",  # xterm 110
-        "codex-muted": "#5f87af",  # xterm 67
-        "codex-normal": "#005f87",  # xterm 24
-        "codex-highlight": "#000000",
-        # --- Neutral structural gradient (black → light gray) ---
-        "neutral-highlight": "#202020",
-        "neutral-normal": "#606060",
-        "neutral-muted": "#909090",
-        "neutral-subtle": "#b8b8b8",
-        # --- Structural colors (inverted) ---
-        "connector": "#808080",  # Tree lines (same gray)
-        "separator": "#a0a0a0",  # Thin separators (lighter)
-        "input-border": "#c0c0c0",  # Input/select borders
-        "banner-color": "#a0a0a0",  # Banner muted
-        "status-fg": "#727578",  # Status bar text
-    },
+    variables=_build_theme_variables("light"),
 )
 
 _TELECLAUDE_DARK_AGENT_THEME = Theme(
     name="teleclaude-dark-agent",
-    # Neutral structural colors — NOT agent-specific.
-    # Buttons, inputs, selects inherit from these.
-    primary="#808080",  # Neutral gray for UI chrome
-    secondary="#626262",  # Slightly darker neutral
-    accent="#585858",  # Muted focus indicator (unchanged)
-    foreground="#d0d0d0",  # Soft light gray
+    primary="#808080",
+    secondary="#626262",
+    accent="#585858",
+    foreground="#d0d0d0",
     background=get_terminal_background(),
     success="#5faf5f",
     warning="#d7af5f",
@@ -473,12 +471,10 @@ _TELECLAUDE_DARK_AGENT_THEME = Theme(
 
 _TELECLAUDE_LIGHT_AGENT_THEME = Theme(
     name="teleclaude-light-agent",
-    # Neutral structural colors — NOT agent-specific.
-    # Buttons, inputs, selects inherit from these.
-    primary="#808080",  # Neutral gray for UI chrome
-    secondary="#9e9e9e",  # Slightly lighter neutral
-    accent="#a8a8a8",  # Muted focus indicator (unchanged)
-    foreground="#303030",  # Near-black text
+    primary="#808080",
+    secondary="#9e9e9e",
+    accent="#a8a8a8",
+    foreground="#303030",
     background=get_terminal_background(),
     success="#3a8a3a",
     warning="#8a6a1a",
@@ -576,58 +572,17 @@ def get_pane_theming_mode_from_level(level: int) -> str:
     return _PANE_LEVEL_TO_CANONICAL_MODE[level]
 
 
-# --- xterm256-to-hex conversion ---
-
-
-def _xterm256_to_hex(code: int) -> str:
-    """Convert xterm256 color code to hex string."""
-    if code < 16:
-        _standard = [
-            "#000000",
-            "#800000",
-            "#008000",
-            "#808000",
-            "#000080",
-            "#800080",
-            "#008080",
-            "#c0c0c0",
-            "#808080",
-            "#ff0000",
-            "#00ff00",
-            "#ffff00",
-            "#0000ff",
-            "#ff00ff",
-            "#00ffff",
-            "#ffffff",
-        ]
-        return _standard[code]
-    if code < 232:
-        idx = code - 16
-        b_idx = idx % 6
-        g_idx = (idx // 6) % 6
-        r_idx = idx // 36
-        r = 0 if r_idx == 0 else r_idx * 40 + 55
-        g = 0 if g_idx == 0 else g_idx * 40 + 55
-        b = 0 if b_idx == 0 else b_idx * 40 + 55
-        return f"#{r:02x}{g:02x}{b:02x}"
-    val = (code - 232) * 10 + 8
-    return f"#{val:02x}{val:02x}{val:02x}"
+# --- Selection/preview hex colors ---
 
 
 def get_agent_selection_bg_hex(agent: str) -> str:
-    """Hex background for cursor-selected row (agent normal color).
-
-    Matches old TUI: get_agent_preview_selected_focus_attr → bg = agent normal.
-    """
-    return _xterm256_to_hex(get_agent_normal_color(agent))
+    """Hex background for cursor-selected row (agent normal color)."""
+    return get_agent_normal_color(agent)
 
 
 def get_agent_preview_bg_hex(agent: str) -> str:
-    """Hex background for preview row (agent muted color).
-
-    Matches old TUI: get_agent_preview_selected_bg_attr → bg = agent muted.
-    """
-    return _xterm256_to_hex(get_agent_muted_color(agent))
+    """Hex background for preview row (agent muted color)."""
+    return get_agent_muted_color(agent)
 
 
 def get_selection_fg_hex() -> str:
@@ -635,137 +590,22 @@ def get_selection_fg_hex() -> str:
     return "#000000" if _is_dark_mode else "#ffffff"
 
 
-# Connector/separator color for tree lines
-CONNECTOR_COLOR = "color(244)"
-
-# Neutral structural gradient colors (non-agent elements: tabs, banners, etc.)
-# Dark mode: bright → dark.  Light mode: dark → bright.
-_NEUTRAL_COLORS_DARK = {
-    "highlight": "#e0e0e0",
-    "normal": "#a0a0a0",
-    "muted": "#707070",
-    "subtle": "#484848",
-}
-_NEUTRAL_COLORS_LIGHT = {
-    "highlight": "#202020",
-    "normal": "#606060",
-    "muted": "#909090",
-    "subtle": "#b8b8b8",
-}
-
-NEUTRAL_HIGHLIGHT_COLOR = _NEUTRAL_COLORS_DARK["highlight"] if _is_dark_mode else _NEUTRAL_COLORS_LIGHT["highlight"]
-NEUTRAL_NORMAL_COLOR = _NEUTRAL_COLORS_DARK["normal"] if _is_dark_mode else _NEUTRAL_COLORS_LIGHT["normal"]
-NEUTRAL_MUTED_COLOR = _NEUTRAL_COLORS_DARK["muted"] if _is_dark_mode else _NEUTRAL_COLORS_LIGHT["muted"]
-NEUTRAL_SUBTLE_COLOR = _NEUTRAL_COLORS_DARK["subtle"] if _is_dark_mode else _NEUTRAL_COLORS_LIGHT["subtle"]
-
-
 # --- Rich Style Definitions for Textual Widgets ---
-
-# CSS-compatible color values per agent per tier.
-# These map to the same xterm256 codes used for tmux panes.
 
 _agent_rich_colors: dict[str, dict[str, str]] = {}
 
 
 def _build_rich_colors() -> None:
-    """Rebuild Rich color tables for current dark/light mode."""
+    """Rebuild Rich color tables for current dark/light mode from AGENT_PALETTE."""
     global _agent_rich_colors  # noqa: PLW0603
-    if _is_dark_mode:
-        _agent_rich_colors = {
-            "claude": {
-                "subtle": "color(94)",
-                "muted": "color(137)",
-                "normal": "color(180)",
-                "highlight": "color(231)",
-            },
-            "gemini": {
-                "subtle": "color(103)",
-                "muted": "color(141)",
-                "normal": "color(183)",
-                "highlight": "color(231)",
-            },
-            "codex": {
-                "subtle": "color(67)",
-                "muted": "color(110)",
-                "normal": "color(153)",
-                "highlight": "color(231)",
-            },
-        }
-    else:
-        _agent_rich_colors = {
-            "claude": {
-                "subtle": "color(180)",
-                "muted": "color(137)",
-                "normal": "color(94)",
-                "highlight": "color(16)",
-            },
-            "gemini": {
-                "subtle": "color(177)",
-                "muted": "color(135)",
-                "normal": "color(90)",
-                "highlight": "color(16)",
-            },
-            "codex": {
-                "subtle": "color(110)",
-                "muted": "color(67)",
-                "normal": "color(24)",
-                "highlight": "color(16)",
-            },
-        }
+    _agent_rich_colors = AGENT_PALETTE[_mode_key()]
 
 
 _build_rich_colors()
 
-# Peaceful mode: neutral grays (no agent tint) — full tier table
-_PEACEFUL_COLORS_DARK = {
-    "subtle": "color(236)",
-    "muted": "color(240)",
-    "normal": "color(250)",
-    "highlight": "color(255)",
-}
-_PEACEFUL_COLORS_LIGHT = {
-    "subtle": "color(252)",
-    "muted": "color(244)",
-    "normal": "color(238)",
-    "highlight": "color(232)",
-}
-
-PEACEFUL_NORMAL_COLOR = _PEACEFUL_COLORS_DARK["normal"] if _is_dark_mode else _PEACEFUL_COLORS_LIGHT["normal"]
-PEACEFUL_MUTED_COLOR = _PEACEFUL_COLORS_DARK["muted"] if _is_dark_mode else _PEACEFUL_COLORS_LIGHT["muted"]
-
-# Banner muted color
-BANNER_COLOR = "color(240)" if _is_dark_mode else "color(244)"
-BANNER_HEX = "#585858" if _is_dark_mode else "#C8C8C8"
-
-
-def deepen_for_light_mode(color_hex: str) -> str:
-    """15% brightness reduction with minimum floor so neon never goes dark on white.
-
-    Resting (off) state is the grey BANNER_HEX. Any animated color must be
-    clearly above that — vivid and bright, never approaching black or grey.
-    """
-    import colorsys
-
-    if not _is_hex_color(color_hex):
-        return color_hex
-    r, g, b = _hex_to_rgb(color_hex)
-    h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-    v = max(0.60, v * 0.85)  # 15% darker but never below 60% brightness
-    nr, ng, nb = colorsys.hsv_to_rgb(h, s, v)
-    return _rgb_to_hex(int(nr * 255), int(ng * 255), int(nb * 255))
-
-
-# Status/footer foreground
-STATUS_FG_COLOR = "#727578"
-
 
 def get_agent_style(agent: str, tier: str = "normal") -> Style:
-    """Get a Rich Style for an agent at a given tier.
-
-    Args:
-        agent: "claude", "gemini", "codex"
-        tier: "subtle", "muted", "normal", "highlight"
-    """
+    """Get a Rich Style for an agent at a given tier."""
     safe = _safe_agent(agent)
     color = _agent_rich_colors[safe].get(tier, "default")
     bold = tier == "highlight"
@@ -773,7 +613,7 @@ def get_agent_style(agent: str, tier: str = "normal") -> Style:
 
 
 def get_agent_color(agent: str, tier: str = "normal") -> str:
-    """Get the Rich color string for an agent at a given tier."""
+    """Get the hex color string for an agent at a given tier."""
     safe = _safe_agent(agent)
     return _agent_rich_colors[safe].get(tier, "default")
 
@@ -784,18 +624,15 @@ def get_agent_css_class(agent: str) -> str:
 
 
 # --- Theme-aware resolvers ---
-# Widgets call these instead of raw get_agent_* functions.
-# At levels 0, 2 (peaceful): neutral grays. At levels 1, 3, 4: agent colors.
 
 
 def _peaceful_style(tier: str) -> Style:
-    colors = _PEACEFUL_COLORS_DARK if _is_dark_mode else _PEACEFUL_COLORS_LIGHT
-    return Style(color=colors.get(tier, colors["normal"]), bold=tier == "highlight")
+    color = get_peaceful_color(tier)
+    return Style(color=color, bold=tier == "highlight")
 
 
 def _peaceful_color(tier: str) -> str:
-    colors = _PEACEFUL_COLORS_DARK if _is_dark_mode else _PEACEFUL_COLORS_LIGHT
-    return colors.get(tier, colors["normal"])
+    return get_peaceful_color(tier)
 
 
 def resolve_style(agent: str | None, tier: str = "normal") -> Style:
@@ -821,18 +658,17 @@ def resolve_selection_bg_hex(agent: str | None) -> str:
     """Resolve selection background hex through the active theme."""
     if agent and should_apply_session_theming():
         return get_agent_selection_bg_hex(agent)
-    return NEUTRAL_NORMAL_COLOR
+    return get_neutral_color("normal")
 
 
 def resolve_preview_bg_hex(agent: str | None) -> str:
     """Resolve preview background hex through the active theme."""
     if agent and should_apply_session_theming():
         return get_agent_preview_bg_hex(agent)
-    return NEUTRAL_MUTED_COLOR
+    return get_neutral_color("muted")
 
 
-# --- Compatibility layer for agent_status.py ---
-# The build_agent_render_spec function uses this to determine colors.
+# --- Agent status color (hex) ---
 
 
 def get_agent_status_style(agent: str, *, muted: bool) -> Style:
@@ -841,70 +677,7 @@ def get_agent_status_style(agent: str, *, muted: bool) -> Style:
     return get_agent_style(agent, tier)
 
 
-# Keep old function signature for pane_manager compatibility
-def get_agent_status_color_pair(agent: str, *, muted: bool) -> int:
-    """Legacy: return xterm256 code for agent status.
-
-    Used by agent_status.py build_agent_render_spec. Returns the raw xterm256
-    color code instead of a curses pair ID.
-    """
-    safe = _safe_agent(agent)
-    if muted:
-        return _AGENT_MUTED_DARK[safe] if _is_dark_mode else _AGENT_MUTED_LIGHT[safe]
-    return _AGENT_NORMAL_DARK[safe] if _is_dark_mode else _AGENT_NORMAL_LIGHT[safe]
-
-
-# --- Legacy compatibility stubs (old curses widgets still import these) ---
-# Delete these when Phase 4 cleanup removes old curses code.
-
-AGENT_COLORS: dict[str, dict[str, int]] = {
-    "claude": {"normal": 0, "highlight": 0, "muted": 0},
-    "gemini": {"normal": 0, "highlight": 0, "muted": 0},
-    "codex": {"normal": 0, "highlight": 0, "muted": 0},
-}
-
-
-def get_tab_line_attr() -> int:
-    return 0
-
-
-def get_layer_attr(_depth: int = 0) -> int:
-    return 0
-
-
-def get_selection_attr(_depth: int = 0) -> int:
-    return 0
-
-
-def get_modal_border_attr() -> int:
-    return 0
-
-
-def get_input_border_attr() -> int:
-    return 0
-
-
-# --- More Legacy Stubs ---
-# Added to satisfy tests/unit/test_tui_theme.py
-_STUB_DICT = {"claude": 0, "gemini": 0, "codex": 0}
-AGENT_PREVIEW_SELECTED_BG_PAIRS: dict[str, int] = _STUB_DICT.copy()
-AGENT_PREVIEW_SELECTED_BG_PAIRS_HIGHLIGHT: dict[str, int] = _STUB_DICT.copy()
-AGENT_PREVIEW_SELECTED_BG_PAIRS_OFF: dict[str, int] = _STUB_DICT.copy()
-AGENT_PREVIEW_SELECTED_BG_PAIRS_SEMI: dict[str, int] = _STUB_DICT.copy()
-
-AGENT_PREVIEW_SELECTED_FOCUS_PAIRS: dict[str, int] = _STUB_DICT.copy()
-AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_HIGHLIGHT: dict[str, int] = _STUB_DICT.copy()
-AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_OFF: dict[str, int] = _STUB_DICT.copy()
-AGENT_PREVIEW_SELECTED_FOCUS_PAIRS_SEMI: dict[str, int] = _STUB_DICT.copy()
-
-
-def get_agent_preview_selected_bg_attr(agent: str) -> int:
-    return curses.A_BOLD
-
-
-def get_agent_preview_selected_focus_attr(agent: str) -> int:
-    return curses.A_BOLD
-
-
-def get_sticky_badge_attr() -> int:
-    return 0
+def get_agent_status_color(agent: str, *, muted: bool) -> str:
+    """Return hex color for agent status display."""
+    tier = "muted" if muted else "normal"
+    return get_agent_hex(agent, tier)

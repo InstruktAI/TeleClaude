@@ -20,7 +20,6 @@ from teleclaude.cli.models import (
 )
 from teleclaude.cli.tui.controller import TuiController
 from teleclaude.cli.tui.state import Intent, IntentType, PreviewState, TuiState
-from teleclaude.cli.tui.theme import get_sticky_badge_attr
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
     ComputerNode,
@@ -2490,7 +2489,7 @@ class TestSessionsViewLogic:
         line0_calls = [call for call in screen.calls if call[0] == 0]
         assert len(line0_calls) == 5
         assert line0_calls[0][3] == 0
-        assert line0_calls[1][3] == (get_sticky_badge_attr() | curses.A_BOLD)
+        assert line0_calls[1][3] == (0 | curses.A_BOLD)
 
     def test_unselected_sticky_session_badge_is_bolded_and_uses_base_color(self, sessions_view, monkeypatch):
         """Sticky row badges stay on base colors and stay bold when not selected."""
@@ -2517,7 +2516,7 @@ class TestSessionsViewLogic:
         line0_calls = [call for call in screen.calls if call[0] == 0]
         assert len(line0_calls) >= 2
         assert line0_calls[0][3] == 0
-        assert line0_calls[1][3] == get_sticky_badge_attr()
+        assert line0_calls[1][3] == 0
 
     def test_previewed_sticky_session_badge_uses_base_colors(self, sessions_view, monkeypatch):
         """Previewed sticky row badges stay on base colors while keeping boldness."""
@@ -2547,7 +2546,7 @@ class TestSessionsViewLogic:
         assert len(line0_calls) >= 2
         assert line0_calls[0][3] == 0
         # Sticky rows are never 'previewed' to keep their badges stable.
-        assert line0_calls[1][3] == get_sticky_badge_attr()
+        assert line0_calls[1][3] == 0
 
     def test_selected_previewed_sticky_session_badge_uses_base_colors(self, sessions_view, monkeypatch):
         """Selected previewed sticky rows keep badge colors and stay bold."""
@@ -2576,7 +2575,7 @@ class TestSessionsViewLogic:
         line0_calls = [call for call in screen.calls if call[0] == 0]
         assert len(line0_calls) >= 2
         assert line0_calls[0][3] == 0
-        assert line0_calls[1][3] == (get_sticky_badge_attr() | curses.A_BOLD)
+        assert line0_calls[1][3] == (0 | curses.A_BOLD)
 
     def test_headless_status_is_normalized_for_header_muting(self, sessions_view, monkeypatch):
         """Status normalization should treat whitespace/case headless values as headless."""

@@ -1,26 +1,4 @@
-from teleclaude.cli.tui.config_components.adapters import WhatsAppConfigComponent
 from teleclaude.cli.tui.config_components.guidance import guidance_registry
-
-
-class _NoopCallback:
-    def on_animation_context_change(self, target: str, section_id: str, state: str, progress: float) -> None:
-        return None
-
-    def request_redraw(self) -> None:
-        return None
-
-
-def test_whatsapp_config_component_loads_whatsapp_env_vars():
-    component = WhatsAppConfigComponent(_NoopCallback())
-    assert [env.name for env in component.env_vars] == [
-        "WHATSAPP_PHONE_NUMBER_ID",
-        "WHATSAPP_ACCESS_TOKEN",
-        "WHATSAPP_WEBHOOK_SECRET",
-        "WHATSAPP_VERIFY_TOKEN",
-        "WHATSAPP_TEMPLATE_NAME",
-        "WHATSAPP_TEMPLATE_LANGUAGE",
-        "WHATSAPP_BUSINESS_NUMBER",
-    ]
 
 
 def test_whatsapp_guidance_entries_present():

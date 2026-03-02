@@ -324,15 +324,15 @@ Toast.-information {
 }
 
 Toast.-warning {
-    background: #3a3520;
+    background: $warning-bg;
     color: $warning;
-    border: round #8a7530;
+    border: round $warning-border;
 }
 
 Toast.-error {
-    background: #3a2020;
+    background: $error-bg;
     color: $error;
-    border: round #8a3030;
+    border: round $error-border;
 }
 
 Toast .toast--title {
