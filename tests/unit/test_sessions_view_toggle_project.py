@@ -1,4 +1,4 @@
-"""Unit tests for SessionsView.action_toggle_project_sessions (the 'a' key)."""
+"""Unit tests for SessionsView.action_toggle_sticky_sessions (the 'a' key)."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def test_toggle_on_makes_project_sessions_sticky(monkeypatch) -> None:
     monkeypatch.setattr(view, "_current_item", lambda: header)
     monkeypatch.setattr(view, "_notify_state_changed", lambda: None)
 
-    view.action_toggle_project_sessions()
+    view.action_toggle_sticky_sessions()
 
     assert view._sticky_session_ids == ["s1", "s2", "s3"]
     assert any(isinstance(m, StickyChanged) for m in posted_messages)
@@ -70,7 +70,7 @@ def test_toggle_off_removes_all_project_sticky_sessions(monkeypatch) -> None:
     monkeypatch.setattr(view, "_current_item", lambda: header)
     monkeypatch.setattr(view, "_notify_state_changed", lambda: None)
 
-    view.action_toggle_project_sessions()
+    view.action_toggle_sticky_sessions()
 
     assert view._sticky_session_ids == []
     assert any(isinstance(m, StickyChanged) for m in posted_messages)
@@ -91,7 +91,7 @@ def test_toggle_off_clears_preview_when_in_project(monkeypatch) -> None:
     monkeypatch.setattr(view, "_current_item", lambda: header)
     monkeypatch.setattr(view, "_notify_state_changed", lambda: None)
 
-    view.action_toggle_project_sessions()
+    view.action_toggle_sticky_sessions()
 
     assert view.preview_session_id is None
     preview_msgs = [m for m in posted_messages if isinstance(m, PreviewChanged)]
@@ -115,7 +115,7 @@ def test_toggle_off_does_not_clear_preview_outside_project(monkeypatch) -> None:
     monkeypatch.setattr(view, "_current_item", lambda: header)
     monkeypatch.setattr(view, "_notify_state_changed", lambda: None)
 
-    view.action_toggle_project_sessions()
+    view.action_toggle_sticky_sessions()
 
     assert view.preview_session_id == "other-session"
     assert not any(isinstance(m, PreviewChanged) for m in posted_messages)
@@ -140,7 +140,7 @@ def test_toggle_on_respects_max_sticky_limit(monkeypatch) -> None:
     monkeypatch.setattr(view, "_notify_state_changed", lambda: None)
 
     with patch.object(type(view), "app", new_callable=PropertyMock, return_value=mock_app):
-        view.action_toggle_project_sessions()
+        view.action_toggle_sticky_sessions()
 
     assert len(view._sticky_session_ids) == MAX_STICKY
     # Should have notified about truncation
@@ -164,7 +164,7 @@ def test_toggle_on_skips_headless_sessions(monkeypatch) -> None:
     monkeypatch.setattr(view, "_current_item", lambda: header)
     monkeypatch.setattr(view, "_notify_state_changed", lambda: None)
 
-    view.action_toggle_project_sessions()
+    view.action_toggle_sticky_sessions()
 
     assert view._sticky_session_ids == ["attachable-1"]
 
@@ -187,7 +187,7 @@ def test_toggle_on_no_eligible_sessions_notifies(monkeypatch) -> None:
     monkeypatch.setattr(view, "_notify_state_changed", lambda: None)
 
     with patch.object(type(view), "app", new_callable=PropertyMock, return_value=mock_app):
-        view.action_toggle_project_sessions()
+        view.action_toggle_sticky_sessions()
 
     assert view._sticky_session_ids == []
     assert not any(isinstance(m, StickyChanged) for m in posted_messages)
@@ -206,7 +206,7 @@ def test_toggle_ignores_non_project_node(monkeypatch) -> None:
     monkeypatch.setattr(view, "_current_item", lambda: SimpleNamespace())
     monkeypatch.setattr(view, "_notify_state_changed", lambda: None)
 
-    view.action_toggle_project_sessions()
+    view.action_toggle_sticky_sessions()
 
     assert view._sticky_session_ids == []
     assert not posted_messages
@@ -230,6 +230,6 @@ def test_toggle_on_only_matches_project_and_computer(monkeypatch) -> None:
     monkeypatch.setattr(view, "_current_item", lambda: header)
     monkeypatch.setattr(view, "_notify_state_changed", lambda: None)
 
-    view.action_toggle_project_sessions()
+    view.action_toggle_sticky_sessions()
 
     assert view._sticky_session_ids == ["same-project"]
