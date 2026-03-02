@@ -252,6 +252,7 @@ class TestInboundQueueDb:
 # ── InboundQueueManager unit tests ───────────────────────────────────
 
 
+@pytest.mark.timeout(5)
 class TestInboundQueueManager:
     @pytest.fixture(autouse=True)
     def _isolated_singleton(self) -> Any:
@@ -282,8 +283,7 @@ class TestInboundQueueManager:
             assert row_id is not None
             assert "sess-w1" in manager._workers
             await asyncio.sleep(0.1)
-
-        await manager.shutdown()
+            await manager.shutdown()
 
         assert len(deliveries) == 1
         assert deliveries[0]["content"] == "hello"
@@ -302,8 +302,7 @@ class TestInboundQueueManager:
             await manager.enqueue("sess-fifo", "tg", "second", message_type="text")
             await manager.enqueue("sess-fifo", "tg", "third", message_type="text")
             await asyncio.sleep(0.2)
-
-        await manager.shutdown()
+            await manager.shutdown()
 
         assert delivery_order == ["first", "second", "third"]
 
@@ -350,8 +349,7 @@ class TestInboundQueueManager:
             await asyncio.sleep(0.15)
             # Worker should have removed itself from registry after draining
             assert "sess-selfterm" not in manager._workers
-
-        await manager.shutdown()
+            await manager.shutdown()
 
     @pytest.mark.asyncio
     async def test_session_expiry_cancels_worker(self, test_db: Db) -> None:
@@ -371,9 +369,8 @@ class TestInboundQueueManager:
 
             await manager.expire_session("sess-expire")
             assert "sess-expire" not in manager._workers
-
-        blocker.set()
-        await manager.shutdown()
+            blocker.set()
+            await manager.shutdown()
 
     @pytest.mark.asyncio
     async def test_typing_callback_fired_on_enqueue(self, test_db: Db) -> None:
@@ -390,8 +387,7 @@ class TestInboundQueueManager:
         with patch("teleclaude.core.inbound_queue.db", test_db):
             await manager.enqueue("sess-type", "discord", "hello", message_type="text")
             await asyncio.sleep(0.1)
-
-        await manager.shutdown()
+            await manager.shutdown()
 
         assert len(typing_calls) == 1
         assert typing_calls[0] == ("sess-type", "discord")
@@ -415,8 +411,7 @@ class TestInboundQueueManager:
             )
             assert result is None
             await asyncio.sleep(0.05)
-
-        await manager.shutdown()
+            await manager.shutdown()
 
         # Typing callback called only for the first enqueue
         assert len(typing_calls) == 1

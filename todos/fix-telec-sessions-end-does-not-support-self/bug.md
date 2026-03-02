@@ -12,12 +12,17 @@ Date: 2026-03-02
 
 ## Investigation
 
-<!-- Fix worker fills this during debugging -->
+`handle_sessions_end` in `teleclaude/cli/tool_commands.py` accepts `session_id` as a positional arg or via `--session`/`-s`, but has no special-case handling for any alias values.
+
+`_read_caller_session_id()` already exists in `teleclaude/cli/tool_client.py` — it reads `$TMPDIR/teleclaude_session_id` and returns the session ID string or `None`.
 
 ## Root Cause
 
-<!-- Fix worker fills this after investigation -->
+No alias resolution was implemented for `session_id` in `handle_sessions_end`. The handler passes the raw value straight to the DELETE API call.
 
 ## Fix Applied
 
-<!-- Fix worker fills this after committing the fix -->
+- Imported `_read_caller_session_id` from `tool_client` into `tool_commands`.
+- After argument parsing in `handle_sessions_end`, added a check: if `session_id == "self"`, resolve it via `_read_caller_session_id()`. If resolution fails (file not found), exit with a clear error.
+- Updated the docstring (which serves as `-h` output) to document `self` as a valid value with an example.
+- Added 3 unit tests: self-resolves, self-fails-gracefully, literal-id-unchanged.

@@ -28,6 +28,7 @@ async def session_manager(tmp_path: Path):
 
 
 @pytest.mark.integration
+@pytest.mark.timeout(5)
 async def test_voice_transcription_executes_command(session_manager: Db) -> None:
     """Voice transcription should enqueue and deliver to tmux via queue worker."""
     from teleclaude.core import command_handlers
@@ -73,8 +74,8 @@ async def test_voice_transcription_executes_command(session_manager: Db) -> None
                 origin=InputOrigin.TELEGRAM.value,
             )
             await command_handlers.handle_voice(cmd, client, start_polling)
-            # Allow the queue worker to drain and deliver
-            await asyncio.sleep(0.1)
+            # Allow the queue worker to drain and deliver (needs headroom under xdist parallel load)
+            await asyncio.sleep(0.5)
 
         assert mock_process.await_count == 1
         sent_text = mock_process.await_args.kwargs.get("text") if mock_process.await_args else None

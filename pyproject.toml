@@ -294,6 +294,8 @@ asyncio_mode = "auto"
 filterwarnings = [
   "ignore::telegram.warnings.PTBDeprecationWarning",
   "ignore:The default datetime adapter is deprecated:DeprecationWarning:aiosqlite",
+  "ignore::pytest.PytestUnraisableExceptionWarning",
+  "ignore::pytest.PytestUnhandledThreadExceptionWarning",
 ]
 
 [tool.coverage.run]

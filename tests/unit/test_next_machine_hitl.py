@@ -810,6 +810,7 @@ async def test_next_work_lazy_marking_no_state_mutation():
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(10)
 async def test_next_work_concurrent_same_slug_single_flight_prep():
     """Concurrent same-slug calls should run expensive prep at most once."""
     db = MagicMock(spec=Db)

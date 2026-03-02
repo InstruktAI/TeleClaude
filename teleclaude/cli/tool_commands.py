@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import sys
 
-from teleclaude.cli.tool_client import print_json, tool_api_call
+from teleclaude.cli.tool_client import _read_caller_session_id, print_json, tool_api_call
 
 # =============================================================================
 # Sessions group
@@ -394,11 +394,15 @@ def handle_sessions_end(args: list[str]) -> None:
 
     Usage: telec sessions end <session_id> [--computer <name>]
 
+    session_id may be 'self' to end the caller's own session
+    (resolved from $TMPDIR/teleclaude_session_id).
+
     Gracefully terminates the session: kills the tmux session, deletes the
     session record, and cleans up all resources (listeners, workspace dirs).
 
     Examples:
       telec sessions end abc123
+      telec sessions end self
       telec sessions end abc123 --computer remote-macbook
     """
     if "--help" in args or "-h" in args:
@@ -426,6 +430,12 @@ def handle_sessions_end(args: list[str]) -> None:
     if not session_id:
         print("Error: session_id required", file=sys.stderr)
         raise SystemExit(1)
+
+    if session_id == "self":
+        session_id = _read_caller_session_id()
+        if not session_id:
+            print("Error: could not resolve 'self' — $TMPDIR/teleclaude_session_id not found", file=sys.stderr)
+            raise SystemExit(1)
 
     data = tool_api_call("DELETE", f"/sessions/{session_id}", params={"computer": computer})
     print_json(data)
