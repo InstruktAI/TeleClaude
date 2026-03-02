@@ -176,32 +176,25 @@ async def _stream_sse(
     )
     yield convert_session_status(initial_status, session_id)
 
-    # --- Task 5: Message ingestion ---
+    # --- Message ingestion via canonical route ---
     if user_message:
-        if session.tmux_session_name:
-            from teleclaude.core import tmux_bridge
+        from teleclaude.core.command_registry import get_command_service
+        from teleclaude.types.commands import ProcessMessageCommand
 
-            success = await tmux_bridge.send_keys_existing_tmux(
-                session.tmux_session_name,
-                user_message,
-                send_enter=True,
-                active_agent=session.active_agent,
-            )
-            if not success:
-                logger.warning(
-                    "Web lane message delivery failed",
-                    lane="web",
-                    session_id=session_id[:8],
-                    event_type="data-session-status",
-                    tmux_session=session.tmux_session_name,
-                )
-                yield convert_session_status("error", session_id)
-        else:
+        cmd = ProcessMessageCommand(
+            session_id=session_id,
+            text=user_message,
+            origin="web",
+        )
+        try:
+            await get_command_service().process_message(cmd)
+        except Exception:
             logger.warning(
-                "Web lane cannot deliver message: no tmux_session_name",
+                "Web lane message delivery failed",
                 lane="web",
                 session_id=session_id[:8],
                 event_type="data-session-status",
+                exc_info=True,
             )
             yield convert_session_status("error", session_id)
 
