@@ -278,7 +278,10 @@ class SessionsView(Widget, can_focus=True):
             for c in self._computers
         ]
 
-        tree = build_tree(computer_display, self._projects, self._sessions)
+        # Sort sessions by creation time for stable tree positions (the API
+        # returns them sorted by last_activity which causes sessions to jump).
+        sorted_sessions = sorted(self._sessions, key=lambda s: s.created_at or "")
+        tree = build_tree(computer_display, self._projects, sorted_sessions)
 
         for node in tree:
             self._mount_node(container, node)
