@@ -1062,12 +1062,8 @@ GENERAL_ANIMATIONS = [
     # Day mode atmospherics
     CloudsPassing,
     FloatingBalloons,
-    # Dark mode atmospherics
-    Bioluminescence,
-    SearchlightSweep,  # Batman
     # Original specials
     FireBreath,  # fixed: burns from bottom
-    HighSunBird,
     CinematicPrismSweep,
     # New creative animations
     NeonFlicker,
