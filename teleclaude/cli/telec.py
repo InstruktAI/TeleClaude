@@ -153,10 +153,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--message", desc="Initial message to send"),
                     Flag("--title", desc="Session title"),
                     Flag("--direct", desc="Conversation mode: create direct link with caller and bypass listeners"),
+                    Flag("--detach", desc="Fire-and-forget: inherit context but skip listener registration"),
                 ],
                 notes=[
                     "--project is required.",
                     "Use --direct for peer conversation mode when you want shared linked output instead of worker supervision notifications.",
+                    "Use --detach for fire-and-forget dispatch: child inherits identity but caller receives no notifications.",
                 ],
                 examples=[
                     "telec sessions start --project /tmp/project",
@@ -211,11 +213,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--mode", desc="Thinking mode: fast, med, slow"),
                     Flag("--computer", desc="Target computer (optional; defaults to local)"),
                     Flag("--subfolder", desc="Subdirectory within the project"),
+                    Flag("--detach", desc="Fire-and-forget: inherit context but skip listener registration"),
                 ],
                 notes=[
                     "Creates a fresh session and runs the slash command as the first agent message.",
                     "Worker lifecycle commands: /next-build, /next-review, /next-fix-review, /next-finalize.",
                     "Example: telec sessions run --command /next-build --args my-slug --project /repo/path",
+                    "Use --detach for fire-and-forget dispatch: child inherits identity but caller receives no notifications.",
                 ],
             ),
             "revive": CommandDef(
@@ -237,14 +241,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<session_id>",
                 flags=[_H],
             ),
+            "restart": CommandDef(
+                desc="Restart an agent session ('self' to restart own session)",
+                args="<session_id>",
+                flags=[_H],
+            ),
             "result": CommandDef(
                 desc="Send a formatted result to the session's user",
-                args="<session_id> <content>",
+                args="<content>",
                 flags=[_H, Flag("--format", desc="Output format: markdown, html")],
             ),
             "file": CommandDef(
-                desc="Send a file to a session",
-                args="<session_id>",
+                desc="Send a file to the session's user",
                 flags=[
                     _H,
                     Flag("--path", desc="File path on the daemon host"),
@@ -254,12 +262,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "widget": CommandDef(
                 desc="Render a rich widget to the session's user",
-                args="<session_id>",
                 flags=[_H, Flag("--data", desc="Widget expression as JSON")],
             ),
             "escalate": CommandDef(
-                desc="Escalate a customer session to an admin via Discord",
-                args="<session_id>",
+                desc="Escalate to an admin via Discord",
                 flags=[
                     _H,
                     Flag("--customer", desc="Customer name"),

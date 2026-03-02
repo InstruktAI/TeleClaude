@@ -679,6 +679,9 @@ class AgentCoordinator:
             str(native_session_id)[:8],
         )
 
+        # Emit canonical lifecycle status: active — agent confirmed alive
+        self._emit_status_event(context.session_id, "active", "agent_session_started")
+
         await self._maybe_send_headless_snapshot(context.session_id)
         await self._speak_session_start()
 

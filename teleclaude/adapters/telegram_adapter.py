@@ -198,7 +198,10 @@ class TelegramAdapter(
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
 
     async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
-        """Update Telegram topic footer with canonical lifecycle status."""
+        """Update Telegram topic footer with canonical lifecycle status and fire typing on active."""
+        # Base class fires typing indicator on active/accepted
+        await super()._handle_session_status(_event, context)
+
         session = await db.get_session(context.session_id)
         if not session:
             return

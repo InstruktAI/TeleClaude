@@ -107,6 +107,66 @@ def test_handle_sessions_start_passes_direct_flag(monkeypatch: pytest.MonkeyPatc
     assert captured.json_body["direct"] is True
 
 
+def test_handle_sessions_start_passes_detach_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """sessions start --detach should set skip_listener_registration in API payload."""
+    captured = RunCallCapture()
+
+    def fake_tool_api_call(
+        method: str,
+        path: str,
+        json_body: object = None,
+        *,
+        params: dict[str, str] | None = None,
+        timeout: float = 30.0,
+        socket_path: str = "",
+    ) -> object:
+        _ = (params, timeout, socket_path)
+        assert isinstance(json_body, dict)
+        captured.method = method
+        captured.path = path
+        captured.json_body = cast(dict[str, str | bool], json_body)
+        return {"status": "success"}
+
+    monkeypatch.setattr(tool_commands, "tool_api_call", fake_tool_api_call)
+    monkeypatch.setattr(tool_commands, "print_json", lambda _data: None)
+
+    tool_commands.handle_sessions_start(["--project", "/tmp/project", "--detach"])
+
+    assert captured.method == "POST"
+    assert captured.path == "/sessions"
+    assert captured.json_body["skip_listener_registration"] is True
+
+
+def test_handle_sessions_run_passes_detach_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """sessions run --detach should set detach in API payload."""
+    captured = RunCallCapture()
+
+    def fake_tool_api_call(
+        method: str,
+        path: str,
+        json_body: object = None,
+        *,
+        params: dict[str, str] | None = None,
+        timeout: float = 30.0,
+        socket_path: str = "",
+    ) -> object:
+        _ = (params, timeout, socket_path)
+        assert isinstance(json_body, dict)
+        captured.method = method
+        captured.path = path
+        captured.json_body = cast(dict[str, str | bool], json_body)
+        return {"status": "success"}
+
+    monkeypatch.setattr(tool_commands, "tool_api_call", fake_tool_api_call)
+    monkeypatch.setattr(tool_commands, "print_json", lambda _data: None)
+
+    tool_commands.handle_sessions_run(["--command", "/next-build", "--project", "/tmp/project", "--detach"])
+
+    assert captured.method == "POST"
+    assert captured.path == "/sessions/run"
+    assert captured.json_body["detach"] is True
+
+
 def test_handle_sessions_send_positional_direct(monkeypatch: pytest.MonkeyPatch) -> None:
     """sessions send should support positional message with --direct."""
     captured = RunCallCapture()

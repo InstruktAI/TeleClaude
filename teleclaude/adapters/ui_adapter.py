@@ -925,13 +925,30 @@ class UiAdapter(BaseAdapter):
     # ==================== Event Handlers ====================
 
     async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
-        """Handle lifecycle status transitions. No-op by default; override per platform adapter."""
+        """Handle lifecycle status transitions.
+
+        Fires typing indicator on 'active' (agent session confirmed) and
+        'accepted' (fallback for existing sessions where session_start doesn't fire).
+        Platform adapters override for additional decoration (footer, badges).
+        """
+        if context.status in ("active", "accepted"):
+            session = await db.get_session(context.session_id)
+            if session and session.lifecycle_status != "headless":
+                try:
+                    await self.send_typing_indicator(session)
+                except Exception:
+                    logger.debug(
+                        "Typing indicator failed for session %s on status %s",
+                        context.session_id[:8],
+                        context.status,
+                    )
 
     @staticmethod
     def _format_lifecycle_status(status: str) -> str:
         """Format a lifecycle status string for platform display."""
         _EMOJI: dict[str, str] = {
             "accepted": "⏱",
+            "active": "💬",
             "awaiting_output": "🟡",
             "active_output": "🔄",
             "stalled": "🔴",

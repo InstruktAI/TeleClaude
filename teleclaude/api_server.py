@@ -954,18 +954,13 @@ class APIServer:
                 logger.error("send_voice failed (session=%s): %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to send voice: {e}") from e
 
-        @self.app.post("/sessions/{session_id}/file")
+        @self.app.post("/sessions/self/file")
         async def send_file_endpoint(  # pyright: ignore
-            http_request: "Request",
-            session_id: str,
             request: FileUploadRequest,
-            computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_FILE),  # noqa: ARG001
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_FILE),
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send file input to session."""
-            from teleclaude.api.session_access import check_session_access
-
-            await check_session_access(http_request, session_id)
+            session_id = identity.session_id
             try:
                 metadata = self._metadata()
                 cmd = CommandMapper.map_api_input(
@@ -1229,7 +1224,11 @@ class APIServer:
             )
             metadata.auto_command = auto_command
 
-            cmd = CommandMapper.map_api_input("new_session", {}, metadata)
+            cmd = CommandMapper.map_api_input(
+                "new_session",
+                {"skip_listener_registration": request.detach},
+                metadata,
+            )
             try:
                 data = await get_command_service().create_session(cmd)
                 session_id = data.get("session_id")
@@ -1266,11 +1265,10 @@ class APIServer:
                 return {"status": "success", "message": f"Stopped notifications from session {session_id[:8]}"}
             return {"status": "error", "message": f"No listener found for session {session_id[:8]}"}
 
-        @self.app.post("/sessions/{session_id}/result")
+        @self.app.post("/sessions/self/result")
         async def send_result_endpoint(  # pyright: ignore
-            session_id: str,
             request: SendResultRequest,
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_RESULT),  # noqa: ARG001
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_RESULT),
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send a formatted result to the session's user as a separate message.
 
@@ -1280,7 +1278,7 @@ class APIServer:
             """
             from teleclaude.utils.markdown import telegramify_markdown
 
-            session = await db.get_session(session_id)
+            session = await db.get_session(identity.session_id)
             if not session:
                 raise HTTPException(status_code=404, detail="Session not found")
 
@@ -1319,11 +1317,10 @@ class APIServer:
                         status_code=500, detail=f"Failed to send result: {fallback_error}"
                     ) from fallback_error
 
-        @self.app.post("/sessions/{session_id}/widget")
+        @self.app.post("/sessions/self/widget")
         async def render_widget_endpoint(  # pyright: ignore
-            session_id: str,
             request: RenderWidgetRequest,
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_WIDGET),  # noqa: ARG001
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_WIDGET),
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Render a rich widget expression and send text summary to the session's user.
 
@@ -1333,7 +1330,7 @@ class APIServer:
             """
             from teleclaude.utils.markdown import telegramify_markdown
 
-            session = await db.get_session(session_id)
+            session = await db.get_session(identity.session_id)
             if not session:
                 raise HTTPException(status_code=404, detail="Session not found")
 
@@ -1391,11 +1388,10 @@ class APIServer:
 
             return {"status": "success", "summary": text_summary}
 
-        @self.app.post("/sessions/{session_id}/escalate")
+        @self.app.post("/sessions/self/escalate")
         async def escalate_session(  # pyright: ignore
-            session_id: str,
             request: EscalateRequest,
-            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_ESCALATE),  # noqa: ARG001
+            identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_ESCALATE),
         ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Escalate a customer session to an admin via Discord.
 
@@ -1407,6 +1403,7 @@ class APIServer:
 
             from teleclaude.adapters.discord_adapter import DiscordAdapter
 
+            session_id = identity.session_id
             session = await db.get_session(session_id)
             if not session:
                 raise HTTPException(status_code=404, detail="Session not found")

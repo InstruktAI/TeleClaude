@@ -1212,6 +1212,9 @@ class DiscordAdapter(UiAdapter):
         """Send or edit the tracked status message in the Discord thread."""
         from teleclaude.core.feature_flags import is_threaded_output_enabled
 
+        # Base class fires typing indicator on active/accepted
+        await super()._handle_session_status(_event, context)
+
         session = await db.get_session(context.session_id)
         if not session:
             return
