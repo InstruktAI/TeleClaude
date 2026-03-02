@@ -84,6 +84,9 @@ dev = [
 where = ["."]
 include = ["teleclaude*"]
 
+[project.scripts]
+telec = "teleclaude.cli.telec:main"
+
 [project.urls]
 homepage = "https://github.com/InstruktAI/TeleClaude"
 "Source Code" = "https://github.com/InstruktAI/TeleClaude"

@@ -14,4 +14,4 @@ while [ -L "$SOURCE" ]; do
 done
 
 INSTALL_DIR="$(cd "$(dirname "$SOURCE")/.." && pwd)"
-exec "$INSTALL_DIR/.venv/bin/python" -m teleclaude.cli.telec "$@"
+exec "$INSTALL_DIR/.venv/bin/telec" "$@"
