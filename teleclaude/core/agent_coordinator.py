@@ -25,6 +25,7 @@ from teleclaude.constants import (
     CHECKPOINT_MESSAGE,
     CHECKPOINT_PREFIX,
     LOCAL_COMPUTER,
+    format_system_message,
 )
 from teleclaude.core.activity_contract import serialize_activity_event
 from teleclaude.core.agents import AgentName
@@ -1510,9 +1511,9 @@ class AgentCoordinator:
         sender = await db.get_session(sender_session_id)
         sender_label = sender.title if sender and sender.title else sender_session_id
         sender_computer = source_computer or (sender.computer_name if sender else config.computer.name)
-        framed_message = (
-            f"[Linked output from {sender_label} ({sender_session_id}) on {sender_computer}]\n\n"
-            f"{distilled_output.strip()}"
+        framed_message = format_system_message(
+            f'Linked output from "{sender_label}" ({sender_session_id}) on {sender_computer}',
+            distilled_output,
         )
 
         delivered = 0

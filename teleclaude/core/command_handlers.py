@@ -18,7 +18,7 @@ from instrukt_ai_logging import get_logger
 from typing_extensions import TypedDict
 
 from teleclaude.config import WORKING_DIR, config
-from teleclaude.constants import HUMAN_ROLE_ADMIN
+from teleclaude.constants import HUMAN_ROLE_ADMIN, TELECLAUDE_SYSTEM_PREFIX
 from teleclaude.core import polling_coordinator, tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
@@ -1020,6 +1020,12 @@ async def deliver_inbound(
             actor_name=row["actor_name"],
             actor_avatar_url=row["actor_avatar_url"],
         )
+
+    # System messages are observability-only — do not inject into the agent.
+    # Injecting would cause the agent to auto-respond (e.g. linked output bounce loop).
+    if message_text.startswith(TELECLAUDE_SYSTEM_PREFIX):
+        logger.debug("Skipping tmux injection for system message: session=%s", session_id[:8])
+        return
 
     active_agent = session.active_agent
     sanitized_text = tmux_io.wrap_bracketed_paste(message_text, active_agent=active_agent)

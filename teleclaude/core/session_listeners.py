@@ -18,7 +18,7 @@ from typing import Literal
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import LOCAL_COMPUTER
+from teleclaude.constants import LOCAL_COMPUTER, format_system_message
 
 logger = get_logger(__name__)
 _PAIR_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
@@ -393,10 +393,11 @@ async def notify_stop(
     """
     title_part = f' "{title}"' if title else ""
     location_part = f" on {computer}" if computer != LOCAL_COMPUTER else ""
-    message = (
+    body = (
         f"Session {target_session_id[:8]}{location_part}{title_part} finished its turn. "
         f"Use telec sessions tail {target_session_id} to inspect."
     )
+    message = format_system_message("Notification", body)
     return await _notify_listeners(target_session_id, message)
 
 
@@ -415,11 +416,12 @@ async def notify_input_request(
     Returns:
         Number of listeners successfully notified
     """
-    message = (
+    body = (
         f"Session {target_session_id[:8]} on {computer} needs input: {input_message} "
         f"Use telec sessions tail {target_session_id} to inspect, and "
         f'Use telec sessions send {target_session_id} "your response" to respond.'
     )
+    message = format_system_message("Input Request", body)
     return await _notify_listeners(target_session_id, message)
 
 
