@@ -241,10 +241,6 @@ class AdapterClient:
             if adapter_type == skip:
                 continue
             if isinstance(adapter, UiAdapter):
-                # Suppress reflections for adapters in threaded output mode —
-                # threaded threads should show only AI output, no input echo.
-                if is_threaded_output_enabled(session.active_agent, adapter=adapter_type):
-                    continue
                 tasks.append((adapter_type, self._run_ui_lane(session, adapter_type, adapter, task_factory)))
 
         if tasks:
@@ -657,7 +653,13 @@ class AdapterClient:
                 return f"{with_header}\n\n---\n"
             return with_header
 
+        async def _noop() -> None:
+            return None
+
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
+            # Threaded threads show only AI output — no input reflections.
+            if is_threaded_output_enabled(session_to_use.active_agent, adapter=adapter.ADAPTER_KEY):
+                return cast(Awaitable[object], _noop())
             adapter_text = render_reflection_text(adapter, final_text)
             return cast(
                 Awaitable[object],

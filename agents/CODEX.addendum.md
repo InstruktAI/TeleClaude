@@ -1,4 +1,4 @@
-# Codex Primer Addendum
+# Codex Addendum
 
 This file defines Codex-specific operating rules for this repository.
 
@@ -35,7 +35,7 @@ This file defines Codex-specific operating rules for this repository.
 - Never edit generated artifacts directly: `AGENTS.md`, `CLAUDE.md`, `CODEX.md`.
 - Edit source artifact files under `agents/` (or other declared source paths) only.
 - If a generated artifact is edited by mistake, revert it immediately and re-apply the change to source.
-- New policy/instruction text belongs in source primers/addenda, not generated files.
+- New policy/instruction text belongs in source addenda, not generated files.
 
 ## Git Commit Addendum
 

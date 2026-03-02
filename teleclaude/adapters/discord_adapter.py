@@ -1243,12 +1243,7 @@ class DiscordAdapter(UiAdapter):
 
     async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
         """Handle generic updates plus Discord topper refresh on native ID binding."""
-        from teleclaude.core.feature_flags import is_threaded_output_enabled
-
-        # In threaded mode, suppress parent's feedback/summary messages.
-        session = await db.get_session(context.session_id)
-        if not (session and is_threaded_output_enabled(session.active_agent, adapter=self.ADAPTER_KEY)):
-            await super()._handle_session_updated(_event, context)
+        await super()._handle_session_updated(_event, context)
 
         updated_fields = context.updated_fields or {}
         if "native_session_id" not in updated_fields:

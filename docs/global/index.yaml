@@ -693,6 +693,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: software-development/procedure/debugging
+  description: 'Systematic debugging methodology: reproduce, bisect, isolate, fix,
+    harden. Evidence before fixes, root cause before symptoms.'
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/debugging.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: software-development/procedure/lifecycle-overview
   description: Deterministic software development lifecycle with prepare, build, review,
     fix, finalize, demo, and maintenance phases. Serial workflow managed by Orchestrator.
@@ -890,15 +899,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/research/third-party-research.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/root-cause-debugging
-  description: 'Four-phase root cause debugging methodology: reproduce, bisect, isolate,
-    and fix. Find root cause before proposing fixes.'
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/root-cause-debugging.md
   role: member
   visibility: internal
   source_project: TeleClaude

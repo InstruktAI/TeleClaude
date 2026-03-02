@@ -1,13 +1,13 @@
 ---
 name: systematic-debugging
-description: 4-phase root cause debugging methodology. Use when encountering bugs, test failures, or unexpected behavior before proposing fixes.
+description: Systematic debugging methodology. Use when encountering bugs, test failures, or unexpected behavior before proposing fixes.
 ---
 
 # Systematic Debugging
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/procedure/root-cause-debugging.md
+- @~/.teleclaude/docs/software-development/procedure/debugging.md
 
 ## Purpose
 
