@@ -87,7 +87,7 @@ class GlobalSky(Animation):
 
     # Sun shape — 6 rows, bright gold disc for day mode (right-side sky margin)
     _SUN_ROWS = [
-        "    \u2588\u2588\u2588\u2588\u2588\u2588    ",
+        "   \u2588\u2588\u2588\u2588\u2588\u2588\u2588    ",
         "  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  ",
         " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 ",
         " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 ",
@@ -97,7 +97,7 @@ class GlobalSky(Animation):
     # Moon shape — 6 rows, positioned near right edge for wide terminals
     # Uses FULL BLOCK (█) for contiguous vertical fill with no inter-row gaps
     _MOON_ROWS = [
-        "     ,/\u2588\u2588\u2588\u2588\u2588\u2588&.  ",
+        " ,/\u2588\u2588\u2588\u2588\u2588\u2588\u2588&.  ",
         " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588&  ",
         "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588& ",
         "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588& ",
