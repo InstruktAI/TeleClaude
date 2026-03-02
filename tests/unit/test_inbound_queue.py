@@ -327,11 +327,14 @@ class TestInboundQueueManager:
         try:
             with patch("teleclaude.core.inbound_queue.db", test_db):
                 await manager.enqueue("sess-retry", "tg", "retry-me", message_type="text")
-                await asyncio.sleep(0.3)
+                # Poll until retried rather than sleeping a fixed amount — avoids xdist
+                # worker crashes when the background task outlives the db patch context.
+                deadline = asyncio.get_event_loop().time() + 5.0
+                while call_count < 2 and asyncio.get_event_loop().time() < deadline:
+                    await asyncio.sleep(0.01)
+                await manager.shutdown()
         finally:
             iq._BACKOFF_SCHEDULE = orig_schedule
-
-        await manager.shutdown()
 
         assert call_count >= 2
 
