@@ -123,7 +123,7 @@ The approach follows existing patterns: token injection mirrors voice env var in
 
 ### Task 5.1: Return principal in agent sessions
 
-**File(s):** `teleclaude/cli/session_auth.py` or the whoami API route
+**File(s):** `teleclaude/cli/telec.py` (`_handle_whoami()` at ~line 3145)
 
 - [ ] When `TELEC_SESSION_TOKEN` is set, whoami should call the daemon to resolve the principal
 - [ ] Return format: `"Principal: human:maurice@instrukt.ai"` or `"Principal: system:a1b2c3d4"`
