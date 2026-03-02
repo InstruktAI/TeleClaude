@@ -105,10 +105,8 @@ class DiscordAdapter(UiAdapter):
         qos_policy = discord_policy(config.discord.qos)
         self._qos_scheduler: OutputQoSScheduler = OutputQoSScheduler(qos_policy)
 
-        # Threaded output buffer: accumulates rendered text during streaming,
-        # flushed as a single message on turn completion (is_final=True).
-        # Discord does not use edit-in-place — each turn produces one new message.
-        self._threaded_buffers: dict[str, str] = {}
+        # No threaded output buffering — Discord uses the base class
+        # edit-in-place model for threaded output delivery.
 
     async def start(self) -> None:
         """Initialize Discord client and start gateway task."""
@@ -1144,7 +1142,6 @@ class DiscordAdapter(UiAdapter):
         logger.debug("Stored discord output_message_id: session=%s message_id=%s", session.session_id[:8], message_id)
 
     async def _clear_output_message_id(self, session: "Session") -> None:
-        self._threaded_buffers.pop(session.session_id, None)
         meta = session.get_metadata().get_ui().get_discord()
         meta.output_message_id = None
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
@@ -1176,29 +1173,13 @@ class DiscordAdapter(UiAdapter):
         """Route Discord output update through the QoS scheduler.
 
         For threaded sessions: the base class suppresses send_output_update
-        entirely. Discord overrides this to flush the threaded output buffer
-        as a single new message when is_final=True.
+        (threaded output is delivered via send_threaded_output instead).
 
-        For non-threaded sessions: delegates to QoS scheduler as before.
+        For non-threaded sessions: delegates to QoS scheduler.
         """
         from teleclaude.core.feature_flags import is_threaded_output_enabled
 
-        is_threaded = is_threaded_output_enabled(session.active_agent, adapter=self.ADAPTER_KEY)
-
-        if is_threaded:
-            if is_final:
-                # Flush buffered threaded output as a single new message.
-                buffered = self._threaded_buffers.pop(session.session_id, None)
-                if buffered:
-                    await self._clear_output_message_id(session)
-                    metadata = self._build_metadata_for_thread()
-                    new_id = await self.send_message(session, buffered, metadata=metadata, multi_message=True)
-                    logger.debug(
-                        "[DISCORD] Flushed threaded buffer on turn end: session=%s len=%d message_id=%s",
-                        session.session_id[:8],
-                        len(buffered),
-                        new_id,
-                    )
+        if is_threaded_output_enabled(session.active_agent, adapter=self.ADAPTER_KEY):
             return None
 
         # Non-threaded: existing QoS path.
@@ -1224,34 +1205,18 @@ class DiscordAdapter(UiAdapter):
         self._qos_scheduler.enqueue(session.session_id, _dispatch, is_final=is_final)
         return None  # Delivery is deferred.
 
-    async def send_threaded_output(  # type: ignore[override]
-        self,
-        session: "Session",
-        text: str,
-        multi_message: bool = False,  # noqa: ARG002 — interface compat; flush uses multi_message
-    ) -> Optional[str]:
-        """Buffer threaded output for turn-end delivery.
-
-        Discord does not use edit-in-place for streaming output. Instead,
-        the latest accumulated text is buffered here and flushed as a single
-        new message when send_output_update(is_final=True) fires.
-
-        A sentinel output_message_id is stored to prevent the coordinator
-        from advancing its cursor (preserving the accumulation model).
-        """
-        self._threaded_buffers[session.session_id] = text
-
-        # Set sentinel output_message_id to prevent cursor advancement
-        # in the coordinator. Only set once per turn (first call).
-        if not await self._get_output_message_id(session):
-            await self._store_output_message_id(session, "discord-buffering")
-
-        return "discord-buffering"
+    # send_threaded_output: inherited from UiAdapter base class.
+    # Discord uses the base class edit-in-place model for threaded output.
 
     async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
         """Send or edit the tracked status message in the Discord thread."""
+        from teleclaude.core.feature_flags import is_threaded_output_enabled
+
         session = await db.get_session(context.session_id)
         if not session:
+            return
+        # Suppress lifecycle badges in threaded mode — only AI output matters.
+        if is_threaded_output_enabled(session.active_agent, adapter=self.ADAPTER_KEY):
             return
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
@@ -1278,7 +1243,12 @@ class DiscordAdapter(UiAdapter):
 
     async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
         """Handle generic updates plus Discord topper refresh on native ID binding."""
-        await super()._handle_session_updated(_event, context)
+        from teleclaude.core.feature_flags import is_threaded_output_enabled
+
+        # In threaded mode, suppress parent's feedback/summary messages.
+        session = await db.get_session(context.session_id)
+        if not (session and is_threaded_output_enabled(session.active_agent, adapter=self.ADAPTER_KEY)):
+            await super()._handle_session_updated(_event, context)
 
         updated_fields = context.updated_fields or {}
         if "native_session_id" not in updated_fields:
