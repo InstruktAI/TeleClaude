@@ -91,8 +91,8 @@ notification projection.
 - The trust evaluator must not block the pipeline for longer than 10ms per event
   under normal conditions. SQLite lookups are fast; keep the evaluation synchronous
   within an async cartridge.
-- Trust ring storage uses the daemon's existing SQLite database (per single-database
-  policy). New tables, same file.
+- Trust ring storage uses the event platform database (`events.db`) — same domain
+  as notification projections. New tables, same file, same lifecycle.
 - Config surface follows existing TeleClaude YAML config patterns. No new config file
   formats.
 - The cartridge protocol requires `async def process(event, context) -> EventEnvelope | None`.

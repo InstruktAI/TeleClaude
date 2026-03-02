@@ -10,6 +10,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: general/concept/ai-to-ai-coordination
+  description: How AI agents coordinate using sub-sessions, listeners, and terminal
+    notifications.
+  type: concept
+  scope: global
+  path: docs/general/concept/ai-to-ai-coordination.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/concept/documentation-snippets
   description: Modular documentation system for selective context delivery to AI agents.
   type: concept
@@ -36,12 +45,31 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: general/concept/orchestrator
+  description: Supervisory role. Dispatch workers, monitor progress, drive state machine.
+    Follow next-work output verbatim.
+  type: concept
+  scope: global
+  path: docs/general/concept/orchestrator.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/concept/skill-taxonomy
   description: Breath-aware taxonomy for agent skills defining exploratory, disciplinary,
     and creative lanes to guide procedure extraction and wrapper alignment.
   type: concept
   scope: global
   path: docs/general/concept/skill-taxonomy.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: general/policy/ai-agent-security
+  description: Security policy for AI agent systems covering prompt injection, credential
+    isolation, skill trust, session boundaries, network exposure, and supply chain
+    risks. Informed by real-world incidents in open-source agentic platforms.
+  type: policy
+  scope: global
+  path: docs/general/policy/ai-agent-security.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -77,6 +105,15 @@ snippets:
   type: policy
   scope: global
   path: docs/general/policy/heartbeat.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: general/policy/orchestrator-jurisdiction
+  description: Enforces strict separation between process state management and system
+    code modification for the Orchestrator role.
+  type: policy
+  scope: global
+  path: docs/general/policy/orchestrator-jurisdiction.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -232,6 +269,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: general/procedure/ai-to-ai-troubleshooting
+  description: Identify and fix common issues with AI-to-AI coordination, timeouts,
+    and notifications.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/ai-to-ai-troubleshooting.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/procedure/doc-snippet-authoring
   description: Author documentation snippets according to the taxonomy and schema.
   type: procedure
@@ -299,6 +345,15 @@ snippets:
   type: procedure
   scope: global
   path: docs/general/procedure/memory-management.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: general/procedure/orchestration
+  description: Orchestration loop for the next-work state machine and worker session
+    handling.
+  type: procedure
+  scope: global
+  path: docs/general/procedure/orchestration.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -408,15 +463,6 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/concept/ai-to-ai-coordination
-  description: How AI agents coordinate using sub-sessions, listeners, and terminal
-    notifications.
-  type: concept
-  scope: domain
-  path: docs/software-development/concept/ai-to-ai-coordination.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
 - id: software-development/concept/architect
   description: Strategic role. Requirements, architecture, use cases. Break down work,
     create implementation plans, ensure readiness.
@@ -452,15 +498,6 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/concept/orchestrator
-  description: Supervisory role. Dispatch workers, monitor progress, drive state machine.
-    Follow next-work output verbatim.
-  type: concept
-  scope: domain
-  path: docs/software-development/concept/orchestrator.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
 - id: software-development/concept/researcher
   description: Research role. Gather authoritative sources, summarize, and index findings.
   type: concept
@@ -484,16 +521,6 @@ snippets:
   type: concept
   scope: domain
   path: docs/software-development/concept/tester.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/policy/ai-agent-security
-  description: Security policy for AI agent systems covering prompt injection, credential
-    isolation, skill trust, session boundaries, network exposure, and supply chain
-    risks. Informed by real-world incidents in open-source agentic platforms.
-  type: policy
-  scope: domain
-  path: docs/software-development/policy/ai-agent-security.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -654,15 +681,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/agent-artifacts-quickstart.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/ai-to-ai-troubleshooting
-  description: Identify and fix common issues with AI-to-AI coordination, timeouts,
-    and notifications.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/ai-to-ai-troubleshooting.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -853,15 +871,6 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/maintenance/release-and-stabilization-rhythm.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/orchestration
-  description: Orchestration loop for the next-work state machine and worker session
-    handling.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/orchestration.md
   role: member
   visibility: internal
   source_project: TeleClaude

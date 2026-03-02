@@ -1,7 +1,7 @@
 ---
 description: 'Security policy for AI agent systems covering prompt injection, credential isolation, skill trust, session boundaries, network exposure, and supply chain risks. Informed by real-world incidents in open-source agentic platforms.'
-id: 'software-development/policy/ai-agent-security'
-scope: 'domain'
+id: 'general/policy/ai-agent-security'
+scope: 'global'
 type: 'policy'
 ---
 

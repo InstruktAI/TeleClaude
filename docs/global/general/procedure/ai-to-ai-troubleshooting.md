@@ -1,7 +1,7 @@
 ---
 description: 'Identify and fix common issues with AI-to-AI coordination, timeouts, and notifications.'
-id: 'software-development/procedure/ai-to-ai-troubleshooting'
-scope: 'domain'
+id: 'general/procedure/ai-to-ai-troubleshooting'
+scope: 'global'
 type: 'procedure'
 ---
 

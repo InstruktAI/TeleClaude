@@ -28,7 +28,7 @@ Examples: "plan mode", "step back", "think with me", "just think", "reason about
 
 ## Process Guardian Mandate
 
-- **Jurisdiction:** Manage Process State only (`project/policy/orchestrator-jurisdiction`).
+- **Jurisdiction:** Manage Process State only.
 - **Hands-Off:** NEVER modify source code or tests.
 - **Guidance:** If a worker needs help, message them; do not "fix" the task for them.
 

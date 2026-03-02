@@ -11,7 +11,7 @@
 - Call `telec docs get` before authoring, editing, or reasoning about docs, artifacts, or governance. The index exists to prevent mistakes.
 - Check if a file is a build artifact before editing it. `AGENTS.md` next to `AGENTS.master.md` is generated — edit the master, not the output.
 - Use available tools and context retrieval first. Guessing when lookup is available is a failure mode.
-- EMBRACE PARALLELISM!
+- EMBRACE PARALLELISM! Dispatched tasks always run in background. Always. A blocking agent is a dead agent.
 - Work together by forming TEAMS!
 
 ## Knowledge Belongs to the Team

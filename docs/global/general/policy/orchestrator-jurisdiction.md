@@ -1,7 +1,7 @@
 ---
-id: 'project/policy/orchestrator-jurisdiction'
+id: 'general/policy/orchestrator-jurisdiction'
 type: 'policy'
-scope: 'project'
+scope: 'global'
 description: 'Enforces strict separation between process state management and system code modification for the Orchestrator role.'
 ---
 
@@ -20,5 +20,5 @@ Manual intervention in code by the Orchestrator destroys the chain of custody an
 
 ## See Also
 
-- software-development/concept/orchestrator
-- software-development/procedure/orchestration
+- general/concept/orchestrator
+- general/procedure/orchestration

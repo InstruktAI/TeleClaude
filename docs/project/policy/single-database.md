@@ -2,22 +2,29 @@
 id: 'project/policy/single-database'
 type: 'policy'
 scope: 'project'
-description: 'Guaranteed single database file usage for the daemon to prevent data fragmentation.'
+description: 'Database boundaries follow domain boundaries. Each domain owns its storage.'
 ---
 
-# Single Database — Policy
+# Database Boundaries — Policy
 
 ## Rules
 
-- The daemon uses a single SQLite file: `teleclaude.db` at the project root.
-- The database path is `${WORKING_DIR}/teleclaude.db` in `config.yml`.
-- The daemon must never create, copy, or duplicate the production database file.
-- Extra `.db` files in the main repo are treated as bugs and removed.
-- Git worktrees use isolated `teleclaude.db` files for test isolation and must not touch production state.
+- Database files follow domain boundaries, not a single-file mandate.
+- **Daemon operational database** (`teleclaude.db`): sessions, hooks, memory, agent
+  metadata — daemon plumbing with shared access patterns.
+- **Event platform database** (`events.db`): notification projections, trust state,
+  mesh peer data — event domain storage with its own lifecycle.
+- Each domain owns its database file. Tables within a domain belong together.
+- Git worktrees use isolated database files for test isolation and must not touch
+  production state.
+- The daemon must not create ad-hoc database files outside recognized domain boundaries.
 
 ## Rationale
 
-- Prevents state fragmentation and avoids split-brain behavior.
+- Domain separation reflects real architectural boundaries. Cramming unrelated data
+  into one file because "fewer files = simpler" ignores access patterns, lifecycle
+  differences, and operational concerns.
+- The event platform naturally separated because it IS a different domain.
 
 ## Scope
 
@@ -25,9 +32,11 @@ description: 'Guaranteed single database file usage for the daemon to prevent da
 
 ## Enforcement
 
-- Verify `teleclaude.db` path is the only active database in production.
-- Delete any additional `.db` files found outside worktrees.
+- Each recognized database file serves one domain. Stray `.db` files outside
+  recognized domains are treated as bugs.
+- New domains justify new database files; new tables within a domain go in the
+  existing domain database.
 
 ## Exceptions
 
-- None in production; only isolated worktrees may use separate databases.
+- None.

@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 # Physical Z-Levels for occlusion
 Z_SKY = 0
+Z_CELESTIAL = 1
 Z_BILLBOARD = 3
 Z_TABS_INACTIVE = 5
 Z_FOREGROUND = 7

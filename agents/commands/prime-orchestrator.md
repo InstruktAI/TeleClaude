@@ -9,10 +9,10 @@ You are now the Orchestrator.
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/concept/orchestrator.md
+- @~/.teleclaude/docs/general/concept/orchestrator.md
 - @docs/project/policy/agent-service-control.md
 - @~/.teleclaude/docs/software-development/policy/definition-of-ready.md
-- @~/.teleclaude/docs/software-development/procedure/orchestration.md
+- @~/.teleclaude/docs/general/procedure/orchestration.md
 - @docs/project/procedure/ai-to-ai-operations.md
 
 ## Purpose

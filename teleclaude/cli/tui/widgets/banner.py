@@ -102,7 +102,7 @@ class Banner(TelecMixin, Widget):
     def _render_banner(self) -> Text:
         result = Text()
         engine = self.animation_engine
-        from teleclaude.cli.tui.animations.base import Z_FOREGROUND, Z_SKY
+        from teleclaude.cli.tui.animations.base import Z_CELESTIAL, Z_FOREGROUND, Z_SKY
         from teleclaude.cli.tui.pixel_mapping import PixelMap
         from teleclaude.cli.tui.theme import (
             apply_tui_haze,
@@ -144,20 +144,24 @@ class Banner(TelecMixin, Widget):
                     is_letter = PixelMap.get_is_letter("banner", x, y) if is_on_plate else False
                     final_bg = plate_bg if is_on_plate else bg_color
 
-                    # 3. Foreground / Entities (Z-7) from Global Header
+                    # 3. Entities from Global Header (Z_CELESTIAL behind Z_FOREGROUND)
                     fg_char = char
                     fg_color = None
-                    if engine:
+                    if engine and not is_on_plate:
+                        celestial_val = engine.get_layer_color(Z_CELESTIAL, x, y, target="header")
+                        if celestial_val and celestial_val != -1:
+                            if isinstance(celestial_val, str) and len(celestial_val) == 1:
+                                fg_char = celestial_val
+                                fg_color = "#FFD700" if (celestial_val == "\u2588" and not dark_mode) else "#FFFFFF"
+                            elif isinstance(celestial_val, str):
+                                fg_color = celestial_val
                         entity_val = engine.get_layer_color(Z_FOREGROUND, x, y, target="header")
                         if entity_val and entity_val != -1:
-                            # PHYSICAL MASKING: Stars/clouds ONLY show in empty space (inverse canvas)
-                            if not is_on_plate:
-                                if isinstance(entity_val, str) and len(entity_val) == 1:
-                                    fg_char = entity_val
-                                    # Sun disc chars (█) are yellow in light mode, white otherwise
-                                    fg_color = "#FFD700" if (entity_val == "\u2588" and not dark_mode) else "#FFFFFF"
-                                elif isinstance(entity_val, str):
-                                    fg_color = entity_val
+                            if isinstance(entity_val, str) and len(entity_val) == 1:
+                                fg_char = entity_val
+                                fg_color = "#FFD700" if (entity_val == "\u2588" and not dark_mode) else "#FFFFFF"
+                            elif isinstance(entity_val, str):
+                                fg_color = entity_val
 
                     # 4. Final Compositing
                     if engine and engine.has_active_animation:
@@ -212,10 +216,15 @@ class Banner(TelecMixin, Widget):
                         if not isinstance(bg, str):
                             bg = sky_fallback
 
-                        # 2. Atmospheric entities (stars/clouds) - MASKED by pipes
+                        # 2. Atmospheric entities — celestials behind clouds
                         fg_char = " "
                         fg_color = None
                         if engine:
+                            celestial_val = engine.get_layer_color(Z_CELESTIAL, x, y, target="header")
+                            if celestial_val and celestial_val != -1:
+                                if isinstance(celestial_val, str) and len(celestial_val) == 1:
+                                    fg_char = celestial_val
+                                    fg_color = "#FFD700" if (celestial_val == "\u2588" and not dark_mode) else "#FFFFFF"
                             entity_val = engine.get_layer_color(Z_FOREGROUND, x, y, target="header")
                             if entity_val and entity_val != -1:
                                 if isinstance(entity_val, str) and len(entity_val) == 1:
@@ -229,7 +238,7 @@ class Banner(TelecMixin, Widget):
     def _render_logo(self) -> Text:
         result = Text()
         engine = self.animation_engine
-        from teleclaude.cli.tui.animations.base import Z_FOREGROUND, Z_SKY
+        from teleclaude.cli.tui.animations.base import Z_CELESTIAL, Z_FOREGROUND, Z_SKY
         from teleclaude.cli.tui.pixel_mapping import PixelMap
         from teleclaude.cli.tui.theme import (
             apply_tui_haze,
@@ -269,20 +278,24 @@ class Banner(TelecMixin, Widget):
                     is_letter = PixelMap.get_is_letter("logo", x - pad, y) if is_on_plate else False
                     final_bg = plate_bg if is_on_plate else bg_color
 
-                    # 3. Entities Z-7 from Global Header
+                    # 3. Entities from Global Header (Z_CELESTIAL behind Z_FOREGROUND)
                     fg_char = line[x - pad] if (is_on_plate and x - pad < len(line)) else " "
                     fg_color = None
-                    if engine:
+                    if engine and not is_on_plate:
+                        celestial_val = engine.get_layer_color(Z_CELESTIAL, x, y, target="header")
+                        if celestial_val and celestial_val != -1:
+                            if isinstance(celestial_val, str) and len(celestial_val) == 1:
+                                fg_char = celestial_val
+                                fg_color = "#FFD700" if (celestial_val == "\u2588" and not dark_mode) else "#FFFFFF"
+                            elif isinstance(celestial_val, str):
+                                fg_color = celestial_val
                         entity_val = engine.get_layer_color(Z_FOREGROUND, x, y, target="header")
                         if entity_val and entity_val != -1:
-                            # PHYSICAL MASKING: Only show in non-physical margins
-                            if not is_on_plate:
-                                if isinstance(entity_val, str) and len(entity_val) == 1:
-                                    fg_char = entity_val
-                                    # Sun disc chars (█) are yellow in light mode, white otherwise
-                                    fg_color = "#FFD700" if (entity_val == "\u2588" and not dark_mode) else "#FFFFFF"
-                                elif isinstance(entity_val, str):
-                                    fg_color = entity_val
+                            if isinstance(entity_val, str) and len(entity_val) == 1:
+                                fg_char = entity_val
+                                fg_color = "#FFD700" if (entity_val == "\u2588" and not dark_mode) else "#FFFFFF"
+                            elif isinstance(entity_val, str):
+                                fg_color = entity_val
 
                     is_pipe_char = _is_pipe(fg_char)
                     if engine and engine.has_active_animation:
@@ -332,6 +345,11 @@ class Banner(TelecMixin, Widget):
                         fg_char = " "
                         fg_color = None
                         if engine:
+                            celestial_val = engine.get_layer_color(Z_CELESTIAL, x, y, target="header")
+                            if celestial_val and celestial_val != -1:
+                                if isinstance(celestial_val, str) and len(celestial_val) == 1:
+                                    fg_char = celestial_val
+                                    fg_color = "#FFD700" if (celestial_val == "\u2588" and not dark_mode) else "#FFFFFF"
                             entity_val = engine.get_layer_color(Z_FOREGROUND, x, y, target="header")
                             if entity_val and entity_val != -1:
                                 if isinstance(entity_val, str) and len(entity_val) == 1:

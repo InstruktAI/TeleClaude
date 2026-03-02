@@ -1,7 +1,7 @@
 ---
 description: 'How AI agents coordinate using sub-sessions, listeners, and terminal notifications.'
-id: 'software-development/concept/ai-to-ai-coordination'
-scope: 'domain'
+id: 'general/concept/ai-to-ai-coordination'
+scope: 'global'
 type: 'concept'
 ---
 

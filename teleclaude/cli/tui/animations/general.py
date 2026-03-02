@@ -5,10 +5,12 @@ from __future__ import annotations
 import math
 import random
 import shutil
+import time
 from typing import TYPE_CHECKING
 
 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
 from teleclaude.cli.tui.animations.base import (
+    Z_CELESTIAL,
     Z_FOREGROUND,
     Z_SKY,
     Animation,
@@ -45,19 +47,75 @@ if TYPE_CHECKING:
 class GlobalSky(Animation):
     """TC20: Global background canvas with Day/Night physical states.
     Paints the entire header area (Z-0) including margins.
+    Dynamic weather system with parallax clouds.
     """
+
+    # Cloud shape templates: (rows, size_category)
+    # 0=wisp (far/slow), 1=puff (mid), 2=medium, 3=cumulus (near/fast)
+    _CLOUD_TEMPLATES: list[tuple[list[str], int]] = [
+        # Wisps — thin atmospheric lines (kept from original, the thinnest cleanest type)
+        (["\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"], 0),
+        (["\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"], 0),
+        (["\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"], 0),
+        (["\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"], 0),
+        (["\u2500 \u2500 \u2500 \u2500 \u2500 \u2500"], 0),
+        # Small puffs
+        ([" \u2591\u2591\u2591\u2591 ", "\u2591\u2591\u2591\u2591\u2591\u2591", " \u2591\u2591\u2591  "], 1),
+        (["\u2591\u2591\u2591\u2591\u2591", " \u2591\u2591\u2591 "], 1),
+        ([" \u2591\u2591\u2591 ", "\u2591\u2591\u2591\u2591\u2591", "\u2591\u2591\u2591\u2591 "], 1),
+        # Medium clouds — denser centers
+        (["  \u2591\u2591\u2591\u2591\u2591\u2591  ", " \u2591\u2592\u2592\u2592\u2592\u2592\u2591\u2591 ", "\u2591\u2591\u2592\u2592\u2592\u2592\u2592\u2592\u2591\u2591", " \u2591\u2591\u2591\u2591\u2591\u2591\u2591  "], 2),
+        (["  \u2591\u2591\u2591\u2591\u2591  ", " \u2591\u2592\u2592\u2592\u2592\u2591\u2591 ", "\u2591\u2591\u2592\u2592\u2592\u2592\u2592\u2591\u2591", "  \u2591\u2591\u2591\u2591\u2591  "], 2),
+        (["   \u2591\u2591\u2591\u2591\u2591\u2591   ", " \u2591\u2591\u2592\u2592\u2592\u2592\u2592\u2591\u2591  ", "\u2591\u2591\u2591\u2592\u2592\u2592\u2592\u2592\u2592\u2591\u2591", "  \u2591\u2591\u2591\u2591\u2591\u2591\u2591   "], 2),
+        # Large cumulus
+        (["    \u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591    ", "  \u2591\u2591\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2591\u2591  ", " \u2591\u2591\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2591\u2591 ", "\u2591\u2591\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2591\u2591 "], 3),
+        (["   \u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591   ", " \u2591\u2591\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2591\u2591  ", "\u2591\u2591\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2592\u2591\u2591 ", " \u2591\u2591\u2591\u2591\u2592\u2592\u2592\u2592\u2591\u2591\u2591   "], 3),
+    ]
+    _SPEED_RANGES = {
+        0: (0.08, 0.18),   # wisps: slow, far
+        1: (0.15, 0.30),   # puffs: slow-medium
+        2: (0.25, 0.45),   # medium: medium
+        3: (0.40, 0.65),   # cumulus: fast, close
+    }
+    _WEATHER_CONFIGS = {
+        "clear": {"sizes": [0], "count": (2, 4)},
+        "fair": {"sizes": [0, 1], "count": (4, 7)},
+        "cloudy": {"sizes": [0, 1, 2], "count": (6, 10)},
+        "overcast": {"sizes": [1, 2, 3], "count": (8, 14)},
+    }
+    _WEATHER_NAMES = ["clear", "fair", "cloudy", "overcast"]
+    _WEATHER_WEIGHTS = [30, 35, 25, 10]
+
+    # Sun shape — 6 rows, bright gold disc for day mode (right-side sky margin)
+    _SUN_ROWS = [
+        "    \u2588\u2588\u2588\u2588\u2588\u2588    ",
+        "  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  ",
+        " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 ",
+        " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 ",
+        "  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  ",
+        "    \u2588\u2588\u2588\u2588\u2588\u2588    ",
+    ]
+    # Moon shape — 6 rows, positioned near right edge for wide terminals
+    _MOON_ROWS = [
+        " ,/\u2588\u2588\u2588\u2588\u2588\u2588\u2588&.  ",
+        " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588&  ",
+        "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588& ",
+        "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588& ",
+        "'\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588&' ",
+        "  '\u2588\u2588\u2588\u2588\u2588\u2588\u2588&'  ",
+    ]
+    # City glow: 3 rows behind tab bar (y=7,8,9)
+    _CITY_GLOW = ["#1A0035", "#270055", "#0A0010"]
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         kwargs.setdefault("target", "header")
         super().__init__(*args, **kwargs)
-        # Cover any reasonable terminal width (up to 400 cols)
         self.width = 400
         self.height = 10
         self._all_pixels = [(x, y) for y in range(self.height) for x in range(self.width)]
 
-        # Day: Light blue at top (overhead) fading to very light blue at horizon.
+        # Sky gradients
         self.day_sky = Spectrum(["#87CEEB", "#C8E8F8"])
-        # From Deep Black to Super Dark Midnight Purple
         self.night_sky = Spectrum(["#000000", "#05000A", "#0F001A", "#05000A"])
 
         # Stars — weighted heavily toward tiny dots; big sparkles are rare
@@ -74,62 +132,75 @@ class GlobalSky(Animation):
                 }
             )
 
-        # Drifting Clouds (Day)
-        self.clouds = []
-        for _ in range(6):
-            self.clouds.append(
-                {
-                    "x": self.rng.randint(0, self.width),
-                    "y": self.rng.randint(0, self.height - 3),
-                    "speed": 0.25 + self.rng.random() * 0.3,
-                }
-            )
+        # Weather system — randomized cloud patterns that change every 30-120 min
+        self._weather = self.rng.choices(self._WEATHER_NAMES, weights=self._WEATHER_WEIGHTS, k=1)[0]
+        self._clouds: list[dict[str, object]] = self._generate_clouds()
+        self._next_weather_change = time.time() + self.rng.uniform(30 * 60, 120 * 60)
 
-    # Sun shape — 6 rows, bright gold disc for day mode (right-side sky margin)
-    _SUN_ROWS = [
-        "    \u2588\u2588\u2588\u2588\u2588\u2588    ",
-        "  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  ",
-        " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 ",
-        " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 ",
-        "  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  ",
-        "    \u2588\u2588\u2588\u2588\u2588\u2588    ",
-    ]
-    # Moon shape — 6 rows, positioned near right edge for wide terminals
-    # Uses FULL BLOCK (█) for contiguous vertical fill with no inter-row gaps
-    _MOON_ROWS = [
-        " ,/\u2588\u2588\u2588\u2588\u2588\u2588\u2588&.  ",
-        " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588&  ",
-        "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588& ",
-        "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588& ",
-        "'\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588&' ",
-        "  '\u2588\u2588\u2588\u2588\u2588\u2588\u2588&'  ",
-    ]
-    # City glow: 3 rows behind tab bar (y=7,8,9)
-    _CITY_GLOW = ["#1A0035", "#270055", "#0A0010"]
+    def _generate_clouds(self) -> list[dict[str, object]]:
+        """Generate cloud set for current weather state with parallax depth."""
+        config = self._WEATHER_CONFIGS[self._weather]
+        allowed = config["sizes"]
+        valid = [(rows, size) for rows, size in self._CLOUD_TEMPLATES if size in allowed]
+        if not valid:
+            return []
+        count = self.rng.randint(*config["count"])
+        clouds: list[dict[str, object]] = []
+
+        for _ in range(count):
+            rows, size = self.rng.choice(valid)
+            cloud = self._make_cloud(rows, size)
+            clouds.append(cloud)
+
+            # Wisps: 40% chance of a companion (parallax pair, never aligned)
+            if size == 0 and self.rng.random() < 0.4:
+                wisp_options = [(r, s) for r, s in valid if s == 0]
+                comp_rows, _ = self.rng.choice(wisp_options)
+                comp_y = int(cloud["y"]) + self.rng.choice([-1, 1])
+                comp_y = max(0, min(self.height - len(comp_rows), comp_y))
+                companion = self._make_cloud(comp_rows, 0)
+                companion["y"] = comp_y
+                companion["x"] = int(cloud["x"]) + self.rng.randint(2, 6)
+                companion["speed"] = float(cloud["speed"]) * (0.80 + self.rng.random() * 0.15)
+                clouds.append(companion)
+
+        return clouds
+
+    def _make_cloud(self, rows: list[str], size: int) -> dict[str, object]:
+        """Create a single cloud with randomized position and speed."""
+        max_y = max(0, self.height - len(rows))
+        lo, hi = self._SPEED_RANGES[size]
+        return {
+            "shape": rows,
+            "x": self.rng.randint(0, self.width),
+            "y": self.rng.randint(0, max_y),
+            "speed": lo + self.rng.random() * (hi - lo),
+            "size": size,
+        }
 
     def update(self, frame: int) -> RenderBuffer:
         buffer = RenderBuffer()
         is_party = self.animation_mode == "party"
 
         if self.dark_mode:
-            # 1. Background Super Dark Purple Gradient
+            # 1. Background gradient
             for x, y in self._all_pixels:
                 pos_factor = y / max(1, self.height - 1)
                 buffer.add_pixel(Z_SKY, x, y, self.night_sky.get_color(pos_factor))
 
-            # 2. City glow horizon behind tab bar (rows 7-9)
+            # 2. City glow horizon (rows 7-9)
             for dy, glow_color in enumerate(self._CITY_GLOW):
                 for x in range(self.width):
                     buffer.add_pixel(Z_SKY, x, 7 + dy, glow_color)
 
-            # 3. Stars — always frame-animated, very slow, rarely visible but long-lasting
+            # 3. Stars
             for star in self.stars:
                 speed = star["speed"] * (2.5 if is_party else 1.0)
                 twinkle = (math.sin(frame * speed + star["phase"]) + 1.0) / 2.0
                 if twinkle > 0.88:
                     buffer.add_pixel(Z_FOREGROUND, star["pos"][0], star["pos"][1], star["char"])
 
-            # 4. Moon — right side, only when wide terminal (>= 176 cols)
+            # 4. Moon at Z_CELESTIAL — behind stars
             try:
                 term_width = shutil.get_terminal_size().columns
             except Exception:
@@ -142,23 +213,36 @@ class GlobalSky(Animation):
                     for dx, ch in enumerate(row):
                         x = moon_x + dx
                         if ch != " ":
-                            buffer.add_pixel(Z_FOREGROUND, x, y, ch)
+                            buffer.add_pixel(Z_CELESTIAL, x, y, ch)
         else:
-            # 1. Background Blue Gradient
+            # 1. Background blue gradient
             for x, y in self._all_pixels:
                 pos_factor = y / max(1, self.height - 1)
                 buffer.add_pixel(Z_SKY, x, y, self.day_sky.get_color(pos_factor))
 
-            # 2. Drifting Vapor Clouds
-            for cloud in self.clouds:
-                cx = int(cloud["x"] + frame * cloud["speed"]) % (self.width + 40) - 20
-                cy = cloud["y"]
-                for dx in range(12):
-                    for dy in range(2):
-                        if 0 <= cx + dx < self.width:
-                            buffer.add_pixel(Z_FOREGROUND, cx + dx, cy + dy, "\u2501")
+            # 2. Weather change check
+            now = time.time()
+            if now >= self._next_weather_change:
+                self._weather = self.rng.choices(
+                    self._WEATHER_NAMES, weights=self._WEATHER_WEIGHTS, k=1
+                )[0]
+                self._clouds = self._generate_clouds()
+                self._next_weather_change = now + self.rng.uniform(30 * 60, 120 * 60)
 
-            # 3. Sun — right-side sky margin (only on wide terminals)
+            # 3. Drifting clouds with parallax
+            for cloud in self._clouds:
+                shape = cloud["shape"]
+                cx = int(int(cloud["x"]) + frame * float(cloud["speed"])) % (self.width + 60) - 30
+                cy = int(cloud["y"])
+                for dy, row in enumerate(shape):
+                    for dx, ch in enumerate(row):
+                        if ch != " ":
+                            px = cx + dx
+                            py = cy + dy
+                            if 0 <= px < self.width and 0 <= py < self.height:
+                                buffer.add_pixel(Z_FOREGROUND, px, py, ch)
+
+            # 4. Sun at Z_CELESTIAL — behind clouds
             try:
                 term_width = shutil.get_terminal_size().columns
             except Exception:
@@ -171,8 +255,7 @@ class GlobalSky(Animation):
                     for dx, ch in enumerate(row):
                         x = sun_x + dx
                         if ch != " ":
-                            buffer.add_pixel(Z_FOREGROUND, x, y, ch)
-                            pass  # character is yellow; banner.py detects full-block chars in light mode
+                            buffer.add_pixel(Z_CELESTIAL, x, y, ch)
 
         return buffer
 
