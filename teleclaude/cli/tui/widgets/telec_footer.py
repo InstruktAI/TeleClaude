@@ -74,7 +74,7 @@ class TelecFooter(Widget):
             if not binding.show:
                 continue
 
-            is_global = node is self.app
+            is_global = node is self.app or (binding.group and binding.group.description == "global")
             seen = seen_global_actions if is_global else seen_context_actions
             if binding.action in seen:
                 continue

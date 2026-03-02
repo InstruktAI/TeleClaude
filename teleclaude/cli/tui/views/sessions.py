@@ -84,7 +84,7 @@ class SessionsView(Widget, can_focus=True):
         Binding("R", "restart_session", "Restart"),
         Binding("R", "restart_project", "Restart All"),
         Binding("R", "restart_all", "Restart All"),
-        Binding("a", "toggle_sticky_sessions", "Open/Close"),
+        Binding("s", "toggle_sticky_sessions", "Sticky", group=Binding.Group("global")),
     ]
 
     preview_session_id = reactive[str | None](None)
