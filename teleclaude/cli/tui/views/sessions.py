@@ -982,7 +982,7 @@ class SessionsView(Widget, can_focus=True):
         if action == "restart_project":
             return isinstance(item, ProjectHeader)
         if action == "toggle_sticky_sessions":
-            return isinstance(item, (ProjectHeader, ComputerHeader)) or bool(self._sticky_session_ids)
+            return True
         if action == "restart_all":
             return isinstance(item, ComputerHeader)
         return True
