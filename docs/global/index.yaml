@@ -374,9 +374,19 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: general/procedure/peer-discussion
+  description: "Two peer agents discuss a topic together \u2014 segmenting the work,\
+    \ dispatching subagents in parallel, converging findings, and reporting to the\
+    \ user."
+  type: procedure
+  scope: global
+  path: docs/general/procedure/peer-discussion.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/procedure/skill-authoring
-  description: Create skills as thin wrappers around doc snippets, with optional scripts
-    for deterministic tooling.
+  description: "Gate and create skills. A skill is warranted only when it carries\
+    \ scripts \u2014 deterministic tooling a model cannot generate on demand."
   type: procedure
   scope: global
   path: docs/general/procedure/skill-authoring.md

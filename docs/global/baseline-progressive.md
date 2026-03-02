@@ -10,3 +10,7 @@
 @~/.teleclaude/docs/general/spec/agent-artifacts.md
 @~/.teleclaude/docs/general/spec/snippet-authoring-schema.md
 @~/.teleclaude/docs/general/spec/third-party-docs.md
+@~/.teleclaude/docs/general/procedure/peer-discussion.md
+@~/.teleclaude/docs/general/principle/agent-shorthand.md
+@~/.teleclaude/docs/software-development/principle/failure-modes.md
+@~/.teleclaude/docs/general/policy/ai-agent-security.md

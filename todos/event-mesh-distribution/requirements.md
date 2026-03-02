@@ -1,5 +1,71 @@
 # Requirements: event-mesh-distribution
 
+## Known Blockers
+
+### BLOCKER 1: `PeerInfo` has no `cluster` field — cluster-scope forwarding unbuildable
+
+Section 2 (Cluster membership logic) specifies `get_cluster_peers()` reads cluster
+affiliation from `config.computer.cluster`. Confirmed in `teleclaude/core/models.py:115`:
+`PeerInfo` fields are: `name`, `status`, `last_seen`, `adapter_type`, `user`, `host`,
+`ip`, `role`, `system_stats`, `tmux_binary`. No `cluster` field exists.
+
+Additionally, `teleclaude/config/schema.py` has no `cluster` field anywhere in the
+config schema. There is no provisioning path for a computer to declare its cluster
+affiliation.
+
+`get_cluster_peers()` as specified will always return an empty list. All cluster-scoped
+events will be silently forwarded to zero peers. The feature is unbuildable until:
+
+1. `PeerInfo` is extended with `cluster: str | None`.
+2. `config.computer.cluster` is added to the config schema with a provisioning path.
+3. The heartbeat/peer-broadcast mechanism in `redis_transport.py` is updated to include
+   the cluster affiliation in the broadcast payload.
+
+This is not a minor audit task — it touches the peer broadcast mechanism, the config
+schema, and the model. These changes must be landed before this todo can ship cluster
+forwarding. Coordinate with `mesh-architecture` (which also requires `PeerInfo` extension).
+
+### BLOCKER 2: `telec cartridges list` CLI collision with event-alpha-container
+
+Both this todo and `event-alpha-container` define `telec cartridges list` with
+incompatible semantics:
+
+- This todo: `telec cartridges list` shows installed cartridges from the `cartridge_stats`
+  DB table with invocation counts.
+- `event-alpha-container`: `telec cartridges list` lists `~/.teleclaude/alpha-cartridges/*.py`
+  files.
+
+See the matching blocker in `event-alpha-container/requirements.md`. Both todos must
+align on a consolidated CLI design before either ships. This todo owns the DB-backed
+semantics; resolution may require a subcommand split or a `--source` flag.
+
+### BLOCKER 3: `cartridge.invoked` emission cascade — `CartridgePromotionTracker` loops infinitely
+
+Section 7 (Organic promotion tracking) specifies `CartridgePromotionTracker` as a
+cartridge in the pipeline that observes `cartridge.invoked` meta-events.
+
+Section 11 (Daemon wiring) places `CartridgePromotionTracker` in the pipeline after
+`MeshPublishingCartridge`. The pipeline executor emits `cartridge.invoked` after each
+successful cartridge run (Task 5.1 in the implementation plan).
+
+The cascade is:
+
+1. Any event enters the pipeline.
+2. Pipeline runs cartridges, including `CartridgePromotionTracker`.
+3. Executor emits `cartridge.invoked` for `CartridgePromotionTracker` itself.
+4. `cartridge.invoked` is a new event — it enters the pipeline.
+5. Pipeline runs `CartridgePromotionTracker` on this new event.
+6. Executor emits `cartridge.invoked` for `CartridgePromotionTracker` again.
+7. Repeat indefinitely.
+
+**The fix must be specified here, not left to the builder:** The pipeline executor must
+skip emitting `cartridge.invoked` for a configurable set of meta-cartridges, or the
+`CartridgePromotionTracker` must be registered outside the main pipeline (as a
+post-pipeline hook, not a cartridge). The requirements must specify the chosen guard
+mechanism before implementation begins.
+
+---
+
 ## Goal
 
 Activate the `visibility` field on the event envelope: route `cluster` events to all

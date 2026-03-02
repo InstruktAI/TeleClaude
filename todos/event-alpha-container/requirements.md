@@ -1,5 +1,54 @@
 # Requirements: event-alpha-container
 
+## Known Blockers
+
+### BLOCKER 1: `telec cartridges list` CLI collision with event-mesh-distribution
+
+Both this todo and `event-mesh-distribution` define `telec cartridges list` with
+incompatible semantics:
+
+- This todo: `telec cartridges list` lists `~/.teleclaude/alpha-cartridges/*.py` files
+  (alpha sandbox inspection).
+- `event-mesh-distribution`: `telec cartridges list` lists installed cartridges from
+  the `cartridge_stats` database table with invocation counts (installed cartridge
+  management).
+
+These are two different commands under the same name targeting different data sources.
+Shipping either implementation first will block the other or produce a broken merged CLI.
+
+**Resolution required before build:** The two todos must align on one of:
+
+Option A: Merge into a single `telec cartridges list` with a `--source` filter
+(`--source alpha` vs `--source installed`).
+
+Option B: Use distinct subcommands: `telec cartridges alpha list` vs
+`telec cartridges list`.
+
+A design decision must be recorded and both todos updated before either CLI is built.
+
+### BLOCKER 2: Health-check ping handler missing — container always appears healthy
+
+Section 5 (Container lifecycle management) specifies: "Health check: periodic ping
+(empty message, expect pong) every 30 seconds."
+
+The alpha runner process (inside the container) discovers cartridges by scanning
+`/alpha-cartridges/` for `*.py` files. For each incoming request it loads the
+*addressed cartridge* by name. A health-check ping sends `cartridge_name="__ping__"`.
+The runner attempts to load `__ping__.py` from disk — this file does not exist — and
+raises `FileNotFoundError`. The runner returns an error response for every ping.
+
+From the daemon's perspective, the health check always fails. The container restarts
+three times, then `system.alpha-container.unhealthy` is emitted. The container is
+marked permanently unhealthy and is never used.
+
+**This is a design defect in the runner's dispatch logic, not a missing file.**
+The runner must handle `cartridge_name="__ping__"` as a special case before attempting
+disk access, returning an explicit pong response. This must be specified in the IPC
+protocol section and implemented in the runner before the health-check lifecycle
+machinery has any value.
+
+---
+
 ## Goal
 
 Add a sandboxed execution tier for experimental cartridges. The approved pipeline runs

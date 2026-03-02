@@ -1,5 +1,83 @@
 # Implementation Plan: event-platform
 
+## Reality Baseline
+
+**As of 2026-03-01, `teleclaude_events/` already exists with substantial implementation.
+Phase 1 scope below was written as if from scratch. This section documents what exists,
+what needs refinement, and what explicit wiring tasks remain unscheduled.**
+
+### What already exists
+
+| File / Component | Status |
+|---|---|
+| `teleclaude_events/envelope.py` | Exists. `EventEnvelope`, `EventVisibility`, `EventLevel` defined. |
+| `teleclaude_events/pipeline.py` | Exists. `Pipeline`, `PipelineContext`, `Cartridge` protocol defined. |
+| `teleclaude_events/catalog.py` | Exists. `EventCatalog`, `EventSchema`, `NotificationLifecycle` defined. |
+| `teleclaude_events/db.py` | Exists. `EventDB` with aiosqlite. |
+| `teleclaude_events/producer.py` | Exists. `EventProducer` / `emit_event()`. |
+| `teleclaude_events/cartridges/dedup.py` | Exists. `DeduplicationCartridge` implemented. |
+| `teleclaude_events/cartridges/notification.py` | Exists. `NotificationProjectorCartridge` implemented. |
+| `teleclaude_events/schemas/system.py` | Exists. Schemas for `system.*` domain events. |
+| `teleclaude_events/schemas/software_development.py` | Exists. Schemas for `domain.software-development.*`. |
+| `teleclaude_events/delivery/telegram.py` | Exists. Telegram delivery adapter implemented. |
+| `teleclaude_events/processor.py` | Exists. `EventProcessor` (pipeline host). |
+
+### What needs to be refactored vs. built from scratch
+
+**Refactor (exists, needs extension or correction):**
+
+- `PipelineContext` — currently lacks `ai_client`. Phase 3 signal cartridges assume it.
+  Must be added before `event-domain-infrastructure` ships, not before Phase 1.
+- `EventSchema` — `idempotency_fields` field may be missing or incomplete.
+  Verify against the deduplication cartridge's key derivation logic before Phase 1 closes.
+- `NotificationLifecycle` — `meaningful_fields` field is defined in `catalog.py` but may
+  not be wired into the notification projector's transition logic. Verify and fix.
+- `envelope.py` — `source` field is currently a free string. Once `mesh-architecture`
+  defines the canonical `node_id` format, this field's validation and derivation must
+  be updated. Not blocking for Phase 1 local delivery.
+- `teleclaude_events/schemas/` — existing schema registration in `build_default_catalog()`
+  needs audit: confirm `idempotency_fields` and `lifecycle` are set on all registered types.
+
+**Build from scratch (Phase 1 tasks that do not yet exist):**
+
+- HTTP API endpoints: list, get, mark seen, claim, resolve notifications.
+- WebSocket push adapter for the event DB.
+- Daemon startup/shutdown wiring for `EventProcessor`.
+- `telec events list` CLI command.
+- Old `teleclaude/notifications/` package removal and `notification_outbox` table cutover.
+
+### What needs to be integrated with existing adapters / daemon code
+
+- **Daemon hosting:** `EventProcessor` must be started as a background task in
+  `teleclaude/daemon.py`. The existing `NotificationOutboxWorker` pattern is the
+  reference (see `daemon.py:1857`). No such wiring exists today.
+- **Telegram delivery:** `teleclaude_events/delivery/telegram.py` exists but is not
+  wired into the pipeline. The notification projector must call it after projecting
+  state. Wiring task required.
+- **Redis Stream reader:** `EventProcessor` needs to consume from `teleclaude:events`
+  via `XREADGROUP`. Current code uses `XREAD` patterns only. Consumer group setup
+  is a new pattern for this codebase.
+
+### Explicit wiring tasks (currently unscheduled — must be added to Phase 1)
+
+These were described in Phase 1 scope but no tasks were written for them:
+
+1. **Daemon restart event emission:** Wire `system.daemon.restarted` emission into
+   `teleclaude/daemon.py` startup path. Requires `EventProducer` to be initialized
+   before the daemon emits its first event. Task: add to Phase 1 build checklist.
+
+2. **`todo.dor_assessed` event emission:** Wire emission into the `telec todo prepare`
+   state machine at the point where DOR scoring completes. The producer call site is in
+   the prepare command flow (`teleclaude/cli/` or orchestration layer). Task: identify
+   exact call site, add `emit_event()` call, register schema in `software_development.py`.
+
+3. **Consolidation cutover tasks:** Phase 1 lists removal of old `notification_outbox`
+   but does not schedule individual migration tasks per call site. At least 7 call sites
+   need rewiring before the old table can be dropped. These must be enumerated and tracked
+   explicitly in the Phase 1 task list before build begins.
+
+---
+
 ## Overview
 
 The event processing platform is delivered through a phased breakdown of sub-todos. Each phase

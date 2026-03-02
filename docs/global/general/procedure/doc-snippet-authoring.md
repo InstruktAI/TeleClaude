@@ -25,7 +25,7 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 
 ## Steps
 
-1. Interpret the request through taxonomy: decide the correct type and scope.
+1. Interpret the request through taxonomy: decide the correct type and scope. Scope is `global` if the knowledge applies across all projects (goes in `docs/global/`), `project` if it is specific to this repository (goes in `docs/project/`). If the scope is ambiguous, ask the requester before proceeding.
 2. Author top-down: broader context should point to narrower details, not the other way around.
 3. Add frontmatter (id, type, scope, description). Set `role` if the snippet should be restricted: `admin` for credentials/destructive ops, `public` for public-facing content. Omit for the default `member` level.
 4. Write H1 title with correct type suffix.

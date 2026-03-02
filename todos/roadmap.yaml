@@ -77,7 +77,6 @@
   description: 'Out-of-box domain configs: software-dev, marketing, creative, customer-relations'
 - slug: a2ui-showcase-component
 - slug: dependency-health-guardrails
-- slug: integration-events-model
 - slug: terminal-input-feedback
 - slug: typing-indicators-adapters
 - slug: ucap-slo-hardening

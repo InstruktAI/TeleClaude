@@ -1,5 +1,40 @@
 # Requirements: integrator-wiring
 
+## Critical Issues
+
+### BLOCKER: `branch_pushed` — FR2 mapping contradicts FR1 constraint and readiness predicate
+
+FR2.3 states: "When the worker pushes the feature branch to remote, the flow MUST emit
+the branch-pushed signal as part of the `deployment.started` payload."
+
+This makes `branch_pushed` a payload *attribute*, not a separate event. However:
+
+- The existing readiness projection (integration module internals) was built expecting THREE
+  distinct events: `review_approved`, `finalize_ready`, and `branch_pushed`. The predicate
+  only transitions a candidate to READY when all three have arrived.
+- FR1 (Out of Scope §1) states the integration module internals — including the readiness
+  projection — "MUST NOT be modified."
+
+If `branch_pushed` is folded into the `deployment.started` payload, the readiness predicate
+never receives a `branch_pushed` event and the candidate never reaches READY state. If
+`branch_pushed` is kept as a separate event, FR2.3 must be revised — and an `EventSchema`
+entry for `domain.software-development.branch.pushed` must be added to FR1.
+
+**This is a hard contradiction. A design decision is required before build begins:**
+
+Option A: Emit `branch_pushed` as a separate event (`domain.software-development.branch.pushed`).
+Update FR2.3 to reflect this. Add schema entry to FR1. FR1 constraint satisfied — no internals
+changed, only the event source.
+
+Option B: Fold `branch_pushed` into `deployment.started` payload AND modify the readiness
+projection to read it from the payload. Requires an exception to FR1. Must be explicitly
+approved.
+
+Do not start implementation until this contradiction is resolved and FR2.3 is updated to
+match the chosen option.
+
+---
+
 ## Goal
 
 Wire the existing integration module into the production orchestration flow so
