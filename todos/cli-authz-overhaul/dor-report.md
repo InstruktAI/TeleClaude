@@ -1,138 +1,122 @@
 # DOR Report: cli-authz-overhaul
 
-## Draft Assessment
-
-**Date:** 2026-03-03
-**Assessor:** Draft phase (prepare router)
-**Status:** Draft — pending formal gate validation
-
 ## Gate Assessment
 
-### 1. Intent & Success
+**Date:** 2026-03-03
+**Assessor:** Gate (formal DOR validation)
+**Status:** Pass
+**Score:** 9/10
 
-**Status: PASS**
+## Gate Results
+
+### 1. Intent & Success — PASS
 
 The problem is explicit: authorization is scattered across deny-list sets in `tool_access.py`,
-`CLEARANCE_*` constants in `api/auth.py`, and nowhere for ~50 commands that lack any gate.
+`CLEARANCE_*` constants in `api/auth.py`, and absent for ~50 commands that lack any gate.
 The intended outcome is clear: `CommandAuth` on every `CommandDef` + `is_command_allowed()`
-as the single source of truth. Success criteria are concrete and testable.
+as the single source of truth. Success criteria are concrete and testable — six verifiable
+checkboxes covering data model, function behavior, test coverage, and doc alignment.
 
-### 2. Scope & Size
+### 2. Scope & Size — PASS
 
-**Status: PASS (after scoping)**
+The original input describes 11 workstreams. This todo is correctly scoped to **Workstream 1
+only**: the `CommandAuth` dataclass, `is_command_allowed()`, and auth metadata population.
+The work is additive (no breaking changes), touches primarily `telec.py` and a new test file,
+and fits a single AI session. Follow-on workstreams are identified with dependency graph.
 
-The original input describes 11 workstreams — far too large for a single todo. This draft
-scopes the todo to **Workstream 1 only**: CommandAuth metadata and `is_command_allowed()`.
-This is additive (no breaking changes), touches primarily `telec.py` and a new test file,
-and fits a single AI session.
+### 3. Verification — PASS
 
-**Follow-on todos needed (not created yet — the gate or orchestrator should create them):**
+Verification paths are well-defined:
+- Unit tests for `is_command_allowed()` covering all role combinations (11 test cases specified).
+- Completeness test asserting every leaf `CommandDef` has `auth` populated.
+- `make test` and `make lint` gates.
+- Demo script with inline validation assertions.
 
-| Slug (suggested) | Workstream | Depends on |
-|---|---|---|
-| `cli-authz-mandatory-roles` | WS4: Mandatory session fields, kill heuristic | independent |
-| `cli-authz-role-help` | WS3: Role-aware `telec -h` | cli-authz-overhaul |
-| `cli-authz-new-commands` | WS7: New CLI commands (todo list, jobs, settings, notifications) | cli-authz-overhaul |
-| `cli-authz-api-migration` | WS8: Cover all API routes with `is_command_allowed()` | cli-authz-overhaul, cli-authz-new-commands |
-| `cli-authz-kill-legacy` | WS2: Delete `tool_access.py`, `CLEARANCE_*` constants | cli-authz-api-migration |
-| `cli-authz-baselines` | WS5+WS6: Role-filtered baselines + session injection | cli-authz-overhaul, cli-authz-role-help |
-| `cli-authz-project-ownership` | WS9: Project ownership model | cli-authz-mandatory-roles |
-| `cli-authz-docs` | WS10+WS11: Documentation updates | all above |
+### 4. Approach Known — PASS
 
-### 3. Verification
+The approach is straightforward and uses existing patterns:
+- `CommandAuth` is a frozen dataclass added to the existing `CommandDef` schema (verified:
+  `CommandDef` at `telec.py:104`, `CLI_SURFACE` at `telec.py:132`).
+- Role constants already exist in `teleclaude/constants.py` (`ROLE_WORKER`, `ROLE_ORCHESTRATOR`,
+  `HUMAN_ROLE_ADMIN`, `HUMAN_ROLE_MEMBER`, etc.).
+- The authorization matrix is already designed with user-confirmed corrections captured in
+  requirements.
 
-**Status: PASS**
+Design decisions are resolved:
+- `exclude_human` field on `CommandAuth` for the `sessions escalate` admin exclusion.
+- `todo demo` expanded into explicit subcommand `CommandDef` entries (currently a positional
+  arg handler at `telec.py:2170`).
+- `config people` and `config env` expanded into real leaf subcommands (currently using
+  `HELP_SUBCOMMAND_EXPANSIONS` at `telec.py:612`).
 
-Verification paths are clear:
-- Unit tests for `is_command_allowed()` covering all role combinations.
-- Completeness test ensuring every leaf command has `auth` populated.
-- `make test` and `make lint` pass.
-- Demo script validates auth metadata and function behavior.
+### 5. Research Complete — PASS (N/A)
 
-### 4. Approach Known
+No third-party dependencies. Purely internal code.
 
-**Status: PASS**
+### 6. Dependencies & Preconditions — PASS
 
-The approach is straightforward:
-- `CommandAuth` is a frozen dataclass added to the existing `CommandDef` schema.
-- `is_command_allowed()` walks `CLI_SURFACE` to find the command and checks the two-axis rule.
-- The authorization matrix (`cli-authorization-matrix.md`) is already designed and has user-confirmed corrections.
-- No architectural decisions remain unresolved.
+No prerequisite todos. All needed files are identified and verified in the codebase:
+- `teleclaude/cli/telec.py` — primary target, `CommandDef` and `CLI_SURFACE` confirmed.
+- `teleclaude/constants.py` — role constants confirmed present.
+- `docs/project/design/cli-authorization-matrix.md` — exists, corrections to apply are explicit.
+- `tests/unit/test_command_auth.py` — new file, no conflicts.
+- `api/auth.py` does NOT currently import from `teleclaude.cli`, so no circular import risk
+  for this workstream. The import concern is only relevant when WS8 wires the API.
 
-**Design decision: `exclude_human` field.** The `sessions escalate` command needs admin
-excluded. Two options: (a) add an `exclude_human` field to `CommandAuth`, (b) hardcode the
-exception in `is_command_allowed()`. Recommend (a) for explicitness and consistency with
-the allow-list model.
+### 7. Integration Safety — PASS
 
-**Design decision: `todo demo` sub-subcommands.** Currently `todo demo` takes a positional
-arg (`list|validate|run|create`). The plan recommends expanding these into explicit
-subcommand `CommandDef` entries so auth can be uniform. This is a minor structural change
-to `CLI_SURFACE` and should not affect runtime dispatch (which already parses the positional).
-
-**Design decision: `config people` and `config env` expansion.** Currently these use
-`HELP_SUBCOMMAND_EXPANSIONS` for display but don't have real leaf `CommandDef` entries.
-Expanding them into real subcommands keeps auth uniform. The help-expansion hack can be
-removed once they're real entries.
-
-### 5. Research Complete
-
-**Status: PASS (N/A)**
-
-No third-party dependencies. This is purely internal code.
-
-### 6. Dependencies & Preconditions
-
-**Status: PASS**
-
-No prerequisite todos. The authorization matrix design doc already exists and has been
-reviewed with user corrections. All needed files are identified:
-- `teleclaude/cli/telec.py` — primary change target
-- `teleclaude/constants.py` — role constants (already defined)
-- `docs/project/design/cli-authorization-matrix.md` — corrections to apply
-- `tests/unit/test_command_auth.py` — new test file
-
-### 7. Integration Safety
-
-**Status: PASS**
-
-This change is purely additive:
-- New `CommandAuth` dataclass and `auth` field added to existing structures.
-- New `is_command_allowed()` function added.
-- No existing code is modified or deleted.
-- No existing behavior changes.
+Purely additive:
+- New `CommandAuth` dataclass and optional `auth` field on existing `CommandDef`.
+- New `is_command_allowed()` function.
+- No existing code modified or deleted.
 - Legacy `tool_access.py` and `CLEARANCE_*` constants remain functional.
 - Rollback is trivial: revert the commit.
 
-### 8. Tooling Impact
+### 8. Tooling Impact — PASS (N/A)
 
-**Status: PASS (N/A)**
+No tooling or scaffolding changes. `telec sync` and artifact generation unaffected.
 
-No tooling or scaffolding changes required. `telec sync` and artifact generation are unaffected.
+## Plan-to-Requirement Fidelity — PASS
 
-## Open Questions
+Every implementation task traces to a requirement:
+- Task 1.1 → Req: CommandAuth dataclass + auth field on CommandDef
+- Task 1.2 → Req: Role constants (supports readability of CLI_SURFACE)
+- Task 1.3 → Req: is_command_allowed() with two-axis composition
+- Task 2.1 → Req: Populate auth on every leaf command
+- Task 2.2 → Req: todo demo sub-subcommand auth (structural prerequisite)
+- Task 2.3 → Req: config people/env expansion (structural prerequisite)
+- Task 3.1 → Req: Update cli-authorization-matrix.md with corrections
+- Task 4.1–4.3 → Req: Unit tests and quality checks
 
-1. **`todo demo` expansion**: Expanding into real subcommands may require changes to
-   the dispatch path in `telec.py` if the positional-arg parser doesn't handle the
-   new structure. The builder should verify dispatch still works.
+No task contradicts a requirement. The implementation plan's auth tables are consistent with
+the user-confirmed corrections in requirements (not the pre-correction matrix document).
 
-2. **Import path for `is_command_allowed()`**: `telec.py` currently imports from
-   `teleclaude.constants`. The API module `api/auth.py` would import from `teleclaude.cli.telec`.
-   Verify this doesn't create circular imports. If it does, extract `is_command_allowed()`
-   to a standalone module (e.g., `teleclaude/cli/command_auth.py`).
+## Builder Notes
 
-## Assumptions
+1. **`todo demo` expansion**: Expanding into real subcommands may require dispatch
+   adjustments in `_handle_todo_demo()` (`telec.py:2170`). The positional-arg parser
+   currently handles `list|validate|run|create` as arguments, not subcommands. Verify
+   dispatch still works after the structural change.
 
-- The user-confirmed corrections are final and do not require further review.
-- Admin-implicit convention (admin bypasses human-role check) is the desired behavior
-  for all commands except `sessions escalate`.
-- `None` system_role (non-session callers) should be treated as orchestrator for the
-  system-role check, since non-session callers are never workers.
+2. **`config people`/`config env` expansion**: Currently these are non-leaf nodes
+   using `HELP_SUBCOMMAND_EXPANSIONS` (`telec.py:612`). Expanding into real leaf
+   `CommandDef` entries should make `HELP_SUBCOMMAND_EXPANSIONS` obsolete for these
+   commands. Clean up the expansion table accordingly.
+
+3. **Circular import (WS8 concern, not WS1)**: `api/auth.py` does not currently import
+   from `teleclaude.cli`. The `is_command_allowed()` function just needs to be importable.
+   If WS8 hits import cycles, extract to `teleclaude/cli/command_auth.py`.
+
+## Assumptions (Accepted)
+
+- User-confirmed corrections are final.
+- Admin-implicit convention (admin bypasses human-role check) applies to all commands
+  except `sessions escalate`.
+- `None` system_role (non-session callers) treated as orchestrator.
 
 ## Summary
 
-This todo is scoped to the foundational workstream. All DOR gates pass. The main work is
-mechanical: populating auth metadata on ~65 leaf commands using a reviewed and corrected
-authorization matrix. The primary risk is completeness — the test for "every leaf has auth"
-mitigates this.
-
-**Draft score: 9/10** — all gates satisfied, scope is atomic, approach is known, no blockers.
+All eight DOR gates pass. The scope is atomic (WS1 only), the approach is known and
+grounded in existing codebase patterns, and the verification path is clear. The primary
+work is mechanical: populating auth metadata on ~65 leaf commands using a reviewed
+authorization matrix. The completeness test prevents future regressions.
