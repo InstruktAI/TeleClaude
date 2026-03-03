@@ -1167,7 +1167,11 @@ class AgentCoordinator:
                 if user_ts and (turn_cursor is None or user_ts > turn_cursor):
                     logger.info("New turn detected in transcript; forcing fresh message block for %s", session_id[:8])
                     await self.client.break_threaded_turn(session)
-                    self._incremental_render_digests.pop(session_id, None)
+                    # NOTE: Do NOT clear _incremental_render_digests here. The
+                    # same content can be re-rendered on this tick; keeping the
+                    # digest lets the dedup check prevent a duplicate send.
+                    # The digest is cleared in the user-input handler (line ~729)
+                    # where a genuinely new turn begins.
                     # Anchor this turn to the user message timestamp so repeated
                     # poll ticks don't keep re-breaking and replaying chunks.
                     await db.update_session(session_id, last_tool_done_at=user_ts.isoformat())
