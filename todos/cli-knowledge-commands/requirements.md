@@ -3,7 +3,7 @@
 ## Goal
 
 Bring history search and memory management into the `telec` CLI namespace as
-first-class subcommands (`telec history`, `telec memory`), then retire the
+first-class subcommands (`telec history`, `telec memories`), then retire the
 standalone tool specs that teach agents to use raw scripts and curl calls.
 
 ## Problem Statement
@@ -22,17 +22,18 @@ schema, help generation, and the daemon API client. The commands should live the
 
 ### In scope
 
-1. **`telec history` subcommand** — thin CLI wrapper over `history.py` functionality:
+1. **`telec history` subcommand** — thin CLI wrapper over history search functionality:
    - `telec history search [--agent <name|all>] <terms...>` — search transcripts
    - `telec history show <session-id> [--agent <name>] [--thinking] [--tail N]` — show transcript
-   - Delegates to existing `history.py` logic (import and call, don't shell out)
+   - Imports from `teleclaude.history.search` (extract reusable functions from
+     `scripts/history.py` into a proper package module so both can share the logic)
    - After `history-search-upgrade` lands, this delegates to FTS5 queries instead
 
-2. **`telec memory` subcommand** — thin CLI wrapper over the daemon memory API:
-   - `telec memory search <query> [--limit N] [--type <type>] [--project <name>]` — search memories
-   - `telec memory save <text> [--title <title>] [--type <type>] [--project <name>]` — save observation
-   - `telec memory delete <id>` — delete observation
-   - `telec memory timeline <id> [--before N] [--after N]` — show context around an observation
+2. **`telec memories` subcommand** — thin CLI wrapper over the daemon memory API:
+   - `telec memories search <query> [--limit N] [--type <type>] [--project <name>]` — search memories
+   - `telec memories save <text> [--title <title>] [--type <type>] [--project <name>]` — save observation
+   - `telec memories delete <id>` — delete observation
+   - `telec memories timeline <id> [--before N] [--after N]` — show context around an observation
    - Uses `TelecAPIClient` to call daemon routes (not raw curl)
 
 3. **`CommandDef` registration** — add both to `CLI_SURFACE` with flags, descriptions, notes.
@@ -40,7 +41,7 @@ schema, help generation, and the daemon API client. The commands should live the
 4. **Tool spec retirement**:
    - Remove `general/spec/tools/agent-restart` (already redundant)
    - Remove `general/spec/tools/history-search` (replaced by `telec history`)
-   - Remove `general/spec/tools/memory-management-api` (replaced by `telec memory`)
+   - Remove `general/spec/tools/memory-management-api` (replaced by `telec memories`)
    - Update `docs/global/baseline.md` to remove the three retired refs
    - The `telec-cli` spec auto-generates from `CLI_SURFACE`, so new commands appear automatically
 
@@ -52,31 +53,31 @@ schema, help generation, and the daemon API client. The commands should live the
 - Changing the memory API routes or storage layer.
 - Changing `history.py` internals (the `history-search-upgrade` todo owns that).
 - Adding new memory features beyond what the API already supports.
-- TUI integration for memory or history.
+- TUI integration for memories or history.
 
 ## Success Criteria
 
 - [ ] `telec history search --agent claude "config wizard"` returns matching sessions.
 - [ ] `telec history show <session-id>` renders transcript text.
-- [ ] `telec memory search "session reason"` returns matching observations.
-- [ ] `telec memory save "Important finding" --title "Discovery" --type discovery --project teleclaude` saves an observation and prints the ID.
-- [ ] `telec memory delete 123` deletes the observation.
-- [ ] `telec memory timeline 42 --before 3 --after 3` shows surrounding observations.
-- [ ] `telec -h` shows `history` and `memory` in the command list.
-- [ ] `telec history -h` and `telec memory -h` show correct subcommand help.
+- [ ] `telec memories search "session reason"` returns matching observations.
+- [ ] `telec memories save "Important finding" --title "Discovery" --type discovery --project teleclaude` saves an observation and prints the ID.
+- [ ] `telec memories delete 123` deletes the observation.
+- [ ] `telec memories timeline 42 --before 3 --after 3` shows surrounding observations.
+- [ ] `telec -h` shows `history` and `memories` in the command list.
+- [ ] `telec history -h` and `telec memories -h` show correct subcommand help.
 - [ ] `general/spec/tools/agent-restart` snippet file is deleted.
 - [ ] `general/spec/tools/history-search` snippet file is deleted.
 - [ ] `general/spec/tools/memory-management-api` snippet file is deleted.
 - [ ] `docs/global/baseline.md` no longer references the three deleted specs.
 - [ ] The `telec-cli` spec (via `@exec` directives) shows both new subcommands.
-- [ ] Agents using `telec memory save` and `telec history search` in sessions work correctly.
+- [ ] Agents using `telec memories save` and `telec history search` in sessions work correctly.
 
 ## Constraints
 
 - `telec history` must work when the daemon is down (reads transcript files directly,
   same as `history.py`). After `history-search-upgrade`, local FTS5 reads still work
   without the daemon.
-- `telec memory` requires the daemon (API calls). If daemon is down, print a clear
+- `telec memories` requires the daemon (API calls). If daemon is down, print a clear
   error message — same pattern as other daemon-dependent commands.
 - Both commands follow the `_handle_*` dispatch pattern in `telec.py`.
 - Memory types must match `ObservationType` enum: preference, decision, discovery,

@@ -24,22 +24,40 @@ exists — this is a surface consolidation using the established `CommandDef` +
   - `delete`: args `<id>`
   - `timeline`: args `<id>`, flags `--before`, `--after`, `--project`
 
-### Task 1.2: Implement `_handle_history` dispatcher and subcommands
+### Task 1.2: Extract history functions into importable module
+
+**File(s):** `teleclaude/history/__init__.py`, `teleclaude/history/search.py`, `~/.teleclaude/scripts/history.py`
+
+`scripts/history.py` is a standalone script — not part of the `teleclaude` package.
+Its core functions cannot be imported by `telec.py` directly. Extract them into a
+proper module so both `scripts/history.py` and `telec.py` can import from it.
+
+- [ ] Create `teleclaude/history/__init__.py` (empty)
+- [ ] Create `teleclaude/history/search.py` — move the reusable functions from
+  `scripts/history.py`: `scan_agent_history`, `find_transcript`, `show_transcript`,
+  `display_combined_history`, `_parse_agents`, `_discover_transcripts`,
+  `_extract_session_id`, and supporting constants/types (`AgentName`, path resolution)
+- [ ] Update `scripts/history.py` to import from `teleclaude.history.search` instead
+  of defining the functions inline. Keep `scripts/history.py` as a thin CLI entry point
+  (argparse + dispatch) so existing users are unaffected.
+- [ ] Verify `scripts/history.py` still works standalone: `history.py --agent claude test`
+
+### Task 1.3: Implement `_handle_history` dispatcher and subcommands
 
 **File(s):** `teleclaude/cli/telec.py`
 
 - [ ] Add `_handle_history(args)` following the `_handle_docs` pattern: help check, subcommand dispatch
 - [ ] Add `_handle_history_search(args)`:
   - Parse `--agent` (default `"all"`), `--limit` (default 20), remaining positional as search terms
-  - Import `history.py` functions: `display_combined_history`, `_parse_agents`
+  - Import from `teleclaude.history.search`: `display_combined_history`, `_parse_agents`
   - Call `display_combined_history(agents, search_term=" ".join(terms), limit=limit)`
 - [ ] Add `_handle_history_show(args)`:
   - Parse positional `session-id`, `--agent` (default `"all"`), `--thinking`, `--tail` (default 0)
-  - Import `show_transcript`, `_parse_agents` from `history.py`
+  - Import from `teleclaude.history.search`: `show_transcript`, `_parse_agents`
   - Call `show_transcript(agents, session_id, tail_chars=tail, include_thinking=thinking)`
 - [ ] Wire `TelecCommand.HISTORY` in the main dispatcher (line ~1272 area)
 
-### Task 1.3: Implement `_handle_memories` dispatcher and subcommands
+### Task 1.4: Implement `_handle_memories` dispatcher and subcommands
 
 **File(s):** `teleclaude/cli/telec.py`
 
@@ -62,7 +80,7 @@ exists — this is a surface consolidation using the established `CommandDef` +
   - Format and print timeline results
 - [ ] Wire `TelecCommand.MEMORIES` in the main dispatcher
 
-### Task 1.4: Add memory helper methods to TelecAPIClient
+### Task 1.5: Add memory helper methods to TelecAPIClient
 
 **File(s):** `teleclaude/cli/api_client.py`
 
@@ -71,7 +89,7 @@ exists — this is a surface consolidation using the established `CommandDef` +
 - [ ] Add `async memory_delete(observation_id)` — DELETE `/api/memory/{observation_id}`
 - [ ] Add `async memory_timeline(anchor, before=3, after=3, project=None)` — GET `/api/memory/timeline`
 
-### Task 1.5: Retire standalone tool specs
+### Task 1.6: Retire standalone tool specs
 
 **File(s):**
 - `docs/global/general/spec/tools/agent-restart.md`
@@ -118,7 +136,9 @@ exists — this is a surface consolidation using the established `CommandDef` +
 ## Technical Notes
 
 - `history.py` works without the daemon (reads transcript files directly). The `telec history`
-  command inherits this property — it imports and calls functions, no daemon needed.
+  command inherits this property — it imports from `teleclaude.history.search`, no daemon needed.
+- `scripts/history.py` remains as a standalone CLI entry point but delegates to
+  `teleclaude.history.search` for all logic. No user-facing behavior changes.
 - `telec memories` requires the daemon. If daemon is unreachable, `TelecAPIClient` raises
   `APIError` which the handler catches and prints a clear error message.
 - The `_handle_memories_*` functions use `asyncio.run()` to call async client methods,
