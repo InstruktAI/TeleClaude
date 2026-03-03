@@ -129,14 +129,6 @@ def _scan_sky_entity(
     return fg_char, fg_color, bg_entity_color
 
 
-# Shade character opacity for cloud compositing
-_SHADE_OPACITY = {
-    "\u2591": 0.25,  # ░ light shade
-    "\u2592": 0.50,  # ▒ medium shade
-    "\u2593": 0.75,  # ▓ dark shade
-}
-
-
 class Banner(TelecMixin, Widget):
     """ASCII art banner for the TUI header."""
 
@@ -215,8 +207,7 @@ class Banner(TelecMixin, Widget):
                     bg_entity_color: str | None = None
                     if engine and not is_on_plate:
                         fg_char, fg_color, bg_entity_color = _scan_sky_entity(engine, x, y, dark_mode)
-                        # Cloud-over-celestial: use celestial color as bg (shade char handles transparency)
-                        if bg_entity_color and fg_char in _SHADE_OPACITY:
+                        if bg_entity_color:
                             final_bg = bg_entity_color
 
                     # 4. Final compositing
@@ -266,7 +257,7 @@ class Banner(TelecMixin, Widget):
                         fg_color = None
                         if engine:
                             fg_char, fg_color, bg_ent = _scan_sky_entity(engine, x, y, dark_mode)
-                            if bg_ent and fg_char in _SHADE_OPACITY:
+                            if bg_ent:
                                 bg = bg_ent
 
                         result.append(fg_char, style=Style(color=_to_color(fg_color), bgcolor=_to_color(bg)))
@@ -318,7 +309,7 @@ class Banner(TelecMixin, Widget):
                     bg_entity_color: str | None = None
                     if engine and not is_on_plate:
                         fg_char, fg_color, bg_entity_color = _scan_sky_entity(engine, x, y, dark_mode)
-                        if bg_entity_color and fg_char in _SHADE_OPACITY:
+                        if bg_entity_color:
                             final_bg = bg_entity_color
 
                     is_pipe_char = _is_pipe(fg_char)
@@ -366,7 +357,7 @@ class Banner(TelecMixin, Widget):
                         fg_color = None
                         if engine:
                             fg_char, fg_color, bg_ent = _scan_sky_entity(engine, x, y, dark_mode)
-                            if bg_ent and fg_char in _SHADE_OPACITY:
+                            if bg_ent:
                                 bg = bg_ent
 
                         result.append(fg_char, style=Style(color=_to_color(fg_color), bgcolor=_to_color(bg)))

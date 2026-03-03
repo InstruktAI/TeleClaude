@@ -112,6 +112,11 @@ class GlobalSky(Animation):
         "'\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588&' ",
         "  '\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588&'  ",
     ]
+    # Celestial ambient glow — painted at gap positions in the bounding box so
+    # cloud shade chars pick up a warm/cool tint instead of raw sky gradient.
+    _SUN_GLOW = "#4A3000"
+    _MOON_GLOW = "#2A2A3A"
+
     # City glow: 3 rows behind tab bar (y=7,8,9)
     _CITY_GLOW = ["#1A0035", "#270055", "#0A0010"]
 
@@ -253,10 +258,18 @@ class GlobalSky(Animation):
     def _render_quarter_celestial(self, buffer: RenderBuffer, rows: list[str], term_width: int) -> None:
         """Render bottom-left quarter of celestial body at top-right corner."""
         sprite_w = max(len(r) for r in rows)
-        sprite_h = len(rows)
         # Anchor center at (term_width - 1, -2) so only bottom-left quarter is visible
         cx = term_width - 1
         cy = -2
+
+        # Narrow pane (split view): push celestial partially off-screen
+        if term_width <= 130:
+            cx += 6
+            cy -= 2
+
+        is_sun = rows is self._SUN_ROWS
+        glow = self._SUN_GLOW if is_sun else self._MOON_GLOW
+
         for dy, row in enumerate(rows):
             y = cy + dy
             if y < 0:
@@ -265,8 +278,14 @@ class GlobalSky(Animation):
                 break
             for dx, ch in enumerate(row):
                 x = cx - sprite_w + 1 + dx
-                if ch != " " and 0 <= x < self.width:
-                    buffer.add_pixel(Z_CELESTIAL, x, y, ch)
+                if 0 <= x < self.width:
+                    if ch != " ":
+                        buffer.add_pixel(Z_CELESTIAL, x, y, ch)
+                    else:
+                        # Ambient glow at gap positions — invisible in empty sky
+                        # (space char ignores fg color) but picked up as bg
+                        # by cloud shade chars passing over the celestial area.
+                        buffer.add_pixel(Z_CELESTIAL, x, y, glow)
 
     def update(self, frame: int) -> RenderBuffer:
         # Reuse persistent buffer — avoid allocating 4000+ dict entries per frame
