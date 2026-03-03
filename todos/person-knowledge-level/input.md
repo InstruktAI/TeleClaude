@@ -14,6 +14,7 @@ One field on the person: `knowledge: novice | intermediate | advanced | expert`
 - **expert** — deep systems and architectural understanding
 
 Stored in global config:
+
 ```yaml
 people:
   - name: Maurice Faber
@@ -46,6 +47,7 @@ The agent reads "expert" and knows: full autonomy, dense communication, architec
 ### Behavioral contract
 
 The knowledge level is a static fact, not a behavioral directive. It gets overridden in-the-moment by existing principles:
+
 - Attunement senses when the human needs something different than the default
 - Autonomy policy's escalation gates still apply regardless of knowledge level
 - If the human is upset or the agent is making wrong decisions, real-time signals override the knowledge-based defaults

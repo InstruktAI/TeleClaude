@@ -19,6 +19,7 @@ both `input.md` and `requirements.md`.
 ### 2. Scope & Size — PASS (with note)
 
 The plan has 8 phases with ~20 tasks. This is large for a single AI session. Mitigating factors:
+
 - Phases are linearly ordered with clean boundaries.
 - Each phase produces independently testable, committable artifacts.
 - Commit-per-phase structure enables checkpoint recovery.
@@ -39,15 +40,15 @@ singleton promotion, embedding fallback.
 
 All codebase references verified against current `main`:
 
-| Pattern                 | File                                    | Verified |
-| ----------------------- | --------------------------------------- | -------- |
-| `Cartridge` Protocol    | `teleclaude_events/pipeline.py:20`      | Yes      |
-| `PipelineContext`       | `teleclaude_events/pipeline.py:14`      | Yes      |
-| `EventEnvelope`         | `teleclaude_events/envelope.py:32`      | Yes      |
-| `register_all()`        | `teleclaude_events/schemas/__init__.py:11` | Yes   |
-| `EventDB` + aiosqlite   | `teleclaude_events/db.py`              | Yes      |
-| `EventLevel` enum       | `teleclaude_events/envelope.py:19`      | Yes      |
-| `EventVisibility` enum  | `teleclaude_events/envelope.py:13`      | Yes      |
+| Pattern                | File                                       | Verified |
+| ---------------------- | ------------------------------------------ | -------- |
+| `Cartridge` Protocol   | `teleclaude_events/pipeline.py:20`         | Yes      |
+| `PipelineContext`      | `teleclaude_events/pipeline.py:14`         | Yes      |
+| `EventEnvelope`        | `teleclaude_events/envelope.py:32`         | Yes      |
+| `register_all()`       | `teleclaude_events/schemas/__init__.py:11` | Yes      |
+| `EventDB` + aiosqlite  | `teleclaude_events/db.py`                  | Yes      |
+| `EventLevel` enum      | `teleclaude_events/envelope.py:19`         | Yes      |
+| `EventVisibility` enum | `teleclaude_events/envelope.py:13`         | Yes      |
 
 `PipelineContext` currently has `catalog`, `db`, and `push_callbacks` fields. The plan
 adds optional `ai_client` and `emit` fields (Task 6.1) — backward-compatible with existing
@@ -61,6 +62,7 @@ it and return `None` from `process()`. This pattern is sound and well-documented
 ### 5. Research Complete — PASS (no third-party dependencies)
 
 All dependencies are stdlib or already in the project:
+
 - `xml.etree.ElementTree` (stdlib) for RSS/OPML parsing
 - `aiohttp` for HTTP fetches (existing project dependency)
 - `aiosqlite` for storage (existing — used by `EventDB`)
@@ -72,6 +74,7 @@ Roadmap declares `after: [event-domain-infrastructure]`. That todo is `build: pe
 `dor.score: 0`, itself blocked by `event-system-cartridges`.
 
 **Resolution:** The plan self-contains all needed infrastructure:
+
 - Task 1.1: Creates `company/cartridges/` package scaffolding.
 - Task 6.1: Extends `PipelineContext` with optional `ai_client` and `emit` fields.
 - Task 6.3: Registers cartridges directly with `Pipeline` (not via domain-infrastructure loader).
@@ -85,6 +88,7 @@ and plan. Non-blocking for build.
 ### 7. Integration Safety — PASS
 
 The change is additive:
+
 - New files: `company/cartridges/signal/`, `teleclaude_events/signal/`, `teleclaude_events/schemas/signal.py`
 - Extensions: `PipelineContext` gets optional fields (no breakage)
 - Modifications: `teleclaude_events/schemas/__init__.py` (add signal registration), `teleclaude/daemon.py` (startup wiring)

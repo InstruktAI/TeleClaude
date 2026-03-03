@@ -33,17 +33,20 @@ Traced four independent issues across three files:
 ## Fix Applied
 
 **`teleclaude/cli/telec.py`**:
+
 - `_run_tui_config_mode`: `start_view=3` → `start_view=4`
 - `_run_tui`: forward `config_guided` to `TelecApp`
 - `_handle_config` wizard branch: `guided=False` → `guided=True`
 
 **`teleclaude/cli/tui/app.py`**:
+
 - `TelecApp.__init__`: added `config_guided: bool = False` parameter; stored as `self._config_guided`
 - `on_mount`: added `call_after_refresh(self._activate_config_guided_mode)` when `_config_guided` is True
 - Added `_activate_config_guided_mode` method: queries `#config-view` and calls `action_toggle_guided_mode()`
 - `_appearance_refresh`: added `ConfigContent` refresh after dark/light mode switch
 
 **`teleclaude/cli/tui/views/config.py`**:
+
 - Replaced `_NORMAL = Style(color="#d0d0d0")` with `_normal_style()` function that calls `get_neutral_color("highlight")` at render time
 - Updated all 5 call sites to use `_normal_style()`
 - Added `get_neutral_color` to imports

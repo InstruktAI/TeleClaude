@@ -19,7 +19,7 @@ notification projector). It is the first domain-logic cartridge in the codebase.
   - `name = "prepare-quality"`
   - `async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`
 - [ ] Filter: only process `domain.software-development.planning.*` events.
-  Pass through all other events immediately.
+      Pass through all other events immediately.
 - [ ] Extract slug from `event.payload["slug"]`.
 - [ ] Skip if slug is in `todos/delivered.yaml` or `todos/icebox.md`.
 - [ ] Always return the event (pass-through for downstream cartridges).
@@ -32,9 +32,9 @@ events trigger processing.
 **File(s):** `teleclaude_events/cartridges/prepare_quality.py`
 
 - [ ] Compute current git commit hash of `todos/{slug}/` folder via
-  `git log -1 --format=%h -- todos/{slug}/`.
+      `git log -1 --format=%h -- todos/{slug}/`.
 - [ ] Read `state.yaml` dor section. If `assessed_commit` matches and `status == pass`,
-  skip processing. Log skip reason.
+      skip processing. Log skip reason.
 - [ ] If different commit or no prior assessment, proceed.
 
 **Verification:** Duplicate event for unchanged slug is skipped. Changed slug is processed.
@@ -63,7 +63,7 @@ or separate file `teleclaude_events/cartridges/dor_scorer.py` — builder's choi
 - [ ] `score_requirements(content: str) -> dict` with per-dimension scores and gaps.
 - [ ] `score_plan(content: str, requirements: str) -> dict` with per-dimension scores.
 - [ ] Combine into overall DOR score with verdict:
-  - >= 8 → `pass`
+  - > = 8 → `pass`
   - < 8 with improvable gaps → `needs_work`
   - < 7 with no safe improvements → `needs_decision`
 
@@ -139,12 +139,12 @@ or separate file `teleclaude_events/cartridges/dor_scorer.py` — builder's choi
 **File(s):** `teleclaude_events/cartridges/prepare_quality.py`
 
 - [ ] Look up notification row from `context.db` by idempotency key or group key
-  (slug) from the event.
+      (slug) from the event.
 - [ ] Claim: `context.db.update_agent_status(id, "claimed", "prepare-quality-runner")`.
 - [ ] On `pass` or `needs_work`: resolve via `context.db.resolve_notification(id, resolution)`.
 - [ ] On `needs_decision`: leave unresolved. Log blockers.
 - [ ] Emit `domain.software-development.planning.dor_assessed` event via producer
-  (requires producer reference — either passed via context or imported from module-level).
+      (requires producer reference — either passed via context or imported from module-level).
 
 **Verification:** Notification resolved for pass/needs_work. Unresolved for needs_decision.
 
@@ -182,7 +182,7 @@ or separate file `teleclaude_events/cartridges/dor_scorer.py` — builder's choi
 - [ ] Unit tests for idempotency (skip logic, commit hash comparison).
 - [ ] Unit tests for structural improver (gap filling, prose preservation).
 - [ ] Integration test: create pipeline with all three cartridges, feed a planning event,
-  verify DOR report written and state updated.
+      verify DOR report written and state updated.
 - [ ] Test `needs_decision` path: notification left unresolved.
 - [ ] Run `make test`.
 

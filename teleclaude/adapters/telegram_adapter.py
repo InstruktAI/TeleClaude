@@ -63,7 +63,6 @@ from .telegram.input_handlers import InputHandlersMixin
 from .telegram.message_ops import EditContext, MessageOperationsMixin
 from .ui_adapter import UiAdapter
 
-
 # Type alias for python-telegram-bot's default Application type.
 # The library uses dict for user/chat/bot data storage - this is intentional
 # design since the library doesn't restrict what you can store.

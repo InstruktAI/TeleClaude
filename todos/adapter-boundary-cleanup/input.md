@@ -36,6 +36,7 @@ def render_reflection_text(adapter: UiAdapter, base_text: str) -> str:
 ```
 
 **What should happen:**
+
 1. Remove ALL presentation logic from `broadcast_user_input()` — no `render_reflection_text`, no `reflection_header`, no `display_origin_label`, no `default_actor`
 2. Add `reflection_origin: str | None` field to `MessageMetadata` so adapters know the input source
 3. Core passes raw text + metadata (actor_name, actor_id, actor_avatar_url, reflection_origin) to `adapter.send_message()`
@@ -57,6 +58,7 @@ for adapter in self.adapters.values():
 Core reaches into a private adapter attribute (`_qos_scheduler`) and directly manipulates it.
 
 **What should happen:**
+
 1. Add a `drop_pending_output(session_id: str) -> int` method to `UiAdapter` base class (returns count of dropped items, base implementation returns 0)
 2. Adapters that have QoS schedulers override this method to drop pending payloads
 3. `break_threaded_turn` calls `adapter.drop_pending_output(session.session_id)` instead of reaching into internals
@@ -73,11 +75,13 @@ Calls `_move_badge_to_bottom` (private convention). Should be a public method on
 ## Routing Spec Reference
 
 From `project/spec/session-output-routing`:
+
 - "Reflect to every provisioned UI adapter except the source adapter."
 - "Never suppress MCP reflections; they follow the same rule."
 - "Adapters own placement and rendering strategy."
 
 From `project/design/architecture/ui-adapter`:
+
 - "No domain policy decisions; UI is translation and presentation only."
 - "Decide local presentation strategy (edit-in-place, threaded, or multi-placement) for delivered messages."
 

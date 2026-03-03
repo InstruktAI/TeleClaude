@@ -72,7 +72,9 @@ class NotificationProjectorCartridge:
                 await context.db.resolve_notification(notification_id, event.payload)
 
         if notification_id is not None:
-            await _invoke_push_callbacks(context, notification_id, event.event, int(event.level), was_created, is_meaningful)
+            await _invoke_push_callbacks(
+                context, notification_id, event.event, int(event.level), was_created, is_meaningful
+            )
 
         return event
 

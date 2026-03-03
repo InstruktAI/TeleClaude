@@ -93,7 +93,9 @@ class TelecFooter(Widget):
         label = tooltip or binding.description
 
         text = Text()
-        key_style = Style(bold=True, dim=True) if not enabled else Style(bold=True, color=get_neutral_color("highlight"))
+        key_style = (
+            Style(bold=True, dim=True) if not enabled else Style(bold=True, color=get_neutral_color("highlight"))
+        )
         label_style = Style(dim=True)
         text.append(str(key), style=key_style)
         if label:

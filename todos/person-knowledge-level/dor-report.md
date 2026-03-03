@@ -22,8 +22,9 @@ safe defaults. Single session work.
 ### 3. Verification — PASS
 
 Unit tests specified for schema validation (valid/invalid), injection output (mock session
-+ config), CLI add/edit flags. Demo script covers end-to-end. `make test` and `make lint`
-as quality gates.
+
+- config), CLI add/edit flags. Demo script covers end-to-end. `make test` and `make lint`
+  as quality gates.
 
 ### 4. Approach Known — PASS (codebase-verified)
 
@@ -38,7 +39,7 @@ as quality gates.
 - `_people_add` at `config_cli.py:189` constructs `PersonEntry` directly — adding
   `knowledge=opts.get("knowledge")` follows the `role` pattern at line 207.
 - `_people_edit` at `config_cli.py:306` checks editable fields via `any(k in opts
-  for k in (...))` — `"knowledge"` adds to that tuple.
+for k in (...))` — `"knowledge"` adds to that tuple.
 - `_render_people` at `config.py:753` renders `person.name`, `person.role`,
   `person.email` — appending knowledge follows the existing style.
 
@@ -64,14 +65,14 @@ No tooling or scaffolding changes. CLI gains `--knowledge` via existing `_parse_
 
 ## Plan-to-Requirement Fidelity
 
-| Plan Task | Requirement | Fidelity |
-|-----------|-------------|----------|
-| 1.1 Schema field | Req #1 Schema | Aligned |
-| 1.2 Injection | Req #2 Session injection | Aligned |
-| 1.3 CLI flags | Req #3 CLI | Aligned |
-| 1.4 DTO | Req #4 API DTO | Aligned |
-| 1.5 TUI wizard | Req #5 TUI wizard | Aligned |
-| 2.1 Tests | Req #6 Tests | Aligned |
+| Plan Task        | Requirement              | Fidelity |
+| ---------------- | ------------------------ | -------- |
+| 1.1 Schema field | Req #1 Schema            | Aligned  |
+| 1.2 Injection    | Req #2 Session injection | Aligned  |
+| 1.3 CLI flags    | Req #3 CLI               | Aligned  |
+| 1.4 DTO          | Req #4 API DTO           | Aligned  |
+| 1.5 TUI wizard   | Req #5 TUI wizard        | Aligned  |
+| 2.1 Tests        | Req #6 Tests             | Aligned  |
 
 No contradictions. Every plan task traces to a requirement.
 

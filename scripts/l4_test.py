@@ -98,7 +98,7 @@ The rules were provided as a system prompt in two formats:
 
 ## What the rules should produce
 
-{test['probes']}
+{test["probes"]}
 
 ## L1 Response (baseline)
 
@@ -187,7 +187,7 @@ async def main():
 
     print(f"L1 system prompt: {len(l1_prompt)} chars")
     print(f"L4 system prompt: {len(l4_prompt)} chars")
-    print(f"Compression: {len(l4_prompt)/len(l1_prompt):.0%}")
+    print(f"Compression: {len(l4_prompt) / len(l1_prompt):.0%}")
     print(f"\nRunning {len(TESTS)} behavioral tests...\n")
 
     client = anthropic.AsyncAnthropic()
@@ -204,10 +204,10 @@ async def main():
     pass_count = sum(1 for e in equivs if e is True)
     fail_count = sum(1 for e in equivs if e is False)
 
-    print(f"\n{'='*60}")
-    print(f"Results: {pass_count}✓ {fail_count}✗ {len(TESTS)-pass_count-fail_count}?")
+    print(f"\n{'=' * 60}")
+    print(f"Results: {pass_count}✓ {fail_count}✗ {len(TESTS) - pass_count - fail_count}?")
     print(f"Average score: {avg_score:.1f}/5")
-    print(f"Compression: {len(l4_prompt)}/{len(l1_prompt)} chars ({len(l4_prompt)/len(l1_prompt):.0%})")
+    print(f"Compression: {len(l4_prompt)}/{len(l1_prompt)} chars ({len(l4_prompt) / len(l1_prompt):.0%})")
 
     # Show failures
     for r in results:

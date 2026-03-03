@@ -9,6 +9,7 @@
 ### Gate Results
 
 #### 1. Intent & Success
+
 **Status:** Pass
 
 Problem statement is clear: `telec init` produces infrastructure but no intelligence
@@ -18,6 +19,7 @@ generation, validation pass, index inclusion, idempotency, human-edit preservati
 clean session termination.
 
 #### 2. Scope & Size
+
 **Status:** Pass
 
 Atomic capability addition to one command. Five implementation phases with clear task
@@ -26,6 +28,7 @@ heaviest phase (Phase 2: analysis session infrastructure) is well-decomposed int
 tasks. Fits a single builder session with sequential phase execution.
 
 #### 3. Verification
+
 **Status:** Pass
 
 Test strategy covers three levels: unit tests (snippet writing, merging, metadata
@@ -35,9 +38,11 @@ large codebases (sampling strategy in guidance doc), human-edited snippets (merg
 re-analysis (metadata tracking).
 
 #### 4. Approach Known
+
 **Status:** Pass
 
 Technical path builds entirely on proven infrastructure:
+
 - Session launching via `telec sessions run` (proven pattern)
 - Doc snippet authoring via existing schema (well-documented)
 - Index building via `docs_index.py` (confirmed: `iter_snippet_roots()` already scans
@@ -49,6 +54,7 @@ Technical path builds entirely on proven infrastructure:
 No architectural decisions remain unresolved.
 
 #### 5. Research Complete
+
 **Status:** Pass (no new third-party dependencies)
 
 Enrichment uses existing TeleClaude infrastructure exclusively. No external libraries,
@@ -56,6 +62,7 @@ frameworks, or integrations are introduced. AI analysis relies on Claude's built
 code understanding capabilities guided by the authorized author procedure.
 
 #### 6. Dependencies & Preconditions
+
 **Status:** Needs work
 
 **Blocker:** Roadmap declares `after: [event-envelope-schema]` for this slug, but the
@@ -78,6 +85,7 @@ All other preconditions are satisfied: session launching, doc snippet system, sy
 pipeline — all exist and are functional.
 
 #### 7. Integration Safety
+
 **Status:** Pass
 
 - Additive: existing `telec init` plumbing is untouched
@@ -86,6 +94,7 @@ pipeline — all exist and are functional.
 - Rollback: delete `docs/project/init/` and re-run `telec sync`
 
 #### 8. Tooling Impact
+
 **Status:** Pass (not applicable)
 
 No changes to scaffolding tooling. Uses existing `telec todo`, `telec docs`, and
@@ -123,6 +132,7 @@ the plan should note this explicitly.
 **Status:** pass
 
 **All blockers resolved:**
+
 1. ~~Roadmap dependency contradiction~~ — `after: [event-envelope-schema]` removed
    from roadmap (377b8482). Core enrichment has no dependency on event-envelope-schema.
 2. ~~AGENTS.md merge behavior~~ — Plan Task 2.3 tightened: create if absent, skip
@@ -131,6 +141,7 @@ the plan should note this explicitly.
    discovers `docs/project/` snippets (d526c473).
 
 **Actions taken:**
+
 - Verified codebase paths match implementation plan file references
 - Confirmed Task 2.4 is pre-satisfied by existing `iter_snippet_roots()` code
 - Validated `event-envelope-schema` state (DOR pass, build pending — not delivered)

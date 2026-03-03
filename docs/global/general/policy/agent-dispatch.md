@@ -11,13 +11,13 @@ description: 'Role-to-agent dispatch assignments. Designates which agent holds e
 
 ### Role assignments
 
-| Role         | Designated agent | Excluded agents  |
-| ------------ | ---------------- | ---------------- |
-| Orchestrator | Codex            | Claude, Gemini   |
-| Architect    | Claude           | —                |
-| Builder      | Claude, Codex    | —                |
-| Reviewer     | Claude, Codex    | —                |
-| Frontend     | Gemini           | —                |
+| Role         | Designated agent | Excluded agents |
+| ------------ | ---------------- | --------------- |
+| Orchestrator | Codex            | Claude, Gemini  |
+| Architect    | Claude           | —               |
+| Builder      | Claude, Codex    | —               |
+| Reviewer     | Claude, Codex    | —               |
+| Frontend     | Gemini           | —               |
 
 ### Orchestrator
 

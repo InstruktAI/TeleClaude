@@ -83,14 +83,14 @@ class GlobalSky(Animation):
     _CLOUD_Z_WEIGHTS: dict[int, list[tuple[int, int]]] = {
         0: [(Z_CLOUDS_FAR, 60), (Z_CLOUDS_MID, 30), (Z_CLOUDS_NEAR, 10)],  # wisps: mostly far, can be foggy
         1: [(Z_CLOUDS_FAR, 50), (Z_CLOUDS_MID, 40), (Z_CLOUDS_NEAR, 10)],  # puffs: far/mid
-        2: [(Z_CLOUDS_FAR, 40), (Z_CLOUDS_MID, 55), (Z_CLOUDS_NEAR, 5)],   # medium: mostly mid
-        3: [(Z_CLOUDS_FAR, 70), (Z_CLOUDS_MID, 30)],                        # cumulus: NEVER near, mostly far
+        2: [(Z_CLOUDS_FAR, 40), (Z_CLOUDS_MID, 55), (Z_CLOUDS_NEAR, 5)],  # medium: mostly mid
+        3: [(Z_CLOUDS_FAR, 70), (Z_CLOUDS_MID, 30)],  # cumulus: NEVER near, mostly far
     }
     _WEATHER_CONFIGS = {
-        "clear": {"sizes": [0], "count": (3, 6)},                         # wisps only, more of them
-        "fair": {"sizes": [0, 0, 1], "count": (5, 9)},                    # doubled wisps in pool
-        "cloudy": {"sizes": [0, 0, 1, 2], "count": (7, 12)},              # wisps still most common
-        "overcast": {"sizes": [0, 1, 1, 2, 3], "count": (10, 16)},        # cumulus rare even here
+        "clear": {"sizes": [0], "count": (3, 6)},  # wisps only, more of them
+        "fair": {"sizes": [0, 0, 1], "count": (5, 9)},  # doubled wisps in pool
+        "cloudy": {"sizes": [0, 0, 1, 2], "count": (7, 12)},  # wisps still most common
+        "overcast": {"sizes": [0, 1, 1, 2, 3], "count": (10, 16)},  # cumulus rare even here
     }
     _WEATHER_NAMES = ["clear", "fair", "cloudy", "overcast"]
     _WEATHER_WEIGHTS = [30, 35, 25, 10]

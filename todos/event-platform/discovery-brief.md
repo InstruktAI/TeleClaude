@@ -8,19 +8,19 @@
 
 ## Build Readiness Verdict
 
-| Todo | DOR | Ready? | Worst Gap |
-|------|-----|--------|-----------|
-| event-system-cartridges | 8 | PARTIAL | Trust truth table missing; re-entry loop risk |
-| event-domain-infrastructure | 8 | CONDITIONAL | Member slug undefined; DAG cache absent |
-| event-signal-pipeline | 8 | CONDITIONAL | PipelineContext.ai_client uncontracted |
-| event-envelope-schema | 8 | CONDITIONAL | extra="allow" breaks backward compat |
-| event-domain-pillars | 8 | PARTIAL | Cartridge files not seeded by telec init |
-| mesh-trust-model | 8 | CONDITIONAL | peer_id format undefined until mesh-architecture ships |
-| integrator-wiring | 8 | CONDITIONAL | branch_pushed contradiction (hard) |
-| mesh-architecture | 0 | **NO** | Requirements + plan = blank templates; 3 todos blocked |
-| event-alpha-container | 0 | **NO** | CLI collision + health-check ping bug + stale socket |
-| event-mesh-distribution | 0 | **NO** | PeerInfo.cluster missing in live code; cascade loop |
-| integration-events-model | — | **DELIVERED** | Empty directory — clean up |
+| Todo                        | DOR | Ready?        | Worst Gap                                              |
+| --------------------------- | --- | ------------- | ------------------------------------------------------ |
+| event-system-cartridges     | 8   | PARTIAL       | Trust truth table missing; re-entry loop risk          |
+| event-domain-infrastructure | 8   | CONDITIONAL   | Member slug undefined; DAG cache absent                |
+| event-signal-pipeline       | 8   | CONDITIONAL   | PipelineContext.ai_client uncontracted                 |
+| event-envelope-schema       | 8   | CONDITIONAL   | extra="allow" breaks backward compat                   |
+| event-domain-pillars        | 8   | PARTIAL       | Cartridge files not seeded by telec init               |
+| mesh-trust-model            | 8   | CONDITIONAL   | peer_id format undefined until mesh-architecture ships |
+| integrator-wiring           | 8   | CONDITIONAL   | branch_pushed contradiction (hard)                     |
+| mesh-architecture           | 0   | **NO**        | Requirements + plan = blank templates; 3 todos blocked |
+| event-alpha-container       | 0   | **NO**        | CLI collision + health-check ping bug + stale socket   |
+| event-mesh-distribution     | 0   | **NO**        | PeerInfo.cluster missing in live code; cascade loop    |
+| integration-events-model    | —   | **DELIVERED** | Empty directory — clean up                             |
 
 ---
 

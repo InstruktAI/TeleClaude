@@ -7,6 +7,7 @@ Three interrelated failures discovered during Discord → agent launch trace:
 ### 1. Agent resolution is scattered and inconsistent (DRY violation)
 
 15 call sites resolve "which agent to use when none specified" using 4 different strategies:
+
 - **Hardcoded `"agent claude"`** — telegram_adapter (2), whatsapp_handler (1), discord help_desk (1), discord DMs (2)
 - **`enabled_agents[0]`** — discord `_default_agent`, command_mapper, api_server
 - **`AgentName.CLAUDE` enum default** — checkpoint_dispatch, agent_coordinator
@@ -35,18 +36,18 @@ Bootstrap is a background task (`_bootstrap_session_resources`). Multiple silent
 
 ## Call site inventory
 
-| Location | File | Lines | Current behavior |
-|---|---|---|---|
-| Discord `_default_agent` | discord_adapter.py | 165-170 | `enabled_agents[0]`, fallback `"claude"` |
-| Discord help_desk | discord_adapter.py | 2459 | Hardcoded `"agent claude"` |
-| Discord DM (existing) | discord_adapter.py | 1857 | Hardcoded `"agent claude"` |
-| Discord DM (invite) | discord_adapter.py | 1932 | Hardcoded `"agent claude"` |
-| Telegram private chat | telegram_adapter.py | 434 | Hardcoded `"agent claude"` |
-| Telegram reconnect | telegram_adapter.py | 503 | Hardcoded `"agent claude"` |
-| WhatsApp handler | whatsapp_handler.py | 46 | Hardcoded `"agent claude"` |
-| Command mapper | command_mapper.py | 41-45 | `enabled_agents[0]` |
-| API server | api_server.py | 560-566 | `enabled_agents[0]` |
-| Checkpoint dispatch | checkpoint_dispatch.py | 36 | `AgentName.CLAUDE` enum default |
-| Agent coordinator | agent_coordinator.py | 1612 | `AgentName.CLAUDE` |
-| Discord launcher loop | discord_adapter.py | 1789 | Only project forums |
-| Launcher pin | discord_adapter.py | 701-716 | Pins message, not thread |
+| Location                 | File                   | Lines   | Current behavior                         |
+| ------------------------ | ---------------------- | ------- | ---------------------------------------- |
+| Discord `_default_agent` | discord_adapter.py     | 165-170 | `enabled_agents[0]`, fallback `"claude"` |
+| Discord help_desk        | discord_adapter.py     | 2459    | Hardcoded `"agent claude"`               |
+| Discord DM (existing)    | discord_adapter.py     | 1857    | Hardcoded `"agent claude"`               |
+| Discord DM (invite)      | discord_adapter.py     | 1932    | Hardcoded `"agent claude"`               |
+| Telegram private chat    | telegram_adapter.py    | 434     | Hardcoded `"agent claude"`               |
+| Telegram reconnect       | telegram_adapter.py    | 503     | Hardcoded `"agent claude"`               |
+| WhatsApp handler         | whatsapp_handler.py    | 46      | Hardcoded `"agent claude"`               |
+| Command mapper           | command_mapper.py      | 41-45   | `enabled_agents[0]`                      |
+| API server               | api_server.py          | 560-566 | `enabled_agents[0]`                      |
+| Checkpoint dispatch      | checkpoint_dispatch.py | 36      | `AgentName.CLAUDE` enum default          |
+| Agent coordinator        | agent_coordinator.py   | 1612    | `AgentName.CLAUDE`                       |
+| Discord launcher loop    | discord_adapter.py     | 1789    | Only project forums                      |
+| Launcher pin             | discord_adapter.py     | 701-716 | Pins message, not thread                 |

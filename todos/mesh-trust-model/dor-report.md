@@ -9,13 +9,13 @@ corrected (observation event emission mechanism). Open questions from draft phas
 
 ### Artifact Status
 
-| Artifact                 | State                               |
-| ------------------------ | ----------------------------------- |
-| `input.md`               | Complete — rich brain dump           |
-| `requirements.md`        | Final — 7 scope items, 11 criteria  |
-| `implementation-plan.md` | Final — 5 phases, 12 tasks (1 fix)  |
-| `demo.md`                | Final — 6 validation + 5 guided     |
-| `quality-checklist.md`   | Scaffold — standard template        |
+| Artifact                 | State                              |
+| ------------------------ | ---------------------------------- |
+| `input.md`               | Complete — rich brain dump         |
+| `requirements.md`        | Final — 7 scope items, 11 criteria |
+| `implementation-plan.md` | Final — 5 phases, 12 tasks (1 fix) |
+| `demo.md`                | Final — 6 validation + 5 guided    |
+| `quality-checklist.md`   | Scaffold — standard template       |
 
 ### DOR Gate Analysis
 
@@ -46,7 +46,7 @@ corrected (observation event emission mechanism). Open questions from draft phas
    All patterns are internal to the codebase.
 
 6. **Dependencies & preconditions** — PASS. Roadmap declares `after: [event-envelope-schema,
-   mesh-architecture]`. Both undelivered. Mitigated by design:
+mesh-architecture]`. Both undelivered. Mitigated by design:
    - `SignatureVerifier` protocol with `StubSignatureVerifier` (returns `unverifiable`)
      allows building before `mesh-architecture` provides real crypto.
    - Current `EventEnvelope` model is sufficient — no new envelope fields required.
@@ -64,15 +64,15 @@ corrected (observation event emission mechanism). Open questions from draft phas
 
 ### Plan-to-Requirement Fidelity
 
-| Requirement                    | Plan Task(s)        | Fidelity |
-| ------------------------------ | ------------------- | -------- |
-| TrustEvaluator cartridge       | 2.1, 2.3            | ✓        |
-| Trust signal computation       | 2.1 (steps 2-9)     | ✓        |
-| Trust ring storage             | 1.1                  | ✓        |
-| Sovereignty configuration      | 1.2                  | ✓        |
-| Observation events             | 2.2, 2.1 (emission) | ✓ (fixed)|
-| Trust ring management API      | 3.1                  | ✓        |
-| Pipeline integration           | 2.3                  | ✓        |
+| Requirement               | Plan Task(s)        | Fidelity  |
+| ------------------------- | ------------------- | --------- |
+| TrustEvaluator cartridge  | 2.1, 2.3            | ✓         |
+| Trust signal computation  | 2.1 (steps 2-9)     | ✓         |
+| Trust ring storage        | 1.1                 | ✓         |
+| Sovereignty configuration | 1.2                 | ✓         |
+| Observation events        | 2.2, 2.1 (emission) | ✓ (fixed) |
+| Trust ring management API | 3.1                 | ✓         |
+| Pipeline integration      | 2.3                 | ✓         |
 
 One fidelity correction applied: Task 2.1 originally specified observation event
 emission via `context.push_callbacks` (delivery adapters). Corrected to Redis stream

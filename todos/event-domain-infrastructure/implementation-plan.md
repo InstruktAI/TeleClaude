@@ -12,15 +12,15 @@ then `telec config` surface, then wiring into the daemon.
 
 Codebase patterns to follow:
 
-| Pattern                 | Evidence                                                               |
-| ----------------------- | ---------------------------------------------------------------------- |
-| Package layout          | `teleclaude_events/pipeline.py` (from event-platform-core)             |
+| Pattern                 | Evidence                                                                                              |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- |
+| Package layout          | `teleclaude_events/pipeline.py` (from event-platform-core)                                            |
 | Cartridge interface     | `teleclaude_events/pipeline.py` — `Cartridge` Protocol with `async def process(self, event, context)` |
-| Config loading          | `teleclaude/config/schema.py` + `teleclaude/config/loader.py` — YAML config, `load_config()` |
-| Dynamic module import   | `importlib.util.spec_from_file_location` pattern                       |
-| Async parallel tasks    | `asyncio.gather(*tasks, return_exceptions=True)`                       |
-| Background task hosting | `teleclaude/daemon.py` — `asyncio.create_task` + done callback         |
-| FastAPI routes          | `teleclaude/api_server.py` — route registration on `self.app`          |
+| Config loading          | `teleclaude/config/schema.py` + `teleclaude/config/loader.py` — YAML config, `load_config()`          |
+| Dynamic module import   | `importlib.util.spec_from_file_location` pattern                                                      |
+| Async parallel tasks    | `asyncio.gather(*tasks, return_exceptions=True)`                                                      |
+| Background task hosting | `teleclaude/daemon.py` — `asyncio.create_task` + done callback                                        |
+| FastAPI routes          | `teleclaude/api_server.py` — route registration on `self.app`                                         |
 
 ---
 
@@ -199,7 +199,7 @@ Codebase patterns to follow:
     - `scope=domain/platform`: require `caller_is_admin`
     - Delete cartridge dir; reload pipeline
   - `promote(cartridge_id: str, from_scope: CartridgeScope, to_scope: CartridgeScope,
-         target_domain: str, caller_is_admin: bool) -> None`:
+     target_domain: str, caller_is_admin: bool) -> None`:
     - `personal → domain`: require `caller_is_admin`
     - `domain → platform`: require `caller_is_admin`
     - Copy manifest+module to target path; remove from source path; reload pipeline

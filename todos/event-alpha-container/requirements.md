@@ -33,7 +33,7 @@ Section 5 (Container lifecycle management) specifies: "Health check: periodic pi
 
 The alpha runner process (inside the container) discovers cartridges by scanning
 `/alpha-cartridges/` for `*.py` files. For each incoming request it loads the
-*addressed cartridge* by name. A health-check ping sends `cartridge_name="__ping__"`.
+_addressed cartridge_ by name. A health-check ping sends `cartridge_name="__ping__"`.
 The runner attempts to load `__ping__.py` from disk — this file does not exist — and
 raises `FileNotFoundError`. The runner returns an error response for every ping.
 

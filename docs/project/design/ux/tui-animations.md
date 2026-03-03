@@ -42,18 +42,18 @@ Lighting and entities change based on the system `theme_mode`.
 
 Physical Z-levels with 10-unit spacing for intermediate layers (defined in `base.py`):
 
-| Z-Level | Constant         | Purpose                                  |
-| :------ | :--------------- | :--------------------------------------- |
-| 0       | `Z_SKY`          | Background sky gradient                  |
-| 10      | `Z_STARS`        | Twinkling star field (night mode)        |
-| 20      | `Z_CELESTIAL`    | Sun/moon quarter disc at top-right       |
-| 30      | `Z_CLOUDS_FAR`   | Distant wisps and far clouds             |
-| 40      | `Z_BILLBOARD`    | The physical billboard plate             |
-| 50      | `Z_CLOUDS_MID`   | Mid-depth clouds (show around billboard) |
-| 60      | `Z_TABS_INACTIVE`| Inactive tab bar surfaces                |
-| 70      | `Z_CLOUDS_NEAR`  | Near clouds (show in front of inactive tabs) |
-| 80      | `Z_TABS_ACTIVE`  | Active tab (nothing renders in front)    |
-| 90      | `Z_FOREGROUND`   | Billboard foreground entities            |
+| Z-Level | Constant          | Purpose                                      |
+| :------ | :---------------- | :------------------------------------------- |
+| 0       | `Z_SKY`           | Background sky gradient                      |
+| 10      | `Z_STARS`         | Twinkling star field (night mode)            |
+| 20      | `Z_CELESTIAL`     | Sun/moon quarter disc at top-right           |
+| 30      | `Z_CLOUDS_FAR`    | Distant wisps and far clouds                 |
+| 40      | `Z_BILLBOARD`     | The physical billboard plate                 |
+| 50      | `Z_CLOUDS_MID`    | Mid-depth clouds (show around billboard)     |
+| 60      | `Z_TABS_INACTIVE` | Inactive tab bar surfaces                    |
+| 70      | `Z_CLOUDS_NEAR`   | Near clouds (show in front of inactive tabs) |
+| 80      | `Z_TABS_ACTIVE`   | Active tab (nothing renders in front)        |
+| 90      | `Z_FOREGROUND`    | Billboard foreground entities                |
 
 ### Cloud Depth Distribution
 
@@ -69,6 +69,7 @@ Clouds receive weighted Z-levels per size category:
 ### UFO Sky Entity
 
 UFO spawns inside GlobalSky (~15% chance per weather cycle) with weighted depth:
+
 - 50% Z_CLOUDS_FAR, 35% Z_CLOUDS_MID, 15% Z_CLOUDS_NEAR
 
 ### Quarter Celestial
@@ -96,13 +97,13 @@ All widgets (banner, tabs, sky entities) use `resolve_haze()` instead of manual 
 
 ### Sky Entities (GlobalSky-managed)
 
-| Entity    | Mode | Behavior                                                          |
-| :-------- | :--- | :---------------------------------------------------------------- |
-| Stars     | Night| Twinkle at Z_STARS, behind celestials and clouds                  |
-| Moon      | Night| Quarter disc at top-right corner, Z_CELESTIAL                     |
-| Sun       | Day  | Quarter disc at top-right corner, Z_CELESTIAL                     |
-| Clouds    | Day  | Parallax drift at weighted Z-levels (far/mid/near)                |
-| UFO       | Both | Rare (~15%), drifts horizontally at weighted depth                |
+| Entity | Mode  | Behavior                                           |
+| :----- | :---- | :------------------------------------------------- |
+| Stars  | Night | Twinkle at Z_STARS, behind celestials and clouds   |
+| Moon   | Night | Quarter disc at top-right corner, Z_CELESTIAL      |
+| Sun    | Day   | Quarter disc at top-right corner, Z_CELESTIAL      |
+| Clouds | Day   | Parallax drift at weighted Z-levels (far/mid/near) |
+| UFO    | Both  | Rare (~15%), drifts horizontally at weighted depth |
 
 ### Neon Surge Effects (Internal)
 

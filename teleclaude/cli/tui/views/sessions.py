@@ -920,8 +920,7 @@ class SessionsView(Widget, can_focus=True):
             scope_ids = {
                 s.session_id
                 for s in self._sessions
-                if s.project_path == item.project.path
-                and (s.computer or "local") == (item.project.computer or "local")
+                if s.project_path == item.project.path and (s.computer or "local") == (item.project.computer or "local")
             }
         elif isinstance(item, ComputerHeader):
             computer = item.data.computer.name

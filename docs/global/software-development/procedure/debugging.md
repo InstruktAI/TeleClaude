@@ -104,14 +104,14 @@ Each layer catches what the others miss. A single validation point feels suffici
 
 Anti-patterns to reject:
 
-| Anti-pattern | Why it fails | Correct behavior |
-| --- | --- | --- |
-| "Quick fix now, investigate later" | Locks in symptom hacks | Investigate first, then fix |
-| "Looks right" validation | Surface checks miss bad states | Trace concrete values end to end |
-| Multiple fixes at once | No causal signal, higher regression risk | One hypothesis, one change |
-| Trusting comments over behavior | Comments drift from reality | Verify comments against execution |
-| "Probably" under pressure | Confidence without evidence | Require reproduced evidence |
-| "Just try changing X" | Guess-driven; no understanding | Form hypothesis, test minimally |
-| Proposing fixes before tracing data flow | Treats symptoms, not cause | Complete Steps 1-3 before Step 4 |
-| "One more fix attempt" after 2+ failures | Diminishing returns, wrong premise | Stop at 3, question architecture |
-| "I don't fully understand but this might work" | Partial understanding guarantees rework | Say "I don't understand X" and investigate further |
+| Anti-pattern                                   | Why it fails                             | Correct behavior                                   |
+| ---------------------------------------------- | ---------------------------------------- | -------------------------------------------------- |
+| "Quick fix now, investigate later"             | Locks in symptom hacks                   | Investigate first, then fix                        |
+| "Looks right" validation                       | Surface checks miss bad states           | Trace concrete values end to end                   |
+| Multiple fixes at once                         | No causal signal, higher regression risk | One hypothesis, one change                         |
+| Trusting comments over behavior                | Comments drift from reality              | Verify comments against execution                  |
+| "Probably" under pressure                      | Confidence without evidence              | Require reproduced evidence                        |
+| "Just try changing X"                          | Guess-driven; no understanding           | Form hypothesis, test minimally                    |
+| Proposing fixes before tracing data flow       | Treats symptoms, not cause               | Complete Steps 1-3 before Step 4                   |
+| "One more fix attempt" after 2+ failures       | Diminishing returns, wrong premise       | Stop at 3, question architecture                   |
+| "I don't fully understand but this might work" | Partial understanding guarantees rework  | Say "I don't understand X" and investigate further |

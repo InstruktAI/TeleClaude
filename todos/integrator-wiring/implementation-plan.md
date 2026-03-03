@@ -83,9 +83,9 @@ existing schema module from event-platform-core)
 **File(s):** `teleclaude_events/cartridges/integration_trigger.py` (new)
 
 - [ ] Implement `IntegrationTriggerCartridge` following the cartridge interface:
-      ```python
-      async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None
-      ```
+      `python
+    async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None
+    `
 - [ ] The cartridge fires on `domain.software-development.review.approved`,
       `domain.software-development.deployment.started`, and branch_pushed events
 - [ ] For matching events: extract (slug, branch, sha) and feed to the
@@ -114,16 +114,8 @@ existing schema module from event-platform-core)
 **File(s):** `agents/commands/next-integrate.md` (new)
 
 - [ ] Create the command that the integrator session executes
-- [ ] The command: acquire lease → drain queue → for each candidate:
-      1. Merge `origin/<branch>` into clean `origin/main`
-      2. If merge conflict: call `emit_deployment_failed()`, create follow-up
-         todo (existing blocked_followup), mark queue item blocked, continue
-      3. Run delivery bookkeeping (`telec roadmap deliver`, delivery commit)
-      4. Demo snapshot (if demo.md exists)
-      5. Cleanup (worktree remove, branch delete, todo removal, cleanup commit)
-      6. Push main
-      7. Call `emit_deployment_completed()`
-      8. `make restart`
+- [ ] The command: acquire lease → drain queue → for each candidate: 1. Merge `origin/<branch>` into clean `origin/main` 2. If merge conflict: call `emit_deployment_failed()`, create follow-up
+      todo (existing blocked_followup), mark queue item blocked, continue 3. Run delivery bookkeeping (`telec roadmap deliver`, delivery commit) 4. Demo snapshot (if demo.md exists) 5. Cleanup (worktree remove, branch delete, todo removal, cleanup commit) 6. Push main 7. Call `emit_deployment_completed()` 8. `make restart`
 - [ ] When queue empty: release lease, write checkpoint, self-end
 - [ ] Use `IntegratorShadowRuntime` with `shadow_mode=False` and
       `CanonicalMainPusher` callback that performs the git merge/push
@@ -134,14 +126,7 @@ existing schema module from event-platform-core)
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] Replace the current 12-step POST_COMPLETION for `next-finalize` with:
-      1. Read worker output, confirm FINALIZE_READY
-      2. Verify finalize lock ownership
-      3. End worker session
-      4. Emit `deployment.started` event (via bridge)
-      5. Release finalize lock
-      6. Report: "Candidate queued for integration. Integrator will process."
-      7. Call `{next_call}` (state machine continues)
+- [ ] Replace the current 12-step POST_COMPLETION for `next-finalize` with: 1. Read worker output, confirm FINALIZE_READY 2. Verify finalize lock ownership 3. End worker session 4. Emit `deployment.started` event (via bridge) 5. Release finalize lock 6. Report: "Candidate queued for integration. Integrator will process." 7. Call `{next_call}` (state machine continues)
 - [ ] Remove steps 6-11 of the old flow (safety re-check, merge, bookkeeping,
       demo snapshot, cleanup, push, restart)
 - [ ] The delivery bookkeeping, cleanup, and push now happen in the integrator

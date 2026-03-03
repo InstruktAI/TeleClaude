@@ -7,7 +7,7 @@
 FR2.3 states: "When the worker pushes the feature branch to remote, the flow MUST emit
 the branch-pushed signal as part of the `deployment.started` payload."
 
-This makes `branch_pushed` a payload *attribute*, not a separate event. However:
+This makes `branch_pushed` a payload _attribute_, not a separate event. However:
 
 - The existing readiness projection (integration module internals) was built expecting THREE
   distinct events: `review_approved`, `finalize_ready`, and `branch_pushed`. The predicate
@@ -70,7 +70,7 @@ failure.
    cartridge creates/resolves notifications so admins see delivery success and
    integration-blocked alerts on all surfaces (TUI, Telegram, web).
 7. Cutover activation: `IntegratorCutoverControls(enabled=True,
-   parity_evidence_accepted=True)`.
+parity_evidence_accepted=True)`.
 8. Removal of the file-based `IntegrationEventStore` — Redis Streams replaces it.
 9. Removal of bidirectional `sync_slug_todo_from_worktree_to_main` /
    `sync_slug_todo_from_main_to_worktree` functions once the integrator owns

@@ -15,10 +15,11 @@ Seven success criteria are concrete and testable.
 ### Gate 2: Scope & Size — PASS
 
 Two related workstreams fit a single session:
+
 - Context delivery change: one function's output loop (~40 lines at 731-768).
 - AGENTS.md trimming: three source file edits (`baseline.md`, `baseline-progressive.md`, `telec-cli.md`).
 - Plus policy doc update and test updates.
-Total: ~6-8 files. No cross-cutting concerns.
+  Total: ~6-8 files. No cross-cutting concerns.
 
 ### Gate 3: Verification — PASS
 
@@ -31,6 +32,7 @@ Total: ~6-8 files. No cross-cutting concerns.
 ### Gate 4: Approach Known — PASS
 
 Approach is explicitly designed and codebase-grounded:
+
 - `build_context_output()` confirmed at `context_selector.py:731-768`. The `requested_set` and
   `dep_ids` variables already exist (lines 731-732). The change is to the `for snippet in resolved`
   loop (line 741): skip content emission for snippets not in `requested_set`.
@@ -47,13 +49,14 @@ No third-party dependencies. Pure internal refactor.
 ### Gate 6: Dependencies & Preconditions — PASS
 
 No prerequisite tasks. All target files confirmed to exist:
+
 - `teleclaude/context_selector.py` — primary change target.
 - `docs/global/baseline.md` — contains `agent-direct-conversation.md` ref at line 11.
 - `docs/global/baseline-progressive.md` — contains 16 `@` reference lines.
 - `docs/global/general/spec/tools/telec-cli.md` — contains `telec sessions -h` and
   `telec sessions send -h` exec directives at lines 30-34.
 - `docs/global/general/policy/context-retrieval.md` — policy to update.
-No config changes, no external systems, no new dependencies.
+  No config changes, no external systems, no new dependencies.
 
 ### Gate 7: Integration Safety — PASS
 
@@ -72,6 +75,7 @@ sync processes them. `@` ref expansion and `<!-- @exec -->` directives work iden
 ## Plan-to-Requirement Fidelity
 
 Every plan task traces to a requirement:
+
 - Task 1.1 → Success criteria 1, 2, 3 (output format change)
 - Task 1.2 → Constraint validation (CLI pass-through confirmed)
 - Task 2.1 → Success criterion 5 (Agent Direct Conversation on-demand)

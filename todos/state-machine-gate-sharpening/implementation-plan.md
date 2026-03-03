@@ -21,7 +21,7 @@ they narrow existing reset conditions, never widen them.
   4. Returns `True` if any files remain after filtering, `False` otherwise.
   5. On subprocess error, returns `True` (fail-safe: assume meaningful diff, invalidate).
 - [ ] Replace the simple SHA comparison at line 3010 (`baseline != head_sha`) with a call
-  to `_has_meaningful_diff(worktree_cwd, baseline, head_sha)`.
+      to `_has_meaningful_diff(worktree_cwd, baseline, head_sha)`.
 - [ ] Keep the guard structure: only invalidate when `_has_meaningful_diff` returns `True`.
 
 ### Task 1.2: Preserve build on gate failure when review already occurred
@@ -36,14 +36,14 @@ they narrow existing reset conditions, never widen them.
   - If `review_round == 0`: reset build to `started` (existing behavior).
 - [ ] Apply the same conditional to the artifact verification failure block (lines 3105–3111).
 - [ ] Update the log detail string to distinguish: `"build_gates_failed_post_review"` vs
-  `"build_gates_failed"`.
+      `"build_gates_failed"`.
 
 ### Task 1.3: Single retry for low-count test failures
 
 **File(s):** `teleclaude/core/next_machine/core.py` (function `run_build_gates`, lines 416–471)
 
 - [ ] Add helper `_count_test_failures(output: str) -> int` that parses pytest summary line
-  for failure count. Regex: `r"(\d+) failed"`. Returns 0 if no match found.
+      for failure count. Regex: `r"(\d+) failed"`. Returns 0 if no match found.
 - [ ] After test failure (line 433), call `_count_test_failures(test_result.stdout)`.
 - [ ] If failure count is between 1 and 2 (inclusive):
   1. Run retry: `pytest --lf -q` in the worktree with 120s timeout.
@@ -62,7 +62,7 @@ they narrow existing reset conditions, never widen them.
 ### Task 2.1: Tests
 
 - [ ] Test `_has_meaningful_diff`: mock `subprocess.run` to return various file lists,
-  verify filtering of `todos/`, `.teleclaude/`, merge commits.
+      verify filtering of `todos/`, `.teleclaude/`, merge commits.
 - [ ] Test `_has_meaningful_diff` subprocess error: returns `True` (fail-safe).
 - [ ] Test stale baseline guard integration: review approved + only infrastructure diff = approval holds.
 - [ ] Test stale baseline guard integration: review approved + real diff = approval invalidated.

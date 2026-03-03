@@ -194,7 +194,14 @@ class TestContentDumpCliArgs:
         mock_emit = MagicMock()
         fake_dir = tmp_path / "publications" / "inbox" / "fake"
 
-        def fake_create(_root: Path, _text: str, *, slug: str | None = None, tags: list[str] | None = None, author: str | None = None) -> Path:
+        def fake_create(
+            _root: Path,
+            _text: str,
+            *,
+            slug: str | None = None,
+            tags: list[str] | None = None,
+            author: str | None = None,
+        ) -> Path:
             fake_dir.mkdir(parents=True, exist_ok=True)
             return fake_dir
 

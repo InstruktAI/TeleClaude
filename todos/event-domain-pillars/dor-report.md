@@ -41,6 +41,7 @@ No third-party dependencies.
 
 Two roadmap dependencies are unbuilt (`event-domain-infrastructure`, `event-signal-pipeline`).
 Plan handles this appropriately:
+
 - Task 1.1 verifies upstream types and falls back to YAML data files if not available.
 - Marketing `feed-monitor` ships as stub if signal pipeline hasn't landed.
 - Config namespace correctly uses `event_domains` (not `domains`), aligned with infrastructure
@@ -99,6 +100,7 @@ Documented in plan overview as an assumed pattern.
 ## Gate Tightening (this assessment)
 
 Two residual inconsistencies tightened:
+
 - Added `event_types` to assumed CartridgeManifest fields table (was used in all manifests
   but missing from the table).
 - Fixed demo Step 6: `telec config get domains` → `telec config get event_domains`.

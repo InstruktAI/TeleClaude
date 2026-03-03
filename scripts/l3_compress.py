@@ -149,10 +149,7 @@ async def main():
 
     client = anthropic.AsyncAnthropic()
 
-    tasks = [
-        compress_section(client, i, len(sections), title, body)
-        for i, (title, body) in enumerate(sections)
-    ]
+    tasks = [compress_section(client, i, len(sections), title, body) for i, (title, body) in enumerate(sections)]
     results = await asyncio.gather(*tasks)
 
     # Sort by original index to maintain order

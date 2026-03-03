@@ -97,9 +97,7 @@ def _entity_color(ch: str, z: int, dark_mode: bool) -> str:
     return "#FFFFFF"  # all other entities — white
 
 
-def _scan_sky_entity(
-    engine: object, x: int, y: int, dark_mode: bool
-) -> tuple[str, str | None, str | None]:
+def _scan_sky_entity(engine: object, x: int, y: int, dark_mode: bool) -> tuple[str, str | None, str | None]:
     """Scan Z-levels top-down for sky entities at (x, y).
 
     Returns (char, fg_color, bg_entity_color).

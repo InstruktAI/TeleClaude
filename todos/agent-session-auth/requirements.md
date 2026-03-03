@@ -7,6 +7,7 @@ Every agent session must have a verifiable identity before it can act. No agent 
 ## Scope
 
 ### In scope:
+
 - Token issuance at session spawn (daemon creates short-lived token, records in ledger)
 - Two principal types: `human:<email>` (human-started) and `system:<job-id>` (event/job-started)
 - Ledger table in DB: session_id, principal, token, issued_at, expires_at, revoked
@@ -16,6 +17,7 @@ Every agent session must have a verifiable identity before it can act. No agent 
 - `telec sessions send` and all agent-initiated CLI calls work once credentialed
 
 ### Out of scope:
+
 - Changing the `tc_tui` / `TELEC_TUI_SESSION` bridge (untouched — human TTY auth stays as-is)
 - Cross-computer token federation (local only for now)
 - Token rotation mid-session

@@ -29,7 +29,9 @@ def _ok_msg_response(message_id: str = "msg-42") -> httpx.Response:
     )
 
 
-def _error_response(message: str = "Unknown User", status: int = 400, url: str = "https://discord.com/api/v10") -> httpx.Response:
+def _error_response(
+    message: str = "Unknown User", status: int = 400, url: str = "https://discord.com/api/v10"
+) -> httpx.Response:
     return httpx.Response(
         status,
         json={"message": message, "code": 10013},

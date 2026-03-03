@@ -136,6 +136,7 @@ class TelecApp(App[str | None]):
         self,
         api: TelecAPIClient,
         start_view: int = 1,
+        config_guided: bool = False,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
@@ -169,6 +170,7 @@ class TelecApp(App[str | None]):
 
         self.api = api
         self._start_view = start_view
+        self._config_guided = config_guided
         self._state_save_timer: object | None = None
         self._computers: list[ComputerInfo] = []
         self._session_agents: dict[str, str] = {}
@@ -331,6 +333,10 @@ class TelecApp(App[str | None]):
         # Initial data load (computers loaded in parallel inside _refresh_data)
         self._refresh_data()
         self.call_after_refresh(lambda: logger.trace("[PERF] on_mount FIRST_PAINT dt=%.3f", _t.monotonic() - _m0))
+
+        # Activate guided mode if launched as config wizard
+        if self._config_guided:
+            self.call_after_refresh(self._activate_config_guided_mode)
 
         # SIGUSR2 handler for reload.
         # signal.signal() ensures the signal is always caught (preventing
@@ -967,6 +973,16 @@ class TelecApp(App[str | None]):
     def action_refresh(self) -> None:
         self._refresh_data()
 
+    def _activate_config_guided_mode(self) -> None:
+        """Start guided mode in ConfigView after initial mount and data load."""
+        from teleclaude.cli.tui.views.config import ConfigView
+
+        try:
+            config_view = self.query_one("#config-view", ConfigView)
+            config_view.action_toggle_guided_mode()
+        except Exception:
+            pass  # config view unavailable at startup — skip guided mode activation
+
     # --- State persistence ---
 
     def _schedule_state_save(self) -> None:
@@ -1040,6 +1056,12 @@ class TelecApp(App[str | None]):
         for widget in self.query(Banner):
             widget.refresh()
         for widget in self.query(BoxTabBar):
+            widget.refresh()
+
+        # Refresh config content — its Rich styles depend on dark/light mode
+        from teleclaude.cli.tui.views.config import ConfigContent
+
+        for widget in self.query(ConfigContent):
             widget.refresh()
 
     def on_resize(self, event: object) -> None:

@@ -31,13 +31,7 @@ into valid doc snippets. The existing plumbing (hooks, sync, watchers) is untouc
 
 **File(s):** `docs/global/spec/init-scaffolding.md`
 
-- [ ] Define the set of doc snippets the analysis produces and their IDs:
-      - `project/init/architecture` — architecture overview
-      - `project/init/conventions` — coding conventions and patterns
-      - `project/init/dependencies` — dependency inventory and roles
-      - `project/init/entry-points` — entry points and routing
-      - `project/init/testing` — test patterns and verification model
-      - `project/init/build-deploy` — build and deployment model
+- [ ] Define the set of doc snippets the analysis produces and their IDs: - `project/init/architecture` — architecture overview - `project/init/conventions` — coding conventions and patterns - `project/init/dependencies` — dependency inventory and roles - `project/init/entry-points` — entry points and routing - `project/init/testing` — test patterns and verification model - `project/init/build-deploy` — build and deployment model
 - [ ] Define frontmatter template for each generated snippet
 - [ ] Define the metadata marker for auto-generated snippets (frontmatter field:
       `generated_by: telec-init`, `generated_at: <ISO8601>`)
@@ -52,9 +46,7 @@ into valid doc snippets. The existing plumbing (hooks, sync, watchers) is untouc
 
 **File(s):** `teleclaude/project_setup/init_flow.py`
 
-- [ ] After existing plumbing steps, detect if enrichment should run:
-      - First init (no `docs/project/init/` directory): prompt user
-      - Re-init (directory exists): offer refresh or skip
+- [ ] After existing plumbing steps, detect if enrichment should run: - First init (no `docs/project/init/` directory): prompt user - Re-init (directory exists): offer refresh or skip
 - [ ] Use `telec sessions run` to launch the analysis session with the
       `/telec-init-analyze` command (see Task 2.3)
 - [ ] Pass project root path as argument
@@ -119,13 +111,13 @@ auto-discovered. This task is verification-only.
 **File(s):** `teleclaude/project_setup/enrichment.py`
 
 - [ ] Write `docs/project/init/.analysis-meta.yaml` after each analysis:
-      ```yaml
-      last_analyzed_at: <ISO8601>
-      analyzed_by: telec-init
-      files_analyzed: <count>
-      snippets_generated: [<snippet_ids>]
-      snippets_preserved: [<snippet_ids>]  # human-modified, not overwritten
-      ```
+      `yaml
+    last_analyzed_at: <ISO8601>
+    analyzed_by: telec-init
+    files_analyzed: <count>
+    snippets_generated: [<snippet_ids>]
+    snippets_preserved: [<snippet_ids>]  # human-modified, not overwritten
+    `
 - [ ] Read this file during re-analysis to inform merge decisions
 
 ---

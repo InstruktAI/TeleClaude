@@ -8,32 +8,32 @@ Reference for Discord message formatting capabilities relevant to bot output ren
 
 ### Text styling
 
-| Syntax | Result |
-|--------|--------|
-| `**text**` | Bold |
-| `*text*` or `_text_` | Italics |
-| `***text***` | Bold italics |
-| `__text__` | Underline |
-| `~~text~~` | Strikethrough |
-| `` `code` `` | Inline code |
-| ` ```lang ``` ` | Fenced code block (30+ languages) |
+| Syntax               | Result                            |
+| -------------------- | --------------------------------- |
+| `**text**`           | Bold                              |
+| `*text*` or `_text_` | Italics                           |
+| `***text***`         | Bold italics                      |
+| `__text__`           | Underline                         |
+| `~~text~~`           | Strikethrough                     |
+| `` `code` ``         | Inline code                       |
+| ` ```lang ``` `      | Fenced code block (30+ languages) |
 
 ### Structure
 
-| Syntax | Result |
-|--------|--------|
-| `# Heading` | H1 (also `##`, `###`) |
-| `-# text` | Subtext (small, de-emphasized) |
-| `> quote` | Block quote (single line) |
-| `>>> quote` | Block quote (multi-line) |
-| `- item` or `* item` | Unordered list |
-| `1. item` | Ordered list |
-| `[text](url)` | Masked link |
+| Syntax               | Result                         |
+| -------------------- | ------------------------------ |
+| `# Heading`          | H1 (also `##`, `###`)          |
+| `-# text`            | Subtext (small, de-emphasized) |
+| `> quote`            | Block quote (single line)      |
+| `>>> quote`          | Block quote (multi-line)       |
+| `- item` or `* item` | Unordered list                 |
+| `1. item`            | Ordered list                   |
+| `[text](url)`        | Masked link                    |
 
 ### Content hiding
 
-| Syntax | Result |
-|--------|--------|
+| Syntax         | Result                              |
+| -------------- | ----------------------------------- |
 | `\|\|text\|\|` | Spoiler tag — blurred until clicked |
 
 Spoiler tags are the **only** native mechanism for hiding content in Discord messages. There is no collapsible/expandable section support.
@@ -48,11 +48,11 @@ Spoiler tags are the **only** native mechanism for hiding content in Discord mes
 
 For long content that should be collapsed by default (e.g., agent thinking blocks):
 
-| Approach | Mechanism | UX |
-|----------|-----------|-----|
-| **Spoiler tags** | `\|\|thinking content\|\|` | Blurred inline, click to reveal. Works at any length. No summary label — the hidden block cannot be prefixed with a visible description that groups visually with it. |
-| **File attachment** | Send content as `.txt` or `.md` file | Discord renders a collapsible file preview with expand button. Has a visible filename as summary label. |
-| **Truncation** | Show first N chars, append `...` | Loses content; not truly collapsible. |
+| Approach            | Mechanism                            | UX                                                                                                                                                                    |
+| ------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Spoiler tags**    | `\|\|thinking content\|\|`           | Blurred inline, click to reveal. Works at any length. No summary label — the hidden block cannot be prefixed with a visible description that groups visually with it. |
+| **File attachment** | Send content as `.txt` or `.md` file | Discord renders a collapsible file preview with expand button. Has a visible filename as summary label.                                                               |
+| **Truncation**      | Show first N chars, append `...`     | Loses content; not truly collapsible.                                                                                                                                 |
 
 ### Spoiler tags for thinking blocks
 

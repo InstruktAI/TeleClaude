@@ -1177,7 +1177,7 @@ def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
 
     logger.trace("[PERF] _run_tui import TelecApp dt=%.3f", _t.monotonic() - _t0)
     api = TelecAPIClient()
-    app = TelecApp(api, start_view=start_view)
+    app = TelecApp(api, start_view=start_view, config_guided=config_guided)
     logger.trace("[PERF] _run_tui TelecApp created dt=%.3f", _t.monotonic() - _t0)
 
     reload_requested = False
@@ -1207,7 +1207,7 @@ def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
 
 def _run_tui_config_mode(guided: bool = False) -> None:
     """Run TUI in configuration mode."""
-    _run_tui(start_view=3, config_guided=guided)
+    _run_tui(start_view=4, config_guided=guided)
 
 
 def _handle_cli_command(argv: list[str]) -> None:
@@ -2992,7 +2992,7 @@ def _handle_config(args: list[str]) -> None:
         if not sys.stdin.isatty():
             print("Error: Interactive config requires a terminal.")
             raise SystemExit(1)
-        _run_tui_config_mode(guided=False)
+        _run_tui_config_mode(guided=True)
     elif subcommand in ("get", "patch"):
         from teleclaude.cli.config_cmd import handle_config_command
 

@@ -151,7 +151,9 @@ Authorization: <see authentication below>
 
 ```json
 {
-  "envelope": { /* EventEnvelope as JSON */ },
+  "envelope": {
+    /* EventEnvelope as JSON */
+  },
   "signature": "<base64url Ed25519 signature over canonical envelope JSON>",
   "sender_node_id": "<32-char hex>"
 }
@@ -165,14 +167,14 @@ returns 401 and drops the event.
 
 **Response codes:**
 
-| Code | Meaning                                                   |
-|------|-----------------------------------------------------------|
-| 202  | Accepted. Event queued for pipeline ingestion.            |
-| 400  | Malformed JSON or missing required fields.                |
-| 401  | Invalid signature or unknown sender.                      |
-| 413  | Payload too large (> 4 MB).                               |
-| 429  | Rate limit exceeded (burst mitigation).                   |
-| 503  | Pipeline not ready; retry with backoff.                   |
+| Code | Meaning                                        |
+| ---- | ---------------------------------------------- |
+| 202  | Accepted. Event queued for pipeline ingestion. |
+| 400  | Malformed JSON or missing required fields.     |
+| 401  | Invalid signature or unknown sender.           |
+| 413  | Payload too large (> 4 MB).                    |
+| 429  | Rate limit exceeded (burst mitigation).        |
+| 503  | Pipeline not ready; retry with backoff.        |
 
 The receptor never blocks on pipeline processing — it enqueues and returns 202 immediately.
 
@@ -245,22 +247,22 @@ The peer list survives daemon restarts via a file-backed store.
 
 ```yaml
 peers:
-  - node_id: "a3f2c1e8b74d0591"
-    host: "192.0.2.10"
+  - node_id: 'a3f2c1e8b74d0591'
+    host: '192.0.2.10'
     port: 8443
-    alias: "mo-laptop"          # optional, from gossip
-    origin: "dns"               # dns | gossip | manual | seed
-    last_seen: "2026-03-01T10:00:00Z"
-    last_handshake: "2026-03-01T09:55:00Z"
-    status: "reachable"         # reachable | unreachable | unknown
-  - node_id: "b7e1a4c9d28f3602"
-    host: "mesh.example.com"
+    alias: 'mo-laptop' # optional, from gossip
+    origin: 'dns' # dns | gossip | manual | seed
+    last_seen: '2026-03-01T10:00:00Z'
+    last_handshake: '2026-03-01T09:55:00Z'
+    status: 'reachable' # reachable | unreachable | unknown
+  - node_id: 'b7e1a4c9d28f3602'
+    host: 'mesh.example.com'
     port: 8443
     alias: null
-    origin: "manual"
+    origin: 'manual'
     last_seen: null
     last_handshake: null
-    status: "unknown"
+    status: 'unknown'
 ```
 
 **Reload:** The daemon reads `peers.yaml` on startup and after `SIGHUP`. It writes

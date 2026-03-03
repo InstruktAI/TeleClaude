@@ -45,7 +45,7 @@ notification projection.
    - `trust.muted` — a source was muted (death by loneliness).
    - `trust.ring.added` — a peer was added to the trust ring.
    - `trust.ring.removed` — a peer was removed from the trust ring.
-   These are local-visibility events processed by the existing pipeline.
+     These are local-visibility events processed by the existing pipeline.
 
 6. **Trust ring management API** — Daemon API endpoints for managing trust rings:
    - `GET /api/trust/ring` — list trust ring members.

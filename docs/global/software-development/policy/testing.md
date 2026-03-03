@@ -41,19 +41,19 @@ Verification checkpoints:
 
 **Rationalizations to reject:**
 
-| Excuse | Reality |
-| --- | --- |
-| "Too simple to test" | Small code breaks. Test takes 30 seconds. |
-| "I'll test after" | Tests passing immediately prove nothing — you never saw them catch the bug. |
+| Excuse                           | Reality                                                                           |
+| -------------------------------- | --------------------------------------------------------------------------------- |
+| "Too simple to test"             | Small code breaks. Test takes 30 seconds.                                         |
+| "I'll test after"                | Tests passing immediately prove nothing — you never saw them catch the bug.       |
 | "Tests after achieve same goals" | Tests-after answer "what does this do?" Tests-first answer "what should this do?" |
-| "Already manually tested" | Ad-hoc and non-repeatable. No record, can't re-run. |
-| "Already wrote a lot of code" | Sunk cost. Keeping unverified code is technical debt. Delete and restart. |
-| "Keep as reference" | You'll adapt it. That's testing after. Delete means delete. |
-| "Need to explore first" | Fine. Throw away exploration, start with tests. |
-| "Hard to test" | Hard to test = hard to use. Simplify the design. |
-| "TDD slows me down" | TDD is faster than debugging. Test-first is pragmatic. |
-| "I can fix while I'm here" | Mixed concerns hide behavior changes. Keep scope to the test. |
-| "Existing code has no tests" | You're improving it. Add tests for the code you touch. |
+| "Already manually tested"        | Ad-hoc and non-repeatable. No record, can't re-run.                               |
+| "Already wrote a lot of code"    | Sunk cost. Keeping unverified code is technical debt. Delete and restart.         |
+| "Keep as reference"              | You'll adapt it. That's testing after. Delete means delete.                       |
+| "Need to explore first"          | Fine. Throw away exploration, start with tests.                                   |
+| "Hard to test"                   | Hard to test = hard to use. Simplify the design.                                  |
+| "TDD slows me down"              | TDD is faster than debugging. Test-first is pragmatic.                            |
+| "I can fix while I'm here"       | Mixed concerns hide behavior changes. Keep scope to the test.                     |
+| "Existing code has no tests"     | You're improving it. Add tests for the code you touch.                            |
 
 **Red flags — stop and restart with a test:**
 

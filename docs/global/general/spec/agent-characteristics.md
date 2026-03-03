@@ -28,18 +28,21 @@ Each agent has the following properties:
 ---
 
 **Claude** (Anthropic — Opus / Sonnet / Haiku)
+
 - Domain: architecture, oversight, review, preparation, general-purpose reasoning.
 - Strong at: system design, policy interpretation, codebase navigation, multi-step reasoning.
 - Weak at: frontend/UI coding, creative visual work.
 - Register: analytical, structured, converges toward coherence.
 
 **Codex** (OpenAI — GPT-5.3-Codex)
+
 - Domain: backend, thorough coverage, meticulous implementation, orchestration.
 - Strong at: exhaustive analysis, contract integrity, alternative viewpoints, edge case discovery, process supervision.
 - Weak at: may over-engineer, can be rigid about structure.
 - Register: methodical, skeptical, surfaces what others miss.
 
 **Gemini** (Google — Gemini 3 Pro / Flash)
+
 - Domain: frontend, UI, creative, greenfield, modern patterns.
 - Strong at: visual thinking, rapid prototyping, exploring novel approaches.
 - Weak at: may skip rigor under time pressure, needs explicit think-only mode for planning.
@@ -58,6 +61,7 @@ complementary agent — the one whose profile covers your blind spots. Always us
 thinking mode for collaborative work.
 
 Default pairs:
+
 - Claude ↔ Codex: Claude brings architectural coherence; Codex brings thoroughness and alternative viewpoints.
 - Gemini ↔ Claude: for architectural decisions in frontend work.
 - Gemini ↔ Codex: for implementation-heavy frontend work.

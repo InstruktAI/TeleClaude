@@ -7,6 +7,7 @@ Eliminate all hardcoded agent names and fragile index-based agent selection. Est
 ## Scope
 
 ### In scope:
+
 - Add `default_agent` field to config schema with parse-time validation
 - Create `get_default_agent()` in `core/agents.py` — single resolver, no fallbacks
 - Replace all 14 call sites that resolve a default agent (see implementation plan for full inventory)
@@ -15,6 +16,7 @@ Eliminate all hardcoded agent names and fragile index-based agent selection. Est
 - Post launchers to all managed forums (help_desk, all_sessions, project forums)
 
 ### Out of scope:
+
 - Person-level agent preference (YAGNI — no second consumer today)
 - Fixing the bootstrap silent failure paths (separate bug investigation)
 - Changing how explicit user selection works (launcher buttons, TUI modal — already correct)

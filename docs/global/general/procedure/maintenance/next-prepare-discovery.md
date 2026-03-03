@@ -36,9 +36,11 @@ path or the other. Both produce the same output contract.
 
 1. The router is one of the two discovery agents. It spawns the complementary
    agent as a worker session:
+
    ```
    telec sessions start --project <project_path> --agent <complementary_agent> --mode slow --message "<discovery brief>"
    ```
+
    The discovery brief includes: slug, the existing input (however thin), the roadmap
    description, and the research assignment (see step 2).
 

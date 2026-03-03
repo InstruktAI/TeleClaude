@@ -70,18 +70,8 @@ Codebase patterns to follow:
   - Constructor: `transport: RedisTransport`, `local_cluster: str | None`,
     `stream_maxlen: int = 10000`
   - `name = "mesh-publisher"`
-  - `async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`:
-    1. If `event.visibility == EventVisibility.LOCAL`: return event unchanged (no-op)
-    2. If `event.visibility == EventVisibility.CLUSTER`:
-       - `peers = await get_cluster_peers(self.transport, self.local_cluster)`
-    3. If `event.visibility == EventVisibility.PUBLIC`:
-       - `peers = await get_all_peers(self.transport)`
-    4. For each peer:
-       - Serialize event: `payload = event.model_dump_json()`
-       - XADD `messages:{peer.name}` with `{"type": "mesh_event", "payload": payload,
-"source_computer": transport.computer_name}`
-    5. On `RedisError`: log warning, continue (degrade gracefully — do not drop event)
-    6. Return event unchanged (forwarding is side-effect, not transformation)
+  - `async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`: 1. If `event.visibility == EventVisibility.LOCAL`: return event unchanged (no-op) 2. If `event.visibility == EventVisibility.CLUSTER`: - `peers = await get_cluster_peers(self.transport, self.local_cluster)` 3. If `event.visibility == EventVisibility.PUBLIC`: - `peers = await get_all_peers(self.transport)` 4. For each peer: - Serialize event: `payload = event.model_dump_json()` - XADD `messages:{peer.name}` with `{"type": "mesh_event", "payload": payload,
+"source_computer": transport.computer_name}` 5. On `RedisError`: log warning, continue (degrade gracefully — do not drop event) 6. Return event unchanged (forwarding is side-effect, not transformation)
 - [ ] Handle case where `transport` is None or not connected: log warning, skip forwarding
 
 ---
@@ -174,10 +164,7 @@ Codebase patterns to follow:
   - Constructor: `autonomy_level: str`, `install_dir: Path`,
     `producer: EventProducer`, `db: EventDB`
   - `async def on_cartridge_published(self, notification_id: int, event_type: str,
-was_created: bool, is_meaningful: bool) -> None`:
-    - Only act when `event_type == "cartridge.published"` and `was_created`
-    - Fetch notification row from DB to get payload
-    - Dispatch to `_handle_l1()`, `_handle_l2()`, or `_handle_l3()` based on autonomy level
+was_created: bool, is_meaningful: bool) -> None`: - Only act when `event_type == "cartridge.published"` and `was_created` - Fetch notification row from DB to get payload - Dispatch to `_handle_l1()`, `_handle_l2()`, or `_handle_l3()` based on autonomy level
   - `async def _handle_l1(self, payload: dict) -> None`:
     - Create actionable `cartridge.install_pending` notification via `emit_event()`
     - Write cartridge source to `install_dir/{name}.py` (pending, not active)
@@ -226,14 +213,8 @@ was_created: bool, is_meaningful: bool) -> None`:
 - [ ] Define `CartridgePromotionTracker`:
   - `name = "cartridge-promotion-tracker"`
   - Constructor: `threshold: int = 10`
-  - `async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`:
-    1. If `event.event != "cartridge.invoked"`: return event unchanged
-    2. `cartridge_name = event.payload.get("cartridge_name")`
-    3. `new_count = await context.db.increment_cartridge_invocation(cartridge_name)`
-    4. If `new_count == self.threshold` (exactly, not >=):
-       - Emit `cartridge.promotion_suggested` with payload `{"cartridge_name": cartridge_name,
-"invocation_count": new_count}`
-    5. Return event unchanged
+  - `async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`: 1. If `event.event != "cartridge.invoked"`: return event unchanged 2. `cartridge_name = event.payload.get("cartridge_name")` 3. `new_count = await context.db.increment_cartridge_invocation(cartridge_name)` 4. If `new_count == self.threshold` (exactly, not >=): - Emit `cartridge.promotion_suggested` with payload `{"cartridge_name": cartridge_name,
+"invocation_count": new_count}` 5. Return event unchanged
 
 ---
 

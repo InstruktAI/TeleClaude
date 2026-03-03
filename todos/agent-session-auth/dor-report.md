@@ -11,6 +11,7 @@ defaults, explicitly documented, and non-blocking.
 ### 1. Intent & Success — PASS
 
 The problem and outcome are explicit in `requirements.md`:
+
 - Every agent session gets a verifiable identity token
 - Two principal types: `human:<email>` and `system:<session_id_prefix>`
 - Token stored in a ledger, validated on every CLI call, revoked on session close
@@ -24,6 +25,7 @@ The work is atomic: one new table, one token lifecycle (issue -> validate -> rev
 integration into three existing flows (bootstrap, auth middleware, session close).
 
 Touch points verified against codebase:
+
 - `schema.sql` + migration 026 (next after existing 025)
 - `db_models.py` (new SessionToken model, follows SQLModel pattern at line 57)
 - `db.py` (3 new methods + 1 helper + hook in `close_session()` at line 700)
@@ -38,6 +40,7 @@ Fits a single AI session without context exhaustion.
 ### 3. Verification — PASS
 
 Clear verification path:
+
 - Unit tests for token DB operations (issue, validate, revoke, expire)
 - Auth middleware tests for token header path
 - Integration test for bootstrap -> env injection -> auth -> revocation
@@ -47,15 +50,15 @@ Clear verification path:
 
 Every component follows established codebase patterns. Verified against actual code:
 
-| Component | Existing Pattern | Location |
-|-----------|-----------------|----------|
-| Table + migration | 25 existing migrations | `teleclaude/core/migrations/` |
-| ORM model | SQLModel pattern (Session, etc.) | `db_models.py:57` |
-| Env var injection | Voice env vars | `daemon.py:1219-1221` |
-| Auth header | `X-Caller-Session-Id` dual-factor | `auth.py:162-237` |
-| Cache | `_session_cache` TTL cache | `auth.py:46-70` |
-| Revocation in close | Event-driven `close_session()` | `db.py:700-716` |
-| Identity headers | `_build_identity_headers()` | `api_client.py:364-379` |
+| Component           | Existing Pattern                  | Location                      |
+| ------------------- | --------------------------------- | ----------------------------- |
+| Table + migration   | 25 existing migrations            | `teleclaude/core/migrations/` |
+| ORM model           | SQLModel pattern (Session, etc.)  | `db_models.py:57`             |
+| Env var injection   | Voice env vars                    | `daemon.py:1219-1221`         |
+| Auth header         | `X-Caller-Session-Id` dual-factor | `auth.py:162-237`             |
+| Cache               | `_session_cache` TTL cache        | `auth.py:46-70`               |
+| Revocation in close | Event-driven `close_session()`    | `db.py:700-716`               |
+| Identity headers    | `_build_identity_headers()`       | `api_client.py:364-379`       |
 
 No novel patterns required.
 
@@ -74,6 +77,7 @@ token is daemon-internal, never user-facing.
 ### 7. Integration Safety — PASS
 
 The change is additive:
+
 - New table (no existing table modifications)
 - New auth path in `verify_caller()` — existing dual-factor path untouched as fallback
 - TUI/terminal auth completely unaffected (`tc_tui` bridge explicitly out of scope)

@@ -17,3 +17,11 @@
 - [x] All implementation-plan tasks completed
 - [x] bug.md documents root cause and fix
 - [x] No debug or temporary code committed
+
+## Review Gates (Reviewer)
+
+- [x] All four bug fixes correct and verified against source
+- [x] Paradigm-fit verified — no data-layer bypasses or copy-paste duplication
+- [x] Tests for behavioral changes in telec.py (guided=True wiring, start_view=4)
+- [x] demo.md with no-demo justification or minimal stub
+- [x] No Critical findings

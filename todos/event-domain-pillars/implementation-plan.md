@@ -12,32 +12,32 @@ and parallelizable), then validation.
 
 ### Codebase patterns to follow
 
-| Pattern                | Evidence                                                                           |
-| ---------------------- | ---------------------------------------------------------------------------------- |
-| Schema registration    | `teleclaude_events/schemas/software_development.py` — `catalog.register(EventSchema(...))` |
-| Event type naming      | `domain.software-development.planning.todo_created` — `domain.{domain}.{category}.{action}` |
-| Envelope model         | `teleclaude_events/envelope.py` — `EventEnvelope` is the single event data model   |
-| Catalog metadata       | `teleclaude_events/catalog.py` — `EventSchema`, `NotificationLifecycle`            |
-| Cartridge interface    | `teleclaude_events/pipeline.py` — `Cartridge` Protocol: `async def process(event, context)` |
-| Cartridge manifest     | `teleclaude_events/cartridge_manifest.py` (from `event-domain-infrastructure`)     |
-| Domain config          | `teleclaude_events/domain_config.py` — `DomainConfig`, `DomainGuardianConfig`      |
-| Config namespace       | `event_domains` top-level key (avoids `BusinessConfig.domains: Dict[str, str]` at `schema.py:96`) |
-| Schema module pattern  | `teleclaude_events/schemas/__init__.py` — `register_all()` calls domain functions  |
+| Pattern               | Evidence                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------- |
+| Schema registration   | `teleclaude_events/schemas/software_development.py` — `catalog.register(EventSchema(...))`        |
+| Event type naming     | `domain.software-development.planning.todo_created` — `domain.{domain}.{category}.{action}`       |
+| Envelope model        | `teleclaude_events/envelope.py` — `EventEnvelope` is the single event data model                  |
+| Catalog metadata      | `teleclaude_events/catalog.py` — `EventSchema`, `NotificationLifecycle`                           |
+| Cartridge interface   | `teleclaude_events/pipeline.py` — `Cartridge` Protocol: `async def process(event, context)`       |
+| Cartridge manifest    | `teleclaude_events/cartridge_manifest.py` (from `event-domain-infrastructure`)                    |
+| Domain config         | `teleclaude_events/domain_config.py` — `DomainConfig`, `DomainGuardianConfig`                     |
+| Config namespace      | `event_domains` top-level key (avoids `BusinessConfig.domains: Dict[str, str]` at `schema.py:96`) |
+| Schema module pattern | `teleclaude_events/schemas/__init__.py` — `register_all()` calls domain functions                 |
 
 ### Assumed CartridgeManifest fields (from `event-domain-infrastructure` plan)
 
 Until `CartridgeManifest` ships, manifests are authored as YAML matching these fields:
 
-| Field              | Type         | Description                                       |
-| ------------------ | ------------ | ------------------------------------------------- |
-| `id`               | `str`        | Unique within domain, e.g. `todo-lifecycle`        |
-| `description`      | `str`        | Short description                                  |
-| `version`          | `str`        | Semver, default `0.1.0`                            |
-| `domain_affinity`  | `list[str]`  | Domains this cartridge runs in; empty = any        |
-| `depends_on`       | `list[str]`  | Cartridge IDs within same domain                   |
-| `output_slots`     | `list[str]`  | Conflict detection keys                            |
-| `event_types`      | `list[str]`  | Explicit event types this cartridge subscribes to (no wildcards) |
-| `module`           | `str`        | Python module filename (without `.py`), default `cartridge` |
+| Field             | Type        | Description                                                      |
+| ----------------- | ----------- | ---------------------------------------------------------------- |
+| `id`              | `str`       | Unique within domain, e.g. `todo-lifecycle`                      |
+| `description`     | `str`       | Short description                                                |
+| `version`         | `str`       | Semver, default `0.1.0`                                          |
+| `domain_affinity` | `list[str]` | Domains this cartridge runs in; empty = any                      |
+| `depends_on`      | `list[str]` | Cartridge IDs within same domain                                 |
+| `output_slots`    | `list[str]` | Conflict detection keys                                          |
+| `event_types`     | `list[str]` | Explicit event types this cartridge subscribes to (no wildcards) |
+| `module`          | `str`       | Python module filename (without `.py`), default `cartridge`      |
 
 ### Cross-domain bridging pattern
 
@@ -124,6 +124,7 @@ the marketing domain translates into `domain.marketing.feed.*`.
 **File(s):** `teleclaude_events/schemas/software_development.py`
 
 Existing 9 events (DO NOT modify):
+
 - `domain.software-development.planning.todo_created`
 - `domain.software-development.planning.todo_dumped`
 - `domain.software-development.planning.todo_activated`
@@ -135,6 +136,7 @@ Existing 9 events (DO NOT modify):
 - `domain.software-development.review.needs_decision`
 
 New event schemas to add:
+
 - [ ] `domain.software-development.deploy.triggered` — WORKFLOW, idempotency: [slug, environment]
 - [ ] `domain.software-development.deploy.succeeded` — WORKFLOW, idempotency: [slug, environment],
       lifecycle: resolves, group_key: slug
@@ -152,6 +154,7 @@ New event schemas to add:
 ### Task 2.2: Starter cartridges
 
 **Directory structure:**
+
 ```
 ~/.teleclaude/company/domains/software-development/cartridges/
   todo-lifecycle/
@@ -198,9 +201,9 @@ New event schemas to add:
         agent: claude
         mode: med
         enabled: true
-        evaluation_prompt: "Software development domain guardian: monitor todo lifecycle,
+        evaluation_prompt: 'Software development domain guardian: monitor todo lifecycle,
           build health, and deployment patterns. Detect stalled todos, repeated build
-          failures, and deployment anomalies."
+          failures, and deployment anomalies.'
   ```
 - [ ] Autonomy defaults (seeded via `telec config patch` under
       `event_domains.software-development.autonomy`):
@@ -234,6 +237,7 @@ New event schemas to add:
 ### Task 3.2: Starter cartridges
 
 **Directory structure:**
+
 ```
 ~/.teleclaude/company/domains/marketing/cartridges/
   content-pipeline/
@@ -301,6 +305,7 @@ New event schemas to add:
 ### Task 4.2: Starter cartridges
 
 **Directory structure:**
+
 ```
 ~/.teleclaude/company/domains/creative-production/cartridges/
   asset-lifecycle/
@@ -363,6 +368,7 @@ New event schemas to add:
 ### Task 5.2: Starter cartridges
 
 **Directory structure:**
+
 ```
 ~/.teleclaude/company/domains/customer-relations/cartridges/
   helpdesk-triage/

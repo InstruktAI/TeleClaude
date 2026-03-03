@@ -243,11 +243,13 @@ class EQBars(Animation):
             t = seg - idx
             r0, g0, b0 = stops[idx]
             r1, g1, b1 = stops[idx + 1]
-            self._gradient_lut.append(rgb_to_hex(
-                int(r0 + t * (r1 - r0)),
-                int(g0 + t * (g1 - g0)),
-                int(b0 + t * (b1 - b0)),
-            ))
+            self._gradient_lut.append(
+                rgb_to_hex(
+                    int(r0 + t * (r1 - r0)),
+                    int(g0 + t * (g1 - g0)),
+                    int(b0 + t * (b1 - b0)),
+                )
+            )
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS

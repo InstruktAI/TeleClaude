@@ -8,19 +8,19 @@ what needs refinement, and what explicit wiring tasks remain unscheduled.**
 
 ### What already exists
 
-| File / Component | Status |
-|---|---|
-| `teleclaude_events/envelope.py` | Exists. `EventEnvelope`, `EventVisibility`, `EventLevel` defined. |
-| `teleclaude_events/pipeline.py` | Exists. `Pipeline`, `PipelineContext`, `Cartridge` protocol defined. |
-| `teleclaude_events/catalog.py` | Exists. `EventCatalog`, `EventSchema`, `NotificationLifecycle` defined. |
-| `teleclaude_events/db.py` | Exists. `EventDB` with aiosqlite. |
-| `teleclaude_events/producer.py` | Exists. `EventProducer` / `emit_event()`. |
-| `teleclaude_events/cartridges/dedup.py` | Exists. `DeduplicationCartridge` implemented. |
-| `teleclaude_events/cartridges/notification.py` | Exists. `NotificationProjectorCartridge` implemented. |
-| `teleclaude_events/schemas/system.py` | Exists. Schemas for `system.*` domain events. |
-| `teleclaude_events/schemas/software_development.py` | Exists. Schemas for `domain.software-development.*`. |
-| `teleclaude_events/delivery/telegram.py` | Exists. Telegram delivery adapter implemented. |
-| `teleclaude_events/processor.py` | Exists. `EventProcessor` (pipeline host). |
+| File / Component                                    | Status                                                                  |
+| --------------------------------------------------- | ----------------------------------------------------------------------- |
+| `teleclaude_events/envelope.py`                     | Exists. `EventEnvelope`, `EventVisibility`, `EventLevel` defined.       |
+| `teleclaude_events/pipeline.py`                     | Exists. `Pipeline`, `PipelineContext`, `Cartridge` protocol defined.    |
+| `teleclaude_events/catalog.py`                      | Exists. `EventCatalog`, `EventSchema`, `NotificationLifecycle` defined. |
+| `teleclaude_events/db.py`                           | Exists. `EventDB` with aiosqlite.                                       |
+| `teleclaude_events/producer.py`                     | Exists. `EventProducer` / `emit_event()`.                               |
+| `teleclaude_events/cartridges/dedup.py`             | Exists. `DeduplicationCartridge` implemented.                           |
+| `teleclaude_events/cartridges/notification.py`      | Exists. `NotificationProjectorCartridge` implemented.                   |
+| `teleclaude_events/schemas/system.py`               | Exists. Schemas for `system.*` domain events.                           |
+| `teleclaude_events/schemas/software_development.py` | Exists. Schemas for `domain.software-development.*`.                    |
+| `teleclaude_events/delivery/telegram.py`            | Exists. Telegram delivery adapter implemented.                          |
+| `teleclaude_events/processor.py`                    | Exists. `EventProcessor` (pipeline host).                               |
 
 ### What needs to be refactored vs. built from scratch
 
