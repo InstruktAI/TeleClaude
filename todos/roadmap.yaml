@@ -89,3 +89,4 @@
 - slug: state-machine-gate-sharpening
 - slug: cli-knowledge-commands
   description: telec history + telec memory CLI commands, retire standalone tool specs
+- slug: cli-authz-overhaul

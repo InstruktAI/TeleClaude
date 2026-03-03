@@ -1185,9 +1185,13 @@ def test_list_todos_without_cache_falls_back_to_local(test_client):  # type: ign
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Requires port 8420 free — fails when daemon is running")
-async def test_adapter_lifecycle(api_server):  # type: ignore[explicit-any, unused-ignore]
+async def test_adapter_lifecycle(api_server, monkeypatch):  # type: ignore[explicit-any, unused-ignore]
     """Test adapter start/stop lifecycle."""
+    import teleclaude.api_server as api_mod
+
+    # Use port 0 so the TCP listener picks an ephemeral port instead of 8420
+    monkeypatch.setattr(api_mod, "API_TCP_PORT", 0)
+
     # Start adapter
     await api_server.start()
     assert api_server.server is not None

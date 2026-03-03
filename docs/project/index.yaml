@@ -314,6 +314,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: project/design/cli-authorization-matrix
+  description: Per-command authorization matrix for telec CLI across all system and
+    human roles.
+  type: design
+  scope: project
+  path: docs/project/design/cli-authorization-matrix.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: project/design/ux/session-highlight
   description: Session highlight system for user attention in TUI.
   type: design

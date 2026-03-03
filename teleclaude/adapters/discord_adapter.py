@@ -2316,6 +2316,9 @@ class DiscordAdapter(UiAdapter):
             thread_sessions = await db.get_sessions_by_adapter_metadata("discord", "thread_id", thread_id)
             if thread_sessions:
                 return thread_sessions[0]
+            # Thread-scoped: don't fall through to channel_id lookup.
+            # Falling through would return a stale channel session, not the thread session the caller expects.
+            return None
 
         if channel_id is None:
             return None

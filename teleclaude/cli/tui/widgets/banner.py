@@ -104,6 +104,8 @@ def _scan_sky_entity(engine: object, x: int, y: int, dark_mode: bool) -> tuple[s
     bg_entity_color is the color of a deeper entity (e.g. sun behind cloud)
     for transparency compositing.  Defaults to (" ", None, None).
     """
+    from teleclaude.cli.tui.animations.base import Z_SKY
+
     fg_char = " "
     fg_color: str | None = None
     bg_entity_color: str | None = None
@@ -117,6 +119,18 @@ def _scan_sky_entity(engine: object, x: int, y: int, dark_mode: bool) -> tuple[s
                     fg_color = _entity_color(val, z, dark_mode)
                 else:
                     bg_entity_color = _entity_color(val, z, dark_mode)
+                    break
+            elif isinstance(val, str) and len(val) == 2 and val[0] == "\x01":
+                # Inverted block (bottom-half celestial): swap fg/bg.
+                # fg = sky gradient, bg = entity color.
+                ch = val[1]
+                if fg_char == " ":
+                    fg_char = ch
+                    bg_entity_color = _entity_color(ch, z, dark_mode)
+                    sky_val = engine.get_layer_color(Z_SKY, x, y, target="header")  # type: ignore[union-attr]
+                    fg_color = sky_val if isinstance(sky_val, str) else None
+                else:
+                    bg_entity_color = _entity_color(ch, z, dark_mode)
                     break
             elif isinstance(val, str):
                 if fg_color is None:

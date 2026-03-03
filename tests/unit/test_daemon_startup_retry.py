@@ -157,7 +157,6 @@ class TestDaemonStartupRetryIntegration:
             mock_init_voice.assert_not_called()
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Requires port 8420 free — fails when daemon is running")
     async def test_voice_handler_initialized_after_network_success(self, monkeypatch, tmp_path):
         """Verify voice handler is initialized only after network connection succeeds."""
         from unittest.mock import AsyncMock, MagicMock, patch
@@ -170,6 +169,8 @@ class TestDaemonStartupRetryIntegration:
         temp_api_socket = f"/tmp/teleclaude-unit-{os.getpid()}-{uuid.uuid4().hex[:8]}.sock"
         monkeypatch.setattr(constants_module, "API_SOCKET_PATH", temp_api_socket)
         monkeypatch.setattr(api_server_module, "API_SOCKET_PATH", temp_api_socket)
+        # Use ephemeral port so the TCP listener doesn't collide with the running daemon
+        monkeypatch.setattr(api_server_module, "API_TCP_PORT", 0)
 
         with (
             patch("teleclaude.daemon.db") as mock_db,

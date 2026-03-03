@@ -27,6 +27,14 @@ Every review must include a paradigm-fit assessment that checks whether the impl
 
 Paradigm violations are **Important** findings at minimum. A copy-paste of an existing component that should have been parameterized is an Important finding. An inline filesystem hack that bypasses the data layer is a Critical finding.
 
+### Principle Violation Hunt (Required Lane)
+
+Every review must include a principle violation hunt — a systematic check of the changed code against documented design principles, with fallback detection as the most prominent target.
+
+The reviewer performs this directly (not delegated to a subagent) because it requires full context of the change and understanding of the code's role. Use the `principle-violation-hunt` procedure for the detailed hunt criteria.
+
+**Severity baseline:** Unjustified fallback paths are **Critical** findings. A fallback is justified only when the user experience literally dies without it, and the justification must be documented in a code comment at the fallback site.
+
 ### Zero-Finding Justification
 
 If a review produces 0 Important or higher findings across all lanes, the reviewer must include a "Why No Issues" section in `review-findings.md` with:
@@ -97,14 +105,15 @@ If manual verification is not possible in the review environment, the reviewer m
 
     | Aspect   | When to use              | Skill                      | Task                                                  |
     | -------- | ------------------------ | -------------------------- | ----------------------------------------------------- |
-    | code     | Always                   | next-code-reviewer         | Find bugs and pattern violations                      |
-    | tests    | Test files changed       | next-test-analyzer         | Evaluate coverage and quality                         |
-    | errors   | Error handling changed   | next-silent-failure-hunter | Find silent failures                                  |
-    | types    | Types added/modified     | next-type-design-analyzer  | Validate type design                                  |
-    | comments | Comments/docs added      | next-comment-analyzer      | Check accuracy                                        |
-    | logging  | Logging changed or noisy | next-code-reviewer         | Enforce logging policy; reject ad-hoc debug probes    |
-    | demo     | Always                   | _(manual)_                 | Verify demo.md has real executable blocks (see below) |
-    | simplify | After other reviews pass | next-code-simplifier       | Simplify without behavior changes                     |
+    | code       | Always                   | next-code-reviewer         | Find bugs and pattern violations                      |
+    | principles | Always                   | _(reviewer direct)_        | Hunt principle violations (see procedure)              |
+    | tests      | Test files changed       | next-test-analyzer         | Evaluate coverage and quality                         |
+    | errors     | Always                   | next-silent-failure-hunter | Find silent failures                                  |
+    | types      | Types added/modified     | next-type-design-analyzer  | Validate type design                                  |
+    | comments   | Comments/docs added      | next-comment-analyzer      | Check accuracy                                        |
+    | logging    | Logging changed or noisy | next-code-reviewer         | Enforce logging policy; reject ad-hoc debug probes    |
+    | demo       | Always                   | _(manual)_                 | Verify demo.md has real executable blocks (see below) |
+    | simplify   | After other reviews pass | next-code-simplifier       | Simplify without behavior changes                     |
 
 12. Demo artifact review (required):
     - Read `todos/{slug}/demo.md` (or `demos/{slug}/demo.md`).
@@ -114,7 +123,11 @@ If manual verification is not possible in the review environment, the reviewer m
       - Does the demo exercise features that were actually implemented — not planned, not old behavior?
     - Raise a Critical finding if any block uses flags or commands that don't exist or were removed.
     - Raise an Important finding if the demo is shallow (exercises nothing new), if expected output is fabricated, or if the demo could pass `demo validate` while being functionally wrong.
-    - If `<!-- no-demo: reason -->` is present, verify the justification is legitimate.
+    - If `<!-- no-demo: reason -->` is present, this is a **hard gate**:
+      - The only valid justification is a pure internal refactor with zero user-visible behavior change.
+      - If the delivery touches CLI output, TUI behavior, config, API responses, or messaging, the no-demo marker is invalid — raise a **Critical** finding and set verdict to REQUEST CHANGES.
+      - "Requires live terminal interaction" is never valid — the AI presenter can spin up TUI instances, drive Playwright, and call APIs.
+      - If the justification is legitimate (truly internal-only), explicitly note acceptance in findings.
 
 13. Logging hygiene check (required):
     - Reject temporary debug probes (e.g., `print("DEBUG: ...")`, one-off file/line probes).

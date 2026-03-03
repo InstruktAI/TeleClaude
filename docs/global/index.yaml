@@ -929,6 +929,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: software-development/procedure/principle-violation-hunt
+  description: Hunt for code that violates documented design principles. Surface structural
+    issues that a surface review would miss.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/principle-violation-hunt.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: software-development/procedure/research/tech-stack-documentation
   description: Research and index official documentation for project dependencies
     as reusable internal snippets stored under ~/.teleclaude/docs/third-party/ or

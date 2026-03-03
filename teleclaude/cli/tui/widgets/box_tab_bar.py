@@ -93,25 +93,18 @@ class BoxTabBar(TelecMixin, Widget):
 
         sky_fallback = "#000000" if dark_mode else "#C8E8F8"
 
-        # Tab backgrounds: active vs inactive
-        if dark_mode:
-            from teleclaude.cli.tui.theme import get_billboard_background
-
-            active_bg = get_billboard_background()
-            inactive_bg = resolve_haze(active_bg)
-        else:
-            active_bg = get_terminal_background()
-            inactive_bg = get_tui_inactive_background()
+        # Tab and pane backgrounds — same routine as CSS $background in app.py
+        pane_bg = resolve_haze(get_terminal_background())
+        active_bg = pane_bg
+        inactive_bg = get_tui_inactive_background()
 
         # Dark mode: 3 rows (box-drawing) + 1 transition, 2-char gap (borders touch)
         # Light mode: 2 rows (half-block + label) + 1 transition, 3-char gap (1-char sky between tabs)
         num_rows = 4 if dark_mode else 3
         tab_gap = 2 if dark_mode else 3
 
-        pane_bg = resolve_haze(get_terminal_background())
-
         tabs: list[tuple[int, int, str, bool, str]] = []
-        col = 0
+        col = 1
         for tab_id, label in self.TABS:
             is_active = self.active_tab == tab_id
             padded = f" {label} "
@@ -139,7 +132,7 @@ class BoxTabBar(TelecMixin, Widget):
                     if c <= x < c + w + 2:
                         in_tab = True
                         active_tab_under = is_active
-                        tab_bg = active_bg if is_active else resolve_haze(inactive_bg)
+                        tab_bg = active_bg if is_active else inactive_bg
                         rel_x = x - c
 
                         if dark_mode:
@@ -156,10 +149,13 @@ class BoxTabBar(TelecMixin, Widget):
                                 elif 1 <= rel_x <= w:
                                     char = label[rel_x - 1]
                             elif y_offset == 2:
-                                if rel_x == 0 or rel_x == w + 1:
-                                    char = "\u2534"  # ┴
+                                if is_active:
+                                    if rel_x == 0 or rel_x == w + 1:
+                                        char = "\u2534"  # ┴
+                                    else:
+                                        char = " "
                                 else:
-                                    char = " " if is_active else "\u2500"
+                                    char = "\u2500"  # ─ (inactive blends into pane border)
                         else:
                             # Light mode
                             if y_offset == 0:
@@ -195,7 +191,7 @@ class BoxTabBar(TelecMixin, Widget):
                                         # Entity char above — use sky_color as bg_above
                                         pass
                                     break
-                    bg_above = tab_bg if in_tab else sky_color
+                    bg_above = pane_bg if in_tab else sky_color
                     row_text.append(
                         "\u2584",
                         style=Style(color=_to_color(pane_bg), bgcolor=_to_color(bg_above)),
@@ -203,9 +199,12 @@ class BoxTabBar(TelecMixin, Widget):
                     continue
 
                 z_base = Z_TABS_ACTIVE if active_tab_under else Z_TABS_INACTIVE
-                fg_text = resolve_haze(
-                    get_neutral_color("highlight") if active_tab_under else get_neutral_color("muted")
-                )
+                if dark_mode and y_offset == 2:
+                    fg_text = resolve_haze(get_neutral_color("highlight"))
+                else:
+                    fg_text = resolve_haze(
+                        get_neutral_color("highlight") if active_tab_under else get_neutral_color("muted")
+                    )
 
                 # Light mode row 0: ▀ half-block — fg=sky fills top, bg=tab fills bottom
                 if not dark_mode and in_tab and y_offset == 0:

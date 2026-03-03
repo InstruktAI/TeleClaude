@@ -14,7 +14,7 @@ still runs: the orchestrator's POST_COMPLETION for `/next-finalize`
 (`next_machine/core.py:232-278`) does inline merge, push, cleanup — twelve steps
 directly on canonical main.
 
-## The problem it solves
+## The problems it solves
 
 The current flow has chronic issues:
 
@@ -28,15 +28,54 @@ The current flow has chronic issues:
    branch delete, todo cleanup commit, push, restart — all inline on canonical
    main. Any failure mid-sequence leaves main in partial state.
 
-3. **No serialization** — Parallel deliveries can race on main. The orchestrator
-   serializes implicitly by being single-threaded, but that's fragile.
+3. **No serialization** — Parallel deliveries can race on main. The finalize
+   lock (`acquire_finalize_lock`, file-based with 30-minute stale timeout) was
+   a band-aid — fragile and redundant once the integrator's lease exists.
 
-## What exists (the library)
+4. **Orchestrator on main** — The orchestrator runs from the project root and
+   reaches into worktrees. It owns the cross-slug iteration loop, picking ready
+   items and dispatching workers. This prevents parallelism and couples unrelated
+   slugs into a single session.
+
+## Architectural decisions
+
+These decisions emerged during preparation brainstorming and supersede the
+original plan:
+
+1. **Main is sacred.** Only the integrator touches canonical main. Orchestrators,
+   workers, and the daemon are read-only on main after this wiring. The
+   integrator's lease (compare-and-swap with 120s TTL, 30s renewal) provides
+   atomic serialization — no file-based finalize lock needed.
+
+2. **One orchestrator per todo.** No main orchestrator loop. Each slug gets its
+   own orchestrator session, born in its worktree (`subfolder=trees/{slug}`),
+   dies in its worktree. No cross-slug awareness. The existing
+   `project`/`subfolder` dispatch mechanism handles this without format changes.
+
+3. **Three-actor architecture.** Daemon (nervous system, event routing, pipeline)
+   → Per-slug orchestrators (hands, in worktrees) → Integrator (sole gatekeeper
+   of main).
+
+4. **SDLC lifecycle is core.** The state machine and orchestration are core daemon
+   functionality — too tightly coupled to be a pluggable cartridge.
+
+5. **Event-driven spawning deferred.** Until domain infrastructure arrives
+   (event-platform phases 3+7), humans kick off `/next-work {slug}`. The
+   pipeline triggers the integrator automatically when candidates reach READY;
+   automatic orchestrator spawning comes later.
+
+6. **Dead code removal.** Finalize lock (acquire/release/get_holder),
+   bidirectional sync functions, cross-slug iteration loop, and file-based
+   event store are all removed. The integrator's lease, branch merge, and
+   pipeline consumption replace them respectively.
+
+## What exists (the integration library)
 
 - **Event types** — `review_approved`, `finalize_ready`, `branch_pushed`,
   `integration_blocked` with full payload contracts (`events.py`)
 - **Readiness projection** — tracks candidate `(slug, branch, sha)` readiness
-  from events, including reachability and integrated checks (`readiness_projection.py`)
+  from three distinct events (`review_approved`, `finalize_ready`, `branch_pushed`),
+  including reachability and integrated checks (`readiness_projection.py`)
 - **Queue** — durable FIFO queue for READY candidates (`queue.py`)
 - **Lease** — singleton lease with TTL, renewal, stale-break (`lease.py`)
 - **Runtime** — `IntegratorShadowRuntime` that drains queue under lease, with
@@ -49,31 +88,20 @@ The current flow has chronic issues:
 - **Service** — `IntegrationEventService` that combines store + projection
   with ingest/replay API (`service.py`)
 - **File-based event store** — append-only log (`event_store.py`) — to be
-  superseded by the notification service's Redis Streams
+  replaced by pipeline consumption
 
-## Dependency: event-platform
+## What exists (the event platform)
 
-This todo depends on `event-platform` (the event processing platform).
-Integration events flow through the notification service's Redis Streams pipeline
-instead of the file-based event store. This gives us:
+`teleclaude_events` is on main with all needed interfaces:
 
-1. **Unified event bus** — integration events are event-platform events,
-   not a separate event system. `NotificationProducer.emit()` replaces file appends.
-2. **Admin notifications for free** — delivery to main and integration blocked
-   are natural notification lifecycle events. Admins see them in TUI, Telegram,
-   web — all surfaces that the notification service already delivers to.
-3. **Event taxonomy alignment** — integration events map to the
-   `domain.software-development.deployment.*` taxonomy:
-   - `domain.software-development.review.approved` ← review_approved
-   - `domain.software-development.deployment.started` ← finalize_ready
-   - `domain.software-development.deployment.completed` ← integration succeeded
-   - `domain.software-development.deployment.failed` ← integration_blocked
-4. **Integrator trigger via processor callback** — when the notification
-   processor sees integration-readiness events, it feeds them to the existing
-   readiness projection and spawns the integrator when candidates go READY.
-5. **File-based event store becomes redundant** — Redis Streams IS the event log.
-   The readiness projection still runs (it's the integrator's brain) but consumes
-   from the stream instead of from file replay.
+- `EventCatalog`, `EventSchema`, `NotificationLifecycle` — event registration
+- `Pipeline`, `PipelineContext`, `Cartridge` protocol — processing chain
+- `EventProducer`, `emit_event()` — event emission to Redis Streams
+- `EventProcessor` — Redis Stream consumer group loop
+- Deduplication and notification projector cartridges — already in pipeline chain
+
+Not blocked on event-platform container children (system cartridges, domain
+infrastructure, signal pipeline, etc.). The base platform is sufficient.
 
 ## Authoritative spec
 

@@ -959,8 +959,9 @@ class TelecApp(App[str | None]):
         if changed:
             try:
                 self.query_one(Banner).refresh()
+                self.query_one(BoxTabBar).refresh()
             except Exception:
-                logger.exception("Banner refresh failed after animation tick")
+                logger.exception("Header refresh failed after animation tick")
 
     def _cycle_animation(self, new_mode: str) -> None:
         """Set animation mode, reconfigure engine, and update status bar."""

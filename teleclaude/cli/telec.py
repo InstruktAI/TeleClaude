@@ -1804,29 +1804,46 @@ def _demo_list(project_root: Path) -> None:
         raise SystemExit(0)
 
     demo_entries = []
+    missing_snapshot: list[str] = []
+    broken_snapshot: list[str] = []
     for demo_path in sorted(demos_dir.iterdir()):
         if not demo_path.is_dir() or demo_path.name.startswith("."):
             continue
         snapshot_path = demo_path / "snapshot.json"
-        if snapshot_path.exists():
-            try:
-                snapshot = json.loads(snapshot_path.read_text())
-                demo_entries.append((demo_path.name, snapshot))
-            except (json.JSONDecodeError, OSError):
-                continue
+        if not snapshot_path.exists():
+            missing_snapshot.append(demo_path.name)
+            continue
+        try:
+            snapshot = json.loads(snapshot_path.read_text())
+            demo_entries.append((demo_path.name, snapshot))
+        except (json.JSONDecodeError, OSError):
+            broken_snapshot.append(demo_path.name)
 
-    if not demo_entries:
+    if not demo_entries and not missing_snapshot and not broken_snapshot:
         print("No demos available")
         raise SystemExit(0)
 
-    print(f"Available demos ({len(demo_entries)}):\n")
-    print(f"{'Slug':<30} {'Title':<50} {'Version':<10} {'Delivered'}")
-    print("-" * 110)
-    for demo_slug, snapshot in demo_entries:
-        title = snapshot.get("title", "")
-        version = snapshot.get("version", "")
-        delivered = snapshot.get("delivered_date", snapshot.get("delivered", ""))
-        print(f"{demo_slug:<30} {title:<50} {version:<10} {delivered}")
+    if demo_entries:
+        print(f"Available demos ({len(demo_entries)}):\n")
+        print(f"{'Slug':<30} {'Title':<50} {'Version':<10} {'Delivered'}")
+        print("-" * 110)
+        for demo_slug, snapshot in demo_entries:
+            title = snapshot.get("title", "")
+            version = snapshot.get("version", "")
+            delivered = snapshot.get("delivered_date", snapshot.get("delivered", ""))
+            print(f"{demo_slug:<30} {title:<50} {version:<10} {delivered}")
+
+    if missing_snapshot:
+        print(f"\nMissing snapshot.json ({len(missing_snapshot)}):")
+        for slug in missing_snapshot:
+            print(f"  {slug}")
+        print("  Run: telec todo demo create <slug>")
+
+    if broken_snapshot:
+        print(f"\nBroken snapshot.json ({len(broken_snapshot)}):")
+        for slug in broken_snapshot:
+            print(f"  {slug}")
+
     raise SystemExit(0)
 
 
@@ -1842,10 +1859,11 @@ def _demo_validate(slug: str, project_root: Path) -> None:
 
     content = demo_md_path.read_text(encoding="utf-8")
 
-    # Check for no-demo escape hatch
+    # Check for no-demo escape hatch — emit warning so build gate and reviewer can't miss it
     no_demo_reason = _check_no_demo_marker(content)
     if no_demo_reason is not None:
-        print(f"No-demo marker found: {no_demo_reason}")
+        print(f"WARNING: no-demo marker found: {no_demo_reason}")
+        print("Reviewer must verify justification — only pure internal refactors with zero user-visible change qualify.")
         raise SystemExit(0)
 
     # Check that demo.md diverges from the skeleton template.
@@ -1884,7 +1902,7 @@ def _demo_run(slug: str, project_root: Path) -> None:
         # Check for no-demo escape hatch
         no_demo_reason = _check_no_demo_marker(content)
         if no_demo_reason is not None:
-            print(f"No-demo marker found: {no_demo_reason}")
+            print(f"WARNING: no-demo marker found: {no_demo_reason}")
             raise SystemExit(0)
 
         blocks = _extract_demo_blocks(content)
@@ -2006,12 +2024,14 @@ def _demo_create(slug: str, project_root: Path) -> None:
         if match:
             version = match.group(1)
 
-    # Create demos/{slug}/ and copy demo.md
+    # Create demos/{slug}/ and copy demo.md (skip if already in place)
     demos_dir = project_root / "demos" / slug
     demos_dir.mkdir(parents=True, exist_ok=True)
-    import shutil
+    dest = demos_dir / "demo.md"
+    if source.resolve() != dest.resolve():
+        import shutil
 
-    shutil.copy2(source, demos_dir / "demo.md")
+        shutil.copy2(source, dest)
 
     # Generate minimal snapshot.json
     snapshot = {"slug": slug, "title": title, "version": version}

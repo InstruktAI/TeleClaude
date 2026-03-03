@@ -459,6 +459,8 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
             if demo_result.returncode != 0:
                 all_passed = False
                 results.append(f"GATE FAILED: demo validate (exit {demo_result.returncode})\n{demo_result.stdout}")
+            elif "no-demo marker found" in demo_result.stdout.lower():
+                results.append(f"GATE WARNING: demo validate — no-demo marker used, reviewer must verify\n{demo_result.stdout.strip()}")
             else:
                 results.append(f"GATE PASSED: demo validate\n{demo_result.stdout.strip()}")
         except subprocess.TimeoutExpired:

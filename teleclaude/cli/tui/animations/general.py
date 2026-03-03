@@ -20,15 +20,7 @@ from teleclaude.cli.tui.animations.base import (
     RenderBuffer,
     Spectrum,
 )
-from teleclaude.cli.tui.animations.creative import (
-    ColorSweep,
-    EQBars,
-    Glitch,
-    LaserScan,
-    LavaLamp,
-    NeonFlicker,
-    Plasma,
-)
+from teleclaude.cli.tui.animations.creative import ColorSweep, EQBars, Glitch, LaserScan, LavaLamp, NeonFlicker, Plasma
 from teleclaude.cli.tui.pixel_mapping import (
     BIG_BANNER_HEIGHT,
     BIG_BANNER_LETTERS,
@@ -55,11 +47,7 @@ class GlobalSky(Animation):
     # Size categories: 0=wisp (1 row), 1=puff (2-3 rows), 2=medium (3-4 rows), 3=cumulus (4+ rows)
     @staticmethod
     def _build_cloud_templates() -> list[tuple[list[str], int]]:
-        from teleclaude.cli.tui.animations.sprites import (
-            CLOUD_SPRITES_FAR,
-            CLOUD_SPRITES_MID,
-            CLOUD_SPRITES_NEAR,
-        )
+        from teleclaude.cli.tui.animations.sprites import CLOUD_SPRITES_FAR, CLOUD_SPRITES_MID, CLOUD_SPRITES_NEAR
 
         templates: list[tuple[list[str], int]] = []
         for sprite in CLOUD_SPRITES_FAR:
@@ -95,23 +83,23 @@ class GlobalSky(Animation):
     _WEATHER_NAMES = ["clear", "fair", "cloudy", "overcast"]
     _WEATHER_WEIGHTS = [30, 35, 25, 10]
 
-    # Celestial shapes — rendered as quarter disc anchored at top-right corner
-    _SUN_ROWS = [
-        "    \u2588\u2588\u2588\u2588\u2588\u2588\u2588    ",
-        "  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  ",
-        " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 ",
-        " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 ",
-        "  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  ",
-        "    \u2588\u2588\u2588\u2588\u2588\u2588\u2588    ",
+    # Celestial shapes — rendered as disc anchored at top-right corner.
+    # Top half uses standard lower-block chars (▁▄▅▆▇█ fill from bottom up).
+    _SUN_MOON_ROWS = [
+        "    ▁▄▆▇███▇▆▄▁    ",
+        "   ▅███████████▅ ",
+        "  ▟█████████████▙  ",
     ]
-    _MOON_ROWS = [
-        " ,/\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588&.  ",
-        " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588&  ",
-        "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588& ",
-        "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588& ",
-        "'\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588&' ",
-        "  '\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588&'  ",
+    # Bottom half uses complement lower-block chars with fg/bg swap
+    # (Unicode lacks upper-block equivalents for ▂▃▅▆▇).
+    # Rendering stores these with a \x01 prefix so the scanner swaps colors.
+    # Quadrant chars (▜▛) have native vertical mirrors — no inversion needed.
+    _SUN_MOON_BOTTOM_ROWS = [
+        "  ▜█████████████▛  ",
+        "   ▃███████████▃ ",
+        "    ▇▄▂▁███▁▂▄▇    ",
     ]
+    _LOWER_BLOCKS = frozenset("▁▂▃▄▅▆▇")
     # Celestial ambient glow — painted at gap positions in the bounding box so
     # cloud shade chars pick up a warm/cool tint instead of raw sky gradient.
     _SUN_GLOW = "#4A3000"
@@ -149,7 +137,7 @@ class GlobalSky(Animation):
         _star_types = ["\u00b7", ".", "+", "\u2726", "*"]  # ·  .  +  ✦  *
         _star_weights = [50, 20, 15, 10, 5]
         self.stars = []
-        for _ in range(40):
+        for _ in range(100):
             self.stars.append(
                 {
                     "pos": (self.rng.randint(0, self.width - 1), self.rng.randint(0, self.height - 1)),
@@ -256,20 +244,29 @@ class GlobalSky(Animation):
         return pixels
 
     def _render_quarter_celestial(self, buffer: RenderBuffer, rows: list[str], term_width: int) -> None:
-        """Render bottom-left quarter of celestial body at top-right corner."""
+        """Render celestial body disc at top-right corner.
+
+        Top half uses normal lower-block chars.  Bottom half uses complement
+        lower-block chars prefixed with \\x01 so the banner scanner swaps
+        fg/bg — the missing upper-block Unicode trick.
+        """
         sprite_w = max(len(r) for r in rows)
         # Anchor center at (term_width - 1, -2) so only bottom-left quarter is visible
         cx = term_width - 1
-        cy = -2
+        cy = 0
 
         # Narrow pane (split view): push celestial partially off-screen
         if term_width <= 130:
             cx += 6
-            cy -= 2
+            cy -= 1
 
-        is_sun = rows is self._SUN_ROWS
-        glow = self._SUN_GLOW if is_sun else self._MOON_GLOW
+        is_sun = rows is self._SUN_MOON_ROWS
+        # Glow only needed in dark mode where sky gradient is near-black;
+        # in light mode the sky gradient is already light blue so clouds
+        # compositing over celestial gaps look fine without glow.
+        glow = (self._SUN_GLOW if is_sun else self._MOON_GLOW) if self.dark_mode else None
 
+        # Top half — standard lower-block chars
         for dy, row in enumerate(rows):
             y = cy + dy
             if y < 0:
@@ -281,11 +278,27 @@ class GlobalSky(Animation):
                 if 0 <= x < self.width:
                     if ch != " ":
                         buffer.add_pixel(Z_CELESTIAL, x, y, ch)
-                    else:
-                        # Ambient glow at gap positions — invisible in empty sky
-                        # (space char ignores fg color) but picked up as bg
-                        # by cloud shade chars passing over the celestial area.
+                    elif glow:
                         buffer.add_pixel(Z_CELESTIAL, x, y, glow)
+
+        # Bottom half — complement lower-block chars with \x01 inversion marker;
+        # quadrant chars (▜▛) and full blocks render normally.
+        for dy, row in enumerate(self._SUN_MOON_BOTTOM_ROWS):
+            y = cy + len(rows) + dy
+            if y < 0:
+                continue
+            if y >= self.height:
+                break
+            for dx, ch in enumerate(row):
+                x = cx - sprite_w + 1 + dx
+                if 0 <= x < self.width:
+                    if ch == " ":
+                        if glow:
+                            buffer.add_pixel(Z_CELESTIAL, x, y, glow)
+                    elif ch in self._LOWER_BLOCKS:
+                        buffer.add_pixel(Z_CELESTIAL, x, y, "\x01" + ch)
+                    else:
+                        buffer.add_pixel(Z_CELESTIAL, x, y, ch)
 
     def update(self, frame: int) -> RenderBuffer:
         # Reuse persistent buffer — avoid allocating 4000+ dict entries per frame
@@ -325,7 +338,7 @@ class GlobalSky(Animation):
                     buffer.add_pixel(Z_STARS, star["pos"][0], star["pos"][1], star["char"])
 
             # 3. Moon — quarter celestial at top-right
-            self._render_quarter_celestial(buffer, self._MOON_ROWS, term_width)
+            self._render_quarter_celestial(buffer, self._SUN_MOON_ROWS, term_width)
         else:
             # 2. Weather change check
             now = time.time()
@@ -350,7 +363,7 @@ class GlobalSky(Animation):
                                 buffer.add_pixel(cloud_z, px, py, ch)
 
             # 4. Sun — quarter celestial at top-right
-            self._render_quarter_celestial(buffer, self._SUN_ROWS, term_width)
+            self._render_quarter_celestial(buffer, self._SUN_MOON_ROWS, term_width)
 
         # 5. UFO sky entity (both modes — drifts horizontally at assigned Z-level)
         if self._ufo:
@@ -391,7 +404,7 @@ class LetterWaveLR(Animation):
         color_pair = self.palette.get(frame // num_letters)
 
         base_color = self.enforce_vibrancy(self.get_contrast_safe_color(color_pair))
-        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
         r, g, b = hex_to_rgb(base_color)
         dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
@@ -413,7 +426,7 @@ class LetterWaveRL(Animation):
         color_pair = self.palette.get(frame // num_letters)
 
         base_color = self.enforce_vibrancy(self.get_contrast_safe_color(color_pair))
-        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
         r, g, b = hex_to_rgb(base_color)
         dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
@@ -450,7 +463,7 @@ class LineSweepTopBottom(Animation):
                     continue
                 color = self.spec.get_color(y / max(1, height - 1))
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -481,7 +494,7 @@ class LineSweepBottomTop(Animation):
                     continue
                 color = self.spec.get_color(y / max(1, height - 1))
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -517,7 +530,7 @@ class MiddleOutVertical(Animation):
                     continue
                 color = self.spec.get_color(y / max(1, height - 1))
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -549,7 +562,7 @@ class WithinLetterSweepLR(Animation):
                     continue
                 color = self.spec.get_color((x - 1) / width)
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -582,7 +595,7 @@ class WithinLetterSweepRL(Animation):
                     continue
                 color = self.spec.get_color((x - 1) / width)
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -641,7 +654,7 @@ class DiagonalSweepDR(Animation):
                     continue
                 color = self.spec.get_color(((x - 1) + y) / max_val)
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -677,7 +690,7 @@ class DiagonalSweepDL(Animation):
                     continue
                 color = self.spec.get_color(((x - 1) + y) / max_val)
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -722,7 +735,7 @@ class WavePulse(Animation):
                     continue
                 color = self.spec.get_color((x - 1) / width)
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -753,7 +766,7 @@ class BlinkSweep(Animation):
                     continue
                 color = self.spec.get_color((x - 1) / width)
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -840,7 +853,7 @@ class FireBreath(Animation):
 
                 color = self.spec.get_color(fire_factor)
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 # 0.3 base so even cool top pixels have faint glow
@@ -956,7 +969,7 @@ class CinematicPrismSweep(Animation):
 
         current_hue = (self.hue_start + (self.hue_end - self.hue_start) * progress) / 360.0
         r, g, b = self._hsv_to_rgb(current_hue, 0.8, 1.0)
-        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
         color = rgb_to_hex(r, g, b)
         safe_color = self.get_electric_neon(self.get_contrast_safe_color(color))

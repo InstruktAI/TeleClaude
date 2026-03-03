@@ -21,8 +21,8 @@ The TUI is instrumented by the dotfiles repository at `~/Sync/dotfiles/terminal/
 
 - After any TUI code change, send SIGUSR2 to the running TUI to reload. (SIGUSR1 is reserved for appearance/theme refresh.)
   ```bash
-  pkill -SIGUSR2 -f -- "-m teleclaude.cli.telec$"
+  kill -USR2 "$(tmux list-panes -t tc_tui -F '#{pane_pid}' | head -1)"
   ```
-  The `$` anchor ensures only the TUI process is matched, not `telec watch` or other Python processes.
+  The TUI runs as the first pane in the `tc_tui` tmux session. Using tmux's pane PID is reliable regardless of how the process was launched.
 - Do not restart the daemon and do not instruct the user to restart telec.
 - Verify the change in the TUI after reload.
