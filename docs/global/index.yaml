@@ -82,6 +82,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: general/policy/artifact-scope
+  description: Determine whether an artifact belongs in global or project scope before
+    creating it.
+  type: policy
+  scope: global
+  path: docs/general/policy/artifact-scope.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/policy/autonomy
   description: Guidelines for agent autonomy, escalation, and user interaction.
   type: policy

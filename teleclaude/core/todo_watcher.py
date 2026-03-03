@@ -110,13 +110,17 @@ class TodoWatcher:
 
         watched = 0
         for td in config.computer.get_all_trusted_dirs():
-            todos_dir = Path(td.path) / "todos"
-            if not todos_dir.is_dir():
-                continue
             handler = _TodoHandler(td.path, loop, queue)
-            observer.schedule(handler, str(todos_dir), recursive=True)
-            watched += 1
-            logger.debug("TodoWatcher: watching %s", todos_dir)
+            todos_dir = Path(td.path) / "todos"
+            if todos_dir.is_dir():
+                observer.schedule(handler, str(todos_dir), recursive=True)
+                watched += 1
+                logger.debug("TodoWatcher: watching %s", todos_dir)
+            trees_dir = Path(td.path) / "trees"
+            if trees_dir.is_dir():
+                observer.schedule(handler, str(trees_dir), recursive=True)
+                watched += 1
+                logger.debug("TodoWatcher: watching %s", trees_dir)
 
         if watched == 0:
             logger.info("TodoWatcher: no todos/ directories found, watcher idle")

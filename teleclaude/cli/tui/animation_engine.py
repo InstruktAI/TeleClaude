@@ -173,7 +173,9 @@ class AnimationEngine:
                         back_buffer.clear()
                         continue
 
-                    back_buffer.clear()
+                    # Clear inner dicts (reuse z-level dict allocations)
+                    for layer in back_buffer.values():
+                        layer.clear()
                     if isinstance(result, RenderBuffer):
                         # Multi-layer update
                         for z, pixels in result.layers.items():
@@ -248,6 +250,30 @@ class AnimationEngine:
             buf.clear()
         for buf in self._buffers_back.values():
             buf.clear()
+
+    def refresh_theme(self) -> None:
+        """Push current dark_mode to all running animations."""
+        from teleclaude.cli.tui.theme import get_terminal_background, is_dark_mode
+
+        dark = is_dark_mode()
+        bg = get_terminal_background()
+        for slot in self._targets.values():
+            if slot.animation:
+                slot.animation.dark_mode = dark
+                slot.animation.background_hex = bg
+
+    def invalidate_term_width(self, width: int | None = None) -> None:
+        """Force all running animations to re-fetch terminal width.
+
+        Called on resize and after pane layout changes so celestial bodies
+        reposition immediately.
+        """
+        for slot in self._targets.values():
+            if slot.animation and hasattr(slot.animation, "_cached_term_width"):
+                if width is not None:
+                    slot.animation._cached_term_width = width  # type: ignore[attr-defined]
+                else:
+                    slot.animation._cached_term_width = slot.animation._fetch_term_width()  # type: ignore[attr-defined]
 
     def is_external_light(self, target: str = "banner") -> bool:
         """True if the current animation for the target is an external light source."""

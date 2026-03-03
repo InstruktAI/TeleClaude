@@ -19,18 +19,18 @@ class TreeRenderNode:
 
 
 def build_dep_tree(items: list[TodoItem]) -> list[TreeRenderNode]:
-    """Build a dependency tree from TodoItems using their `after` field.
+    """Build a dependency tree from TodoItems using their `after` and `group` fields.
 
     Args:
-        items: Flat list of TodoItems with `after` dependencies
+        items: Flat list of TodoItems with `after` dependencies and optional `group`
 
     Returns:
         List of TreeRenderNode in DFS order (parent before children)
 
-    The tree structure is derived entirely from `after` dependencies:
-    - Items with no resolvable `after` are roots
+    The tree structure is derived from `after` dependencies with `group` nesting:
     - Items with `after=[X]` nest under X (first resolvable entry is visual parent)
-    - Roadmap ordering is irrelevant to tree structure
+    - Items with no resolvable `after` but `group=Y` nest under Y as visual children
+    - Items with neither become roots
     - Siblings preserve their relative order from the input list
     """
     if not items:
@@ -67,6 +67,16 @@ def build_dep_tree(items: list[TodoItem]) -> list[TreeRenderNode]:
                 if candidate in visible_slugs and not _has_cycle_to(candidate, item.slug):
                     parent_slug = candidate
                     break
+
+        # Group nesting: use group as visual parent when no after parent resolved
+        if (
+            parent_slug is None
+            and item.group
+            and item.group in visible_slugs
+            and item.group != item.slug
+            and not _has_cycle_to(item.group, item.slug)
+        ):
+            parent_slug = item.group
 
         parent_map[item.slug] = parent_slug
         if parent_slug is not None:

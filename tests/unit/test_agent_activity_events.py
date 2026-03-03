@@ -21,6 +21,7 @@ def mock_client():
     client = MagicMock()
     client.send_message = AsyncMock()
     client.send_threaded_output = AsyncMock(return_value="msg-123")
+    client.any_adapter_wants_threaded_output = MagicMock(return_value=False)
     return client
 
 

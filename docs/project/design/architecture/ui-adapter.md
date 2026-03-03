@@ -39,7 +39,7 @@ Invariants
 - User commands (text, slash commands, button clicks)
 - Voice messages (audio files requiring transcription)
 - File uploads (documents, images, media)
-- Domain events from EventBus (SESSION_UPDATED, TURN_COMPLETE, MESSAGE_SENT)
+- Domain events from EventBus (SESSION_UPDATED, SESSION_STATUS, TURN_COMPLETE, MESSAGE_SENT)
 - Command results from CommandService
 
 **Outputs:**
@@ -74,6 +74,7 @@ sequenceDiagram
     Daemon->>AdapterClient: Register adapter
     AdapterClient->>UiAdapter: __init__(client)
     UiAdapter->>EventBus: subscribe(SESSION_UPDATED, _handle_session_updated)
+    UiAdapter->>EventBus: subscribe(SESSION_STATUS, _handle_session_status)
     UiAdapter->>EventBus: subscribe(TURN_COMPLETE, _handle_turn_complete)
     UiAdapter->>AdapterClient: Ready
 ```
@@ -177,7 +178,20 @@ sequenceDiagram
     Platform->>UiAdapter: Success
 ```
 
-### 7. Voice Message Processing
+### 7. Typing Indicator Flow
+
+UI adapters fire platform typing indicators in response to lifecycle status events. This provides immediate user feedback that the agent is working.
+
+| Status | Trigger | Adapter Action |
+| --- | --- | --- |
+| `accepted` | `user_prompt_submit` hook | Fire `send_typing_indicator()` (subsequent turns only — requires `native_session_id` set) |
+| `active` | `session_start` hook | Fire `send_typing_indicator()` (agent confirmed alive) |
+| `active_output` | `tool_use` hook | Footer/badge decoration only |
+| `completed` | `agent_stop` hook | Footer/badge decoration only |
+
+Typing is naturally replaced by output from the polling cadence (`send_output_update` at ~1s). The `active` status fires on `session_start` (agent confirmed alive) and is the sole trigger for typing indicators on adapters. Once the agent is confirmed alive (`native_session_id` set), `accepted` also fires typing on subsequent turns. Other statuses provide decoration only (footer emoji, status badges).
+
+### 8. Voice Message Processing
 
 | Step | Actor     | Action                                          |
 | ---- | --------- | ----------------------------------------------- |
@@ -189,7 +203,7 @@ sequenceDiagram
 | 6    | UiAdapter | Sends "🎤 Sent: {text}" feedback                |
 | 7    | UiAdapter | Deletes voice message per cleanup rules         |
 
-### 8. File Upload Flow
+### 9. File Upload Flow
 
 ```mermaid
 sequenceDiagram

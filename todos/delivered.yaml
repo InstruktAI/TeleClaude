@@ -1,10 +1,13 @@
 # Delivered work items. Newest first.
 
+- slug: todo-dump-command
+  date: '2026-03-03'
+  title: telec todo dump — fire-and-forget brain dump with notification trigger
+  description: telec todo dump — fire-and-forget brain dump with notification trigger
 - slug: integration-events-model
   date: '2026-03-01'
   title: Integration Events Model — merged to main with full test coverage
   commit: confirmed delivered via integrator-wiring input.md
-
 - slug: config-wizrd-enrichment
   date: '2026-03-01'
   title: Enrich config wizard with improved UX and validation

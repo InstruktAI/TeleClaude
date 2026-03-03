@@ -33,6 +33,17 @@ TRANSPORT_PROMPT = (
 )
 
 
+def _agent_enabled(agent: str) -> bool:
+    """Check if an agent is enabled in config."""
+    try:
+        from teleclaude.config import config
+
+        cfg = config.agents.get(agent)
+        return cfg is None or cfg.enabled
+    except Exception:
+        return True  # Assume enabled if config unavailable
+
+
 def run_cli(
     agent: str,
     *,
@@ -43,6 +54,9 @@ def run_cli(
     timeout: int = 15,
 ) -> dict:
     """Invoke agent CLI and return parsed JSON."""
+    if not _agent_enabled(agent):
+        pytest.skip(f"agent {agent} is disabled in config")
+
     cmd = list(WRAPPER_CMD)
     cmd.extend(["--agent", agent, "--thinking-mode", "fast"])
 

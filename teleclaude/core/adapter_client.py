@@ -17,7 +17,6 @@ from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.adapters.whatsapp_adapter import WhatsAppAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.models import (
     ChannelMetadata,
     CleanupTrigger,
@@ -88,6 +87,10 @@ class AdapterClient:
         return [
             (adapter_type, adapter) for adapter_type, adapter in self.adapters.items() if isinstance(adapter, UiAdapter)
         ]
+
+    def any_adapter_wants_threaded_output(self) -> bool:
+        """Return True when any registered UI adapter uses threaded output mode."""
+        return any(adapter.THREADED_OUTPUT for _, adapter in self._ui_adapters())
 
     async def send_error_feedback(self, session_id: str, error_message: str) -> None:
         """Send error feedback to all UI adapters, surfacing failures."""
@@ -657,9 +660,6 @@ class AdapterClient:
             return None
 
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
-            # Threaded threads show only AI output — no input reflections.
-            if is_threaded_output_enabled(session_to_use.active_agent, adapter=adapter.ADAPTER_KEY):
-                return cast(Awaitable[object], _noop())
             adapter_text = render_reflection_text(adapter, final_text)
             return cast(
                 Awaitable[object],

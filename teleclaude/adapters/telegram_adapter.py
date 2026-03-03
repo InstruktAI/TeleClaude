@@ -63,16 +63,6 @@ from .telegram.input_handlers import InputHandlersMixin
 from .telegram.message_ops import EditContext, MessageOperationsMixin
 from .ui_adapter import UiAdapter
 
-# Status emoji mapping
-STATUS_EMOJI = {
-    "active": "🟢",
-    "waiting": "🟡",
-    "slow": "🟠",
-    "stalled": "🔴",
-    "idle": "⏸️",
-    "dead": "❌",
-}
-
 
 # Type alias for python-telegram-bot's default Application type.
 # The library uses dict for user/chat/bot data storage - this is intentional

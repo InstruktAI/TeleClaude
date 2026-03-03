@@ -305,13 +305,12 @@ class TestSendOutputUpdate:
         await test_db.update_session(session.session_id, active_agent="codex")
         session = await test_db.get_session(session.session_id)
 
-        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=False):
-            result = await adapter.send_output_update(
-                session,
-                "codex output",
-                time.time(),
-                time.time(),
-            )
+        result = await adapter.send_output_update(
+            session,
+            "codex output",
+            time.time(),
+            time.time(),
+        )
 
         assert result == "msg-123"
         assert len(adapter._send_calls) >= 1
@@ -358,13 +357,12 @@ class TestSendOutputUpdate:
         )
         session = await test_db.get_session(session.session_id)
 
-        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=False):
-            await adapter.send_output_update(
-                session,
-                "normal output",
-                time.time(),
-                time.time(),
-            )
+        await adapter.send_output_update(
+            session,
+            "normal output",
+            time.time(),
+            time.time(),
+        )
 
         # Output + footer = at least 2 sends
         assert len(adapter._send_calls) >= 2
@@ -491,9 +489,8 @@ class TestSendThreadedOutput:
     """Test send_threaded_output smart pagination and overflow handling."""
 
     @pytest.fixture(autouse=True)
-    def _enable_threaded_output(self):
-        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=True):
-            yield
+    def _enable_threaded_output(self, monkeypatch):
+        monkeypatch.setattr(MockUiAdapter, "THREADED_OUTPUT", True)
 
     async def test_normal_sends_new_message(self, test_db):
         """Text fits in limit with no existing message → sends new."""
@@ -831,15 +828,15 @@ class TestSendOutputUpdateSuppression:
         await test_db.update_session(session.session_id, active_agent="gemini")
         session = await test_db.get_session(session.session_id)
 
-        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=True):
-            result = await adapter.send_output_update(session, "output text", time.time(), time.time())
+        adapter.THREADED_OUTPUT = True
+        result = await adapter.send_output_update(session, "output text", time.time(), time.time())
 
         assert result is None
         assert len(adapter._send_calls) == 0
         assert len(adapter._edit_calls) == 0
 
     async def test_suppressed_when_threaded_active_no_output_message_id(self, test_db):
-        """Threaded experiment on but no output_message_id → still suppressed."""
+        """Threaded mode on but no output_message_id → still suppressed."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -853,8 +850,8 @@ class TestSendOutputUpdateSuppression:
         )
         session = await test_db.get_session(session.session_id)
 
-        with patch("teleclaude.adapters.ui_adapter.is_threaded_output_enabled", return_value=True):
-            result = await adapter.send_output_update(session, "output text", time.time(), time.time())
+        adapter.THREADED_OUTPUT = True
+        result = await adapter.send_output_update(session, "output text", time.time(), time.time())
 
         assert result is None
         assert len(adapter._send_calls) == 0

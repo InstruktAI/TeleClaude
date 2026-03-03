@@ -26,37 +26,83 @@ Lighting and entities change based on the system `theme_mode`.
 
 ### Day Mode (Atmospheric)
 
-- **Primary Source:** High Sun at a golden angle (Light from Above).
+- **Primary Source:** Quarter sun at top-right corner (bottom-left quarter visible).
 - **Shadow Vector:** Downward and slightly diagonal.
-- **Entities:** Birds flapping in the foreground (Layer 2).
-- **Sky:** Fluffy clouds drifting behind the billboard (Layer -1).
+- **Entities:** Clouds at weighted depth (far/mid/near), rare UFO as sky entity.
+- **Sky:** Gradient from `#87CEEB` to `#C8E8F8`.
 
 ### Night Mode (Nightmare)
 
 - **Primary Source:** Rooftop searchlights (Light from Below).
 - **Shadow Vector:** Upward and backward onto the building structure.
 - **Entities:** Batman-signal silhouettes and digital neon surges.
-- **Sky:** Twinkling multi-colored stars (Layer -1).
+- **Sky:** Twinkling stars at Z_STARS (behind celestials), quarter moon at top-right.
 
-## 3. Z-Layer Composition
+## 3. Z-Level Composition
 
-The engine flattens layers in the following order:
+Physical Z-levels with 10-unit spacing for intermediate layers (defined in `base.py`):
 
-1.  **Layer -1 (Sky):** Background effects. Occluded by the Billboard Plate.
-2.  **Layer 0 (Structure):** The physical Billboard Plate and metallic pipes.
-3.  **Layer 1 (Neon):** The TeleClaude letters. Character cells are treated as light-emitting tubes.
-4.  **Layer 2 (Entities):** Foreground objects. These cast **Projective Shadows** that dim all layers beneath them.
+| Z-Level | Constant         | Purpose                                  |
+| :------ | :--------------- | :--------------------------------------- |
+| 0       | `Z_SKY`          | Background sky gradient                  |
+| 10      | `Z_STARS`        | Twinkling star field (night mode)        |
+| 20      | `Z_CELESTIAL`    | Sun/moon quarter disc at top-right       |
+| 30      | `Z_CLOUDS_FAR`   | Distant wisps and far clouds             |
+| 40      | `Z_BILLBOARD`    | The physical billboard plate             |
+| 50      | `Z_CLOUDS_MID`   | Mid-depth clouds (show around billboard) |
+| 60      | `Z_TABS_INACTIVE`| Inactive tab bar surfaces                |
+| 70      | `Z_CLOUDS_NEAR`  | Near clouds (show in front of inactive tabs) |
+| 80      | `Z_TABS_ACTIVE`  | Active tab (nothing renders in front)    |
+| 90      | `Z_FOREGROUND`   | Billboard foreground entities            |
 
-## 4. Animation Catalog
+### Cloud Depth Distribution
+
+Clouds receive weighted Z-levels per size category:
+
+| Size | Category | Z_FAR | Z_MID | Z_NEAR |
+| :--- | :------- | :---- | :---- | :----- |
+| 0    | Wisps    | 100%  | —     | —      |
+| 1    | Puffs    | 80%   | 20%   | —      |
+| 2    | Medium   | 30%   | 60%   | 10%    |
+| 3    | Cumulus  | 10%   | 50%   | 40%    |
+
+### UFO Sky Entity
+
+UFO spawns inside GlobalSky (~15% chance per weather cycle) with weighted depth:
+- 50% Z_CLOUDS_FAR, 35% Z_CLOUDS_MID, 15% Z_CLOUDS_NEAR
+
+### Quarter Celestial
+
+Sun (day) and moon (night) render as a quarter disc anchored at the top-right corner. The center is placed at `(term_width-1, -2)` so only the bottom-left quarter is visible. Works at any terminal width.
+
+## 4. Haze Pipeline
+
+Focus state is centralized via `theme.resolve_haze()`:
+
+- `set_tui_focused(bool)` — called by `app._watch_app_focus()`
+- `resolve_haze(hex_color)` — returns color as-is when focused, applies TUI inactive haze when unfocused
+- `get_billboard_background()` — adapts to focus state internally
+
+All widgets (banner, tabs, sky entities) use `resolve_haze()` instead of manual focus checks.
+
+## 5. Animation Catalog
 
 ### Environmental Events (Reflective)
 
 | Animation          | Mode  | Surface       | Behavior                                               |
 | :----------------- | :---- | :------------ | :----------------------------------------------------- |
 | `SearchlightSweep` | Night | Plate + Tubes | Upward Batman silhouette shadow + high-intensity beam. |
-| `HighSunBird`      | Day   | Plate + Tubes | Foreground entity casting downward diagonal shadows.   |
-| `CloudsPassing`    | Day   | Sky           | Fluffy background occlusion behind the billboard.      |
-| `StarryNight`      | Night | Sky           | Twinkling star field behind the billboard.             |
+| `CloudsPassing`    | Day   | Plate + Tubes | Fluffy background occlusion behind the billboard.      |
+
+### Sky Entities (GlobalSky-managed)
+
+| Entity    | Mode | Behavior                                                          |
+| :-------- | :--- | :---------------------------------------------------------------- |
+| Stars     | Night| Twinkle at Z_STARS, behind celestials and clouds                  |
+| Moon      | Night| Quarter disc at top-right corner, Z_CELESTIAL                     |
+| Sun       | Day  | Quarter disc at top-right corner, Z_CELESTIAL                     |
+| Clouds    | Day  | Parallax drift at weighted Z-levels (far/mid/near)                |
+| UFO       | Both | Rare (~15%), drifts horizontally at weighted depth                |
 
 ### Neon Surge Effects (Internal)
 
@@ -72,7 +118,7 @@ _Heuristic: In Neon mode, letters are always colored. There are no gray gaps._
 | `SunsetGradient`      | Day   | Horizontal atmospheric color wash with organic modulation.               |
 | `WavePulse`           | Both  | High-voltage traveling surge with trailing intensity decay.              |
 
-## 5. Organic Modulation (Living Parameters)
+## 6. Organic Modulation (Living Parameters)
 
 Animations do not use fixed speeds. Every instance follows an **Organic Modulation Graph** over its 12s – 20s lifespan:
 
@@ -80,7 +126,7 @@ Animations do not use fixed speeds. Every instance follows an **Organic Modulati
 - **Active Peak (4-12s):** Surge to maximum intensity and speed (0.8x).
 - **Landing (12-20s):** Long, slow settling drift (0.5x -> 0.3x).
 
-## 6. Contrast & Readability Mandate
+## 7. Contrast & Readability Mandate
 
 - **The Floor:** In Dark Mode, non-shadow colors are mathematically boosted to a **minimum 120 RGB** average.
 - **Transparency:** Inactive animation areas must return a **transparent sentinel (-1)** to preserve the physical billboard gray and default letter gray.

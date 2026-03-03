@@ -9,6 +9,7 @@ description: 'Gate and create skills. A skill is warranted only when it carries 
 
 ## Required reads
 
+- @~/.teleclaude/docs/general/policy/artifact-scope.md
 - @~/.teleclaude/docs/general/spec/agent-artifacts.md
 - @~/.teleclaude/docs/general/procedure/agent-artifact-authoring.md
 
@@ -23,9 +24,9 @@ Determine whether a skill is warranted, and if so, create one that follows the a
 
 ## Steps
 
-1. **Gate: does this need scripts?** A skill exists solely to bundle executable automation next to its instructions. Scripts mean deterministic tooling a model cannot reliably generate from training data — binary format manipulation, scaffolding with exact directory structures, validation against a schema, CLI wrappers around external tools. If the answer is no — the capability is pure procedural knowledge — do not create a skill. Instead: create a doc snippet using the doc-snippet-authoring procedure, determine scope (global if it applies across projects, project if repo-specific — ask the requester if unclear), add it to the appropriate baseline index so it is progressively disclosed on load, and tell the requester why a skill was not created. Stop here.
+1. **Gate: does this need scripts?** A skill exists solely to bundle executable automation next to its instructions. Scripts mean deterministic tooling a model cannot reliably generate from training data — binary format manipulation, scaffolding with exact directory structures, validation against a schema, CLI wrappers around external tools. If the answer is no — the capability is pure procedural knowledge — do not create a skill. Instead: create a doc snippet using the doc-snippet-authoring procedure (scope per the artifact-scope policy), add it to the appropriate baseline index so it is progressively disclosed on load, and tell the requester why a skill was not created. Stop here.
 
-2. **Verify the script is not trivially replaceable.** If the script could be replaced by an inline shell command an agent could write on demand (e.g., `cp template.html output/`, `mkdir -p foo/bar`), the script adds no value. Follow the same redirect as step 1: doc snippet, determine scope, add to baseline index. Stop here.
+2. **Verify the script is not trivially replaceable.** If the script could be replaced by an inline shell command an agent could write on demand (e.g., `cp template.html output/`, `mkdir -p foo/bar`), the script adds no value. Follow the same redirect as step 1. Stop here.
 
 3. **Identify the knowledge source.** Determine which doc snippet(s) contain the procedure or spec the skill will wrap. If no snippet exists yet, create it first. The doc snippet is the knowledge; the skill is the activation interface for the scripts.
 

@@ -441,6 +441,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Integrated into next_work() before dispatching review.",
                 ],
             ),
+            "dump": CommandDef(
+                desc="Fire-and-forget brain dump with notification trigger",
+                args="<slug> <content>",
+                flags=[
+                    Flag("--after", desc="Comma-separated dependency slugs"),
+                ],
+                notes=[
+                    "Emits todo.dumped notification for autonomous processing.",
+                ],
+            ),
         },
     ),
     "roadmap": CommandDef(
@@ -1660,6 +1670,8 @@ def _handle_todo(args: list[str]) -> None:
         handle_todo_set_deps(args[1:])
     elif subcommand == "verify-artifacts":
         _handle_todo_verify_artifacts(args[1:])
+    elif subcommand == "dump":
+        _handle_todo_dump(args[1:])
     else:
         print(f"Unknown todo subcommand: {subcommand}")
         print(_usage("todo"))
@@ -2051,6 +2063,88 @@ def _handle_todo_verify_artifacts(args: list[str]) -> None:
     passed, report = verify_artifacts(cwd, slug, phase)
     print(report)
     raise SystemExit(0 if passed else 1)
+
+
+def _handle_todo_dump(args: list[str]) -> None:
+    """Handle telec todo dump <slug> <content> [--after <deps>]."""
+    if len(args) < 2:
+        print(_usage("todo", "dump"))
+        return
+
+    slug: str | None = None
+    content: str | None = None
+    project_root = Path.cwd()
+    after: list[str] | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--after" and i + 1 < len(args):
+            after = [part.strip() for part in args[i + 1].split(",") if part.strip()]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "dump"))
+            raise SystemExit(1)
+        else:
+            if slug is None:
+                slug = arg
+            elif content is None:
+                content = arg
+            else:
+                print("Too many positional arguments.")
+                print(_usage("todo", "dump"))
+                raise SystemExit(1)
+            i += 1
+
+    if not slug or not content:
+        print(_usage("todo", "dump"))
+        raise SystemExit(1)
+
+    # Always register in roadmap (unlike create, which only registers with --after)
+    after_deps = after if after is not None else []
+
+    try:
+        todo_dir = create_todo_skeleton(project_root, slug, after=after_deps)
+    except (ValueError, FileExistsError) as exc:
+        print(f"Error: {exc}")
+        raise SystemExit(1) from exc
+
+    # Overwrite input.md with brain dump content
+    input_path = todo_dir / "input.md"
+    input_path.write_text(f"# {slug} — Input\n\n{content}\n", encoding="utf-8")
+
+    # Emit todo.dumped notification (async, wrapped in asyncio.run())
+    async def _emit() -> None:
+        from redis.asyncio import Redis  # type: ignore[import-untyped]
+
+        from teleclaude_events.envelope import EventEnvelope, EventLevel
+        from teleclaude_events.producer import EventProducer
+
+        redis_url = config.redis.url
+        redis_password = getattr(config.redis, "password", None)
+        redis_client = Redis.from_url(redis_url, password=redis_password, decode_responses=False)
+        try:
+            producer = EventProducer(redis_client=redis_client)
+            envelope = EventEnvelope(
+                event="todo.dumped",
+                source="telec-cli",
+                level=EventLevel.WORKFLOW,
+                domain="todo",
+                description=f"Todo dumped: {slug}",
+                payload={"slug": slug, "project_root": str(project_root)},
+            )
+            await producer.emit(envelope)
+        finally:
+            await redis_client.aclose()
+
+    try:
+        asyncio.run(_emit())
+        print(f"Dumped todo: todos/{slug}/ — notification sent.")
+    except Exception as exc:
+        print(f"Dumped todo: todos/{slug}/")
+        print(f"Warning: notification emission failed: {exc}")
+        print("Notification can be retried manually.")
 
 
 def _handle_todo_demo(args: list[str]) -> None:

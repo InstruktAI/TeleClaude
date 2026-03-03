@@ -59,6 +59,7 @@ class DiscordAdapter(UiAdapter):
     """Discord bot adapter using discord.py."""
 
     ADAPTER_KEY = "discord"
+    THREADED_OUTPUT = True
     max_message_size = 2000
     _TRUNCATION_SUFFIX = "\n[...truncated...]"
 
@@ -1177,9 +1178,7 @@ class DiscordAdapter(UiAdapter):
 
         For non-threaded sessions: delegates to QoS scheduler.
         """
-        from teleclaude.core.feature_flags import is_threaded_output_enabled
-
-        if is_threaded_output_enabled(session.active_agent, adapter=self.ADAPTER_KEY):
+        if self.THREADED_OUTPUT:
             return None
 
         # Non-threaded: existing QoS path.
@@ -1210,8 +1209,6 @@ class DiscordAdapter(UiAdapter):
 
     async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
         """Send or edit the tracked status message in the Discord thread."""
-        from teleclaude.core.feature_flags import is_threaded_output_enabled
-
         # Base class fires typing indicator on active/accepted
         await super()._handle_session_status(_event, context)
 
@@ -1219,7 +1216,7 @@ class DiscordAdapter(UiAdapter):
         if not session:
             return
         # Suppress lifecycle badges in threaded mode — only AI output matters.
-        if is_threaded_output_enabled(session.active_agent, adapter=self.ADAPTER_KEY):
+        if self.THREADED_OUTPUT:
             return
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:

@@ -5,7 +5,7 @@ from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 
 
-def _item(slug: str, after: list[str] | None = None) -> TodoItem:
+def _item(slug: str, after: list[str] | None = None, group: str | None = None) -> TodoItem:
     """Minimal TodoItem for tree tests."""
     return TodoItem(
         slug=slug,
@@ -14,6 +14,7 @@ def _item(slug: str, after: list[str] | None = None) -> TodoItem:
         has_requirements=False,
         has_impl_plan=False,
         after=after or [],
+        group=group,
     )
 
 
@@ -103,6 +104,70 @@ def test_is_last_sibling():
     children = [r for r in result if r.depth == 1]
     assert not children[0].is_last  # a
     assert children[1].is_last  # b
+
+
+def test_group_nesting_no_after():
+    """Items with group=X and no after nest under X."""
+    items = [_item("parent"), _item("child", group="parent")]
+    result = build_dep_tree(items)
+    assert [(r.slug, r.depth) for r in result] == [
+        ("parent", 0),
+        ("child", 1),
+    ]
+
+
+def test_after_takes_priority_over_group():
+    """When both after and group resolve, after wins."""
+    items = [
+        _item("dep"),
+        _item("container"),
+        _item("child", after=["dep"], group="container"),
+    ]
+    result = build_dep_tree(items)
+    assert [(r.slug, r.depth) for r in result] == [
+        ("dep", 0),
+        ("child", 1),
+        ("container", 0),
+    ]
+
+
+def test_group_self_reference_ignored():
+    """group pointing to self doesn't create a cycle."""
+    items = [_item("self-ref", group="self-ref")]
+    result = build_dep_tree(items)
+    assert result[0].slug == "self-ref"
+    assert result[0].depth == 0
+
+
+def test_group_unresolvable_stays_root():
+    """group pointing to nonexistent slug stays at root."""
+    items = [_item("orphan", group="ghost")]
+    result = build_dep_tree(items)
+    assert result[0].slug == "orphan"
+    assert result[0].depth == 0
+
+
+def test_group_multiple_children():
+    """Multiple items with same group nest under the container."""
+    items = [
+        _item("container"),
+        _item("a", group="container"),
+        _item("b", group="container"),
+    ]
+    result = build_dep_tree(items)
+    assert [(r.slug, r.depth) for r in result] == [
+        ("container", 0),
+        ("a", 1),
+        ("b", 1),
+    ]
+
+
+def test_group_cycle_broken():
+    """Mutual group references don't infinite loop."""
+    items = [_item("a", group="b"), _item("b", group="a")]
+    result = build_dep_tree(items)
+    slugs = {r.slug for r in result}
+    assert slugs == {"a", "b"}
 
 
 def test_tree_lines_continuation():

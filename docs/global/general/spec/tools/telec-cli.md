@@ -32,19 +32,3 @@ There are many of course, but this section is now intended to reveal the full su
 ### `telec sessions send`
 
 <!-- @exec: telec sessions send -h -->
-
-### `telec computers`
-
-<!-- @exec: telec computers -h -->
-
-### `telec projects`
-
-<!-- @exec: telec projects -h -->
-
-### `telec agents`
-
-<!-- @exec: telec agents -h -->
-
-### `telec channels`
-
-<!-- @exec: telec channels -h -->

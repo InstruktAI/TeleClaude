@@ -96,6 +96,58 @@ def test_assemble_roadmap_icebox_only(mock_project):
     assert todos[0].slug == "icebox-item"
 
 
+def test_worktree_state_takes_precedence(tmp_path):
+    """Worktree state.yaml overrides main todos/ state when present."""
+    todos_dir = tmp_path / "todos"
+    todos_dir.mkdir()
+    (todos_dir / "icebox.yaml").touch()
+
+    # Main state: dor score 3
+    (todos_dir / "task-1").mkdir()
+    (todos_dir / "task-1" / "state.yaml").write_text(
+        json.dumps({"build": "pending", "dor": {"score": 3}, "review": "pending"})
+    )
+
+    # Worktree state: dor score 8 (active work in progress)
+    worktree_state_dir = tmp_path / "trees" / "task-1" / "todos" / "task-1"
+    worktree_state_dir.mkdir(parents=True)
+    (worktree_state_dir / "state.yaml").write_text(
+        json.dumps({"build": "started", "dor": {"score": 8}, "review": "pending"})
+    )
+
+    entries = [RoadmapEntry(slug="task-1", description="Task 1")]
+
+    with patch("teleclaude.core.roadmap.load_roadmap", return_value=entries):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[]):
+            todos = assemble_roadmap(str(tmp_path))
+
+    assert len(todos) == 1
+    assert todos[0].slug == "task-1"
+    assert todos[0].dor_score == 8  # Worktree value, not main
+    assert todos[0].status == "in_progress"  # build: started
+
+
+def test_worktree_state_fallback_to_main(tmp_path):
+    """Without a worktree, main todos/ state.yaml is used."""
+    todos_dir = tmp_path / "todos"
+    todos_dir.mkdir()
+    (todos_dir / "icebox.yaml").touch()
+
+    (todos_dir / "task-1").mkdir()
+    (todos_dir / "task-1" / "state.yaml").write_text(
+        json.dumps({"build": "pending", "dor": {"score": 5}, "review": "pending"})
+    )
+
+    entries = [RoadmapEntry(slug="task-1", description="Task 1")]
+
+    with patch("teleclaude.core.roadmap.load_roadmap", return_value=entries):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[]):
+            todos = assemble_roadmap(str(tmp_path))
+
+    assert len(todos) == 1
+    assert todos[0].dor_score == 5  # Main value used
+
+
 def test_assemble_roadmap_container_reordering(mock_project):
     """Test that container is moved before its children if it appears later."""
 

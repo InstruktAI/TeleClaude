@@ -160,6 +160,7 @@ async def test_agent_coordinator_handle_agent_stop_strips_ansi(monkeypatch):
     monkeypatch.setattr("teleclaude.core.agent_coordinator.notify_input_request", AsyncMock(return_value=0))
 
     client = MagicMock()
+    client.any_adapter_wants_threaded_output = MagicMock(return_value=False)
     tts = MagicMock()
     headless = MagicMock()
     coordinator = AgentCoordinator(client, tts, headless)

@@ -289,6 +289,59 @@ event-platform-core
       └── community-governance, community-manager-agent
 ```
 
+## Discovery Blockers (from 2026-03-01 peer research)
+
+The discovery brief (`discovery-brief.md`) identified 10 blockers across the event-platform
+group. This section tracks their resolution status. Blockers are owned by sub-todos unless
+they affect the container's breakdown or vision.
+
+### Resolved
+
+- **Phase 1 reality mismatch** — implementation plan updated with Reality Baseline section
+  (2026-03-01). Existing code documented, refactor vs. build-from-scratch separated.
+- **`integration-events-model` delivered** — empty directory cleaned up, marked delivered in
+  roadmap.
+
+### Owned by sub-todos (tracked in their artifacts)
+
+- **Trust truth table missing** → `event-system-cartridges` requirements
+- **Correlation re-entry loop risk** → `event-system-cartridges` requirements (source tag guard)
+- **Member slug undefined** → `event-domain-infrastructure` requirements (uses `PersonEntry.email`)
+- **DAG cache absent** → `event-domain-infrastructure` risks section
+- **PipelineContext.ai_client uncontracted** → `event-signal-pipeline` (add before domain-infrastructure ships)
+- **`cartridge.invoked` emission cascade** → `event-mesh-distribution` (self-invocation guard)
+- **CLI collision (`telec cartridges list`)** → `event-alpha-container` / `event-mesh-distribution` (reconcile)
+
+### Unresolved (blocking sub-todo readiness)
+
+- **`mesh-architecture` entirely empty** — requirements.md and implementation-plan.md are blank
+  templates. Blocks: `event-mesh-distribution`, `mesh-trust-model`, `community-governance`.
+  Resolution: mesh-architecture must be prepared independently before these sub-todos can build.
+- **Consolidation cutover void** — 7 old notification paths need migration tasks enumerated.
+  Owned by Phase 1 (delivered), but cutover may still be incomplete. Verify against live code.
+- **`branch_pushed` contradiction in integrator-wiring** — FR2 folds into `deployment.started`
+  payload; readiness predicate requires separate event; FR1 forbids modifying integration
+  internals. Owned by `integrator-wiring` todo, not event-platform. Track as external dependency.
+
+### Cross-cutting patterns (require formal specification)
+
+- **`PipelineContext` contract surface** — every cartridge todo assumes fields not yet in the
+  dataclass. Needs a formal spec: which fields exist, which todo adds them, in what order.
+  Recommendation: create a `PipelineContext` spec as a doc snippet or add to
+  `event-platform-core` as a contract addendum.
+- **"Cluster" definition** — appears in 4+ contexts with no authoritative definition.
+  Blocked until `mesh-architecture` defines it.
+
+### Design confirmations (from prepare session 2026-03-03)
+
+- **Cartridge ordering primitives are sufficient.** `depends_on` scoped to same-domain IDs
+  is correct. Cross-scope composition is event-based (utility cartridges emit events, domain
+  cartridges subscribe). No cross-domain dependency mechanism needed.
+- **Agent decides cartridge positioning.** The domain guardian AI inspects existing manifests,
+  understands the DAG, and writes `depends_on` for new cartridges. No "default trunk" or
+  "main branch" primitive needed — the AI is the positioning intelligence. Humans never
+  interact with the DAG directly.
+
 ## External Dependents
 
 These existing todos depend on `event-platform` (the holder):

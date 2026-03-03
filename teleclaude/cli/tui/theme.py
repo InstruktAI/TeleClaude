@@ -327,10 +327,28 @@ def apply_tui_haze(hex_color: str) -> str:
     return blend(hex_color, blend_target, pct)
 
 
-def get_billboard_background(focused: bool) -> str:
-    """Get billboard background color, ensuring it plays along with TUI focus state."""
+# --- Centralized TUI focus state for haze ---
+
+_tui_focused: bool = True
+
+
+def set_tui_focused(focused: bool) -> None:
+    """Update TUI focus state. Called by app._watch_app_focus()."""
+    global _tui_focused  # noqa: PLW0603
+    _tui_focused = focused
+
+
+def resolve_haze(hex_color: str) -> str:
+    """Return hex_color as-is when focused, hazed when unfocused."""
+    if _tui_focused:
+        return hex_color
+    return apply_tui_haze(hex_color)
+
+
+def get_billboard_background() -> str:
+    """Get billboard background color, adapting to TUI focus state."""
     if _is_dark_mode:
-        return "#242424" if focused else "#2b2b2b"
+        return "#242424" if _tui_focused else "#2b2b2b"
     return "#ffffff"
 
 

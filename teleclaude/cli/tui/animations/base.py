@@ -9,13 +9,17 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from teleclaude.cli.tui.animation_colors import ColorPalette
 
-# Physical Z-Levels for occlusion
+# Physical Z-Levels for occlusion (10-unit spacing for intermediate layers)
 Z_SKY = 0
-Z_CELESTIAL = 1
-Z_BILLBOARD = 3
-Z_TABS_INACTIVE = 5
-Z_FOREGROUND = 7
-Z_TABS_ACTIVE = 10
+Z_STARS = 10
+Z_CELESTIAL = 20
+Z_CLOUDS_FAR = 30
+Z_BILLBOARD = 40
+Z_CLOUDS_MID = 50
+Z_TABS_INACTIVE = 60
+Z_CLOUDS_NEAR = 70
+Z_TABS_ACTIVE = 80
+Z_FOREGROUND = 90
 
 
 class Spectrum:
@@ -84,6 +88,16 @@ class RenderBuffer:
         if z not in self.layers:
             self.layers[z] = {}
         self.layers[z][(x, y)] = value
+
+    def clear(self) -> None:
+        """Clear all layers."""
+        for layer in self.layers.values():
+            layer.clear()
+
+    def clear_layer(self, z: int) -> None:
+        """Clear a single Z-layer without deallocating."""
+        if z in self.layers:
+            self.layers[z].clear()
 
 
 class Animation(ABC):
