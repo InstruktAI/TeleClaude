@@ -8,7 +8,7 @@ existing patterns in the codebase.
 
 ## Gate Assessment (Final)
 
-**Verdict: needs_work — score 7/10**
+**Verdict: pass — score 9/10**
 
 ### 1. Intent & Success
 **Pass.** Problem statement is explicit: slug logic is duplicated across 5+ locations with
@@ -24,10 +24,10 @@ a single session. No cross-cutting architectural changes.
 `make test` + `make lint` as final gate. Demo includes grep-based duplication checks.
 
 ### 4. Approach Known
-**Pass with finding.** The extract-module pattern is standard. However, the plan does not
-fully account for the cascading effect of the `FileExistsError` → `ensure_unique_slug`
-behavior change on callers that continue to use the original `slug` variable after calling
-`create_todo_skeleton` / `create_bug_skeleton`. See blocker #1.
+**Pass.** Standard extract-module refactoring. All code locations identified. The
+`ensure_unique_slug` pattern already exists in `content_scaffold.py` — it's being
+generalized, not invented. Caller slug desync risk is now explicitly addressed in the
+plan (task 2.3) with a concrete fix: derive actual slug from `todo_dir.name`.
 
 ### 5. Research Complete
 **Pass (auto-satisfied).** No third-party dependencies. Pure internal refactoring.
@@ -36,36 +36,15 @@ behavior change on callers that continue to use the original `slug` variable aft
 **Pass.** No external dependencies. No config changes. No environment requirements.
 
 ### 7. Integration Safety
-**Needs work.** The behavior change from `FileExistsError` to counter-suffix uniqueness is
-well-intentioned, but the plan incompletely addresses its cascading effects. Three callers
-use the original `slug` variable after the skeleton function call:
-
-1. **`telec.py:2829`** — creates a git branch with `slug`. If `ensure_unique_slug` changed
-   the slug to `fix-something-2`, the branch is still named `fix-something` while the
-   directory is `fix-something-2`. **This is a real bug.**
-2. **`telec.py:2253`** — prints `"Updated dependencies for {slug}"`. Misleading if suffixed.
-3. **`preparation.py:790`** — constructs `filepath = f"{project_root}/todos/{slug}/{filename}"`.
-   Points to wrong directory if suffixed.
-
-**Fix:** Both skeleton functions already return `Path` (the `todo_dir`). After the call,
-callers must derive the actual slug: `slug = todo_dir.name`. The plan needs explicit
-sub-tasks for each affected caller site.
+**Pass.** The behavior change (todo/bug skeleton collision → counter-suffix instead of
+`FileExistsError`) is an improvement. All callers that catch `FileExistsError` are
+identified in requirements. The slug desync risk (callers using original `slug` after
+a potentially suffixed return) is documented in requirements and the plan prescribes
+the fix: `slug = todo_dir.name` at each affected site (`telec.py:2829`, `telec.py:2253`,
+`preparation.py:790`).
 
 ### 8. Tooling Impact
 **Pass (auto-satisfied).** No tooling or scaffolding changes.
-
-## Additional Findings
-
-### Misleading checkmarks
-All tasks in phases 1–3 of the implementation plan have `[x]` checkmarks, but no
-implementation exists (`teleclaude/slug.py` and `tests/unit/test_slug.py` are both absent).
-This would confuse a builder into thinking the work is done. All checkmarks must be
-cleared to `[ ]`.
-
-### Missing file scope
-Task 2.3 mentions `preparation.py` in its description text ("and TUI `preparation.py`")
-but lists only `teleclaude/cli/telec.py` in its `File(s):` header. Either add
-`preparation.py` to task 2.3's file scope or create a separate task for it.
 
 ## Assumptions
 
@@ -82,13 +61,9 @@ None.
 
 ## Blockers
 
-1. **Caller slug desync** — plan must add explicit sub-tasks for updating callers to use
-   `todo_dir.name` after `create_todo_skeleton` / `create_bug_skeleton` calls. Affected:
-   `telec.py:2829`, `telec.py:2253`, `preparation.py:790`.
-2. **Misleading checkmarks** — all `[x]` in phases 1–3 must be `[ ]`.
-3. **File scope gap** — `preparation.py` must be listed in task 2.3 or get its own task.
+None. All prior blockers resolved:
 
-## Remediation
-
-All three blockers are plan-level fixes, not research or design questions. A single pass
-through the implementation plan resolves them. No human decision required.
+1. ~~Caller slug desync~~ — plan task 2.3 now includes explicit sub-task for deriving
+   slug from `todo_dir.name`. Requirements document the risk.
+2. ~~Misleading checkmarks~~ — all phases 1–3 cleared to `[ ]`.
+3. ~~File scope gap~~ — `preparation.py` now listed in task 2.3 `File(s):` header.
