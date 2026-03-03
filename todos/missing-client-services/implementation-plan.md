@@ -74,18 +74,19 @@ tests for everything.
 
 **File(s):** `teleclaude/daemon.py`
 
-- [ ] After the existing Telegram delivery adapter registration block (around line 1693-1718), add a Discord block:
-  - Check `config.discord` (or just proceed — Discord config may not gate this)
+- [ ] After the existing Telegram delivery adapter registration block (lines 1693-1718), add a Discord block:
+  - Gate: `if config.discord.enabled:` (DiscordConfig always exists; `.enabled` is the feature toggle)
   - Import `send_discord_dm` from `teleclaude.services.discord`
   - Import `DiscordDeliveryAdapter` from `teleclaude_events.delivery.discord`
   - Iterate admin people, load person config, check `person_cfg.creds.discord.user_id`
   - If user_id exists, create `DiscordDeliveryAdapter(user_id=user_id, send_fn=send_discord_dm)` and append to `push_callbacks`
 - [ ] Add a WhatsApp block:
-  - Check `config.whatsapp` and `config.whatsapp.enabled`
+  - Gate: `if config.whatsapp.enabled:` (WhatsAppConfig always exists; `.enabled` derives from config + env vars)
   - Import `send_whatsapp_message` from `teleclaude.services.whatsapp`
   - Import `WhatsAppDeliveryAdapter` from `teleclaude_events.delivery.whatsapp`
   - Iterate admin people, load person config, check `person_cfg.creds.whatsapp.phone_number`
-  - Create a partial/lambda that binds `phone_number_id`, `access_token`, `api_version` from config so the adapter only needs `phone_number` and `content`
+  - Bind WhatsApp API params from global config: `phone_number_id=config.whatsapp.phone_number_id`, `access_token=config.whatsapp.access_token`, `api_version=config.whatsapp.api_version`
+  - Create a partial/lambda wrapping `send_whatsapp_message` with bound API params so the adapter only needs `phone_number` and `content`
   - Create `WhatsAppDeliveryAdapter(phone_number=phone_number, send_fn=bound_send_fn)` and append to `push_callbacks`
 
 ## Phase 4: Validation
