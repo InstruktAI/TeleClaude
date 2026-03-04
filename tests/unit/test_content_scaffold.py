@@ -158,8 +158,8 @@ class TestContentDumpCliArgs:
             fake_dir.mkdir(parents=True, exist_ok=True)
             return fake_dir
 
-        with patch("teleclaude.content_scaffold.create_content_inbox_entry", fake_create):
-            with patch("teleclaude.content_scaffold._emit_content_dumped"):
+        with patch("teleclaude.cli.telec.create_content_inbox_entry", fake_create):
+            with patch("teleclaude.cli.telec._emit_content_dumped"):
                 with patch.object(Path, "cwd", return_value=tmp_path):
                     import teleclaude.cli.telec as m
 
@@ -205,9 +205,9 @@ class TestContentDumpCliArgs:
             fake_dir.mkdir(parents=True, exist_ok=True)
             return fake_dir
 
-        with patch("teleclaude.content_scaffold.create_content_inbox_entry", fake_create):
-            with patch("teleclaude.content_scaffold._emit_content_dumped", mock_emit):
-                with patch("teleclaude.content_scaffold._resolve_author", return_value="test-user"):
+        with patch("teleclaude.cli.telec.create_content_inbox_entry", fake_create):
+            with patch("teleclaude.cli.telec._emit_content_dumped", mock_emit):
+                with patch("teleclaude.cli.telec._resolve_author", return_value="test-user"):
                     with patch.object(Path, "cwd", return_value=tmp_path):
                         import teleclaude.cli.telec as m
 
