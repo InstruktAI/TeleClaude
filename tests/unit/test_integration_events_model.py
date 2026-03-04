@@ -29,9 +29,8 @@ def _never_integrated(_sha: str, _main_ref: str) -> bool:
     return False
 
 
-def _new_service(event_log_path: Path) -> IntegrationEventService:
-    return IntegrationEventService.with_file_store(
-        event_log_path=event_log_path,
+def _new_service(_event_log_path: Path | None = None) -> IntegrationEventService:
+    return IntegrationEventService.create(
         reachability_checker=_always_reachable,
         integrated_checker=_never_integrated,
     )
