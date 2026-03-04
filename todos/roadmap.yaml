@@ -6,22 +6,12 @@
 - slug: history-search-upgrade
 - slug: prepare-quality-runner
   description: Automated DOR quality runner for todo preparation
-- slug: public-website-blog
-  description: Public website with landing page and blog for InstruktAI/TeleClaude
-- slug: todo-dump-command
-  description: telec todo dump — fire-and-forget brain dump with notification trigger
-- slug: mesh-architecture
-  description: 'P2P mesh: DNS bootstrap, gossip discovery, HTTPS transport, burst
-    mitigation'
 - slug: mesh-trust-model
   after:
   - event-envelope-schema
   - mesh-architecture
   description: Per-event trust evaluation, immune system model, trust rings, sovereignty
     handles
-- slug: event-envelope-schema
-  description: 'Five-layer envelope: Identity, Semantic, Data, Affordances, Resolution
-    + core taxonomy'
 - slug: community-governance
   after:
   - mesh-architecture
@@ -41,6 +31,9 @@
 - slug: telec-init-enrichment
   description: 'Rich project bootstrapping: deep analysis, doc scaffolding, intelligence
     seeding'
+- slug: event-envelope-schema
+  description: 'Five-layer envelope: Identity, Semantic, Data, Affordances, Resolution
+    + core taxonomy'
 - slug: event-platform
   description: 'Event processing platform: cartridges, domain pipelines, signal processing,
     mesh distribution (container for phases 2-7)'
@@ -75,13 +68,29 @@
   - event-domain-infrastructure
   - event-signal-pipeline
   description: 'Out-of-box domain configs: software-dev, marketing, creative, customer-relations'
-- slug: a2ui-showcase-component
+- slug: public-website-blog
+  description: Public website with landing page and blog for InstruktAI/TeleClaude
+- slug: mesh-architecture
+  description: 'P2P mesh: DNS bootstrap, gossip discovery, HTTPS transport, burst
+    mitigation'
 - slug: dependency-health-guardrails
-- slug: integration-events-model
-- slug: terminal-input-feedback
-- slug: typing-indicators-adapters
 - slug: ucap-slo-hardening
-- slug: voice-message-durable-path
+- slug: a2ui-showcase-component
 - slug: web-frontend-test-bugs
 - slug: youtube-scrape-channels-job
 - slug: default-agent-resolution
+- slug: agent-session-auth
+  description: Agent session identity and credential lifecycle — token issuance, ledger,
+    two principal types (human-delegated, system/job), revocation on session close
+- slug: adapter-boundary-cleanup
+- slug: person-knowledge-level
+- slug: slug-helper
+- slug: context-delivery-dedup
+- slug: state-machine-gate-sharpening
+- slug: cli-knowledge-commands
+  description: telec history + telec memory CLI commands, retire standalone tool specs
+- slug: cli-authz-overhaul
+- slug: reflection-routing-ownership
+  after:
+  - adapter-boundary-cleanup
+  description: Move reflection routing decisions from core to adapters
