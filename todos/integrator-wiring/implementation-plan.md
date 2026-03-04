@@ -176,10 +176,10 @@ existing schema module from event-platform-core)
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] Remove `sync_slug_todo_from_worktree_to_main` (line ~1986)
-- [ ] Remove `sync_slug_todo_from_main_to_worktree` (line ~2005)
-- [ ] Remove all call sites of these functions (line ~2945)
-- [ ] The integrator merges the full branch — todo artifact changes in the
+- [x] Remove `sync_slug_todo_from_worktree_to_main` (line ~1986)
+- [x] Remove `sync_slug_todo_from_main_to_worktree` (line ~2005)
+- [x] Remove all call sites of these functions (line ~2945)
+- [x] The integrator merges the full branch — todo artifact changes in the
       worktree are included in the branch merge
 
 ### Task 5.4: Clean up phantom state

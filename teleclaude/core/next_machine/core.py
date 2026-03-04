@@ -1965,90 +1965,6 @@ def sync_main_planning_to_all_worktrees(cwd: str) -> None:
             sync_main_to_worktree(cwd, entry.name)
 
 
-def sync_worktree_to_main(cwd: str, slug: str, relative_files: list[str]) -> None:
-    """Copy slug-specific workflow files from worktree back to main repo."""
-    main_root = Path(cwd)
-    worktree_root = Path(cwd) / "trees" / slug
-    if not worktree_root.exists():
-        return
-    for rel in relative_files:
-        _sync_file(worktree_root, main_root, rel)
-
-
-def sync_slug_todo_from_worktree_to_main(cwd: str, slug: str) -> None:
-    """Copy canonical todo artifacts for a slug from worktree back to main."""
-    todo_base = f"todos/{slug}"
-    sync_worktree_to_main(
-        cwd,
-        slug,
-        [
-            f"{todo_base}/bug.md",
-            f"{todo_base}/requirements.md",
-            f"{todo_base}/implementation-plan.md",
-            f"{todo_base}/state.yaml",
-            f"{todo_base}/review-findings.md",
-            f"{todo_base}/deferrals.md",
-            f"{todo_base}/breakdown.md",
-            f"{todo_base}/dor-report.md",
-        ],
-    )
-
-
-def sync_slug_todo_from_main_to_worktree(cwd: str, slug: str) -> int:
-    """Copy canonical todo artifacts for a slug from main into worktree.
-
-    All artifacts are seed-only — only copied when the destination does not yet
-    exist. This prevents the sync from overwriting worker-updated artifacts
-    (review-findings.md, implementation-plan.md, etc.) on subsequent next_work calls.
-    """
-    todo_base = f"todos/{slug}"
-    main_root = Path(cwd)
-    worktree_root = Path(cwd) / "trees" / slug
-    if not worktree_root.exists():
-        return 0
-    copied = 0
-    for rel in [
-        f"{todo_base}/bug.md",
-        f"{todo_base}/input.md",
-        f"{todo_base}/requirements.md",
-        f"{todo_base}/implementation-plan.md",
-        f"{todo_base}/quality-checklist.md",
-        f"{todo_base}/review-findings.md",
-        f"{todo_base}/deferrals.md",
-        f"{todo_base}/breakdown.md",
-        f"{todo_base}/dor-report.md",
-        f"{todo_base}/state.yaml",
-    ]:
-        src = main_root / rel
-        dst = worktree_root / rel
-        if src.exists() and not dst.exists():
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dst)
-            copied += 1
-    return copied
-
-
-def _commit_synced_todo_artifacts(worktree_cwd: str, slug: str) -> None:
-    """Commit any planning artifacts freshly seeded from main into the worktree."""
-    # Guard: skip if worktree_cwd is not inside a git repository (e.g. test tmpdir).
-    probe = subprocess.run(
-        ["git", "rev-parse", "--git-dir"],
-        cwd=worktree_cwd,
-        capture_output=True,
-    )
-    if probe.returncode != 0:
-        return
-    todo_path = f"todos/{slug}"
-    subprocess.run(["git", "add", todo_path], cwd=worktree_cwd, check=True)
-    result = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=worktree_cwd)
-    if result.returncode != 0:
-        subprocess.run(
-            ["git", "commit", "-m", "chore: seed planning artifacts from main"],
-            cwd=worktree_cwd,
-            check=True,
-        )
-
-
 def _dirty_paths(repo: Repo) -> list[str]:
     """Return dirty paths from porcelain status output."""
     lines = repo.git.status("--porcelain").splitlines()
@@ -2934,15 +2850,9 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
 
             sync_started = perf_counter()
             main_sync_copied = await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
-            slug_sync_copied = await asyncio.to_thread(sync_slug_todo_from_main_to_worktree, cwd, resolved_slug)
-            total_synced = main_sync_copied + slug_sync_copied
-            sync_decision = "run" if total_synced > 0 else "skip"
-            sync_reason = (
-                f"copied main={main_sync_copied} slug={slug_sync_copied}" if total_synced > 0 else "unchanged_inputs"
-            )
+            sync_decision = "run" if main_sync_copied > 0 else "skip"
+            sync_reason = f"copied main={main_sync_copied}" if main_sync_copied > 0 else "unchanged_inputs"
             _log_next_work_phase(phase_slug, "sync", sync_started, sync_decision, sync_reason)
-            if slug_sync_copied > 0:
-                await asyncio.to_thread(_commit_synced_todo_artifacts, worktree_cwd, resolved_slug)
     except RuntimeError as exc:
         _log_next_work_phase(phase_slug, "ensure_prepare", ensure_started, "error", "prep_failed")
         return format_error(
