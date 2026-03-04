@@ -686,7 +686,7 @@ class AgentCoordinator:
         self._emit_status_event(context.session_id, "active", "agent_session_started")
 
         await self._maybe_send_headless_snapshot(context.session_id)
-        await self._speak_session_start()
+        await self._speak_session_start(context.session_id)
 
     async def handle_user_prompt_submit(self, context: AgentEventContext) -> None:
         """Handle user prompt submission.
@@ -729,7 +729,12 @@ class AgentCoordinator:
 
         # Clear checkpoint state on real user input
         await db.update_session(session_id, last_checkpoint_at=None, last_tool_use_at=None)
-        self._incremental_render_digests.pop(session_id, None)
+        # NOTE: Do NOT clear _incremental_render_digests here. The poller may
+        # fire between this point and the first new assistant content. Clearing
+        # the digest opens a window where stale content from the previous turn
+        # is re-rendered and sent as a duplicate (no digest to compare against).
+        # The digest is naturally replaced when new assistant content arrives
+        # and produces a different hash.
 
         # Prepare batched update
         now = datetime.now(timezone.utc)
@@ -993,7 +998,7 @@ class AgentCoordinator:
             )
             if summary:
                 try:
-                    await self.tts_manager.speak(summary)
+                    await self.tts_manager.speak(summary, session_id=session_id)
                 except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
                     logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
 
@@ -1364,12 +1369,12 @@ class AgentCoordinator:
             return
         await self.headless_snapshot_service.send_snapshot(session, reason="agent_session_start", client=self.client)
 
-    async def _speak_session_start(self) -> None:
+    async def _speak_session_start(self, session_id: str) -> None:
         if not SESSION_START_MESSAGES:
             return
         message = random.choice(SESSION_START_MESSAGES)
         try:
-            await self.tts_manager.speak(message)
+            await self.tts_manager.speak(message, session_id=session_id)
         except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
             logger.warning("TTS session_start failed: %s", exc)
 

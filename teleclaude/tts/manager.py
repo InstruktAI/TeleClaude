@@ -189,8 +189,8 @@ class TTSManager:
             logger.warning("Session %s not found for TTS", session_id)
             return False
 
-        if session.last_input_origin == InputOrigin.TELEGRAM.value:
-            logger.info(f"Skipping TTS for session {session_id[:8]} (origin: telegram)")
+        if session.last_input_origin != InputOrigin.TERMINAL.value:
+            logger.info("Skipping TTS for session %s (origin: %s)", session_id[:8], session.last_input_origin)
             return False
 
         # Get or assign voice for this session (persisted in DB)
@@ -250,8 +250,8 @@ class TTSManager:
         )
         return True
 
-    async def speak(self, text: str) -> bool:
-        """Speak text without coupling to sessions or event types."""
+    async def speak(self, text: str, session_id: str) -> bool:
+        """Speak text using the session's persisted voice."""
         if not self.enabled:
             logger.debug("TTS disabled globally")
             return False
@@ -260,31 +260,25 @@ class TTSManager:
             logger.debug("No text provided for TTS")
             return False
 
-        service_chain: list[tuple[str, Optional[str]]] = []
-        priority = self.tts_config.service_priority or [
-            "elevenlabs",
-            "openai",
-            "macos",
-            "pyttsx3",
-        ]
-        for service_name in priority:
-            service_cfg = self.tts_config.services.get(service_name)
-            if not service_cfg or not service_cfg.enabled:
-                continue
-            voice_param: Optional[str] = None
-            if service_cfg.voices:
-                random_voice = random.choice(service_cfg.voices)
-                voice_param = random_voice.voice_id or random_voice.name
-            service_chain.append((service_name, voice_param))
-
-        if not service_chain:
-            logger.warning("No TTS services enabled for speak()")
+        session = await db.get_session(session_id)
+        if not session:
+            logger.warning("Session %s not found for TTS speak()", session_id[:8])
             return False
 
-        logger.debug("TTS speak queued: %s...", text[:50])
-        task = asyncio.create_task(run_tts_with_lock_async(text, service_chain, "summary"))
+        if session.last_input_origin != InputOrigin.TERMINAL.value:
+            logger.info("Skipping TTS speak for session %s (origin: %s)", session_id[:8], session.last_input_origin)
+            return False
+
+        voice = await self._get_or_assign_voice(session_id)
+        if not voice:
+            logger.warning("No voice available for TTS speak()", extra={"session_id": session_id[:8]})
+            return False
+
+        service_chain: list[tuple[str, Optional[str]]] = [(voice.service_name, voice.voice)]
+        logger.debug("TTS speak queued (voice %s): %s...", voice.voice, text[:50])
+        task = asyncio.create_task(run_tts_with_lock_async(text, service_chain, session_id))
         task.add_done_callback(
-            lambda t: asyncio.create_task(self._handle_tts_result(t, "summary", service_chain[0][0]))
+            lambda t: asyncio.create_task(self._handle_tts_result(t, session_id, voice.service_name))
         )
         return True
 
