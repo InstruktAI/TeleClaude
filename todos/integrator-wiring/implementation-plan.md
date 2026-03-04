@@ -63,18 +63,18 @@ existing schema module from event-platform-core)
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] In the path where `mark-phase review approved` succeeds,
+- [x] In the path where `mark-phase review approved` succeeds,
       call `emit_review_approved()` with slug, session ID, and review round
-- [ ] This is in the `next-review` POST_COMPLETION flow and in
+- [x] This is in the `next-review` POST_COMPLETION flow and in
       `_resolve_review_phase()`
 
 ### Task 2.3: Wire emission into finalize path
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] In the `/next-finalize` POST_COMPLETION, after confirming FINALIZE_READY:
+- [x] In the `/next-finalize` POST_COMPLETION, after confirming FINALIZE_READY:
       call `emit_deployment_started()` with slug, branch, sha, session IDs
-- [ ] This replaces the inline merge/push — the orchestrator stops here
+- [x] This replaces the inline merge/push — the orchestrator stops here
 
 ## Phase 3: Integrator Trigger
 
@@ -134,7 +134,7 @@ existing schema module from event-platform-core)
 
 **File(s):** `teleclaude/core/next_machine/core.py`
 
-- [ ] Replace the current 12-step POST_COMPLETION for `next-finalize` with:
+- [x] Replace the current 12-step POST_COMPLETION for `next-finalize` with:
       1. Read worker output, confirm FINALIZE_READY
       2. Verify finalize lock ownership
       3. End worker session
@@ -142,9 +142,9 @@ existing schema module from event-platform-core)
       5. Release finalize lock
       6. Report: "Candidate queued for integration. Integrator will process."
       7. Call `{next_call}` (state machine continues)
-- [ ] Remove steps 6-11 of the old flow (safety re-check, merge, bookkeeping,
+- [x] Remove steps 6-11 of the old flow (safety re-check, merge, bookkeeping,
       demo snapshot, cleanup, push, restart)
-- [ ] The delivery bookkeeping, cleanup, and push now happen in the integrator
+- [x] The delivery bookkeeping, cleanup, and push now happen in the integrator
       session (Phase 3, Task 3.3)
 
 ## Phase 5: Cutover, Cleanup, and Sync Removal

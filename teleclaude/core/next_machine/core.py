@@ -30,6 +30,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config as app_config
 from teleclaude.core.agents import AgentName
+from teleclaude.core.integration_bridge import emit_deployment_started, emit_review_approved
 from teleclaude.core.db import Db
 
 logger = get_logger(__name__)
@@ -234,36 +235,27 @@ WHEN WORKER COMPLETES:
 4. Confirm worker reported exactly `FINALIZE_READY: {args}` in session `<session_id>` transcript.
    If missing: send worker feedback to report FINALIZE_READY and stop (do NOT apply).
 5. telec sessions end <session_id>
-6. FINALIZE APPLY SAFETY RE-CHECK (canonical main):
-   a. MAIN_REPO="$(git rev-parse --git-common-dir)/.."
-   b. Ensure canonical main has no uncommitted changes except `todos/.finalize-lock`.
-      If dirty: stop and report `ERROR: FINALIZE_PRECONDITION_DIRTY_CANONICAL_MAIN`.
-      Operator action: clean canonical main, then rerun `telec todo work {args}`.
-   c. Ensure canonical main is not ahead of `{args}` (`git rev-list --count {args}..main` must be 0).
-      If ahead: stop and report `ERROR: FINALIZE_PRECONDITION_MAIN_AHEAD`.
-      Operator action: merge/rebase latest main into `{args}`, then rerun `telec todo work {args}`.
-   d. If git state cannot be inspected: stop and report `ERROR: FINALIZE_PRECONDITION_GIT_STATE_UNKNOWN`.
-      Operator action: restore git access/health, then rerun `telec todo work {args}`.
-7. FINALIZE APPLY (orchestrator-owned, canonical root only — NEVER cd into worktree):
-   a. git -C "$MAIN_REPO" fetch origin main
-   b. git -C "$MAIN_REPO" switch main
-   c. git -C "$MAIN_REPO" pull --ff-only origin main
-   d. git -C "$MAIN_REPO" merge --squash {args}
-      TITLE="$(grep '^# ' "$MAIN_REPO/todos/{args}/requirements.md" | head -1 | sed 's/^# //')"
-      git -C "$MAIN_REPO" commit -m "feat({args}): ${{TITLE:-deliver {args}}}"
-   e. MERGE_COMMIT="$(git -C "$MAIN_REPO" rev-parse HEAD)"
-   f. If "$MAIN_REPO/todos/{args}/bug.md" exists: skip delivery bookkeeping.
-      Else: telec roadmap deliver {args} --commit "$MERGE_COMMIT"
-            && git -C "$MAIN_REPO" add todos/delivered.yaml todos/roadmap.yaml
-            && git -C "$MAIN_REPO" commit -m "chore({args}): record delivery"
-8. CLEANUP (orchestrator-owned, from main repo root):
-   a. git -C "$MAIN_REPO" worktree remove trees/{args} --force
-   b. git -C "$MAIN_REPO" branch -D {args}
-   c. rm -rf "$MAIN_REPO/todos/{args}"
-   d. git -C "$MAIN_REPO" add -A && git -C "$MAIN_REPO" commit -m "chore: cleanup {args}"
-9. git -C "$MAIN_REPO" push origin main
-10. make restart (daemon picks up merged code before next dispatch)
-11. Call {next_call}
+6. EMIT DEPLOYMENT EVENT (hand off to the singleton integrator):
+   a. Get branch name and HEAD sha from the worktree:
+      BRANCH="{args}"
+      SHA="$(git -C trees/{args} rev-parse HEAD)"
+   b. Emit deployment.started:
+      python -c "
+      import asyncio
+      from teleclaude.core.integration_bridge import emit_deployment_started
+      asyncio.run(emit_deployment_started(
+          slug='{args}', branch='$BRANCH', sha='$SHA',
+          orchestrator_session_id='$TELECLAUDE_SESSION_ID',
+      ))
+      " || echo "WARNING: deployment.started emission failed (non-blocking)"
+7. Release finalize lock:
+   rm -f todos/.finalize-lock
+8. Report: "Candidate {args} queued for integration. Integrator will process."
+9. Call {next_call}
+10. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+    - Do NOT end the session — keep it alive as a signal for human investigation
+    - Report the error status and session ID to the user for manual intervention
+11. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
 }
 
@@ -3186,6 +3178,18 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         release_finalize_lock(cwd, session_id)
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
         return format_error("NO_AGENTS", str(exc))
+
+    # Emit review.approved event (fire-and-forget — don't block finalize)
+    review_round_val = state.get("review_round")
+    review_round = review_round_val if isinstance(review_round_val, int) else 1
+    try:
+        await emit_review_approved(
+            slug=resolved_slug,
+            reviewer_session_id=session_id,
+            review_round=review_round,
+        )
+    except Exception:
+        logger.warning("Failed to emit review.approved event for %s", resolved_slug, exc_info=True)
 
     # Bugs skip delivered.yaml bookkeeping and are removed from todos entirely
     is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
