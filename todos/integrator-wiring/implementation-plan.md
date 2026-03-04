@@ -82,18 +82,18 @@ existing schema module from event-platform-core)
 
 **File(s):** `teleclaude_events/cartridges/integration_trigger.py` (new)
 
-- [ ] Implement `IntegrationTriggerCartridge` following the cartridge interface:
+- [x] Implement `IntegrationTriggerCartridge` following the cartridge interface:
       ```python
       async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None
       ```
-- [ ] The cartridge fires on `domain.software-development.review.approved`,
+- [x] The cartridge fires on `domain.software-development.review.approved`,
       `domain.software-development.deployment.started`, and branch_pushed events
-- [ ] For matching events: extract (slug, branch, sha) and feed to the
+- [x] For matching events: extract (slug, branch, sha) and feed to the
       `ReadinessProjection` (maintained in daemon memory via `PipelineContext`)
-- [ ] When `ReadinessProjection` returns a newly-READY candidate, trigger
+- [x] When `ReadinessProjection` returns a newly-READY candidate, trigger
       integrator spawn via a daemon callback on `PipelineContext`
-- [ ] Non-matching events: pass through unchanged (return the event)
-- [ ] Register the cartridge in the pipeline chain (after dedup, before or
+- [x] Non-matching events: pass through unchanged (return the event)
+- [x] Register the cartridge in the pipeline chain (after dedup, before or
       alongside the notification projector)
 
 ### Task 3.2: Integrator session spawn/wake

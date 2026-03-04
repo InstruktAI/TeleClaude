@@ -91,7 +91,11 @@ from teleclaude_events import (
     build_default_catalog,
     configure_producer,
 )
-from teleclaude_events.cartridges import DeduplicationCartridge, NotificationProjectorCartridge
+from teleclaude_events.cartridges import (
+    DeduplicationCartridge,
+    IntegrationTriggerCartridge,
+    NotificationProjectorCartridge,
+)
 from teleclaude_events.delivery.telegram import TelegramDeliveryAdapter
 from teleclaude_events.envelope import EventEnvelope as EventsEnvelope
 
@@ -1717,9 +1721,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 except Exception:
                     logger.warning("Could not load people config for Telegram delivery adapter")
 
-            # 5. Pipeline
+            # 5. Pipeline (dedup → integration trigger → notification projector)
+            from teleclaude.core.integration_bridge import spawn_integrator_session
+
+            integration_trigger = IntegrationTriggerCartridge(spawn_callback=spawn_integrator_session)
             context = PipelineContext(catalog=event_catalog, db=self._event_db, push_callbacks=push_callbacks)
-            pipeline = Pipeline([DeduplicationCartridge(), NotificationProjectorCartridge()], context)
+            pipeline = Pipeline(
+                [DeduplicationCartridge(), integration_trigger, NotificationProjectorCartridge()], context
+            )
 
             # 6. Processor
             computer_name = getattr(config, "computer", None)
