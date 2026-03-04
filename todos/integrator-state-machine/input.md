@@ -101,6 +101,35 @@ Per candidate in the queue:
   command — it's the automatic path. `telec todo integrate` is the manual path to the
   same state machine.
 
+## Integrator lifecycle events
+
+Every state transition emits an event through the pipeline. The events serve
+three purposes: observability (dashboard/timeline), audit trail (what happened
+and when), and checkpoint alignment (the last emitted event matches the
+checkpoint state — if the integrator crashes, it resumes from the last event).
+
+All events carry the integrator `session_id` as source, enabling full
+reconstruction of one integration run by filtering `integration.*`.
+
+| Event | When | Key payload |
+|---|---|---|
+| `integration.started` | Lease acquired, integrator alive | triggering slug, session_id, queue depth |
+| `integration.candidate.dequeued` | Popped candidate, starting work | slug, branch, sha, queue position |
+| `integration.merge.succeeded` | Squash merge clean, staged | slug, branch, files changed, insertions, deletions |
+| `integration.merge.conflicted` | Squash merge hit conflicts | slug, branch, conflicted file list |
+| `integration.conflict.resolved` | Agent resolved conflicts | slug, branch, resolution file count |
+| `integration.candidate.committed` | Agent wrote squash commit | slug, commit sha, commit message subject |
+| `integration.push.succeeded` | Main pushed to origin | slug, commit sha |
+| `integration.push.rejected` | Push failed, agent recovering | slug, rejection reason |
+| `integration.candidate.delivered` | Candidate fully done — pushed, bookkeeping, cleanup | slug, branch, merge commit sha, duration |
+| `integration.candidate.blocked` | Candidate unrecoverable, follow-up created | slug, branch, block reason, follow-up slug |
+| `integration.completed` | Queue empty, lease released, self-ending | candidates processed, candidates blocked, total duration |
+
+These flow through the same pipeline as all other events. The notification
+projector can create alerts for `integration.merge.conflicted` and
+`integration.candidate.blocked`. A dashboard queries the event stream filtered
+by `integration.*` for the full timeline.
+
 ## Prior art
 
 - `teleclaude/core/next_machine/core.py` — the work state machine (`telec todo work`)
