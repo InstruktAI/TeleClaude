@@ -656,9 +656,6 @@ class AdapterClient:
                 return f"{with_header}\n\n---\n"
             return with_header
 
-        async def _noop() -> None:
-            return None
-
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
             adapter_text = render_reflection_text(adapter, final_text)
             return cast(

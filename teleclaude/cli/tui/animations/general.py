@@ -6,7 +6,7 @@ import math
 import random
 import shutil
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
 from teleclaude.cli.tui.animations.base import (
@@ -30,6 +30,20 @@ from teleclaude.cli.tui.pixel_mapping import (
     LOGO_WIDTH,
     PixelMap,
 )
+
+
+class SkyEntity(TypedDict):
+    """A single sky entity managed by GlobalSky."""
+
+    sprite: CompositeSprite | AnimatedSprite
+    sprite_w: int
+    x: int
+    speed: float
+    target_speed: float
+    y: int
+    z: int
+    next_speed_change: int
+
 
 if TYPE_CHECKING:
     pass
@@ -87,7 +101,7 @@ class GlobalSky(Animation):
         self._next_weather_change = time.time() + self.rng.uniform(30 * 60, 120 * 60)
 
         # Sky entities — all sprites (clouds, birds, UFO, etc.) via the sprite system
-        self._sky_entities: list[dict[str, object]] = self._spawn_initial_entities()
+        self._sky_entities: list[SkyEntity] = self._spawn_initial_entities()
 
     @staticmethod
     def _fetch_term_width() -> int:
@@ -108,11 +122,11 @@ class GlobalSky(Animation):
             return True
         return theme == ("dark" if self.dark_mode else "light")
 
-    def _spawn_initial_entities(self) -> list[dict[str, object]]:
+    def _spawn_initial_entities(self) -> list[SkyEntity]:
         """Spawn sky entities: standalone sprites + non-cloud groups + weather clouds."""
         from teleclaude.cli.tui.animations.sprites import get_sky_entities, get_sprite_groups, get_weather_clouds
 
-        entities: list[dict[str, object]] = []
+        entities: list[SkyEntity] = []
         # Standalone sprites (15% chance each)
         for sprite in get_sky_entities():
             if self._theme_matches(sprite) and self.rng.random() < 0.15:
@@ -149,7 +163,9 @@ class GlobalSky(Animation):
     def _sprite_max_width(sprite: CompositeSprite | AnimatedSprite) -> int:
         """Compute stable bounding-box width across all frames/layers."""
         w = 0
-        renderables: list = sprite.frames if isinstance(sprite, AnimatedSprite) else [sprite]
+        renderables: list[list[str] | CompositeSprite] = (
+            sprite.frames if isinstance(sprite, AnimatedSprite) else [sprite]
+        )
         for r in renderables:
             if isinstance(r, CompositeSprite):
                 for layer in r.layers:
@@ -160,7 +176,7 @@ class GlobalSky(Animation):
                 w = max(w, *(len(row) for row in r))
         return w
 
-    def _spawn_sky_entity(self, sprite: CompositeSprite | AnimatedSprite) -> dict[str, object]:
+    def _spawn_sky_entity(self, sprite: CompositeSprite | AnimatedSprite) -> SkyEntity:
         """Spawn a sky entity from any CompositeSprite or AnimatedSprite."""
         z_level = self._pick_z_level(sprite.z_weights)
         lane = self._pick_z_level(sprite.y_weights) if sprite.y_weights else 1

@@ -12,12 +12,14 @@ if [ -f "${REPO_ROOT}/.venv/bin/python" ]; then
     RUN_M="${REPO_ROOT}/.venv/bin/python -m"
     RUFF="${REPO_ROOT}/.venv/bin/ruff"
     PYRIGHT="${REPO_ROOT}/.venv/bin/pyright"
+    PYLINT="${REPO_ROOT}/.venv/bin/pylint"
     export PYTHONPATH="${REPO_ROOT}:${PYTHONPATH:-}"
 else
     RUN="uv run --quiet python"
     RUN_M="uv run --quiet -m"
     RUFF="uv run --quiet ruff"
     PYRIGHT="uv run --quiet pyright"
+    PYLINT="uv run --quiet pylint"
 fi
 
 echo "Running lint checks"
@@ -35,11 +37,14 @@ else
     $RUN_M teleclaude.cli.telec sync --warn-only --validate-only --project-root "${REPO_ROOT}"
 fi
 
-echo "Running ruff format (check)"
-$RUFF format --check $dirs
+echo "Running ruff check (auto-fix: imports + lint rules)"
+$RUN "${REPO_ROOT}/tools/lint/ruff_safe.py" --fix $dirs
 
-echo "Running ruff check"
-$RUN "${REPO_ROOT}/tools/lint/ruff_safe.py" $dirs
+echo "Running ruff format (auto-fix: style)"
+$RUFF format $dirs
 
 echo "Running pyright"
 $PYRIGHT
+
+echo "Running pylint"
+$PYLINT teleclaude

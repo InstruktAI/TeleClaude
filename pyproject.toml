@@ -73,6 +73,7 @@ test = [
     "coverage[toml]>=7.4.0",
     "ruff>=0.12.0",
     "pyright>=1.1.0",
+    "pylint>=3.0.0",
     "pre-commit>=3.6.0",
     "mypy>=1.8.0",
 ]
@@ -224,37 +225,6 @@ disable_error_code = ["misc", "explicit-any", "arg-type", "unused-ignore"]
 # ALL imports MUST be at the top of the file
 enable = ["import-outside-toplevel"]
 fail-on = ["import-outside-toplevel"]
-disable = [
-  "missing-docstring",  # TODO: Consider re-enabling - add docs to complex functions
-  "missing-module-docstring",  # TODO: Consider re-enabling - add module-level docs
-  # Code complexity - heavy refactoring needed (TODO: Fix gradually as we touch these files)
-  "too-many-return-statements",  # TODO: Reasonable for validation, review case-by-case
-  "too-many-branches",  # TODO: Use dict-dispatch or strategy pattern for >12 branches (10 violations)
-  "too-many-statements",  # TODO: Extract functions when >50 statements (9 violations)
-  "too-many-public-methods",  # TODO: Split classes with >20 public methods (4 violations)
-  "too-many-lines",  # TODO: Split modules over 1000 lines (5 violations)
-  "too-many-nested-blocks",  # TODO: Extract functions to reduce nesting >5 levels (5 violations)
-  "too-few-public-methods",  # Acceptable - single-method classes are valid (callables, strategies)
-  "too-many-locals",  # Complex functions would need major refactor
-  "too-many-arguments",  # Command handlers and adapters have many parameters by design
-  "too-many-positional-arguments",  # Same as above
-  # Intentional patterns (TODO: Review each periodically)
-  "broad-exception-caught",  # Daemon robustness - TODO: Ensure all catch blocks log properly
-  "consider-using-with",  # Lock file handle must stay open - TODO: Document each instance
-  "attribute-defined-outside-init",  # Async init pattern - TODO: Verify all use async setup()
-  "protected-access",  # Internal framework use - TODO: Document why needed, fragile on updates
-  "redefined-outer-name",  # Function param shadowing - TODO: Review for clarity
-  "no-else-return",  # Early returns - acceptable style
-  "arguments-renamed",  # Override compatibility - acceptable for interface implementations
-  "ungrouped-imports",  # Import order - handled by isort
-  "unnecessary-ellipsis",  # Required in Protocol definitions - acceptable
-  "global-statement",  # Module-level singletons - TODO: Consider dependency injection instead
-  "redefined-builtin",  # type parameter shadows builtin - acceptable in type-heavy code
-  "line-too-long",  # Documentation - Black handles code lines
-  "unspecified-encoding",  # Default UTF-8 is fine in Python 3.11+
-  "assignment-from-none",  # Optional return values - acceptable pattern
-  "wrong-import-position",  # TYPE_CHECKING guards - acceptable pattern
-]
 
 [tool.pylint.'SIMILARITIES']
 min-similarity-lines = 10  # Flag duplicate blocks of 10+ lines

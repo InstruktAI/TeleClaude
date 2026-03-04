@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import re
 import subprocess
 import sys
 import time as _t
@@ -35,6 +36,11 @@ from teleclaude.cli.tool_commands import (  # noqa: E402
     handle_todo_work,
 )
 from teleclaude.constants import ENV_ENABLE, MAIN_MODULE  # noqa: E402
+from teleclaude.content_scaffold import (  # noqa: E402
+    _emit_content_dumped,
+    _resolve_author,
+    create_content_inbox_entry,
+)
 from teleclaude.logging_config import setup_logging  # noqa: E402
 from teleclaude.project_setup import init_project  # noqa: E402
 from teleclaude.todo_scaffold import create_bug_skeleton, create_todo_skeleton  # noqa: E402
@@ -1863,7 +1869,9 @@ def _demo_validate(slug: str, project_root: Path) -> None:
     no_demo_reason = _check_no_demo_marker(content)
     if no_demo_reason is not None:
         print(f"WARNING: no-demo marker found: {no_demo_reason}")
-        print("Reviewer must verify justification — only pure internal refactors with zero user-visible change qualify.")
+        print(
+            "Reviewer must verify justification — only pure internal refactors with zero user-visible change qualify."
+        )
         raise SystemExit(0)
 
     # Check that demo.md diverges from the skeleton template.
@@ -3044,9 +3052,6 @@ def _handle_content(args: list[str]) -> None:
 
 def _handle_content_dump(args: list[str]) -> None:
     """Handle telec content dump <text> [--slug <slug>] [--tags <tags>] [--author <author>]."""
-    import re
-
-    from teleclaude.content_scaffold import create_content_inbox_entry
 
     if not args:
         print(_usage("content", "dump"))
@@ -3094,8 +3099,6 @@ def _handle_content_dump(args: list[str]) -> None:
         slug = re.sub(r"-+", "-", slug)
 
     try:
-        from teleclaude.content_scaffold import _emit_content_dumped, _resolve_author
-
         resolved_author = author if author is not None else _resolve_author()
         resolved_tags = tags or []
         entry_dir = create_content_inbox_entry(

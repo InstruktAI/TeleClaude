@@ -48,7 +48,9 @@ class _MetaPayload(TypedDict):
     created_at: str
 
 
-def _emit_content_dumped(inbox_path: str, author: str, tags: list[str]) -> None:
+def _emit_content_dumped(  # pyright: ignore[reportUnusedFunction]  # used by telec.py
+    inbox_path: str, author: str, tags: list[str]
+) -> None:
     """Emit a content.dumped notification via sync Redis XADD.
 
     Guarded: prints a warning and continues if Redis is unavailable.

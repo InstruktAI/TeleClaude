@@ -37,7 +37,6 @@ LOGO_HEIGHT = len(LOGO_LINES) + 1
 LOGO_WIDTH = 40
 
 
-
 def _to_color(c: str | int | None) -> str | None:
     """Helper to ensure Style receives a valid color string or None."""
     if isinstance(c, str) and len(c) > 1:
@@ -65,7 +64,7 @@ def _dim_color(hex_color: str, factor: float) -> str:
 
 
 def _entity_color(ch: str, z: int, dark_mode: bool) -> str:
-    """Fallback color for old-style (uncolored) sky entity pixels."""
+    """Default white color for old-style (uncolored) sky entity pixels."""
     return "#FFFFFF"
 
 
@@ -216,7 +215,7 @@ def _scan_sky_entity(
                 bg_entity_color = val
                 break
 
-    # Fallback: negative char found but nothing behind — use sky gradient
+    # Negative char found but nothing behind — use sky gradient
     if need_behind and fg_color is None:
         sky_val = engine.get_layer_color(Z0, x, y, target="header")  # type: ignore[union-attr]
         fg_color = sky_val if isinstance(sky_val, str) else None
