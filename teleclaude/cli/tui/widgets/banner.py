@@ -90,7 +90,7 @@ def _scan_sky_entity(
     is behind: scanning continues to deeper Z-levels to find the behind color
     instead of hardcoding the sky gradient.
     """
-    from teleclaude.cli.tui.animations.base import Z_SKY
+    from teleclaude.cli.tui.animations.base import Z0
 
     fg_char = " "
     fg_color: str | None = None
@@ -218,7 +218,7 @@ def _scan_sky_entity(
 
     # Fallback: negative char found but nothing behind — use sky gradient
     if need_behind and fg_color is None:
-        sky_val = engine.get_layer_color(Z_SKY, x, y, target="header")  # type: ignore[union-attr]
+        sky_val = engine.get_layer_color(Z0, x, y, target="header")  # type: ignore[union-attr]
         fg_color = sky_val if isinstance(sky_val, str) else None
 
     return fg_char, fg_color, bg_entity_color
@@ -257,7 +257,7 @@ class Banner(TelecMixin, Widget):
     def _render_banner(self) -> Text:
         result = Text()
         engine = self.animation_engine
-        from teleclaude.cli.tui.animations.base import Z_SKY
+        from teleclaude.cli.tui.animations.base import Z0
         from teleclaude.cli.tui.pixel_mapping import PixelMap
         from teleclaude.cli.tui.theme import (
             blend_colors,
@@ -288,7 +288,7 @@ class Banner(TelecMixin, Widget):
                     char = line[x] if x < len(line) else " "
 
                     # 1. Sky Z-0
-                    bg_color = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
+                    bg_color = engine.get_layer_color(Z0, x, y, target="header") if engine else None
                     if not isinstance(bg_color, str):
                         bg_color = sky_fallback
 
@@ -345,7 +345,7 @@ class Banner(TelecMixin, Widget):
                     if x == 13 or x == 70:
                         result.append("\u2551", style=pipe_color)
                     else:
-                        bg = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
+                        bg = engine.get_layer_color(Z0, x, y, target="header") if engine else None
                         if not isinstance(bg, str):
                             bg = sky_fallback
 
@@ -363,7 +363,7 @@ class Banner(TelecMixin, Widget):
     def _render_logo(self) -> Text:
         result = Text()
         engine = self.animation_engine
-        from teleclaude.cli.tui.animations.base import Z_SKY
+        from teleclaude.cli.tui.animations.base import Z0
         from teleclaude.cli.tui.pixel_mapping import PixelMap
         from teleclaude.cli.tui.theme import (
             blend_colors,
@@ -393,7 +393,7 @@ class Banner(TelecMixin, Widget):
             if y < len(LOGO_LINES):
                 line = LOGO_LINES[y]
                 for x in range(total_width):
-                    bg_color = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
+                    bg_color = engine.get_layer_color(Z0, x, y, target="header") if engine else None
                     if not isinstance(bg_color, str):
                         bg_color = sky_fallback
 
@@ -446,7 +446,7 @@ class Banner(TelecMixin, Widget):
                     if (x >= pad and x < total_width) and (x - pad == 6 or x - pad == 34):
                         result.append("\u2551", style=pipe_color)
                     else:
-                        bg = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
+                        bg = engine.get_layer_color(Z0, x, y, target="header") if engine else None
                         if not isinstance(bg, str):
                             bg = sky_fallback
 

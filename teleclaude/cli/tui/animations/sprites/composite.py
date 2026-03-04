@@ -44,6 +44,7 @@ class CompositeSprite:
     z_weights: Optional[list[tuple[int, int]]] = field(default_factory=list)
     y_weights: Optional[list[tuple[int, int]]] = field(default_factory=list)
     speed_weights: Optional[list[tuple[float, int]]] = field(default_factory=lambda: list(_DEFAULT_SPEED_WEIGHTS))
+    theme: Optional[str] = None  # "dark", "light", or None (both)
 
     def tick(self, frame: int) -> CompositeSprite:
         """Static sprite -- returns self every frame."""
@@ -62,6 +63,7 @@ class AnimatedSprite:
     z_weights: list[tuple[int, int]] = field(default_factory=list)
     y_weights: list[tuple[int, int]] = field(default_factory=list)
     speed_weights: list[tuple[float, int]] = field(default_factory=lambda: list(_DEFAULT_SPEED_WEIGHTS))
+    theme: Optional[str] = None  # "dark", "light", or None (both)
 
     def tick(self, frame: int) -> list[str] | CompositeSprite:
         return self.frames[frame % len(self.frames)]

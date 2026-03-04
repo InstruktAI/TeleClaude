@@ -25,19 +25,23 @@ if TYPE_CHECKING:
 #  90  foreground
 # ─────────────────────────────────────────────
 # 10-unit spacing leaves room for intermediates (e.g. 31 = just in front of far clouds).
-# Sprites use raw integers for z_weights — no imports needed.
-# Example: z_weights=[(30, 10), (70, 90)]
-#   → 10% behind the banner, 90% in front of inactive tabs
-Z_SKY = 0
-Z_STARS = 10
-Z_CELESTIAL = 20
-Z_CLOUDS_FAR = 30
-Z_BILLBOARD = 40
-Z_CLOUDS_MID = 50
-Z_TABS_INACTIVE = 60
-Z_CLOUDS_NEAR = 70
-Z_TABS_ACTIVE = 80
-Z_FOREGROUND = 90
+# Z-depth scale: 0–90 in steps of 10.
+# Fixed positions (engine uses these):
+#   Z0  = sky gradient background
+#   Z40 = billboard animation layer
+#   Z60 = inactive tab occlusion threshold
+#   Z80 = active tab occlusion threshold
+# Everything else is free for sprite z_weights.
+Z0 = 0
+Z10 = 10
+Z20 = 20
+Z30 = 30
+Z40 = 40
+Z50 = 50
+Z60 = 60
+Z70 = 70
+Z80 = 80
+Z90 = 90
 
 
 class Spectrum:

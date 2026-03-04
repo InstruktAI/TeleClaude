@@ -8,6 +8,7 @@ BIRD_SMALL = AnimatedSprite(
     z_weights=[(29, 40), (39, 60)],
     y_weights=[(0, 50), (1, 40), (2, 10)],
     speed_weights=[(0.2, 20), (0.3, 40), (0.5, 30), (0.8, 10)],
+    theme="light",
 )
 
 # BIRD_MEDIUM = AnimatedSprite(
@@ -52,6 +53,7 @@ BIRD_LARGE = AnimatedSprite(
     z_weights=[(49, 50), (59, 50)],
     y_weights=[(0, 20), (1, 20), (2, 20)],
     speed_weights=[(0.7, 20), (0.8, 40), (1.0, 30), (1.2, 10)],
+    theme="light",
 )
 
 BIRD_FLOCK = SpriteGroup(

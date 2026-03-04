@@ -639,6 +639,7 @@ class DiscordAdapter(UiAdapter):
                     edit_fn = self._require_async_callable(getattr(message, "edit", None), label="Discord message edit")
                     await edit_fn(content=launcher_text, view=self._build_session_launcher_view())
                     await self._pin_launcher_message(message, forum_id=forum_id)
+                    await self._pin_launcher_thread(launcher_thread, forum_id=forum_id)
                     return
                 except Exception as exc:
                     logger.warning(
@@ -669,6 +670,8 @@ class DiscordAdapter(UiAdapter):
         launcher_message_id = self._parse_optional_int(launcher_message_id_raw)
         if launcher_message is not None:
             await self._pin_launcher_message(launcher_message, forum_id=forum_id)
+        if launcher_thread is not None:
+            await self._pin_launcher_thread(launcher_thread, forum_id=forum_id)
         if launcher_message_id is None:
             launcher_message_id = launcher_thread_id
 
@@ -710,6 +713,24 @@ class DiscordAdapter(UiAdapter):
             logger.warning(
                 "Failed to pin Discord launcher message %s in forum %s: %s",
                 message_id,
+                forum_id,
+                exc,
+            )
+
+    async def _pin_launcher_thread(self, thread: object, *, forum_id: int) -> None:
+        """Pin the launcher thread in the forum so it stays at the top."""
+        thread_id = getattr(thread, "id", None)
+        edit_fn = getattr(thread, "edit", None)
+        if not callable(edit_fn):
+            logger.debug("Launcher thread %s in forum %s cannot be edited for pinning", thread_id, forum_id)
+            return
+
+        try:
+            await self._require_async_callable(edit_fn, label="Discord thread edit (pin)")(pinned=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to pin Discord launcher thread %s in forum %s: %s",
+                thread_id,
                 forum_id,
                 exc,
             )

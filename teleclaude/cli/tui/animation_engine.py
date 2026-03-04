@@ -10,7 +10,7 @@ from typing import Callable, Deque, Optional, Tuple
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.tui.animations.base import Z_BILLBOARD, Animation, RenderBuffer
+from teleclaude.cli.tui.animations.base import Z40, Animation, RenderBuffer
 
 logger = get_logger(__name__)
 
@@ -184,9 +184,9 @@ class AnimationEngine:
                             back_buffer[z].update(pixels)
                     else:
                         # Legacy single-layer update (default to billboard level)
-                        if Z_BILLBOARD not in back_buffer:
-                            back_buffer[Z_BILLBOARD] = {}
-                        back_buffer[Z_BILLBOARD].update(result)
+                        if Z40 not in back_buffer:
+                            back_buffer[Z40] = {}
+                        back_buffer[Z40].update(result)
 
                     slot.frame_count += 1
                     slot.last_update_ms = current_time_ms
@@ -247,14 +247,14 @@ class AnimationEngine:
     def get_entity_z_levels(self, target: str = "header") -> list[int]:
         """Return populated Z levels for entity scanning, highest first.
 
-        Excludes Z_SKY (handled separately as background gradient).
+        Excludes Z0 (sky gradient background).
         """
-        from teleclaude.cli.tui.animations.base import Z_SKY
+        from teleclaude.cli.tui.animations.base import Z0
 
         z_buffer = self._buffers_front.get(target)
         if not z_buffer:
             return []
-        return sorted((z for z in z_buffer if z != Z_SKY), reverse=True)
+        return sorted((z for z in z_buffer if z != Z0), reverse=True)
 
     def clear_colors(self) -> None:
         """Clear all active animation colors (both buffers)."""

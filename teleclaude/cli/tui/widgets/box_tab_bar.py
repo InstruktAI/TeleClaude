@@ -82,9 +82,9 @@ class BoxTabBar(TelecMixin, Widget):
         engine = self.animation_engine
         dark_mode = is_dark_mode()
         from teleclaude.cli.tui.animations.base import (
-            Z_SKY,
-            Z_TABS_ACTIVE,
-            Z_TABS_INACTIVE,
+            Z0,
+            Z60,
+            Z80,
         )
 
         sky_fallback = "#000000" if dark_mode else "#C8E8F8"
@@ -167,7 +167,7 @@ class BoxTabBar(TelecMixin, Widget):
                     char = "\u2500"  # ─ connector line between tabs
 
                 # Sky color at this position
-                sky_color = engine.get_layer_color(Z_SKY, x, global_y, target="header") if engine else None
+                sky_color = engine.get_layer_color(Z0, x, global_y, target="header") if engine else None
                 if not isinstance(sky_color, str):
                     sky_color = sky_fallback
 
@@ -175,7 +175,7 @@ class BoxTabBar(TelecMixin, Widget):
                 if y_offset == num_rows - 1:
                     if not in_tab:
                         # Sample sky from the row above for seamless visual continuity
-                        sky_above = engine.get_layer_color(Z_SKY, x, global_y - 1, target="header") if engine else None
+                        sky_above = engine.get_layer_color(Z0, x, global_y - 1, target="header") if engine else None
                         if isinstance(sky_above, str):
                             sky_color = sky_above
                         # Check for entity above too (clouds, etc.)
@@ -194,7 +194,7 @@ class BoxTabBar(TelecMixin, Widget):
                     )
                     continue
 
-                z_base = Z_TABS_ACTIVE if active_tab_under else Z_TABS_INACTIVE
+                z_base = Z80 if active_tab_under else Z60
                 if dark_mode and y_offset == 2:
                     fg_text = resolve_haze(get_neutral_color("highlight"))
                 else:
@@ -215,15 +215,18 @@ class BoxTabBar(TelecMixin, Widget):
                 fg_char = char
                 fg_color: str | None = None
 
+                # The connector line (dark mode row 2) is solid pane border
+                is_opaque_ui = in_tab or (dark_mode and y_offset == 2)
+
                 if engine:
-                    # Multi-Z entity scan: tabs occlude entities behind them;
-                    # sky gaps between tabs render all entities freely.
+                    # Multi-Z entity scan: opaque UI elements occlude entities
+                    # behind them; sky gaps render all entities freely.
                     for z in entity_z_scan:
-                        if in_tab and z <= z_base:
+                        if is_opaque_ui and z <= z_base:
                             break
                         entity = engine.get_layer_color(z, x, global_y, target="header")
                         if entity and entity != -1 and isinstance(entity, str):
-                            if not in_tab:
+                            if not is_opaque_ui:
                                 elen = len(entity)
                                 if elen == 15 and entity[0] == "#" and entity[7] == "#":
                                     # Fully resolved sprite pixel: #fg#bgc
@@ -247,7 +250,7 @@ class BoxTabBar(TelecMixin, Widget):
                                     fg_color = "#FFFFFF"
                             break
 
-                    if not in_tab and engine.has_active_animation and engine.is_external_light():
+                    if not is_opaque_ui and engine.has_active_animation and engine.is_external_light():
                         color = engine.get_color(x, global_y)
                         if color:
                             color_str = str(color)

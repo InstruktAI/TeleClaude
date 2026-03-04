@@ -10,12 +10,9 @@ from typing import TYPE_CHECKING
 
 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
 from teleclaude.cli.tui.animations.base import (
-    Z_CELESTIAL,
-    Z_CLOUDS_FAR,
-    Z_CLOUDS_MID,
-    Z_CLOUDS_NEAR,
-    Z_SKY,
-    Z_STARS,
+    Z0,
+    Z10,
+    Z20,
     Animation,
     RenderBuffer,
     Spectrum,
@@ -46,50 +43,8 @@ class GlobalSky(Animation):
     UFO as rare sky entity with weighted depth.
     """
 
-    # Cloud templates built dynamically from sprite definitions.
-    # Size categories: 0=wisp (1 row), 1=puff (2-3 rows), 2=medium (3-4 rows), 3=cumulus (4+ rows)
-    @staticmethod
-    def _build_cloud_templates() -> list[tuple[list[str], int]]:
-        from teleclaude.cli.tui.animations.sprites import CLOUD_SPRITES_FAR, CLOUD_SPRITES_MID, CLOUD_SPRITES_NEAR
-
-        templates: list[tuple[list[str], int]] = []
-        for sprite in CLOUD_SPRITES_FAR:
-            templates.append((sprite, 0))  # 1-row wisps
-        for sprite in CLOUD_SPRITES_MID:
-            rows = len(sprite)
-            size = 1 if rows <= 2 else 2  # 2 rows = puff, 3+ = medium
-            templates.append((sprite, size))
-        for sprite in CLOUD_SPRITES_NEAR:
-            templates.append((sprite, 3))  # 4+ row cumulus
-        return templates
-
-    _CLOUD_TEMPLATES: list[tuple[list[str], int]] = []  # populated in __init_subclass__ / __init__
-    _SPEED_RANGES = {
-        0: (0.08, 0.18),  # wisps: slow, far
-        1: (0.15, 0.30),  # puffs: slow-medium
-        2: (0.25, 0.45),  # medium: medium
-        3: (0.40, 0.65),  # cumulus: fast, close
-    }
-    # Weighted Z-level distribution per cloud size category
-    _CLOUD_Z_WEIGHTS: dict[int, list[tuple[int, int]]] = {
-        0: [(Z_CLOUDS_FAR, 60), (Z_CLOUDS_MID, 30), (Z_CLOUDS_NEAR, 10)],  # wisps: mostly far, can be foggy
-        1: [(Z_CLOUDS_FAR, 50), (Z_CLOUDS_MID, 40), (Z_CLOUDS_NEAR, 10)],  # puffs: far/mid
-        2: [(Z_CLOUDS_FAR, 40), (Z_CLOUDS_MID, 55), (Z_CLOUDS_NEAR, 5)],  # medium: mostly mid
-        3: [(Z_CLOUDS_FAR, 70), (Z_CLOUDS_MID, 30)],  # cumulus: NEVER near, mostly far
-    }
-    _WEATHER_CONFIGS = {
-        "clear": {"sizes": [0], "count": (3, 6)},  # wisps only, more of them
-        "fair": {"sizes": [0, 0, 1], "count": (5, 9)},  # doubled wisps in pool
-        "cloudy": {"sizes": [0, 0, 1, 2], "count": (7, 12)},  # wisps still most common
-        "overcast": {"sizes": [0, 1, 1, 2, 3], "count": (10, 16)},  # cumulus rare even here
-    }
     _WEATHER_NAMES = ["clear", "fair", "cloudy", "overcast"]
     _WEATHER_WEIGHTS = [30, 35, 25, 10]
-
-    # Celestial ambient glow — painted at gap positions in the bounding box so
-    # cloud shade chars pick up a warm/cool tint instead of raw sky gradient.
-    _SUN_GLOW = "#4A3000"
-    _MOON_GLOW = "#1A1A2E"
 
     # City glow: 3 rows behind tab bar (y=7,8,9)
     _CITY_GLOW = ["#1A0035", "#270055", "#0A0010"]
@@ -97,9 +52,6 @@ class GlobalSky(Animation):
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         kwargs.setdefault("target", "header")
         super().__init__(*args, **kwargs)
-        # Build cloud templates from sprites on first instantiation
-        if not GlobalSky._CLOUD_TEMPLATES:
-            GlobalSky._CLOUD_TEMPLATES = GlobalSky._build_cloud_templates()
         self.width = 400
         self.height = 10
         self._all_pixels = [(x, y) for y in range(self.height) for x in range(self.width)]
@@ -120,7 +72,7 @@ class GlobalSky(Animation):
         _star_types = ["\u00b7", ".", "+", "\u2726", "*"]  # ·  .  +  ✦  *
         _star_weights = [50, 20, 15, 10, 5]
         self.stars = []
-        for _ in range(100):
+        for _ in range(150):
             self.stars.append(
                 {
                     "pos": (self.rng.randint(0, self.width - 1), self.rng.randint(0, self.height - 1)),
@@ -130,12 +82,11 @@ class GlobalSky(Animation):
                 }
             )
 
-        # Weather system — randomized cloud patterns that change every 30-120 min
+        # Weather system — weather determines which cloud group is active
         self._weather = self.rng.choices(self._WEATHER_NAMES, weights=self._WEATHER_WEIGHTS, k=1)[0]
-        self._clouds: list[dict[str, object]] = self._generate_clouds()
         self._next_weather_change = time.time() + self.rng.uniform(30 * 60, 120 * 60)
 
-        # Sky entities — standalone sprites + sprite group populations
+        # Sky entities — all sprites (clouds, birds, UFO, etc.) via the sprite system
         self._sky_entities: list[dict[str, object]] = self._spawn_initial_entities()
 
     @staticmethod
@@ -150,67 +101,40 @@ class GlobalSky(Animation):
         levels, wts = zip(*weights)
         return self.rng.choices(levels, weights=wts, k=1)[0]
 
-    def _generate_clouds(self) -> list[dict[str, object]]:
-        """Generate cloud set for current weather state with parallax depth."""
-        config = self._WEATHER_CONFIGS[self._weather]
-        size_pool = config["sizes"]  # repeated entries weight the selection
-        # Pre-group templates by size for weighted selection
-        by_size: dict[int, list[list[str]]] = {}
-        for rows, size in self._CLOUD_TEMPLATES:
-            by_size.setdefault(size, []).append(rows)
-        if not any(s in by_size for s in size_pool):
-            return []
-        count = self.rng.randint(*config["count"])
-        clouds: list[dict[str, object]] = []
-
-        for _ in range(count):
-            size = self.rng.choice(size_pool)  # weighted by repeats in pool
-            templates = by_size.get(size, by_size.get(0, []))
-            rows = self.rng.choice(templates)
-            cloud = self._make_cloud(rows, size)
-            clouds.append(cloud)
-
-            # Wisps: 40% chance of a companion (parallax pair, never aligned)
-            if size == 0 and self.rng.random() < 0.4:
-                wisp_templates = by_size.get(0, [])
-                comp_rows = self.rng.choice(wisp_templates)
-                comp_y = int(cloud["y"]) + self.rng.choice([-1, 1])
-                comp_y = max(0, min(self.height - len(comp_rows), comp_y))
-                companion = self._make_cloud(comp_rows, 0)
-                companion["y"] = comp_y
-                companion["x"] = int(cloud["x"]) + self.rng.randint(2, 6)
-                companion["speed"] = float(cloud["speed"]) * (0.80 + self.rng.random() * 0.15)
-                clouds.append(companion)
-
-        return clouds
-
-    def _make_cloud(self, rows: list[str], size: int) -> dict[str, object]:
-        """Create a single cloud with randomized position, speed, and Z-level."""
-        max_y = max(0, self.height - len(rows))
-        lo, hi = self._SPEED_RANGES[size]
-        z_level = self._pick_z_level(self._CLOUD_Z_WEIGHTS[size])
-        return {
-            "shape": rows,
-            "x": self.rng.randint(0, self.width),
-            "y": self.rng.randint(0, max_y),
-            "speed": lo + self.rng.random() * (hi - lo),
-            "size": size,
-            "z": z_level,
-        }
+    def _theme_matches(self, sprite: object) -> bool:
+        """Check if a sprite's theme matches the current mode."""
+        theme = getattr(sprite, "theme", None)
+        if theme is None:
+            return True
+        return theme == ("dark" if self.dark_mode else "light")
 
     def _spawn_initial_entities(self) -> list[dict[str, object]]:
-        """Spawn sky entities: standalone sprites (15% chance each) + sprite groups."""
-        from teleclaude.cli.tui.animations.sprites import get_sky_entities, get_sprite_groups
+        """Spawn sky entities: standalone sprites + non-cloud groups + weather clouds."""
+        from teleclaude.cli.tui.animations.sprites import get_sky_entities, get_sprite_groups, get_weather_clouds
 
         entities: list[dict[str, object]] = []
+        # Standalone sprites (15% chance each)
         for sprite in get_sky_entities():
-            if self.rng.random() < 0.15:
+            if self._theme_matches(sprite) and self.rng.random() < 0.15:
                 entities.append(self._spawn_sky_entity(sprite))
+        # Non-cloud sprite groups (birds, etc.)
+        cloud_group = get_weather_clouds(self._weather)
         for group in get_sprite_groups():
+            if group is cloud_group:
+                continue
             for sprite, _weight, (lo, hi) in group.entries:
+                if not self._theme_matches(sprite):
+                    continue
                 n = self.rng.randint(lo, hi)
                 for _ in range(n):
                     entities.append(self._spawn_sky_entity(sprite))
+        # Weather-specific clouds
+        for sprite, _weight, (lo, hi) in cloud_group.entries:
+            if not self._theme_matches(sprite):
+                continue
+            n = self.rng.randint(lo, hi)
+            for _ in range(n):
+                entities.append(self._spawn_sky_entity(sprite))
         return entities
 
     # Vertical lane ranges: (min_y, max_y) for top/mid/bottom of the header
@@ -268,11 +192,11 @@ class GlobalSky(Animation):
         sky = self.night_sky if self.dark_mode else self.day_sky
         for x, y in self._all_pixels:
             pos_factor = y / max(1, self.height - 1)
-            pixels.append((Z_SKY, x, y, sky.get_color(pos_factor)))
+            pixels.append((Z0, x, y, sky.get_color(pos_factor)))
         if self.dark_mode:
             for dy, glow_color in enumerate(self._CITY_GLOW):
                 for x in range(self.width):
-                    pixels.append((Z_SKY, x, 7 + dy, glow_color))
+                    pixels.append((Z0, x, 7 + dy, glow_color))
         return pixels
 
     def _render_quarter_celestial(self, buffer: RenderBuffer, term_width: int) -> None:
@@ -290,28 +214,7 @@ class GlobalSky(Animation):
             cy -= 3
 
         top_left_x = cx - sprite_w + 1
-        render_sprite(buffer, Z_CELESTIAL, top_left_x, cy, sprite, self.width, self.height)
-
-        # Ambient glow at gap positions — picked up as bg by cloud chars
-        glow = self._MOON_GLOW if self.dark_mode else self._SUN_GLOW
-        if glow:
-            num_rows = max(len(layer.positive), len(layer.negative))
-            for dy in range(num_rows):
-                y = cy + dy
-                if y < 0:
-                    continue
-                if y >= self.height:
-                    break
-                pos_row = layer.positive[dy] if dy < len(layer.positive) else ""
-                neg_row = layer.negative[dy] if dy < len(layer.negative) else ""
-                row_w = max(len(pos_row), len(neg_row))
-                for dx in range(row_w):
-                    pos_ch = pos_row[dx] if dx < len(pos_row) else " "
-                    neg_ch = neg_row[dx] if dx < len(neg_row) else " "
-                    if pos_ch == " " and neg_ch == " ":
-                        x = top_left_x + dx
-                        if 0 <= x < self.width:
-                            buffer.add_pixel(Z_CELESTIAL, x, y, glow)
+        render_sprite(buffer, Z20, top_left_x, cy, sprite, self.width, self.height)
 
     def update(self, frame: int) -> RenderBuffer:
         # Reuse persistent buffer — avoid allocating 4000+ dict entries per frame
@@ -335,45 +238,30 @@ class GlobalSky(Animation):
             for z, x, y, color in self._cached_sky_pixels:
                 buffer.add_pixel(z, x, y, color)
 
-        # Clear all dynamic layers each frame (everything except Z_SKY)
+        # Clear all dynamic layers each frame (everything except Z0)
         for z in list(buffer.layers):
-            if z != Z_SKY:
+            if z != Z0:
                 buffer.clear_layer(z)
 
         if self.dark_mode:
-            # 2. Stars at Z_STARS (behind clouds)
+            # 2. Stars at Z10 (behind clouds)
             for star in self.stars:
                 speed = star["speed"] * (2.5 if is_party else 1.0)
                 twinkle = (math.sin(frame * speed + star["phase"]) + 1.0) / 2.0
                 if twinkle > 0.88:
-                    buffer.add_pixel(Z_STARS, star["pos"][0], star["pos"][1], star["char"])
+                    buffer.add_pixel(Z10, star["pos"][0], star["pos"][1], star["char"])
 
             # 3. Moon — quarter celestial at top-right
             self._render_quarter_celestial(buffer, term_width)
         else:
-            # 2. Weather change check
+            # 2. Weather change check — re-spawn all entities with new cloud group
             now = time.time()
             if now >= self._next_weather_change:
                 self._weather = self.rng.choices(self._WEATHER_NAMES, weights=self._WEATHER_WEIGHTS, k=1)[0]
-                self._clouds = self._generate_clouds()
                 self._sky_entities = self._spawn_initial_entities()
                 self._next_weather_change = now + self.rng.uniform(30 * 60, 120 * 60)
 
-            # 3. Drifting clouds with weighted Z-level parallax
-            for cloud in self._clouds:
-                shape = cloud["shape"]
-                cloud_z = int(cloud["z"])
-                cx = int(int(cloud["x"]) + frame * float(cloud["speed"])) % (self.width + 60) - 30
-                cy = int(cloud["y"])
-                for dy, row in enumerate(shape):
-                    for dx, ch in enumerate(row):
-                        if ch != " ":
-                            px = cx + dx
-                            py = cy + dy
-                            if 0 <= px < self.width and 0 <= py < self.height:
-                                buffer.add_pixel(cloud_z, px, py, ch)
-
-            # 4. Sun — quarter celestial at top-right
+            # 3. Sun — quarter celestial at top-right
             self._render_quarter_celestial(buffer, term_width)
 
         # 5. Sky entities (both modes — drift horizontally at assigned Z-levels)
