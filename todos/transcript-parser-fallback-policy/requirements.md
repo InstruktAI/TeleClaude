@@ -34,8 +34,9 @@ silent coercion to Claude with an explicit, logged, and testable policy.
 - [ ] A single `resolve_parser_agent(active_agent: str | None) -> AgentName` function exists
       in `teleclaude/core/agents.py` that encapsulates the fallback policy
 - [ ] All four callsites use the centralized function instead of inline try/except
-- [ ] A `warning`-level log entry is emitted whenever the fallback is triggered, including
-      the original `active_agent` value
+- [ ] A log entry is emitted whenever the fallback is triggered: `debug` for `None`/empty
+      (expected on fresh sessions), `warning` for genuinely unknown values, including the
+      original `active_agent` value
 - [ ] The fallback resolves to `AgentName.CLAUDE` (preserving backward compatibility for
       rendering historical transcripts)
 - [ ] Unit tests in `tests/unit/test_agents.py` cover:
