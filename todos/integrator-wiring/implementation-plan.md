@@ -47,17 +47,17 @@ existing schema module from event-platform-core)
 
 **File(s):** `teleclaude/core/integration_bridge.py` (new)
 
-- [ ] Create bridge module that imports `emit_event` (or `EventProducer`)
+- [x] Create bridge module that imports `emit_event` (or `EventProducer`)
       from `teleclaude_events`
-- [ ] `emit_review_approved(slug, reviewer_session_id, review_round)`
+- [x] `emit_review_approved(slug, reviewer_session_id, review_round)`
       → emits `domain.software-development.review.approved`
-- [ ] `emit_deployment_started(slug, branch, sha, worker_session_id, orchestrator_session_id)`
+- [x] `emit_deployment_started(slug, branch, sha, worker_session_id, orchestrator_session_id)`
       → emits `domain.software-development.deployment.started`
-- [ ] `emit_deployment_completed(slug, branch, sha, merge_commit)`
+- [x] `emit_deployment_completed(slug, branch, sha, merge_commit)`
       → emits `domain.software-development.deployment.completed`
-- [ ] `emit_deployment_failed(slug, branch, sha, conflict_evidence, diagnostics, next_action)`
+- [x] `emit_deployment_failed(slug, branch, sha, conflict_evidence, diagnostics, next_action)`
       → emits `domain.software-development.deployment.failed`
-- [ ] Each function constructs an `EventEnvelope` and calls `emit_event()`
+- [x] Each function constructs an `EventEnvelope` and calls `emit_event()`
 
 ### Task 2.2: Wire emission into review-approved path
 
@@ -100,13 +100,13 @@ existing schema module from event-platform-core)
 
 **File(s):** `teleclaude/core/integration_bridge.py`
 
-- [ ] `spawn_integrator_session(slug, branch, sha)` function callable from
+- [x] `spawn_integrator_session(slug, branch, sha)` function callable from
       the trigger cartridge's daemon callback
-- [ ] Check if an integrator session is already running (query active sessions
+- [x] Check if an integrator session is already running (query active sessions
       with integrator role prefix)
-- [ ] If no integrator running: spawn via `telec sessions start` with
+- [x] If no integrator running: spawn via `telec sessions start` with
       integrator system role, project path, and the READY candidate info
-- [ ] If integrator already running: do nothing — candidate is queued, the
+- [x] If integrator already running: do nothing — candidate is queued, the
       running integrator will drain it
 
 ### Task 3.3: Define the integrator session command
