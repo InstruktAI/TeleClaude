@@ -107,6 +107,66 @@ def test_handle_sessions_start_passes_direct_flag(monkeypatch: pytest.MonkeyPatc
     assert captured.json_body["direct"] is True
 
 
+def test_handle_sessions_start_passes_detach_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """sessions start --detach should set skip_listener_registration in API payload."""
+    captured = RunCallCapture()
+
+    def fake_tool_api_call(
+        method: str,
+        path: str,
+        json_body: object = None,
+        *,
+        params: dict[str, str] | None = None,
+        timeout: float = 30.0,
+        socket_path: str = "",
+    ) -> object:
+        _ = (params, timeout, socket_path)
+        assert isinstance(json_body, dict)
+        captured.method = method
+        captured.path = path
+        captured.json_body = cast(dict[str, str | bool], json_body)
+        return {"status": "success"}
+
+    monkeypatch.setattr(tool_commands, "tool_api_call", fake_tool_api_call)
+    monkeypatch.setattr(tool_commands, "print_json", lambda _data: None)
+
+    tool_commands.handle_sessions_start(["--project", "/tmp/project", "--detach"])
+
+    assert captured.method == "POST"
+    assert captured.path == "/sessions"
+    assert captured.json_body["skip_listener_registration"] is True
+
+
+def test_handle_sessions_run_passes_detach_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """sessions run --detach should set detach in API payload."""
+    captured = RunCallCapture()
+
+    def fake_tool_api_call(
+        method: str,
+        path: str,
+        json_body: object = None,
+        *,
+        params: dict[str, str] | None = None,
+        timeout: float = 30.0,
+        socket_path: str = "",
+    ) -> object:
+        _ = (params, timeout, socket_path)
+        assert isinstance(json_body, dict)
+        captured.method = method
+        captured.path = path
+        captured.json_body = cast(dict[str, str | bool], json_body)
+        return {"status": "success"}
+
+    monkeypatch.setattr(tool_commands, "tool_api_call", fake_tool_api_call)
+    monkeypatch.setattr(tool_commands, "print_json", lambda _data: None)
+
+    tool_commands.handle_sessions_run(["--command", "/next-build", "--project", "/tmp/project", "--detach"])
+
+    assert captured.method == "POST"
+    assert captured.path == "/sessions/run"
+    assert captured.json_body["detach"] is True
+
+
 def test_handle_sessions_send_positional_direct(monkeypatch: pytest.MonkeyPatch) -> None:
     """sessions send should support positional message with --direct."""
     captured = RunCallCapture()
@@ -195,3 +255,81 @@ def test_handle_sessions_send_named_short_compatibility(monkeypatch: pytest.Monk
     assert captured.method == "POST"
     assert captured.path == "/sessions/sess-123/message"
     assert captured.json_body == {"message": "hello"}
+
+
+# ---------------------------------------------------------------------------
+# sessions end — 'self' resolution
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class EndCallCapture:
+    method: str = ""
+    path: str = ""
+    params: dict[str, str] = field(default_factory=dict)
+
+
+def test_handle_sessions_end_resolves_self(monkeypatch: pytest.MonkeyPatch) -> None:
+    """sessions end 'self' should resolve to the caller's session ID."""
+    captured = EndCallCapture()
+
+    def fake_tool_api_call(
+        method: str,
+        path: str,
+        json_body: object = None,
+        *,
+        params: dict[str, str] | None = None,
+        timeout: float = 30.0,
+        socket_path: str = "",
+    ) -> object:
+        _ = (json_body, timeout, socket_path)
+        captured.method = method
+        captured.path = path
+        captured.params = params or {}
+        return {"status": "success"}
+
+    monkeypatch.setattr(tool_commands, "tool_api_call", fake_tool_api_call)
+    monkeypatch.setattr(tool_commands, "print_json", lambda _data: None)
+    monkeypatch.setattr(tool_commands, "_read_caller_session_id", lambda: "real-session-42")
+
+    tool_commands.handle_sessions_end(["self"])
+
+    assert captured.method == "DELETE"
+    assert captured.path == "/sessions/real-session-42"
+    assert captured.params == {"computer": "local"}
+
+
+def test_handle_sessions_end_self_fails_when_no_session_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """sessions end 'self' should exit 1 when session ID file is missing."""
+    monkeypatch.setattr(tool_commands, "_read_caller_session_id", lambda: None)
+
+    with pytest.raises(SystemExit, match="1"):
+        tool_commands.handle_sessions_end(["self"])
+
+
+def test_handle_sessions_end_literal_id_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
+    """sessions end with a literal session ID should not attempt self-resolution."""
+    captured = EndCallCapture()
+
+    def fake_tool_api_call(
+        method: str,
+        path: str,
+        json_body: object = None,
+        *,
+        params: dict[str, str] | None = None,
+        timeout: float = 30.0,
+        socket_path: str = "",
+    ) -> object:
+        _ = (json_body, timeout, socket_path)
+        captured.method = method
+        captured.path = path
+        captured.params = params or {}
+        return {"status": "success"}
+
+    monkeypatch.setattr(tool_commands, "tool_api_call", fake_tool_api_call)
+    monkeypatch.setattr(tool_commands, "print_json", lambda _data: None)
+
+    tool_commands.handle_sessions_end(["abc-123"])
+
+    assert captured.method == "DELETE"
+    assert captured.path == "/sessions/abc-123"

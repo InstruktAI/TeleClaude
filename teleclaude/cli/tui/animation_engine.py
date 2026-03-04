@@ -10,7 +10,7 @@ from typing import Callable, Deque, Optional, Tuple
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.tui.animations.base import Z_BILLBOARD, Animation, RenderBuffer
+from teleclaude.cli.tui.animations.base import Z40, Animation, RenderBuffer
 
 logger = get_logger(__name__)
 
@@ -173,7 +173,9 @@ class AnimationEngine:
                         back_buffer.clear()
                         continue
 
-                    back_buffer.clear()
+                    # Clear inner dicts (reuse z-level dict allocations)
+                    for layer in back_buffer.values():
+                        layer.clear()
                     if isinstance(result, RenderBuffer):
                         # Multi-layer update
                         for z, pixels in result.layers.items():
@@ -182,9 +184,9 @@ class AnimationEngine:
                             back_buffer[z].update(pixels)
                     else:
                         # Legacy single-layer update (default to billboard level)
-                        if Z_BILLBOARD not in back_buffer:
-                            back_buffer[Z_BILLBOARD] = {}
-                        back_buffer[Z_BILLBOARD].update(result)
+                        if Z40 not in back_buffer:
+                            back_buffer[Z40] = {}
+                        back_buffer[Z40].update(result)
 
                     slot.frame_count += 1
                     slot.last_update_ms = current_time_ms
@@ -242,12 +244,48 @@ class AnimationEngine:
             return z_buffer[z].get((x, y))
         return None
 
+    def get_entity_z_levels(self, target: str = "header") -> list[int]:
+        """Return populated Z levels for entity scanning, highest first.
+
+        Excludes Z0 (sky gradient background).
+        """
+        from teleclaude.cli.tui.animations.base import Z0
+
+        z_buffer = self._buffers_front.get(target)
+        if not z_buffer:
+            return []
+        return sorted((z for z in z_buffer if z != Z0), reverse=True)
+
     def clear_colors(self) -> None:
         """Clear all active animation colors (both buffers)."""
         for buf in self._buffers_front.values():
             buf.clear()
         for buf in self._buffers_back.values():
             buf.clear()
+
+    def refresh_theme(self) -> None:
+        """Push current dark_mode to all running animations."""
+        from teleclaude.cli.tui.theme import get_terminal_background, is_dark_mode
+
+        dark = is_dark_mode()
+        bg = get_terminal_background()
+        for slot in self._targets.values():
+            if slot.animation:
+                slot.animation.dark_mode = dark
+                slot.animation.background_hex = bg
+
+    def invalidate_term_width(self, width: int | None = None) -> None:
+        """Force all running animations to re-fetch terminal width.
+
+        Called on resize and after pane layout changes so celestial bodies
+        reposition immediately.
+        """
+        for slot in self._targets.values():
+            if slot.animation and hasattr(slot.animation, "_cached_term_width"):
+                if width is not None:
+                    slot.animation._cached_term_width = width  # type: ignore[attr-defined]
+                else:
+                    slot.animation._cached_term_width = slot.animation._fetch_term_width()  # type: ignore[attr-defined]
 
     def is_external_light(self, target: str = "banner") -> bool:
         """True if the current animation for the target is an external light source."""

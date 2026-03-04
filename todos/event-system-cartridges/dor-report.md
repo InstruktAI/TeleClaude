@@ -22,6 +22,7 @@ construction update (one callsite). No runtime changes to `Pipeline` class itsel
 ### 3. Verification — PASS
 
 Phase 6 defines 25 test cases across 5 test files covering:
+
 - Unit tests per cartridge (trust: 6, enrichment: 5, correlation: 8, classification: 5)
 - Integration test for 6-cartridge pipeline (5 scenarios including re-entry)
 - Phase 7 quality checks: `make test`, `make lint`, import verification, dependency direction check
@@ -32,6 +33,7 @@ no-entity passthrough, unknown entity type, stale window pruning, permissive/sta
 ### 4. Approach Known — PASS
 
 Technical path follows established patterns:
+
 - Cartridge interface: `Cartridge` Protocol at `pipeline.py:20` — `async def process(event, ctx)`
 - PipelineContext dataclass at `pipeline.py:14` — keyword-arg construction confirmed at all 14 callsites
 - EventDB aiosqlite with WAL mode at `db.py:89`
@@ -48,6 +50,7 @@ No new third-party dependencies. Uses existing: aiosqlite, redis-py async, pydan
 ### 6. Dependencies & Preconditions — PASS
 
 Foundation from `event-platform-core` confirmed in codebase:
+
 - `teleclaude_events/pipeline.py` — Pipeline, PipelineContext, Cartridge Protocol
 - `teleclaude_events/db.py` — EventDB with init/CRUD
 - `teleclaude_events/producer.py` — EventProducer with emit
@@ -73,6 +76,7 @@ No tooling or scaffolding changes.
 ### Plan-to-Requirement Fidelity — PASS
 
 Every plan task traces to a requirement. No contradictions found:
+
 - Trust evaluator: req items 1, 9 → plan phases 1.2, 1.3
 - Enrichment: req item 2 → plan phase 2.1, 2.2
 - Correlation: req items 3, 6, 8 → plan phases 3.1, 3.2, 5.1
@@ -82,8 +86,9 @@ Every plan task traces to a requirement. No contradictions found:
 - Tests: req item 10 → plan phase 6
 
 Constraint compliance verified:
+
 - "Zero changes to pipeline runtime" — plan only adds cartridge files, not pipeline.py logic
-- "Zero imports from teleclaude.* in teleclaude_events/" — plan imports are in teleclaude/daemon.py (correct direction)
+- "Zero imports from teleclaude.\* in teleclaude_events/" — plan imports are in teleclaude/daemon.py (correct direction)
 - "PipelineContext new fields optional with defaults" — plan uses `field(default_factory=...)` and `| None = None`
 
 ## Tightening Applied

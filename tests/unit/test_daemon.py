@@ -1447,8 +1447,10 @@ async def test_process_agent_stop_skips_without_agent_metadata():
 @pytest.mark.asyncio
 async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
     """Agent stop handling should not emit output updates directly."""
+    mock_client = MagicMock()
+    mock_client.any_adapter_wants_threaded_output = MagicMock(return_value=False)
     coordinator = AgentCoordinator(
-        client=MagicMock(),
+        client=mock_client,
         tts_manager=MagicMock(),
         headless_snapshot_service=MagicMock(),
     )

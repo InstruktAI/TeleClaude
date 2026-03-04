@@ -621,12 +621,35 @@ def test_run_session_worker_command_requires_slug(test_client, mock_command_serv
     mock_command_service.create_session.assert_not_called()
 
 
+def test_run_session_detach_sets_skip_listener_registration(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """sessions/run with detach=true should set skip_listener_registration on the command."""
+    mock_command_service.create_session.return_value = {
+        "session_id": "sess-detach-1",
+        "tmux_session_name": "tc_detach_1",
+    }
+
+    response = test_client.post(
+        "/sessions/run",
+        json={
+            "command": "/next-build",
+            "project": "/tmp/project",
+            "args": "my-slug",
+            "detach": True,
+        },
+    )
+    assert response.status_code == 200
+
+    call_args = mock_command_service.create_session.call_args
+    cmd = call_args.args[0]
+    assert cmd.skip_listener_registration is True
+
+
 def test_render_widget_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """sessions/widget should return success when adapter delivery succeeds."""
     mock_adapter_client.send_message = AsyncMock(return_value=123)
     with patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock, return_value=MagicMock()):
         response = test_client.post(
-            "/sessions/sess-123/widget",
+            "/sessions/self/widget",
             json={"data": {"title": "Build", "sections": [{"type": "text", "content": "Done"}]}},
         )
 
@@ -641,7 +664,7 @@ def test_render_widget_send_failure_returns_500(test_client, mock_adapter_client
     mock_adapter_client.send_message = AsyncMock(side_effect=RuntimeError("delivery failed"))
     with patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock, return_value=MagicMock()):
         response = test_client.post(
-            "/sessions/sess-123/widget",
+            "/sessions/self/widget",
             json={"data": {"sections": [{"type": "text", "content": "Done"}]}},
         )
 
@@ -1162,9 +1185,13 @@ def test_list_todos_without_cache_falls_back_to_local(test_client):  # type: ign
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Requires port 8420 free — fails when daemon is running")
-async def test_adapter_lifecycle(api_server):  # type: ignore[explicit-any, unused-ignore]
+async def test_adapter_lifecycle(api_server, monkeypatch):  # type: ignore[explicit-any, unused-ignore]
     """Test adapter start/stop lifecycle."""
+    import teleclaude.api_server as api_mod
+
+    # Use port 0 so the TCP listener picks an ephemeral port instead of 8420
+    monkeypatch.setattr(api_mod, "API_TCP_PORT", 0)
+
     # Start adapter
     await api_server.start()
     assert api_server.server is not None
@@ -1323,7 +1350,7 @@ def test_send_voice_success(test_client, mock_command_service):  # type: ignore[
 def test_send_file_success(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     """Test file endpoint dispatches handle_file."""
     response = test_client.post(
-        "/sessions/sess-123/file?computer=local",
+        "/sessions/self/file",
         json={"file_path": "/tmp/file.txt", "filename": "file.txt", "caption": "hi", "file_size": 5},
     )
     assert response.status_code == 200
@@ -1691,3 +1718,41 @@ async def test_stream_sse_closed_session_emits_closed_status() -> None:  # type:
     assert status_events[0]["status"] == "closed", (
         f"Expected 'closed' for lifecycle_status='closed', got {status_events[0]['status']!r}"
     )
+
+
+@pytest.mark.asyncio
+async def test_stream_sse_user_message_uses_canonical_process_message_route() -> None:  # type: ignore[explicit-any, unused-ignore]
+    """Web SSE lane routes user_message through canonical process_message, not tmux_bridge directly."""
+    from unittest.mock import AsyncMock, patch
+
+    from teleclaude.api.streaming import _stream_sse
+    from teleclaude.core.db_models import Session
+
+    session = Session(
+        session_id="test-session-id-1234",
+        lifecycle_status="active",
+        computer_name="local",
+    )
+
+    mock_process_message = AsyncMock()
+    mock_service = MagicMock()
+    mock_service.process_message = mock_process_message
+
+    with patch(
+        "teleclaude.core.command_registry.get_command_service",
+        return_value=mock_service,
+    ):
+        events: list[str] = []
+        async for event in _stream_sse(
+            session=session,
+            session_id="test-session-id-1234",
+            since_timestamp=None,
+            user_message="Hello, agent!",
+        ):
+            events.append(event)
+
+    mock_process_message.assert_awaited_once()
+    cmd = mock_process_message.await_args.args[0]
+    assert cmd.session_id == "test-session-id-1234"
+    assert cmd.text == "Hello, agent!"
+    assert cmd.origin == "web"

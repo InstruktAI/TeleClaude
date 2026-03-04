@@ -493,10 +493,11 @@ class RunSessionRequest(BaseModel):  # type: ignore[explicit-any]
     agent: Literal["claude", "gemini", "codex"] = "claude"
     subfolder: str = ""
     thinking_mode: Literal["fast", "med", "slow"] = "slow"
+    detach: bool = False
 
 
 class SendResultRequest(BaseModel):  # type: ignore[explicit-any]
-    """Request to send a formatted result to the session's user (POST /sessions/{id}/result)."""
+    """Request to send a formatted result to the session's user (POST /sessions/self/result)."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -505,7 +506,7 @@ class SendResultRequest(BaseModel):  # type: ignore[explicit-any]
 
 
 class RenderWidgetRequest(BaseModel):  # type: ignore[explicit-any]
-    """Request to render a rich widget expression (POST /sessions/{id}/widget)."""
+    """Request to render a rich widget expression (POST /sessions/self/widget)."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -513,7 +514,7 @@ class RenderWidgetRequest(BaseModel):  # type: ignore[explicit-any]
 
 
 class EscalateRequest(BaseModel):  # type: ignore[explicit-any]
-    """Request to escalate a customer session to Discord (POST /sessions/{id}/escalate)."""
+    """Request to escalate a customer session to Discord (POST /sessions/self/escalate)."""
 
     model_config = ConfigDict(frozen=True)
 

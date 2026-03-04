@@ -844,7 +844,7 @@ def main() -> None:
 
             print(f"Processing {agent_name}...")
 
-            agent_specific_file = os.path.join(prefix_root, f"{agent_name.upper()}.primer.md")
+            agent_specific_file = os.path.join(prefix_root, f"{agent_name.upper()}.addendum.md")
             agent_specific_content = ""
             if os.path.exists(agent_specific_file):
                 with open(agent_specific_file, "r") as extra_f:
@@ -864,7 +864,7 @@ def main() -> None:
             processed_contents = [
                 process_file(content, config["prefix"], agent_name) for content in agent_master_contents
             ]
-            primer_suffix = f"\n---\n\n{agent_specific_content}" if agent_specific_content else ""
+            addendum_suffix = f"\n---\n\n{agent_specific_content}" if agent_specific_content else ""
             combined_agents_content = "\n\n".join(content for content in (*processed_contents,) if content)
             if _should_expand_inline(agent_name) and processed_contents:
                 expanded_body = expand_inline_refs(
@@ -875,7 +875,7 @@ def main() -> None:
                 )
                 combined_agents_content = expanded_body
             if combined_agents_content:
-                combined_agents_content = combined_agents_content.rstrip() + primer_suffix
+                combined_agents_content = combined_agents_content.rstrip() + addendum_suffix
             if combined_agents_content and agent_name == "codex":
                 combined_agents_content = _rewrite_codex_next_prompt_tokens(combined_agents_content)
             if combined_agents_content:

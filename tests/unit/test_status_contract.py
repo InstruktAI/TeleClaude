@@ -189,7 +189,7 @@ def test_serialize_status_event_logs_error_on_validation_failure(caplog: pytest.
 
 def test_lifecycle_statuses_contains_all_required_values() -> None:
     """LIFECYCLE_STATUSES must contain the full canonical vocabulary."""
-    required = {"accepted", "awaiting_output", "active_output", "stalled", "completed", "error", "closed"}
+    required = {"accepted", "active", "awaiting_output", "active_output", "stalled", "completed", "error", "closed"}
     assert required == LIFECYCLE_STATUSES
 
 

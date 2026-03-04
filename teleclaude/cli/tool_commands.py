@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import sys
 
-from teleclaude.cli.tool_client import print_json, tool_api_call
+from teleclaude.cli.tool_client import _read_caller_session_id, print_json, tool_api_call
 
 # =============================================================================
 # Sessions group
@@ -29,12 +29,13 @@ def handle_sessions(args: list[str]) -> None:
       tail        Get recent messages from a session
       run         Run a slash command on a new agent session
       revive      Revive a session by TeleClaude session ID
-      end         End a session
+      end         End a session ('self' to end own session)
+      restart     Restart a session ('self' to restart own session)
       unsubscribe Stop receiving notifications from a session
-      result      Send a formatted result to the session's user
-      file        Send a file to the session
-      widget      Render a widget to the session's user
-      escalate    Escalate a customer session via Discord
+      result      Send a formatted result to the user (implicit session)
+      file        Send a file to the user (implicit session)
+      widget      Render a widget to the user (implicit session)
+      escalate    Escalate to an admin via Discord (implicit session)
     """
     if not args or args[0] in ("-h", "--help"):
         _sessions_help()
@@ -71,6 +72,8 @@ def handle_sessions(args: list[str]) -> None:
         handle_sessions_widget(rest)
     elif sub == "escalate":
         handle_sessions_escalate(rest)
+    elif sub == "restart":
+        handle_sessions_restart(rest)
     else:
         print(f"Unknown sessions subcommand: {sub}", file=sys.stderr)
         print("Run 'telec sessions --help' for usage.", file=sys.stderr)
@@ -88,12 +91,13 @@ Subcommands:
   tail         Get recent messages from a session
   run          Run a slash command on a new agent session
   revive       Revive session by TeleClaude session ID
-  end          End (terminate) a session
+  end          End (terminate) a session ('self' to end own session)
+  restart      Restart an agent session ('self' to restart own session)
   unsubscribe  Stop receiving notifications from a session
-  result       Send a formatted result message to the session's user
-  file         Send a file to a session
-  widget       Render a rich widget to the session's user
-  escalate     Escalate a customer session to an admin via Discord
+  result       Send a formatted result to the user (implicit session)
+  file         Send a file to the user (implicit session)
+  widget       Render a rich widget to the user (implicit session)
+  escalate     Escalate to an admin via Discord (implicit session)
 
 Run 'telec sessions <subcommand> --help' for subcommand-specific help."""
     )
@@ -134,6 +138,7 @@ def handle_sessions_start(args: list[str]) -> None:
                                 [--message <text>]
                                 [--title <text>]
                                 [--direct]
+                                [--detach]
 
     Creates a new TeleClaude agent session on the specified computer in the
     given project directory. The agent starts immediately.
@@ -172,6 +177,9 @@ def handle_sessions_start(args: list[str]) -> None:
             i += 2
         elif args[i] == "--direct":
             body["direct"] = True
+            i += 1
+        elif args[i] == "--detach":
+            body["skip_listener_registration"] = True
             i += 1
         else:
             i += 1
@@ -326,6 +334,7 @@ def handle_sessions_run(args: list[str]) -> None:
                               [--agent claude|gemini|codex]
                               [--mode fast|med|slow]
                               [--computer <name>]
+                              [--detach]
 
     Creates a new session and immediately runs the given slash command with the
     specified arguments. Useful for dispatching worker commands like /next-build.
@@ -375,6 +384,9 @@ def handle_sessions_run(args: list[str]) -> None:
         elif args[i] == "--subfolder" and i + 1 < len(args):
             body["subfolder"] = args[i + 1]
             i += 2
+        elif args[i] == "--detach":
+            body["detach"] = True
+            i += 1
         else:
             i += 1
 
@@ -394,11 +406,15 @@ def handle_sessions_end(args: list[str]) -> None:
 
     Usage: telec sessions end <session_id> [--computer <name>]
 
+    session_id may be 'self' to end the caller's own session
+    (resolved from $TMPDIR/teleclaude_session_id).
+
     Gracefully terminates the session: kills the tmux session, deletes the
     session record, and cleans up all resources (listeners, workspace dirs).
 
     Examples:
       telec sessions end abc123
+      telec sessions end self
       telec sessions end abc123 --computer remote-macbook
     """
     if "--help" in args or "-h" in args:
@@ -427,7 +443,50 @@ def handle_sessions_end(args: list[str]) -> None:
         print("Error: session_id required", file=sys.stderr)
         raise SystemExit(1)
 
+    if session_id == "self":
+        session_id = _read_caller_session_id()
+        if not session_id:
+            print("Error: could not resolve 'self' — $TMPDIR/teleclaude_session_id not found", file=sys.stderr)
+            raise SystemExit(1)
+
     data = tool_api_call("DELETE", f"/sessions/{session_id}", params={"computer": computer})
+    print_json(data)
+
+
+def handle_sessions_restart(args: list[str]) -> None:
+    """Restart an agent session.
+
+    Usage: telec sessions restart <session_id>
+           telec sessions restart self
+
+    Triggers an agent restart for the target session. When 'self' is given,
+    restarts the caller's own session (resolved from
+    $TMPDIR/teleclaude_session_id).
+
+    Examples:
+      telec sessions restart self
+      telec sessions restart abc123
+    """
+    if "--help" in args or "-h" in args:
+        print(handle_sessions_restart.__doc__ or "")
+        return
+
+    session_id: str | None = None
+
+    if args and not args[0].startswith("-"):
+        session_id = args[0]
+
+    if not session_id:
+        print("Error: session_id required (use 'self' for own session)", file=sys.stderr)
+        raise SystemExit(1)
+
+    if session_id == "self":
+        session_id = _read_caller_session_id()
+        if not session_id:
+            print("Error: could not resolve 'self' — $TMPDIR/teleclaude_session_id not found", file=sys.stderr)
+            raise SystemExit(1)
+
+    data = tool_api_call("POST", f"/sessions/{session_id}/agent-restart")
     print_json(data)
 
 
@@ -465,44 +524,35 @@ def handle_sessions_unsubscribe(args: list[str]) -> None:
 def handle_sessions_result(args: list[str]) -> None:
     """Send a formatted result to the session's user as a separate message.
 
-    Usage: telec sessions result <session_id> <content>
-                                 [--format markdown|html]
+    Usage: telec sessions result <content> [--format markdown|html]
 
     Sends formatted content through the session's adapter (Telegram, Discord,
     etc.) as a persistent message visible to the human user. Use this to
     deliver reports, summaries, or structured output to the user.
 
-    The content is sent as a separate message from the agent's conversation
-    flow, clearly marked as a result. Supports markdown and HTML formatting.
+    The caller's session is resolved automatically from the environment.
 
     Options:
       --format markdown|html   Output format (default: markdown)
 
     Examples:
-      telec sessions result abc123 "## Summary\n\nAll 5 tasks completed."
-      telec sessions result abc123 "<h2>Done</h2>" --format html
+      telec sessions result "## Summary\n\nAll 5 tasks completed."
+      telec sessions result "<h2>Done</h2>" --format html
     """
     if "--help" in args or "-h" in args:
         print(handle_sessions_result.__doc__ or "")
         return
 
-    session_id: str | None = None
     content: str | None = None
     output_format = "markdown"
 
     if args and not args[0].startswith("-"):
-        session_id = args[0]
+        content = args[0]
         args = args[1:]
-        if args and not args[0].startswith("-"):
-            content = args[0]
-            args = args[1:]
 
     i = 0
     while i < len(args):
-        if args[i] in ("--session", "-s") and i + 1 < len(args):
-            session_id = args[i + 1]
-            i += 2
-        elif args[i] == "--content" and i + 1 < len(args):
+        if args[i] == "--content" and i + 1 < len(args):
             content = args[i + 1]
             i += 2
         elif args[i] == "--format" and i + 1 < len(args):
@@ -511,30 +561,27 @@ def handle_sessions_result(args: list[str]) -> None:
         else:
             i += 1
 
-    if not session_id:
-        print("Error: session_id required", file=sys.stderr)
-        raise SystemExit(1)
     if not content:
         print("Error: content required", file=sys.stderr)
         raise SystemExit(1)
 
     data = tool_api_call(
         "POST",
-        f"/sessions/{session_id}/result",
+        "/sessions/self/result",
         json_body={"content": content, "output_format": output_format},
     )
     print_json(data)
 
 
 def handle_sessions_file(args: list[str]) -> None:
-    """Send a file to a session.
+    """Send a file to the session's user.
 
-    Usage: telec sessions file <session_id> --path <file_path>
+    Usage: telec sessions file --path <file_path>
                                --filename <name> [--caption <text>]
 
-    Sends a file as input to the session. The file must be accessible on the
-    daemon's filesystem. Used to provide documents, images, or data files to
-    the agent for processing.
+    Sends a file through the session's adapter. The file must be accessible on
+    the daemon's filesystem. The caller's session is resolved automatically
+    from the environment.
 
     Options:
       --path <path>       Absolute path to the file on the daemon host
@@ -542,26 +589,18 @@ def handle_sessions_file(args: list[str]) -> None:
       --caption <text>    Optional caption accompanying the file
 
     Examples:
-      telec sessions file abc123 --path /tmp/report.pdf --filename report.pdf
-      telec sessions file abc123 --path /data/img.png --filename img.png --caption "See this"
+      telec sessions file --path /tmp/report.pdf --filename report.pdf
+      telec sessions file --path /data/img.png --filename img.png --caption "See this"
     """
     if "--help" in args or "-h" in args:
         print(handle_sessions_file.__doc__ or "")
         return
 
-    session_id: str | None = None
     body: dict[str, object] = {"file_size": 0}  # guard: loose-dict - JSON request body
-
-    if args and not args[0].startswith("-"):
-        session_id = args[0]
-        args = args[1:]
 
     i = 0
     while i < len(args):
-        if args[i] in ("--session", "-s") and i + 1 < len(args):
-            session_id = args[i + 1]
-            i += 2
-        elif args[i] == "--path" and i + 1 < len(args):
+        if args[i] == "--path" and i + 1 < len(args):
             body["file_path"] = args[i + 1]
             i += 2
         elif args[i] == "--filename" and i + 1 < len(args):
@@ -573,9 +612,6 @@ def handle_sessions_file(args: list[str]) -> None:
         else:
             i += 1
 
-    if not session_id:
-        print("Error: session_id required", file=sys.stderr)
-        raise SystemExit(1)
     if not body.get("file_path"):
         print("Error: --path is required", file=sys.stderr)
         raise SystemExit(1)
@@ -583,27 +619,27 @@ def handle_sessions_file(args: list[str]) -> None:
         print("Error: --filename is required", file=sys.stderr)
         raise SystemExit(1)
 
-    data = tool_api_call("POST", f"/sessions/{session_id}/file", json_body=body)
+    data = tool_api_call("POST", "/sessions/self/file", json_body=body)
     print_json(data)
 
 
 def handle_sessions_widget(args: list[str]) -> None:
     """Render a rich widget expression to the session's user.
 
-    Usage: telec sessions widget <session_id> --data <json>
+    Usage: telec sessions widget --data <json>
 
     Renders a widget expression: generates a text summary and sends it to the
     session's adapter (Telegram, Discord). Named widgets are stored for later
-    retrieval. The data must be a valid widget expression JSON object.
+    retrieval. The caller's session is resolved automatically from the
+    environment.
 
     Widget sections: text, input, actions, image, table, file, code, divider.
-    See the TeleClaude tool API documentation for the full widget schema.
 
     Options:
       --data <json>   Widget expression as a JSON string
 
     Examples:
-      telec sessions widget abc123 --data '{"title":"Done","sections":[{"type":"text","content":"OK"}]}'
+      telec sessions widget --data '{"title":"Done","sections":[{"type":"text","content":"OK"}]}'
     """
     if "--help" in args or "-h" in args:
         print(handle_sessions_widget.__doc__ or "")
@@ -611,27 +647,16 @@ def handle_sessions_widget(args: list[str]) -> None:
 
     import json
 
-    session_id: str | None = None
     data_str: str | None = None
-
-    if args and not args[0].startswith("-"):
-        session_id = args[0]
-        args = args[1:]
 
     i = 0
     while i < len(args):
-        if args[i] in ("--session", "-s") and i + 1 < len(args):
-            session_id = args[i + 1]
-            i += 2
-        elif args[i] == "--data" and i + 1 < len(args):
+        if args[i] == "--data" and i + 1 < len(args):
             data_str = args[i + 1]
             i += 2
         else:
             i += 1
 
-    if not session_id:
-        print("Error: session_id required", file=sys.stderr)
-        raise SystemExit(1)
     if not data_str:
         print("Error: --data is required", file=sys.stderr)
         raise SystemExit(1)
@@ -642,22 +667,20 @@ def handle_sessions_widget(args: list[str]) -> None:
         print(f"Error: invalid JSON for --data: {e}", file=sys.stderr)
         raise SystemExit(1)
 
-    result = tool_api_call("POST", f"/sessions/{session_id}/widget", json_body={"data": widget_data})
+    result = tool_api_call("POST", "/sessions/self/widget", json_body={"data": widget_data})
     print_json(result)
 
 
 def handle_sessions_escalate(args: list[str]) -> None:
     """Escalate a customer session to an admin via Discord.
 
-    Usage: telec sessions escalate <session_id> --customer <name> --reason <text>
+    Usage: telec sessions escalate --customer <name> --reason <text>
                                    [--summary <context>]
 
     Creates a Discord thread in the escalation forum channel, notifies admins,
     and activates relay mode on the session so admin messages are forwarded to
-    the customer. Only available for sessions with human_role='customer'.
-
-    Requires Discord adapter to be configured and active. The session must be
-    a customer session (human_role='customer').
+    the customer. The caller's session is resolved automatically from the
+    environment.
 
     Options:
       --customer <name>   Customer name for the escalation thread
@@ -665,26 +688,18 @@ def handle_sessions_escalate(args: list[str]) -> None:
       --summary <text>    Optional context summary for the admin
 
     Examples:
-      telec sessions escalate abc123 --customer "John Doe" --reason "billing dispute"
-      telec sessions escalate abc123 --customer "Jane" --reason "urgent bug" --summary "App crashes on login"
+      telec sessions escalate --customer "John Doe" --reason "billing dispute"
+      telec sessions escalate --customer "Jane" --reason "urgent bug" --summary "App crashes on login"
     """
     if "--help" in args or "-h" in args:
         print(handle_sessions_escalate.__doc__ or "")
         return
 
-    session_id: str | None = None
     body: dict[str, object] = {}  # guard: loose-dict - JSON request body
-
-    if args and not args[0].startswith("-"):
-        session_id = args[0]
-        args = args[1:]
 
     i = 0
     while i < len(args):
-        if args[i] in ("--session", "-s") and i + 1 < len(args):
-            session_id = args[i + 1]
-            i += 2
-        elif args[i] == "--customer" and i + 1 < len(args):
+        if args[i] == "--customer" and i + 1 < len(args):
             body["customer_name"] = args[i + 1]
             i += 2
         elif args[i] == "--reason" and i + 1 < len(args):
@@ -696,9 +711,6 @@ def handle_sessions_escalate(args: list[str]) -> None:
         else:
             i += 1
 
-    if not session_id:
-        print("Error: session_id required", file=sys.stderr)
-        raise SystemExit(1)
     if not body.get("customer_name"):
         print("Error: --customer is required", file=sys.stderr)
         raise SystemExit(1)
@@ -706,7 +718,7 @@ def handle_sessions_escalate(args: list[str]) -> None:
         print("Error: --reason is required", file=sys.stderr)
         raise SystemExit(1)
 
-    result = tool_api_call("POST", f"/sessions/{session_id}/escalate", json_body=body)
+    result = tool_api_call("POST", "/sessions/self/escalate", json_body=body)
     print_json(result)
 
 

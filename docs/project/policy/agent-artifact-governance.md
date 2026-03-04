@@ -22,6 +22,16 @@ description: 'Governance rules for agent artifact sources, transforms, and owner
 - Inline references are expanded for Claude, Codex, and Gemini outputs.
 - Frontmatter is preserved by default; `hooks` are only emitted for Claude outputs.
 
+### Agent addendum authoring
+
+Addendum files (`agents/{AGENT}.addendum.md`) are thin behavioral shims for agent-specific failure modes. They are not documentation, not role definitions, and not context delivery mechanisms.
+
+- **Failure-mode corrections only.** Every addendum item must answer: "What does this agent get wrong that others don't?" If all agents share the problem, extract it to a shared doc snippet.
+- **No duplication.** If a behavior is already codified in a concept, policy, or procedure, do not repeat it. The context retrieval system delivers shared docs when needed.
+- **No doc references.** No snippet IDs, no `@` paths, no inline references. Addenda are behavioral, not referential.
+- **No role-specific content.** Role behavior (orchestrator, builder, reviewer) is loaded through command `Required reads`. Addenda apply to all sessions — role-specific content restricts the agent when it shouldn't.
+- **Stay thin.** A growing addendum signals missing shared docs. Extract the general behavior into a shared snippet and keep only the agent-specific correction.
+
 ## Rationale
 
 - A single mother project prevents drift and split-brain artifact sources.

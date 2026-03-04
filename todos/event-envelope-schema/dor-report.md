@@ -29,6 +29,7 @@ coverage, versioning constant, JSON Schema validation). Demo script validates en
 ### Gate 4: Approach Known — Pass
 
 All patterns have codebase precedent:
+
 - `ConfigDict(extra="allow")` — standard Pydantic, no unknowns.
 - Schema registration — follows `schemas/system.py` and `schemas/software_development.py`
   pattern exactly (register function, `EventSchema` entries, wired via `register_all()`).
@@ -49,6 +50,7 @@ functional. Redis stream infrastructure is in place. No new configuration needed
 ### Gate 7: Integration Safety — Pass
 
 All changes are additive:
+
 - `extra="allow"` is backward-compatible — existing envelopes without extra fields work
   identically. Consumers (`processor.py`, `producer.py`, cartridges, `db.py`) only access
   declared fields; extra fields are transparent to them.
@@ -70,14 +72,14 @@ No tooling or scaffolding changes.
 
 Every implementation plan task traces to a requirement. No contradictions found.
 
-| Requirement | Plan Phase | Status |
-|---|---|---|
+| Requirement                                                           | Plan Phase              | Status  |
+| --------------------------------------------------------------------- | ----------------------- | ------- |
 | Core event taxonomy (node, deployment, content, notification, schema) | Phase 2 (Tasks 2.1–2.6) | Covered |
-| Expansion joint (`extra="allow"`) | Phase 1 (Task 1.1–1.2) | Covered |
-| Schema versioning constant | Phase 3 (Task 3.1) | Covered |
-| JSON Schema export | Phase 4 (Task 4.1) | Covered |
-| Round-trip integrity | Phase 5 (Tasks 5.1–5.4) | Covered |
-| Event vocabulary spec update | Phase 6 (Task 6.1) | Covered |
+| Expansion joint (`extra="allow"`)                                     | Phase 1 (Task 1.1–1.2)  | Covered |
+| Schema versioning constant                                            | Phase 3 (Task 3.1)      | Covered |
+| JSON Schema export                                                    | Phase 4 (Task 4.1)      | Covered |
+| Round-trip integrity                                                  | Phase 5 (Tasks 5.1–5.4) | Covered |
+| Event vocabulary spec update                                          | Phase 6 (Task 6.1)      | Covered |
 
 Scoping note: `input.md` lists `todo.*`, `pr.*`, and `service.*` families not in
 requirements scope. This is intentional — `todo.*` is covered by existing

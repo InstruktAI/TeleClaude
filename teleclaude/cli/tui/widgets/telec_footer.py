@@ -74,7 +74,7 @@ class TelecFooter(Widget):
             if not binding.show:
                 continue
 
-            is_global = node is self.app
+            is_global = node is self.app or (binding.group and binding.group.description == "global")
             seen = seen_global_actions if is_global else seen_context_actions
             if binding.action in seen:
                 continue
@@ -93,7 +93,9 @@ class TelecFooter(Widget):
         label = tooltip or binding.description
 
         text = Text()
-        key_style = Style(bold=True, dim=True) if not enabled else Style(bold=True, color=get_neutral_color("highlight"))
+        key_style = (
+            Style(bold=True, dim=True) if not enabled else Style(bold=True, color=get_neutral_color("highlight"))
+        )
         label_style = Style(dim=True)
         text.append(str(key), style=key_style)
         if label:

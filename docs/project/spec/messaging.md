@@ -22,13 +22,13 @@ Use this when you need to:
 
 ### Messaging command surface
 
-| Command                   | Purpose                                  | Key params                             |
-| ------------------------- | ---------------------------------------- | -------------------------------------- |
-| `telec sessions result`   | Send markdown/html as a separate message | `session_id`, `content`, `--format`    |
-| `telec sessions file`     | Send a file for download                 | `session_id`, `--path`, `--caption`    |
-| `telec sessions widget`   | Render rich UI (forms, tables, actions)  | `session_id`, `--data`                 |
-| `telec sessions escalate` | Escalate customer to human admin         | `session_id`, `--customer`, `--reason` |
-| `telec channels publish`  | Publish to internal Redis channel        | `channel`, `--data`                    |
+| Command                   | Purpose                                  | Key params               |
+| ------------------------- | ---------------------------------------- | ------------------------ |
+| `telec sessions result`   | Send markdown/html as a separate message | `content`, `--format`    |
+| `telec sessions file`     | Send a file for download                 | `--path`, `--caption`    |
+| `telec sessions widget`   | Render rich UI (forms, tables, actions)  | `--data`                 |
+| `telec sessions escalate` | Escalate customer to human admin         | `--customer`, `--reason` |
+| `telec channels publish`  | Publish to internal Redis channel        | `channel`, `--data`      |
 
 ### Hook contract API (FastAPI on Unix socket)
 

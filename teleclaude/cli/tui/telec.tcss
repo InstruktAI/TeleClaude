@@ -75,6 +75,8 @@ Banner {
 
 Tabs {
     display: none;
+    height: 0;
+    max-height: 0;
 }
 
 TabbedContent > ContentSwitcher {

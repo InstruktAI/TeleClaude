@@ -45,7 +45,7 @@ notification projection.
    - `trust.muted` — a source was muted (death by loneliness).
    - `trust.ring.added` — a peer was added to the trust ring.
    - `trust.ring.removed` — a peer was removed from the trust ring.
-   These are local-visibility events processed by the existing pipeline.
+     These are local-visibility events processed by the existing pipeline.
 
 6. **Trust ring management API** — Daemon API endpoints for managing trust rings:
    - `GET /api/trust/ring` — list trust ring members.
@@ -91,8 +91,8 @@ notification projection.
 - The trust evaluator must not block the pipeline for longer than 10ms per event
   under normal conditions. SQLite lookups are fast; keep the evaluation synchronous
   within an async cartridge.
-- Trust ring storage uses the daemon's existing SQLite database (per single-database
-  policy). New tables, same file.
+- Trust ring storage uses the event platform database (`events.db`) — same domain
+  as notification projections. New tables, same file, same lifecycle.
 - Config surface follows existing TeleClaude YAML config patterns. No new config file
   formats.
 - The cartridge protocol requires `async def process(event, context) -> EventEnvelope | None`.

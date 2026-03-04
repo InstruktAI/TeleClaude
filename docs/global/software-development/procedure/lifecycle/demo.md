@@ -67,7 +67,9 @@ The builder refines `demo.md` with working executable blocks. Demo validation is
 
 Individual code blocks can be annotated `<!-- skip-validation: reason -->` when they genuinely can't be run by the CLI validator (e.g., requires human visual confirmation). This should be rare.
 
-If an entire delivery can't produce any executable demo steps (pure refactors with no observable behavior change), the builder notes the exception in `demo.md` with reasoning, and the reviewer accepts or pushes back.
+The `<!-- no-demo: reason -->` marker exists for deliveries that genuinely have zero observable behavior change — pure internal refactors verified entirely by unit tests. This is the **only** valid use case. If the delivery touches anything user-facing (CLI output, TUI behavior, config, API responses, messaging), it has observable behavior and therefore has a demo. The AI presenter can spin up TUI instances, drive Playwright, call APIs — "requires live interaction" is not a valid justification.
+
+The build gate emits a warning when a no-demo marker is found. The reviewer must explicitly accept or reject the justification — a no-demo marker on a user-facing delivery is a Critical finding.
 
 ### Bug fixes get demos too
 

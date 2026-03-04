@@ -80,11 +80,11 @@ class SessionsView(Widget, can_focus=True):
         Binding("minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True)),
         Binding("n", "new_session", "New"),
         Binding("n", "new_project", "New Project"),
-        Binding("a", "toggle_project_sessions", "Open/Close"),
         Binding("k", "kill_session", "Kill"),
         Binding("R", "restart_session", "Restart"),
         Binding("R", "restart_project", "Restart All"),
         Binding("R", "restart_all", "Restart All"),
+        Binding("s", "toggle_sticky_sessions", "Sticky", group=Binding.Group("global")),
     ]
 
     preview_session_id = reactive[str | None](None)
@@ -154,10 +154,13 @@ class SessionsView(Widget, can_focus=True):
             self._logger.info("Pruning %d stale sticky IDs: %s", len(stale_sticky), [s[:8] for s in stale_sticky])
             self._sticky_session_ids = [sid for sid in self._sticky_session_ids if sid in new_ids]
             state_changed = True
+            # Notify bridge so panes for dead sessions are actually removed.
+            self.post_message(StickyChanged(self._sticky_session_ids.copy()))
         if self.preview_session_id and self.preview_session_id not in new_ids:
             self._logger.info("Pruning stale preview ID: %s", self.preview_session_id[:8])
             self.preview_session_id = None
             state_changed = True
+            self.post_message(PreviewChanged(None, request_focus=False))
 
         if old_ids != new_ids or not self._nav_items:
             # Session list changed — full rebuild (includes _apply_pending_selection)
@@ -275,7 +278,10 @@ class SessionsView(Widget, can_focus=True):
             for c in self._computers
         ]
 
-        tree = build_tree(computer_display, self._projects, self._sessions)
+        # Sort sessions by creation time for stable tree positions (the API
+        # returns them sorted by last_activity which causes sessions to jump).
+        sorted_sessions = sorted(self._sessions, key=lambda s: s.created_at or "", reverse=True)
+        tree = build_tree(computer_display, self._projects, sorted_sessions)
 
         for node in tree:
             self._mount_node(container, node)
@@ -401,6 +407,7 @@ class SessionsView(Widget, can_focus=True):
 
     def _notify_state_changed(self) -> None:
         self.post_message(StateChanged())
+        self.refresh_bindings()
 
     # --- Helpers ---
 
@@ -527,8 +534,9 @@ class SessionsView(Widget, can_focus=True):
 
         # Double-click detection
         if self._last_click_session == session_id and (now - self._last_click_time) < DOUBLE_PRESS_THRESHOLD:
+            was_sticky = session_id in self._sticky_session_ids
             self._toggle_sticky(session_id)
-            if session_id not in self._sticky_session_ids:
+            if was_sticky:
                 # Preserve pane-slot stability: removed sticky immediately becomes preview.
                 self.preview_session_id = session_id
                 self.post_message(PreviewChanged(session_id, request_focus=False))
@@ -904,43 +912,50 @@ class SessionsView(Widget, can_focus=True):
             on_result,
         )
 
-    def action_toggle_project_sessions(self) -> None:
-        """a on project header: batch-toggle all sessions for a project sticky."""
+    def action_toggle_sticky_sessions(self) -> None:
+        """a: batch-toggle sticky sessions scoped to project, computer, or globally."""
         item = self._current_item()
-        if not isinstance(item, ProjectHeader):
-            return
 
-        project_path = item.project.path
-        project_computer = item.project.computer or "local"
+        if isinstance(item, ProjectHeader):
+            scope_ids = {
+                s.session_id
+                for s in self._sessions
+                if s.project_path == item.project.path and (s.computer or "local") == (item.project.computer or "local")
+            }
+        elif isinstance(item, ComputerHeader):
+            computer = item.data.computer.name
+            scope_ids = {s.session_id for s in self._sessions if (s.computer or "local") == computer}
+        else:
+            # Global: any node — only reachable when stickies exist (check_action guards this)
+            if not self._sticky_session_ids:
+                return
+            scope_ids = set(self._sticky_session_ids)
 
-        project_sessions = [
-            s for s in self._sessions if s.project_path == project_path and (s.computer or "local") == project_computer
-        ]
-        project_session_ids = {s.session_id for s in project_sessions}
+        sticky_in_scope = [sid for sid in self._sticky_session_ids if sid in scope_ids]
 
-        sticky_project_ids = [sid for sid in self._sticky_session_ids if sid in project_session_ids]
-
-        if sticky_project_ids:
-            # Toggle OFF: remove all sticky for this project
-            if self.preview_session_id in project_session_ids:
+        if sticky_in_scope:
+            # Toggle OFF: remove sticky for all sessions in scope.
+            # Always clear preview — any active preview may belong to a pane that is
+            # about to be torn down, and leaving it set causes ghost previews.
+            if self.preview_session_id is not None:
                 self.preview_session_id = None
                 self.post_message(PreviewChanged(None, request_focus=False))
-            for sid in sticky_project_ids:
+            for sid in sticky_in_scope:
                 self._sticky_session_ids.remove(sid)
         else:
-            # Toggle ON: make first available eligible sessions sticky
-            eligible = [s for s in project_sessions if s.tmux_session_name]
-            if not eligible:
-                self.app.notify("No attachable sessions found for project", severity="warning")
+            # Toggle ON: make first available eligible sessions in scope sticky
+            scope_sessions = [s for s in self._sessions if s.session_id in scope_ids and s.tmux_session_name]
+            if not scope_sessions:
+                self.app.notify("No attachable sessions found", severity="warning")
                 return
             slots = MAX_STICKY - len(self._sticky_session_ids)
             if slots <= 0:
                 self.app.notify(f"Maximum {MAX_STICKY} sticky sessions reached", severity="warning")
                 return
-            to_add = eligible[:slots]
-            if len(eligible) > slots:
+            to_add = scope_sessions[:slots]
+            if len(scope_sessions) > slots:
                 self.app.notify(
-                    f"Showing first {slots} of {len(eligible)} sessions (max {MAX_STICKY} sticky panes)",
+                    f"Showing first {slots} of {len(scope_sessions)} sessions (max {MAX_STICKY} sticky panes)",
                     severity="warning",
                 )
             for s in to_add:
@@ -966,8 +981,10 @@ class SessionsView(Widget, can_focus=True):
             return isinstance(item, (ProjectHeader, ComputerHeader, SessionRow))
         if action in {"kill_session", "restart_session", "toggle_preview"}:
             return isinstance(item, SessionRow)
-        if action in {"restart_project", "toggle_project_sessions"}:
+        if action == "restart_project":
             return isinstance(item, ProjectHeader)
+        if action == "toggle_sticky_sessions":
+            return True
         if action == "restart_all":
             return isinstance(item, ComputerHeader)
         return True

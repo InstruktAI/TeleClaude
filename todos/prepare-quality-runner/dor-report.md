@@ -42,9 +42,9 @@ All eight DOR gates are satisfied:
    - `EventDB.update_agent_status()` (db.py:198)
    - `EventDB.resolve_notification()` (db.py:213)
    - `EventDB.find_by_group_key()` (db.py:243)
-   No roadmap `after` dependency — the event platform core is already delivered.
-   The `event-platform` roadmap slug represents future phases (2-7), not the core
-   infrastructure this cartridge depends on.
+     No roadmap `after` dependency — the event platform core is already delivered.
+     The `event-platform` roadmap slug represents future phases (2-7), not the core
+     infrastructure this cartridge depends on.
 
 7. **Integration safety** — Purely additive: new cartridge module wired into existing
    pipeline list. Pass-through semantics ensure downstream cartridges are unaffected.
@@ -56,21 +56,21 @@ All eight DOR gates are satisfied:
 
 Every plan task traces to a functional requirement:
 
-| Plan task                      | Requirement      |
-| ------------------------------ | ---------------- |
-| 1.1 Cartridge module           | FR1              |
-| 1.2 Idempotency check          | FR2              |
-| 2.1 Rubric scorer              | FR3, FR4         |
-| 2.2 Consistency checker         | FR3              |
-| 3.1 Structural gap filler       | FR5              |
-| 3.2 Post-improvement reassess   | FR5              |
-| 4.1 DOR report writer           | FR6              |
-| 4.2 State writeback             | FR7              |
-| 4.3 Notification lifecycle      | FR8              |
-| 5.1 Daemon pipeline wiring      | Constraints      |
-| 5.2 Package exports             | Infrastructure   |
-| 6.1 Tests                       | AC8              |
-| 6.2 Quality checks              | AC9, Constraints |
+| Plan task                     | Requirement      |
+| ----------------------------- | ---------------- |
+| 1.1 Cartridge module          | FR1              |
+| 1.2 Idempotency check         | FR2              |
+| 2.1 Rubric scorer             | FR3, FR4         |
+| 2.2 Consistency checker       | FR3              |
+| 3.1 Structural gap filler     | FR5              |
+| 3.2 Post-improvement reassess | FR5              |
+| 4.1 DOR report writer         | FR6              |
+| 4.2 State writeback           | FR7              |
+| 4.3 Notification lifecycle    | FR8              |
+| 5.1 Daemon pipeline wiring    | Constraints      |
+| 5.2 Package exports           | Infrastructure   |
+| 6.1 Tests                     | AC8              |
+| 6.2 Quality checks            | AC9, Constraints |
 
 No contradictions found. Plan respects all constraints (no direct Redis access,
 no daemon internal imports, pass-through semantics, <2s processing target).

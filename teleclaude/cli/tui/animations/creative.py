@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import colorsys
 import math
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
 from teleclaude.cli.tui.animations.base import Animation, Spectrum
@@ -46,14 +46,6 @@ def _pick_hue(rng: Any) -> float:
 def _hue_to_hex(hue_deg: float, sat: float = 1.0, val: float = 1.0) -> str:
     r, g, b = colorsys.hsv_to_rgb(hue_deg / 360.0, sat, val)
     return rgb_to_hex(int(r * 255), int(g * 255), int(b * 255))
-
-
-def _all_letter_pixels(is_big: bool) -> List[Tuple[int, int]]:
-    letters = BIG_BANNER_LETTERS if is_big else LOGO_LETTERS
-    result = []
-    for i in range(len(letters)):
-        result.extend(PixelMap.get_letter_pixels(is_big, i))
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -218,184 +210,6 @@ class Glitch(Animation):
 
 
 # ---------------------------------------------------------------------------
-# ChromaticAberration
-# ---------------------------------------------------------------------------
-
-
-class ChromaticAberration(Animation):
-    """RGB channels offset horizontally — neon edge fringing."""
-
-    supports_small = False
-
-    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
-        super().__init__(*args, **kwargs)
-        self._params: Optional[dict[str, Any]] = None  # guard: loose-dict - animation state; shape varies per subclass
-        self._pixel_set: set[tuple[int, int]] = set()
-
-    def _lazy_init(self) -> None:
-        if self._params is not None:
-            return
-        self._params = {
-            "offset": self.rng.randint(1, 2),
-            "drift": self.rng.uniform(0.015, 0.05),
-        }
-        pixels = _all_letter_pixels(self.is_big)
-        self._pixel_set = set(pixels)
-
-    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        self._lazy_init()
-        p = self._params
-        ps: set[tuple[int, int]] = self._pixel_set or set()
-
-        off = max(1, p["offset"] + round(math.sin(frame * p["drift"]) * 0.5))
-
-        result: dict[tuple[int, int], str | int] = {}
-
-        # Render all letter pixels with channel-shifted colors
-        for x, y in ps:
-            # R from pixel shifted right (+off), B from pixel shifted left (-off)
-            has_r = (x + off, y) in ps
-            has_b = (x - off, y) in ps
-            r = 220 if has_r else 25
-            g = 190  # green center always present
-            b = 220 if has_b else 25
-            result[(x, y)] = rgb_to_hex(r, g, b)
-
-        # Fringe pixels just outside edges
-        for x, y in ps:
-            for dx in (-off, off):
-                fp = (x + dx, y)
-                if fp not in ps:
-                    r_src = (fp[0] + off, fp[1]) in ps
-                    b_src = (fp[0] - off, fp[1]) in ps
-                    r = 160 if r_src else 0
-                    g = 0
-                    b = 160 if b_src else 0
-                    if r or b:
-                        result[fp] = rgb_to_hex(r, g, b)
-
-        return result
-
-
-# ---------------------------------------------------------------------------
-# Comet
-# ---------------------------------------------------------------------------
-
-
-class Comet(Animation):
-    """Bright comet streak — white core, colored trail, letter flare on contact."""
-
-    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
-        super().__init__(*args, **kwargs)
-        self._params: Optional[dict[str, Any]] = None  # guard: loose-dict - animation state; shape varies per subclass
-
-    def _lazy_init(self) -> None:
-        if self._params is not None:
-            return
-        hue = _pick_hue(self.rng)
-        self._params = {
-            "color": _hue_to_hex(hue),
-            "speed": self.rng.uniform(2.5, 4.5),
-            "trail": self.rng.randint(7, 14),
-        }
-
-    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        self._lazy_init()
-        p = self._params
-        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
-
-        cx = (frame * p["speed"]) % (width + p["trail"] + 6) - p["trail"]
-        r0, g0, b0 = hex_to_rgb(p["color"])
-        result: dict[tuple[int, int], str | int] = {}
-
-        letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS
-        for i in range(len(letters)):
-            for x, y in PixelMap.get_letter_pixels(self.is_big, i):
-                dist = x - cx  # negative = in trail
-                if -p["trail"] < dist <= 0:
-                    fade = 1.0 + dist / p["trail"]  # 1.0 at head, 0 at tail
-                    if dist > -2:
-                        # Head flare: white blast
-                        r = int(r0 + (255 - r0) * fade)
-                        g = int(g0 + (255 - g0) * fade)
-                        b = int(b0 + (255 - b0) * fade)
-                    else:
-                        r = int(r0 * fade)
-                        g = int(g0 * fade)
-                        b = int(b0 * fade)
-                    result[(x, y)] = rgb_to_hex(r, g, b)
-                else:
-                    # Unlit dim base
-                    result[(x, y)] = rgb_to_hex(int(r0 * 0.15), int(g0 * 0.15), int(b0 * 0.15))
-
-        return result
-
-
-# ---------------------------------------------------------------------------
-# Fireworks
-# ---------------------------------------------------------------------------
-
-
-class Fireworks(Animation):
-    """Expanding color bursts from random letter pixel positions."""
-
-    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
-        super().__init__(*args, **kwargs)
-        self._bursts: List[dict[str, Any]] = []  # guard: loose-dict - burst state; shape defined at append site
-        self._next_burst: int = 0
-        self._pixels: Optional[List[Tuple[int, int]]] = None
-
-    def _lazy_init(self) -> None:
-        if self._pixels is not None:
-            return
-        self._pixels = _all_letter_pixels(self.is_big)
-        self._next_burst = self.rng.randint(0, 5)
-
-    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        self._lazy_init()
-        pixels = self._pixels
-
-        # Spawn
-        if frame >= self._next_burst and len(self._bursts) < 15 and pixels:
-            hue = _pick_hue(self.rng)
-            self._bursts.append(
-                {
-                    "center": self.rng.choice(pixels),
-                    "color": _hue_to_hex(hue),
-                    "start": frame,
-                    "max_r": self.rng.uniform(5.0, 12.0),
-                    "life": self.rng.randint(18, 28),
-                }
-            )
-            self._next_burst = frame + self.rng.randint(3, 7)
-
-        self._bursts = [b for b in self._bursts if frame - b["start"] < b["life"]]
-
-        result: dict[tuple[int, int], str | int] = {p: "#0a0a0a" for p in pixels}
-
-        for burst in self._bursts:
-            age = frame - burst["start"]
-            progress = age / burst["life"]
-            radius = progress * burst["max_r"]
-            fade = 1.0 - progress
-            bx, by = burst["center"]
-            r0, g0, b0 = hex_to_rgb(burst["color"])
-
-            for x, y in pixels:
-                dist = math.sqrt((x - bx) ** 2 + (y - by) ** 2)
-                ring_dist = abs(dist - radius)
-                if ring_dist < 2.0:
-                    ring_fade = max(0.0, (1.0 - ring_dist / 1.2)) * fade
-                    flash = 255 if progress < 0.12 else 0
-                    r = min(255, int(r0 * ring_fade) + flash)
-                    g = min(255, int(g0 * ring_fade) + flash)
-                    b = min(255, int(b0 * ring_fade) + flash)
-                    result[(x, y)] = rgb_to_hex(r, g, b)
-
-        return result
-
-
-# ---------------------------------------------------------------------------
 # EQBars
 # ---------------------------------------------------------------------------
 
@@ -403,18 +217,39 @@ class Fireworks(Animation):
 class EQBars(Animation):
     """Audio equalizer bars — per-letter column pulses driven by fake beat."""
 
+    # 5-stop gradient: dark-green → green → yellow → orange → red
+    _GRADIENT_STOPS = [(0, 102, 0), (0, 204, 0), (255, 255, 0), (255, 102, 0), (255, 0, 0)]
+
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self._params: Optional[dict[str, Any]] = None  # guard: loose-dict - animation state; shape varies per subclass
+        self._gradient_lut: list[str] = []  # pre-computed hex colors indexed by from_bottom
 
     def _lazy_init(self, num: int) -> None:
         if self._params is not None:
             return
+        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         self._params = {
             "freqs": [self.rng.uniform(0.04, 0.12) for _ in range(num)],
             "phases": [self.rng.uniform(0, math.pi * 2) for _ in range(num)],
             "amps": [self.rng.uniform(0.80, 1.0) for _ in range(num)],
         }
+        # Pre-compute gradient LUT: one hex color per row from bottom
+        stops = self._GRADIENT_STOPS
+        for from_bottom in range(height):
+            row_frac = from_bottom / max(1, height - 1)
+            seg = row_frac * (len(stops) - 1)
+            idx = min(int(seg), len(stops) - 2)
+            t = seg - idx
+            r0, g0, b0 = stops[idx]
+            r1, g1, b1 = stops[idx + 1]
+            self._gradient_lut.append(
+                rgb_to_hex(
+                    int(r0 + t * (r1 - r0)),
+                    int(g0 + t * (g1 - g0)),
+                    int(b0 + t * (b1 - b0)),
+                )
+            )
 
     def update(self, frame: int) -> dict[tuple[int, int], str | int]:
         letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS
@@ -422,11 +257,11 @@ class EQBars(Animation):
         self._lazy_init(num)
         p = self._params
         height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
+        lut = self._gradient_lut
 
         result: dict[tuple[int, int], str | int] = {}
 
         for i in range(num):
-            # Loud base keeps bars high; two harmonics add organic motion
             level = (
                 math.sin(frame * p["freqs"][i] + p["phases"][i]) * 0.45
                 + math.sin(frame * p["freqs"][i] * 2.1 + p["phases"][i] * 0.8) * 0.25
@@ -438,18 +273,7 @@ class EQBars(Animation):
             for x, y in PixelMap.get_letter_pixels(self.is_big, i):
                 from_bottom = height - 1 - y
                 if from_bottom < lit:
-                    # 5-stop gradient: dark-green (bottom) → lighter-green → yellow → orange → red (top)
-                    row_frac = from_bottom / max(1, height - 1)
-                    stops = [(0, 102, 0), (0, 204, 0), (255, 255, 0), (255, 102, 0), (255, 0, 0)]
-                    seg = row_frac * (len(stops) - 1)
-                    idx = min(int(seg), len(stops) - 2)
-                    t = seg - idx
-                    r0, g0, b0 = stops[idx]
-                    r1, g1, b1 = stops[idx + 1]
-                    r = int(r0 + t * (r1 - r0))
-                    g = int(g0 + t * (g1 - g0))
-                    b = int(b0 + t * (b1 - b0))
-                    result[(x, y)] = rgb_to_hex(r, g, b)
+                    result[(x, y)] = lut[from_bottom]
                 else:
                     result[(x, y)] = "#080808"
 
@@ -528,79 +352,6 @@ class LavaLamp(Animation):
                     result[(x, y)] = rgb_to_hex(int(r2 * 255), int(g2 * 255), int(b2 * 255))
                 else:
                     result[(x, y)] = "#050512"
-
-        return result
-
-
-# ---------------------------------------------------------------------------
-# Firefly
-# ---------------------------------------------------------------------------
-
-
-class Firefly(Animation):
-    """Tiny light points wandering between letter pixel positions."""
-
-    _NUM_FLIES = 20
-    _TRAIL = 8
-
-    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
-        super().__init__(*args, **kwargs)
-        # guard: loose-dict - fly state; shape defined at lazy init
-        self._flies: Optional[List[dict[str, Any]]] = None
-        self._pixel_list: Optional[List[Tuple[int, int]]] = None
-        self._neighbors: Optional[Dict[Tuple[int, int], List[Tuple[int, int]]]] = None
-
-    def _lazy_init(self) -> None:
-        if self._flies is not None:
-            return
-        self._pixel_list = _all_letter_pixels(self.is_big)
-        ps = set(self._pixel_list)
-
-        # Build adjacency within Manhattan distance 2
-        self._neighbors = {}
-        for x, y in self._pixel_list:
-            nb = [
-                (x + dx, y + dy)
-                for dx in range(-2, 3)
-                for dy in range(-2, 3)
-                if (dx, dy) != (0, 0) and (x + dx, y + dy) in ps
-            ]
-            self._neighbors[(x, y)] = nb if nb else self._pixel_list[:5]
-
-        self._flies = []
-        for _ in range(self._NUM_FLIES):
-            pos = self.rng.choice(self._pixel_list)
-            hue = _pick_hue(self.rng)
-            self._flies.append(
-                {
-                    "pos": pos,
-                    "trail": [],
-                    "color": _hue_to_hex(hue),
-                    "speed": self.rng.randint(1, 3),
-                    "countdown": self.rng.randint(1, 3),
-                }
-            )
-
-    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        self._lazy_init()
-        result: dict[tuple[int, int], str | int] = {p: -1 for p in self._pixel_list}
-
-        for fly in self._flies:
-            fly["countdown"] -= 1
-            if fly["countdown"] <= 0:
-                fly["trail"].append(fly["pos"])
-                if len(fly["trail"]) > self._TRAIL:
-                    fly["trail"].pop(0)
-                nbs = self._neighbors.get(fly["pos"], [])
-                if nbs:
-                    fly["pos"] = self.rng.choice(nbs)
-                fly["countdown"] = fly["speed"]
-
-            r0, g0, b0 = hex_to_rgb(fly["color"])
-            for i, tp in enumerate(fly["trail"]):
-                fade = (i + 1) / (self._TRAIL + 1) * 0.85
-                result[tp] = rgb_to_hex(int(r0 * fade), int(g0 * fade), int(b0 * fade))
-            result[fly["pos"]] = fly["color"]
 
         return result
 

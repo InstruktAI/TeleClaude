@@ -5,29 +5,22 @@ from __future__ import annotations
 import math
 import random
 import shutil
+import time
 from typing import TYPE_CHECKING
 
 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
 from teleclaude.cli.tui.animations.base import (
-    Z_FOREGROUND,
-    Z_SKY,
+    Z0,
+    Z10,
+    Z20,
     Animation,
     RenderBuffer,
     Spectrum,
+    render_sprite,
 )
-from teleclaude.cli.tui.animations.creative import (
-    ChromaticAberration,
-    ColorSweep,
-    Comet,
-    EQBars,
-    Firefly,
-    Fireworks,
-    Glitch,
-    LaserScan,
-    LavaLamp,
-    NeonFlicker,
-    Plasma,
-)
+from teleclaude.cli.tui.animations.creative import ColorSweep, EQBars, Glitch, LaserScan, LavaLamp, NeonFlicker, Plasma
+from teleclaude.cli.tui.animations.sprites import MOON_SPRITE, SUN_SPRITE
+from teleclaude.cli.tui.animations.sprites.composite import AnimatedSprite, CompositeSprite
 from teleclaude.cli.tui.pixel_mapping import (
     BIG_BANNER_HEIGHT,
     BIG_BANNER_LETTERS,
@@ -45,26 +38,41 @@ if TYPE_CHECKING:
 class GlobalSky(Animation):
     """TC20: Global background canvas with Day/Night physical states.
     Paints the entire header area (Z-0) including margins.
+    Dynamic weather system with parallax clouds at weighted Z-levels.
+    Quarter celestial (sun/moon) anchored at top-right corner.
+    UFO as rare sky entity with weighted depth.
     """
+
+    _WEATHER_NAMES = ["clear", "fair", "cloudy", "overcast"]
+    _WEATHER_WEIGHTS = [30, 35, 25, 10]
+
+    # City glow: 3 rows behind tab bar (y=7,8,9)
+    _CITY_GLOW = ["#1A0035", "#270055", "#0A0010"]
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         kwargs.setdefault("target", "header")
         super().__init__(*args, **kwargs)
-        # Cover any reasonable terminal width (up to 400 cols)
         self.width = 400
         self.height = 10
         self._all_pixels = [(x, y) for y in range(self.height) for x in range(self.width)]
 
-        # Day: Light blue at top (overhead) fading to very light blue at horizon.
+        # Sky gradients
         self.day_sky = Spectrum(["#87CEEB", "#C8E8F8"])
-        # From Deep Black to Super Dark Midnight Purple
         self.night_sky = Spectrum(["#000000", "#05000A", "#0F001A", "#05000A"])
 
-        # Stars — weighted heavily toward tiny dots; big sparkles are rare
+        # Pre-computed sky gradient caches (avoid 4000 interpolations per frame)
+        self._cached_dark_mode: bool | None = None
+        self._cached_sky_pixels: list[tuple[int, int, int, str]] = []  # (z, x, y, color)
+
+        # Cached terminal width — refreshed every ~100 frames instead of every frame
+        self._cached_term_width: int = self._fetch_term_width()
+        self._term_width_frame: int = 0
+
+        # Stars — weighted toward tiny dots; big sparkles are rare
         _star_types = ["\u00b7", ".", "+", "\u2726", "*"]  # ·  .  +  ✦  *
         _star_weights = [50, 20, 15, 10, 5]
         self.stars = []
-        for _ in range(130):
+        for _ in range(150):
             self.stars.append(
                 {
                     "pos": (self.rng.randint(0, self.width - 1), self.rng.randint(0, self.height - 1)),
@@ -74,105 +82,211 @@ class GlobalSky(Animation):
                 }
             )
 
-        # Drifting Clouds (Day)
-        self.clouds = []
-        for _ in range(6):
-            self.clouds.append(
-                {
-                    "x": self.rng.randint(0, self.width),
-                    "y": self.rng.randint(0, self.height - 3),
-                    "speed": 0.25 + self.rng.random() * 0.3,
-                }
-            )
+        # Weather system — weather determines which cloud group is active
+        self._weather = self.rng.choices(self._WEATHER_NAMES, weights=self._WEATHER_WEIGHTS, k=1)[0]
+        self._next_weather_change = time.time() + self.rng.uniform(30 * 60, 120 * 60)
 
-    # Sun shape — 6 rows, bright gold disc for day mode (right-side sky margin)
-    _SUN_ROWS = [
-        "    \u2588\u2588\u2588\u2588\u2588\u2588    ",
-        "  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  ",
-        " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 ",
-        " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 ",
-        "  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  ",
-        "    \u2588\u2588\u2588\u2588\u2588\u2588    ",
-    ]
-    # Moon shape — 6 rows, positioned near right edge for wide terminals
-    # Uses FULL BLOCK (█) for contiguous vertical fill with no inter-row gaps
-    _MOON_ROWS = [
-        " ,/\u2588\u2588\u2588\u2588\u2588\u2588\u2588&.  ",
-        " \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588&  ",
-        "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588& ",
-        "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588& ",
-        "'\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588&' ",
-        "  '\u2588\u2588\u2588\u2588\u2588\u2588\u2588&'  ",
-    ]
-    # City glow: 3 rows behind tab bar (y=7,8,9)
-    _CITY_GLOW = ["#1A0035", "#270055", "#0A0010"]
+        # Sky entities — all sprites (clouds, birds, UFO, etc.) via the sprite system
+        self._sky_entities: list[dict[str, object]] = self._spawn_initial_entities()
 
-    def update(self, frame: int) -> RenderBuffer:
-        buffer = RenderBuffer()
-        is_party = self.animation_mode == "party"
+    @staticmethod
+    def _fetch_term_width() -> int:
+        try:
+            return shutil.get_terminal_size().columns
+        except Exception:
+            return 200
 
+    def _pick_z_level(self, weights: list[tuple[int, int]]) -> int:
+        """Pick a Z-level from a weighted distribution."""
+        levels, wts = zip(*weights)
+        return self.rng.choices(levels, weights=wts, k=1)[0]
+
+    def _theme_matches(self, sprite: object) -> bool:
+        """Check if a sprite's theme matches the current mode."""
+        theme = getattr(sprite, "theme", None)
+        if theme is None:
+            return True
+        return theme == ("dark" if self.dark_mode else "light")
+
+    def _spawn_initial_entities(self) -> list[dict[str, object]]:
+        """Spawn sky entities: standalone sprites + non-cloud groups + weather clouds."""
+        from teleclaude.cli.tui.animations.sprites import get_sky_entities, get_sprite_groups, get_weather_clouds
+
+        entities: list[dict[str, object]] = []
+        # Standalone sprites (15% chance each)
+        for sprite in get_sky_entities():
+            if self._theme_matches(sprite) and self.rng.random() < 0.15:
+                entities.append(self._spawn_sky_entity(sprite))
+        # Non-cloud sprite groups (birds, etc.)
+        cloud_group = get_weather_clouds(self._weather)
+        for group in get_sprite_groups():
+            if group is cloud_group:
+                continue
+            for sprite, _weight, (lo, hi) in group.entries:
+                if not self._theme_matches(sprite):
+                    continue
+                n = self.rng.randint(lo, hi)
+                for _ in range(n):
+                    entities.append(self._spawn_sky_entity(sprite))
+        # Weather-specific clouds
+        for sprite, _weight, (lo, hi) in cloud_group.entries:
+            if not self._theme_matches(sprite):
+                continue
+            n = self.rng.randint(lo, hi)
+            for _ in range(n):
+                entities.append(self._spawn_sky_entity(sprite))
+        return entities
+
+    # Vertical lane ranges: (min_y, max_y) for top/mid/bottom of the header
+    _LANE_Y_RANGES = {0: (0, 1), 1: (2, 4), 2: (5, 7)}
+
+    def _pick_weighted_float(self, weights: list[tuple[float, int]]) -> float:
+        """Pick a float value from a weighted distribution."""
+        values, wts = zip(*weights)
+        return self.rng.choices(values, weights=wts, k=1)[0]
+
+    @staticmethod
+    def _sprite_max_width(sprite: CompositeSprite | AnimatedSprite) -> int:
+        """Compute stable bounding-box width across all frames/layers."""
+        w = 0
+        renderables: list = sprite.frames if isinstance(sprite, AnimatedSprite) else [sprite]
+        for r in renderables:
+            if isinstance(r, CompositeSprite):
+                for layer in r.layers:
+                    for rows in (layer.positive, layer.negative):
+                        if rows:
+                            w = max(w, *(len(row) for row in rows))
+            else:
+                w = max(w, *(len(row) for row in r))
+        return w
+
+    def _spawn_sky_entity(self, sprite: CompositeSprite | AnimatedSprite) -> dict[str, object]:
+        """Spawn a sky entity from any CompositeSprite or AnimatedSprite."""
+        z_level = self._pick_z_level(sprite.z_weights)
+        lane = self._pick_z_level(sprite.y_weights) if sprite.y_weights else 1
+        y_lo, y_hi = self._LANE_Y_RANGES.get(lane, (0, 3))
+        direction = self.rng.choice([-1, 1])
+        initial_speed = self._pick_weighted_float(sprite.speed_weights)
+        return {
+            "sprite": sprite,
+            "sprite_w": self._sprite_max_width(sprite),
+            "x": self.rng.randint(0, self.width),
+            "speed": initial_speed * direction,
+            "target_speed": initial_speed * direction,
+            "y": self.rng.randint(y_lo, y_hi),
+            "z": z_level,
+            "next_speed_change": self.rng.randint(80, 300),
+        }
+
+    def force_spawn_ufo(self) -> None:
+        """Force a random sky entity to appear immediately (debug keybinding)."""
+        from teleclaude.cli.tui.animations.sprites import get_sky_entities
+
+        entities = get_sky_entities()
+        if entities:
+            self._sky_entities.append(self._spawn_sky_entity(self.rng.choice(entities)))
+
+    def _build_sky_cache(self) -> list[tuple[int, int, int, str]]:
+        """Pre-compute static sky gradient pixels for the current theme."""
+        pixels: list[tuple[int, int, int, str]] = []
+        sky = self.night_sky if self.dark_mode else self.day_sky
+        for x, y in self._all_pixels:
+            pos_factor = y / max(1, self.height - 1)
+            pixels.append((Z0, x, y, sky.get_color(pos_factor)))
         if self.dark_mode:
-            # 1. Background Super Dark Purple Gradient
-            for x, y in self._all_pixels:
-                pos_factor = y / max(1, self.height - 1)
-                buffer.add_pixel(Z_SKY, x, y, self.night_sky.get_color(pos_factor))
-
-            # 2. City glow horizon behind tab bar (rows 7-9)
             for dy, glow_color in enumerate(self._CITY_GLOW):
                 for x in range(self.width):
-                    buffer.add_pixel(Z_SKY, x, 7 + dy, glow_color)
+                    pixels.append((Z0, x, 7 + dy, glow_color))
+        return pixels
 
-            # 3. Stars — always frame-animated, very slow, rarely visible but long-lasting
+    def _render_quarter_celestial(self, buffer: RenderBuffer, term_width: int) -> None:
+        """Render celestial body (sun/moon) at top-right corner using SUN_SPRITE or MOON_SPRITE."""
+
+        sprite = SUN_SPRITE if not self.dark_mode else MOON_SPRITE
+        layer = sprite.layers[0]
+        sprite_w = max(len(r) for r in layer.positive)
+        # Anchor center at top-right
+        cx = term_width - 1
+        cy = 1
+        # Narrow pane: push partially off-screen
+        if term_width <= 130:
+            cx += 7
+            cy -= 3
+
+        top_left_x = cx - sprite_w + 1
+        render_sprite(buffer, Z20, top_left_x, cy, sprite, self.width, self.height)
+
+    def update(self, frame: int) -> RenderBuffer:
+        # Reuse persistent buffer — avoid allocating 4000+ dict entries per frame
+        if not hasattr(self, "_buffer"):
+            self._buffer = RenderBuffer()
+        buffer = self._buffer
+        is_party = self.animation_mode == "party"
+
+        # Refresh terminal width every ~100 frames (~15s at 250ms tick)
+        if frame - self._term_width_frame >= 100:
+            self._cached_term_width = self._fetch_term_width()
+            self._term_width_frame = frame
+        term_width = self._cached_term_width
+
+        # Rebuild sky gradient cache on theme change (expensive — 4000 pixels)
+        if self._cached_dark_mode != self.dark_mode:
+            self._cached_sky_pixels = self._build_sky_cache()
+            self._cached_dark_mode = self.dark_mode
+            # Full rebuild: repaint sky into persistent buffer
+            buffer.clear()
+            for z, x, y, color in self._cached_sky_pixels:
+                buffer.add_pixel(z, x, y, color)
+
+        # Clear all dynamic layers each frame (everything except Z0)
+        for z in list(buffer.layers):
+            if z != Z0:
+                buffer.clear_layer(z)
+
+        if self.dark_mode:
+            # 2. Stars at Z10 (behind clouds)
             for star in self.stars:
                 speed = star["speed"] * (2.5 if is_party else 1.0)
                 twinkle = (math.sin(frame * speed + star["phase"]) + 1.0) / 2.0
                 if twinkle > 0.88:
-                    buffer.add_pixel(Z_FOREGROUND, star["pos"][0], star["pos"][1], star["char"])
+                    buffer.add_pixel(Z10, star["pos"][0], star["pos"][1], star["char"])
 
-            # 4. Moon — right side, only when wide terminal (>= 176 cols)
-            try:
-                term_width = shutil.get_terminal_size().columns
-            except Exception:
-                term_width = 200
-            moon_x = term_width - 16
-            moon_y = 1
-            if moon_x >= 160:
-                for dy, row in enumerate(self._MOON_ROWS):
-                    y = moon_y + dy
-                    for dx, ch in enumerate(row):
-                        x = moon_x + dx
-                        if ch != " ":
-                            buffer.add_pixel(Z_FOREGROUND, x, y, ch)
+            # 3. Moon — quarter celestial at top-right
+            self._render_quarter_celestial(buffer, term_width)
         else:
-            # 1. Background Blue Gradient
-            for x, y in self._all_pixels:
-                pos_factor = y / max(1, self.height - 1)
-                buffer.add_pixel(Z_SKY, x, y, self.day_sky.get_color(pos_factor))
+            # 2. Weather change check — re-spawn all entities with new cloud group
+            now = time.time()
+            if now >= self._next_weather_change:
+                self._weather = self.rng.choices(self._WEATHER_NAMES, weights=self._WEATHER_WEIGHTS, k=1)[0]
+                self._sky_entities = self._spawn_initial_entities()
+                self._next_weather_change = now + self.rng.uniform(30 * 60, 120 * 60)
 
-            # 2. Drifting Vapor Clouds
-            for cloud in self.clouds:
-                cx = int(cloud["x"] + frame * cloud["speed"]) % (self.width + 40) - 20
-                cy = cloud["y"]
-                for dx in range(12):
-                    for dy in range(2):
-                        if 0 <= cx + dx < self.width:
-                            buffer.add_pixel(Z_FOREGROUND, cx + dx, cy + dy, "\u2501")
+            # 3. Sun — quarter celestial at top-right
+            self._render_quarter_celestial(buffer, term_width)
 
-            # 3. Sun — right-side sky margin (only on wide terminals)
-            try:
-                term_width = shutil.get_terminal_size().columns
-            except Exception:
-                term_width = 200
-            sun_x = term_width - 25
-            sun_y = 1
-            if sun_x > 85:
-                for dy, row in enumerate(self._SUN_ROWS):
-                    y = sun_y + dy
-                    for dx, ch in enumerate(row):
-                        x = sun_x + dx
-                        if ch != " ":
-                            buffer.add_pixel(Z_FOREGROUND, x, y, ch)
-                            pass  # character is yellow; banner.py detects full-block chars in light mode
+        # 5. Sky entities (both modes — drift horizontally at assigned Z-levels)
+        for entity in self._sky_entities:
+            # Speed easing: periodically pick new target, interpolate toward it
+            next_change = int(entity.get("next_speed_change", 0))
+            if frame >= next_change:
+                sprite_ref = entity["sprite"]
+                direction = 1 if float(entity["speed"]) >= 0 else -1
+                new_target = self._pick_weighted_float(sprite_ref.speed_weights) * direction  # type: ignore[union-attr]
+                entity["target_speed"] = new_target
+                entity["next_speed_change"] = frame + self.rng.randint(80, 300)
+            current = float(entity["speed"])
+            target = float(entity.get("target_speed", current))
+            entity["speed"] = current + (target - current) * 0.05
+
+            entity_z = int(entity["z"])
+            entity_speed = float(entity["speed"])
+            sprite = entity["sprite"]
+            renderable = sprite.tick(frame)  # type: ignore[union-attr]
+            sprite_w = int(entity["sprite_w"])
+            wrap = self.width + sprite_w + 20
+            ex = int(int(entity["x"]) + frame * entity_speed) % wrap - sprite_w - 10
+            ey = int(entity["y"])
+            render_sprite(buffer, entity_z, ex, ey, renderable, self.width, self.height)
 
         return buffer
 
@@ -197,7 +311,7 @@ class LetterWaveLR(Animation):
         color_pair = self.palette.get(frame // num_letters)
 
         base_color = self.enforce_vibrancy(self.get_contrast_safe_color(color_pair))
-        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
         r, g, b = hex_to_rgb(base_color)
         dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
@@ -219,7 +333,7 @@ class LetterWaveRL(Animation):
         color_pair = self.palette.get(frame // num_letters)
 
         base_color = self.enforce_vibrancy(self.get_contrast_safe_color(color_pair))
-        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
         r, g, b = hex_to_rgb(base_color)
         dim_color = rgb_to_hex(int(r * 0.6), int(g * 0.6), int(b * 0.6))
@@ -256,7 +370,7 @@ class LineSweepTopBottom(Animation):
                     continue
                 color = self.spec.get_color(y / max(1, height - 1))
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -287,7 +401,7 @@ class LineSweepBottomTop(Animation):
                     continue
                 color = self.spec.get_color(y / max(1, height - 1))
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -323,7 +437,7 @@ class MiddleOutVertical(Animation):
                     continue
                 color = self.spec.get_color(y / max(1, height - 1))
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -355,7 +469,7 @@ class WithinLetterSweepLR(Animation):
                     continue
                 color = self.spec.get_color((x - 1) / width)
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -388,7 +502,7 @@ class WithinLetterSweepRL(Animation):
                     continue
                 color = self.spec.get_color((x - 1) / width)
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -447,7 +561,7 @@ class DiagonalSweepDR(Animation):
                     continue
                 color = self.spec.get_color(((x - 1) + y) / max_val)
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -483,7 +597,7 @@ class DiagonalSweepDL(Animation):
                     continue
                 color = self.spec.get_color(((x - 1) + y) / max_val)
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -528,7 +642,7 @@ class WavePulse(Animation):
                     continue
                 color = self.spec.get_color((x - 1) / width)
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -559,7 +673,7 @@ class BlinkSweep(Animation):
                     continue
                 color = self.spec.get_color((x - 1) / width)
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 result[(x, y)] = rgb_to_hex(int(r * surge), int(g * surge), int(b * surge))
@@ -587,102 +701,6 @@ class SunsetGradient(Animation):
             g = int(127 + 127 * math.sin(progress * 2 * math.pi + 2))
             b = int(127 + 127 * math.sin(progress * 2 * math.pi + 4))
             result[(x, y)] = self.get_contrast_safe_color(rgb_to_hex(r, g, b))
-        return result
-
-
-class CloudsPassing(Animation):
-    """TC2: Fluffy white clouds drifting horizontally.
-    Rooftop atmosphere that lets the billboard show through.
-    """
-
-    theme_filter = "light"
-    is_external_light = True
-    _CLOUD = "#E0E0E0"
-
-    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
-        modulation = self.get_modulation(frame)
-
-        # Multiple cloud anchors
-        clouds = [
-            int(frame * 0.2 * modulation) % (width + 20) - 10,
-            int(frame * 0.15 * modulation + 30) % (width + 20) - 10,
-        ]
-
-        result = {}
-        for x, y in PixelMap.get_all_pixels(self.is_big):
-            # Check proximity to any cloud
-            in_cloud = any(abs(x - cx) < 5 and abs(y - 2) < 2 for cx in clouds)
-            if in_cloud:
-                color = self.get_contrast_safe_color(self._CLOUD)
-                result[(x, y)] = color
-            else:
-                result[(x, y)] = -1
-        return result
-
-
-class FloatingBalloons(Animation):
-    """TC3: Bright colored glows rising upward through letter pixel columns."""
-
-    _COLORS = ["#FF3333", "#33FF66", "#3366FF", "#FFFF33", "#FF33FF", "#33FFFF"]
-    _NUM = 6
-
-    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
-        super().__init__(*args, **kwargs)
-        self._col_pixels: dict[int, list[int]] | None = None
-        self._all_pixels: list[tuple[int, int]] | None = None
-
-    def _lazy_init(self) -> None:
-        if self._col_pixels is not None:
-            return
-        from collections import defaultdict
-
-        by_col: dict[int, list[int]] = defaultdict(list)
-        letters = BIG_BANNER_LETTERS if self.is_big else LOGO_LETTERS
-        for i in range(len(letters)):
-            for px, py in PixelMap.get_letter_pixels(self.is_big, i):
-                by_col[px].append(py)
-        self._col_pixels = {x: sorted(ys) for x, ys in by_col.items()}
-        self._all_pixels = [(x, y) for x, ys in by_col.items() for y in ys]
-
-    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        self._lazy_init()
-        height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
-        modulation = self.get_modulation(frame)
-
-        result: dict[tuple[int, int], str | int] = {p: "#060606" for p in self._all_pixels}
-
-        cols = sorted(self._col_pixels.keys())
-        if not cols:
-            return result
-
-        for i in range(self._NUM):
-            # Each balloon drifts slowly across columns
-            col_idx = int(i * len(cols) / self._NUM + frame * 0.08 * modulation) % len(cols)
-            col_x = cols[col_idx]
-            ys = self._col_pixels.get(col_x, [])
-            if not ys:
-                continue
-
-            # Rising: progress 0=bottom, 1=top; cycles continuously
-            speed = 0.20 + i * 0.04
-            progress = (frame * speed * modulation / max(1, height) + i / self._NUM) % 1.0
-            # target_y: higher y = lower on screen; low y = top
-            target_y = int(ys[-1] - progress * (ys[-1] - ys[0] + 1))
-            target_y = max(ys[0], min(ys[-1], target_y))
-
-            color_hex = self._COLORS[i % len(self._COLORS)]
-            r0, g0, b0 = hex_to_rgb(color_hex)
-
-            for py in ys:
-                dist = abs(py - target_y)
-                if dist == 0:
-                    result[(col_x, py)] = color_hex
-                elif dist == 1:
-                    result[(col_x, py)] = rgb_to_hex(int(r0 * 0.55), int(g0 * 0.55), int(b0 * 0.55))
-                elif dist == 2:
-                    result[(col_x, py)] = rgb_to_hex(int(r0 * 0.22), int(g0 * 0.22), int(b0 * 0.22))
-
         return result
 
 
@@ -742,47 +760,13 @@ class FireBreath(Animation):
 
                 color = self.spec.get_color(fire_factor)
                 color = self.enforce_vibrancy(color)
-                from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+                from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
                 r, g, b = hex_to_rgb(color)
                 # 0.3 base so even cool top pixels have faint glow
                 v = 0.3 + intensity * 0.7
                 result[(x, y)] = rgb_to_hex(int(r * v), int(g * v), int(b * v))
 
-        return result
-
-
-class HighSunBird(Animation):
-    """TC16: Silhouette of a bird passing in front of a bright sun (Light Mode only)."""
-
-    theme_filter = "light"
-    is_external_light = True
-
-    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
-        super().__init__(*args, **kwargs)
-        self._all_pixels = PixelMap.get_all_pixels(self.is_big)
-
-    def update(self, frame: int) -> dict[tuple[int, int], str | int]:
-        width = BIG_BANNER_WIDTH if self.is_big else LOGO_WIDTH
-        _height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
-
-        modulation = self.get_modulation(frame)
-        # Bird moves horizontally
-        bx = int((frame * modulation * 2) % (width + 40)) - 20
-        by = 2
-
-        result: dict[tuple[int, int], str | int] = {}
-        for x, y in self._all_pixels:
-            # The Sun (High intensity yellow flare)
-            dist_sun = math.sqrt((x - 10) ** 2 + (y - 1) ** 2)
-            if dist_sun < 5:
-                color = rgb_to_hex(255, 255, int(200 * (dist_sun / 5)))
-                result[(x, y)] = self.get_contrast_safe_color(color)
-            # The Bird (V-shape silhouette)
-            elif abs(x - bx) < 3 and abs(y - by) < 1:
-                result[(x, y)] = "#333333"
-            else:
-                result[(x, y)] = -1
         return result
 
 
@@ -892,7 +876,7 @@ class CinematicPrismSweep(Animation):
 
         current_hue = (self.hue_start + (self.hue_end - self.hue_start) * progress) / 360.0
         r, g, b = self._hsv_to_rgb(current_hue, 0.8, 1.0)
-        from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
+        from teleclaude.cli.tui.animation_colors import rgb_to_hex
 
         color = rgb_to_hex(r, g, b)
         safe_color = self.get_electric_neon(self.get_contrast_safe_color(color))
@@ -976,30 +960,26 @@ GENERAL_ANIMATIONS = [
     WordSplitBlink,
     # Moving gradients
     SunsetGradient,
-    # Day mode atmospherics
-    CloudsPassing,
-    FloatingBalloons,
-    # Dark mode atmospherics
-    Bioluminescence,
-    SearchlightSweep,  # Batman
     # Original specials
-    FireBreath,  # fixed: burns from bottom
-    HighSunBird,
+    FireBreath,
     CinematicPrismSweep,
     # New creative animations
     NeonFlicker,
     Plasma,
     Glitch,
-    ChromaticAberration,
-    Comet,
-    Fireworks,
     EQBars,
     LavaLamp,
-    Firefly,
     # Sweeps
     LineSweepTopBottom,
     LineSweepBottomTop,
+    MiddleOutVertical,
+    WithinLetterSweepLR,
+    WithinLetterSweepRL,
+    DiagonalSweepDR,
+    DiagonalSweepDL,
     ColorSweep,
     LaserScan,
+    # Dark mode specials
+    SearchlightSweep,
     # GlobalSky is lifecycle-managed (always-on), NOT in rotation pool
 ]

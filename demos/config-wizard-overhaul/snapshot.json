@@ -1,0 +1,23 @@
+{
+  "slug": "config-wizard-overhaul",
+  "title": "Config Wizard Overhaul",
+  "version": "1.0.0",
+  "delivered_date": "2026-03-03",
+  "metrics": {
+    "commits": 2,
+    "files_changed": 3,
+    "files_created": 0,
+    "tests_added": 2,
+    "tests_passing": 33,
+    "review_rounds": 1,
+    "findings_resolved": 4,
+    "lines_added": 45,
+    "lines_removed": 12
+  },
+  "acts": {
+    "challenge": "The config wizard was broken in four interdependent ways: it opened on the wrong tab, guided mode was accepted but never activated, text was invisible in light mode due to hardcoded colors, and theme switches didn't refresh the config panel.",
+    "build": "Surgical fixes across three files (telec.py, app.py, config.py). The key decision was replacing the hardcoded color constant with a dynamic function that reads the theme at render time, and wiring the guided mode parameter through the full CLI-to-TUI stack.",
+    "gauntlet": "One review round. The original builder used a no-demo marker claiming 'requires live terminal interaction' — which exposed a gap in the demo enforcement system. The escape hatch rules were tightened as a result.",
+    "whats_next": "The config wizard guided mode is now functional and ready for content expansion. Each config section can now have its own guided walkthrough steps."
+  }
+}

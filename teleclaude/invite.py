@@ -108,41 +108,26 @@ def generate_invite_links(
 
 
 def scaffold_personal_workspace(person_name: str) -> Path:
-    """Create personal workspace directory and minimal config.
+    """Ensure personal workspace directory exists and is ready.
 
-    Returns the workspace path.
+    Returns the person's folder (~/.teleclaude/people/{name}/).
     """
-    workspace_path = _PEOPLE_DIR / person_name / "workspace"
-    workspace_path.mkdir(parents=True, exist_ok=True)
+    person_path = _PEOPLE_DIR / person_name
+    person_path.mkdir(parents=True, exist_ok=True)
 
-    # Check if AGENTS.master.md exists in person's home folder
-    person_home = _PEOPLE_DIR / person_name
-    agents_master_src = person_home / "AGENTS.master.md"
-    agents_master_dest = workspace_path / "AGENTS.master.md"
-
-    if agents_master_src.exists() and not agents_master_dest.exists():
-        # Symlink if possible, otherwise copy
-        try:
-            agents_master_dest.symlink_to(agents_master_src)
-            logger.info("Symlinked AGENTS.master.md for %s", person_name)
-        except OSError:
-            import shutil
-
-            shutil.copy2(agents_master_src, agents_master_dest)
-            logger.info("Copied AGENTS.master.md for %s", person_name)
-    elif not agents_master_dest.exists():
-        # Create minimal default
-        default_agents = f"You are the personal assistant of {person_name}.\n"
-        agents_master_dest.write_text(default_agents, encoding="utf-8")
+    # Create default AGENTS.master.md only if absent (it normally lives here already)
+    agents_master = person_path / "AGENTS.master.md"
+    if not agents_master.exists():
+        agents_master.write_text(f"You are the personal assistant of {person_name}.\n", encoding="utf-8")
         logger.info("Created default AGENTS.master.md for %s", person_name)
 
     # Create minimal teleclaude.yml if not present
-    workspace_config = workspace_path / "teleclaude.yml"
+    workspace_config = person_path / "teleclaude.yml"
     if not workspace_config.exists():
         workspace_config.write_text("# Personal workspace config\n", encoding="utf-8")
         logger.info("Created teleclaude.yml for %s workspace", person_name)
 
-    return workspace_path
+    return person_path
 
 
 # --- Credential Binding ---

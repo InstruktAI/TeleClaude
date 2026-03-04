@@ -26,6 +26,7 @@ Boundaries
 
 - No cross-computer orchestration responsibilities.
 - No domain policy decisions; UI is translation and presentation only.
+- No core-level routing assumptions; adapters own all local routing decisions for reflections and admin channels.
 
 Invariants
 
@@ -39,7 +40,7 @@ Invariants
 - User commands (text, slash commands, button clicks)
 - Voice messages (audio files requiring transcription)
 - File uploads (documents, images, media)
-- Domain events from EventBus (SESSION_UPDATED, TURN_COMPLETE, MESSAGE_SENT)
+- Domain events from EventBus (SESSION_UPDATED, SESSION_STATUS, TURN_COMPLETE, MESSAGE_SENT)
 - Command results from CommandService
 
 **Outputs:**
@@ -57,6 +58,7 @@ Invariants
 - **Consistent Cleanup Rules**: pending_message_deletions enforced uniformly across all UI adapters; trigger conditions identical.
 - **Single Output Message**: One persistent output message per session, edited repeatedly; message_id tracked in adapter_metadata namespace.
 - **Scope Contract**: Core defines recipients via delivery scope. Adapters must not broaden `ORIGIN_ONLY` recipient sets.
+- **Reflection Routing Ownership**: Each adapter receives all reflections (including those originating from its own users) and decides locally how to route them — admin channel, suppress, or platform-specific rendering. Core never makes this decision.
 - **Origin Endpoint UX**: `ORIGIN_ONLY` messages appear only at the origin endpoint.
 - **Summary Rule**: `last_output_summary` is origin-only and non-threaded only (in-edit UX path).
 
@@ -74,6 +76,7 @@ sequenceDiagram
     Daemon->>AdapterClient: Register adapter
     AdapterClient->>UiAdapter: __init__(client)
     UiAdapter->>EventBus: subscribe(SESSION_UPDATED, _handle_session_updated)
+    UiAdapter->>EventBus: subscribe(SESSION_STATUS, _handle_session_status)
     UiAdapter->>EventBus: subscribe(TURN_COMPLETE, _handle_turn_complete)
     UiAdapter->>AdapterClient: Ready
 ```
@@ -177,7 +180,20 @@ sequenceDiagram
     Platform->>UiAdapter: Success
 ```
 
-### 7. Voice Message Processing
+### 7. Typing Indicator Flow
+
+UI adapters fire platform typing indicators in response to lifecycle status events. This provides immediate user feedback that the agent is working.
+
+| Status          | Trigger                   | Adapter Action                                                                            |
+| --------------- | ------------------------- | ----------------------------------------------------------------------------------------- |
+| `accepted`      | `user_prompt_submit` hook | Fire `send_typing_indicator()` (subsequent turns only — requires `native_session_id` set) |
+| `active`        | `session_start` hook      | Fire `send_typing_indicator()` (agent confirmed alive)                                    |
+| `active_output` | `tool_use` hook           | Footer/badge decoration only                                                              |
+| `completed`     | `agent_stop` hook         | Footer/badge decoration only                                                              |
+
+Typing is naturally replaced by output from the polling cadence (`send_output_update` at ~1s). The `active` status fires on `session_start` (agent confirmed alive) and is the sole trigger for typing indicators on adapters. Once the agent is confirmed alive (`native_session_id` set), `accepted` also fires typing on subsequent turns. Other statuses provide decoration only (footer emoji, status badges).
+
+### 8. Voice Message Processing
 
 | Step | Actor     | Action                                          |
 | ---- | --------- | ----------------------------------------------- |
@@ -189,7 +205,7 @@ sequenceDiagram
 | 6    | UiAdapter | Sends "🎤 Sent: {text}" feedback                |
 | 7    | UiAdapter | Deletes voice message per cleanup rules         |
 
-### 8. File Upload Flow
+### 9. File Upload Flow
 
 ```mermaid
 sequenceDiagram
@@ -206,6 +222,26 @@ sequenceDiagram
     UiAdapter->>AI: Send message with file_path
     UiAdapter->>User: "📎 Sent file: {filename}"
 ```
+
+### 10. Reflection Routing (Adapter-Local)
+
+Each adapter receives all user input reflections from core — including reflections that originated from its own users. The adapter decides locally how to handle them.
+
+```mermaid
+flowchart TD
+    Reflection["Reflection received from core<br/>(origin, actor_id, text)"]
+    IsSource{Originated from<br/>this adapter?}
+    AdminRoute["Route to admin channel<br/>(observability)"]
+    Suppress["Suppress<br/>(user sees native input)"]
+    Render["Render with attribution<br/>(webhook, name, avatar)"]
+
+    Reflection --> IsSource
+    IsSource -->|Yes| Suppress
+    IsSource -->|No| AdminRoute
+    AdminRoute --> Render
+```
+
+The decision tree is adapter-local. Core broadcasts to all adapters unconditionally and attaches source metadata. The adapter inspects the origin to decide its own routing.
 
 ## Failure modes
 

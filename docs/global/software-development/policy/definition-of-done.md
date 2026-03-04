@@ -35,6 +35,7 @@ Before considering ANY work complete, verify ALL criteria are met:
 - [ ] Functions are pure where appropriate
 - [ ] Dependencies passed explicitly
 - [ ] No code duplication
+- [ ] No unjustified fallback paths (each fallback has a code comment explaining why UX requires it)
 - [ ] Contract violations fail fast
 
 ### 3. Testing

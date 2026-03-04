@@ -39,6 +39,7 @@ other domain cartridges follow.
 ## Dependency
 
 The event platform core is delivered. This cartridge depends on:
+
 - `teleclaude_events.pipeline.Cartridge` protocol
 - `teleclaude_events.pipeline.PipelineContext` (catalog, db, push_callbacks)
 - `teleclaude_events.envelope.EventEnvelope`

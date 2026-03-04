@@ -42,7 +42,7 @@ def auth_client() -> TestClient:
         ),
         (
             "post",
-            "/sessions/sess-1/file",
+            "/sessions/self/file",
             {"file_path": "/tmp/file.txt", "filename": "file.txt", "caption": "caption", "file_size": 10},
         ),
         ("post", "/sessions/sess-1/agent-restart", None),
@@ -53,11 +53,11 @@ def auth_client() -> TestClient:
         ("get", "/agents/availability", None),
         ("post", "/sessions/run", {"command": "/next-build", "project": "/tmp/project", "args": "slug-a"}),
         ("post", "/sessions/sess-1/unsubscribe", None),
-        ("post", "/sessions/sess-1/result", {"content": "done", "output_format": "markdown"}),
-        ("post", "/sessions/sess-1/widget", {"data": {"sections": [{"type": "text", "content": "ok"}]}}),
+        ("post", "/sessions/self/result", {"content": "done", "output_format": "markdown"}),
+        ("post", "/sessions/self/widget", {"data": {"sections": [{"type": "text", "content": "ok"}]}}),
         (
             "post",
-            "/sessions/sess-1/escalate",
+            "/sessions/self/escalate",
             {"customer_name": "Jane Doe", "reason": "Need admin help", "context_summary": "summary"},
         ),
         ("post", "/agents/claude/status", {"status": "degraded", "reason": "rate_limited"}),

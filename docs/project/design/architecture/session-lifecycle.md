@@ -21,10 +21,12 @@ description: 'Complete lifecycle of a terminal session from creation to cleanup.
 
 ### 2. Active Operation
 
+- **Self-Identification**: The agent's own TeleClaude session ID is available at `$TMPDIR/teleclaude_session_id`. This is the prerequisite for self-referential operations: `telec sessions end` (self-termination), agent-restart API calls, and `telec sessions tail` on own output.
 - **Input**: Commands are sent to the `tmux` pane via `tmux_io`.
 - **Output**: The `OutputPoller` reads from `tmux` and emits `OutputEvent`s.
 - **Summarization**: Periodic AI-summarization updates the Telegram topic.
 - **Clutter Control**: User inputs and feedback are cleaned up based on session state.
+- **Lifecycle Status**: Turn-level status transitions (`accepted` → `active` → `active_output` → `completed`) are emitted by the agent coordinator and propagated to UI adapters via the event bus. The `active` status fires on `session_start` (agent confirmed alive) and is the sole trigger for typing indicators on adapters. Once the agent is confirmed alive (`native_session_id` set), `accepted` also fires typing on subsequent turns. Other statuses provide decoration only (footer emoji, status badges).
 
 ### 3. Termination
 
@@ -133,7 +135,7 @@ sequenceDiagram
 
 ### 3. Termination Flow
 
-1. **Close Trigger**: User calls `/close-session` or AI calls `end_session`
+1. **Close Trigger**: User calls `/close-session` or AI calls `telec sessions end $(cat "$TMPDIR/teleclaude_session_id")`
 2. **Status Update**: Mark session status=closing
 3. **Tmux Kill**: Send SIGTERM to tmux session
 4. **Poller Stop**: OutputPoller detects exit and stops

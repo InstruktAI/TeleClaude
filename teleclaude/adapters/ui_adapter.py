@@ -24,7 +24,6 @@ from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionStatusContext, SessionUpdatedContext, TeleClaudeEvents, UiCommands
-from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.models import (
     CleanupTrigger,
@@ -65,6 +64,9 @@ class UiAdapter(BaseAdapter):
 
     # Adapter key for metadata storage (subclasses MUST override)
     ADAPTER_KEY: str = "unknown"
+    # Whether this adapter uses threaded output (append-only messages per turn).
+    # Subclasses set True to activate threaded output delivery and suppress edit-in-place.
+    THREADED_OUTPUT: bool = False
 
     # Optional command handler overrides: command -> handler method name
     COMMAND_HANDLER_OVERRIDES: dict[str, str] = {}
@@ -416,8 +418,8 @@ class UiAdapter(BaseAdapter):
 
         Subclasses can override _build_output_metadata() for platform-specific formatting.
         """
-        # Suppress standard poller output when threaded output is enabled for this adapter.
-        if is_threaded_output_enabled(session.active_agent, adapter=self.ADAPTER_KEY):
+        # Suppress standard poller output when threaded output is active for this adapter.
+        if self.THREADED_OUTPUT:
             logger.debug(
                 "[UI_SEND_OUTPUT] Standard output suppressed for session %s on %s (threaded output active)",
                 session.session_id[:8],
@@ -487,8 +489,8 @@ class UiAdapter(BaseAdapter):
         _continuation_state: MarkdownV2State = MARKDOWN_V2_INITIAL_STATE,
     ) -> Optional[str]:
         """Send or edit threaded output message with smart pagination."""
-        # Skip threaded output for adapters that don't have it enabled.
-        if not is_threaded_output_enabled(session.active_agent, adapter=self.ADAPTER_KEY):
+        # Skip threaded output for adapters that don't use it.
+        if not self.THREADED_OUTPUT:
             return None
 
         lock = self._get_output_delivery_lock(session.session_id)
@@ -673,7 +675,7 @@ class UiAdapter(BaseAdapter):
     async def _send_footer(self, session: "Session", status_line: str = "") -> Optional[str]:
         """Send or edit footer message below output."""
         # Disable floating footer for threaded sessions (header strategy).
-        if is_threaded_output_enabled(session.active_agent, adapter=self.ADAPTER_KEY):
+        if self.THREADED_OUTPUT:
             return None
 
         footer_text = self._build_footer_text(session, status_line=status_line)
@@ -803,13 +805,6 @@ class UiAdapter(BaseAdapter):
         if message_id:
             await self.client.pre_handle_command(session, metadata.origin)
 
-        # Send typing indicator (fire-and-forget, never blocks processing)
-        if session.lifecycle_status != "headless":
-            try:
-                await self.send_typing_indicator(session)
-            except Exception:
-                logger.debug("Typing indicator failed for session %s", session.session_id[:8], exc_info=True)
-
         result = await handler()
 
         if command_name == "send_message":
@@ -925,13 +920,44 @@ class UiAdapter(BaseAdapter):
     # ==================== Event Handlers ====================
 
     async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
-        """Handle lifecycle status transitions. No-op by default; override per platform adapter."""
+        """Handle lifecycle status transitions.
+
+        Fires typing indicator on 'accepted' (prompt received), 'active'
+        (session confirmed), and 'active_output' (tool use observed) to keep
+        the indicator alive during long tool-use sequences.
+        Platform adapters override for additional decoration (footer, badges).
+        """
+        if context.status in ("active", "accepted", "active_output"):
+            session = await db.get_session(context.session_id)
+            if session and session.lifecycle_status != "headless":
+                logger.debug(
+                    "Typing trigger: session=%s status=%s adapter=%s",
+                    context.session_id[:8],
+                    context.status,
+                    self.ADAPTER_KEY,
+                )
+                try:
+                    await self.send_typing_indicator(session)
+                except Exception:
+                    logger.debug(
+                        "Typing indicator failed for session %s on status %s",
+                        context.session_id[:8],
+                        context.status,
+                    )
+            else:
+                logger.debug(
+                    "Typing skipped: session=%s found=%s lifecycle=%s",
+                    context.session_id[:8],
+                    session is not None,
+                    getattr(session, "lifecycle_status", None),
+                )
 
     @staticmethod
     def _format_lifecycle_status(status: str) -> str:
         """Format a lifecycle status string for platform display."""
         _EMOJI: dict[str, str] = {
             "accepted": "⏱",
+            "active": "💬",
             "awaiting_output": "🟡",
             "active_output": "🔄",
             "stalled": "🔴",
@@ -990,7 +1016,7 @@ class UiAdapter(BaseAdapter):
             feedback_updated
             and session.lifecycle_status != "headless"
             and session.last_input_origin == self.ADAPTER_KEY
-            and not is_threaded_output_enabled(session.active_agent, adapter=self.ADAPTER_KEY)
+            and not self.THREADED_OUTPUT
         ):
             feedback = get_last_output_summary(session) or ""
             if feedback:

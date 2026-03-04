@@ -84,6 +84,9 @@ dev = [
 where = ["."]
 include = ["teleclaude*"]
 
+[project.scripts]
+telec = "teleclaude.cli.telec:main"
+
 [project.urls]
 homepage = "https://github.com/InstruktAI/TeleClaude"
 "Source Code" = "https://github.com/InstruktAI/TeleClaude"
@@ -291,6 +294,8 @@ asyncio_mode = "auto"
 filterwarnings = [
   "ignore::telegram.warnings.PTBDeprecationWarning",
   "ignore:The default datetime adapter is deprecated:DeprecationWarning:aiosqlite",
+  "ignore::pytest.PytestUnraisableExceptionWarning",
+  "ignore::pytest.PytestUnhandledThreadExceptionWarning",
 ]
 
 [tool.coverage.run]

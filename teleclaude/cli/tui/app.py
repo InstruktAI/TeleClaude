@@ -129,6 +129,7 @@ class TelecApp(App[str | None]):
         Binding("r", "refresh", "Refresh", key_display="r"),
         Binding("t", "cycle_pane_theming", "Cycle Theme", key_display="t"),
         Binding("a", "cycle_animation", "Cycle Anim", key_display="a"),
+        Binding("u", "spawn_ufo", "UFO", key_display="u", show=False),
         Binding("v", "toggle_tts", "Voice", key_display="v"),
     ]
 
@@ -136,6 +137,7 @@ class TelecApp(App[str | None]):
         self,
         api: TelecAPIClient,
         start_view: int = 1,
+        config_guided: bool = False,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
@@ -169,9 +171,9 @@ class TelecApp(App[str | None]):
 
         self.api = api
         self._start_view = start_view
+        self._config_guided = config_guided
         self._state_save_timer: object | None = None
         self._computers: list[ComputerInfo] = []
-        self._session_status_cache: dict[str, str] = {}
         self._session_agents: dict[str, str] = {}
         # On SIGUSR2 reload, panes already exist — the bridge's on_data_refreshed
         # will call seed_for_reload() to map them.  Skip layout re-application
@@ -216,7 +218,25 @@ class TelecApp(App[str | None]):
         switching. This recomputes get_css_variables() and propagates
         $background to all widgets.
         """
+        from teleclaude.cli.tui import theme
+        from teleclaude.cli.tui.widgets.session_row import SessionRow
+        from teleclaude.cli.tui.widgets.todo_row import TodoRow
+
+        theme.set_tui_focused(focus)
         self.refresh_css(animate=False)
+
+        # Force full Screen repaint so $background change reaches all content
+        self.screen.refresh()
+
+        # Refresh Rich-based widgets that use haze-dependent rendering
+        for widget in self.query(Banner):
+            widget.refresh()
+        for widget in self.query(BoxTabBar):
+            widget.refresh()
+        for widget in self.query(SessionRow):
+            widget.refresh()
+        for widget in self.query(TodoRow):
+            widget.refresh()
 
     def compose(self) -> ComposeResult:
         logger.trace("[PERF] compose START t=%.3f", _t.monotonic())
@@ -259,6 +279,14 @@ class TelecApp(App[str | None]):
 
         theme.set_pane_theming_mode(status_bar.pane_theming_mode)
         self._apply_app_theme_for_mode(status_bar.pane_theming_mode)
+
+        # Remove Textual's internal tab bar (ContentTabs) — we use BoxTabBar instead.
+        # CSS `display: none` on Tabs doesn't fully suppress the docked ContentTabs
+        # in TabbedContent's DEFAULT_CSS (`dock: top`), leaving a 1-row gap.
+        from textual.widgets._tabbed_content import ContentTabs
+
+        for ct in self.query(ContentTabs):
+            ct.display = False
 
         # Wire animation engine to banner and tabs
         banner = self.query_one(Banner)
@@ -306,6 +334,10 @@ class TelecApp(App[str | None]):
         # Initial data load (computers loaded in parallel inside _refresh_data)
         self._refresh_data()
         self.call_after_refresh(lambda: logger.trace("[PERF] on_mount FIRST_PAINT dt=%.3f", _t.monotonic() - _m0))
+
+        # Activate guided mode if launched as config wizard
+        if self._config_guided:
+            self.call_after_refresh(self._activate_config_guided_mode)
 
         # SIGUSR2 handler for reload.
         # signal.signal() ensures the signal is always caught (preventing
@@ -397,15 +429,15 @@ class TelecApp(App[str | None]):
 
         logger.trace("[PERF] on_data_refreshed views updated dt=%.3f", _t.monotonic() - _d0)
 
-        # Update session status cache
-        self._session_status_cache = {s.session_id: s.status for s in message.sessions}
-
         # Forward to pane bridge (sibling — messages don't reach it via bubbling).
-        # Sync bridge state from sessions view first so seed_for_reload() has
-        # correct active/sticky IDs on SIGUSR2 reload.
+        # Sync bridge state from sessions view on initial load so seed_for_reload()
+        # has correct IDs before _apply() has been called.  After the first load,
+        # layout state is owned exclusively by StickyChanged/PreviewChanged messages;
+        # writing directly here would bypass _apply() and diverge pane_manager state.
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
-        pane_bridge._preview_session_id = sessions_view.preview_session_id
-        pane_bridge._sticky_session_ids = sessions_view._sticky_session_ids.copy()
+        if not self._initial_layout_applied:
+            pane_bridge._preview_session_id = sessions_view.preview_session_id
+            pane_bridge._sticky_session_ids = sessions_view._sticky_session_ids.copy()
         pane_bridge.on_data_refreshed(message)
 
         # On first data load, apply layout with persisted preview/sticky state.
@@ -429,11 +461,15 @@ class TelecApp(App[str | None]):
     def on_preview_changed(self, message: PreviewChanged) -> None:
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_preview_changed(message)
+        # Pane layout change → tmux split → celestials need repositioning
+        self.set_timer(0.5, self._invalidate_sky_width)
 
     def on_sticky_changed(self, message: StickyChanged) -> None:
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_sticky_changed(message)
         self._update_banner_compactness(len(message.session_ids))
+        # Pane layout change → tmux split → celestials need repositioning
+        self.set_timer(0.5, self._invalidate_sky_width)
 
     def on_state_changed(self, _message: StateChanged) -> None:
         self._schedule_state_save()
@@ -482,12 +518,9 @@ class TelecApp(App[str | None]):
 
         elif isinstance(event, SessionStartedEvent):
             self.post_message(SessionStarted(event.data))
-            self._session_status_cache[event.data.session_id] = event.data.status
 
         elif isinstance(event, SessionUpdatedEvent):
             session = event.data
-            # Silence redundant status toasts; they are visible in the UI
-            self._session_status_cache[session.session_id] = session.status
             self.post_message(SessionUpdated(session))
 
         elif isinstance(event, AgentActivityEvent):
@@ -505,7 +538,6 @@ class TelecApp(App[str | None]):
 
         elif isinstance(event, SessionClosedEvent):
             self.post_message(SessionClosed(event.data.session_id))
-            self._session_status_cache.pop(event.data.session_id, None)
 
         elif isinstance(event, SessionLifecycleStatusEvent):
             # Surface stall and error transitions as TUI notifications.
@@ -805,6 +837,14 @@ class TelecApp(App[str | None]):
         new_mode = cycle[(idx + 1) % len(cycle)]
         self._cycle_animation(new_mode)
 
+    def action_spawn_ufo(self) -> None:
+        """u: force a UFO to spawn in the sky animation."""
+        from teleclaude.cli.tui.animations.general import GlobalSky
+
+        slot = self._animation_engine._targets.get("header")
+        if slot and isinstance(slot.animation, GlobalSky):
+            slot.animation.force_spawn_ufo()
+
     def action_toggle_tts(self) -> None:
         """v: toggle TTS on/off.
 
@@ -877,8 +917,8 @@ class TelecApp(App[str | None]):
         if mode == "party":
             self._activity_trigger = ActivityTrigger(self._animation_engine)
 
-        # Start the render tick timer (~150ms)
-        self._animation_timer = self.set_interval(0.15, self._animation_tick)
+        # Start the render tick timer (~250ms — balances smoothness vs terminal output volume)
+        self._animation_timer = self.set_interval(0.25, self._animation_tick)
 
     def _stop_animation(self) -> None:
         """Stop engine, triggers, and render timer."""
@@ -928,8 +968,9 @@ class TelecApp(App[str | None]):
         if changed:
             try:
                 self.query_one(Banner).refresh()
+                self.query_one(BoxTabBar).refresh()
             except Exception:
-                logger.exception("Banner refresh failed after animation tick")
+                logger.exception("Header refresh failed after animation tick")
 
     def _cycle_animation(self, new_mode: str) -> None:
         """Set animation mode, reconfigure engine, and update status bar."""
@@ -941,6 +982,16 @@ class TelecApp(App[str | None]):
 
     def action_refresh(self) -> None:
         self._refresh_data()
+
+    def _activate_config_guided_mode(self) -> None:
+        """Start guided mode in ConfigView after initial mount and data load."""
+        from teleclaude.cli.tui.views.config import ConfigView
+
+        try:
+            config_view = self.query_one("#config-view", ConfigView)
+            config_view.action_toggle_guided_mode()
+        except Exception:
+            pass  # config view unavailable at startup — skip guided mode activation
 
     # --- State persistence ---
 
@@ -1006,6 +1057,33 @@ class TelecApp(App[str | None]):
             widget.refresh()
         for widget in self.query(TodoRow):
             widget.refresh()
+
+        # Refresh animation engine theme (push dark_mode to running animations)
+        if self._animation_engine:
+            self._animation_engine.refresh_theme()
+
+        # Refresh Rich-based header widgets (not CSS-driven)
+        for widget in self.query(Banner):
+            widget.refresh()
+        for widget in self.query(BoxTabBar):
+            widget.refresh()
+
+        # Refresh config content — its Rich styles depend on dark/light mode
+        from teleclaude.cli.tui.views.config import ConfigContent
+
+        for widget in self.query(ConfigContent):
+            widget.refresh()
+
+    def on_resize(self, event: object) -> None:
+        """Force sky animation to reposition celestials on terminal resize."""
+        if self._animation_engine:
+            width = getattr(getattr(event, "size", None), "width", None)
+            self._animation_engine.invalidate_term_width(width)
+
+    def _invalidate_sky_width(self) -> None:
+        """Delayed sky width refresh after pane layout changes."""
+        if self._animation_engine:
+            self._animation_engine.invalidate_term_width()
 
     def _handle_sigusr2(self, _signum: int, _frame: object) -> None:
         """Catch SIGUSR2 (code change) and schedule full process restart."""

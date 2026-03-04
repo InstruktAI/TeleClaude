@@ -18,7 +18,7 @@ from textual.widget import Widget
 from teleclaude.cli.config_handlers import EnvVarStatus, ValidationResult, get_person_config, set_env_var
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.config_components.guidance import get_guidance_for_env
-from teleclaude.cli.tui.theme import CONNECTOR_COLOR
+from teleclaude.cli.tui.theme import CONNECTOR_COLOR, get_neutral_color
 from teleclaude.config.schema import PersonEntry
 
 _SUBTABS = ("adapters", "people", "notifications", "environment", "validate")
@@ -37,7 +37,13 @@ _ADAPTER_ENV_KEYS = {
 }
 
 # Styles
-_NORMAL = Style(color="#d0d0d0")
+
+
+def _normal_style() -> Style:
+    """Normal text style — adapts to dark/light mode."""
+    return Style(color=get_neutral_color("highlight"))
+
+
 _DIM = Style(color="#727578")
 _OK = Style(color="#5faf5f")
 _FAIL = Style(color="#d75f5f")
@@ -715,7 +721,7 @@ class ConfigContent(TelecMixin, Widget):
         for idx, section in enumerate(self._adapter_sections):
             selected = idx == self.active_adapter_tab
             prefix = "▶" if selected else " "
-            card_style = Style(reverse=True) if selected else _NORMAL
+            card_style = Style(reverse=True) if selected else _normal_style()
             result.append(f"  {prefix} {section.label:<11} ", style=card_style)
             result.append(section.status.upper(), style=self._status_style(section.status))
             result.append(f"  ({section.configured_count}/{section.total_count})\n", style=_DIM)
@@ -734,7 +740,7 @@ class ConfigContent(TelecMixin, Widget):
         cursor = self._current_cursor()
         for idx, status in enumerate(section.env_statuses):
             selected = idx == cursor
-            row_style = Style(reverse=True) if selected else _NORMAL
+            row_style = Style(reverse=True) if selected else _normal_style()
             prefix = "▶" if selected else " "
 
             if self._editing_var_name == status.info.name:
@@ -759,7 +765,7 @@ class ConfigContent(TelecMixin, Widget):
             return
 
         for person in self._people_data:
-            result.append(f"  • {person.name}", style=_NORMAL)
+            result.append(f"  • {person.name}", style=_normal_style())
             result.append(f" ({person.role})", style=_DIM)
             if person.email:
                 result.append(f" <{person.email}>", style=_DIM)
@@ -788,7 +794,7 @@ class ConfigContent(TelecMixin, Widget):
         cursor = self._current_cursor()
         for idx, status in enumerate(self._env_data):
             selected = idx == cursor
-            row_style = Style(reverse=True) if selected else _NORMAL
+            row_style = Style(reverse=True) if selected else _normal_style()
             prefix = "▶" if selected else " "
 
             if self._editing_var_name == status.info.name:
@@ -822,7 +828,7 @@ class ConfigContent(TelecMixin, Widget):
             icon_style = _OK if validation.passed else _FAIL
             result.append("  ")
             result.append(f"{icon} ", style=icon_style)
-            result.append(f"{validation.area}\n", style=_NORMAL)
+            result.append(f"{validation.area}\n", style=_normal_style())
             for error in validation.errors:
                 result.append(f"      Error: {error}\n", style=_FAIL)
             for suggestion in validation.suggestions:

@@ -43,8 +43,10 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 2. Tests pass: `make test`.
 3. Lint passes: `make lint`.
 4. Demo validates: `telec todo demo validate {slug}`. Confirms executable blocks exist.
-   If `demo.md` has no executable blocks or the delivery cannot be demonstrated,
-   note the exception in `demo.md` with reasoning.
+   The `<!-- no-demo: reason -->` marker is reserved for pure internal refactors with zero
+   user-visible behavior change. If the delivery touches CLI, TUI, config, API, or messaging,
+   it has observable behavior and must have executable demo blocks — the AI presenter can
+   drive TUI instances, Playwright, and APIs. "Requires live interaction" is not valid.
    (Actual execution happens on main after merge — validate is all the worktree can do.)
 5. Demo artifact delivered: copy `todos/{slug}/demo.md` to `demos/{slug}/demo.md`.
    Create the `demos/{slug}/` directory if it doesn't exist. Commit the demo artifact.

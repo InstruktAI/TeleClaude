@@ -12,13 +12,13 @@ description: 'Canonical routing contract for session messages across origin UX a
 
 This spec defines the routing contract for session messages across origin UX and admin visibility paths.
 
-Core decides who should receive a message. Adapters decide how to present it (threaded, edit-in-place, multi-placement, etc.).
+Core decides delivery scope and broadcasts accordingly. Adapters decide how to present messages (threaded, edit-in-place, multi-placement) and how to route them internally (admin channels, origin UX, suppression).
 
 ## Mental model: three lanes
 
 1. **Origin UX lane**: direct user continuity (reply, notice, summary context).
 2. **Dual output lane**: assistant operational output visible at origin and admin destinations.
-3. **Reflection lane**: mirrored user/actor input visible to all non-source adapters for observability.
+3. **Reflection lane**: mirrored user/actor input broadcast to all adapters. Each adapter decides locally how to route reflections (admin channel, suppression, etc.).
 
 ## Canonical fields
 
@@ -50,17 +50,22 @@ Core decides who should receive a message. Adapters decide how to present it (th
 | `feedback_notice_error_status`       | `ORIGIN_ONLY` | Includes notices, feedback prompts, and user-facing errors.                           |
 | `last_output_summary`                | `ORIGIN_ONLY` | Origin UX only, non-threaded/in-edit presentation only.                               |
 | `output_stream_chunk_final_threaded` | `DUAL`        | Includes incremental chunks, final output, and threaded blocks.                       |
-| `input_reflection_text`              | `DUAL`        | Implemented via reflection lane fan-out (all non-source adapters).                    |
+| `input_reflection_text`              | `DUAL`        | Broadcast to all adapters; each adapter routes locally (admin, suppress, etc.).        |
 | `input_reflection_voice`             | `DUAL`        | Same reflection lane policy as text input.                                            |
 | `input_reflection_mcp`               | `DUAL`        | Same reflection lane policy as text/voice input.                                      |
 | `ctrl_activity`                      | `CTRL`        | Activity control signals: turn start/end, tool events. Internal only; not UI content. |
 
 ## Reflection lane contract
 
-Reflection is a UX observability feature, not a direct reply.
+Reflection is a UX observability feature, not a direct reply. Core broadcasts reflections to all adapters unconditionally. Each adapter owns its local routing decision.
 
-- Reflect to every provisioned UI adapter except the source adapter.
-- Never suppress MCP reflections; they follow the same rule.
+- Broadcast to every provisioned UI adapter, including the source adapter.
+- Core attaches source metadata (origin, actor identity) but never excludes adapters based on source.
+- Each adapter decides locally how to handle received reflections:
+  - Route to admin channel for observability.
+  - Suppress if the adapter's user already sees the input through native platform UX.
+  - Apply platform-specific rendering (webhook attribution, formatting, etc.).
+- Never suppress MCP reflections; they follow the same broadcast-to-all rule.
 - Attribute reflected input to an actor (best effort name, optional avatar).
 - Origin continuity comes from normal reply delivery, not reflection echo.
 

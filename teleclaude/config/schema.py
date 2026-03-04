@@ -6,8 +6,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 class AgentDispatchConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
     enabled: bool = True
-    strengths: str = ""
-    avoid: str = ""
 
 
 class JobWhenConfig(BaseModel):

@@ -4,15 +4,11 @@ from teleclaude.config.schema import AgentDispatchConfig
 def test_agent_dispatch_config_defaults():
     config = AgentDispatchConfig()
     assert config.enabled is True
-    assert config.strengths == ""
-    assert config.avoid == ""
 
 
-def test_agent_dispatch_config_values():
-    config = AgentDispatchConfig(enabled=False, strengths="Python, logic", avoid="Creative writing")
+def test_agent_dispatch_config_disabled():
+    config = AgentDispatchConfig(enabled=False)
     assert config.enabled is False
-    assert config.strengths == "Python, logic"
-    assert config.avoid == "Creative writing"
 
 
 def test_agent_dispatch_config_extra_fields():

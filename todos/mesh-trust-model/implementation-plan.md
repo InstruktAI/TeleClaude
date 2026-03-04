@@ -34,13 +34,7 @@ New code lives in `teleclaude_events/trust/` to keep the trust domain self-conta
 
 - [ ] Define `SovereigntyLevel` enum: `L1` (human-in-loop), `L2` (operational),
       `L3` (full autonomy).
-- [ ] Define `TrustConfig` Pydantic model:
-      - `default_sovereignty: SovereigntyLevel = L1`
-      - `domain_sovereignty: dict[str, SovereigntyLevel] = {}`
-      - `event_overrides: dict[str, str] = {}` (event pattern → accept/attenuate/drop)
-      - `mute_list: list[str] = []`
-      - `trust_list: list[str] = []`
-      - `cache_refresh_seconds: int = 30`
+- [ ] Define `TrustConfig` Pydantic model: - `default_sovereignty: SovereigntyLevel = L1` - `domain_sovereignty: dict[str, SovereigntyLevel] = {}` - `event_overrides: dict[str, str] = {}` (event pattern → accept/attenuate/drop) - `mute_list: list[str] = []` - `trust_list: list[str] = []` - `cache_refresh_seconds: int = 30`
 - [ ] Config loader that reads `trust:` section from TeleClaude YAML config.
       Returns `TrustConfig` with defaults if section is missing.
 
@@ -66,28 +60,13 @@ New code lives in `teleclaude_events/trust/` to keep the trust domain self-conta
 - [ ] Implement `TrustEvaluator` class conforming to the `Cartridge` protocol.
 - [ ] `__init__` accepts `TrustDB`, `TrustRingCache`, `TrustConfig`,
       `SignatureVerifier`.
-- [ ] `process(event, context)` logic:
-      1. If `event.visibility == EventVisibility.LOCAL`: return event (bypass).
-      2. Check mute list: if `event.source` in mute list → drop, emit
-         `trust.muted` observation.
-      3. Check trust list: if `event.source` in trust list → accept fast path.
-      4. Check event overrides: if event type matches an override → apply directly.
-      5. Verify signature (via `SignatureVerifier` protocol).
-         `invalid` → drop. `unverifiable` → continue with penalty signal.
-      6. Look up source in trust ring cache:
-         - `trusted`: accept with streamlined evaluation.
-         - `observed`: evaluate signals, accept or attenuate.
-         - `unknown`: evaluate signals, accept/attenuate/drop.
-         - `muted`: drop (should not reach here due to step 2, defensive).
-      7. Evaluate content signals: unexpected event types from source, oversized
-         payload (>64KB), structural anomalies.
-      8. Check peer observations: if other trusted peers flagged this source,
-         weight their observations.
-      9. Combine signals into final `TrustEvaluation`. Map to verdict.
-      10. Record observation in `TrustDB`. Update `last_seen` and
-          `interaction_count`.
-      11. Return: `None` (drop), event (accept), or event with `visibility`
-          downgraded to `LOCAL` (attenuate).
+- [ ] `process(event, context)` logic: 1. If `event.visibility == EventVisibility.LOCAL`: return event (bypass). 2. Check mute list: if `event.source` in mute list → drop, emit
+      `trust.muted` observation. 3. Check trust list: if `event.source` in trust list → accept fast path. 4. Check event overrides: if event type matches an override → apply directly. 5. Verify signature (via `SignatureVerifier` protocol).
+      `invalid` → drop. `unverifiable` → continue with penalty signal. 6. Look up source in trust ring cache: - `trusted`: accept with streamlined evaluation. - `observed`: evaluate signals, accept or attenuate. - `unknown`: evaluate signals, accept/attenuate/drop. - `muted`: drop (should not reach here due to step 2, defensive). 7. Evaluate content signals: unexpected event types from source, oversized
+      payload (>64KB), structural anomalies. 8. Check peer observations: if other trusted peers flagged this source,
+      weight their observations. 9. Combine signals into final `TrustEvaluation`. Map to verdict. 10. Record observation in `TrustDB`. Update `last_seen` and
+      `interaction_count`. 11. Return: `None` (drop), event (accept), or event with `visibility`
+      downgraded to `LOCAL` (attenuate).
 - [ ] Emit observation events by publishing to the Redis event stream (same
       mechanism the daemon uses to ingest events). Observation events have
       `visibility: LOCAL` so they re-enter the pipeline and bypass the trust

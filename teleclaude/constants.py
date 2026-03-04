@@ -96,6 +96,22 @@ FIELD_COMPUTER = "computer"
 FIELD_COMMAND = "command"
 
 
+# System message prefix — all daemon-injected messages use this prefix.
+TELECLAUDE_SYSTEM_PREFIX = "[TeleClaude"
+
+
+def format_system_message(label: str, content: str = "") -> str:
+    """Format a daemon-injected system message with the canonical TeleClaude prefix.
+
+    Returns ``[TeleClaude {label}]`` when no content is given, or
+    ``[TeleClaude {label}]\\n\\n{content}`` when content is provided.
+    """
+    header = f"[TeleClaude {label}]"
+    if content:
+        return f"{header}\n\n{content.strip()}"
+    return header
+
+
 # Checkpoint injection
 CHECKPOINT_PREFIX = "[TeleClaude Checkpoint] - "
 CHECKPOINT_MESSAGE = (

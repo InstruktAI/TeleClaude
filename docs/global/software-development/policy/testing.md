@@ -19,6 +19,49 @@ type: 'policy'
 3. Never commit code with failing hooks, lint violations, or type errors
 4. **Test behavioral contracts, not documentation prose**
 5. **Literal documentation string assertions are forbidden unless they are execution-significant**
+6. **Write failing tests before production code — no exceptions**
+
+### Test-Driven Development
+
+Tests are requirements. Code is implementation of tests. Every behavioral change starts with a test that captures the expected behavior, fails because that behavior is missing, and then — and only then — gets the production code to make it pass.
+
+**Iron law:** No production code without a failing test first. Code written before its test must be deleted and rewritten test-first. No keeping it "as reference." No "adapting" it. Delete means delete.
+
+**RED-GREEN-REFACTOR cycle:**
+
+1. **RED** — Write one focused test asserting the desired behavior. Run it. Confirm it fails for the right reason (missing behavior, not setup error).
+2. **GREEN** — Write the smallest production change that makes the test pass. Nothing more.
+3. **REFACTOR** — Clean up while all tests stay green. No new behavior in this step.
+
+Verification checkpoints:
+
+- RED: Test fails, failure message describes the missing behavior.
+- GREEN: Test passes, no other tests broken, output clean.
+- REFACTOR: All tests still green after cleanup.
+
+**Rationalizations to reject:**
+
+| Excuse                           | Reality                                                                           |
+| -------------------------------- | --------------------------------------------------------------------------------- |
+| "Too simple to test"             | Small code breaks. Test takes 30 seconds.                                         |
+| "I'll test after"                | Tests passing immediately prove nothing — you never saw them catch the bug.       |
+| "Tests after achieve same goals" | Tests-after answer "what does this do?" Tests-first answer "what should this do?" |
+| "Already manually tested"        | Ad-hoc and non-repeatable. No record, can't re-run.                               |
+| "Already wrote a lot of code"    | Sunk cost. Keeping unverified code is technical debt. Delete and restart.         |
+| "Keep as reference"              | You'll adapt it. That's testing after. Delete means delete.                       |
+| "Need to explore first"          | Fine. Throw away exploration, start with tests.                                   |
+| "Hard to test"                   | Hard to test = hard to use. Simplify the design.                                  |
+| "TDD slows me down"              | TDD is faster than debugging. Test-first is pragmatic.                            |
+| "I can fix while I'm here"       | Mixed concerns hide behavior changes. Keep scope to the test.                     |
+| "Existing code has no tests"     | You're improving it. Add tests for the code you touch.                            |
+
+**Red flags — stop and restart with a test:**
+
+- Production code exists without a corresponding failing test observed first.
+- Test passes immediately on first run (testing existing behavior, not new behavior).
+- Cannot explain why the test failed.
+- Rationalizing "just this once."
+- "It's about spirit not ritual" — violating the letter is violating the spirit.
 
 ### Documentation Assertion Guardrail
 

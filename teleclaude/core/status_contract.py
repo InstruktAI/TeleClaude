@@ -7,6 +7,7 @@ ensure schema consistency.
 
 Canonical lifecycle status values (outbound vocabulary):
   - accepted        — user prompt accepted, agent response imminent
+  - active          — agent session started, confirmed alive and working
   - awaiting_output — optimistic accepted window expired, still waiting
   - active_output   — agent is actively producing output
   - stalled         — extended inactivity, no output evidence
@@ -33,6 +34,7 @@ logger = get_logger(__name__)
 
 LifecycleStatus = Literal[
     "accepted",
+    "active",
     "awaiting_output",
     "active_output",
     "stalled",
@@ -45,6 +47,7 @@ LifecycleStatus = Literal[
 LIFECYCLE_STATUSES: frozenset[str] = frozenset(
     {
         "accepted",
+        "active",
         "awaiting_output",
         "active_output",
         "stalled",
@@ -77,6 +80,7 @@ STATUS_DELIVERY_SCOPE: Literal["CTRL"] = "CTRL"
 
 StatusReason = Literal[
     "user_prompt_accepted",
+    "agent_session_started",
     "awaiting_output_timeout",
     "stall_timeout",
     "output_observed",

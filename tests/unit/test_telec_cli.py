@@ -341,3 +341,34 @@ def test_bugs_list_uses_worktree_state_for_status(
     bug_lines = [line for line in bugs_output.splitlines() if slug in line]
     assert bug_lines
     assert any("building" in line for line in bug_lines)
+
+
+def test_config_wizard_activates_guided_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """config wizard subcommand must call _run_tui_config_mode with guided=True."""
+    calls: dict[str, bool] = {}
+
+    def fake_run_tui_config_mode(guided: bool = False) -> None:
+        calls["guided"] = guided
+
+    monkeypatch.setattr(telec, "_run_tui_config_mode", fake_run_tui_config_mode)
+    monkeypatch.setattr(telec.sys.stdin, "isatty", lambda: True)
+
+    telec._handle_config(["wizard"])
+
+    assert calls.get("guided") is True
+
+
+def test_run_tui_config_mode_passes_start_view_4(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_run_tui_config_mode must pass start_view=4 (config tab) to _run_tui."""
+    calls: dict[str, int | bool] = {}
+
+    def fake_run_tui(start_view: int = 1, config_guided: bool = False) -> None:
+        calls["start_view"] = start_view
+        calls["config_guided"] = config_guided
+
+    monkeypatch.setattr(telec, "_run_tui", fake_run_tui)
+
+    telec._run_tui_config_mode(guided=True)
+
+    assert calls["start_view"] == 4
+    assert calls["config_guided"] is True

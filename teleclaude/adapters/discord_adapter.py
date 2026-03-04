@@ -59,6 +59,7 @@ class DiscordAdapter(UiAdapter):
     """Discord bot adapter using discord.py."""
 
     ADAPTER_KEY = "discord"
+    THREADED_OUTPUT = True
     max_message_size = 2000
     _TRUNCATION_SUFFIX = "\n[...truncated...]"
 
@@ -105,10 +106,8 @@ class DiscordAdapter(UiAdapter):
         qos_policy = discord_policy(config.discord.qos)
         self._qos_scheduler: OutputQoSScheduler = OutputQoSScheduler(qos_policy)
 
-        # Threaded output buffer: accumulates rendered text during streaming,
-        # flushed as a single message on turn completion (is_final=True).
-        # Discord does not use edit-in-place — each turn produces one new message.
-        self._threaded_buffers: dict[str, str] = {}
+        # No threaded output buffering — Discord uses the base class
+        # edit-in-place model for threaded output delivery.
 
     async def start(self) -> None:
         """Initialize Discord client and start gateway task."""
@@ -640,6 +639,7 @@ class DiscordAdapter(UiAdapter):
                     edit_fn = self._require_async_callable(getattr(message, "edit", None), label="Discord message edit")
                     await edit_fn(content=launcher_text, view=self._build_session_launcher_view())
                     await self._pin_launcher_message(message, forum_id=forum_id)
+                    await self._pin_launcher_thread(launcher_thread, forum_id=forum_id)
                     return
                 except Exception as exc:
                     logger.warning(
@@ -670,6 +670,8 @@ class DiscordAdapter(UiAdapter):
         launcher_message_id = self._parse_optional_int(launcher_message_id_raw)
         if launcher_message is not None:
             await self._pin_launcher_message(launcher_message, forum_id=forum_id)
+        if launcher_thread is not None:
+            await self._pin_launcher_thread(launcher_thread, forum_id=forum_id)
         if launcher_message_id is None:
             launcher_message_id = launcher_thread_id
 
@@ -711,6 +713,24 @@ class DiscordAdapter(UiAdapter):
             logger.warning(
                 "Failed to pin Discord launcher message %s in forum %s: %s",
                 message_id,
+                forum_id,
+                exc,
+            )
+
+    async def _pin_launcher_thread(self, thread: object, *, forum_id: int) -> None:
+        """Pin the launcher thread in the forum so it stays at the top."""
+        thread_id = getattr(thread, "id", None)
+        edit_fn = getattr(thread, "edit", None)
+        if not callable(edit_fn):
+            logger.debug("Launcher thread %s in forum %s cannot be edited for pinning", thread_id, forum_id)
+            return
+
+        try:
+            await self._require_async_callable(edit_fn, label="Discord thread edit (pin)")(pinned=True)
+        except Exception as exc:
+            logger.warning(
+                "Failed to pin Discord launcher thread %s in forum %s: %s",
+                thread_id,
                 forum_id,
                 exc,
             )
@@ -1144,7 +1164,6 @@ class DiscordAdapter(UiAdapter):
         logger.debug("Stored discord output_message_id: session=%s message_id=%s", session.session_id[:8], message_id)
 
     async def _clear_output_message_id(self, session: "Session") -> None:
-        self._threaded_buffers.pop(session.session_id, None)
         meta = session.get_metadata().get_ui().get_discord()
         meta.output_message_id = None
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
@@ -1154,14 +1173,18 @@ class DiscordAdapter(UiAdapter):
         """Send typing indicator to Discord thread."""
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
+            logger.debug("Typing skipped: no thread_id for session %s", session.session_id[:8])
             return
         thread = await self._get_channel(discord_meta.thread_id)
         if thread is None:
+            logger.debug("Typing skipped: channel %s not found for session %s", discord_meta.thread_id, session.session_id[:8])
             return
-        trigger_typing_fn = getattr(thread, "trigger_typing", None)
-        if trigger_typing_fn and callable(trigger_typing_fn):
-            typing_fn = self._require_async_callable(trigger_typing_fn, label="Discord thread trigger_typing")
-            await typing_fn()
+        typing_fn = getattr(thread, "typing", None)
+        if typing_fn and callable(typing_fn):
+            await thread.typing()
+            logger.debug("Typing fired: session=%s thread=%s", session.session_id[:8], discord_meta.thread_id)
+        else:
+            logger.debug("Typing skipped: typing() not available on channel %s for session %s", discord_meta.thread_id, session.session_id[:8])
 
     async def send_output_update(  # type: ignore[override]  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
@@ -1176,29 +1199,11 @@ class DiscordAdapter(UiAdapter):
         """Route Discord output update through the QoS scheduler.
 
         For threaded sessions: the base class suppresses send_output_update
-        entirely. Discord overrides this to flush the threaded output buffer
-        as a single new message when is_final=True.
+        (threaded output is delivered via send_threaded_output instead).
 
-        For non-threaded sessions: delegates to QoS scheduler as before.
+        For non-threaded sessions: delegates to QoS scheduler.
         """
-        from teleclaude.core.feature_flags import is_threaded_output_enabled
-
-        is_threaded = is_threaded_output_enabled(session.active_agent, adapter=self.ADAPTER_KEY)
-
-        if is_threaded:
-            if is_final:
-                # Flush buffered threaded output as a single new message.
-                buffered = self._threaded_buffers.pop(session.session_id, None)
-                if buffered:
-                    await self._clear_output_message_id(session)
-                    metadata = self._build_metadata_for_thread()
-                    new_id = await self.send_message(session, buffered, metadata=metadata, multi_message=True)
-                    logger.debug(
-                        "[DISCORD] Flushed threaded buffer on turn end: session=%s len=%d message_id=%s",
-                        session.session_id[:8],
-                        len(buffered),
-                        new_id,
-                    )
+        if self.THREADED_OUTPUT:
             return None
 
         # Non-threaded: existing QoS path.
@@ -1224,34 +1229,19 @@ class DiscordAdapter(UiAdapter):
         self._qos_scheduler.enqueue(session.session_id, _dispatch, is_final=is_final)
         return None  # Delivery is deferred.
 
-    async def send_threaded_output(  # type: ignore[override]
-        self,
-        session: "Session",
-        text: str,
-        multi_message: bool = False,  # noqa: ARG002 — interface compat; flush uses multi_message
-    ) -> Optional[str]:
-        """Buffer threaded output for turn-end delivery.
-
-        Discord does not use edit-in-place for streaming output. Instead,
-        the latest accumulated text is buffered here and flushed as a single
-        new message when send_output_update(is_final=True) fires.
-
-        A sentinel output_message_id is stored to prevent the coordinator
-        from advancing its cursor (preserving the accumulation model).
-        """
-        self._threaded_buffers[session.session_id] = text
-
-        # Set sentinel output_message_id to prevent cursor advancement
-        # in the coordinator. Only set once per turn (first call).
-        if not await self._get_output_message_id(session):
-            await self._store_output_message_id(session, "discord-buffering")
-
-        return "discord-buffering"
+    # send_threaded_output: inherited from UiAdapter base class.
+    # Discord uses the base class edit-in-place model for threaded output.
 
     async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
         """Send or edit the tracked status message in the Discord thread."""
+        # Base class fires typing indicator on active/accepted
+        await super()._handle_session_status(_event, context)
+
         session = await db.get_session(context.session_id)
         if not session:
+            return
+        # Suppress lifecycle badges in threaded mode — only AI output matters.
+        if self.THREADED_OUTPUT:
             return
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
@@ -2309,6 +2299,13 @@ class DiscordAdapter(UiAdapter):
         guild_id = self._parse_optional_int(getattr(getattr(message, "guild", None), "id", None))
 
         session = await self._find_session(channel_id=channel_id, thread_id=thread_id, user_id=user_id)
+        if session and not session.human_role:
+            from teleclaude.core.identity import get_identity_resolver
+
+            identity = get_identity_resolver().resolve("discord", {"user_id": user_id})
+            if identity and identity.person_role:
+                await db.update_session(session.session_id, human_role=identity.person_role)
+                session = await db.get_session(session.session_id) or session
         if session is None:
             forum_type, project_path = self._resolve_forum_context(message)
             session = await self._create_session_for_message(
@@ -2351,6 +2348,9 @@ class DiscordAdapter(UiAdapter):
             thread_sessions = await db.get_sessions_by_adapter_metadata("discord", "thread_id", thread_id)
             if thread_sessions:
                 return thread_sessions[0]
+            # Thread-scoped: don't fall through to channel_id lookup.
+            # Falling through would return a stale channel session, not the thread session the caller expects.
+            return None
 
         if channel_id is None:
             return None

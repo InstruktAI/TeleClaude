@@ -153,10 +153,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--message", desc="Initial message to send"),
                     Flag("--title", desc="Session title"),
                     Flag("--direct", desc="Conversation mode: create direct link with caller and bypass listeners"),
+                    Flag("--detach", desc="Fire-and-forget: inherit context but skip listener registration"),
                 ],
                 notes=[
                     "--project is required.",
                     "Use --direct for peer conversation mode when you want shared linked output instead of worker supervision notifications.",
+                    "Use --detach for fire-and-forget dispatch: child inherits identity but caller receives no notifications.",
                 ],
                 examples=[
                     "telec sessions start --project /tmp/project",
@@ -211,11 +213,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--mode", desc="Thinking mode: fast, med, slow"),
                     Flag("--computer", desc="Target computer (optional; defaults to local)"),
                     Flag("--subfolder", desc="Subdirectory within the project"),
+                    Flag("--detach", desc="Fire-and-forget: inherit context but skip listener registration"),
                 ],
                 notes=[
                     "Creates a fresh session and runs the slash command as the first agent message.",
                     "Worker lifecycle commands: /next-build, /next-review, /next-fix-review, /next-finalize.",
                     "Example: telec sessions run --command /next-build --args my-slug --project /repo/path",
+                    "Use --detach for fire-and-forget dispatch: child inherits identity but caller receives no notifications.",
                 ],
             ),
             "revive": CommandDef(
@@ -237,14 +241,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<session_id>",
                 flags=[_H],
             ),
+            "restart": CommandDef(
+                desc="Restart an agent session ('self' to restart own session)",
+                args="<session_id>",
+                flags=[_H],
+            ),
             "result": CommandDef(
                 desc="Send a formatted result to the session's user",
-                args="<session_id> <content>",
+                args="<content>",
                 flags=[_H, Flag("--format", desc="Output format: markdown, html")],
             ),
             "file": CommandDef(
-                desc="Send a file to a session",
-                args="<session_id>",
+                desc="Send a file to the session's user",
                 flags=[
                     _H,
                     Flag("--path", desc="File path on the daemon host"),
@@ -254,12 +262,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "widget": CommandDef(
                 desc="Render a rich widget to the session's user",
-                args="<session_id>",
                 flags=[_H, Flag("--data", desc="Widget expression as JSON")],
             ),
             "escalate": CommandDef(
-                desc="Escalate a customer session to an admin via Discord",
-                args="<session_id>",
+                desc="Escalate to an admin via Discord",
                 flags=[
                     _H,
                     Flag("--customer", desc="Customer name"),
@@ -433,6 +439,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Exits 0 on pass, 1 on failure.",
                     "Checks artifact presence and consistency — does not run tests or demo.",
                     "Integrated into next_work() before dispatching review.",
+                ],
+            ),
+            "dump": CommandDef(
+                desc="Fire-and-forget brain dump with notification trigger",
+                args="<slug> <content>",
+                flags=[
+                    Flag("--after", desc="Comma-separated dependency slugs"),
+                ],
+                notes=[
+                    "Emits todo.dumped notification for autonomous processing.",
                 ],
             ),
         },
@@ -1161,7 +1177,7 @@ def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
 
     logger.trace("[PERF] _run_tui import TelecApp dt=%.3f", _t.monotonic() - _t0)
     api = TelecAPIClient()
-    app = TelecApp(api, start_view=start_view)
+    app = TelecApp(api, start_view=start_view, config_guided=config_guided)
     logger.trace("[PERF] _run_tui TelecApp created dt=%.3f", _t.monotonic() - _t0)
 
     reload_requested = False
@@ -1191,7 +1207,7 @@ def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
 
 def _run_tui_config_mode(guided: bool = False) -> None:
     """Run TUI in configuration mode."""
-    _run_tui(start_view=3, config_guided=guided)
+    _run_tui(start_view=4, config_guided=guided)
 
 
 def _handle_cli_command(argv: list[str]) -> None:
@@ -1654,6 +1670,8 @@ def _handle_todo(args: list[str]) -> None:
         handle_todo_set_deps(args[1:])
     elif subcommand == "verify-artifacts":
         _handle_todo_verify_artifacts(args[1:])
+    elif subcommand == "dump":
+        _handle_todo_dump(args[1:])
     else:
         print(f"Unknown todo subcommand: {subcommand}")
         print(_usage("todo"))
@@ -1786,29 +1804,46 @@ def _demo_list(project_root: Path) -> None:
         raise SystemExit(0)
 
     demo_entries = []
+    missing_snapshot: list[str] = []
+    broken_snapshot: list[str] = []
     for demo_path in sorted(demos_dir.iterdir()):
         if not demo_path.is_dir() or demo_path.name.startswith("."):
             continue
         snapshot_path = demo_path / "snapshot.json"
-        if snapshot_path.exists():
-            try:
-                snapshot = json.loads(snapshot_path.read_text())
-                demo_entries.append((demo_path.name, snapshot))
-            except (json.JSONDecodeError, OSError):
-                continue
+        if not snapshot_path.exists():
+            missing_snapshot.append(demo_path.name)
+            continue
+        try:
+            snapshot = json.loads(snapshot_path.read_text())
+            demo_entries.append((demo_path.name, snapshot))
+        except (json.JSONDecodeError, OSError):
+            broken_snapshot.append(demo_path.name)
 
-    if not demo_entries:
+    if not demo_entries and not missing_snapshot and not broken_snapshot:
         print("No demos available")
         raise SystemExit(0)
 
-    print(f"Available demos ({len(demo_entries)}):\n")
-    print(f"{'Slug':<30} {'Title':<50} {'Version':<10} {'Delivered'}")
-    print("-" * 110)
-    for demo_slug, snapshot in demo_entries:
-        title = snapshot.get("title", "")
-        version = snapshot.get("version", "")
-        delivered = snapshot.get("delivered_date", snapshot.get("delivered", ""))
-        print(f"{demo_slug:<30} {title:<50} {version:<10} {delivered}")
+    if demo_entries:
+        print(f"Available demos ({len(demo_entries)}):\n")
+        print(f"{'Slug':<30} {'Title':<50} {'Version':<10} {'Delivered'}")
+        print("-" * 110)
+        for demo_slug, snapshot in demo_entries:
+            title = snapshot.get("title", "")
+            version = snapshot.get("version", "")
+            delivered = snapshot.get("delivered_date", snapshot.get("delivered", ""))
+            print(f"{demo_slug:<30} {title:<50} {version:<10} {delivered}")
+
+    if missing_snapshot:
+        print(f"\nMissing snapshot.json ({len(missing_snapshot)}):")
+        for slug in missing_snapshot:
+            print(f"  {slug}")
+        print("  Run: telec todo demo create <slug>")
+
+    if broken_snapshot:
+        print(f"\nBroken snapshot.json ({len(broken_snapshot)}):")
+        for slug in broken_snapshot:
+            print(f"  {slug}")
+
     raise SystemExit(0)
 
 
@@ -1824,10 +1859,11 @@ def _demo_validate(slug: str, project_root: Path) -> None:
 
     content = demo_md_path.read_text(encoding="utf-8")
 
-    # Check for no-demo escape hatch
+    # Check for no-demo escape hatch — emit warning so build gate and reviewer can't miss it
     no_demo_reason = _check_no_demo_marker(content)
     if no_demo_reason is not None:
-        print(f"No-demo marker found: {no_demo_reason}")
+        print(f"WARNING: no-demo marker found: {no_demo_reason}")
+        print("Reviewer must verify justification — only pure internal refactors with zero user-visible change qualify.")
         raise SystemExit(0)
 
     # Check that demo.md diverges from the skeleton template.
@@ -1866,7 +1902,7 @@ def _demo_run(slug: str, project_root: Path) -> None:
         # Check for no-demo escape hatch
         no_demo_reason = _check_no_demo_marker(content)
         if no_demo_reason is not None:
-            print(f"No-demo marker found: {no_demo_reason}")
+            print(f"WARNING: no-demo marker found: {no_demo_reason}")
             raise SystemExit(0)
 
         blocks = _extract_demo_blocks(content)
@@ -1988,12 +2024,14 @@ def _demo_create(slug: str, project_root: Path) -> None:
         if match:
             version = match.group(1)
 
-    # Create demos/{slug}/ and copy demo.md
+    # Create demos/{slug}/ and copy demo.md (skip if already in place)
     demos_dir = project_root / "demos" / slug
     demos_dir.mkdir(parents=True, exist_ok=True)
-    import shutil
+    dest = demos_dir / "demo.md"
+    if source.resolve() != dest.resolve():
+        import shutil
 
-    shutil.copy2(source, demos_dir / "demo.md")
+        shutil.copy2(source, dest)
 
     # Generate minimal snapshot.json
     snapshot = {"slug": slug, "title": title, "version": version}
@@ -2045,6 +2083,88 @@ def _handle_todo_verify_artifacts(args: list[str]) -> None:
     passed, report = verify_artifacts(cwd, slug, phase)
     print(report)
     raise SystemExit(0 if passed else 1)
+
+
+def _handle_todo_dump(args: list[str]) -> None:
+    """Handle telec todo dump <slug> <content> [--after <deps>]."""
+    if len(args) < 2:
+        print(_usage("todo", "dump"))
+        return
+
+    slug: str | None = None
+    content: str | None = None
+    project_root = Path.cwd()
+    after: list[str] | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--after" and i + 1 < len(args):
+            after = [part.strip() for part in args[i + 1].split(",") if part.strip()]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "dump"))
+            raise SystemExit(1)
+        else:
+            if slug is None:
+                slug = arg
+            elif content is None:
+                content = arg
+            else:
+                print("Too many positional arguments.")
+                print(_usage("todo", "dump"))
+                raise SystemExit(1)
+            i += 1
+
+    if not slug or not content:
+        print(_usage("todo", "dump"))
+        raise SystemExit(1)
+
+    # Always register in roadmap (unlike create, which only registers with --after)
+    after_deps = after if after is not None else []
+
+    try:
+        todo_dir = create_todo_skeleton(project_root, slug, after=after_deps)
+    except (ValueError, FileExistsError) as exc:
+        print(f"Error: {exc}")
+        raise SystemExit(1) from exc
+
+    # Overwrite input.md with brain dump content
+    input_path = todo_dir / "input.md"
+    input_path.write_text(f"# {slug} — Input\n\n{content}\n", encoding="utf-8")
+
+    # Emit todo.dumped notification (async, wrapped in asyncio.run())
+    async def _emit() -> None:
+        from redis.asyncio import Redis  # type: ignore[import-untyped]
+
+        from teleclaude_events.envelope import EventEnvelope, EventLevel
+        from teleclaude_events.producer import EventProducer
+
+        redis_url = config.redis.url
+        redis_password = getattr(config.redis, "password", None)
+        redis_client = Redis.from_url(redis_url, password=redis_password, decode_responses=False)
+        try:
+            producer = EventProducer(redis_client=redis_client)
+            envelope = EventEnvelope(
+                event="todo.dumped",
+                source="telec-cli",
+                level=EventLevel.WORKFLOW,
+                domain="todo",
+                description=f"Todo dumped: {slug}",
+                payload={"slug": slug, "project_root": str(project_root)},
+            )
+            await producer.emit(envelope)
+        finally:
+            await redis_client.aclose()
+
+    try:
+        asyncio.run(_emit())
+        print(f"Dumped todo: todos/{slug}/ — notification sent.")
+    except Exception as exc:
+        print(f"Dumped todo: todos/{slug}/")
+        print(f"Warning: notification emission failed: {exc}")
+        print("Notification can be retried manually.")
 
 
 def _handle_todo_demo(args: list[str]) -> None:
@@ -2892,7 +3012,7 @@ def _handle_config(args: list[str]) -> None:
         if not sys.stdin.isatty():
             print("Error: Interactive config requires a terminal.")
             raise SystemExit(1)
-        _run_tui_config_mode(guided=False)
+        _run_tui_config_mode(guided=True)
     elif subcommand in ("get", "patch"):
         from teleclaude.cli.config_cmd import handle_config_command
 

@@ -88,6 +88,10 @@ class AdapterClient:
             (adapter_type, adapter) for adapter_type, adapter in self.adapters.items() if isinstance(adapter, UiAdapter)
         ]
 
+    def any_adapter_wants_threaded_output(self) -> bool:
+        """Return True when any registered UI adapter uses threaded output mode."""
+        return any(adapter.THREADED_OUTPUT for _, adapter in self._ui_adapters())
+
     async def send_error_feedback(self, session_id: str, error_message: str) -> None:
         """Send error feedback to all UI adapters, surfacing failures."""
         ui_adapters = self._ui_adapters()
@@ -651,6 +655,9 @@ class AdapterClient:
                     return with_header
                 return f"{with_header}\n\n---\n"
             return with_header
+
+        async def _noop() -> None:
+            return None
 
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
             adapter_text = render_reflection_text(adapter, final_text)

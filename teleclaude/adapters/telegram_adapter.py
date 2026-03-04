@@ -63,17 +63,6 @@ from .telegram.input_handlers import InputHandlersMixin
 from .telegram.message_ops import EditContext, MessageOperationsMixin
 from .ui_adapter import UiAdapter
 
-# Status emoji mapping
-STATUS_EMOJI = {
-    "active": "🟢",
-    "waiting": "🟡",
-    "slow": "🟠",
-    "stalled": "🔴",
-    "idle": "⏸️",
-    "dead": "❌",
-}
-
-
 # Type alias for python-telegram-bot's default Application type.
 # The library uses dict for user/chat/bot data storage - this is intentional
 # design since the library doesn't restrict what you can store.
@@ -198,7 +187,10 @@ class TelegramAdapter(
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
 
     async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
-        """Update Telegram topic footer with canonical lifecycle status."""
+        """Update Telegram topic footer with canonical lifecycle status and fire typing on active."""
+        # Base class fires typing indicator on active/accepted
+        await super()._handle_session_status(_event, context)
+
         session = await db.get_session(context.session_id)
         if not session:
             return

@@ -10,12 +10,12 @@ export function isSystemInjected(text: string): boolean {
   if (typeof text !== "string") return false;
   const t = text.trim();
   return (
+    t.startsWith("[TeleClaude") ||
     t.includes("<task-notification>") ||
     t.includes("Stop hook feedback:") ||
     t.includes("This session is being continued from a previous conversation") ||
     t.includes("[Request interrupted by user]") ||
-    t.includes("<system-reminder>") ||
-    t.includes("[TeleClaude Checkpoint]")
+    t.includes("<system-reminder>")
   );
 }
 

@@ -41,6 +41,7 @@ enforcement is explicitly tested.
 ### 4. Approach Known
 
 **Pass.** All referenced code entities verified in codebase:
+
 - POST_COMPLETION inline merge steps: `core.py:223-267` (12-step sequence confirmed)
 - `sync_slug_todo_from_worktree_to_main`: `core.py:1986`
 - `sync_slug_todo_from_main_to_worktree`: `core.py:2005`
@@ -65,6 +66,7 @@ is an internal dependency with a fully documented API surface from the
 ### 6. Dependencies & Preconditions
 
 **Pass.** `event-platform-core` is the single dependency:
+
 - DOR score: 8 (pass) — confirmed in `todos/event-platform-core/state.yaml`
 - Roadmap: `integrator-wiring` declared `after: [event-platform-core]` — confirmed
 - API surface documented: `EventProducer`, `emit_event()`, `EventCatalog`,
@@ -86,16 +88,16 @@ to revert to the old inline flow. Each phase is independently committable and te
 
 ## Plan-to-Requirement Fidelity
 
-| Requirement | Plan Coverage | Status |
-| ----------- | ------------- | ------ |
-| FR1: Integration Event Schemas | Phase 1, Task 1.1 | Aligned |
-| FR2: Event Emission | Phase 2, Tasks 2.1-2.3 | Aligned |
-| FR3: Integrator Trigger | Phase 3, Tasks 3.1-3.2 | Aligned |
-| FR4: POST_COMPLETION Replacement | Phase 4, Task 4.1 | Aligned |
-| FR5: Integrator Session Contract | Phase 3, Task 3.3 | Aligned |
-| FR6: Cutover Activation | Phase 5, Task 5.1 | Aligned |
-| FR7: Replace File-Based Event Store | Phase 5, Task 5.2 | Aligned |
-| FR8: Eliminate Bidirectional Sync | Phase 5, Task 5.3 | Aligned |
+| Requirement                         | Plan Coverage          | Status  |
+| ----------------------------------- | ---------------------- | ------- |
+| FR1: Integration Event Schemas      | Phase 1, Task 1.1      | Aligned |
+| FR2: Event Emission                 | Phase 2, Tasks 2.1-2.3 | Aligned |
+| FR3: Integrator Trigger             | Phase 3, Tasks 3.1-3.2 | Aligned |
+| FR4: POST_COMPLETION Replacement    | Phase 4, Task 4.1      | Aligned |
+| FR5: Integrator Session Contract    | Phase 3, Task 3.3      | Aligned |
+| FR6: Cutover Activation             | Phase 5, Task 5.1      | Aligned |
+| FR7: Replace File-Based Event Store | Phase 5, Task 5.2      | Aligned |
+| FR8: Eliminate Bidirectional Sync   | Phase 5, Task 5.3      | Aligned |
 
 No contradictions found between plan and requirements. No plan task prescribes
 behavior that contradicts a requirement.
@@ -133,13 +135,13 @@ these when constructing the pipeline context — this preserves the `teleclaude_
 
 The following naming corrections were applied during the draft phase:
 
-| Previous (incorrect)                              | Corrected                                                  |
-| ------------------------------------------------- | ---------------------------------------------------------- |
-| `NotificationProducer.emit()`                     | `emit_event()` / `EventProducer`                           |
-| "notification service event catalog"              | `EventCatalog` with `EventSchema` registration             |
-| `teleclaude_notifications/schemas/...`            | `teleclaude_events/schemas/software_development.py`        |
-| "notification processor callback"                 | Integration trigger cartridge in pipeline chain            |
-| "notification service's contract"                 | Event platform's contract (`teleclaude_events`)            |
+| Previous (incorrect)                   | Corrected                                           |
+| -------------------------------------- | --------------------------------------------------- |
+| `NotificationProducer.emit()`          | `emit_event()` / `EventProducer`                    |
+| "notification service event catalog"   | `EventCatalog` with `EventSchema` registration      |
+| `teleclaude_notifications/schemas/...` | `teleclaude_events/schemas/software_development.py` |
+| "notification processor callback"      | Integration trigger cartridge in pipeline chain     |
+| "notification service's contract"      | Event platform's contract (`teleclaude_events`)     |
 
 ## Gate Verdict
 

@@ -37,6 +37,7 @@ LOGO_HEIGHT = len(LOGO_LINES) + 1
 LOGO_WIDTH = 40
 
 
+
 def _to_color(c: str | int | None) -> str | None:
     """Helper to ensure Style receives a valid color string or None."""
     if isinstance(c, str) and len(c) > 1:
@@ -45,19 +46,14 @@ def _to_color(c: str | int | None) -> str | None:
 
 
 def _is_pipe(c: str) -> bool:
-    """True for double-line box-drawing connector characters (U+2550–U+256C)."""
+    """True for double-line box-drawing connector characters (U+2550-U+256C)."""
     return len(c) == 1 and 0x2550 <= ord(c) <= 0x256C
 
 
 def _dim_color(hex_color: str, factor: float) -> str:
-    """Scale a #RRGGBB color's brightness by factor (e.g. 0.7 = 30% darker).
-
-    Returns color unchanged if it's not a valid hex color format (e.g., color(N) palette strings).
-    """
-    # Guard against non-hex color formats (e.g., color(N) from animation engine)
+    """Scale a #RRGGBB color's brightness by factor (e.g. 0.7 = 30% darker)."""
     if not hex_color.startswith("#") or len(hex_color) != 7:
         return hex_color
-
     try:
         h = hex_color.lstrip("#")
         r = int(int(h[0:2], 16) * factor)
@@ -65,8 +61,167 @@ def _dim_color(hex_color: str, factor: float) -> str:
         b = int(int(h[4:6], 16) * factor)
         return f"#{r:02x}{g:02x}{b:02x}"
     except ValueError:
-        # If parsing fails (malformed hex), return original color
         return hex_color
+
+
+def _entity_color(ch: str, z: int, dark_mode: bool) -> str:
+    """Fallback color for old-style (uncolored) sky entity pixels."""
+    return "#FFFFFF"
+
+
+def _scan_sky_entity(
+    engine: object, x: int, y: int, dark_mode: bool, z_levels: list[int]
+) -> tuple[str, str | None, str | None]:
+    """Scan Z-levels top-down for sky entities at (x, y).
+
+    Returns (char, fg_color, bg_entity_color).
+    bg_entity_color is the color of a deeper entity (e.g. sun behind cloud)
+    for transparency compositing.  Defaults to (" ", None, None).
+
+    Buffer value encoding:
+      - 1 char: old-style entity char (color from _entity_color)
+      - 2 chars starting with \\x01: old-style inverted char
+      - 7 chars starting with #: pure color (glow/ambient)
+      - 8 chars starting with #: colored entity char (#RRGGBBc)
+      - 9 chars starting with \\x01#: colored inverted char (\\x01#RRGGBBc)
+      - 15 chars #fg#bg + ch: fully resolved sprite pixel (both colors from layers)
+
+    For inverted (negative) partial-block chars, the cutout reveals whatever
+    is behind: scanning continues to deeper Z-levels to find the behind color
+    instead of hardcoding the sky gradient.
+    """
+    from teleclaude.cli.tui.animations.base import Z0
+
+    fg_char = " "
+    fg_color: str | None = None
+    bg_entity_color: str | None = None
+    # Set when the topmost entity is a negative partial-block: need to find
+    # the color that shows through the cutout from deeper Z-levels.
+    need_behind = False
+
+    for z in z_levels:
+        val = engine.get_layer_color(z, x, y, target="header")  # type: ignore[union-attr]
+        if not val or val == -1:
+            continue
+        if not isinstance(val, str):
+            continue
+
+        vlen = len(val)
+
+        # --- Fully resolved sprite pixel (pre-composited layers) ---
+        if vlen == 15 and val[0] == "#" and val[7] == "#":
+            # "#fg_color#bg_colorc" — both colors from sprite, no scene needed
+            fg_val, bg_val, ch = val[0:7], val[7:14], val[14]
+            if need_behind:
+                fg_color = fg_val
+                break
+            elif fg_char == " ":
+                fg_char = ch
+                fg_color = fg_val
+                bg_entity_color = bg_val
+                break
+            else:
+                bg_entity_color = bg_val
+                break
+
+        # --- Colored composite sprite chars (from layered CompositeSprite) ---
+        elif vlen == 8 and val[0] == "#":
+            # Positive colored char: "#RRGGBBc" → fg = color, char = c
+            color, ch = val[:7], val[7]
+            if need_behind:
+                fg_color = color
+                break
+            elif fg_char == " ":
+                fg_char = ch
+                fg_color = color
+            else:
+                bg_entity_color = color
+                break
+
+        elif vlen == 9 and val[0] == "\x01" and val[1] == "#":
+            # Negative colored char: "\x01#RRGGBBc" → inverted rendering
+            color, ch = val[1:8], val[8]
+            if ch == "\u2588":
+                # Full block: solid fill, no cutout
+                if need_behind:
+                    fg_color = color
+                    break
+                elif fg_char == " ":
+                    fg_char = ch
+                    fg_color = color
+                else:
+                    bg_entity_color = color
+                    break
+            else:
+                # Partial block: cutout reveals what's behind
+                if need_behind:
+                    fg_color = color
+                    break
+                elif fg_char == " ":
+                    fg_char = ch
+                    bg_entity_color = color
+                    need_behind = True
+                    # Continue scanning for behind color
+                else:
+                    bg_entity_color = color
+                    break
+
+        # --- Old-style uncolored chars (clouds, stars, celestial) ---
+        elif vlen == 1:
+            ec = _entity_color(val, z, dark_mode)
+            if need_behind:
+                fg_color = ec
+                break
+            elif fg_char == " ":
+                fg_char = val
+                fg_color = ec
+            else:
+                bg_entity_color = ec
+                break
+
+        elif vlen == 2 and val[0] == "\x01":
+            # Old-style inverted char
+            ch = val[1]
+            ec = _entity_color(ch, z, dark_mode)
+            if ch == "\u2588":
+                if need_behind:
+                    fg_color = ec
+                    break
+                elif fg_char == " ":
+                    fg_char = ch
+                    fg_color = ec
+                else:
+                    bg_entity_color = ec
+                    break
+            else:
+                if need_behind:
+                    fg_color = ec
+                    break
+                elif fg_char == " ":
+                    fg_char = ch
+                    bg_entity_color = ec
+                    need_behind = True
+                else:
+                    bg_entity_color = ec
+                    break
+
+        elif vlen == 7 and val[0] == "#":
+            # Pure color string (glow/ambient)
+            if need_behind:
+                fg_color = val
+                break
+            elif fg_color is None:
+                fg_color = val
+            else:
+                bg_entity_color = val
+                break
+
+    # Fallback: negative char found but nothing behind — use sky gradient
+    if need_behind and fg_color is None:
+        sky_val = engine.get_layer_color(Z0, x, y, target="header")  # type: ignore[union-attr]
+        fg_color = sky_val if isinstance(sky_val, str) else None
+
+    return fg_char, fg_color, bg_entity_color
 
 
 class Banner(TelecMixin, Widget):
@@ -102,10 +257,9 @@ class Banner(TelecMixin, Widget):
     def _render_banner(self) -> Text:
         result = Text()
         engine = self.animation_engine
-        from teleclaude.cli.tui.animations.base import Z_FOREGROUND, Z_SKY
+        from teleclaude.cli.tui.animations.base import Z0
         from teleclaude.cli.tui.pixel_mapping import PixelMap
         from teleclaude.cli.tui.theme import (
-            apply_tui_haze,
             blend_colors,
             deepen_for_light_mode,
             get_banner_hex,
@@ -113,16 +267,16 @@ class Banner(TelecMixin, Widget):
             get_neutral_color,
             is_dark_mode,
             letter_color_floor,
+            resolve_haze,
         )
 
-        focused = getattr(self.app, "app_focus", True)
         dark_mode = is_dark_mode()
-        plate_bg = get_billboard_background(focused)
-        pipe_color = get_neutral_color("muted") if focused else apply_tui_haze(get_neutral_color("muted"))
+        plate_bg = get_billboard_background()
+        pipe_color = resolve_haze(get_neutral_color("muted"))
         sky_fallback = "#000000" if dark_mode else "#C8E8F8"
 
-        # Full terminal width for sky
         total_width = self.size.width or 84
+        z_levels = engine.get_entity_z_levels("header") if engine else []
 
         for y in range(BANNER_HEIGHT):
             if y > 0:
@@ -133,71 +287,55 @@ class Banner(TelecMixin, Widget):
                 for x in range(total_width):
                     char = line[x] if x < len(line) else " "
 
-                    # 1. Start with Base Atmosphere (Sky Z-0) from Global Header
-                    bg_color = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
+                    # 1. Sky Z-0
+                    bg_color = engine.get_layer_color(Z0, x, y, target="header") if engine else None
                     if not isinstance(bg_color, str):
                         bg_color = sky_fallback
 
-                    # 2. Billboard Plate (Z-3) Masks the Sky
-                    # Plate spans x=0..84: one column of padding each side of the 84-char banner text
+                    # 2. Billboard plate masks sky
                     is_on_plate = x < 85
                     is_letter = PixelMap.get_is_letter("banner", x, y) if is_on_plate else False
                     final_bg = plate_bg if is_on_plate else bg_color
 
-                    # 3. Foreground / Entities (Z-7) from Global Header
+                    # 3. Multi-Z entity scan in sky margins
                     fg_char = char
-                    fg_color = None
-                    if engine:
-                        entity_val = engine.get_layer_color(Z_FOREGROUND, x, y, target="header")
-                        if entity_val and entity_val != -1:
-                            # PHYSICAL MASKING: Stars/clouds ONLY show in empty space (inverse canvas)
-                            if not is_on_plate:
-                                if isinstance(entity_val, str) and len(entity_val) == 1:
-                                    fg_char = entity_val
-                                    # Sun disc chars (█) are yellow in light mode, white otherwise
-                                    fg_color = "#FFD700" if (entity_val == "\u2588" and not dark_mode) else "#FFFFFF"
-                                elif isinstance(entity_val, str):
-                                    fg_color = entity_val
+                    fg_color: str | None = None
+                    bg_entity_color: str | None = None
+                    if engine and not is_on_plate:
+                        fg_char, fg_color, bg_entity_color = _scan_sky_entity(engine, x, y, dark_mode, z_levels)
+                        if bg_entity_color:
+                            final_bg = bg_entity_color
 
-                    # 4. Final Compositing
+                    # 4. Final compositing
                     if engine and engine.has_active_animation:
-                        # Internal Neon Surge or External Reflective Light
                         color = engine.get_color(x, y, target="banner")
                         is_ext = engine.is_external_light(target="banner")
 
                         is_pipe_char = _is_pipe(char)
                         if color:
-                            color_str = str(color)
-                            if not focused:
-                                color_str = apply_tui_haze(color_str)
-                            # Letter pixels: dark mode → enforce floor; light mode → deepen for visibility
+                            color_str = resolve_haze(str(color))
                             if is_letter:
                                 if dark_mode:
-                                    floor = get_banner_hex() if focused else apply_tui_haze(get_banner_hex())
-                                    color_str = letter_color_floor(color_str, floor)
+                                    color_str = letter_color_floor(color_str, resolve_haze(get_banner_hex()))
                                 else:
                                     color_str = deepen_for_light_mode(color_str)
-                            # Pipe connectors: 30% dimmer than fill pixels
                             if is_pipe_char:
                                 color_str = _dim_color(color_str, 0.8)
 
                             if is_ext:
-                                # Proportional Lighting on the final background
                                 blend_pct = 0.5 if is_letter else 0.2
                                 final_bg = blend_colors(str(final_bg), color_str, blend_pct)
                                 result.append(fg_char, style=Style(color=color_str, bgcolor=_to_color(final_bg)))
                             else:
-                                # Neon Internal Surge
                                 result.append(fg_char, style=Style(color=color_str, bgcolor=_to_color(final_bg)))
                         else:
-                            # Base State
-                            fg = str(fg_color or (get_banner_hex() if focused else apply_tui_haze(get_banner_hex())))
-                            if is_pipe_char:
+                            fg = str(fg_color or resolve_haze(get_banner_hex()))
+                            if _is_pipe(char):
                                 fg = _dim_color(fg, 0.8)
                             result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
                     else:
                         is_pipe_char = _is_pipe(char)
-                        fg = str(fg_color or (get_banner_hex() if focused else apply_tui_haze(get_banner_hex())))
+                        fg = str(fg_color or resolve_haze(get_banner_hex()))
                         if is_pipe_char:
                             fg = _dim_color(fg, 0.8)
                         result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
@@ -207,20 +345,16 @@ class Banner(TelecMixin, Widget):
                     if x == 13 or x == 70:
                         result.append("\u2551", style=pipe_color)
                     else:
-                        # 1. Sky Z-0 between pipes
-                        bg = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
+                        bg = engine.get_layer_color(Z0, x, y, target="header") if engine else None
                         if not isinstance(bg, str):
                             bg = sky_fallback
 
-                        # 2. Atmospheric entities (stars/clouds) - MASKED by pipes
                         fg_char = " "
                         fg_color = None
                         if engine:
-                            entity_val = engine.get_layer_color(Z_FOREGROUND, x, y, target="header")
-                            if entity_val and entity_val != -1:
-                                if isinstance(entity_val, str) and len(entity_val) == 1:
-                                    fg_char = entity_val
-                                    fg_color = "#FFD700" if (entity_val == "\u2588" and not dark_mode) else "#FFFFFF"
+                            fg_char, fg_color, bg_ent = _scan_sky_entity(engine, x, y, dark_mode, z_levels)
+                            if bg_ent:
+                                bg = bg_ent
 
                         result.append(fg_char, style=Style(color=_to_color(fg_color), bgcolor=_to_color(bg)))
 
@@ -229,10 +363,9 @@ class Banner(TelecMixin, Widget):
     def _render_logo(self) -> Text:
         result = Text()
         engine = self.animation_engine
-        from teleclaude.cli.tui.animations.base import Z_FOREGROUND, Z_SKY
+        from teleclaude.cli.tui.animations.base import Z0
         from teleclaude.cli.tui.pixel_mapping import PixelMap
         from teleclaude.cli.tui.theme import (
-            apply_tui_haze,
             blend_colors,
             deepen_for_light_mode,
             get_banner_hex,
@@ -240,17 +373,18 @@ class Banner(TelecMixin, Widget):
             get_neutral_color,
             is_dark_mode,
             letter_color_floor,
+            resolve_haze,
         )
 
-        focused = getattr(self.app, "app_focus", True)
         dark_mode = is_dark_mode()
-        plate_bg = get_billboard_background(focused)
-        pipe_color = get_neutral_color("muted") if focused else apply_tui_haze(get_neutral_color("muted"))
+        plate_bg = get_billboard_background()
+        pipe_color = resolve_haze(get_neutral_color("muted"))
         sky_fallback = "#000000" if dark_mode else "#C8E8F8"
 
         width = 40
         total_width = self.size.width or 40
         pad = max(0, total_width - width)
+        z_levels = engine.get_entity_z_levels("header") if engine else []
 
         for y in range(LOGO_HEIGHT):
             if y > 0:
@@ -259,30 +393,21 @@ class Banner(TelecMixin, Widget):
             if y < len(LOGO_LINES):
                 line = LOGO_LINES[y]
                 for x in range(total_width):
-                    # 1. Sky Z-0 from Global Header
-                    bg_color = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
+                    bg_color = engine.get_layer_color(Z0, x, y, target="header") if engine else None
                     if not isinstance(bg_color, str):
                         bg_color = sky_fallback
 
-                    # 2. Masking
                     is_on_plate = x >= pad and x < total_width
                     is_letter = PixelMap.get_is_letter("logo", x - pad, y) if is_on_plate else False
                     final_bg = plate_bg if is_on_plate else bg_color
 
-                    # 3. Entities Z-7 from Global Header
                     fg_char = line[x - pad] if (is_on_plate and x - pad < len(line)) else " "
-                    fg_color = None
-                    if engine:
-                        entity_val = engine.get_layer_color(Z_FOREGROUND, x, y, target="header")
-                        if entity_val and entity_val != -1:
-                            # PHYSICAL MASKING: Only show in non-physical margins
-                            if not is_on_plate:
-                                if isinstance(entity_val, str) and len(entity_val) == 1:
-                                    fg_char = entity_val
-                                    # Sun disc chars (█) are yellow in light mode, white otherwise
-                                    fg_color = "#FFD700" if (entity_val == "\u2588" and not dark_mode) else "#FFFFFF"
-                                elif isinstance(entity_val, str):
-                                    fg_color = entity_val
+                    fg_color: str | None = None
+                    bg_entity_color: str | None = None
+                    if engine and not is_on_plate:
+                        fg_char, fg_color, bg_entity_color = _scan_sky_entity(engine, x, y, dark_mode, z_levels)
+                        if bg_entity_color:
+                            final_bg = bg_entity_color
 
                     is_pipe_char = _is_pipe(fg_char)
                     if engine and engine.has_active_animation:
@@ -290,14 +415,10 @@ class Banner(TelecMixin, Widget):
                         is_ext = engine.is_external_light(target="logo")
 
                         if color:
-                            color_str = str(color)
-                            if not focused:
-                                color_str = apply_tui_haze(color_str)
-                            # Letter pixels: dark mode → enforce floor; light mode → deepen for visibility
+                            color_str = resolve_haze(str(color))
                             if is_letter:
                                 if dark_mode:
-                                    floor = get_banner_hex() if focused else apply_tui_haze(get_banner_hex())
-                                    color_str = letter_color_floor(color_str, floor)
+                                    color_str = letter_color_floor(color_str, resolve_haze(get_banner_hex()))
                                 else:
                                     color_str = deepen_for_light_mode(color_str)
                             if is_pipe_char:
@@ -310,12 +431,12 @@ class Banner(TelecMixin, Widget):
                             else:
                                 result.append(fg_char, style=Style(color=color_str, bgcolor=_to_color(final_bg)))
                         else:
-                            fg = str(fg_color or (get_banner_hex() if focused else apply_tui_haze(get_banner_hex())))
+                            fg = str(fg_color or resolve_haze(get_banner_hex()))
                             if is_pipe_char:
                                 fg = _dim_color(fg, 0.8)
                             result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
                     else:
-                        fg = str(fg_color or (get_banner_hex() if focused else apply_tui_haze(get_banner_hex())))
+                        fg = str(fg_color or resolve_haze(get_banner_hex()))
                         if is_pipe_char:
                             fg = _dim_color(fg, 0.8)
                         result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
@@ -325,18 +446,16 @@ class Banner(TelecMixin, Widget):
                     if (x >= pad and x < total_width) and (x - pad == 6 or x - pad == 34):
                         result.append("\u2551", style=pipe_color)
                     else:
-                        bg = engine.get_layer_color(Z_SKY, x, y, target="header") if engine else None
+                        bg = engine.get_layer_color(Z0, x, y, target="header") if engine else None
                         if not isinstance(bg, str):
                             bg = sky_fallback
 
                         fg_char = " "
                         fg_color = None
                         if engine:
-                            entity_val = engine.get_layer_color(Z_FOREGROUND, x, y, target="header")
-                            if entity_val and entity_val != -1:
-                                if isinstance(entity_val, str) and len(entity_val) == 1:
-                                    fg_char = entity_val
-                                    fg_color = "#FFD700" if (entity_val == "\u2588" and not dark_mode) else "#FFFFFF"
+                            fg_char, fg_color, bg_ent = _scan_sky_entity(engine, x, y, dark_mode, z_levels)
+                            if bg_ent:
+                                bg = bg_ent
 
                         result.append(fg_char, style=Style(color=_to_color(fg_color), bgcolor=_to_color(bg)))
 

@@ -1724,6 +1724,72 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 except Exception:
                     logger.warning("Could not load people config for Telegram delivery adapter")
 
+            # Discord delivery adapter (if any admin has a discord user_id)
+            if config.discord.enabled:
+                people_dir = Path("~/.teleclaude/people").expanduser()
+                from teleclaude.config.loader import load_global_config as _load_global_config_discord
+                from teleclaude.config.loader import load_person_config as _load_person_config_discord
+                from teleclaude.services.discord import send_discord_dm
+                from teleclaude_events.delivery.discord import DiscordDeliveryAdapter
+
+                try:
+                    global_cfg = _load_global_config_discord()
+                    for person in global_cfg.people:
+                        if person.role != "admin":
+                            continue
+                        person_key = person.name.lower().replace(" ", "_")
+                        person_cfg_path = people_dir / person_key / "teleclaude.yml"
+                        if not person_cfg_path.exists():
+                            continue
+                        try:
+                            person_cfg = _load_person_config_discord(person_cfg_path)
+                        except Exception:
+                            continue
+                        user_id = person_cfg.creds.discord.user_id if person_cfg.creds.discord else None
+                        if user_id:
+                            adapter = DiscordDeliveryAdapter(user_id=user_id, send_fn=send_discord_dm)
+                            push_callbacks.append(adapter.on_notification)
+                            logger.info("DiscordDeliveryAdapter registered for admin %s", person.name)
+                except Exception:
+                    logger.warning("Could not load people config for Discord delivery adapter")
+
+            # WhatsApp delivery adapter (if any admin has a whatsapp phone_number)
+            if config.whatsapp.enabled:
+                people_dir = Path("~/.teleclaude/people").expanduser()
+                from functools import partial
+
+                from teleclaude.config.loader import load_global_config as _load_global_config_whatsapp
+                from teleclaude.config.loader import load_person_config as _load_person_config_whatsapp
+                from teleclaude.services.whatsapp import send_whatsapp_message
+                from teleclaude_events.delivery.whatsapp import WhatsAppDeliveryAdapter
+
+                try:
+                    global_cfg = _load_global_config_whatsapp()
+                    for person in global_cfg.people:
+                        if person.role != "admin":
+                            continue
+                        person_key = person.name.lower().replace(" ", "_")
+                        person_cfg_path = people_dir / person_key / "teleclaude.yml"
+                        if not person_cfg_path.exists():
+                            continue
+                        try:
+                            person_cfg = _load_person_config_whatsapp(person_cfg_path)
+                        except Exception:
+                            continue
+                        phone_number = person_cfg.creds.whatsapp.phone_number if person_cfg.creds.whatsapp else None
+                        if phone_number:
+                            bound_send_fn = partial(
+                                send_whatsapp_message,
+                                phone_number_id=config.whatsapp.phone_number_id,
+                                access_token=config.whatsapp.access_token,
+                                api_version=config.whatsapp.api_version,
+                            )
+                            adapter = WhatsAppDeliveryAdapter(phone_number=phone_number, send_fn=bound_send_fn)
+                            push_callbacks.append(adapter.on_notification)
+                            logger.info("WhatsAppDeliveryAdapter registered for admin %s", person.name)
+                except Exception:
+                    logger.warning("Could not load people config for WhatsApp delivery adapter")
+
             # 5. Pipeline (dedup → integration trigger → notification projector)
             from teleclaude.core.integration_bridge import spawn_integrator_session
 

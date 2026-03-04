@@ -28,8 +28,6 @@ def mock_config():
                 non_interactive_flag="",
                 resume_template="",
                 enabled=True,
-                strengths="Smart",
-                avoid="Dumb",
             ),
             "gemini": AgentConfig(
                 binary="gemini",
@@ -42,8 +40,6 @@ def mock_config():
                 non_interactive_flag="",
                 resume_template="",
                 enabled=True,
-                strengths="Fast",
-                avoid="Slow",
             ),
             "codex": AgentConfig(
                 binary="codex",
@@ -56,8 +52,6 @@ def mock_config():
                 non_interactive_flag="",
                 resume_template="",
                 enabled=False,
-                strengths="Code",
-                avoid="Prose",
             ),
         }
         yield mock
@@ -69,24 +63,11 @@ async def test_compose_guidance_all_available(mock_db, mock_config):
     guidance = await compose_agent_guidance(mock_db)
 
     assert "AGENT SELECTION GUIDANCE:" in guidance
-    assert "- CLAUDE:" in guidance
-    assert "Strengths: Smart" in guidance
-    assert "Avoid: Dumb" in guidance
-    assert "- GEMINI:" in guidance
-    assert "Strengths: Fast" in guidance
-    assert "- CODEX" not in guidance  # Disabled
+    assert "CLAUDE: available" in guidance
+    assert "GEMINI: available" in guidance
+    assert "CODEX" not in guidance  # Disabled
     assert "THINKING MODES:" in guidance
-
-
-async def test_compose_guidance_uses_placeholders_for_empty_fields(mock_db, mock_config):
-    mock_config.agents["claude"].strengths = ""
-    mock_config.agents["claude"].avoid = ""
-    mock_db.get_agent_availability.side_effect = lambda agent: {"available": True, "status": "available"}
-
-    guidance = await compose_agent_guidance(mock_db)
-
-    assert "Strengths: Not configured (set config.yml:agents.<name>.strengths)." in guidance
-    assert "Avoid: Not configured (set config.yml:agents.<name>.avoid)." in guidance
+    assert "Agent Characteristics concept" in guidance
 
 
 async def test_compose_guidance_agent_degraded(mock_db, mock_config):
@@ -99,8 +80,8 @@ async def test_compose_guidance_agent_degraded(mock_db, mock_config):
 
     guidance = await compose_agent_guidance(mock_db)
 
-    assert "- CLAUDE [DEGRADED: Rate limited]:" in guidance
-    assert "- GEMINI:" in guidance
+    assert "CLAUDE [DEGRADED: Rate limited]" in guidance
+    assert "GEMINI" in guidance
 
 
 async def test_compose_guidance_agent_unavailable(mock_db, mock_config):
@@ -113,8 +94,8 @@ async def test_compose_guidance_agent_unavailable(mock_db, mock_config):
 
     guidance = await compose_agent_guidance(mock_db)
 
-    assert "- CLAUDE" not in guidance
-    assert "- GEMINI:" in guidance
+    assert "CLAUDE" not in guidance
+    assert "GEMINI" in guidance
 
 
 async def test_compose_guidance_no_agents(mock_db, mock_config):
@@ -142,7 +123,5 @@ async def test_compose_guidance_all_runtime_unavailable(mock_db, mock_config):
     # Agents are enabled in config but unavailable in DB
     mock_db.get_agent_availability.return_value = {"status": "unavailable"}
 
-    # CURRENTLY this will FAIL to raise RuntimeError (it will return empty guidance)
-    # We want it to raise RuntimeError
     with pytest.raises(RuntimeError, match="No agents are currently enabled and available"):
         await compose_agent_guidance(mock_db)

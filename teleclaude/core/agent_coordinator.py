@@ -25,6 +25,7 @@ from teleclaude.constants import (
     CHECKPOINT_MESSAGE,
     CHECKPOINT_PREFIX,
     LOCAL_COMPUTER,
+    format_system_message,
 )
 from teleclaude.core.activity_contract import serialize_activity_event
 from teleclaude.core.agents import AgentName
@@ -346,6 +347,8 @@ class AgentCoordinator:
         self._incremental_output_locks: dict[str, asyncio.Lock] = {}
         # Stall detection: one pending task per session, cancelled on output arrival (R4)
         self._stall_tasks: dict[str, asyncio.Task[object]] = {}
+        # Track last emitted lifecycle status per session for guard checks.
+        self._last_emitted_status: dict[str, str] = {}
 
     def _queue_background_task(
         self,
@@ -553,6 +556,7 @@ class AgentCoordinator:
             )
             if canonical is None:
                 return
+            self._last_emitted_status[session_id] = status
             event_bus.emit(
                 TeleClaudeEvents.SESSION_STATUS,
                 SessionStatusContext(
@@ -678,8 +682,11 @@ class AgentCoordinator:
             str(native_session_id)[:8],
         )
 
+        # Emit canonical lifecycle status: active — agent confirmed alive
+        self._emit_status_event(context.session_id, "active", "agent_session_started")
+
         await self._maybe_send_headless_snapshot(context.session_id)
-        await self._speak_session_start()
+        await self._speak_session_start(context.session_id)
 
     async def handle_user_prompt_submit(self, context: AgentEventContext) -> None:
         """Handle user prompt submission.
@@ -722,7 +729,12 @@ class AgentCoordinator:
 
         # Clear checkpoint state on real user input
         await db.update_session(session_id, last_checkpoint_at=None, last_tool_use_at=None)
-        self._incremental_render_digests.pop(session_id, None)
+        # NOTE: Do NOT clear _incremental_render_digests here. The poller may
+        # fire between this point and the first new assistant content. Clearing
+        # the digest opens a window where stale content from the previous turn
+        # is re-rendered and sent as a duplicate (no digest to compare against).
+        # The digest is naturally replaced when new assistant content arrives
+        # and produces a different hash.
 
         # Prepare batched update
         now = datetime.now(timezone.utc)
@@ -986,7 +998,7 @@ class AgentCoordinator:
             )
             if summary:
                 try:
-                    await self.tts_manager.speak(summary)
+                    await self.tts_manager.speak(summary, session_id=session_id)
                 except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
                     logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
 
@@ -1163,7 +1175,11 @@ class AgentCoordinator:
                 if user_ts and (turn_cursor is None or user_ts > turn_cursor):
                     logger.info("New turn detected in transcript; forcing fresh message block for %s", session_id[:8])
                     await self.client.break_threaded_turn(session)
-                    self._incremental_render_digests.pop(session_id, None)
+                    # NOTE: Do NOT clear _incremental_render_digests here. The
+                    # same content can be re-rendered on this tick; keeping the
+                    # digest lets the dedup check prevent a duplicate send.
+                    # The digest is cleared in the user-input handler (line ~729)
+                    # where a genuinely new turn begins.
                     # Anchor this turn to the user message timestamp so repeated
                     # poll ticks don't keep re-breaking and replaying chunks.
                     await db.update_session(session_id, last_tool_done_at=user_ts.isoformat())
@@ -1293,12 +1309,26 @@ class AgentCoordinator:
         return False
 
     async def trigger_incremental_output(self, session_id: str) -> bool:
-        """Trigger incremental threaded output refresh for a session."""
+        """Trigger incremental threaded output refresh for a session.
+
+        Called by the polling coordinator on each OutputChanged tick.
+        Skipped when the turn is already complete (handle_agent_stop delivered
+        the final render and called break_threaded_turn).
+        """
         session = await db.get_session(session_id)
         if not session:
             return False
 
         if not is_threaded_output_enabled(session.active_agent):
+            return False
+
+        # After handle_agent_stop, status transitions to "completed" and
+        # break_threaded_turn resets adapter state.  A subsequent poller tick
+        # would re-render with different parameters (block_count, multi_message)
+        # producing a different digest and bypassing dedup — causing a duplicate
+        # message.  Guard: skip if the turn is already done.
+        status = self._last_emitted_status.get(session_id)
+        if status in ("completed", "closed", "error"):
             return False
 
         payload = AgentOutputPayload(session_id=session_id, transcript_path=session.native_log_file)
@@ -1339,12 +1369,12 @@ class AgentCoordinator:
             return
         await self.headless_snapshot_service.send_snapshot(session, reason="agent_session_start", client=self.client)
 
-    async def _speak_session_start(self) -> None:
+    async def _speak_session_start(self, session_id: str) -> None:
         if not SESSION_START_MESSAGES:
             return
         message = random.choice(SESSION_START_MESSAGES)
         try:
-            await self.tts_manager.speak(message)
+            await self.tts_manager.speak(message, session_id=session_id)
         except Exception as exc:  # noqa: BLE001 - TTS should never crash event handling
             logger.warning("TTS session_start failed: %s", exc)
 
@@ -1510,9 +1540,9 @@ class AgentCoordinator:
         sender = await db.get_session(sender_session_id)
         sender_label = sender.title if sender and sender.title else sender_session_id
         sender_computer = source_computer or (sender.computer_name if sender else config.computer.name)
-        framed_message = (
-            f"[Linked output from {sender_label} ({sender_session_id}) on {sender_computer}]\n\n"
-            f"{distilled_output.strip()}"
+        framed_message = format_system_message(
+            f'Linked output from "{sender_label}" ({sender_session_id}) on {sender_computer}',
+            distilled_output,
         )
 
         delivered = 0

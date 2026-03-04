@@ -451,6 +451,8 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
             if demo_result.returncode != 0:
                 all_passed = False
                 results.append(f"GATE FAILED: demo validate (exit {demo_result.returncode})\n{demo_result.stdout}")
+            elif "no-demo marker found" in demo_result.stdout.lower():
+                results.append(f"GATE WARNING: demo validate — no-demo marker used, reviewer must verify\n{demo_result.stdout.strip()}")
             else:
                 results.append(f"GATE PASSED: demo validate\n{demo_result.stdout.strip()}")
         except subprocess.TimeoutExpired:
@@ -1830,12 +1832,17 @@ def check_review_status(cwd: str, slug: str) -> str:
 
 
 async def compose_agent_guidance(db: Db) -> str:
-    """Compose guidance text for agent selection based on config and availability.
+    """Compose runtime availability guidance for agent selection.
 
-    Returns a string block describing available agents, their strengths,
-    and any current degradation status.
+    Agent characteristics (strengths, cognitive profiles) are documented in the
+    baseline concept snippet 'general/concept/agent-characteristics' and loaded
+    into every agent's context. This function only adds runtime availability
+    information (enabled/disabled, degraded status).
     """
     lines = ["AGENT SELECTION GUIDANCE:"]
+    lines.append("")
+    lines.append("Agent characteristics are in your baseline context (Agent Characteristics concept).")
+    lines.append("Runtime availability:")
 
     # Clear expired availability first
     await db.clear_expired_agent_availability()
@@ -1861,11 +1868,10 @@ async def compose_agent_guidance(db: Db) -> str:
                 status_note = f" [DEGRADED: {reason}]"
 
         listed_count += 1
-        lines.append(f"- {name.upper()}{status_note}:")
-        strengths_text = cfg.strengths.strip() or "Not configured (set config.yml:agents.<name>.strengths)."
-        avoid_text = cfg.avoid.strip() or "Not configured (set config.yml:agents.<name>.avoid)."
-        lines.append(f"  Strengths: {strengths_text}")
-        lines.append(f"  Avoid: {avoid_text}")
+        if status_note:
+            lines.append(f"- {name.upper()}{status_note}")
+        else:
+            lines.append(f"- {name.upper()}: available")
 
     if listed_count == 0:
         raise RuntimeError("No agents are currently enabled and available.")

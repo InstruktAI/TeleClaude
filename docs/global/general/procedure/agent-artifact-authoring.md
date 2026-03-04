@@ -9,6 +9,7 @@ description: 'Author agent artifacts (agents, skills, commands) that compile int
 
 ## Required reads
 
+- @~/.teleclaude/docs/general/policy/artifact-scope.md
 - @~/.teleclaude/docs/general/spec/snippet-authoring-schema.md
 
 ## Goal

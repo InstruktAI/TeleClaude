@@ -112,6 +112,7 @@ None.
 
 Verified: every implementation plan task traces to a requirement. No contradictions found.
 Key checks:
+
 - Cartridge Protocol unchanged (class-based with `self`) — plan uses Protocol correctly.
 - No new database tables — autonomy matrix and domain config in config file.
 - Domain pipeline fire-and-forget — plan's Task 3.2 confirms.

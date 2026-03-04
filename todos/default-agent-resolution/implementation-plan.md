@@ -22,6 +22,7 @@ Three-phase approach: add config field with validation, create single resolver, 
 **File(s):** `teleclaude/core/agents.py`
 
 - [ ] Add function:
+
   ```python
   def get_default_agent() -> str:
       """Return the config-declared default agent name.
@@ -30,6 +31,7 @@ Three-phase approach: add config field with validation, create single resolver, 
       """
       return assert_agent_enabled(config.default_agent)
   ```
+
 - [ ] Export from module
 
 ### Task 1.3: Add config.yml `agents.default` field
@@ -147,6 +149,7 @@ These are NOT default agent resolution — they select a transcript parser forma
 **File(s):** `teleclaude/adapters/discord_adapter.py`
 
 - [ ] Replace the loop at line 1789:
+
   ```python
   # Before:
   for forum_id in self._project_forum_map.values():
