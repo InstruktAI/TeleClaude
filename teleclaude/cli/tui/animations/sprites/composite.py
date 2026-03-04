@@ -94,10 +94,12 @@ class SpriteGroup:
       - weight: occurrence fraction for runtime replacement (must sum to 1.0).
       - count: (min, max) entities to spawn of this type.
       - direction: None=random per entity, 1=right, -1=left for all entities.
+      - theme: group-level theme filter. Overrides per-sprite theme when set.
     """
 
     entries: list[tuple[AnimatedSprite | CompositeSprite, float, tuple[int, int]]]
     direction: Optional[int] = None
+    theme: Optional[str] = None  # "dark", "light", or None (both)
 
     def __post_init__(self) -> None:
         total = sum(w for _, w, _ in self.entries)

@@ -20,7 +20,7 @@ from teleclaude.cli.tui.animations.base import (
 )
 from teleclaude.cli.tui.animations.creative import ColorSweep, EQBars, Glitch, LaserScan, LavaLamp, NeonFlicker, Plasma
 from teleclaude.cli.tui.animations.sprites import MOON_SPRITE, SUN_SPRITE
-from teleclaude.cli.tui.animations.sprites.composite import AnimatedSprite, CompositeSprite
+from teleclaude.cli.tui.animations.sprites.composite import AnimatedSprite, CompositeSprite, SpriteGroup
 from teleclaude.cli.tui.pixel_mapping import (
     BIG_BANNER_HEIGHT,
     BIG_BANNER_LETTERS,
@@ -116,12 +116,26 @@ class GlobalSky(Animation):
         levels, wts = zip(*weights)
         return self.rng.choices(levels, weights=wts, k=1)[0]
 
-    def _theme_matches(self, sprite: object) -> bool:
-        """Check if a sprite's theme matches the current mode."""
-        theme = getattr(sprite, "theme", None)
+    def _theme_matches(self, sprite: object, group_theme: str | None = None) -> bool:
+        """Check if a sprite matches the current mode.
+
+        group_theme overrides per-sprite theme when set.
+        """
+        theme = group_theme if group_theme is not None else getattr(sprite, "theme", None)
         if theme is None:
             return True
         return theme == ("dark" if self.dark_mode else "light")
+
+    def _spawn_group_entities(self, group: SpriteGroup, entities: list[SkyEntity]) -> None:
+        """Spawn entities for a single SpriteGroup, respecting group direction and theme."""
+        group_dir = group.direction
+        group_theme = group.theme
+        for sprite, _weight, (lo, hi) in group.entries:
+            if not self._theme_matches(sprite, group_theme=group_theme):
+                continue
+            n = self.rng.randint(lo, hi)
+            for _ in range(n):
+                entities.append(self._spawn_sky_entity(sprite, direction=group_dir))
 
     def _spawn_initial_entities(self) -> list[SkyEntity]:
         """Spawn sky entities: standalone sprites + non-cloud groups + weather clouds."""
@@ -137,20 +151,9 @@ class GlobalSky(Animation):
         for group in get_sprite_groups():
             if group is cloud_group:
                 continue
-            group_dir = group.direction
-            for sprite, _weight, (lo, hi) in group.entries:
-                if not self._theme_matches(sprite):
-                    continue
-                n = self.rng.randint(lo, hi)
-                for _ in range(n):
-                    entities.append(self._spawn_sky_entity(sprite, direction=group_dir))
+            self._spawn_group_entities(group, entities)
         # Weather-specific clouds
-        for sprite, _weight, (lo, hi) in cloud_group.entries:
-            if not self._theme_matches(sprite):
-                continue
-            n = self.rng.randint(lo, hi)
-            for _ in range(n):
-                entities.append(self._spawn_sky_entity(sprite))
+        self._spawn_group_entities(cloud_group, entities)
         return entities
 
     # Vertical lane ranges: (min_y, max_y) for top/mid/bottom of the header
