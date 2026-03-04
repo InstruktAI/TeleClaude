@@ -10,15 +10,15 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate integrator-wiring` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`) — 2574 passed, 106 skipped
+- [x] Lint passes (`make lint`) — pre-existing warnings only (non-existent doc refs in unmodified files)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed — 12 commits
+- [x] Demo validated (`telec todo demo validate integrator-wiring` exits 0, 9 executable blocks)
+- [x] Working tree clean (orchestrator-managed drift only: roadmap.yaml, state.yaml)
+- [x] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 
