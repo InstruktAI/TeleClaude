@@ -1,5 +1,8 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
+- slug: integrator-state-machine
+  description: Idempotent state machine for the singleton integrator — deterministic
+    script with agent decision points
 - slug: history-search-upgrade
 - slug: prepare-quality-runner
   description: Automated DOR quality runner for todo preparation
