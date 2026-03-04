@@ -195,37 +195,37 @@ existing schema module from event-platform-core)
 
 **File(s):** `tests/integration/test_integrator_wiring.py` (new)
 
-- [ ] Test: emit review.approved + deployment.started → integrator spawns →
+- [x] Test: emit review.approved + deployment.started → integrator spawns →
       acquires lease → merges → deployment.completed emitted → push → cleanup
-- [ ] Test: second READY candidate while integrator running → queued, processed
+- [x] Test: second READY candidate while integrator running → queued, processed
       after first
-- [ ] Test: merge conflict → deployment.failed emitted → follow-up todo created
+- [x] Test: merge conflict → deployment.failed emitted → follow-up todo created
       → admin notification visible
-- [ ] Test: integrator self-ends when queue empty
+- [x] Test: integrator self-ends when queue empty
 
 ### Task 6.2: Notification lifecycle test
 
 **File(s):** `tests/integration/test_integrator_wiring.py`
 
-- [ ] Test: deployment.started creates notification with in_progress status
-- [ ] Test: deployment.completed resolves the notification
-- [ ] Test: deployment.failed resets notification to unseen
+- [x] Test: deployment.started creates notification with in_progress status
+- [x] Test: deployment.completed resolves the notification
+- [x] Test: deployment.failed resets notification to unseen
 
 ### Task 6.3: Regression tests
 
 **File(s):** existing test suites
 
-- [ ] Verify build/review/fix-review worker flows are unaffected
-- [ ] Verify feature-branch pushes still allowed
-- [ ] Verify non-integrator main push is blocked
-- [ ] Run `make test` and `make lint`
+- [x] Verify build/review/fix-review worker flows are unaffected
+- [x] Verify feature-branch pushes still allowed
+- [x] Verify non-integrator main push is blocked
+- [x] Run `make test` and `make lint`
 
 ## Phase 7: Review Readiness
 
-- [ ] Confirm all FRs from requirements.md are reflected in code changes
-- [ ] Confirm POST_COMPLETION no longer touches canonical main
-- [ ] Confirm integrator is the only path that pushes main
-- [ ] Confirm bidirectional sync functions are removed
-- [ ] Confirm notification lifecycle works end-to-end
-- [ ] Confirm file-based event store is removed
-- [ ] Document any deferrals in `deferrals.md` if applicable
+- [x] Confirm all FRs from requirements.md are reflected in code changes
+- [x] Confirm POST_COMPLETION no longer touches canonical main
+- [x] Confirm integrator is the only path that pushes main
+- [x] Confirm bidirectional sync functions are removed
+- [x] Confirm notification lifecycle works end-to-end
+- [x] Confirm file-based event store is removed
+- [x] Document any deferrals in `deferrals.md` if applicable
