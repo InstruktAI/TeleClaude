@@ -209,6 +209,7 @@ class FakeThread:
         self.sent_texts: list[str] = []
         self.sent_files: list[tuple[str | None, object]] = []
         self.messages: dict[int, object] = {}
+        self.typing_called: int = 0
 
     async def send(self, text: str | None = None, *, content: str | None = None, file: object | None = None) -> object:
         if file is not None:
@@ -221,6 +222,9 @@ class FakeThread:
         msg = SimpleNamespace(id=msg_id)
         self.messages[msg_id] = msg
         return msg
+
+    async def typing(self) -> None:
+        self.typing_called += 1
 
     async def fetch_message(self, message_id: int) -> object:
         message = self.messages.get(message_id)
@@ -786,6 +790,66 @@ async def test_discord_close_channel_deletes_thread() -> None:
 
     assert result is True
     assert thread.deleted is True
+
+
+# =========================================================================
+# Typing Indicator Tests
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_send_typing_indicator_calls_discord_typing_api() -> None:
+    """send_typing_indicator calls thread.typing() — the actual discord.py API."""
+    adapter = _make_adapter()
+    session = _build_session_with_discord_thread(thread_id=555)
+
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    thread = FakeThread(thread_id=555, parent_id=444)
+    fake_client.channels[555] = thread
+    adapter._client = fake_client
+
+    await adapter.send_typing_indicator(session)
+
+    assert thread.typing_called == 1
+
+
+@pytest.mark.asyncio
+async def test_send_typing_indicator_skips_when_no_thread_id() -> None:
+    """send_typing_indicator returns silently when session has no thread_id."""
+    adapter = _make_adapter()
+    session = _build_session()  # no discord thread_id set
+
+    await adapter.send_typing_indicator(session)
+    # No error, no crash — just a silent skip
+
+
+@pytest.mark.asyncio
+async def test_send_typing_indicator_skips_when_channel_not_found() -> None:
+    """send_typing_indicator returns silently when the thread channel is gone."""
+    adapter = _make_adapter()
+    session = _build_session_with_discord_thread(thread_id=555)
+
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    # Channel 555 not registered — simulates deleted/unreachable thread
+    adapter._client = fake_client
+
+    await adapter.send_typing_indicator(session)
+    # No error, no crash — just a silent skip
+
+
+@pytest.mark.asyncio
+async def test_send_typing_indicator_skips_when_channel_lacks_typing() -> None:
+    """send_typing_indicator skips when the channel object has no typing() method."""
+    adapter = _make_adapter()
+    session = _build_session_with_discord_thread(thread_id=555)
+
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    # Use a bare object without typing() — simulates a non-messageable channel type
+    fake_client.channels[555] = SimpleNamespace(id=555)
+    adapter._client = fake_client
+
+    await adapter.send_typing_indicator(session)
+    # No error, no crash — just a silent skip
 
 
 @pytest.mark.asyncio

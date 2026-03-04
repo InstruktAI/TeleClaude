@@ -805,13 +805,6 @@ class UiAdapter(BaseAdapter):
         if message_id:
             await self.client.pre_handle_command(session, metadata.origin)
 
-        # Send typing indicator (fire-and-forget, never blocks processing)
-        if session.lifecycle_status != "headless":
-            try:
-                await self.send_typing_indicator(session)
-            except Exception:
-                logger.debug("Typing indicator failed for session %s", session.session_id[:8], exc_info=True)
-
         result = await handler()
 
         if command_name == "send_message":
@@ -936,6 +929,12 @@ class UiAdapter(BaseAdapter):
         if context.status in ("active", "accepted"):
             session = await db.get_session(context.session_id)
             if session and session.lifecycle_status != "headless":
+                logger.debug(
+                    "Typing trigger: session=%s status=%s adapter=%s",
+                    context.session_id[:8],
+                    context.status,
+                    self.ADAPTER_KEY,
+                )
                 try:
                     await self.send_typing_indicator(session)
                 except Exception:
@@ -944,6 +943,13 @@ class UiAdapter(BaseAdapter):
                         context.session_id[:8],
                         context.status,
                     )
+            else:
+                logger.debug(
+                    "Typing skipped: session=%s found=%s lifecycle=%s",
+                    context.session_id[:8],
+                    session is not None,
+                    getattr(session, "lifecycle_status", None),
+                )
 
     @staticmethod
     def _format_lifecycle_status(status: str) -> str:

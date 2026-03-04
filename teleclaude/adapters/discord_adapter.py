@@ -1152,14 +1152,18 @@ class DiscordAdapter(UiAdapter):
         """Send typing indicator to Discord thread."""
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
+            logger.debug("Typing skipped: no thread_id for session %s", session.session_id[:8])
             return
         thread = await self._get_channel(discord_meta.thread_id)
         if thread is None:
+            logger.debug("Typing skipped: channel %s not found for session %s", discord_meta.thread_id, session.session_id[:8])
             return
-        trigger_typing_fn = getattr(thread, "trigger_typing", None)
-        if trigger_typing_fn and callable(trigger_typing_fn):
-            typing_fn = self._require_async_callable(trigger_typing_fn, label="Discord thread trigger_typing")
-            await typing_fn()
+        typing_fn = getattr(thread, "typing", None)
+        if typing_fn and callable(typing_fn):
+            await thread.typing()
+            logger.debug("Typing fired: session=%s thread=%s", session.session_id[:8], discord_meta.thread_id)
+        else:
+            logger.debug("Typing skipped: typing() not available on channel %s for session %s", discord_meta.thread_id, session.session_id[:8])
 
     async def send_output_update(  # type: ignore[override]  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
