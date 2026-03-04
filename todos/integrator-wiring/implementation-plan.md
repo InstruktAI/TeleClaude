@@ -18,27 +18,27 @@ interface, notification projector, SQLite state, API, push delivery).
 **File(s):** `teleclaude_events/schemas/software_development.py` (extend
 existing schema module from event-platform-core)
 
-- [ ] Add `domain.software-development.review.approved` EventSchema:
+- [x] Add `domain.software-development.review.approved` EventSchema:
       default_level=WORKFLOW, domain="software-development",
       idempotency_fields=["slug", "review_round"],
       lifecycle=NotificationLifecycle(creates=True, group_key="slug",
       meaningful_fields=["approved_at"])
-- [ ] Add `domain.software-development.deployment.started` EventSchema:
+- [x] Add `domain.software-development.deployment.started` EventSchema:
       default_level=WORKFLOW, domain="software-development",
       idempotency_fields=["slug", "branch", "sha"],
       lifecycle=NotificationLifecycle(creates=True, group_key="slug",
       meaningful_fields=["ready_at"])
-- [ ] Add `domain.software-development.deployment.completed` EventSchema:
+- [x] Add `domain.software-development.deployment.completed` EventSchema:
       default_level=WORKFLOW, domain="software-development",
       idempotency_fields=["slug", "merge_commit"],
       lifecycle=NotificationLifecycle(resolves=True, group_key="slug",
       meaningful_fields=["integrated_at"])
-- [ ] Add `domain.software-development.deployment.failed` EventSchema:
+- [x] Add `domain.software-development.deployment.failed` EventSchema:
       default_level=BUSINESS, domain="software-development", actionable=True,
       idempotency_fields=["slug", "branch", "sha", "blocked_at"],
       lifecycle=NotificationLifecycle(updates=True, group_key="slug",
       meaningful_fields=["blocked_at"])
-- [ ] Register all four in `build_default_catalog()` or a dedicated
+- [x] Register all four in `build_default_catalog()` or a dedicated
       `register_integration_schemas(catalog)` function
 
 ## Phase 2: Event Emission from Orchestration Lifecycle

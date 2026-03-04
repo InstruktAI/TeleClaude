@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from teleclaude_events.catalog import EventSchema, NotificationLifecycle
-from teleclaude_events.envelope import EventLevel, EventVisibility
+from teleclaude_events.envelope import EventLevel
 
 if TYPE_CHECKING:
     from teleclaude_events.catalog import EventCatalog
@@ -105,6 +105,50 @@ def register_software_development(catalog: "EventCatalog") -> None:
             domain="software-development",
             idempotency_fields=["slug", "round"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["question", "round"]),
+            actionable=True,
+        )
+    )
+
+    # --- Integration lifecycle events ---
+
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.review.approved",
+            description="Review passed, candidate eligible for finalization",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            idempotency_fields=["slug", "review_round"],
+            lifecycle=NotificationLifecycle(creates=True, group_key="slug", meaningful_fields=["approved_at"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.deployment.started",
+            description="Finalize ready, candidate queued for integration",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            idempotency_fields=["slug", "branch", "sha"],
+            lifecycle=NotificationLifecycle(creates=True, group_key="slug", meaningful_fields=["ready_at"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.deployment.completed",
+            description="Integrated to main, delivery bookkeeping done",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            idempotency_fields=["slug", "merge_commit"],
+            lifecycle=NotificationLifecycle(resolves=True, group_key="slug"),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.deployment.failed",
+            description="Integration blocked, needs attention",
+            default_level=EventLevel.BUSINESS,
+            domain="software-development",
+            idempotency_fields=["slug", "branch", "sha", "blocked_at"],
+            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["blocked_at"]),
             actionable=True,
         )
     )
