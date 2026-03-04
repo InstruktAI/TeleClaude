@@ -35,7 +35,7 @@ WISP_3 = CompositeSprite(
     # theme="light",
 )
 WISP_4 = CompositeSprite(
-    layers=[SpriteLayer(positive=["━━━━━━━ ━━━━━━━━"])],
+    layers=[SpriteLayer(positive=["━━━━━━━━━━━━━━━"])],
     z_weights=[(30, 60), (50, 30), (70, 10)],
     y_weights=[(0, 40), (1, 40), (2, 20)],
     speed_weights=[(0.08, 30), (0.12, 40), (0.18, 30)],
