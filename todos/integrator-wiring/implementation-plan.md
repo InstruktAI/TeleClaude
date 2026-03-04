@@ -186,8 +186,8 @@ existing schema module from event-platform-core)
 
 **File(s):** `todos/integration-events-model/` (empty directory)
 
-- [ ] Remove the empty `todos/integration-events-model/` directory
-- [ ] Verify no stale roadmap reference remains
+- [x] Remove the empty `todos/integration-events-model/` directory
+- [x] Verify no stale roadmap reference remains
 
 ## Phase 6: Validation
 
