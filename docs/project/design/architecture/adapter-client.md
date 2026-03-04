@@ -56,6 +56,7 @@ flowchart TB
 - **Registration Before Use**: Only adapters that successfully start are registered; failed adapters invisible to core.
 - **Scope-First Routing**: Recipient selection follows message intent and delivery scope.
 - **Origin Endpoint Continuity**: Origin identifies direct reply endpoint; it does not define fan-out policy.
+- **Reflection Broadcast Without Exclusion**: Reflections are broadcast to all adapters, including the source adapter. Core never filters adapters based on input origin. Adapters own their local routing decisions.
 - **Lifecycle vs Recipients**: Cleanup/lifetime settings never decide recipients.
 - **UI Metadata Requirement**: Before sending to a non-origin adapter, ensure UI channel metadata exists.
 - **Pre/Post Hooks**: User input cleanup (pre-hook) and message tracking (post-hook) run atomically.
@@ -122,7 +123,26 @@ sequenceDiagram
     AC->>DB: Add message_id to pending_message_deletions
 ```
 
-### 4. Cross-Computer Routing
+### 4. Reflection Broadcast (User Input)
+
+Core broadcasts user input reflections to all adapters unconditionally. No adapter is excluded based on input origin. Each adapter decides locally how to route the reflection (admin channel, suppress, etc.).
+
+```mermaid
+sequenceDiagram
+    participant Source as Source Adapter
+    participant AC as AdapterClient
+    participant All as All Adapters (incl. Source)
+
+    Source->>AC: deliver_inbound(session, text, origin="discord")
+    par Parallel delivery
+        AC->>AC: Inject into tmux (critical path)
+        AC->>All: broadcast_user_input(session, text, origin, actor)
+        AC->>AC: break_threaded_turn(session)
+    end
+    Note over All: Each adapter routes locally:<br/>- Admin channel for observability<br/>- Suppress if user sees native UX<br/>- Platform-specific rendering
+```
+
+### 5. Cross-Computer Routing
 
 ```mermaid
 sequenceDiagram

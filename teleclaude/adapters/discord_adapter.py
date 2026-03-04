@@ -2278,6 +2278,13 @@ class DiscordAdapter(UiAdapter):
         guild_id = self._parse_optional_int(getattr(getattr(message, "guild", None), "id", None))
 
         session = await self._find_session(channel_id=channel_id, thread_id=thread_id, user_id=user_id)
+        if session and not session.human_role:
+            from teleclaude.core.identity import get_identity_resolver
+
+            identity = get_identity_resolver().resolve("discord", {"user_id": user_id})
+            if identity and identity.person_role:
+                await db.update_session(session.session_id, human_role=identity.person_role)
+                session = await db.get_session(session.session_id) or session
         if session is None:
             forum_type, project_path = self._resolve_forum_context(message)
             session = await self._create_session_for_message(

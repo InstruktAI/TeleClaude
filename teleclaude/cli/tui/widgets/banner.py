@@ -36,25 +36,6 @@ BANNER_HEIGHT = len(BANNER_LINES) + 1
 LOGO_HEIGHT = len(LOGO_LINES) + 1
 LOGO_WIDTH = 40
 
-# Z-levels scanned for sky entities, highest-Z first (first found wins)
-_SKY_ENTITY_Z_LEVELS: tuple[int, ...] = ()  # populated lazily
-
-
-def _get_sky_entity_z_levels() -> tuple[int, ...]:
-    """Return entity Z-levels from highest to lowest for sky margin scanning."""
-    global _SKY_ENTITY_Z_LEVELS  # noqa: PLW0603
-    if not _SKY_ENTITY_Z_LEVELS:
-        from teleclaude.cli.tui.animations.base import (
-            Z_CELESTIAL,
-            Z_CLOUDS_FAR,
-            Z_CLOUDS_MID,
-            Z_CLOUDS_NEAR,
-            Z_FOREGROUND,
-            Z_STARS,
-        )
-
-        _SKY_ENTITY_Z_LEVELS = (Z_FOREGROUND, Z_CLOUDS_NEAR, Z_CLOUDS_MID, Z_CLOUDS_FAR, Z_CELESTIAL, Z_STARS)
-    return _SKY_ENTITY_Z_LEVELS
 
 
 def _to_color(c: str | int | None) -> str | None:
@@ -84,60 +65,162 @@ def _dim_color(hex_color: str, factor: float) -> str:
 
 
 def _entity_color(ch: str, z: int, dark_mode: bool) -> str:
-    """Determine fg color for a sky entity based on character and Z-level."""
-    from teleclaude.cli.tui.animations.base import Z_CELESTIAL
-
-    if ch == "\u2588":
-        # Full block: gold for sun (celestial layer, light mode), silver for UFO body
-        if z == Z_CELESTIAL and not dark_mode:
-            return "#FFD700"
-        if z == Z_CELESTIAL:
-            return "#FFFFFF"  # moon
-        return "#C0C0C0"  # UFO disc — silver
-    return "#FFFFFF"  # all other entities — white
+    """Fallback color for old-style (uncolored) sky entity pixels."""
+    return "#FFFFFF"
 
 
-def _scan_sky_entity(engine: object, x: int, y: int, dark_mode: bool) -> tuple[str, str | None, str | None]:
+def _scan_sky_entity(
+    engine: object, x: int, y: int, dark_mode: bool, z_levels: list[int]
+) -> tuple[str, str | None, str | None]:
     """Scan Z-levels top-down for sky entities at (x, y).
 
     Returns (char, fg_color, bg_entity_color).
     bg_entity_color is the color of a deeper entity (e.g. sun behind cloud)
     for transparency compositing.  Defaults to (" ", None, None).
+
+    Buffer value encoding:
+      - 1 char: old-style entity char (color from _entity_color)
+      - 2 chars starting with \\x01: old-style inverted char
+      - 7 chars starting with #: pure color (glow/ambient)
+      - 8 chars starting with #: colored entity char (#RRGGBBc)
+      - 9 chars starting with \\x01#: colored inverted char (\\x01#RRGGBBc)
+      - 15 chars #fg#bg + ch: fully resolved sprite pixel (both colors from layers)
+
+    For inverted (negative) partial-block chars, the cutout reveals whatever
+    is behind: scanning continues to deeper Z-levels to find the behind color
+    instead of hardcoding the sky gradient.
     """
     from teleclaude.cli.tui.animations.base import Z_SKY
 
     fg_char = " "
     fg_color: str | None = None
     bg_entity_color: str | None = None
+    # Set when the topmost entity is a negative partial-block: need to find
+    # the color that shows through the cutout from deeper Z-levels.
+    need_behind = False
 
-    for z in _get_sky_entity_z_levels():
+    for z in z_levels:
         val = engine.get_layer_color(z, x, y, target="header")  # type: ignore[union-attr]
-        if val and val != -1:
-            if isinstance(val, str) and len(val) == 1:
-                if fg_char == " ":
-                    fg_char = val
-                    fg_color = _entity_color(val, z, dark_mode)
-                else:
-                    bg_entity_color = _entity_color(val, z, dark_mode)
+        if not val or val == -1:
+            continue
+        if not isinstance(val, str):
+            continue
+
+        vlen = len(val)
+
+        # --- Fully resolved sprite pixel (pre-composited layers) ---
+        if vlen == 15 and val[0] == "#" and val[7] == "#":
+            # "#fg_color#bg_colorc" — both colors from sprite, no scene needed
+            fg_val, bg_val, ch = val[0:7], val[7:14], val[14]
+            if need_behind:
+                fg_color = fg_val
+                break
+            elif fg_char == " ":
+                fg_char = ch
+                fg_color = fg_val
+                bg_entity_color = bg_val
+                break
+            else:
+                bg_entity_color = bg_val
+                break
+
+        # --- Colored composite sprite chars (from layered CompositeSprite) ---
+        elif vlen == 8 and val[0] == "#":
+            # Positive colored char: "#RRGGBBc" → fg = color, char = c
+            color, ch = val[:7], val[7]
+            if need_behind:
+                fg_color = color
+                break
+            elif fg_char == " ":
+                fg_char = ch
+                fg_color = color
+            else:
+                bg_entity_color = color
+                break
+
+        elif vlen == 9 and val[0] == "\x01" and val[1] == "#":
+            # Negative colored char: "\x01#RRGGBBc" → inverted rendering
+            color, ch = val[1:8], val[8]
+            if ch == "\u2588":
+                # Full block: solid fill, no cutout
+                if need_behind:
+                    fg_color = color
                     break
-            elif isinstance(val, str) and len(val) == 2 and val[0] == "\x01":
-                # Inverted block (bottom-half celestial): swap fg/bg.
-                # fg = sky gradient, bg = entity color.
-                ch = val[1]
-                if fg_char == " ":
+                elif fg_char == " ":
                     fg_char = ch
-                    bg_entity_color = _entity_color(ch, z, dark_mode)
-                    sky_val = engine.get_layer_color(Z_SKY, x, y, target="header")  # type: ignore[union-attr]
-                    fg_color = sky_val if isinstance(sky_val, str) else None
+                    fg_color = color
                 else:
-                    bg_entity_color = _entity_color(ch, z, dark_mode)
+                    bg_entity_color = color
                     break
-            elif isinstance(val, str):
-                if fg_color is None:
-                    fg_color = val
+            else:
+                # Partial block: cutout reveals what's behind
+                if need_behind:
+                    fg_color = color
+                    break
+                elif fg_char == " ":
+                    fg_char = ch
+                    bg_entity_color = color
+                    need_behind = True
+                    # Continue scanning for behind color
                 else:
-                    bg_entity_color = val
+                    bg_entity_color = color
                     break
+
+        # --- Old-style uncolored chars (clouds, stars, celestial) ---
+        elif vlen == 1:
+            ec = _entity_color(val, z, dark_mode)
+            if need_behind:
+                fg_color = ec
+                break
+            elif fg_char == " ":
+                fg_char = val
+                fg_color = ec
+            else:
+                bg_entity_color = ec
+                break
+
+        elif vlen == 2 and val[0] == "\x01":
+            # Old-style inverted char
+            ch = val[1]
+            ec = _entity_color(ch, z, dark_mode)
+            if ch == "\u2588":
+                if need_behind:
+                    fg_color = ec
+                    break
+                elif fg_char == " ":
+                    fg_char = ch
+                    fg_color = ec
+                else:
+                    bg_entity_color = ec
+                    break
+            else:
+                if need_behind:
+                    fg_color = ec
+                    break
+                elif fg_char == " ":
+                    fg_char = ch
+                    bg_entity_color = ec
+                    need_behind = True
+                else:
+                    bg_entity_color = ec
+                    break
+
+        elif vlen == 7 and val[0] == "#":
+            # Pure color string (glow/ambient)
+            if need_behind:
+                fg_color = val
+                break
+            elif fg_color is None:
+                fg_color = val
+            else:
+                bg_entity_color = val
+                break
+
+    # Fallback: negative char found but nothing behind — use sky gradient
+    if need_behind and fg_color is None:
+        sky_val = engine.get_layer_color(Z_SKY, x, y, target="header")  # type: ignore[union-attr]
+        fg_color = sky_val if isinstance(sky_val, str) else None
+
     return fg_char, fg_color, bg_entity_color
 
 
@@ -193,6 +276,7 @@ class Banner(TelecMixin, Widget):
         sky_fallback = "#000000" if dark_mode else "#C8E8F8"
 
         total_width = self.size.width or 84
+        z_levels = engine.get_entity_z_levels("header") if engine else []
 
         for y in range(BANNER_HEIGHT):
             if y > 0:
@@ -218,7 +302,7 @@ class Banner(TelecMixin, Widget):
                     fg_color: str | None = None
                     bg_entity_color: str | None = None
                     if engine and not is_on_plate:
-                        fg_char, fg_color, bg_entity_color = _scan_sky_entity(engine, x, y, dark_mode)
+                        fg_char, fg_color, bg_entity_color = _scan_sky_entity(engine, x, y, dark_mode, z_levels)
                         if bg_entity_color:
                             final_bg = bg_entity_color
 
@@ -268,7 +352,7 @@ class Banner(TelecMixin, Widget):
                         fg_char = " "
                         fg_color = None
                         if engine:
-                            fg_char, fg_color, bg_ent = _scan_sky_entity(engine, x, y, dark_mode)
+                            fg_char, fg_color, bg_ent = _scan_sky_entity(engine, x, y, dark_mode, z_levels)
                             if bg_ent:
                                 bg = bg_ent
 
@@ -300,6 +384,7 @@ class Banner(TelecMixin, Widget):
         width = 40
         total_width = self.size.width or 40
         pad = max(0, total_width - width)
+        z_levels = engine.get_entity_z_levels("header") if engine else []
 
         for y in range(LOGO_HEIGHT):
             if y > 0:
@@ -320,7 +405,7 @@ class Banner(TelecMixin, Widget):
                     fg_color: str | None = None
                     bg_entity_color: str | None = None
                     if engine and not is_on_plate:
-                        fg_char, fg_color, bg_entity_color = _scan_sky_entity(engine, x, y, dark_mode)
+                        fg_char, fg_color, bg_entity_color = _scan_sky_entity(engine, x, y, dark_mode, z_levels)
                         if bg_entity_color:
                             final_bg = bg_entity_color
 
@@ -368,7 +453,7 @@ class Banner(TelecMixin, Widget):
                         fg_char = " "
                         fg_color = None
                         if engine:
-                            fg_char, fg_color, bg_ent = _scan_sky_entity(engine, x, y, dark_mode)
+                            fg_char, fg_color, bg_ent = _scan_sky_entity(engine, x, y, dark_mode, z_levels)
                             if bg_ent:
                                 bg = bg_ent
 

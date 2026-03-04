@@ -6,10 +6,28 @@ import random
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+from teleclaude.cli.tui.animations.sprites.composite import CompositeSprite
+
 if TYPE_CHECKING:
     from teleclaude.cli.tui.animation_colors import ColorPalette
 
-# Physical Z-Levels for occlusion (10-unit spacing for intermediate layers)
+# Z-Depth Scale (0 = deepest, 100 = frontmost)
+# ─────────────────────────────────────────────
+#   0  sky gradient
+#  10  stars
+#  20  celestial (sun/moon)
+#  30  far clouds
+#  40  billboard (banner plate)
+#  50  mid clouds
+#  60  inactive tab panes
+#  70  near clouds
+#  80  active tab pane
+#  90  foreground
+# ─────────────────────────────────────────────
+# 10-unit spacing leaves room for intermediates (e.g. 31 = just in front of far clouds).
+# Sprites use raw integers for z_weights — no imports needed.
+# Example: z_weights=[(30, 10), (70, 90)]
+#   → 10% behind the banner, 90% in front of inactive tabs
 Z_SKY = 0
 Z_STARS = 10
 Z_CELESTIAL = 20
@@ -98,6 +116,80 @@ class RenderBuffer:
         """Clear a single Z-layer without deallocating."""
         if z in self.layers:
             self.layers[z].clear()
+
+
+def render_sprite(
+    buffer: RenderBuffer,
+    z: int,
+    x: int,
+    y: int,
+    sprite: list[str] | CompositeSprite,
+    width: int,
+    height: int,
+) -> None:
+    """Render a sprite to the buffer with clipping.
+
+    Plain list[str] sprites render non-space chars normally.
+    CompositeSprite pre-composites all layers into resolved pixels before
+    writing to the buffer. Buffer encodings:
+      - ``color + ch``  (8 chars) — positive, scene provides bg
+      - ``"\\x01" + color + ch``  (9 chars) — scene-transparent cutout
+      - ``fg_color + bg_color + ch``  (15 chars) — fully resolved from layers
+    """
+    if isinstance(sprite, CompositeSprite):
+        # Pre-composite all layers into a local pixel grid.
+        # Each entry: (char, fg_color, bg_color, scene_transparent)
+        grid: dict[tuple[int, int], tuple[str, str | None, str | None, bool]] = {}
+        # Accumulated surface color per cell — what you'd see looking down
+        # through all layers processed so far. None = sky (no layer touched it).
+        surface: dict[tuple[int, int], str | None] = {}
+
+        for layer in sprite.layers:
+            color = layer.color
+            # Negative first so positive wins on overlap within a layer
+            if layer.negative:
+                for dy, row in enumerate(layer.negative):
+                    for dx, ch in enumerate(row):
+                        if ch != " ":
+                            prev = surface.get((dx, dy))
+                            if ch == "\u2588":
+                                # Full block: solid fill, same as positive
+                                grid[(dx, dy)] = (ch, color, prev, prev is None)
+                            else:
+                                # Partial block: cutout reveals surface below
+                                grid[(dx, dy)] = (ch, prev, color, prev is None)
+                            surface[(dx, dy)] = color
+            if layer.positive:
+                for dy, row in enumerate(layer.positive):
+                    for dx, ch in enumerate(row):
+                        if ch != " ":
+                            prev = surface.get((dx, dy))
+                            grid[(dx, dy)] = (ch, color, prev, prev is None)
+                            surface[(dx, dy)] = color
+
+        # Write resolved pixels to buffer with clipping
+        for (dx, dy), (ch, fg, bg, transparent) in grid.items():
+            px = x + dx
+            py = y + dy
+            if 0 <= px < width and 0 <= py < height:
+                if transparent and bg:
+                    buffer.add_pixel(z, px, py, "\x01" + bg + ch)
+                elif fg and bg:
+                    buffer.add_pixel(z, px, py, fg + bg + ch)
+                elif fg:
+                    buffer.add_pixel(z, px, py, fg + ch)
+    else:
+        for dy, row in enumerate(sprite):
+            py = y + dy
+            if py < 0:
+                continue
+            if py >= height:
+                break
+            for dx, ch in enumerate(row):
+                if ch != " ":
+                    px = x + dx
+                    if 0 <= px < width:
+                        buffer.add_pixel(z, px, py, ch)
 
 
 class Animation(ABC):

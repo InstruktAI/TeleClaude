@@ -19,8 +19,11 @@ from teleclaude.cli.tui.animations.base import (
     Animation,
     RenderBuffer,
     Spectrum,
+    render_sprite,
 )
 from teleclaude.cli.tui.animations.creative import ColorSweep, EQBars, Glitch, LaserScan, LavaLamp, NeonFlicker, Plasma
+from teleclaude.cli.tui.animations.sprites import MOON_SPRITE, SUN_SPRITE
+from teleclaude.cli.tui.animations.sprites.composite import AnimatedSprite, CompositeSprite
 from teleclaude.cli.tui.pixel_mapping import (
     BIG_BANNER_HEIGHT,
     BIG_BANNER_LETTERS,
@@ -83,33 +86,13 @@ class GlobalSky(Animation):
     _WEATHER_NAMES = ["clear", "fair", "cloudy", "overcast"]
     _WEATHER_WEIGHTS = [30, 35, 25, 10]
 
-    # Celestial shapes — rendered as disc anchored at top-right corner.
-    # Top half uses standard lower-block chars (▁▄▅▆▇█ fill from bottom up).
-    _SUN_MOON_ROWS = [
-        "    ▁▄▆▇███▇▆▄▁    ",
-        "   ▅███████████▅ ",
-        "  ▟█████████████▙  ",
-    ]
-    # Bottom half uses complement lower-block chars with fg/bg swap
-    # (Unicode lacks upper-block equivalents for ▂▃▅▆▇).
-    # Rendering stores these with a \x01 prefix so the scanner swaps colors.
-    # Quadrant chars (▜▛) have native vertical mirrors — no inversion needed.
-    _SUN_MOON_BOTTOM_ROWS = [
-        "  ▜█████████████▛  ",
-        "   ▃███████████▃ ",
-        "    ▇▄▂▁███▁▂▄▇    ",
-    ]
-    _LOWER_BLOCKS = frozenset("▁▂▃▄▅▆▇")
     # Celestial ambient glow — painted at gap positions in the bounding box so
     # cloud shade chars pick up a warm/cool tint instead of raw sky gradient.
     _SUN_GLOW = "#4A3000"
-    _MOON_GLOW = "#2A2A3A"
+    _MOON_GLOW = "#1A1A2E"
 
     # City glow: 3 rows behind tab bar (y=7,8,9)
     _CITY_GLOW = ["#1A0035", "#270055", "#0A0010"]
-
-    # UFO Z-level weights: 50% far, 35% mid, 15% near
-    _UFO_Z_WEIGHTS = [(Z_CLOUDS_FAR, 50), (Z_CLOUDS_MID, 35), (Z_CLOUDS_NEAR, 15)]
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         kwargs.setdefault("target", "header")
@@ -152,8 +135,8 @@ class GlobalSky(Animation):
         self._clouds: list[dict[str, object]] = self._generate_clouds()
         self._next_weather_change = time.time() + self.rng.uniform(30 * 60, 120 * 60)
 
-        # UFO — rare sky entity (~15% chance per weather cycle)
-        self._ufo: dict[str, object] | None = self._maybe_spawn_ufo()
+        # Sky entities — standalone sprites + sprite group populations
+        self._sky_entities: list[dict[str, object]] = self._spawn_initial_entities()
 
     @staticmethod
     def _fetch_term_width() -> int:
@@ -215,20 +198,69 @@ class GlobalSky(Animation):
             "z": z_level,
         }
 
-    def _maybe_spawn_ufo(self) -> dict[str, object] | None:
-        """~15% chance to spawn a UFO as a sky entity."""
-        if self.rng.random() > 0.15:
-            return None
-        from teleclaude.cli.tui.animations.sprites import UFO_SPRITE
+    def _spawn_initial_entities(self) -> list[dict[str, object]]:
+        """Spawn sky entities: standalone sprites (15% chance each) + sprite groups."""
+        from teleclaude.cli.tui.animations.sprites import get_sky_entities, get_sprite_groups
 
-        z_level = self._pick_z_level(self._UFO_Z_WEIGHTS)
+        entities: list[dict[str, object]] = []
+        for sprite in get_sky_entities():
+            if self.rng.random() < 0.15:
+                entities.append(self._spawn_sky_entity(sprite))
+        for group in get_sprite_groups():
+            for sprite, _weight, (lo, hi) in group.entries:
+                n = self.rng.randint(lo, hi)
+                for _ in range(n):
+                    entities.append(self._spawn_sky_entity(sprite))
+        return entities
+
+    # Vertical lane ranges: (min_y, max_y) for top/mid/bottom of the header
+    _LANE_Y_RANGES = {0: (0, 1), 1: (2, 4), 2: (5, 7)}
+
+    def _pick_weighted_float(self, weights: list[tuple[float, int]]) -> float:
+        """Pick a float value from a weighted distribution."""
+        values, wts = zip(*weights)
+        return self.rng.choices(values, weights=wts, k=1)[0]
+
+    @staticmethod
+    def _sprite_max_width(sprite: CompositeSprite | AnimatedSprite) -> int:
+        """Compute stable bounding-box width across all frames/layers."""
+        w = 0
+        renderables: list = sprite.frames if isinstance(sprite, AnimatedSprite) else [sprite]
+        for r in renderables:
+            if isinstance(r, CompositeSprite):
+                for layer in r.layers:
+                    for rows in (layer.positive, layer.negative):
+                        if rows:
+                            w = max(w, *(len(row) for row in rows))
+            else:
+                w = max(w, *(len(row) for row in r))
+        return w
+
+    def _spawn_sky_entity(self, sprite: CompositeSprite | AnimatedSprite) -> dict[str, object]:
+        """Spawn a sky entity from any CompositeSprite or AnimatedSprite."""
+        z_level = self._pick_z_level(sprite.z_weights)
+        lane = self._pick_z_level(sprite.y_weights) if sprite.y_weights else 1
+        y_lo, y_hi = self._LANE_Y_RANGES.get(lane, (0, 3))
+        direction = self.rng.choice([-1, 1])
+        initial_speed = self._pick_weighted_float(sprite.speed_weights)
         return {
-            "sprite": UFO_SPRITE,
+            "sprite": sprite,
+            "sprite_w": self._sprite_max_width(sprite),
             "x": self.rng.randint(0, self.width),
-            "speed": 0.55 + self.rng.random() * 0.35,
-            "y": self.rng.randint(0, 3),
+            "speed": initial_speed * direction,
+            "target_speed": initial_speed * direction,
+            "y": self.rng.randint(y_lo, y_hi),
             "z": z_level,
+            "next_speed_change": self.rng.randint(80, 300),
         }
+
+    def force_spawn_ufo(self) -> None:
+        """Force a random sky entity to appear immediately (debug keybinding)."""
+        from teleclaude.cli.tui.animations.sprites import get_sky_entities
+
+        entities = get_sky_entities()
+        if entities:
+            self._sky_entities.append(self._spawn_sky_entity(self.rng.choice(entities)))
 
     def _build_sky_cache(self) -> list[tuple[int, int, int, str]]:
         """Pre-compute static sky gradient pixels for the current theme."""
@@ -243,62 +275,43 @@ class GlobalSky(Animation):
                     pixels.append((Z_SKY, x, 7 + dy, glow_color))
         return pixels
 
-    def _render_quarter_celestial(self, buffer: RenderBuffer, rows: list[str], term_width: int) -> None:
-        """Render celestial body disc at top-right corner.
+    def _render_quarter_celestial(self, buffer: RenderBuffer, term_width: int) -> None:
+        """Render celestial body (sun/moon) at top-right corner using SUN_SPRITE or MOON_SPRITE."""
 
-        Top half uses normal lower-block chars.  Bottom half uses complement
-        lower-block chars prefixed with \\x01 so the banner scanner swaps
-        fg/bg — the missing upper-block Unicode trick.
-        """
-        sprite_w = max(len(r) for r in rows)
-        # Anchor center at (term_width - 1, -2) so only bottom-left quarter is visible
+        sprite = SUN_SPRITE if not self.dark_mode else MOON_SPRITE
+        layer = sprite.layers[0]
+        sprite_w = max(len(r) for r in layer.positive)
+        # Anchor center at top-right
         cx = term_width - 1
-        cy = 0
-
-        # Narrow pane (split view): push celestial partially off-screen
+        cy = 1
+        # Narrow pane: push partially off-screen
         if term_width <= 130:
-            cx += 6
-            cy -= 1
+            cx += 7
+            cy -= 3
 
-        is_sun = rows is self._SUN_MOON_ROWS
-        # Glow only needed in dark mode where sky gradient is near-black;
-        # in light mode the sky gradient is already light blue so clouds
-        # compositing over celestial gaps look fine without glow.
-        glow = (self._SUN_GLOW if is_sun else self._MOON_GLOW) if self.dark_mode else None
+        top_left_x = cx - sprite_w + 1
+        render_sprite(buffer, Z_CELESTIAL, top_left_x, cy, sprite, self.width, self.height)
 
-        # Top half — standard lower-block chars
-        for dy, row in enumerate(rows):
-            y = cy + dy
-            if y < 0:
-                continue
-            if y >= self.height:
-                break
-            for dx, ch in enumerate(row):
-                x = cx - sprite_w + 1 + dx
-                if 0 <= x < self.width:
-                    if ch != " ":
-                        buffer.add_pixel(Z_CELESTIAL, x, y, ch)
-                    elif glow:
-                        buffer.add_pixel(Z_CELESTIAL, x, y, glow)
-
-        # Bottom half — complement lower-block chars with \x01 inversion marker;
-        # quadrant chars (▜▛) and full blocks render normally.
-        for dy, row in enumerate(self._SUN_MOON_BOTTOM_ROWS):
-            y = cy + len(rows) + dy
-            if y < 0:
-                continue
-            if y >= self.height:
-                break
-            for dx, ch in enumerate(row):
-                x = cx - sprite_w + 1 + dx
-                if 0 <= x < self.width:
-                    if ch == " ":
-                        if glow:
+        # Ambient glow at gap positions — picked up as bg by cloud chars
+        glow = self._MOON_GLOW if self.dark_mode else self._SUN_GLOW
+        if glow:
+            num_rows = max(len(layer.positive), len(layer.negative))
+            for dy in range(num_rows):
+                y = cy + dy
+                if y < 0:
+                    continue
+                if y >= self.height:
+                    break
+                pos_row = layer.positive[dy] if dy < len(layer.positive) else ""
+                neg_row = layer.negative[dy] if dy < len(layer.negative) else ""
+                row_w = max(len(pos_row), len(neg_row))
+                for dx in range(row_w):
+                    pos_ch = pos_row[dx] if dx < len(pos_row) else " "
+                    neg_ch = neg_row[dx] if dx < len(neg_row) else " "
+                    if pos_ch == " " and neg_ch == " ":
+                        x = top_left_x + dx
+                        if 0 <= x < self.width:
                             buffer.add_pixel(Z_CELESTIAL, x, y, glow)
-                    elif ch in self._LOWER_BLOCKS:
-                        buffer.add_pixel(Z_CELESTIAL, x, y, "\x01" + ch)
-                    else:
-                        buffer.add_pixel(Z_CELESTIAL, x, y, ch)
 
     def update(self, frame: int) -> RenderBuffer:
         # Reuse persistent buffer — avoid allocating 4000+ dict entries per frame
@@ -322,15 +335,13 @@ class GlobalSky(Animation):
             for z, x, y, color in self._cached_sky_pixels:
                 buffer.add_pixel(z, x, y, color)
 
-        # Clear only dynamic layers each frame (stars, celestials, clouds)
-        buffer.clear_layer(Z_STARS)
-        buffer.clear_layer(Z_CELESTIAL)
-        buffer.clear_layer(Z_CLOUDS_FAR)
-        buffer.clear_layer(Z_CLOUDS_MID)
-        buffer.clear_layer(Z_CLOUDS_NEAR)
+        # Clear all dynamic layers each frame (everything except Z_SKY)
+        for z in list(buffer.layers):
+            if z != Z_SKY:
+                buffer.clear_layer(z)
 
         if self.dark_mode:
-            # 2. Stars at Z_STARS (behind celestials and clouds)
+            # 2. Stars at Z_STARS (behind clouds)
             for star in self.stars:
                 speed = star["speed"] * (2.5 if is_party else 1.0)
                 twinkle = (math.sin(frame * speed + star["phase"]) + 1.0) / 2.0
@@ -338,14 +349,14 @@ class GlobalSky(Animation):
                     buffer.add_pixel(Z_STARS, star["pos"][0], star["pos"][1], star["char"])
 
             # 3. Moon — quarter celestial at top-right
-            self._render_quarter_celestial(buffer, self._SUN_MOON_ROWS, term_width)
+            self._render_quarter_celestial(buffer, term_width)
         else:
             # 2. Weather change check
             now = time.time()
             if now >= self._next_weather_change:
                 self._weather = self.rng.choices(self._WEATHER_NAMES, weights=self._WEATHER_WEIGHTS, k=1)[0]
                 self._clouds = self._generate_clouds()
-                self._ufo = self._maybe_spawn_ufo()
+                self._sky_entities = self._spawn_initial_entities()
                 self._next_weather_change = now + self.rng.uniform(30 * 60, 120 * 60)
 
             # 3. Drifting clouds with weighted Z-level parallax
@@ -363,23 +374,31 @@ class GlobalSky(Animation):
                                 buffer.add_pixel(cloud_z, px, py, ch)
 
             # 4. Sun — quarter celestial at top-right
-            self._render_quarter_celestial(buffer, self._SUN_MOON_ROWS, term_width)
+            self._render_quarter_celestial(buffer, term_width)
 
-        # 5. UFO sky entity (both modes — drifts horizontally at assigned Z-level)
-        if self._ufo:
-            sprite = self._ufo["sprite"]
-            ufo_z = int(self._ufo["z"])
-            ufo_speed = float(self._ufo["speed"])
-            sprite_w = max(len(r) for r in sprite)
-            ux = int(int(self._ufo["x"]) + frame * ufo_speed) % (self.width + sprite_w + 20) - sprite_w - 10
-            uy = int(self._ufo["y"])
-            for dy, row in enumerate(sprite):
-                for dx, ch in enumerate(row):
-                    if ch != " ":
-                        px = ux + dx
-                        py = uy + dy
-                        if 0 <= px < self.width and 0 <= py < self.height:
-                            buffer.add_pixel(ufo_z, px, py, ch)
+        # 5. Sky entities (both modes — drift horizontally at assigned Z-levels)
+        for entity in self._sky_entities:
+            # Speed easing: periodically pick new target, interpolate toward it
+            next_change = int(entity.get("next_speed_change", 0))
+            if frame >= next_change:
+                sprite_ref = entity["sprite"]
+                direction = 1 if float(entity["speed"]) >= 0 else -1
+                new_target = self._pick_weighted_float(sprite_ref.speed_weights) * direction  # type: ignore[union-attr]
+                entity["target_speed"] = new_target
+                entity["next_speed_change"] = frame + self.rng.randint(80, 300)
+            current = float(entity["speed"])
+            target = float(entity.get("target_speed", current))
+            entity["speed"] = current + (target - current) * 0.05
+
+            entity_z = int(entity["z"])
+            entity_speed = float(entity["speed"])
+            sprite = entity["sprite"]
+            renderable = sprite.tick(frame)  # type: ignore[union-attr]
+            sprite_w = int(entity["sprite_w"])
+            wrap = self.width + sprite_w + 20
+            ex = int(int(entity["x"]) + frame * entity_speed) % wrap - sprite_w - 10
+            ey = int(entity["y"])
+            render_sprite(buffer, entity_z, ex, ey, renderable, self.width, self.height)
 
         return buffer
 

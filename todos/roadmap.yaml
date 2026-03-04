@@ -90,3 +90,7 @@
 - slug: cli-knowledge-commands
   description: telec history + telec memory CLI commands, retire standalone tool specs
 - slug: cli-authz-overhaul
+- slug: reflection-routing-ownership
+  after:
+  - adapter-boundary-cleanup
+  description: Move reflection routing decisions from core to adapters

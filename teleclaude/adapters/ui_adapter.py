@@ -922,11 +922,12 @@ class UiAdapter(BaseAdapter):
     async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
         """Handle lifecycle status transitions.
 
-        Fires typing indicator on 'active' (agent session confirmed) and
-        'accepted' (fallback for existing sessions where session_start doesn't fire).
+        Fires typing indicator on 'accepted' (prompt received), 'active'
+        (session confirmed), and 'active_output' (tool use observed) to keep
+        the indicator alive during long tool-use sequences.
         Platform adapters override for additional decoration (footer, badges).
         """
-        if context.status in ("active", "accepted"):
+        if context.status in ("active", "accepted", "active_output"):
             session = await db.get_session(context.session_id)
             if session and session.lifecycle_status != "headless":
                 logger.debug(

@@ -82,10 +82,6 @@ class BoxTabBar(TelecMixin, Widget):
         engine = self.animation_engine
         dark_mode = is_dark_mode()
         from teleclaude.cli.tui.animations.base import (
-            Z_CLOUDS_FAR,
-            Z_CLOUDS_MID,
-            Z_CLOUDS_NEAR,
-            Z_FOREGROUND,
             Z_SKY,
             Z_TABS_ACTIVE,
             Z_TABS_INACTIVE,
@@ -114,8 +110,8 @@ class BoxTabBar(TelecMixin, Widget):
 
         self._click_regions = [(c, c + w + 2, tid) for c, w, _, _, tid in tabs]
 
-        # Entity Z-levels to scan above tab Z, highest first
-        entity_z_scan = (Z_FOREGROUND, Z_CLOUDS_NEAR, Z_CLOUDS_MID, Z_CLOUDS_FAR)
+        # Entity Z-levels: all populated levels from the buffer, highest first
+        entity_z_scan = engine.get_entity_z_levels("header") if engine else []
 
         rows = []
         for y_offset in range(num_rows):
@@ -220,18 +216,35 @@ class BoxTabBar(TelecMixin, Widget):
                 fg_color: str | None = None
 
                 if engine:
-                    # Multi-Z entity scan: check Z-levels above the tab's Z-base
+                    # Multi-Z entity scan: tabs occlude entities behind them;
+                    # sky gaps between tabs render all entities freely.
                     for z in entity_z_scan:
-                        if z <= z_base:
+                        if in_tab and z <= z_base:
                             break
                         entity = engine.get_layer_color(z, x, global_y, target="header")
-                        if entity and entity != -1:
+                        if entity and entity != -1 and isinstance(entity, str):
                             if not in_tab:
-                                if isinstance(entity, str) and len(entity) == 1:
+                                elen = len(entity)
+                                if elen == 15 and entity[0] == "#" and entity[7] == "#":
+                                    # Fully resolved sprite pixel: #fg#bgc
+                                    fg_char = entity[14]
+                                    fg_color = entity[0:7]
+                                    final_bg = entity[7:14]
+                                elif elen == 8 and entity[0] == "#":
+                                    # Positive colored char: #RRGGBBc
+                                    fg_char = entity[7]
+                                    fg_color = entity[0:7]
+                                elif elen == 9 and entity[0] == "\x01" and entity[1] == "#":
+                                    # Negative colored char: \x01#RRGGBBc
+                                    fg_char = entity[8]
+                                    fg_color = sky_color
+                                    final_bg = entity[1:8]
+                                elif elen == 7 and entity[0] == "#":
+                                    # Pure color (glow/ambient)
+                                    final_bg = entity
+                                elif elen == 1:
                                     fg_char = entity
                                     fg_color = "#FFFFFF"
-                                elif isinstance(entity, str):
-                                    fg_color = entity
                             break
 
                     if not in_tab and engine.has_active_animation and engine.is_external_light():

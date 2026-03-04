@@ -1,4 +1,4 @@
-# DOR Report: person-knowledge-level
+# DOR Report: person-proficiency-level
 
 ## Gate Verdict: PASS (score 9)
 
@@ -8,8 +8,8 @@ All eight DOR gates satisfied. All artifact claims verified against codebase.
 
 ### 1. Intent & Success — PASS
 
-Problem explicit: agents lack knowledge of the human's technical level, leading to
-miscalibrated communication. Outcome: single `knowledge` field on `PersonEntry` injected
+Problem explicit: agents lack proficiency of the human's technical level, leading to
+miscalibrated communication. Outcome: single `proficiency` field on `PersonEntry` injected
 at session start. Seven concrete success criteria cover schema validation, injection
 output, CLI flags, API DTO, and TUI display.
 
@@ -29,7 +29,7 @@ Unit tests specified for schema validation (valid/invalid), injection output (mo
 ### 4. Approach Known — PASS (codebase-verified)
 
 - `PersonEntry` already has `role: Literal[...] = "member"` at `schema.py:128` — same
-  pattern for `knowledge`.
+  pattern for `proficiency`.
 - `_print_memory_injection` at `receiver.py:235` already fetches the session row
   (`db_session.get(db_models.Session, session_id)` at line 250). The `Session` model
   has `human_email: Optional[str]` (`db_models.py:57`).
@@ -37,11 +37,11 @@ Unit tests specified for schema validation (valid/invalid), injection output (mo
   lookup.
 - `PersonDTO` at `api_models.py:155` follows the same Literal pattern as `PersonEntry`.
 - `_people_add` at `config_cli.py:189` constructs `PersonEntry` directly — adding
-  `knowledge=opts.get("knowledge")` follows the `role` pattern at line 207.
+  `proficiency=opts.get("proficiency")` follows the `role` pattern at line 207.
 - `_people_edit` at `config_cli.py:306` checks editable fields via `any(k in opts
-for k in (...))` — `"knowledge"` adds to that tuple.
+for k in (...))` — `"proficiency"` adds to that tuple.
 - `_render_people` at `config.py:753` renders `person.name`, `person.role`,
-  `person.email` — appending knowledge follows the existing style.
+  `person.email` — appending proficiency follows the existing style.
 
 ### 5. Research Complete — PASS (auto-satisfied)
 
@@ -49,7 +49,7 @@ No third-party tools, libraries, or integrations.
 
 ### 6. Dependencies & Preconditions — PASS
 
-No prerequisite tasks. No new config keys beyond `knowledge` itself. The field is
+No prerequisite tasks. No new config keys beyond `proficiency` itself. The field is
 exposed via CLI (`people add/edit`) and rendered in TUI wizard per plan Task 1.5.
 Config wizard exposure confirmed.
 
@@ -61,7 +61,7 @@ existing behavior changed.
 
 ### 8. Tooling Impact — PASS (auto-satisfied)
 
-No tooling or scaffolding changes. CLI gains `--knowledge` via existing `_parse_kv_args`.
+No tooling or scaffolding changes. CLI gains `--proficiency` via existing `_parse_kv_args`.
 
 ## Plan-to-Requirement Fidelity
 

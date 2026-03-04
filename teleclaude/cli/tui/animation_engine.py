@@ -244,6 +244,18 @@ class AnimationEngine:
             return z_buffer[z].get((x, y))
         return None
 
+    def get_entity_z_levels(self, target: str = "header") -> list[int]:
+        """Return populated Z levels for entity scanning, highest first.
+
+        Excludes Z_SKY (handled separately as background gradient).
+        """
+        from teleclaude.cli.tui.animations.base import Z_SKY
+
+        z_buffer = self._buffers_front.get(target)
+        if not z_buffer:
+            return []
+        return sorted((z for z in z_buffer if z != Z_SKY), reverse=True)
+
     def clear_colors(self) -> None:
         """Clear all active animation colors (both buffers)."""
         for buf in self._buffers_front.values():

@@ -129,6 +129,7 @@ class TelecApp(App[str | None]):
         Binding("r", "refresh", "Refresh", key_display="r"),
         Binding("t", "cycle_pane_theming", "Cycle Theme", key_display="t"),
         Binding("a", "cycle_animation", "Cycle Anim", key_display="a"),
+        Binding("u", "spawn_ufo", "UFO", key_display="u", show=False),
         Binding("v", "toggle_tts", "Voice", key_display="v"),
     ]
 
@@ -835,6 +836,14 @@ class TelecApp(App[str | None]):
         idx = cycle.index(status_bar.animation_mode) if status_bar.animation_mode in cycle else 0
         new_mode = cycle[(idx + 1) % len(cycle)]
         self._cycle_animation(new_mode)
+
+    def action_spawn_ufo(self) -> None:
+        """u: force a UFO to spawn in the sky animation."""
+        from teleclaude.cli.tui.animations.general import GlobalSky
+
+        slot = self._animation_engine._targets.get("header")
+        if slot and isinstance(slot.animation, GlobalSky):
+            slot.animation.force_spawn_ufo()
 
     def action_toggle_tts(self) -> None:
         """v: toggle TTS on/off.
