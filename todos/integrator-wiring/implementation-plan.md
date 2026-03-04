@@ -113,8 +113,8 @@ existing schema module from event-platform-core)
 
 **File(s):** `agents/commands/next-integrate.md` (new)
 
-- [ ] Create the command that the integrator session executes
-- [ ] The command: acquire lease → drain queue → for each candidate:
+- [x] Create the command that the integrator session executes
+- [x] The command: acquire lease → drain queue → for each candidate:
       1. Merge `origin/<branch>` into clean `origin/main`
       2. If merge conflict: call `emit_deployment_failed()`, create follow-up
          todo (existing blocked_followup), mark queue item blocked, continue
@@ -124,8 +124,8 @@ existing schema module from event-platform-core)
       6. Push main
       7. Call `emit_deployment_completed()`
       8. `make restart`
-- [ ] When queue empty: release lease, write checkpoint, self-end
-- [ ] Use `IntegratorShadowRuntime` with `shadow_mode=False` and
+- [x] When queue empty: release lease, write checkpoint, self-end
+- [x] Use `IntegratorShadowRuntime` with `shadow_mode=False` and
       `CanonicalMainPusher` callback that performs the git merge/push
 
 ## Phase 4: POST_COMPLETION Replacement
