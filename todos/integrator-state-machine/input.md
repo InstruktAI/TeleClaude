@@ -88,6 +88,19 @@ Per candidate in the queue:
 - `integration_bridge.py` — event emission helpers (deployment.completed, deployment.failed)
 - `IntegratorCutoverControls` — authorization gate
 
+## CLI entry point
+
+`telec todo integrate <slug>` — the public interface for both agents and admins.
+
+- Mirrors `telec todo work <slug>`: call it, get a structured instruction block back,
+  act on it, call again.
+- The `/next-integrate` agent command calls it repeatedly in a loop.
+- Admins can call it manually to trigger integration for a specific slug, or to
+  inspect what state a candidate is in and what would happen next.
+- The trigger cartridge's `spawn_integrator_session` spawns an agent that calls this
+  command — it's the automatic path. `telec todo integrate` is the manual path to the
+  same state machine.
+
 ## Prior art
 
 - `teleclaude/core/next_machine/core.py` — the work state machine (`telec todo work`)
