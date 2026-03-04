@@ -38,13 +38,21 @@ class CompositeSprite:
     speed_weights: speed distribution as (speed, weight) pairs.
                    The engine periodically picks a new target speed
                    and eases toward it. Direction is random 50/50.
+    speed_fixed: optional (lo, hi) range — engine picks uniform(lo, hi)
+                 once at spawn and speed stays constant. Sign encodes
+                 direction. Mutually exclusive with non-default speed_weights.
     """
 
     layers: list[SpriteLayer]
     z_weights: Optional[list[tuple[int, int]]] = field(default_factory=list)
     y_weights: Optional[list[tuple[int, int]]] = field(default_factory=list)
     speed_weights: Optional[list[tuple[float, int]]] = field(default_factory=lambda: list(_DEFAULT_SPEED_WEIGHTS))
+    speed_fixed: Optional[tuple[float, float]] = None
     theme: Optional[str] = None  # "dark", "light", or None (both)
+
+    def __post_init__(self) -> None:
+        if self.speed_fixed is not None and self.speed_weights != list(_DEFAULT_SPEED_WEIGHTS):
+            raise ValueError("speed_fixed and non-default speed_weights are mutually exclusive")
 
     def tick(self, frame: int) -> CompositeSprite:
         """Static sprite -- returns self every frame."""
@@ -57,13 +65,22 @@ class AnimatedSprite:
 
     Each frame is either a list[str] (plain chars) or a CompositeSprite.
     tick(frame) returns the current renderable.
+
+    speed_fixed: optional (lo, hi) range — engine picks uniform(lo, hi)
+                 once at spawn and speed stays constant. Sign encodes
+                 direction. Mutually exclusive with non-default speed_weights.
     """
 
     frames: list[list[str] | CompositeSprite]
     z_weights: list[tuple[int, int]] = field(default_factory=list)
     y_weights: list[tuple[int, int]] = field(default_factory=list)
     speed_weights: list[tuple[float, int]] = field(default_factory=lambda: list(_DEFAULT_SPEED_WEIGHTS))
+    speed_fixed: Optional[tuple[float, float]] = None
     theme: Optional[str] = None  # "dark", "light", or None (both)
+
+    def __post_init__(self) -> None:
+        if self.speed_fixed is not None and self.speed_weights != list(_DEFAULT_SPEED_WEIGHTS):
+            raise ValueError("speed_fixed and non-default speed_weights are mutually exclusive")
 
     def tick(self, frame: int) -> list[str] | CompositeSprite:
         return self.frames[frame % len(self.frames)]
@@ -76,9 +93,11 @@ class SpriteGroup:
     Each entry: (sprite, weight, (min_count, max_count)).
       - weight: occurrence fraction for runtime replacement (must sum to 1.0).
       - count: (min, max) entities to spawn of this type.
+      - direction: None=random per entity, 1=right, -1=left for all entities.
     """
 
     entries: list[tuple[AnimatedSprite | CompositeSprite, float, tuple[int, int]]]
+    direction: Optional[int] = None
 
     def __post_init__(self) -> None:
         total = sum(w for _, w, _ in self.entries)

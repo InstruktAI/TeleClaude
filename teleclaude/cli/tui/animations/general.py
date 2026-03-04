@@ -43,6 +43,7 @@ class SkyEntity(TypedDict):
     y: int
     z: int
     next_speed_change: int
+    fixed_speed: bool
 
 
 if TYPE_CHECKING:
@@ -136,12 +137,13 @@ class GlobalSky(Animation):
         for group in get_sprite_groups():
             if group is cloud_group:
                 continue
+            group_dir = group.direction
             for sprite, _weight, (lo, hi) in group.entries:
                 if not self._theme_matches(sprite):
                     continue
                 n = self.rng.randint(lo, hi)
                 for _ in range(n):
-                    entities.append(self._spawn_sky_entity(sprite))
+                    entities.append(self._spawn_sky_entity(sprite, direction=group_dir))
         # Weather-specific clouds
         for sprite, _weight, (lo, hi) in cloud_group.entries:
             if not self._theme_matches(sprite):
@@ -176,12 +178,31 @@ class GlobalSky(Animation):
                 w = max(w, *(len(row) for row in r))
         return w
 
-    def _spawn_sky_entity(self, sprite: CompositeSprite | AnimatedSprite) -> SkyEntity:
+    def _spawn_sky_entity(
+        self, sprite: CompositeSprite | AnimatedSprite, direction: int | None = None
+    ) -> SkyEntity:
         """Spawn a sky entity from any CompositeSprite or AnimatedSprite."""
         z_level = self._pick_z_level(sprite.z_weights)
         lane = self._pick_z_level(sprite.y_weights) if sprite.y_weights else 1
         y_lo, y_hi = self._LANE_Y_RANGES.get(lane, (0, 3))
-        direction = self.rng.choice([-1, 1])
+        if direction is None:
+            direction = self.rng.choice([-1, 1])
+
+        if sprite.speed_fixed is not None:
+            lo, hi = sprite.speed_fixed
+            speed = self.rng.uniform(lo, hi) * direction
+            return {
+                "sprite": sprite,
+                "sprite_w": self._sprite_max_width(sprite),
+                "x": self.rng.randint(0, self.width),
+                "speed": speed,
+                "target_speed": speed,
+                "y": self.rng.randint(y_lo, y_hi),
+                "z": z_level,
+                "next_speed_change": 0,
+                "fixed_speed": True,
+            }
+
         initial_speed = self._pick_weighted_float(sprite.speed_weights)
         return {
             "sprite": sprite,
@@ -192,9 +213,10 @@ class GlobalSky(Animation):
             "y": self.rng.randint(y_lo, y_hi),
             "z": z_level,
             "next_speed_change": self.rng.randint(80, 300),
+            "fixed_speed": False,
         }
 
-    def force_spawn_ufo(self) -> None:
+    def force_spawn_entity(self) -> None:
         """Force a random sky entity to appear immediately (debug keybinding)."""
         from teleclaude.cli.tui.animations.sprites import get_sky_entities
 
@@ -282,17 +304,18 @@ class GlobalSky(Animation):
 
         # 5. Sky entities (both modes — drift horizontally at assigned Z-levels)
         for entity in self._sky_entities:
-            # Speed easing: periodically pick new target, interpolate toward it
-            next_change = int(entity.get("next_speed_change", 0))
-            if frame >= next_change:
-                sprite_ref = entity["sprite"]
-                direction = 1 if float(entity["speed"]) >= 0 else -1
-                new_target = self._pick_weighted_float(sprite_ref.speed_weights) * direction  # type: ignore[union-attr]
-                entity["target_speed"] = new_target
-                entity["next_speed_change"] = frame + self.rng.randint(80, 300)
-            current = float(entity["speed"])
-            target = float(entity.get("target_speed", current))
-            entity["speed"] = current + (target - current) * 0.05
+            if not entity.get("fixed_speed"):
+                # Speed easing: periodically pick new target, interpolate toward it
+                next_change = int(entity.get("next_speed_change", 0))
+                if frame >= next_change:
+                    sprite_ref = entity["sprite"]
+                    direction = 1 if float(entity["speed"]) >= 0 else -1
+                    new_target = self._pick_weighted_float(sprite_ref.speed_weights) * direction  # type: ignore[union-attr]
+                    entity["target_speed"] = new_target
+                    entity["next_speed_change"] = frame + self.rng.randint(80, 300)
+                current = float(entity["speed"])
+                target = float(entity.get("target_speed", current))
+                entity["speed"] = current + (target - current) * 0.05
 
             entity_z = int(entity["z"])
             entity_speed = float(entity["speed"])

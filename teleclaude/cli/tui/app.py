@@ -843,7 +843,7 @@ class TelecApp(App[str | None]):
 
         slot = self._animation_engine._targets.get("header")
         if slot and isinstance(slot.animation, GlobalSky):
-            slot.animation.force_spawn_ufo()
+            slot.animation.force_spawn_entity()
 
     def action_toggle_tts(self) -> None:
         """v: toggle TTS on/off.
