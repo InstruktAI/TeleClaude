@@ -163,13 +163,13 @@ existing schema module from event-platform-core)
 
 **File(s):** `teleclaude/core/integration/service.py`, `teleclaude/core/integration/event_store.py`
 
-- [ ] The `IntegrationEventService` no longer reads from or writes to the
+- [x] The `IntegrationEventService` no longer reads from or writes to the
       file-based event log
-- [ ] The readiness projection is fed from the integration trigger cartridge
+- [x] The readiness projection is fed from the integration trigger cartridge
       (Task 3.1), not from file replay
-- [ ] The `IntegrationEventStore` class and its file I/O can be removed or
+- [x] The `IntegrationEventStore` class and its file I/O can be removed or
       stubbed — the Redis Stream (via pipeline runtime) is the event log
-- [ ] On daemon startup, replay integration-relevant events from Redis Stream
+- [x] On daemon startup, replay integration-relevant events from Redis Stream
       history to rebuild the readiness projection state
 
 ### Task 5.3: Remove bidirectional worktree sync

@@ -1,12 +1,15 @@
-"""Integration event ingestion service."""
+"""Integration event ingestion service.
+
+With the integrator-wiring delivery, the readiness projection is fed from
+the integration trigger cartridge (pipeline-based) rather than from a
+file-based event store replay.  The file store is no longer used.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Literal, Mapping
 
-from teleclaude.core.integration.event_store import IntegrationEventStore, IntegrationEventStoreError
 from teleclaude.core.integration.events import (
     IntegrationEvent,
     IntegrationEventType,
@@ -37,27 +40,26 @@ class IngestionResult:
 
 
 class IntegrationEventService:
-    """Ingest canonical events and keep readiness projection synchronized."""
+    """Ingest canonical events and keep readiness projection synchronized.
 
-    def __init__(self, *, store: IntegrationEventStore, projection: ReadinessProjection) -> None:
-        self._store = store
+    In pipeline mode, events arrive via the integration trigger cartridge
+    and are applied directly to the projection.  No file-based store is used.
+    """
+
+    def __init__(self, *, projection: ReadinessProjection) -> None:
         self._projection = projection
         self._last_update = ProjectionUpdate(transitioned_to_ready=(), transitioned_to_superseded=(), diagnostics=())
-        # Keep projection consistent with durable history from the first read.
-        self.replay()
 
     @classmethod
-    def with_file_store(
+    def create(
         cls,
         *,
-        event_log_path: Path,
         reachability_checker: ReachabilityChecker,
         integrated_checker: IntegratedChecker,
         remote: str = "origin",
     ) -> IntegrationEventService:
-        """Build service with file-backed store and fresh projection."""
+        """Build service with a fresh projection (pipeline-fed, no file store)."""
         return cls(
-            store=IntegrationEventStore(event_log_path=event_log_path),
             projection=ReadinessProjection(
                 reachability_checker=reachability_checker,
                 integrated_checker=integrated_checker,
@@ -65,9 +67,9 @@ class IntegrationEventService:
             ),
         )
 
-    def replay(self) -> ProjectionUpdate:
-        """Rebuild projection from persisted append-only history."""
-        self._last_update = self._projection.replay(self._store.replay())
+    def replay(self, events: tuple[IntegrationEvent, ...] = ()) -> ProjectionUpdate:
+        """Rebuild projection from a sequence of events (e.g. Redis Stream history)."""
+        self._last_update = self._projection.replay(events)
         return self._last_update
 
     def ingest_raw(
@@ -89,7 +91,7 @@ class IntegrationEventService:
     def ingest(
         self, event_type: IntegrationEventType, payload: Mapping[str, object], *, idempotency_key: str | None = None
     ) -> IngestionResult:
-        """Validate, persist, and project one canonical event."""
+        """Validate and project one canonical event (no file persistence)."""
         try:
             event = build_integration_event(event_type, payload, idempotency_key=idempotency_key)
         except IntegrationEventValidationError as exc:
@@ -97,26 +99,6 @@ class IntegrationEventService:
                 status="REJECTED",
                 event=None,
                 diagnostics=exc.diagnostics,
-                transitioned_to_ready=(),
-                transitioned_to_superseded=(),
-            )
-
-        try:
-            append_result = self._store.append(event)
-        except IntegrationEventStoreError as exc:
-            return IngestionResult(
-                status="REJECTED",
-                event=event,
-                diagnostics=(str(exc),),
-                transitioned_to_ready=(),
-                transitioned_to_superseded=(),
-            )
-
-        if append_result.status == "duplicate":
-            return IngestionResult(
-                status="DUPLICATE",
-                event=event,
-                diagnostics=(),
                 transitioned_to_ready=(),
                 transitioned_to_superseded=(),
             )
