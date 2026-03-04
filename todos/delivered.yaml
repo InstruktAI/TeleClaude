@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: default-agent-resolution
+  date: '2026-03-05'
+  commit: 806fd11c9c215477328a1793b368c64d63dd840e
 - slug: integrator-wiring
   date: '2026-03-04'
   title: 'Wire integration module into production: event emission, integrator trigger,

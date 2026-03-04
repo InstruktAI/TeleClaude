@@ -78,7 +78,6 @@
 - slug: a2ui-showcase-component
 - slug: web-frontend-test-bugs
 - slug: youtube-scrape-channels-job
-- slug: default-agent-resolution
 - slug: agent-session-auth
   description: Agent session identity and credential lifecycle — token issuance, ledger,
     two principal types (human-delegated, system/job), revocation on session close
