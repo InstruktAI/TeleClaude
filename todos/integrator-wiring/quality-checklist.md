@@ -22,13 +22,13 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior — all 8 FRs verified against code
+- [x] Deferrals justified and not hiding required scope — no deferrals.md exists, none needed
+- [x] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs) — 9 blocks verified
+- [x] Findings written in `review-findings.md` — 4 Important, 2 Suggestions, 0 Critical
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — APPROVE
+- [x] Critical issues resolved or explicitly blocked — no Critical findings
+- [x] Test coverage and regression risk assessed — one gap flagged (spawn function untested)
 
 ## Finalize Gates (Finalizer)
 
