@@ -1,49 +1,97 @@
 # DOR Report: telegram-callback-payload-migration
 
-## Draft Assessment
+## Gate Verdict: PASS (score 9/10)
 
-### Gate 1: Intent & Success
-**Pass.** Problem statement is explicit: migrate hardcoded per-agent callback payloads to
-`AgentName`-derived canonical format. Success criteria are concrete and testable (enum
-changes, legacy parsing, dynamic keyboard, test coverage).
+Assessed by gate worker on 2026-03-05. All eight DOR gates satisfied.
 
-### Gate 2: Scope & Size
-**Pass.** Atomic change touching two files (`callback_handlers.py`, `telegram_adapter.py`)
-plus test file. Fits a single session. No cross-cutting concerns beyond the Telegram adapter.
+---
 
-### Gate 3: Verification
-**Pass.** Verification through unit tests (legacy parsing, new parsing, dynamic keyboard),
-plus `make test` and `make lint`. Edge cases identified: unknown agent in payload, disabled
-agents in keyboard, 64-byte callback_data limit.
+### Gate 1: Intent & Success — Pass
 
-### Gate 4: Approach Known
-**Pass.** Pattern is straightforward: enum reduction, fallback map for legacy, loop over
-`get_enabled_agents()` for keyboard. Similar patterns exist in the codebase (e.g.,
-`AgentName.from_str()` for validation, `get_enabled_agents()` already used elsewhere).
+Problem statement is explicit: migrate hardcoded per-agent callback payloads to
+`AgentName`-derived canonical format. Success criteria are concrete and testable —
+enum changes, legacy parsing, dynamic keyboard, test coverage all have clear
+observable outcomes.
 
-### Gate 5: Research Complete
-**Automatically satisfied.** No third-party dependencies introduced or modified.
+### Gate 2: Scope & Size — Pass
 
-### Gate 6: Dependencies & Preconditions
-**Pass.** Depends on `default-agent-resolution` (delivered 2026-03-05). `AgentName` enum
-and `get_enabled_agents()` are stable. No config changes needed. No new env vars.
+Atomic change touching two primary files (`callback_handlers.py`, `telegram_adapter.py`)
+plus test file. No cross-cutting concerns beyond the Telegram adapter. Fits a single
+AI session without context exhaustion.
 
-### Gate 7: Integration Safety
-**Pass.** Change is incremental. Legacy payloads remain functional. No breaking change to
-external APIs or message formats. Rollback is straightforward (revert to per-agent enums).
+### Gate 3: Verification — Pass
 
-### Gate 8: Tooling Impact
-**Automatically satisfied.** No tooling or scaffolding changes.
+Unit tests defined for: new format parsing, legacy format parsing, dynamic keyboard
+with full and partial agent sets, graceful rejection of unknown agents, correct
+`auto_command` generation. `make test` and `make lint` as verification commands.
+Edge cases identified: unknown agent, disabled agents, 64-byte callback limit.
 
-## Assumptions
+### Gate 4: Approach Known — Pass
 
-- Legacy buttons in Telegram chats will eventually expire (Telegram does not store inline
-  keyboards indefinitely). The legacy map is a bridge, not permanent.
-- `get_enabled_agents()` returns agents in stable order (verified: it iterates `KNOWN_AGENT_IDS`
-  which is a tuple from `AgentName.choices()`).
-- The `auto_command` format `"agent {name}"` and `"agent_resume {name}"` is consumed by
-  `CommandMapper.map_telegram_input` and does not need to change for this migration.
+Pattern is straightforward: enum reduction, static fallback map for legacy, loop over
+`get_enabled_agents()` for keyboard. Existing patterns confirmed in codebase:
+- `AgentName.from_str()` for validation (agents.py:19)
+- `get_enabled_agents()` returns stable-order tuple from `KNOWN_AGENT_IDS` (agents.py:46)
+- `_build_project_keyboard(prefix)` generates `f"{prefix}:{idx}"` buttons (confirmed by test)
+- `auto_command` format `"agent {name}"` / `"agent_resume {name}"` passed through
+  `CommandMapper.map_telegram_input` metadata (command_mapper.py:118)
 
-## Open Questions
+### Gate 5: Research Complete — Automatically Satisfied
+
+No third-party dependencies introduced or modified.
+
+### Gate 6: Dependencies & Preconditions — Pass
+
+Depends on `default-agent-resolution` (delivered 2026-03-05). `AgentName` enum and
+`get_enabled_agents()` are stable. No config changes, no new env vars.
+
+### Gate 7: Integration Safety — Pass
+
+Incremental change. Legacy payloads remain functional via `LEGACY_ACTION_MAP`. No
+breaking change to external APIs or message formats. Rollback is straightforward
+(revert to per-agent enums).
+
+### Gate 8: Tooling Impact — Automatically Satisfied
+
+No tooling or scaffolding changes.
+
+---
+
+## Plan-to-Requirement Fidelity
+
+Every implementation task traces to a requirement:
+
+| Requirement | Plan Task(s) |
+|---|---|
+| Replace per-agent `CallbackAction` enum values | Task 1.1 |
+| Replace hardcoded `event_map` and `mode_map` | Tasks 1.4, 1.5 |
+| Build heartbeat keyboard dynamically | Task 1.6 |
+| Parse legacy callback payloads | Tasks 1.2, 1.3 |
+| Add tests for both formats | Task 2.1 |
+
+No contradictions found. Plan prescribes `AgentName`-derived lookups exactly as
+requirements specify. `auto_command` format in plan matches existing codebase
+format confirmed in `command_mapper.py`.
+
+## Verified Assumptions
+
+- `get_enabled_agents()` returns agents in stable order — confirmed: iterates
+  `KNOWN_AGENT_IDS` which is a tuple from `AgentName.choices()`, and Python enums
+  preserve definition order.
+- `auto_command` format `"agent {name}"` consumed by `CommandMapper.map_telegram_input`
+  — confirmed at `command_mapper.py:118`.
+- New payload format stays within Telegram's 64-byte limit — worst case
+  `arsel:gemini:very_long_bot_username` is well under 64 bytes.
+- `_build_project_keyboard(prefix)` generates `f"{prefix}:{idx}"` — confirmed by
+  test assertion in `test_telegram_menus.py:108`.
+
+## Builder Notes
+
+- **Keyboard ordering change:** Current hardcoded order is Claude→Gemini→Codex.
+  `get_enabled_agents()` follows enum definition order: Claude→Codex→Gemini. The
+  dynamic keyboard will swap the last two rows. This is acceptable and a natural
+  consequence of data-driven generation, but worth being aware of.
+
+## Blockers
 
 None. All design decisions are grounded in codebase evidence.
