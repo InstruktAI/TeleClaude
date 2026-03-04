@@ -428,9 +428,9 @@ async def test_notification_lifecycle_deployment_events() -> None:
     )
     await projector.process(completed_event, context)
 
-    # Check notification was resolved
-    notifications_after = await db.list_notifications(domain="software-development", human_status="resolved")
-    resolved = [n for n in notifications_after if "feat-x" in n.get("payload", "")]
+    # Check notification was resolved (resolve_notification sets agent_status)
+    notifications_after = await db.list_notifications(domain="software-development", agent_status="resolved")
+    resolved = [n for n in notifications_after if "feat-x" in str(n.get("payload", ""))]
     assert len(resolved) >= 1
 
     await db.close()

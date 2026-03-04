@@ -24,8 +24,6 @@ from teleclaude.core.next_machine import (
     next_prepare,
     read_phase_state,
     sync_main_to_worktree,
-    sync_slug_todo_from_main_to_worktree,
-    sync_slug_todo_from_worktree_to_main,
     write_phase_state,
 )
 
@@ -328,123 +326,6 @@ def test_has_git_stash_entries_true_when_stash_not_empty():
         assert has_git_stash_entries("/tmp/test") is True
 
 
-def test_sync_slug_todo_from_main_to_worktree_copies_slug_files():
-    """Slug todo artifacts should be available inside worktree before build dispatch."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        slug = "test-slug"
-        main_todo = Path(tmpdir) / "todos" / slug
-        worktree_root = Path(tmpdir) / "trees" / slug
-        main_todo.mkdir(parents=True, exist_ok=True)
-        worktree_root.mkdir(parents=True, exist_ok=True)
-
-        (main_todo / "requirements.md").write_text("# req\n", encoding="utf-8")
-        (main_todo / "implementation-plan.md").write_text("# plan\n", encoding="utf-8")
-        (main_todo / "state.yaml").write_text("{}", encoding="utf-8")
-
-        sync_slug_todo_from_main_to_worktree(tmpdir, slug)
-
-        assert (worktree_root / "todos" / slug / "requirements.md").exists()
-        assert (worktree_root / "todos" / slug / "implementation-plan.md").exists()
-        assert (worktree_root / "todos" / slug / "state.yaml").exists()
-
-
-def test_sync_slug_todo_from_main_to_worktree_includes_review_findings():
-    """Review findings in main should be mirrored into worktree when present."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        slug = "test-slug"
-        main_todo = Path(tmpdir) / "todos" / slug
-        worktree_root = Path(tmpdir) / "trees" / slug
-        main_todo.mkdir(parents=True, exist_ok=True)
-        worktree_root.mkdir(parents=True, exist_ok=True)
-
-        (main_todo / "review-findings.md").write_text("# Findings\n- R1-F1\n", encoding="utf-8")
-        sync_slug_todo_from_main_to_worktree(tmpdir, slug)
-
-        mirrored = worktree_root / "todos" / slug / "review-findings.md"
-        assert mirrored.exists()
-        assert "R1-F1" in mirrored.read_text(encoding="utf-8")
-
-
-def test_sync_slug_todo_from_worktree_to_main_includes_review_findings():
-    """Review findings created in worktree should sync back to main."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        slug = "test-slug"
-        main_root = Path(tmpdir)
-        worktree_todo = main_root / "trees" / slug / "todos" / slug
-        worktree_todo.mkdir(parents=True, exist_ok=True)
-
-        (worktree_todo / "review-findings.md").write_text("# Findings\n- [x] APPROVE\n", encoding="utf-8")
-        sync_slug_todo_from_worktree_to_main(tmpdir, slug)
-
-        main_review = main_root / "todos" / slug / "review-findings.md"
-        assert main_review.exists()
-        assert "APPROVE" in main_review.read_text(encoding="utf-8")
-
-
-def test_sync_slug_todo_from_main_to_worktree_preserves_worktree_state():
-    """Worktree owns build/review progress — main sync must not clobber existing state.yaml."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        slug = "test-slug"
-        main_todo = Path(tmpdir) / "todos" / slug
-        worktree_todo = Path(tmpdir) / "trees" / slug / "todos" / slug
-        main_todo.mkdir(parents=True, exist_ok=True)
-        worktree_todo.mkdir(parents=True, exist_ok=True)
-
-        (main_todo / "state.yaml").write_text('{"build":"pending"}', encoding="utf-8")
-        (worktree_todo / "state.yaml").write_text('{"build":"complete"}', encoding="utf-8")
-
-        sync_slug_todo_from_main_to_worktree(tmpdir, slug)
-
-        final_state = (worktree_todo / "state.yaml").read_text(encoding="utf-8")
-        assert '"build":"complete"' in final_state
-
-
-def test_sync_slug_todo_from_main_to_worktree_seeds_state_when_missing():
-    """state.yaml should be copied from main when worktree has no state yet."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        slug = "test-slug"
-        main_todo = Path(tmpdir) / "todos" / slug
-        worktree_root = Path(tmpdir) / "trees" / slug
-        main_todo.mkdir(parents=True, exist_ok=True)
-        worktree_root.mkdir(parents=True, exist_ok=True)
-
-        (main_todo / "state.yaml").write_text('{"build":"pending"}', encoding="utf-8")
-
-        sync_slug_todo_from_main_to_worktree(tmpdir, slug)
-
-        worktree_state = worktree_root / "todos" / slug / "state.yaml"
-        assert worktree_state.exists()
-        assert '"build":"pending"' in worktree_state.read_text(encoding="utf-8")
-
-
-def test_sync_slug_todo_from_main_to_worktree_overwrites_planning_files():
-    """Sync is seed-only: existing worktree artifacts are never overwritten from main."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        slug = "test-slug"
-        main_todo = Path(tmpdir) / "todos" / slug
-        worktree_todo = Path(tmpdir) / "trees" / slug / "todos" / slug
-        main_todo.mkdir(parents=True, exist_ok=True)
-        worktree_todo.mkdir(parents=True, exist_ok=True)
-
-        (main_todo / "requirements.md").write_text("# Updated requirements\n", encoding="utf-8")
-        (worktree_todo / "requirements.md").write_text("# Stale requirements\n", encoding="utf-8")
-
-        # Seed-only: destination already exists, so nothing should be copied.
-        copied = sync_slug_todo_from_main_to_worktree(tmpdir, slug)
-        assert copied == 0
-
-        final = (worktree_todo / "requirements.md").read_text(encoding="utf-8")
-        assert "Stale" in final  # worktree artifact preserved
-
-        # But a missing artifact IS seeded from main.
-        (worktree_todo / "implementation-plan.md").unlink(missing_ok=True)
-        (main_todo / "implementation-plan.md").write_text("# Plan\n", encoding="utf-8")
-        copied2 = sync_slug_todo_from_main_to_worktree(tmpdir, slug)
-        assert copied2 == 1
-        seeded = (worktree_todo / "implementation-plan.md").read_text(encoding="utf-8")
-        assert "Plan" in seeded
-
-
 def test_sync_main_to_worktree_skips_when_inputs_unchanged():
     """Main planning sync should skip file copy when source and destination match."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -478,30 +359,6 @@ def test_sync_main_to_worktree_copies_when_inputs_changed():
 
         assert copied == 1
         assert "changed" in (worktree_root / "todos" / "roadmap.yaml").read_text(encoding="utf-8")
-
-
-def test_sync_slug_todo_from_main_to_worktree_skips_when_inputs_unchanged():
-    """Slug artifact sync should report zero copied files when everything is unchanged."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        slug = "test-slug"
-        main_todo = Path(tmpdir) / "todos" / slug
-        worktree_todo = Path(tmpdir) / "trees" / slug / "todos" / slug
-        main_todo.mkdir(parents=True, exist_ok=True)
-        worktree_todo.mkdir(parents=True, exist_ok=True)
-
-        for name, content in (
-            ("requirements.md", "# Requirements\n"),
-            ("implementation-plan.md", "# Plan\n"),
-            ("quality-checklist.md", "# Checklist\n"),
-        ):
-            (main_todo / name).write_text(content, encoding="utf-8")
-            (worktree_todo / name).write_text(content, encoding="utf-8")
-        (main_todo / "state.yaml").write_text("build: pending\n", encoding="utf-8")
-        (worktree_todo / "state.yaml").write_text("build: complete\n", encoding="utf-8")
-
-        copied = sync_slug_todo_from_main_to_worktree(tmpdir, slug)
-
-        assert copied == 0
 
 
 def test_mark_phase_review_approved_clears_unresolved_findings():
@@ -984,25 +841,19 @@ async def test_next_work_single_flight_is_scoped_to_repo_and_slug():
     lock_a_second.release()
 
 
-def test_post_completion_finalize_includes_make_restart():
-    """POST_COMPLETION for next-finalize includes make restart step."""
-    assert "make restart" in POST_COMPLETION["next-finalize"]
-
-
-def test_post_completion_finalize_requires_ready_and_apply():
-    """Finalize post-completion must require FINALIZE_READY and run canonical apply."""
+def test_post_completion_finalize_hands_off_to_integrator():
+    """POST_COMPLETION for next-finalize emits deployment.started and hands off to integrator."""
     instructions = POST_COMPLETION["next-finalize"]
     assert "FINALIZE_READY: {args}" in instructions
     assert "todos/.finalize-lock" in instructions
     assert "TELECLAUDE_SESSION_ID" in instructions
     assert "<session_id>" in instructions
-    assert "FINALIZE APPLY SAFETY RE-CHECK" in instructions
-    assert "FINALIZE_PRECONDITION_DIRTY_CANONICAL_MAIN" in instructions
-    assert "FINALIZE_PRECONDITION_MAIN_AHEAD" in instructions
-    assert "FINALIZE_PRECONDITION_GIT_STATE_UNKNOWN" in instructions
-    assert 'git -C "$MAIN_REPO" merge --squash {args}' in instructions
-    assert "telec roadmap deliver {args}" in instructions
-    assert 'git -C "$MAIN_REPO" push origin main' in instructions
+    assert "deployment.started" in instructions
+    assert "Integrator will process" in instructions
+    # Old merge/push flow is gone
+    assert "make restart" not in instructions
+    assert "FINALIZE APPLY SAFETY RE-CHECK" not in instructions
+    assert "git push origin main" not in instructions
 
 
 def test_format_build_gate_failure_structure():

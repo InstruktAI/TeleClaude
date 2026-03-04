@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import TypedDict
 
 from teleclaude_events.envelope import EventLevel, EventVisibility
 from teleclaude_events.producer import emit_event
@@ -137,6 +137,11 @@ async def emit_deployment_failed(
 
 
 # ---------------------------------------------------------------------------
+class _SpawnResult(TypedDict, total=False):
+    status: str
+    slug: str
+
+
 # Integrator session spawn/wake
 # ---------------------------------------------------------------------------
 
@@ -145,7 +150,7 @@ async def spawn_integrator_session(
     slug: str,
     branch: str,
     sha: str,
-) -> dict[str, Any] | None:
+) -> _SpawnResult | None:
     """Spawn or wake the singleton integrator session.
 
     Checks if an integrator session is already running.  If not, spawns one
@@ -158,20 +163,15 @@ async def spawn_integrator_session(
     import asyncio
 
     try:
-        result = await asyncio.to_thread(
-            _spawn_integrator_sync, slug, branch, sha
-        )
+        result = await asyncio.to_thread(_spawn_integrator_sync, slug, branch, sha)
         return result
     except Exception:
         logger.exception("Failed to spawn integrator session for %s", slug)
         return None
 
 
-def _spawn_integrator_sync(
-    slug: str, branch: str, sha: str
-) -> dict[str, Any] | None:
+def _spawn_integrator_sync(slug: str, branch: str, sha: str) -> _SpawnResult | None:
     """Synchronous helper — check for running integrator and spawn if needed."""
-    import json
     import subprocess
 
     # Check if an integrator session is already running
@@ -183,9 +183,7 @@ def _spawn_integrator_sync(
             timeout=10,
         )
         if list_result.returncode == 0 and "integrator" in list_result.stdout.lower():
-            logger.info(
-                "Integrator session already running; candidate %s queued for drain", slug
-            )
+            logger.info("Integrator session already running; candidate %s queued for drain", slug)
             return None
     except (subprocess.TimeoutExpired, FileNotFoundError):
         logger.warning("Could not check for running integrator sessions")
@@ -215,14 +213,9 @@ def _spawn_integrator_sync(
         )
         if start_result.returncode == 0:
             logger.info("Spawned integrator session for %s", slug)
-            try:
-                return json.loads(start_result.stdout)
-            except json.JSONDecodeError:
-                return {"status": "spawned", "slug": slug}
+            return _SpawnResult(status="spawned", slug=slug)
         else:
-            logger.error(
-                "Failed to spawn integrator: %s", start_result.stderr or start_result.stdout
-            )
+            logger.error("Failed to spawn integrator: %s", start_result.stderr or start_result.stdout)
             return None
     except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
         logger.error("Integrator spawn failed: %s", exc)

@@ -30,8 +30,8 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config as app_config
 from teleclaude.core.agents import AgentName
-from teleclaude.core.integration_bridge import emit_deployment_started, emit_review_approved
 from teleclaude.core.db import Db
+from teleclaude.core.integration_bridge import emit_review_approved
 
 logger = get_logger(__name__)
 
@@ -2959,7 +2959,8 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             pre_dispatch = f"telec todo mark-phase {resolved_slug} --phase build --status started --cwd <project-root>"
 
             # Bugs use next-bugs-fix instead of next-build
-            is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
+            # Check main repo's todos/ (bug.md lives there, not synced to worktree)
+            is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
             if is_bug:
                 _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_bugs_fix")
                 return format_tool_call(
@@ -3102,7 +3103,8 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         logger.warning("Failed to emit review.approved event for %s", resolved_slug, exc_info=True)
 
     # Bugs skip delivered.yaml bookkeeping and are removed from todos entirely
-    is_bug = await asyncio.to_thread(is_bug_todo, worktree_cwd, resolved_slug)
+    # Check main repo's todos/ (bug.md lives there, not synced to worktree)
+    is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
     note = "BUG FIX: Skip delivered.yaml bookkeeping. Delete todo directory after merge." if is_bug else ""
     _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_finalize")
     return format_tool_call(

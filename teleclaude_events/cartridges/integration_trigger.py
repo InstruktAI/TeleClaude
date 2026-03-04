@@ -47,9 +47,7 @@ class IntegrationTriggerCartridge:
     ) -> None:
         self._spawn_callback = spawn_callback
 
-    async def process(
-        self, event: EventEnvelope, context: PipelineContext
-    ) -> EventEnvelope | None:
+    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         if event.event not in INTEGRATION_EVENT_TYPES:
             return event
 
@@ -78,8 +76,6 @@ class IntegrationTriggerCartridge:
                 if asyncio.iscoroutine(result):
                     await result
             except Exception:
-                logger.exception(
-                    "Integration trigger spawn callback failed for %s", slug
-                )
+                logger.exception("Integration trigger spawn callback failed for %s", slug)
 
         return event
