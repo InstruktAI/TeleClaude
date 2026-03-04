@@ -153,11 +153,11 @@ existing schema module from event-platform-core)
 
 **File(s):** environment configuration, agent session setup
 
-- [ ] Set `TELECLAUDE_INTEGRATOR_CUTOVER_ENABLED=1` in daemon and agent
+- [x] Set `TELECLAUDE_INTEGRATOR_CUTOVER_ENABLED=1` in daemon and agent
       session environments
-- [ ] Set `TELECLAUDE_INTEGRATOR_PARITY_EVIDENCE=accepted` in integrator
+- [x] Set `TELECLAUDE_INTEGRATOR_PARITY_EVIDENCE=accepted` in integrator
       session environment
-- [ ] Verify shell wrappers (git, gh, pre-push) enforce the policy
+- [x] Verify shell wrappers (git, gh, pre-push) enforce the policy
 
 ### Task 5.2: Replace file-based event store with pipeline consumption
 

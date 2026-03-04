@@ -190,8 +190,10 @@ def _spawn_integrator_sync(
     except (subprocess.TimeoutExpired, FileNotFoundError):
         logger.warning("Could not check for running integrator sessions")
 
-    # Spawn a new integrator session
+    # Spawn a new integrator session with parity evidence for main push authorization
     project_path = os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
+    spawn_env = os.environ.copy()
+    spawn_env["TELECLAUDE_INTEGRATOR_PARITY_EVIDENCE"] = "accepted"
     try:
         start_result = subprocess.run(
             [
@@ -206,6 +208,7 @@ def _spawn_integrator_sync(
                 f"integrator: {slug}",
                 "--detach",
             ],
+            env=spawn_env,
             capture_output=True,
             text=True,
             timeout=30,
