@@ -1,94 +1,152 @@
 # DOR Report: integrator-state-machine
 
-## Assessment
+## Gate Verdict: PASS (score 8/10)
 
-### 1. Intent & Success
+All eight DOR gates satisfied. Two minor clarifications noted for builder awareness;
+neither blocks readiness.
 
-- Problem statement clear: replace prose-based `/next-integrate` command with deterministic
-  state machine that returns structured instruction blocks at agent decision points
-- Outcome explicit: `telec todo integrate` called repeatedly advances through the full
-  integration lifecycle
-- 12 concrete, testable success criteria in requirements.md
+---
 
-### 2. Scope & Size
+## Gate Assessment
 
-- Core state machine + CLI + API + command update + lifecycle events + tests
-- Follows established `next_work()` pattern — wiring, not greenfield
-- All primitives delivered and tested (queue, lease, readiness, clearance, follow-up)
-- **Note:** If context exhaustion is a risk during build, Phase 2 (lifecycle events)
-  could be deferred to a follow-up todo without blocking the core functionality
+### 1. Intent & Success — PASS
 
-### 3. Verification
+- Problem statement explicit: replace prose `/next-integrate` with a deterministic
+  Python state machine returning structured instruction blocks at decision points.
+- Outcome concrete: `telec todo integrate` called repeatedly advances through the
+  full integration lifecycle for one candidate, then the next.
+- 12 testable success criteria in requirements.md — each maps to observable behavior.
+- The actor model in input.md clearly separates script turns (deterministic) from
+  agent turns (intelligent). Requirements and plan faithfully preserve this separation.
 
-- Unit tests for checkpoint, phase handlers, idempotency, crash recovery
-- Integration test for full candidate lifecycle
-- CLI and API smoke tests in demo.md
-- `make test` and `make lint` as final gates
+### 2. Scope & Size — PASS
 
-### 4. Approach Known
+- Six implementation phases; bulk is Phase 1 (state machine core) and Phase 5 (tests).
+- Not greenfield — wires existing, tested primitives through a new coordination layer.
+- The `next_work()` function at `core.py:2656` is the direct template; the builder has
+  a concrete pattern to follow.
+- Contingency: Phase 2 (lifecycle events) can be deferred if context becomes tight.
+  This is explicitly noted in the draft and is a sound escape hatch.
 
-- `next_work()` in `core.py` is the direct template — same async function signature,
-  same plain-text instruction block output, same `format_tool_call()` formatting
-- Checkpoint follows `IntegrationQueue` atomic write pattern
-- Git operations (fetch, merge --squash, push) are well-understood
-- Decision points modeled on the actor model in input.md
+### 3. Verification — PASS
 
-### 5. Research Complete
+- Unit tests specified: checkpoint read/write/recovery, each phase handler, idempotency,
+  crash recovery.
+- Integration test: full candidate lifecycle (merge → commit → push → cleanup).
+- Scenario coverage: queue drain, blocked candidate, clearance wait, push rejection.
+- Demo.md provides CLI and API smoke tests.
+- Final gates: `make test`, `make lint`.
 
-- No third-party dependencies introduced
-- All primitives are internal, delivered, and tested
-- Prior art (`next_work()`) thoroughly analyzed
-- Existing `/next-integrate` command spec documented current prose approach
-- Integration bridge event helpers mapped to new lifecycle events
+### 4. Approach Known — PASS
 
-### 6. Dependencies & Preconditions
+- `next_work()` at `core.py:2656` — async function returning plain text instruction
+  blocks via `format_tool_call()` at `core.py:273`. Direct template.
+- Atomic checkpoint: `IntegrationQueue` at `queue.py:77` uses the same temp file +
+  `os.replace` pattern specified for the checkpoint.
+- Git operations (fetch, merge --squash, push) are standard and well-understood.
+- All phase handlers follow a consistent pattern: execute deterministic block →
+  update checkpoint → return instruction block or continue.
 
-- All prerequisite primitives delivered: `IntegrationQueue`, `IntegrationLeaseStore`,
-  `ReadinessProjection`, `MainBranchClearanceProbe`, `BlockedFollowUpStore`,
-  `IntegratorCutoverControls`, `integration_bridge.py`
-- No external system dependencies
-- No new configuration required (checkpoint path follows existing convention:
-  `~/.teleclaude/integration/checkpoint.json`)
+### 5. Research Complete — PASS
 
-### 7. Integration Safety
+- No third-party dependencies introduced.
+- All eight primitives confirmed in codebase:
+  - `IntegrationQueue` — `queue.py:77`
+  - `IntegrationLeaseStore` — `lease.py:67`
+  - `ReadinessProjection` — `readiness_projection.py:62`
+  - `MainBranchClearanceProbe` — `runtime.py:131`
+  - `BlockedFollowUpStore` — `blocked_followup.py:57`
+  - `IntegratorCutoverControls` — `authorization.py:14`
+  - `IntegratorShadowRuntime` — `runtime.py:205`
+  - `integration_bridge.py` — event emission helpers (lines 51, 80, 107)
+- Existing `/next-integrate` command spec at `agents/commands/next-integrate.md`
+  documents current prose approach.
+- `deliver_to_delivered()` at `core.py:1632` — Python-level delivery function available.
 
-- Additive: new module (`state_machine.py`), new route, new CLI command
-- `/next-integrate` command updated but same integration flow (state machine replaces
-  prose, not behavior)
-- No changes to existing primitives
-- Rollback: revert command spec to prose version, remove new module
+### 6. Dependencies & Preconditions — PASS
 
-### 8. Tooling Impact
+- All prerequisite primitives delivered and tested.
+- No external system dependencies.
+- No new configuration required — checkpoint path follows existing convention.
+- Template code (`todo_work` route at `todo_routes.py:65`, `handle_todo_work` at
+  `tool_commands.py:771`) confirmed as direct wiring models.
+- No new config keys needed; no wizard exposure required.
 
-- New CLI command `telec todo integrate` added to CLI surface in `telec.py`
-- No scaffolding procedure changes needed
+### 7. Integration Safety — PASS
 
-## Assumptions
+- Additive: new module (`state_machine.py`), new API route, new CLI command.
+- The `/next-integrate` command is updated (same flow, state machine replaces prose).
+- No changes to existing primitives — reuse only.
+- Rollback: revert command spec, remove new module. Clean and low-risk.
+
+### 8. Tooling Impact — PASS
+
+- New CLI command `telec todo integrate [<slug>]` added to `CLI_SURFACE` in `telec.py`.
+- No scaffolding procedure changes needed.
+- Gate automatically satisfied.
+
+---
+
+## Plan-to-Requirement Fidelity
+
+Every implementation plan task traces to a requirement. Key fidelity checks:
+
+- Requirements: "follow `next_work()` pattern" → Plan: Tasks 1.2 explicitly mirrors
+  the async function signature and `format_tool_call()` output.
+- Requirements: "checkpoint must be atomic" → Plan: Task 1.1 specifies temp file +
+  `os.replace` matching `IntegrationQueue` pattern.
+- Requirements: "state machine must not perform git operations requiring agent
+  intelligence" → Plan: Task 1.3 returns decision points at merge composition,
+  conflict resolution, and push rejection — never attempts these itself.
+- Requirements: "reuse existing primitives" → Plan: all phase handlers reference
+  specific primitives by class name.
+
+No plan task contradicts a requirement.
+
+---
+
+## Builder Notes (non-blocking)
+
+1. **Cutover controls placement.** `IntegratorCutoverControls` (`authorization.py:14`)
+   is listed as a reuse primitive in requirements but not explicitly placed in the state
+   machine flow. The builder should wire `resolve_cutover_mode()` at the entry point
+   (before lease acquisition in Task 1.2). The existing `/next-integrate` command
+   already uses it via `IntegratorShadowRuntime` with `shadow_mode=False`.
+
+2. **Python-level APIs for delivery bookkeeping.** Task 1.3 (DELIVERY_BOOKKEEPING)
+   references `telec roadmap deliver {slug}` as a CLI call. The state machine is Python;
+   use `deliver_to_delivered()` at `core.py:1632` directly. Similarly, `telec todo demo
+   create` should call its underlying Python function rather than shelling out.
+
+Both are implementation-level details the builder will naturally resolve.
+
+---
+
+## Assumptions (from draft, validated)
 
 - The state machine replaces `IntegratorShadowRuntime.queue_drain()` as the agent-facing
-  entry point. The runtime's primitives (lease, clearance) are reused directly but
-  `queue_drain()` is no longer called by the agent loop.
-- Checkpoint file is per-integration-run at `~/.teleclaude/integration/checkpoint.json`,
-  tracking the current candidate and resetting between candidates within the same drain.
-- The `/next-integrate` command's agent loop calls `telec todo integrate` repeatedly;
-  behavioral guidance (commit message quality, conflict resolution approach) remains
-  as agent-turn instructions in the command spec.
-- Lifecycle events are additions alongside existing bridge events (`emit_deployment_*`),
-  not replacements. The bridge helpers remain for backward compatibility; the state machine
-  emits lifecycle events directly.
-- `make restart` runs per candidate during cleanup (code changes may affect daemon behavior),
-  matching the existing `/next-integrate` spec.
+  entry point. The runtime's primitives are reused; `queue_drain()` is no longer called.
+  **Validated:** `queue_drain` exists in runtime.py; the plan correctly supersedes it.
+- Checkpoint file at `~/.teleclaude/integration/checkpoint.json` — consistent with
+  existing integration data paths. **Validated.**
+- Lifecycle events are additions alongside existing bridge events, not replacements.
+  Bridge helpers remain for backward compatibility. **Validated:** bridge events
+  (`emit_deployment_started/completed/failed`) emit through the event pipeline;
+  new lifecycle events run in parallel without duplication.
+- `make restart` per candidate during cleanup matches existing spec. **Validated.**
 
-## Open Questions
+## Open Questions (resolved)
 
-1. **Event deduplication:** The bridge already emits `emit_deployment_completed` and
-   `emit_deployment_failed`. The new lifecycle events (`integration.candidate.delivered`,
-   `integration.candidate.blocked`) overlap semantically. Should the state machine emit
-   only lifecycle events and retire the bridge helpers, or emit both for backward
-   compatibility? (Inferred: emit lifecycle events from state machine; keep bridge helpers
-   available but don't double-emit for the same state transition.)
+1. **Event deduplication** (from draft): Inferred resolution is sound — state machine
+   emits lifecycle events; bridge helpers remain available but are not double-emitted
+   for the same transition. The builder should ensure the bridge calls in the current
+   `/next-integrate` prose flow are not inherited into the state machine (the state
+   machine has its own lifecycle events).
 
-## Draft Verdict
+---
 
-**Status:** needs_work (draft phase — gate has not run)
-**Score:** 0 (pre-gate)
+## Verdict
+
+**Score:** 8/10
+**Status:** pass
+**Blockers:** none
