@@ -8,4 +8,5 @@
 @~/.teleclaude/docs/general/spec/tools/memory-management-api.md
 @~/.teleclaude/docs/general/spec/tools/telec-cli.md
 @~/.teleclaude/docs/general/principle/attunement.md
+@~/.teleclaude/docs/general/principle/calibration.md
 @~/.teleclaude/docs/general/procedure/agent-direct-conversation.md

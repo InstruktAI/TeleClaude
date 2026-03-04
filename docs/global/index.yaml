@@ -180,6 +180,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: general/principle/calibration
+  description: Set the baseline communication register from the human's proficiency
+    level. Attunement fine-tunes in real time; calibration sets the floor.
+  type: principle
+  scope: global
+  path: docs/general/principle/calibration.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/principle/continuity
   description: Agent identity persists through evidence, not sensation. Read the proof
     of who you are.

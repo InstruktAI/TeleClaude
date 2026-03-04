@@ -9,6 +9,15 @@ session → looks up person → prepends proficiency context → agent receives 
 
 ## Phase 1: Core Changes
 
+### Task 1.0: Author Calibration principle doc snippet (DONE)
+
+**File(s):** `docs/global/general/principle/calibration.md`, `docs/global/baseline.md`
+
+- [x] Author `general/principle/calibration` defining how agents adapt behavior based on
+      proficiency level (novice, intermediate, advanced, expert).
+- [x] Add to global baseline manifest (`docs/global/baseline.md`).
+- [x] Run `telec sync` to deploy.
+
 ### Task 1.1: Add `proficiency` field to `PersonEntry`
 
 **File(s):** `teleclaude/config/schema.py`
@@ -23,9 +32,9 @@ session → looks up person → prepends proficiency context → agent receives 
 - [ ] In `_print_memory_injection()`, after the existing identity resolution block
       (inside the `if session_id:` block where `row` is already fetched), add person
       lookup: iterate `config.people` to find the person matching `row.human_email`.
-- [ ] Store `person_name` and `person_knowledge` from the matched `PersonEntry`.
+- [ ] Store `person_name` and `person_Proficiency` from the matched `PersonEntry`.
 - [ ] After building `context` from `_get_memory_context()`, prepend the proficiency line
-      if a person was found: `Human in the loop: {person_name} ({person_knowledge})`.
+      if a person was found: `Human in the loop: {person_name} ({person_Proficiency})`.
 - [ ] Adjust the early return: proceed with injection even if memory context is empty
       but a proficiency line exists (the proficiency line alone is valid injection content).
 
