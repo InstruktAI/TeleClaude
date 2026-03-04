@@ -74,6 +74,11 @@ def assert_agent_enabled(name: str) -> str:
     return normalized
 
 
+def get_default_agent() -> str:
+    """Return the config-declared default agent name."""
+    return assert_agent_enabled(config.default_agent)
+
+
 def is_agent_title(title: str) -> bool:
     """Return True if a tmux pane title appears to belong to any known agent."""
     lowered = title.lower()

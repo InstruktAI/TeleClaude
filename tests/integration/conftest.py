@@ -222,6 +222,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             "terminal": MockTerminal(),
             "tts": None,
             "experiments": [],
+            "default_agent": "claude",
             "agents": {
                 "claude": config_module.AgentConfig(
                     binary="mock_claude_command",

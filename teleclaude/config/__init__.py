@@ -318,6 +318,7 @@ class Config:
     discord: DiscordConfig
     creds: CredsConfig
     agents: Dict[str, AgentConfig]
+    default_agent: str
     terminal: TerminalConfig
     whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig)
     tts: TTSConfig | None = None
@@ -716,12 +717,29 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
     tts_raw = raw.get("tts", None)
     stt_raw = raw.get("stt", None)
     experiments_raw = raw.get("experiments", [])
-    agents_raw = _require_agents_section(raw)
+    agents_raw = dict(_require_agents_section(raw))
 
     # Import AGENT_PROTOCOL from constants
     from teleclaude.constants import AGENT_PROTOCOL
 
     known_agents = tuple(AGENT_PROTOCOL.keys())
+
+    default_agent_raw = agents_raw.pop("default", None)
+    if default_agent_raw is None:
+        raise ValueError(
+            f"Missing required config key `config.yml:agents.default`. Set it to one of: {', '.join(known_agents)}."
+        )
+    if not isinstance(default_agent_raw, str):
+        raise ValueError(
+            f"Invalid config key `config.yml:agents.default`: expected a string ({', '.join(known_agents)})."
+        )
+    default_agent = default_agent_raw.strip().lower()
+    if default_agent not in known_agents:
+        raise ValueError(
+            f"Invalid config key `config.yml:agents.default`: unknown agent '{default_agent_raw}'. "
+            f"Allowed values: {', '.join(known_agents)}."
+        )
+
     _validate_known_agent_keys(agents_raw, known_agents)
 
     agents_registry: Dict[str, AgentConfig] = {}
@@ -750,6 +768,11 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
         raise ValueError(
             "Invalid config at `config.yml:agents`: all known agents are disabled. "
             "Set `config.yml:agents.<agent>.enabled: true` for at least one configured agent."
+        )
+    if not agents_registry[default_agent].enabled:
+        raise ValueError(
+            f"Invalid config key `config.yml:agents.default`: '{default_agent}' is disabled. "
+            f"Enable `config.yml:agents.{default_agent}.enabled: true` or choose an enabled agent."
         )
 
     experiments = []
@@ -878,6 +901,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
         ),
         creds=CredsConfig(telegram=tg_creds, whatsapp=whatsapp_creds),
         agents=agents_registry,
+        default_agent=default_agent,
         terminal=TerminalConfig(
             strip_ansi=bool(terminal_raw.get("strip_ansi", True))  # type: ignore[attr-defined]
         ),

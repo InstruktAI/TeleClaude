@@ -18,6 +18,7 @@ from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import discord_policy
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
+from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -159,14 +160,6 @@ class DiscordAdapter(UiAdapter):
     @property
     def _multi_agent(self) -> bool:
         return len(self._get_enabled_agents()) > 1
-
-    @property
-    def _default_agent(self) -> str:
-        enabled_agents = self._get_enabled_agents()
-        if enabled_agents:
-            return enabled_agents[0]
-        logger.warning("No enabled agents configured for Discord; defaulting to claude")
-        return "claude"
 
     def store_channel_id(self, adapter_metadata: object, channel_id: str) -> None:
         if not isinstance(adapter_metadata, SessionAdapterMetadata):
@@ -665,7 +658,6 @@ class DiscordAdapter(UiAdapter):
         if launcher_thread_id is None:
             logger.warning("Discord launcher create_thread returned invalid thread id for forum %s", forum_id)
             return
-
         launcher_message_id_raw = getattr(launcher_message, "id", None)
         launcher_message_id = self._parse_optional_int(launcher_message_id_raw)
         if launcher_message is not None:
@@ -1786,7 +1778,12 @@ class DiscordAdapter(UiAdapter):
                 except Exception as exc:
                     logger.warning("Failed to register persistent Discord launcher view: %s", exc)
 
-            for forum_id in self._project_forum_map.values():
+            all_forum_ids: set[int] = set(self._project_forum_map.values())
+            if self._help_desk_channel_id:
+                all_forum_ids.add(self._help_desk_channel_id)
+            if self._all_sessions_channel_id:
+                all_forum_ids.add(self._all_sessions_channel_id)
+            for forum_id in all_forum_ids:
                 try:
                     await self._post_or_update_launcher(forum_id)
                 except Exception as exc:
@@ -1852,7 +1849,7 @@ class DiscordAdapter(UiAdapter):
                     "human_role": identity.person_role or "member",
                     "platform": "discord",
                 },
-                auto_command="agent claude",
+                auto_command=f"agent {get_default_agent()}",
             )
             result = await get_command_service().create_session(create_cmd)
             session_id = str(result.get("session_id", ""))
@@ -1927,7 +1924,7 @@ class DiscordAdapter(UiAdapter):
                 "human_role": "member",
                 "platform": "discord",
             },
-            auto_command="agent claude",
+            auto_command=f"agent {get_default_agent()}",
         )
         result = await get_command_service().create_session(create_cmd)
         session_id = str(result.get("session_id", ""))
@@ -2466,12 +2463,12 @@ class DiscordAdapter(UiAdapter):
         if forum_type == "help_desk":
             channel_metadata["human_role"] = "customer"
             effective_path = project_path or config.computer.help_desk_dir
-            auto_command = "agent claude"
+            auto_command = f"agent {get_default_agent()}"
         else:
             forum_id, _ = self._extract_channel_ids(message)
             forum_project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
             effective_path = forum_project_path or project_path or config.computer.help_desk_dir
-            auto_command = f"agent {self._default_agent}"
+            auto_command = f"agent {get_default_agent()}"
 
         create_cmd = CreateSessionCommand(
             project_path=effective_path,

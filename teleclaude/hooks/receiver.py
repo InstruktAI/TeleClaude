@@ -60,7 +60,7 @@ sys.path.append(str(_REPO_ROOT / "teleclaude" / "hooks"))
 sys.path.append(str(_REPO_ROOT))
 
 from teleclaude.config import config  # noqa: E402
-from teleclaude.core.agents import AgentName  # noqa: E402
+from teleclaude.core.agents import AgentName, get_default_agent  # noqa: E402
 from teleclaude.core import db_models  # noqa: E402
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType  # noqa: E402
 from teleclaude.hooks.adapters import get_adapter  # noqa: E402
@@ -187,7 +187,7 @@ def _maybe_checkpoint_output(
     try:
         agent_enum = AgentName.from_str(agent)
     except ValueError:
-        agent_enum = AgentName.CLAUDE
+        agent_enum = AgentName.from_str(get_default_agent())
     checkpoint_reason = get_checkpoint_content(
         transcript_path=transcript_path,
         agent_name=agent_enum,

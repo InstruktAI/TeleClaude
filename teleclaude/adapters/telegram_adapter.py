@@ -42,6 +42,7 @@ from telegram.request import HTTPXRequest
 from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import telegram_policy
 from teleclaude.config import config
+from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
@@ -423,7 +424,7 @@ class TelegramAdapter(
                 "platform": "telegram",
                 "chat_type": "private",
             },
-            auto_command="agent claude",
+            auto_command=f"agent {get_default_agent()}",
         )
         result_dict = await get_command_service().create_session(create_cmd)
         session_id = str(result_dict.get("session_id", ""))
@@ -492,7 +493,7 @@ class TelegramAdapter(
                     "platform": "telegram",
                     "chat_type": "private",
                 },
-                auto_command="agent claude",
+                auto_command=f"agent {get_default_agent()}",
             )
             result_dict = await get_command_service().create_session(create_cmd)
             session_id = str(result_dict.get("session_id", ""))

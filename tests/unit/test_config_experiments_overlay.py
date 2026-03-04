@@ -23,6 +23,7 @@ def test_experiments_yml_overlay_loading(tmp_path, monkeypatch):
         "redis": {"enabled": False},
         "telegram": {"trusted_bots": []},
         "agents": {
+            "default": "claude",
             "claude": {"enabled": True},
             "gemini": {"enabled": True},
             "codex": {"enabled": True},

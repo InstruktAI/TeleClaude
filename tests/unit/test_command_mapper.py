@@ -90,7 +90,10 @@ def test_map_api_new_session_supports_skip_listener_registration():
 
 
 def test_map_api_agent_rejects_when_no_enabled_agents(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("teleclaude.core.command_mapper.get_enabled_agents", lambda: ())
+    monkeypatch.setattr(
+        "teleclaude.core.command_mapper.get_default_agent",
+        lambda: (_ for _ in ()).throw(ValueError("No enabled agents configured.")),
+    )
 
     with pytest.raises(ValueError, match="No enabled agents configured"):
         CommandMapper.map_api_input(

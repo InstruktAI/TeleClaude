@@ -86,7 +86,7 @@ from teleclaude.api_models import (
 from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core import command_handlers
-from teleclaude.core.agents import assert_agent_enabled, get_enabled_agents, get_known_agents
+from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
@@ -556,14 +556,10 @@ class APIServer:
                         return assert_agent_enabled(requested_agent)
                     except ValueError as exc:
                         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-                enabled_agents = get_enabled_agents()
-                if not enabled_agents:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="No enabled agents configured. Set config.yml:agents.<agent>.enabled to true.",
-                    )
-                return enabled_agents[0]
+                try:
+                    return get_default_agent()
+                except ValueError as exc:
+                    raise HTTPException(status_code=409, detail=str(exc)) from exc
 
             validated_request_agent: str | None = None
             if request.agent:
@@ -1189,13 +1185,10 @@ class APIServer:
                 except ValueError as exc:
                     raise HTTPException(status_code=400, detail=str(exc)) from exc
             else:
-                enabled_agents = get_enabled_agents()
-                if not enabled_agents:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="No enabled agents configured. Set config.yml:agents.<agent>.enabled to true.",
-                    )
-                effective_agent = enabled_agents[0]
+                try:
+                    effective_agent = get_default_agent()
+                except ValueError as exc:
+                    raise HTTPException(status_code=409, detail=str(exc)) from exc
 
             normalized_cmd = request.command.lstrip("/")
             normalized_args = request.args.strip()

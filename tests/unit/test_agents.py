@@ -62,7 +62,7 @@ def _fake_config() -> dict[str, AgentConfig]:
 
 @pytest.fixture(autouse=True)
 def patch_config(monkeypatch):
-    monkeypatch.setattr(agents, "config", type("Cfg", (), {"agents": _fake_config()})())
+    monkeypatch.setattr(agents, "config", type("Cfg", (), {"agents": _fake_config(), "default_agent": "claude"})())
     yield
 
 
@@ -109,6 +109,19 @@ def test_assert_agent_enabled_rejects_disabled_agent(monkeypatch):
 def test_assert_agent_enabled_rejects_unknown_agent():
     with pytest.raises(ValueError, match="Unknown agent"):
         agents.assert_agent_enabled("unknown")
+
+
+def test_get_default_agent_returns_config_declared_default():
+    assert agents.get_default_agent() == "claude"
+
+
+def test_get_default_agent_rejects_disabled_default(monkeypatch):
+    cfg = _fake_config()
+    cfg["claude"].enabled = False
+    monkeypatch.setattr(agents, "config", type("Cfg", (), {"agents": cfg, "default_agent": "claude"})())
+
+    with pytest.raises(ValueError, match=r"config\.yml:agents\.claude\.enabled"):
+        agents.get_default_agent()
 
 
 def test_get_agent_command_defaults_to_slow_mode():

@@ -28,7 +28,7 @@ from teleclaude.constants import (
     format_system_message,
 )
 from teleclaude.core.activity_contract import serialize_activity_event
-from teleclaude.core.agents import AgentName
+from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.checkpoint_dispatch import inject_checkpoint_if_needed
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
@@ -1639,7 +1639,7 @@ class AgentCoordinator:
                 session_id,
                 route="codex_tmux",
                 include_elapsed_since_turn_start=True,
-                default_agent=AgentName.CLAUDE,
+                default_agent=AgentName.from_str(get_default_agent()),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Checkpoint injection failed for session %s: %s", session_id[:8], exc)

@@ -29,7 +29,7 @@ def test_working_dir_fallback_used_for_database_path(monkeypatch, tmp_path):
 
     config_file = tmp_path / "config.yml"
     config_file.write_text(
-        "database:\n  path: ${WORKING_DIR}/teleclaude.db\nagents:\n  claude:\n    enabled: true\n",
+        "database:\n  path: ${WORKING_DIR}/teleclaude.db\nagents:\n  default: claude\n  claude:\n    enabled: true\n",
         encoding="utf-8",
     )
 

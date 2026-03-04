@@ -72,9 +72,9 @@ def _is_checkpoint_project_supported(project_path: str) -> bool:
 class CheckpointContext:
     """Session context for checkpoint heuristics."""
 
+    agent_name: AgentName
     project_path: str = ""
     working_slug: Optional[str] = None
-    agent_name: AgentName = AgentName.CLAUDE
 
 
 @dataclass

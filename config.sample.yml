@@ -82,6 +82,7 @@ redis:
 
 # Agent dispatch guidance (optional machine-level guidance for the orchestrator AI)
 agents:
+  default: claude
   claude:
     enabled: true
     strengths: 'Superior reasoning, complex architecture, and deep technical investigation. Best for ambiguous tasks requiring high autonomy.'

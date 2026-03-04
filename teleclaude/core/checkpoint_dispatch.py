@@ -33,7 +33,7 @@ async def inject_checkpoint_if_needed(
     *,
     route: str,
     include_elapsed_since_turn_start: bool,
-    default_agent: AgentName = AgentName.CLAUDE,
+    default_agent: AgentName,
     get_session_cb: Callable[[str], Awaitable[Session | None]] | None = None,
     update_session_cb: Callable[..., Awaitable[object]] | None = None,
 ) -> bool:

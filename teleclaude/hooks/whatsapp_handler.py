@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
+from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata
@@ -43,7 +44,7 @@ async def _resolve_or_create_session(phone_number: str) -> object | None:
             "human_role": "customer",
             "platform": "whatsapp",
         },
-        auto_command="agent claude",
+        auto_command=f"agent {get_default_agent()}",
     )
     result = await get_command_service().create_session(create_cmd)
     session_id_raw = result.get("session_id")

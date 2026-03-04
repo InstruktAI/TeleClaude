@@ -158,6 +158,14 @@ class FakeForumPostThread:
         self.parent = SimpleNamespace(id=parent_id)
         self.parent_id = parent_id
         self.messages: dict[int, object] = {}
+        self._pinned = False
+        self.edit = AsyncMock(side_effect=self._edit)
+
+    async def _edit(self, *, pinned: bool = False) -> None:
+        self._pinned = pinned
+
+    def is_pinned(self) -> bool:
+        return self._pinned
 
     def add_message(self, message_id: int, *, content: str, view: object | None) -> object:
         message = SimpleNamespace(id=message_id, content=content, view=view)
@@ -917,7 +925,6 @@ def test_get_enabled_agents_filters_disabled_entries() -> None:
         }
         assert adapter._get_enabled_agents() == ["claude", "codex"]
         assert adapter._multi_agent is True
-        assert adapter._default_agent == "claude"
 
 
 def test_resolve_project_from_forum_returns_matching_path() -> None:
@@ -959,6 +966,7 @@ async def test_post_or_update_launcher_pins_new_message() -> None:
     adapter = _make_adapter()
     adapter._client = FakeDiscordClient(intents=FakeDiscordIntents.default())
     adapter._get_enabled_agents = MagicMock(return_value=["claude", "gemini"])  # type: ignore[method-assign]
+    adapter._build_session_launcher_view = MagicMock(return_value=object())  # type: ignore[method-assign]
 
     forum = FakeForumChannel(channel_id=600, thread_id=700)
     adapter._client.channels[600] = forum
@@ -979,6 +987,7 @@ async def test_post_or_update_launcher_pins_new_message() -> None:
     )
     assert forum.created_names == ["Start a session"]
     assert len(forum.created_threads) == 1
+    forum.created_threads[0].edit.assert_awaited_once_with(pinned=True)
     starter = await forum.created_threads[0].fetch_message(700)
     starter.pin.assert_awaited_once()
     fake_db.set_system_setting.assert_has_awaits(
@@ -996,6 +1005,7 @@ async def test_post_or_update_launcher_pins_existing_message() -> None:
     adapter = _make_adapter()
     adapter._client = FakeDiscordClient(intents=FakeDiscordIntents.default())
     adapter._get_enabled_agents = MagicMock(return_value=["claude", "gemini"])  # type: ignore[method-assign]
+    adapter._build_session_launcher_view = MagicMock(return_value=object())  # type: ignore[method-assign]
 
     forum = FakeForumChannel(channel_id=600, thread_id=700)
     existing_thread = FakeForumPostThread(thread_id=700, parent_id=600)
@@ -1017,6 +1027,7 @@ async def test_post_or_update_launcher_pins_existing_message() -> None:
         ]
     )
     existing.edit.assert_awaited_once()
+    existing_thread.edit.assert_awaited_once_with(pinned=True)
     existing.pin.assert_awaited_once()
     assert forum.created_threads == []
     fake_db.set_system_setting.assert_not_awaited()
@@ -1577,7 +1588,6 @@ async def test_create_session_project_forum_defaults_member_when_unresolved() ->
 async def test_create_session_for_message_uses_forum_derived_project() -> None:
     adapter = _make_adapter()
     adapter._forum_project_map = {600: "/home/user/proj-a"}
-    adapter._get_enabled_agents = MagicMock(return_value=["codex"])  # type: ignore[method-assign]
 
     session = _build_session()
     fake_command_service = MagicMock()
@@ -1593,6 +1603,7 @@ async def test_create_session_for_message_uses_forum_derived_project() -> None:
     with (
         patch("teleclaude.adapters.discord_adapter.db", fake_db),
         patch("teleclaude.adapters.discord_adapter.get_command_service", return_value=fake_command_service),
+        patch("teleclaude.adapters.discord_adapter.get_default_agent", return_value="codex"),
     ):
         await adapter._create_session_for_message(message, "999001", forum_type="project", project_path=None)
 
