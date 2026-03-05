@@ -123,6 +123,13 @@ class RenderBuffer:
             self.layers[z].clear()
 
 
+def _norm_color(c: str | None) -> str | None:
+    """Normalize #RRGGBBAA to #RRGGBB. Pass through everything else."""
+    if c and len(c) == 9 and c[0] == "#":
+        return c[:7]
+    return c
+
+
 def render_sprite(
     buffer: RenderBuffer,
     z: int,
@@ -150,7 +157,7 @@ def render_sprite(
         surface: dict[tuple[int, int], str | None] = {}
 
         for layer in sprite.layers:
-            color = layer.color
+            color = _norm_color(layer.color)
             # Negative first so positive wins on overlap within a layer
             if layer.negative:
                 for dy, row in enumerate(layer.negative):

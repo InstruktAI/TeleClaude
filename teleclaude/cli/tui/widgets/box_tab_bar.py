@@ -41,13 +41,18 @@ def _scan_entity_at(
     x: int,
     global_y: int,
     z_min: int,
-    sky_color: str,
+    scene_bg: str,
 ) -> tuple[str | None, str | None, str | None] | None:
     """Scan for entity above z_min at (x, global_y).
 
     Returns (fg_char, fg_color, bg_color) or None.
     fg_char=None means bg-only (ambient glow).
+    scene_bg: the background color of the row at this pixel (sky, bar, tab).
+
+    Scene-transparent pixels (9-char encoding) are composited: the scan
+    continues to lower Z levels so entities behind show through windows.
     """
+    pending: tuple[str, str] | None = None  # (char, bg_color) from topmost transparent pixel
     for z in entity_z_scan:
         if z <= z_min:
             break
@@ -55,16 +60,28 @@ def _scan_entity_at(
         if val and val != -1 and isinstance(val, str):
             elen = len(val)
             if elen == 15 and val[0] == "#" and val[7] == "#":
+                if pending:
+                    return pending[0], val[0:7], pending[1]
                 return val[14], val[0:7], val[7:14]
             if elen == 8 and val[0] == "#":
+                if pending:
+                    return pending[0], val[0:7], pending[1]
                 return val[7], val[0:7], None
             if elen == 9 and val[0] == "\x01" and val[1] == "#":
-                return val[8], sky_color, val[1:8]
+                if pending is None:
+                    pending = (val[8], val[1:8])
+                continue
             if elen == 7 and val[0] == "#":
+                if pending:
+                    return pending[0], val, pending[1]
                 return None, None, val
             if elen == 1:
+                if pending:
+                    return pending[0], "#FFFFFF", pending[1]
                 return val, "#FFFFFF", None
             break
+    if pending:
+        return pending[0], scene_bg, pending[1]
     return None
 
 
@@ -191,11 +208,15 @@ class BoxTabBar(TelecMixin, Widget):
 
                     if engine:
                         z_min = (Z80 if active_tab_under else Z60) if in_tab else Z70
-                        hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, sky_color)
+                        hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, pane_bg)
                         if hit:
                             e_char, e_fg, e_bg = hit
                             if e_char is not None:
-                                top_half = e_fg or top_half
+                                row_text.append(
+                                    e_char,
+                                    style=Style(color=_to_color(e_fg), bgcolor=_to_color(e_bg or pane_bg)),
+                                )
+                                continue
                             if e_bg is not None:
                                 top_half = e_bg
 
@@ -213,7 +234,7 @@ class BoxTabBar(TelecMixin, Widget):
 
                     if engine:
                         z_min = (Z80 if active_tab_under else Z60) if in_tab else Z70
-                        hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, sky_color)
+                        hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, pane_bg)
                         if hit:
                             e_char, e_fg, e_bg = hit
                             if e_char is not None:
@@ -266,7 +287,7 @@ class BoxTabBar(TelecMixin, Widget):
                 is_opaque_ui = in_tab
                 if engine:
                     z_min = z_base if is_opaque_ui else 0
-                    hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, sky_color)
+                    hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, final_bg)
                     if hit:
                         e_char, e_fg, e_bg = hit
                         if e_char is not None:
