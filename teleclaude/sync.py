@@ -53,6 +53,7 @@ def sync(
     warnings = get_warnings()
     if warnings:
         _print_warnings(warnings, quiet=warn_only)
+        errors.extend(f"{w['code']}: {w['path']}" for w in warnings)
 
     if errors:
         for error in errors:
