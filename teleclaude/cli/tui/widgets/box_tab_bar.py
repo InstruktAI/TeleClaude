@@ -97,7 +97,7 @@ class BoxTabBar(TelecMixin, Widget):
     DEFAULT_CSS = """
     BoxTabBar {
         width: 100%;
-        height: 4;
+        height: 2;
     }
     """
 
@@ -114,10 +114,6 @@ class BoxTabBar(TelecMixin, Widget):
         super().__init__(**kwargs)
         self.animation_engine: AnimationEngine | None = None
         self._click_regions: list[tuple[int, int, str]] = []
-
-    def on_mount(self) -> None:
-        if not is_dark_mode():
-            self.styles.height = 3
 
     def render(self) -> Group:
         try:
