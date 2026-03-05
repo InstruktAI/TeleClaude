@@ -94,8 +94,75 @@ def test_phase2_returns_snippet_content(tmp_path: Path, monkeypatch: pytest.Monk
     assert "software-development/concepts/role" in output
     assert "Role content." in output
     assert "domain: software-development" in output
-    assert "software-development/standards/base" in output
-    assert "Base content." in output
+    # Dependency listed in header but NOT expanded inline
+    assert "# Required reads (not loaded): software-development/standards/base" in output
+    assert "Base content." not in output
+
+
+def _setup_dep_fixture(tmp_path: Path) -> tuple[Path, Path]:
+    """Create snippet-a (requires snippet-c) and snippet-c in tmp_path. Returns (project_root, global_snippets_root)."""
+    project_root = tmp_path / "project"
+    global_root = tmp_path / "global"
+    global_snippets_root = global_root / "agents" / "docs"
+
+    snippet_c_path = project_root / "docs" / "area" / "snippet-c.md"
+    snippet_a_path = project_root / "docs" / "area" / "snippet-a.md"
+
+    _write(
+        snippet_c_path,
+        "---\nid: area/snippet-c\ntype: policy\nscope: project\ndescription: C\nvisibility: public\n---\n\nContent of C.\n",
+    )
+    _write(
+        snippet_a_path,
+        "---\nid: area/snippet-a\ntype: policy\nscope: project\ndescription: A\nvisibility: public\n---\n\n"
+        f"## Required reads\n\n- @{snippet_c_path}\n\n## Body\n\nContent of A.\n",
+    )
+
+    _write_index(
+        project_root / "docs" / "project" / "index.yaml",
+        project_root,
+        [
+            {"id": "area/snippet-a", "description": "A", "type": "policy", "scope": "project",
+             "path": "docs/area/snippet-a.md", "visibility": "public"},
+            {"id": "area/snippet-c", "description": "C", "type": "policy", "scope": "project",
+             "path": "docs/area/snippet-c.md", "visibility": "public"},
+        ],
+    )
+    _write_index(global_snippets_root / "index.yaml", global_root, [])
+    return project_root, global_snippets_root
+
+
+def test_dep_not_expanded_inline_but_listed_in_header(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Requesting snippet-a lists snippet-c in the Required reads header without expanding it."""
+    project_root, global_snippets_root = _setup_dep_fixture(tmp_path)
+    monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
+
+    output = context_selector.build_context_output(
+        snippet_ids=["area/snippet-a"],
+        areas=["policy"],
+        project_root=project_root,
+        caller_role="admin",
+    )
+
+    assert "Content of A." in output
+    assert "# Required reads (not loaded): area/snippet-c" in output
+    assert "Content of C." not in output
+
+
+def test_explicit_dep_request_returns_content(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Explicitly requesting the dependency returns its full content."""
+    project_root, global_snippets_root = _setup_dep_fixture(tmp_path)
+    monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
+
+    output = context_selector.build_context_output(
+        snippet_ids=["area/snippet-c"],
+        areas=["policy"],
+        project_root=project_root,
+        caller_role="admin",
+    )
+
+    assert "Content of C." in output
+    assert "# Required reads" not in output
 
 
 def test_phase2_invalid_ids_returns_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

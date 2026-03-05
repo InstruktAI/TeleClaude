@@ -382,9 +382,13 @@ def _validate_baseline_index(path: Path, content: str, project_root: Path, *, do
         except Exception:
             pass
     lines = [line for line in content.splitlines() if line.strip()]
+    ref_lines = [line for line in lines if line.startswith("@")]
     for line in lines:
         if not line.startswith("@"):
-            _warn("snippet_baseline_index_invalid_line", path=str(path), line=line)
+            # Only warn if the file also contains @ refs — mixed content is suspicious.
+            # A pure-instruction baseline file (no @ lines) is intentionally prose-only.
+            if ref_lines:
+                _warn("snippet_baseline_index_invalid_line", path=str(path), line=line)
     for error in collect_inline_ref_errors(project_root, path, lines, domains=domains):
         _warn(error["code"], **{k: v for k, v in error.items() if k != "code"})
 

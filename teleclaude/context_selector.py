@@ -735,10 +735,12 @@ def build_context_output(
         f"# Requested: {', '.join(selected_ids)}",
     ]
     if dep_ids:
-        parts.append(f"# Auto-included (required by the above): {', '.join(dep_ids)}")
+        parts.append(f"# Required reads (not loaded): {', '.join(dep_ids)}")
     parts.append("")
 
     for snippet in resolved:
+        if snippet.snippet_id not in requested_set:
+            continue
         try:
             raw = snippet.path.read_text(encoding="utf-8")
             root_path = snippet.project_root or project_root

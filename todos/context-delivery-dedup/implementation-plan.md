@@ -13,20 +13,20 @@ through `telec sync` for the generated output.
 
 **File(s):** `teleclaude/context_selector.py` (lines 731-768)
 
-- [ ] Change the output loop to only emit content for explicitly requested snippet IDs
+- [x] Change the output loop to only emit content for explicitly requested snippet IDs
       (those in `selected_ids`), not for resolved dependencies.
-- [ ] Change header line from `# Auto-included (required by the above): {dep_ids}`
+- [x] Change header line from `# Auto-included (required by the above): {dep_ids}`
       to `# Required reads (not loaded): {dep_ids}`.
-- [ ] Keep `_resolve_requires()` call intact — it still computes the dep tree to get
+- [x] Keep `_resolve_requires()` call intact — it still computes the dep tree to get
       the ID list for the header.
-- [ ] Adjust the `for snippet in resolved` loop: skip content emission for snippets
+- [x] Adjust the `for snippet in resolved` loop: skip content emission for snippets
       whose `snippet_id` is not in `requested_set`. Only the ID appears in the header.
 
 ### Task 1.2: Verify CLI handler needs no changes
 
 **File(s):** `teleclaude/cli/telec.py` (lines 1611-1645)
 
-- [ ] Confirm `_handle_docs_get()` passes through to `build_context_output()` without
+- [x] Confirm `_handle_docs_get()` passes through to `build_context_output()` without
       output formatting of its own. No changes expected — verify only.
 
 ---
@@ -86,13 +86,13 @@ Agents discover available snippets via `telec docs index` instead.
 
 ### Task 4.1: Tests
 
-- [ ] Update `tests/integration/test_context_selector_e2e.py` if it asserts on
+- [x] Update `tests/integration/test_context_selector_e2e.py` if it asserts on
       "Auto-included" header format (currently only asserts on "PHASE 2" — likely no change).
-- [ ] Add a test that verifies: when snippet-a requires snippet-c, calling
+- [x] Add a test that verifies: when snippet-a requires snippet-c, calling
       `build_context_output(snippet_ids=["snippet-a"])` returns snippet-a content
       and a `# Required reads (not loaded): snippet-c` header (no snippet-c content).
-- [ ] Add a test that verifies: when explicitly requesting snippet-c, its content IS included.
-- [ ] Run `make test` and `make lint`.
+- [x] Add a test that verifies: when explicitly requesting snippet-c, its content IS included.
+- [x] Run `make test` and `make lint`.
 
 ### Task 4.2: Regenerate and verify
 
