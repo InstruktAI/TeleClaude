@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import queue
 import threading
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -32,8 +33,9 @@ _SAMPLE_RATE = 48000
 class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
     """Plays a SID file in a background thread via sounddevice."""
 
-    def __init__(self, volume: float = 0.5) -> None:
+    def __init__(self, volume: float = 0.5, max_track_duration: float = 300.0) -> None:
         self._volume = max(0.0, min(1.0, volume))
+        self._max_track_duration = max_track_duration
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._stream: object | None = None  # sounddevice.RawOutputStream
@@ -92,7 +94,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         while waited < prebuffer_frames and not self._stop_event.is_set():
             if self._pcm_queue.qsize() >= prebuffer_frames:
                 break
-            threading.Event().wait(0.05)
+            self._stop_event.wait(0.05)
             waited += 1
 
         if self._stop_event.is_set():
@@ -149,6 +151,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             stream.start()
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("Failed to open audio stream: %s", exc)
+            self._stop_event.set()
             self._playing = False
             self._notify_track_end()
 
@@ -177,7 +180,12 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             self._notify_track_end()
             return
 
+        track_start = time.monotonic()
         while not self._stop_event.is_set():
+            if time.monotonic() - track_start >= self._max_track_duration:
+                logger.debug("ChipTunes: max track duration reached, advancing to next track")
+                break
+            frame_start = time.monotonic()
             try:
                 writes = driver.play_frame()
                 pcm = renderer.render_frame(writes, frame_duration)
@@ -196,6 +204,8 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning("Emulation error (skipping track): %s", exc)
                 break
+            # Pace the loop to approximately real-time frame rate
+            self._stop_event.wait(max(0.0, frame_duration - (time.monotonic() - frame_start)))
 
         self._playing = False
         if not self._stop_event.is_set():
@@ -215,7 +225,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.debug("Stream cleanup error: %s", exc)
 
-        if self._thread is not None:
+        if self._thread is not None and self._thread is not threading.current_thread():
             self._thread.join(timeout=2.0)
             self._thread = None
 
