@@ -772,8 +772,8 @@ class PreparationView(Widget, can_focus=True):
             from teleclaude.todo_scaffold import create_bug_skeleton
 
             try:
-                create_bug_skeleton(Path(project_root), slug, description="")
-            except (ValueError, FileExistsError) as exc:
+                todo_dir = create_bug_skeleton(Path(project_root), slug, description="")
+            except ValueError as exc:
                 self.app.notify(str(exc), severity="error")
                 return
             filename = "bug.md"
@@ -781,18 +781,18 @@ class PreparationView(Widget, can_focus=True):
             from teleclaude.todo_scaffold import create_todo_skeleton
 
             try:
-                create_todo_skeleton(Path(project_root), slug)
-            except (ValueError, FileExistsError) as exc:
+                todo_dir = create_todo_skeleton(Path(project_root), slug)
+            except ValueError as exc:
                 self.app.notify(str(exc), severity="error")
                 return
             filename = "input.md"
 
-        filepath = f"{project_root}/todos/{slug}/{filename}"
+        filepath = str(todo_dir / filename)
         self.post_message(
             DocEditRequest(
                 doc_id=filepath,
                 command=self._editor_command(filepath),
-                title=f"Editing: {slug}/{filename}",
+                title=f"Editing: {todo_dir.name}/{filename}",
             )
         )
 

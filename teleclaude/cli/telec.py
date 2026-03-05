@@ -44,6 +44,7 @@ from teleclaude.content_scaffold import (  # noqa: E402
 )
 from teleclaude.logging_config import setup_logging  # noqa: E402
 from teleclaude.project_setup import init_project  # noqa: E402
+from teleclaude.slug import normalize_slug  # noqa: E402
 from teleclaude.todo_scaffold import create_bug_skeleton, create_todo_skeleton  # noqa: E402
 
 TMUX_ENV_KEY = "TMUX"
@@ -1830,7 +1831,6 @@ def _extract_demo_blocks(content: str) -> list[tuple[int, str, bool, str]]:
 
     Returns tuples of (line_number, block_text, skipped, skip_reason).
     """
-    import re
 
     blocks: list[tuple[int, str, bool, str]] = []
     skip_pattern = re.compile(r"<!--\s*skip-validation:\s*(.+?)\s*-->")
@@ -1890,7 +1890,6 @@ def _check_no_demo_marker(content: str) -> str | None:
 
     Returns reason string if found, None otherwise.
     """
-    import re
 
     pattern = re.compile(r"<!--\s*no-demo:\s*(.+?)\s*-->")
     for line in content.split("\n")[:10]:
@@ -2056,7 +2055,6 @@ def _demo_run(slug: str, project_root: Path) -> None:
 
     # Fallback: snapshot.json demo field (backward compatibility)
     import json
-    import re
 
     pyproject_path = project_root / "pyproject.toml"
     current_version = "0.0.0"
@@ -2104,7 +2102,6 @@ def _demo_run(slug: str, project_root: Path) -> None:
 def _demo_create(slug: str, project_root: Path) -> None:
     """Promote demo.md to demos/{slug}/ with minimal snapshot.json."""
     import json
-    import re
 
     source = _find_demo_md(slug, project_root)
     if source is None:
@@ -2234,13 +2231,13 @@ def _handle_todo_dump(args: list[str]) -> None:
 
     try:
         todo_dir = create_todo_skeleton(project_root, slug, after=after_deps)
-    except (ValueError, FileExistsError) as exc:
+    except ValueError as exc:
         print(f"Error: {exc}")
         raise SystemExit(1) from exc
 
     # Overwrite input.md with brain dump content
     input_path = todo_dir / "input.md"
-    input_path.write_text(f"# {slug} — Input\n\n{content}\n", encoding="utf-8")
+    input_path.write_text(f"# {todo_dir.name} — Input\n\n{content}\n", encoding="utf-8")
 
     # Emit todo.dumped notification (async, wrapped in asyncio.run())
     async def _emit() -> None:
@@ -2372,13 +2369,13 @@ def _handle_todo_create(args: list[str]) -> None:
 
     try:
         todo_dir = create_todo_skeleton(project_root, slug, after=after)
-    except (ValueError, FileExistsError) as exc:
+    except ValueError as exc:
         print(f"Error: {exc}")
         raise SystemExit(1) from exc
 
     print(f"Created todo skeleton: {todo_dir}")
     if after:
-        print(f"Updated dependencies for {slug}: {', '.join(after)}")
+        print(f"Updated dependencies for {todo_dir.name}: {', '.join(after)}")
 
 
 def _handle_todo_remove(args: list[str]) -> None:
@@ -2892,14 +2889,10 @@ def _handle_bugs_create(args: list[str]) -> None:
     except ValueError as exc:
         print(f"Error: {exc}")
         raise SystemExit(1)
-    except FileExistsError as exc:
-        print(f"Error: {exc}")
-        raise SystemExit(1)
 
 
 def _handle_bugs_report(args: list[str]) -> None:
     """Handle telec bugs report <description> [--slug <slug>]."""
-    import re
     import shutil
 
     if not args:
@@ -2935,8 +2928,7 @@ def _handle_bugs_report(args: list[str]) -> None:
 
     # Auto-generate slug if not provided
     if not slug:
-        slug_base = re.sub(r"[^a-z0-9]+", "-", description.lower()).strip("-")
-        slug_base = re.sub(r"-+", "-", slug_base)
+        slug_base = normalize_slug(description)
         if len(slug_base) > 40:
             slug_base = slug_base[:40].rstrip("-")
         slug = f"fix-{slug_base}"
@@ -2947,9 +2939,11 @@ def _handle_bugs_report(args: list[str]) -> None:
             slug,
             description,
         )
-    except (ValueError, FileExistsError) as exc:
+    except ValueError as exc:
         print(f"Error: {exc}")
         raise SystemExit(1) from exc
+
+    slug = todo_dir.name
 
     # Create git branch from main
     try:
@@ -3195,8 +3189,7 @@ def _handle_content_dump(args: list[str]) -> None:
 
     if slug:
         # Validate and normalise provided slug
-        slug = re.sub(r"[^a-z0-9-]+", "-", slug.lower()).strip("-")
-        slug = re.sub(r"-+", "-", slug)
+        slug = normalize_slug(slug)
 
     try:
         resolved_author = author if author is not None else _resolve_author()
