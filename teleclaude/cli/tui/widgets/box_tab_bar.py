@@ -41,13 +41,18 @@ def _scan_entity_at(
     x: int,
     global_y: int,
     z_min: int,
-    sky_color: str,
+    scene_bg: str,
 ) -> tuple[str | None, str | None, str | None] | None:
     """Scan for entity above z_min at (x, global_y).
 
     Returns (fg_char, fg_color, bg_color) or None.
     fg_char=None means bg-only (ambient glow).
+    scene_bg: the background color of the row at this pixel (sky, bar, tab).
+
+    Scene-transparent pixels (9-char encoding) are composited: the scan
+    continues to lower Z levels so entities behind show through windows.
     """
+    pending: tuple[str, str] | None = None  # (char, bg_color) from topmost transparent pixel
     for z in entity_z_scan:
         if z <= z_min:
             break
@@ -55,21 +60,33 @@ def _scan_entity_at(
         if val and val != -1 and isinstance(val, str):
             elen = len(val)
             if elen == 15 and val[0] == "#" and val[7] == "#":
+                if pending:
+                    return pending[0], val[0:7], pending[1]
                 return val[14], val[0:7], val[7:14]
             if elen == 8 and val[0] == "#":
+                if pending:
+                    return pending[0], val[0:7], pending[1]
                 return val[7], val[0:7], None
             if elen == 9 and val[0] == "\x01" and val[1] == "#":
-                return val[8], sky_color, val[1:8]
+                if pending is None:
+                    pending = (val[8], val[1:8])
+                continue
             if elen == 7 and val[0] == "#":
+                if pending:
+                    return pending[0], val, pending[1]
                 return None, None, val
             if elen == 1:
+                if pending:
+                    return pending[0], "#FFFFFF", pending[1]
                 return val, "#FFFFFF", None
             break
+    if pending:
+        return pending[0], scene_bg, pending[1]
     return None
 
 
 class BoxTabBar(TelecMixin, Widget):
-    """Tab bar. Dark mode: label + white bar + transition. Light mode: label + transition."""
+    """Tab bar: sky row, label row, half-block transition row."""
 
     TABS = [
         ("sessions", "[1] AI Sessions"),
@@ -81,7 +98,7 @@ class BoxTabBar(TelecMixin, Widget):
     DEFAULT_CSS = """
     BoxTabBar {
         width: 100%;
-        height: 4;
+        height: 3;
     }
     """
 
@@ -100,8 +117,7 @@ class BoxTabBar(TelecMixin, Widget):
         self._click_regions: list[tuple[int, int, str]] = []
 
     def on_mount(self) -> None:
-        if not is_dark_mode():
-            self.styles.height = 3
+        pass
 
     def render(self) -> Group:
         try:
@@ -119,23 +135,18 @@ class BoxTabBar(TelecMixin, Widget):
         sky_fallback = "#000000" if dark_mode else "#C8E8F8"
 
         pane_bg = resolve_haze(get_terminal_background())
-        inactive_bg = get_tui_inactive_background()
         pipe_color = resolve_haze(get_neutral_color("muted"))
 
-        # Dark mode: 4 rows (sky, label, bar, transition)
-        # Light mode: 3 rows (sky, label, transition)
-        num_rows = 4 if dark_mode else 3
+        num_rows = 3  # sky, label, transition
         tab_gap = 1
 
-        # Dark mode: white bar, inverted active tab (white bg + dark text)
         if dark_mode:
-            bar_color = "#FFFFFF"
-            active_tab_bg = bar_color
-            active_tab_fg = pane_bg
+            active_tab_bg = "#FFFFFF"
+            active_tab_fg = "#000000"
         else:
-            bar_color = None
             active_tab_bg = pane_bg
             active_tab_fg = resolve_haze(get_neutral_color("highlight"))
+        inactive_tab_bg = resolve_haze(get_tui_inactive_background())
         inactive_tab_fg = resolve_haze(get_neutral_color("muted"))
 
         tabs: list[tuple[int, int, str, bool, str]] = []
@@ -167,7 +178,7 @@ class BoxTabBar(TelecMixin, Widget):
                     if c <= x < c + w:
                         in_tab = True
                         active_tab_under = is_active
-                        tab_bg = active_tab_bg if is_active else inactive_bg
+                        tab_bg = active_tab_bg if is_active else inactive_tab_bg
                         tab_fg = active_tab_fg if is_active else inactive_tab_fg
                         if y_offset == 1:
                             char = label[x - c]
@@ -178,10 +189,8 @@ class BoxTabBar(TelecMixin, Widget):
                     sky_color = sky_fallback
 
                 # --- Transition row (last row) ---
-                if y_offset == num_rows - 1:
-                    if dark_mode and in_tab:
-                        top_half = bar_color
-                    elif in_tab:
+                if y_offset == 2:
+                    if in_tab:
                         top_half = tab_bg or pane_bg
                     else:
                         sky_above = engine.get_layer_color(Z0, x, global_y - 1, target="header") if engine else None
@@ -191,40 +200,21 @@ class BoxTabBar(TelecMixin, Widget):
 
                     if engine:
                         z_min = (Z80 if active_tab_under else Z60) if in_tab else Z70
-                        hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, sky_color)
+                        hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, pane_bg)
                         if hit:
                             e_char, e_fg, e_bg = hit
                             if e_char is not None:
-                                top_half = e_fg or top_half
+                                row_text.append(
+                                    e_char,
+                                    style=Style(color=_to_color(e_fg), bgcolor=_to_color(e_bg or pane_bg)),
+                                )
+                                continue
                             if e_bg is not None:
                                 top_half = e_bg
 
                     row_text.append(
                         "\u2580",
                         style=Style(color=_to_color(top_half), bgcolor=_to_color(pane_bg)),
-                    )
-                    continue
-
-                # --- Bar row (dark mode row 2) ---
-                if dark_mode and y_offset == 2:
-                    final_bg = bar_color if in_tab else sky_color
-                    fg_char = " "
-                    fg_color = None
-
-                    if engine:
-                        z_min = (Z80 if active_tab_under else Z60) if in_tab else Z70
-                        hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, sky_color)
-                        if hit:
-                            e_char, e_fg, e_bg = hit
-                            if e_char is not None:
-                                fg_char = e_char
-                                fg_color = e_fg
-                            if e_bg is not None:
-                                final_bg = e_bg
-
-                    row_text.append(
-                        fg_char,
-                        style=Style(color=_to_color(fg_color), bgcolor=_to_color(final_bg)),
                     )
                     continue
 
@@ -266,7 +256,7 @@ class BoxTabBar(TelecMixin, Widget):
                 is_opaque_ui = in_tab
                 if engine:
                     z_min = z_base if is_opaque_ui else 0
-                    hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, sky_color)
+                    hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, final_bg)
                     if hit:
                         e_char, e_fg, e_bg = hit
                         if e_char is not None:

@@ -2,13 +2,18 @@
 
 from teleclaude.cli.tui.animations.sprites.composite import CompositeSprite, SpriteGroup, SpriteLayer
 
+_CAR_COLORS = ["#E12A1D", "#0040FF", "#A333FF", "#FF9500", "#00C8C8", "#F6E100"]
+_HEAD_COLORS = ["#E2C400", "#CD8900", "#FFE2D8", "#000000"]
+_SHOULDER_COLORS = _CAR_COLORS
+
+_WHEEL_COLOR = "#EAEAEA"
 # fmt: off
 CAR_SPRITE_LEFT = CompositeSprite(
-    z_weights=[(75, 100)],
+    z_weights=[(71, 25), (73, 25), (75, 25), (77, 25)],
     y_weights=[(7, 7, 100)],
-    speed_weights=[(-0.3, 10), (-0.5, 10), (-0.7, 20), (-0.9, 30), (-1.1, 20), (-1.2, 10)],
+    speed_weights=[(-0.5, 10), (-0.7, 10), (-0.9, 20), (-1.1, 30), (-1.3, 20), (-1.5, 10)],
     layers=[
-        SpriteLayer(
+        SpriteLayer( # car body
             positive=[
                 "    ▁╱  █ █   ▎  ",
                 "▆▇███▆▆▆▆▆█▆▆▆██▇",
@@ -19,45 +24,48 @@ CAR_SPRITE_LEFT = CompositeSprite(
                 "                 ",
                 "▅▅   ▅▅▅▅▅▅▅   ▅▅",
             ],
-            color="#E12A1D",
+            color=_CAR_COLORS,
         ),
-        SpriteLayer(
-            positive=[
-                "                 ",
-                "                 ",
-                "                 ",
-            ],
-            color="#C48507FF",
-        ),
-        SpriteLayer(
+        SpriteLayer( # head
             positive=[
                 "        ▇        ",
                 "                 ",
-                "   █         █   ",
+                "                 ",
             ],
-            color="#FFD700",
+            color=_HEAD_COLORS,
         ),
-        SpriteLayer(
-            positive=[
-                "                 ",
-                "                 ",
-                "  ▚▂▞       ▚▂▞  ",
-            ],
+        SpriteLayer( # shoulders
             negative=[
                 "                 ",
                 "        ▆        ",
                 "                 ",
+            ],
+            color=_SHOULDER_COLORS,
+        ),
+        SpriteLayer( # wheel caps
+            positive=[
+                "                ",
+                "                 ",
+                "   █         █   ",
+            ],
+            color=_WHEEL_COLOR,
+        ),
+        SpriteLayer( # tyres
+            positive=[
+                "                 ",
+                "                 ",
+                "  ▚▂▞       ▚▂▞  ",
             ],
             color="#000000",
         ),
     ],
 )
 CAR_SPRITE_RIGHT = CompositeSprite(
-    z_weights=[(76, 100)],
+    z_weights=[(72, 25), (74, 25), (76, 25), (78, 25)],
     y_weights=[(7, 7, 100)],
-    speed_weights=[(0.3, 10), (0.5, 10), (0.7, 20), (0.9, 30), (1.1, 20), (1.2, 10)],
+    speed_weights=[(0.5, 10), (0.7, 10), (0.9, 20), (1.1, 30), (1.3, 20), (1.5, 10)],
     layers=[  
-        SpriteLayer(
+        SpriteLayer( # car body
             positive=[
                 "      █ █  ╲▁    ",
                 "▇██▆▆▆█▆▆▆▆▆███▇▆",
@@ -68,26 +76,37 @@ CAR_SPRITE_RIGHT = CompositeSprite(
                 "                 ",
                 "▅▅   ▅▅▅▅▅▅▅   ▅▅",
             ],
-            color="#E12A1D",
+            color=_CAR_COLORS,
         ),
-        SpriteLayer(
+        SpriteLayer( # head
             positive=[
                 "        ▇        ",
                 "                 ",
-                "   █         █   ",
+                "                 ",
             ],
-            color="#FFD700",
+            color=_HEAD_COLORS,
         ),
-        SpriteLayer(
-            positive=[
-                "                 ",
-                "                 ",
-                "  ▚▂▞       ▚▂▞  ",
-            ],
+        SpriteLayer( # shoulders
             negative=[
                 "                 ",
                 "        ▆        ",
                 "                 ",
+            ],
+            color=_SHOULDER_COLORS,
+        ),
+        SpriteLayer( # wheel caps
+            positive=[
+                "                 ",
+                "                 ",
+                "   █         █   ",
+            ],
+            color=_WHEEL_COLOR,
+        ),
+        SpriteLayer( # tyres
+            positive=[
+                "                 ",
+                "                 ",
+                "  ▚▂▞       ▚▂▞  ",
             ],
             color="#000000",
         ),

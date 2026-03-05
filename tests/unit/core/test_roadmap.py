@@ -127,6 +127,79 @@ def test_worktree_state_takes_precedence(tmp_path):
     assert todos[0].status == "in_progress"  # build: started
 
 
+def test_phase_in_progress_shows_active(tmp_path):
+    """phase: in_progress (set by state machine on claim) derives in_progress status."""
+    todos_dir = tmp_path / "todos"
+    todos_dir.mkdir()
+    (todos_dir / "icebox.yaml").touch()
+
+    (todos_dir / "task-1").mkdir()
+    (todos_dir / "task-1" / "state.yaml").write_text(
+        json.dumps({"phase": "in_progress", "build": "pending", "dor": {"score": 9}, "review": "pending"})
+    )
+
+    entries = [RoadmapEntry(slug="task-1", description="Task 1")]
+
+    with patch("teleclaude.core.roadmap.load_roadmap", return_value=entries):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[]):
+            todos = assemble_roadmap(str(tmp_path))
+
+    assert len(todos) == 1
+    assert todos[0].status == "in_progress"  # phase: in_progress takes precedence over build: pending
+
+
+def test_phase_done_shows_active(tmp_path):
+    """phase: done derives in_progress status (still visible until delivered)."""
+    todos_dir = tmp_path / "todos"
+    todos_dir.mkdir()
+    (todos_dir / "icebox.yaml").touch()
+
+    (todos_dir / "task-1").mkdir()
+    (todos_dir / "task-1" / "state.yaml").write_text(
+        json.dumps({"phase": "done", "build": "complete", "dor": {"score": 9}, "review": "approved"})
+    )
+
+    entries = [RoadmapEntry(slug="task-1", description="Task 1")]
+
+    with patch("teleclaude.core.roadmap.load_roadmap", return_value=entries):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[]):
+            todos = assemble_roadmap(str(tmp_path))
+
+    assert len(todos) == 1
+    assert todos[0].status == "in_progress"
+
+
+def test_phase_pending_defers_to_build_and_dor(tmp_path):
+    """phase: pending (or absent) falls through to build/dor derivation."""
+    todos_dir = tmp_path / "todos"
+    todos_dir.mkdir()
+    (todos_dir / "icebox.yaml").touch()
+
+    # phase pending + build pending + high DOR → ready
+    (todos_dir / "task-1").mkdir()
+    (todos_dir / "task-1" / "state.yaml").write_text(
+        json.dumps({"phase": "pending", "build": "pending", "dor": {"score": 9}, "review": "pending"})
+    )
+
+    # no phase + build pending + low DOR → pending
+    (todos_dir / "task-2").mkdir()
+    (todos_dir / "task-2" / "state.yaml").write_text(
+        json.dumps({"build": "pending", "dor": {"score": 3}, "review": "pending"})
+    )
+
+    entries = [
+        RoadmapEntry(slug="task-1", description="Task 1"),
+        RoadmapEntry(slug="task-2", description="Task 2"),
+    ]
+
+    with patch("teleclaude.core.roadmap.load_roadmap", return_value=entries):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[]):
+            todos = assemble_roadmap(str(tmp_path))
+
+    assert todos[0].status == "ready"
+    assert todos[1].status == "pending"
+
+
 def test_worktree_state_fallback_to_main(tmp_path):
     """Without a worktree, main todos/ state.yaml is used."""
     todos_dir = tmp_path / "todos"

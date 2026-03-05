@@ -132,6 +132,7 @@ class TelecApp(App[str | None]):
         Binding("u", "spawn_ufo", "UFO", key_display="u", show=False),
         Binding("c", "spawn_car", "Car", key_display="c", show=False),
         Binding("v", "toggle_tts", "Voice", key_display="v"),
+        Binding("escape", "clear_layout", "Clear", key_display="Esc"),
     ]
 
     def __init__(
@@ -486,6 +487,30 @@ class TelecApp(App[str | None]):
     def on_doc_edit_request(self, message: DocEditRequest) -> None:
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.on_doc_edit_request(message)
+
+    def action_clear_layout(self) -> None:
+        """Global ESC: tear down all preview, sticky, and doc panes."""
+        sessions_view = self.query_one("#sessions-view", SessionsView)
+        pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
+        had_preview = sessions_view.preview_session_id is not None
+        had_sticky = bool(sessions_view._sticky_session_ids)
+        had_doc = pane_bridge._active_doc_preview is not None
+        if not had_preview and not had_sticky and not had_doc:
+            return
+        if had_preview:
+            sessions_view.preview_session_id = None
+            self.post_message(PreviewChanged(None, request_focus=False))
+        if had_sticky:
+            from teleclaude.cli.tui.views.sessions import SessionRow
+
+            sessions_view._sticky_session_ids.clear()
+            for widget in sessions_view._nav_items:
+                if isinstance(widget, SessionRow):
+                    widget.is_sticky = False
+            self.post_message(StickyChanged([]))
+        if had_doc:
+            pane_bridge._set_preview(focus=False)
+        sessions_view._notify_state_changed()
 
     # --- WebSocket event handling ---
 

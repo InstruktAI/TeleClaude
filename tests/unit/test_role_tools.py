@@ -1,7 +1,7 @@
 """Unit tests for role-based tool filtering."""
 
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, ROLE_WORKER
-from teleclaude.core.tool_access import filter_tool_names
+from teleclaude.core.tool_access import WORKER_ALLOWED_TOOLS, filter_tool_names, is_tool_allowed
 
 
 def test_filter_member():
@@ -25,10 +25,38 @@ def test_filter_unauthorized():
 
 
 def test_filter_worker_and_member():
-    # Worker role should filter worker tools, Member role should filter member tools.
-    # Union of exclusions.
-    tools = ["telec todo work", "telec agents status", "telec docs get"]
+    # Worker whitelist + member exclusions both apply.
+    tools = ["telec todo work", "telec agents status", "telec sessions send"]
     filtered = filter_tool_names(ROLE_WORKER, tools, human_role=HUMAN_ROLE_MEMBER)
-    assert "telec todo work" not in filtered  # Excluded by worker
-    assert "telec agents status" not in filtered  # Excluded by member
-    assert "telec docs get" in filtered
+    assert "telec todo work" not in filtered  # Not in worker whitelist
+    assert "telec agents status" not in filtered  # Not in worker whitelist
+    assert "telec sessions send" in filtered  # In worker whitelist
+
+
+def test_worker_whitelist_allows_send():
+    """Worker can send messages (the original bug)."""
+    assert is_tool_allowed(ROLE_WORKER, "telec sessions send")
+
+
+def test_worker_whitelist_blocks_spawn():
+    """Worker cannot spawn new sessions."""
+    assert not is_tool_allowed(ROLE_WORKER, "telec sessions start")
+    assert not is_tool_allowed(ROLE_WORKER, "telec sessions run")
+
+
+def test_worker_whitelist_blocks_orchestration():
+    """Worker cannot use orchestrator commands."""
+    assert not is_tool_allowed(ROLE_WORKER, "telec todo work")
+    assert not is_tool_allowed(ROLE_WORKER, "telec todo prepare")
+    assert not is_tool_allowed(ROLE_WORKER, "telec todo mark-phase")
+
+
+def test_worker_whitelist_blocks_unknown_tools():
+    """New clearance-gated tools are denied by default for workers."""
+    assert not is_tool_allowed(ROLE_WORKER, "telec some-future-tool")
+
+
+def test_worker_allowed_tools_complete():
+    """Sanity check: all whitelisted tools are actually allowed."""
+    for tool in WORKER_ALLOWED_TOOLS:
+        assert is_tool_allowed(ROLE_WORKER, tool), f"{tool} should be allowed for workers"

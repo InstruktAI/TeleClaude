@@ -11,15 +11,23 @@ from teleclaude.constants import (
     ROLE_WORKER,
 )
 
-# Worker tool access policy.
-WORKER_EXCLUDED_TOOLS = {
-    "telec todo work",
-    "telec todo prepare",
-    "telec todo mark-phase",
-    "telec sessions start",
+# Worker tool access policy (whitelist).
+# Only these clearance-gated tools are permitted for worker sessions.
+# Tools without clearance gates (telec docs, telec version, etc.) are unaffected.
+WORKER_ALLOWED_TOOLS = {
     "telec sessions send",
-    "telec sessions run",
+    "telec sessions result",
+    "telec sessions file",
+    "telec sessions widget",
+    "telec sessions tail",
+    "telec sessions list",
+    "telec sessions unsubscribe",
     "telec sessions escalate",
+    "telec channels list",
+    "telec channels publish",
+    "telec agents availability",
+    "telec computers list",
+    "telec projects list",
 }
 
 # Member tool access policy.
@@ -62,45 +70,46 @@ class ToolSpec(TypedDict, total=False):
     name: str
 
 
-def get_excluded_tools(role: str | None, human_role: str | None = None) -> set[str]:
-    """Return set of tool names excluded for this role."""
-    excluded = set()
-    if role == ROLE_WORKER:
-        excluded.update(WORKER_EXCLUDED_TOOLS)
-
+def _get_human_excluded_tools(human_role: str | None) -> set[str]:
+    """Return excluded tools based on human role only."""
     if human_role == HUMAN_ROLE_CUSTOMER:
-        excluded.update(CUSTOMER_EXCLUDED_TOOLS)
-        return excluded
+        return CUSTOMER_EXCLUDED_TOOLS
     if human_role in {HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER}:
-        excluded.update(MEMBER_EXCLUDED_TOOLS)
-    elif human_role is None:
-        excluded.update(UNAUTHORIZED_EXCLUDED_TOOLS)
-    elif human_role != HUMAN_ROLE_ADMIN:
-        # Default to unauthorized for unknown/custom roles.
-        excluded.update(UNAUTHORIZED_EXCLUDED_TOOLS)
+        return MEMBER_EXCLUDED_TOOLS
+    if human_role is None or human_role != HUMAN_ROLE_ADMIN:
+        return UNAUTHORIZED_EXCLUDED_TOOLS
+    return set()
 
-    return excluded
+
+def get_excluded_tools(role: str | None, human_role: str | None = None) -> set[str]:  # noqa: ARG001
+    """Return set of tool names excluded for this role.
+
+    Note: worker enforcement uses a whitelist via is_tool_allowed().
+    This function returns human-role exclusions only.
+    """
+    return _get_human_excluded_tools(human_role)
 
 
 def is_tool_allowed(role: str | None, tool_name: str, human_role: str | None = None) -> bool:
-    """Return whether a tool is allowed for the given role."""
-    return tool_name not in get_excluded_tools(role, human_role)
+    """Return whether a tool is allowed for the given role.
+
+    Worker sessions use a whitelist: only tools in WORKER_ALLOWED_TOOLS pass.
+    Human roles use exclusion sets. The two layers are mutually exclusive —
+    workers are system-level sessions and not subject to human role restrictions.
+    """
+    if role == ROLE_WORKER:
+        return tool_name in WORKER_ALLOWED_TOOLS
+    return tool_name not in _get_human_excluded_tools(human_role)
 
 
 def filter_tool_names(role: str | None, tool_names: list[str], human_role: str | None = None) -> list[str]:
     """Return filtered tool names for a role."""
-    excluded = get_excluded_tools(role, human_role)
-    if not excluded:
-        return tool_names
-    return [name for name in tool_names if name not in excluded]
+    return [n for n in tool_names if is_tool_allowed(role, n, human_role)]
 
 
 def filter_tool_specs(role: str | None, tools: list[ToolSpec], human_role: str | None = None) -> list[ToolSpec]:
     """Return filtered tool specs for a role."""
-    excluded = get_excluded_tools(role, human_role)
-    if not excluded:
-        return tools
-    return [tool for tool in tools if tool.get("name") not in excluded]
+    return [t for t in tools if is_tool_allowed(role, t.get("name", ""), human_role)]
 
 
 def get_allowed_tools(role: str | None, all_tool_names: list[str], human_role: str | None = None) -> list[str]:
