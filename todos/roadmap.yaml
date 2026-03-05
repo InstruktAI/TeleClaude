@@ -95,3 +95,8 @@
 - slug: telegram-callback-payload-migration
   description: Migrate Telegram explicit user-selection callback payloads to canonical
     agent identifiers (deferred from default-agent-resolution)
+- slug: chiptunes-audio
+  description: Play ChipTunes .sid audio via libsidplayfp with TUI integration and
+    runtime settings
+- slug: person-proficiency-level
+  description: Add proficiency field to PersonEntry for agent behavioral calibration

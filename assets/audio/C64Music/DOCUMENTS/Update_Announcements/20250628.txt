@@ -1,0 +1,285 @@
+High Voltage SID Collection: Update #83
+Date: June 28, 2025
+
+Resulting Version: 83
+ Previous Version: 82
+
+After this update, the collection should contain 59,886 SID files!
+
+This update features (all approximates):
+     623 new SIDs
+      72 fixed/better rips
+       8 repeats/bad rips eliminated
+     280 SID credit fixes
+      10 SID model/clock infos
+      11 tunes from /DEMOS/UNKNOWN/ identified
+       1 tunes from /GAMES/ identified
+      25 tunes moved out of /DEMOS/ to their composers' directories
+       4 tunes moved out of /GAMES/ to their composers' directories
+
+We are always looking for others to help make HVSC a better collection.
+If you find any errors or have new rips to add, please email:
+
+ iAN CooG  <hvsc.crew (sid) gmail.com>
+
+Thanks to all the people who have helped to make HVSC the collection that it
+is today, without your help it would be a much tougher task.
+
+
+SID RELATED NEWS:
+
+####################
+# DMC 4 Editor 1.1 #
+####################
+
+DMC 4 Editor is a compact yet powerful tool for Windows, designed for editing
+and playing Commodore 64 music created with the classic DMC4 Player by
+Brian/Graffity (1991). This release adds many new features aimed at improving
+usability, music editing precision and workflow for retro music enthusiasts.
+
+Check it out: https://csdb.dk/release/?id=251057
+
+
+###############
+# USBSID-Pico #
+###############
+
+A new hardware project by LouDnl has hit the scene: USBSID-Pico, a compact
+board built around the Raspberry Pi Pico (RP2040/RP2350). Designed to
+interface one or two genuine (or clone) MOS SID chips. It plugs into any modern
+device via USB to deliver authentic SID audio.
+
+Some highlights:
+
+- Dual-chip support: supports 2 6581/8580 SIDs for stereo or quadraphonic output
+- Supports real SIDs and replacements like SIDKick-Pico, SwinSID and ARMSID
+- Sidplayer/Emulator support:
+  - DeepSID
+  - SidBerry
+  - SidplayFp
+  - JSidplay2 / C64Jukebox
+  - USB Midi
+  - ASID SID Play
+  - Vice
+  - RetroDebugger
+- SID Tracker support via ASID protocol or when running in Vice or RetroDebugger
+
+Recently version 1.3 of the board has been released.
+
+Check out the site for more info:
+
+https://github.com/LouDnl/USBSID-Pico
+
+To see the board in action:
+
+https://youtu.be/nh0SxO1y6I0
+
+
+#########################
+# Sidplay/MAC 5.1.0_111 #
+#########################
+
+Sidplay/MAC 5.x is a fork of Sidplay/MAC 4.2 done by Alexander Coers.
+
+It has the following improvements since 5.0.1_95:
+
+- added the Check for Updates feature
+- Bugfixes
+
+Check it out:
+
+https://github.com/Alexco500/sidplay5
+
+
+###################
+# rePlayer 0.19.3 #
+###################
+
+rePlayer is a new multi-format music player for Windows that brings old-school
+music to life, offering seamless support for classic formats like SID and MUS
+files. It even enhances the experience by playing SID tunes in immersive
+surround sound.
+
+Changes since 0.16.9:
+
+- Updated libsidplay to 2.14.0
+- Associate extension with replay in settings
+- Added Psycle
+- Added SunVox
+- Added GoatTracker
+- Added XMP
+- Dx11 fallback when Dx12 is failing
+- Display loop points in song end editor
+- Rework artist ui
+- Rework song filtering with refined filters and more options
+- Bug fixes
+
+For more info:
+
+https://github.com/arnaud-neny/rePlayer
+
+
+####################
+# JSidDevice v4.12 #
+####################
+
+A new version of JSidDevice has been released. JSidDevice is a network SID
+device which can be controlled by SID players like ACID64 Player. JSidDevice
+requires Java 8 or higher.
+
+Check out: https://csdb.dk/release/?id=253837
+
+
+###################
+# JSIDPlay2 v4.12 #
+###################
+
+A new version of JSidplay2 has been released. JSidplay2 is an open-source C64
+emulator specialized for sound reproduction. It is also a SID player for music
+collections like HVSC and CGSC. It is a full C64 emulator and can play games of
+the GameBase64 project as well. The emulator is written in Java and runs on any
+environment that runs Java 8 or higher and it can run in a browser with
+JavaScript or Web Assembly support.
+
+Changelog:
+
+- C64Jukebox based on TeaVM:
+  https://haendel.ddns.net:8443/static/teavm/c64jukebox.vue
+- New WASM_GC version: ~10% faster, half the size
+- Runs well even on older hardware (e.g. MacBook Air 2.2GHz)
+- Full API docs and UML included
+- NTSC bug fixes, better error handling
+- Easy switching between WASM/JS versions via About panel
+- Experimental C source (CMake-based) added
+
+Get it from: https://csdb.dk/release/?id=253836
+
+
+#################
+# SidTool 2.3.5 #
+#################
+
+SidTool is a C64 Music Player Emulator Frontend for Windows, build to explore
+large chiptune collections. It needs .NET framework 4.8 or higher.
+
+The following has been changes since 2.3.4:
+
+- removed anonymous usage statistics
+
+Get it from here: https://sidtool.de/
+
+
+################
+# Prg2Sid 1.25 #
+################
+
+Prg2Sid is a tool that attaches a PSID header to a ripped (prg) tune. It
+identifies some players and sets init/play accordingly. It also patches
+the header and code if needed.
+
+Since 1.20 the following has been changed:
+
+- new players identified:
+  - Frank Hammer
+  - DoubleTracker (2x MusicAssembler)
+  - Quantum SoundTracker 1.0 (& demo version)
+  - SidFactory II (v4)
+
+Check out: https://csdb.dk/release/?id=253578
+
+
+####################
+# Sidplayfp 2.14.0 #
+####################
+
+Libsidplayfp (and its console frontend sidplayfp) is a fork of sidplay2 born
+with the aim to improve the quality of emulating the 6581, 8580 chips and the
+surrounding C64 system in order to play SID music better.
+
+Changes since 2.12.0 release:
+
+- Fix crash when using -b
+- Ported to new play API
+- Removed support for old library version
+- Minor fixes and optimizations
+- Force precision to 16 in audio drivers
+- Avoid 100% CPU usage when paused
+- Display audio driver in use in verbose mode
+- Rough approximation of MDAC saturation for the 6581
+- New play API for client side mixing
+- Minor fixes and optimizations
+- Update exsid driver
+- resid/residfp: Use more bits for the 8580 filter cutoff
+- resid: reduce aliasing noise
+
+Get the new version here: https://github.com/libsidplayfp/sidplayfp
+
+
+############
+# VICE 3.9 #
+############
+
+VICE 3.9 has been released. VICE is an open source cross-platform emulator of
+several Commodore machines.
+
+VICE also includes VSID which can be used to play SID files.
+
+SID/Audio related changes:
+
+- added an option that allows to skip soundchip emulation in warpmode
+  (to increase performance, at the cost of some accuracy).
+- reSID: scale down filtered voices on 6581
+- reSID: scale and clip volume by an arbitrary factor, makes 6581/8580 nearly
+  the same volume.
+- reSID: implement DAC leakage.
+- reSID: fix uninitialized var in old filter
+- reSID: fixed the 8580 filter voltages, now the values really make sense
+
+You can get VICE from here:
+
+https://vice-emu.sourceforge.io/
+
+
+###########
+# DeepSID #
+###########
+
+DeepSID is an online SID player made by JCH of Vibrants. It emulates music
+created for the Commodore 64 home computer. It supports nice features like:
+
+- Toggling between JSidplay2/WebSID/Hermit's jsSID/ASID(MIDI) for SID playback
+- SID player and year display for each song
+- Create and play playlists
+- Rating folders and SID files
+- Comment / Discuss SID files
+- Profile / CSDb / GB64 / Player / STIL / Piano / Graph view
+- Search through HVSC / STIL
+- and much more
+
+DeepSID now supports the JSIDPlay2 emulator for playing SID tunes in the
+browser.
+
+DeepSID is continuously updated. See the Changes tab for the full change log.
+
+Check it out: https://deepsid.chordian.net/
+
+
+###################
+# SID Known v1.29 #
+###################
+
+Wilfred Bos has released a new version of SID Known. This version supports now
+HVSC #83. SID Known is a command line tool which you can use to identify SID
+tunes from SID and PRG files.
+
+This tool can be used if e.g., you want to know which SID tune is used in a
+specific C64 demo or C64 game, or you have a SID tune found or ripped and you
+want to know if it is already in your SID collection.
+
+SID Known can be used to identify music but it also helps to find out which
+tunes are not in the High Voltage SID Collection. If you find music not found
+by SID Known, it would be appreciated if you report this to the HVSC crew
+(https://hvsc.de) or post it in one of the CSDb forums (https://csdb.dk) like
+"SIDs that aren't in HVSC yet".
+
+Get the tool here: https://csdb.dk/release/?id=254223

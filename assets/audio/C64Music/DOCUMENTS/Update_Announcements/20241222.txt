@@ -1,0 +1,316 @@
+High Voltage SID Collection: Update #82
+Date: December 22, 2024
+
+Resulting Version: 82
+ Previous Version: 81
+
+After this update, the collection should contain 59,271 SID files!
+This update features (all approximates):
+     582 new SIDs
+      41 fixed/better rips
+       8 repeats/bad rips eliminated
+     260 SID credit fixes
+      22 SID model/clock infos
+       5 tunes from /DEMOS/UNKNOWN/ identified
+       2 tunes from /GAMES/ identified
+      19 tunes moved out of /DEMOS/ to their composers' directories
+       8 tunes moved out of /GAMES/ to their composers' directories
+
+We are always looking for others to help make HVSC a better collection.
+If you find any errors or have new rips to add, please email:
+
+ iAN CooG  <hvsc.crew (sid) gmail.com>
+
+Thanks to all the people who have helped to make HVSC the collection that it
+is today, without your help it would be a much tougher task.
+
+
+SID RELATED NEWS:
+
+
+#############################################
+# Rob Hubbard - Master of Magic Softography #
+#############################################
+
+Released last summer, this stunning 350-page, full-color coffee-table book
+celebrates the legacy of legendary video game composer Rob Hubbard. Packed with
+exclusive insights, behind-the-scenes stories, and a comprehensive look at every
+game soundtrack Rob created, this definitive guide is a must-have for gaming and
+music fans alike. Plus, enjoy access to a massive 160GB online media gallery
+featuring chip recordings, videos, remixes, source code, sheet music, and more!
+
+Authored by Chris Abbott and years in the making, this beautifully illustrated
+book is a tribute to the master of game soundtracks and the golden era of gaming
+history.
+
+More info:
+
+https://c64audio.com/products/master-of-magic-softography
+
+
+################
+# SIDKick-pico #
+################
+
+The SIDKick pico ("SKpico") is a versatile and affordable replacement for the
+SID 6581/8580 sound chips, also capable of emulating the SFX Sound Expander.
+Built around the Raspberry Pi Pico, it offers high-quality sound emulation based
+on an extended version of reSID and includes features like dual SID emulation,
+paddle/mouse support, and a built-in configuration menu with PRG launcher.
+
+You can assemble the SKpico yourself by ordering PCBs from PCBWay, with options
+for SMD-parts preassembled, or purchase prebuilt units from retailers like
+Restore Store (DE/EU), Retro8BITshop (NL/EU), AmericanRetro.shop (US) and
+Plan-Net CSS (CA).
+
+For more info:
+
+https://github.com/frntc/SIDKick-pico
+
+
+########################
+# Quantum Soundtracker #
+########################
+
+Renowned developer Aleksi Eeben presents Quantum Soundtracker, a groundbreaking
+3-channel sample-based tracker with a 16 kHz mixing rate and internal 8-bit
+resolution. Running on the C64 platform, the editor supports 8-bit mono raw
+samples, delivering an output resolution of approximately 6.5 bits on a stock
+machine. 
+
+More info: https://csdb.dk/release/?id=245053
+
+
+########################
+# Sidplay/MAC 5.1.0_95 #
+########################
+
+Sidplay/MAC 5.x is a fork of Sidplay/MAC 4.2 done by Alexander Coers.
+
+It has the following improvements since 5.0.1_74:
+
+- ASID support
+- Bugfixes
+
+Check it out:
+
+https://github.com/Alexco500/sidplay5
+
+
+###############
+# ASID Player #
+###############
+
+Andreas Schumm has introduced an ASID protocol player for the SIDBlaster-USB
+devices, enabling users to play tunes from the deepSID website directly on the
+SIDBlaster. The player also supports playback of 2SID and 3SID tunes and is
+compatible with Windows, Linux, and macOS.
+
+More info:
+
+https://crazy-midi.de/joomla/index.php/news/8-news/27-halloween-release-asid-player
+
+
+#############
+# cRSID 1.4 #
+#############
+
+cRSID is an open-source cycle based sidplayer made by Mihaly Horvath (Hermit).
+This is an integer-only rewrite of cSID and cSID-light. The new sidplayer is
+able to play most RSID tunes and of course PSID tunes. It includes a
+pre-compiled executable for Windows and Linux.
+
+Changes since version 1.2:
+
+- Playlist support
+- Songlengths.md5 support
+- Fix for the load-address detection
+
+For more details go to:
+
+https://csdb.dk/release/?id=248030
+
+
+########################################
+# GoatTracker v2.76 - Silver Fork v1.1 #
+########################################
+
+GoatTracker - Silver Fork is a fork of GoatTracker v2.76 made by RaveGuru.
+
+The following has been changed:
+
+- Builds on Intel and ARM Macs
+- Undo edits using CTRL/CMD+Z (Thanks to Jason Page)
+- Toggle ReSID interpolation and filter patch (distortion) mode by clicking
+  INT/FP or press SHIFT+F9
+- Fine vibrato (FV) setting is now saved to config
+- Macbook keyboard insert support using ALT/OPTION+BACKSPACE or
+  FN+SHIFT+BACKSPACE
+- Deleting rows now works correctly on a Macbook keyboard
+- Delete using fn + backspace on a Macbook keyboard
+- Backspace works as expected when entering filenames
+- Better support for some USB keyboards (unwanted characters)
+- Build instructions for MacOS (see separate txt file)
+
+The new version can be downloaded here:
+
+https://github.com/joelricci/goattracker2
+
+
+###########
+# SidCore #
+###########
+
+SidCore, developed by DeepCore, is a SID player for the Commodore 64. It
+operates by replacing the standard Kernel with a custom one that integrates the
+SID player code in place of the RS232 routines. The player exclusively supports
+SID files with the V2NG header and tunes located within the memory range of
+$0800 to $CFFF. When a compatible SID file is loaded into RAM, SidCore detects
+the header and seamlessly plays the tune.
+
+Check it out:
+
+https://csdb.dk/release/?id=248316
+
+
+###################
+# rePlayer 0.16.9 #
+###################
+
+rePlayer is a new multi-format music player for Windows that brings old-school
+music to life, offering seamless support for classic formats like SID and MUS
+files. It even enhances the experience by playing SID tunes in immersive
+surround sound.
+
+For more info:
+
+https://github.com/arnaud-neny/rePlayer
+
+
+###############
+# SIDevo v4.9 #
+###############
+
+SIDevo is a SID input plugin for XMPlay audio player written by Nathan Hindley.
+It's a partial rewrite of the SIDex plugin and it uses the most recent
+libsidplayfp library.
+
+Changes since v4.7:
+
+- libsidplayfp library updated to 2.12.0
+- sidid.cfg updated to version from 28 October 2024
+- Supress errors in sidid.cfg, Songlengths.md5 and STIL
+- Force mono option added
+
+Get the new version from:
+
+https://github.com/KelticDanor/xmp-SIDevo
+
+
+#################
+# SidTool 2.3.4 #
+#################
+
+SidTool is a C64 Music Player Emulator Frontend for Windows, build to explore
+large chiptune collections. It needs .NET framework 4.8 or higher.
+
+The following has been changes since 2.3.2:
+
+- Fixed bug on save playlist as...
+- Changes for TherapSid owners:
+  - Emulators can now be started hidden, minimized or normal. 
+  - Added vsid_legacy option for TherapSid owners.
+- Open Website menu item now leads to updated manual
+- Search stuff. Might need more adjustments.
+
+Get it from here: https://sidtool.de/
+
+
+####################
+# Sidplayfp 2.12.0 #
+####################
+
+Libsidplayfp (and its console frontend sidplayfp) is a fork of sidplay2 born
+with the aim to improve the quality of emulating the 6581, 8580 chips and the
+surrounding C64 system in order to play SID music better.
+
+Changes since 2.8.0 release:
+
+- Avoid crash when not using audio
+- Fixed buffer size on various backends
+- Better mixing for multi chip tunes
+- residfp: fixed voice sync when a saw-combined waveform is selected
+- residfp: updated CW parameters
+- resid: properly adjusted 8580 Vref value
+- Removed buffer size limit from mixer
+- residfp: avoid quantization noise
+- residfp: implemented 6581 DC drift
+- residfp: properly adjusted 8580 Vref value
+- residfp: fixed digiboost
+- residfp: fixed combined waveforms
+- Add support for c++20 where available
+- residfp: retuned cw parameters after measuring waves RMS
+- residfp: code refactoring and minor performance optimizations
+- resid/residfp: scale down filter inputs in the mixer for 6581
+- Centralized handling of muted voices and allow muting samples
+- new API to toggle the filter and deprecated sidplayfp::filter
+- residfp: use c++11 threads for building filter tables
+- residfp: code modernization and minor performance optimizations
+- Performance optimizations
+- switched to UTPP for unit tests
+- Added support for combined wave strength arguments
+- Made audio buffer size configurable
+- Properly check for player errors
+- Allow setting filter range from command line
+- Use correct freq table when using custom speed
+- Updated filter presets from libSidplayEZ
+- Capitalize filterRange6581 .ini parameter
+- Fixed docs for -o option
+- Reworked player logic, fixes looping
+
+Get the new version here: https://github.com/libsidplayfp/sidplayfp
+
+
+###########
+# DeepSID #
+###########
+
+DeepSID is an online SID player made by JCH of Vibrants. It emulates music
+created for the Commodore 64 home computer. It supports nice features like:
+
+- Toggling between JSidplay2/WebSID/Hermit's jsSID/ASID(MIDI) for SID playback
+- SID player and year display for each song
+- Create and play playlists
+- Rating folders and SID files
+- Comment / Discuss SID files
+- Profile / CSDb / GB64 / Player / STIL / Piano / Graph view
+- Search through HVSC / STIL
+- and much more
+
+DeepSID now supports the JSIDPlay2 emulator for playing SID tunes in the
+browser.
+
+DeepSID is continuously updated. See the Changes tab for the full change log.
+
+Check it out: https://deepsid.chordian.net/
+
+
+###################
+# SID Known v1.28 #
+###################
+
+Wilfred Bos has released a new version of SID Known. This version supports now
+HVSC #82. SID Known is a command line tool which you can use to identify SID
+tunes from SID and PRG files.
+
+This tool can be used if e.g., you want to know which SID tune is used in a
+specific C64 demo or C64 game, or you have a SID tune found or ripped and you
+want to know if it is already in your SID collection.
+
+SID Known can be used to identify music but it also helps to find out which
+tunes are not in the High Voltage SID Collection. If you find music not found
+by SID Known, it would be appreciated if you report this to the HVSC crew
+(https://hvsc.de) or post it in one of the CSDb forums (https://csdb.dk) like
+"SIDs that aren't in HVSC yet".
+
+Get the tool here: https://csdb.dk/release/?id=248431

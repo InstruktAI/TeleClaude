@@ -125,10 +125,14 @@ def assemble_roadmap(
                     findings_count = len(unresolved)
 
                 # Derive display status:
+                # - phase in_progress/done -> in_progress (lifecycle marker from state machine)
                 # - build != pending -> in_progress
                 # - build == pending + dor_score >= 8 -> ready
                 # - build == pending + dor_score < 8 -> pending
-                if build_status != "pending":
+                raw_phase = state.get("phase")
+                if raw_phase in ("in_progress", "done"):
+                    phase_status = "in_progress"
+                elif build_status != "pending":
                     phase_status = "in_progress"
                 elif isinstance(dor_score, int) and dor_score >= 8:
                     phase_status = "ready"

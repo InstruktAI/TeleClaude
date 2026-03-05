@@ -1,0 +1,401 @@
+High Voltage SID Collection: Update #84
+Date: December 25, 2025
+
+Resulting Version: 84
+ Previous Version: 83
+
+After this update, the collection should contain 60,572 SID files!
+
+This update features (all approximates):
+     688 new SIDs
+      15 fixed/better rips
+       2 repeats/bad rips eliminated
+     288 SID credit fixes
+      35 SID model/clock infos
+       4 tunes from /DEMOS/UNKNOWN/ identified
+       4 tunes from /GAMES/ identified
+      19 tunes moved out of /DEMOS/ to their composers' directories
+       4 tunes moved out of /GAMES/ to their composers' directories
+
+We have finally reached and surpassed 60,000 SIDs in this update!
+Another great milestone thanks to the contributions of many musicians keeping
+the spirit alive!
+
+We are always looking for others to help make HVSC a better collection.
+If you find any errors or have new rips to add, please email:
+
+ iAN CooG  <hvsc.crew (sid) gmail.com>
+
+Thanks to all the people who have helped to make HVSC the collection that it
+is today, without your help it would be a much tougher task.
+
+
+SID RELATED NEWS:
+
+
+#########################
+# Commodore 64 Ultimate #
+#########################
+
+Commodore has just released the all-new Commodore 64 Ultimate! Experience the
+classic C64 like never before with authentic SID sound, modern HDMI output and
+cutting-edge FPGA enhancements.
+
+Audio features:
+
+- Real hardware SID support (6581/8580) with auto detection
+- High-quality FPGA SID emulation (UltiSID)
+- Full audio output via digital (HDMI and S/PDIF) and analog interfaces
+- Sophisticated software control (volume, panning, mapping, multi-SID support)
+- Built-in SID player
+  - Seek bar with song lengths display via SSL files
+  - Supports 2SID and 3SID tunes
+  - Plays PAL/NTSC SIDs at correct speed
+  - Fast-forward capability
+  - Sub-tune selection
+  - Automatic SID socket configuration for correct SID model playback
+  - ARMSID / FPGASID support with SID model configuration
+- Built-in MUS player
+  - Play Compute's Gazette Sidplayer songs with PETSCII display
+
+For more information and to explore all the new models, visit:
+
+https://www.commodore.net/
+
+
+##############
+# cRSID 1.56 #
+##############
+
+cRSID is an open-source cycle based sidplayer made by Mihaly Horvath (Hermit).
+This is an integer-only rewrite of cSID and cSID-light. The new sidplayer is
+able to play most RSID tunes and of course PSID tunes. It includes a
+pre-compiled executable for Windows and Linux.
+
+Changes since version 1.4:
+
+- Fixed broken OSC3/ENV3 readout caused by the 1.55 code overhaul
+- Integrated direct ALSA audio backend into libcRSID
+- Added new crsid_cli command-line-only version
+- Embedded a heavily stripped-down SDL 1.2 version into the application
+- Reworked CLI keyboard handling
+- Major audio quality upgrade
+  - Higher-quality resampling of oversampled SID emulation output
+  - Further optimized for performance and power efficiency
+- Major internal refactor and optimization pass
+- Significant performance improvements, especially on low-power hardware
+- Improved RSID compatibility
+- Added file browser with GUI-based playlist support
+- Support for loadable ROM files
+- Source code refactoring and cleanup
+- Enhanced filter distortion control
+- Dropped support for non-Linux platforms
+- Documentation update
+- Bug fixes and stability improvements
+
+For more details go to:
+
+https://csdb.dk/release/?id=257992
+
+
+##############
+# CGSC v1.47 #
+##############
+
+The Compute Sidplayer Collection has been updated and contains now 16601 MUS
+files, 4383 STR files and 5593 WDS files.
+
+Get the collection here: http://www.c64music.co.uk/
+
+
+#########################
+# Ultimate64 SID Player #
+#########################
+
+Ultimate64 SID Player is an AmigaOS SID music player that streams C64 music
+from Ultimate64/Ultimate-II devices over the network, offering playlists,
+subsong control, a MUI interface and HVSC song lengths database integration.
+
+Check it out:
+
+https://aminet.net/package/mus/play/u64SidPlayer
+
+
+#####################
+# Public Domain SID #
+#####################
+
+The Public Domain SID (PDsid) is a low-cost, plug-and-play Commodore 64 SID
+replica that supports both 6581 and 8580 modes, switchable instantly and
+saved permanently. It delivers accurate SID sound, supports paddles and is
+released as Public Domain, with full designs to be published in 2026.
+
+Get it from here:
+
+https://uni64.com/shop/index.php?system=4&m=70&item_id=7536
+
+
+#####################
+# sidplaywx v0.17.1 #
+#####################
+
+Sidplaywx is a modern PC GUI player for Commodore 64 SID music, offering
+high-quality emulation and useful features like seeking, drag-and-drop
+and DPI awareness.
+
+Changes since V0.16.2:
+
+- New: Added Virtual stereo output mode for a wider headphone sound
+- Improved: Seeking is faster due to updated libsidplayfp
+- Improved: Playlists can now be sorted by title, duration, author, copyright
+- Improved: Playlist icons now show tooltips
+- Improved: Virtual stereo default settings were refined for better balance
+- Fixed: Playback speed now reapplies correctly after toggling Instant seeking
+- Fixed: Removed the redundant 'Always on Top' option on Linux
+- Fixed: Leave Running repeat mode is disabled when Instant seeking is enabled
+
+Get it from here:
+
+https://github.com/bytespiller/sidplaywx
+
+
+################
+# SID2TXT v1.0 #
+################
+
+Stello Doussis released a new online tool called 'SID2TXT' for converting SID
+tunes into a clean and customisable text log.
+SID2TXT emulates a C64 and plays SID files silently, generating a frame-by-frame
+text log of SID register activity ($D400-$D418). It supports PSID and RSID
+files and is useful for studying drivers, analyzing music techniques or
+debugging code.
+
+Check it out:
+
+https://www.doussis.com/sid2txt/
+
+
+#########################
+# Sidplay/MAC 5.1.0_123 #
+#########################
+
+Sidplay/MAC 5.x is a fork of Sidplay/MAC 4.2 done by Alexander Coers.
+
+It has the following improvements since 5.0.1_111:
+
+- Fixed crash on File
+- Enable media key navigation and Control Center integration
+- Modernize NSURLConnection to NSURLSession in SPCollectionUtilities
+- Removed all collection sharing source
+- updated libsidplayfp to version 2.15.0
+
+Check it out:
+
+https://github.com/Alexco500/sidplay5
+
+
+###################
+# rePlayer 0.21.4 #
+###################
+
+rePlayer is a new multi-format music player for Windows that brings old-school
+music to life, offering seamless support for classic formats like SID and MUS
+files. It even enhances the experience by playing SID tunes in immersive
+surround sound.
+
+Changes since 0.19.3:
+
+- Updated libsidplay to 2.15.2
+- Bug fixes
+
+For more info:
+
+https://github.com/arnaud-neny/rePlayer
+
+
+####################
+# JSidDevice v4.13 #
+####################
+
+A new version of JSidDevice has been released. JSidDevice is a network SID
+device which can be controlled by SID players like ACID64 Player. JSidDevice
+requires Java 8 or higher.
+
+Check out: https://csdb.dk/release/?id=257312
+
+
+###################
+# JSIDPlay2 v4.13 #
+###################
+
+A new version of JSidplay2 has been released. JSidplay2 is an open-source C64
+emulator specialized for sound reproduction. It is also a SID player for music
+collections like HVSC and CGSC. It is a full C64 emulator and can play games of
+the GameBase64 project as well. The emulator is written in Java and runs on any
+environment that runs Java 8 or higher and it can run in a browser with
+JavaScript or Web Assembly support.
+
+Changelog:
+
+UI Version:
+- Adding tunes to the favorites list has been fixed
+- USBSID-Pico hardware support has been added (Credits go to "LouD")
+
+C64Jukebox Offline Version:
+- SFX Sound Expander (FM-YAM) support added
+- Experimental SID support added (v4e), play on up to 10 SIDs at once
+- Fullscreen support in Chrome browser, just flip your mobile
+- Oscilloscope view added for up to 3 SIDs
+- SID Player Infos (SID ID) added
+- SidTune Information List (STIL) added
+- Composer Photo added
+- New Folders Tab with access to CSDB, HVSC and more
+- Virtual keyboard added
+- Filter Curve visualization added
+- High performance improvements made
+- VUE client modularized
+- WASM_GC_SAB version added
+- SharedArrayBuffer to enable zero copying approach of samples and frames
+- C-Version added, that is able to create WAV recordings (cmake based)
+
+C64Jukebox Online Version:
+- Player Infos added to status bar.
+
+Get it from: https://csdb.dk/release/?id=257311
+
+
+####################
+# Sidplayfp 2.16.0 #
+####################
+
+Libsidplayfp (and its console frontend sidplayfp) is a fork of sidplay2 born
+with the aim to improve the quality of emulating the 6581, 8580 chips and the
+surrounding C64 system in order to play SID music better.
+
+Changes since 2.14.0 release:
+
+- Add USBSID support
+- Display the actual used SID model(s)
+- Fix invalid filter range error
+- Add --version option
+- Replace non-ASCII characters with ASCII when iconv is not enabled
+- Correctly restore ANSI console
+- Correctly display play errors
+- Handle negative fade out values in an useful way
+- Init driver output before parsing config
+- Build windows binaries with dynamic SIMD dispatch
+- Implement fadeout
+- Adjust song length when forcing C64 model
+- Fix crash when using -b
+- Fix opening STIL on MacOS
+- Expose the SID models actually used
+- residfp: implemented runtime SIMD dispatch for resampler
+- Improve interrupt handling in kernal stub
+- Fixed crash in SidDatabase parser
+- resid/residfp: remove accidental DC offset
+- residfp: clock voice 3 even if muted
+- resid: fix silenced tunes
+- fixed load performance regression
+- Extended the new play API
+
+Get the new version here: https://github.com/libsidplayfp/sidplayfp
+
+
+################################################
+# AIMP Sidplay V2.0 Plugin for AIMP (x64, x86) #
+################################################
+
+Zbigniew Ross (Zbych) released a new version of his AIMP plugin for playing
+SID files in AIMP.
+
+The plugin is based on libsidplayfp/ReSidfp library.
+
+The following has been changed:
+
+- Updated libdisplay to 2.16
+- Implemented pseudo stero feature
+- Improved sound mixing algorithm
+
+Get the plugin from here: https://csdb.dk/release/?id=257876
+
+
+#######################################
+# in_sidplay2 3.0.0 plugin for WinAmp #
+#######################################
+
+Zbigniew Ross (Zbych) released a new version of his WinAmp plugin for playing
+SID files in WinAmp.
+
+The plugin is based on libsidplayfp/ReSidfp library. The plugin now supports the
+new song length database (md5 extension).
+
+Changes:
+
+- Updated libdisplay to 2.16
+- Implemented pseudo stero feature
+- Improved sound mixing algorithm
+
+Get it here: https://csdb.dk/release/?id=257877
+
+
+#################
+# SIDevo v4.9.1 #
+#################
+
+SIDevo is a SID input plugin for XMPlay audio player written by Nathan Hindley.
+It's a partial rewrite of the SIDex plugin and it uses the most recent
+libsidplayfp library.
+
+Changes since v4.7:
+
+- libsidplayfp library updated to 2.15.0
+- sidid.cfg updated to version from 7 July 2025
+
+Get the new version from:
+
+https://github.com/KelticDanor/xmp-SIDevo
+
+
+###########
+# DeepSID #
+###########
+
+DeepSID is an online SID player made by JCH of Vibrants. It emulates music
+created for the Commodore 64 home computer. It supports nice features like:
+
+- Toggling between JSidplay2/WebSID/Hermit's jsSID/ASID(MIDI) for SID playback
+- SID player and year display for each song
+- Create and play playlists
+- Rating folders and SID files
+- Comment / Discuss SID files
+- Profile / CSDb / GB64 / Player / STIL / Piano / Graph view
+- Search through HVSC / STIL
+- and much more
+
+DeepSID now supports the JSIDPlay2 emulator for playing SID tunes in the
+browser.
+
+DeepSID is continuously updated. See the Changes tab for the full change log.
+
+Check it out: https://deepsid.chordian.net/
+
+
+###################
+# SID Known v1.30 #
+###################
+
+Wilfred Bos has released a new version of SID Known. This version supports now
+HVSC #84. SID Known is a command line tool which you can use to identify SID
+tunes from SID and PRG files.
+
+This tool can be used if e.g., you want to know which SID tune is used in a
+specific C64 demo or C64 game, or you have a SID tune found or ripped and you
+want to know if it is already in your SID collection.
+
+SID Known can be used to identify music but it also helps to find out which
+tunes are not in the High Voltage SID Collection. If you find music not found
+by SID Known, it would be appreciated if you report this to the HVSC crew
+(https://hvsc.de) or post it in one of the CSDb forums (https://csdb.dk) like
+"SIDs that aren't in HVSC yet".
+
+Get the tool here: https://csdb.dk/release/?id=258064

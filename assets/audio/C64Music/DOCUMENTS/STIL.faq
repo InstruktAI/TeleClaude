@@ -1,0 +1,1238 @@
+
+-------------------------------------------------------------------------------
+                        SID Tune Information List (STIL)
+                        -> Frequently Asked Questions <-
+                          Last Updated: June 28, 2024
+-------------------------------------------------------------------------------
+
+General Questions
+
+[ 1] What is the SID Tune Information List (STIL)?
+[ 2] Why was STIL created? What is STIL good for?
+[ 3] Where is the latest version of STIL available from?
+[ 4] What is the format of STIL?
+    [ 4.1] Conventions used in the format description of STIL
+    [ 4.2] Description of the STIL block
+    [ 4.3] Description of the complete STIL entries
+    [ 4.4] Description of the STIL fields
+        [ 4.4.1] Description of the NAME field
+        [ 4.4.2] Description of the AUTHOR field
+        [ 4.4.3] Description of the TITLE field
+        [ 4.4.4] Description of the album subfield
+        [ 4.4.5] Description of the ARTIST field
+        [ 4.4.6] Description of the COMMENT field
+        [ 4.4.7] Description of the TIMESTAMP subfield
+    [ 4.5] Some general guidelines to STIL entries and the STIL.txt file
+[ 5] Who maintains the STIL? (In other words, who to complain to? :)
+
+Submitting STIL entries
+
+[ 6] What if I find incorrect or missing STIL entries?
+[ 7] How do I submit STIL entries?
+    [ 7.1] General guidelines for submitting entries
+    [ 7.2] Submitting new STIL entries
+    [ 7.3] Submitting modifications to specific STIL entries
+    [ 7.4] Submitting general modifications
+    [ 7.5] Requesting deletion of a STIL entry
+    [ 7.6] Adding personal comments to STIL entries
+[ 8] Who is a STIL Hero?
+[ 9] Where can I find the list of STIL contributors?
+[11] Acknowledgments
+
+Miscellaneous
+
+[12] Are there any tools available that can show STIL entries in a better way?
+[13] Gimme some fun statistics about STIL!
+
+-------------------------------------------------------------------------------
+
+
+[ 1] What is the SID Tune Information List (STIL)?
+-------------------------------------------------------------------------------
+
+The SID Tune Information List (STIL) contains information about the SID tunes
+found in the HVSC beyond the standard TITLE, AUTHOR, and RELEASED information.
+STIL goes a little deeper listing SID tune information that only a true SID
+freak would enjoy. Such information listed in STIL includes cover information,
+interesting facts, useless trivia, comments on the tunes by the composers
+themselves, etc. The STIL, though, is limited to factual data and does not try
+to provide an encyclopedia about every original artist.
+
+
+[ 2] Why was STIL created? What is STIL good for?
+-------------------------------------------------------------------------------
+
+The High Voltage SID Collection's (HVSC) Crew sincerely believes in creating
+the most accurate and comprehensive SID collection possible. We also believe in
+giving proper credit to all composers regardless if they ever composed on the
+Commodore 64. How many times have you asked yourself, "Where have I heard this
+tune before?!" STIL helps to ease some of those questions.
+
+With the increased interest in old SID tunes in recent years, the issue of
+whether they are original compositions or remixes/covers/pastiches of previous
+tunes has gotten a lot more attention. Although the STIL will do its best to
+point out whether a given tune is close to the original or just mildly inspired
+by it, it is still intended as an informal guide for SID listeners only. If you
+want to know more accurately how closely a SID resembles another composition,
+the best thing you can do is locate the original tune and perform the
+comparison yourself. We suggest that you do not base your opinion solely on an
+entry in the STIL.
+
+STIL is also extremely valuable for the future of SID music collections.
+Imagine years ahead when the HVSC maintainers are no longer available for input
+for whatever reasons. Wouldn't it be a shame if someone began to alter the
+credit fields of the tunes in HVSC based on incorrect data?
+
+Another feature of STIL is that it contains information and/or quotes about
+certain tunes that the creators of the SID tunes provided themselves. We strive
+to include such information in STIL whenever possible, which we believe
+enhances the value of HVSC and gives a more historical sense to this great
+archive. If you are a SID composer and your SID tunes are in HVSC and you wish
+to provide comments on some of them, don't hesitate to contact any of us!
+
+Most of the SIDPlay programs available on various platforms nowadays can also
+display information found in the STIL for a given SID tune along with the SID
+that is being played. Obviously, they get the info from the STIL.txt file
+itself.
+
+NOTE: Although initially STIL did list bugs that were present in certain tunes
+within HVSC, the current HVSC administration team felt that it is better to
+provide a separate list of them. Since the list's creation, more and more
+bugged SIDs got fixed. If you think you can help (either listing bugs or
+providing bugfixed SID files), please refer to BUGlist.txt in the DOCUMENTS
+directory of HVSC.  However, if a SID sounds bugged and the original released
+game or demo that the SID was extracted from was also bugged (for example:
+/MUSICIANS/O/Ouwehand_Reyn/Last_Ninja_3.sid subtune #3), STIL in this case
+would notify you of this as technically it is not a bug that was caused by a
+bad rip.
+
+
+[ 3] Where is the latest version of STIL available from?
+-------------------------------------------------------------------------------
+
+The latest OFFICIAL version of STIL is always distributed along with the latest
+version of HVSC and is given a version number that matches that of HVSC. This
+version of STIL can be found in /DOCUMENTS/STIL.txt in your HVSC.
+
+The latest (official) version of STIL is always available online at the
+HVSC Home Page:
+
+    https://hvsc.c64.org/download/C64Music/DOCUMENTS/STIL.txt
+
+
+[ 4] What is the format of STIL?
+-------------------------------------------------------------------------------
+
+To better present the information contained in STIL and to make it easier for
+programs and scripts to process and maintain the list of entries in it, STIL
+has a strict format that is outlined below.
+
+As you can see, STIL is a so-called flat text-file, which is readable by
+humans. But it is formatted in a way that machines (programs) can parse it,
+too.
+
+In summary, STIL is more or less like a flat database.
+
+
+    [ 4.1] Conventions used in the format description of STIL
+    ---------------------------------------------------------------------------
+
+/Path_in_HVSC/ - The relative directory containing the SID that this STIL
+                 entry refers to, starting with a "/", subdirs separated by
+                 "/", given as long pathnames (with correct small and capital
+                 letters)
+
+Full_Title.sid - The long filename of the SID as it appears in the directory.
+
+#y             - Tune #y of the SID.
+
+
+    [ 4.2] Description of the STIL block
+    ---------------------------------------------------------------------------
+
+In general, STIL entries are built up of one or more "blocks", depending on how
+many subtunes a given SID has and how many of those have information attached
+to them.
+
+The general format of a STIL block is:
+
+   NAME: Name field
+ AUTHOR: Author field
+  TITLE: Title field [from Album]
+ ARTIST: Artist field
+COMMENT: Comment field.
+
+Or for tunes that contain multiple covers:
+
+COMMENT: *Optional* tune-global comment goes here.
+   NAME: Name field
+ AUTHOR: Author field
+  TITLE: Title field [from Album] (TIMESTAMP)
+ ARTIST: Artist field
+COMMENT: Comment field.
+  TITLE: Title field [from Album] (TIMESTAMP)
+ ARTIST: Artist field
+COMMENT: Comment field.
+.
+.
+.
+
+There can be as many covers listed within a STIL block for tunes that cover
+more than one piece of music as needed - there is no maximum limit.
+
+Please, see the STIL field descriptions below for details about the individual
+fields found in a STIL block.
+
+All of the fields in the STIL block are optional, but at least one field must
+be present. Eg. if only a comment is provided for a tune that has no subtunes,
+the following entry is perfectly fine:
+
+/Path_in_HVSC/Full_Title.sid.sid
+COMMENT: This should be some relevant comment here.
+
+However, if more than one field is present, they must be in the order as
+outlined above (NAME first, then AUTHOR, TITLE, ARTIST, and COMMENT).
+
+
+    [ 4.3] Description of the complete STIL entries
+    ---------------------------------------------------------------------------
+
+Each STIL entry comprises of one or more STIL blocks:
+
+---- FOR SID FILES CONTAINING ONLY A SINGLE TUNE -----
+
+/Path_in_HVSC/Full_Title.sid
+{STIL block}
+
+---- FOR SID FILES CONTAINING MORE THAN ONE TUNE -----
+
+/Path_in_HVSC/Full_Title.sid
+COMMENT: *Optional* file-global comment goes here.
+(#1)
+{STIL block}
+(#2)
+{STIL block}
+(#3)
+{STIL block}
+.
+.
+.
+etc.
+
+Of course, STIL entries need to be provided only for those tunes that need it,
+so the following is perfectly fine, too:
+
+/Path_in_HVSC/Full_Title.sid
+COMMENT: *Optional* file-global comment goes here.
+(#8)
+{STIL block}
+(#11)
+{STIL block}
+
+However, the STIL blocks for the subtunes must be sorted by ascending order of
+the tune numbers of the subtunes.
+
+
+    [ 4.4] Description of the STIL fields
+    ---------------------------------------------------------------------------
+
+The fields within STIL also follow a strict format outlined below.
+
+
+        [ 4.4.1] Description of the NAME field
+        -----------------------------------------------------------------------
+
+Purpose
+-------
+
+As of STIL v3.5 a new field is in use in the STIL, the NAME field. The NAME
+field is in a way an extension of the Name field stored in the PSID header -
+it names the tune, or in this case the subtune in a SID file, with the name
+the author originally intended for it (which can for instance be found in
+music selectors, demos, etc.). The field is needed because the PSID format
+only contains one name field, and for multitune SIDs that's not always enough.
+Prior to STIL v3.5 the situation was handled like in this *deprecated* entry:
+
+/Crowther_Antony/From_Ratt_To_You.sid
+COMMENT: The tune names are listed, if they were given a name, the remaining
+         tunes were just called Tune 35, Tune 27 etc., and have been left out
+         of this STIL entry.
+(#1)
+  TITLE: Jolly
+(#2)
+  TITLE: Friends
+(#13)
+  TITLE: Toccata from Toccata and Fugue in D Minor (BWV 565)
+ ARTIST: Johann Sebastian Bach
+COMMENT: Called 'Tocca' in the original Crowther demo.
+(#16)
+  TITLE: Ghostbusters [from the movie]
+ ARTIST: Ray Parker, Jr.
+COMMENT: Called 'G-Bust' in the original Crowther demo.
+
+As you can see, this gives problems when a subtune has an original name and is
+at the same time a cover. To solve this problem, and to remove the (ab)use of
+the TITLE, field, the NAME field has been introduced as follows:
+
+/MUSICIANS/C/Crowther_Anthony/From_Ratt_To_You.sid
+COMMENT: The tune names are listed, if they were given a name, the remaining
+         tunes were just called Tune 35, Tune 27 etc., and have been left out
+         of this STIL entry.
+(#1)
+   NAME: Jolly
+(#2)
+   NAME: Friends
+(#13)
+   NAME: Tocca
+  TITLE: Toccata from Tocatta and Fugue in D Minor (BWV 565)
+ ARTIST: Johann Sebastian Bach
+(#16)
+   NAME: G-Bust
+  TITLE: Ghostbusters [from the movie]
+ ARTIST: Ray Parker, Jr.
+
+This is the correct way of naming individual subtunes in a STIL entry.
+
+Another use of the NAME field is when the tune's title doesn't fit in the
+PSID header's name field:
+
+/MUSICIANS/W/Wijnhoven_Joachim/Als_de_sterre.sid
+   NAME: Als de sterre dao baove straole
+
+Format
+------
+
+The format of the NAME field is simply:
+
+   NAME: Name field
+
+Note that there are THREE (3) spaces (not a tab!) before the word NAME, which
+is followed by a colon and another space. This is followed by the actual name
+of the subtune.
+
+Given the nature of the NAME field, there can only be one NAME field per
+subtune.
+
+Length
+------
+
+The whole field must be 90 characters long or less. If it doesn't fit into 90
+characters, try to abbreviate the tune's name.
+
+
+        [ 4.4.2] Description of the AUTHOR field
+        -----------------------------------------------------------------------
+
+Purpose
+-------
+
+As of STIL v4.1, the AUTHOR field has been introduced as a pendant to the
+NAME field. Combined, the NAME and AUTHOR fields make sure that the original
+TITLE and ARTIST fields are used exclusively for cover information, hopefully
+leading to less ambiguity in the STIL and an overall better design.
+
+The AUTHOR field is used to specify the composer of a given subtune in a SID
+file with multiple composers. This is useful because the PSID header only
+contains one global Author field for the entire SID file, which means that it
+is not possible to specify the composer of a single subtune. Prior to STIL
+v4.1, this problem was handled using the ARTIST field, but when the subtune
+was also a cover, this lead to problems and confusion similar to that
+described in the previous section.
+
+Here's how it would look in the old STIL (this is now the *wrong* way to do
+it!):
+
+/MUSICIANS/0-9/20CC/So-Phisticated_III.sid
+(#1)
+ ARTIST: Edwin van Santen
+(#2)
+ ARTIST: Edwin van Santen
+(#3)
+ ARTIST: Edwin van Santen
+(#4)
+ ARTIST: Edwin van Santen
+(#5)
+  TITLE: Paninaro
+ ARTIST: Pet Shop Boys
+COMMENT: This cover is by Edwin van Santen.
+(#6)
+ ARTIST: Falco Paul
+
+And here's the *correct* way to do it:
+
+/MUSICIANS/0-9/20CC/So-Phisticated_III.sid
+(#1)
+ AUTHOR: Edwin van Santen
+(#2)
+ AUTHOR: Edwin van Santen
+(#3)
+ AUTHOR: Edwin van Santen
+(#4)
+ AUTHOR: Edwin van Santen
+(#5)
+ AUTHOR: Edwin van Santen
+  TITLE: Paninaro
+ ARTIST: Pet Shop Boys
+(#6)
+ AUTHOR: Falco Paul
+
+As you can see, it is no longer necessary to use the comment field for
+specifying the composer of a subtune. For comparison, the PSID file in
+question contains only the following credits:
+
+     NAME=So-Phisticated III
+   AUTHOR=Edwin van Santen & Falco Paul
+ RELEASED=1989 20th Century Composers
+
+Without the fields in the STIL, you would have no way of knowing (or
+specifiying!) that Falco Paul composed subtune #6.
+
+Format
+------
+
+The format of the AUTHOR field is simply:
+
+ AUTHOR: Author field
+
+Note that there is ONE (1) space (not a tab!) before the word AUTHOR, which
+is followed by a colon and another space. This is followed by the actual
+contents of the field (in this case the composer of the subtune).
+
+Given the nature of the AUTHOR field, there can only be one AUTHOR field per
+subtune.
+
+Length
+------
+
+The whole field must be 90 characters long or less. If it doesn't fit into 90
+characters, try to abbreviate the composer credits.
+
+
+        [ 4.4.3] Description of the TITLE field
+        -----------------------------------------------------------------------
+
+Purpose
+-------
+
+This field is used to denote the title of the tune that a given SID tune
+covers.
+
+The titles should be listed in their original language of publication, with
+the correct spelling observed in that language.
+
+If the SID tune covers another SID tune, the title of the covered C64 tune
+should be given, with the tune number specified if needed.
+
+Format
+------
+
+  TITLE: Title field [from Album] (TIMESTAMP)
+or
+  TITLE: <Title of the covered C64 tune>, Tune #y (TIMESTAMP)
+
+Note that there are TWO (2) spaces (not a tab!) before the word TITLE, which is
+followed by a colon and another space. This is followed by the actual title of
+the tune that the given SID tune covers, followed by a field that describes
+which album the given song is from.
+
+Length
+------
+
+The whole field must be 90 characters long or less. If it doesn't fit into 90
+characters, try to abbreviate the album subfield. If that is still not enough,
+try to abbreviate the title information. In no case should you abbreviate the
+TIMESTAMP or the field name!
+
+Subfields
+---------
+
+The album info is an optional subfield within the TITLE field (and within
+the TITLE field *only*). The TIMESTAMP is also an optional subfield, and it is
+described later, as it can also be used in conjunction with other STIL fields.
+
+
+        [ 4.4.4] Description of the album subfield
+        -----------------------------------------------------------------------
+
+Purpose
+-------
+
+This is a subfield within TITLE identifying on which album was this particular
+tune published originally. For classical compositions the use of this subfield
+is discouraged, but for non-classical tunes it is strongly encouraged.
+
+The same subfield can be used to identify which movie, TV series, or even
+videogame (to name a few) the given tune was composed for. In these cases the
+wording should be: "[from the movie XYZ]" or "[from the TV series XYZ]" or
+"[from the arcade game XYZ"] or so forth. The title of the movie/TV series does
+NOT have to be identified if it is the same as that of the title of the actual
+tune. For example:
+
+  TITLE: Airwolf Theme [from the TV series]
+
+which obviously means that this is from the TV series titled "Airwolf". And:
+
+  TITLE: Passing Breeze [from the arcade game Out Run]
+
+which means it covers the tune "Passing Breeze" from the arcade game "Out Run".
+
+In addition, the album subfield can also be used to specify that the original
+is an Amiga module or a PC XM module, as follows:
+
+/MUSICIANS/A/Alien/Question_of_Guilt.sid
+  TITLE: Question of Guilt [from the PC XM module]
+ ARTIST: Thomas Mogensen (DRAX)
+
+or
+
+/MUSICIANS/C/Connolly_Sean/Enigma_Phenomena.sid
+  TITLE: Musiklinjen [from the Amiga MOD module]
+ ARTIST: Firefox & Tip of Phenomena
+
+
+A very good source for finding what album/movie/TV series certain tunes come
+from is the excellent All Music Guide (AMG) on the Web:
+
+    http://www.allmusic.com
+
+Format
+------
+
+[from Album]
+
+The album info should appear in the TITLE field right after the actual title.
+
+Length
+------
+
+If the combination of the actual title of the tune and the album subfield is
+longer than the allowed maximum of 90 characters, try to provide the FULL title
+of the tune, and a shortened version of the album info with ellipses (... = 3
+dots) indicating that this is the shortened title. For example:
+
+  TITLE: I Want You [from The Covenant The Sword...] (3:10)
+
+
+        [ 4.4.5] Description of the ARTIST field
+        -----------------------------------------------------------------------
+
+Purpose
+-------
+
+This field is used to denote the composer(s) of the tune that a given SID tune
+covers.
+
+The name of the artist(s) (or: composer(s)) should be listed exactly as they
+were credited for the given tune that is covered in the SID tune.
+
+Format
+------
+
+ ARTIST: Artist field (TIMESTAMP)
+
+Note that there is ONE space (not a tab!) before the word ARTIST, which is
+followed by a colon and another space. This is followed by the name of the
+actual composer(s) of the tune that the given SID tune covers.
+
+Length
+------
+
+The whole field must be less than 90 characters long. If it doesn't fit into
+90 characters, try to abbreviate the name of the composer(s). In no case should
+you abbreviate the TIMESTAMP or the field name!
+
+Subfield
+--------
+
+The TIMESTAMP is an optional subfield, and it is described later, as it can
+also be used in conjunction with other STIL fields.
+
+
+        [ 4.4.6] Description of the COMMENT field
+        -----------------------------------------------------------------------
+
+Purpose
+-------
+
+This field can be used for any general comment or information with regards to
+the given SID tune.
+
+Please, keep the comments to be factual. Opinions expressed in the form of
+comments are not welcome at all and will be thrown out - except if they come
+from the composers themselves when they are commenting their own tunes.
+
+Format
+------
+
+COMMENT: Comment field. (TIMESTAMP)
+         This is the optional second line of the comment field.
+         This is the optional third line of the comment field.
+
+Note that there is NO space before the word COMMENT, which is followed by a
+colon and another space. This is followed by the actual comment.
+
+Length
+------
+
+There is no restriction on the length of the comment, but if it's longer than
+90 characters (together with the COMMENT: field name), it must be broken up
+into lines that are preceded by NINE (9) spaces, and which lines are also not
+longer than 90 characters (together with the leading spaces).
+
+Subfield
+--------
+
+The TIMESTAMP is an optional subfield, and it is described later, as it can
+also be used in conjunction with other STIL fields.
+
+
+        [ 4.4.7] Description of the TIMESTAMP subfield
+        -----------------------------------------------------------------------
+
+Purpose
+-------
+
+The (TIMESTAMP) is an optional subfield within the STIL fields, and it should
+be used only if the given SID tune covers more than one tune. In this case, the
+first STIL field gets the (TIMESTAMP) subfield tagged to it.
+
+The TIMESTAMP denotes the time the given cover starts at (based on SIDPlay
+timestamps!).
+
+Format
+------
+
+The TIMESTAMP subfield can be given in two formats:
+
+(X:XX) - means that the cover starts at X:XX and ends at the  next TIMESTAMP
+found in the same entry, or at the end of the tune (ie. when it starts
+looping).
+
+(X:XX-Y:YY) - means that the cover starts at X:XX and ends at Y:YY, regardless
+of whether there's another TIMESTAMP in the entry or not.
+
+You can mix the above two timestamp formats within an entry, just keep in mind
+what they refer to.
+
+Examples
+--------
+
+Maybe an example would be useful here, since this sounds rather complicated,
+even for me. :) So, here are some examples:
+
+TIMESTAMP EXAMPLE #1:
+
+/Path_in_HVSC/Full_Title.sid
+  TITLE: Title field (0:18)
+ ARTIST: Artist field
+COMMENT: Comment field.
+  TITLE: Title field (0:35)
+ ARTIST: Artist field
+COMMENT: Comment field.
+
+The first cover starts at 0:18 and ends at 0:35, the second one starts at 0:35
+and ends when the tune ends or when it starts looping (since there are no
+other entries following it).
+
+TIMESTAMP EXAMPLE #2:
+
+/Path_in_HVSC/Full_Title.sid
+  TITLE: Title field (0:18-0:35)
+ ARTIST: Artist field
+COMMENT: Comment field.
+  TITLE: Title field (0:40-0:45)
+ ARTIST: Artist field
+COMMENT: Comment field.
+
+The first cover starts at 0:18 and ends at 0:35, the second one starts at 0:40
+and ends at 0:45. The "missing" 5 seconds between 0:35 and 0:40 is either an
+original composition, or it is an unknown cover, and the same could be said
+about whatever is after 0:45.
+
+So, this is *WRONG* for the above entry:
+
+/Path_in_HVSC/Full_Title.sid
+  TITLE: Title field (0:18)
+ ARTIST: Artist field
+COMMENT: Comment field.
+  TITLE: <?> (0:35)                 <=== THIS IS *WRONG* !
+ ARTIST: <?>
+  TITLE: Title field (0:40)
+ ARTIST: Artist field
+COMMENT: Comment field.
+  TITLE: <?> (0:45)                 <=== THIS IS *WRONG* !
+ ARTIST: <?>
+
+This was the OLD way of doing things and resulted in a whole bunch of empty
+entries (ie. entries that had only a TITLE and ARTIST field, and both contained
+unknown info). Please, refrain from submitting such entries.
+
+
+    [ 4.5] Some general guidelines to STIL entries and the STIL.txt file
+    ---------------------------------------------------------------------------
+
+a)
+
+Regardless of a cover or remix, proper credits are given to the *original*
+composers. This means that even if a given tune was made popular by a different
+person or band, STIL still contains information about the original composer(s),
+whoever that might be.
+
+b)
+
+The same goes for SID tunes covering other SID tunes. If a cover covers another
+C64 tune that is also a cover itself, the STIL entry for the tune contains the
+very *ORIGINAL* TITLE/ARTIST info for the STIL entry! A comment may be
+provided, though, that states that the given cover is really a cover of another
+cover. (Phew, did you follow that? ;) Here are some examples:
+
+/MUSICIANS/C/Connolly_Sean/Go_West.sid
+  TITLE: Go West
+ ARTIST: The Village People
+COMMENT: This tune covers the Pet Shop Boys cover.
+
+/MUSICIANS/S/Scarlet/Mariah_Carey.sid
+  TITLE: Without You [from No Dice]
+ ARTIST: Badfinger
+COMMENT: This SID covers Mariah Carey's cover version.
+
+c)
+
+A "<?>" is placed behind (or in place of) every information that is doubtful
+or missing.
+
+d)
+
+STIL entries are listed in the STIL.txt file by the relative HVSC directory
+names sorted first case-insensitively in ascending alphabetical order. Within a
+directory, STIL entries for individual SID files are sorted case-insensitively
+in ascending alphabetical order.
+
+Before the first entry of each subdirectory a so-called section header line is
+placed in STIL to indicate that STIL entries following that section header
+belong to a different directory than the previous entries. The section header
+line begins with 3 '#' characters, followed by a space, followed by the full
+path of the composer/group the directory belongs to, followed by a space, then
+as many '#' characters as it takes to fill out 78 characters.
+Here's an example:
+
+### /MUSICIANS/T/Tel_Jeroen ##################################################
+
+/MUSICIANS/T/Tel_Jeroen/Filename.sid
+COMMENT: This is the first STIL entry in the directory of Jeroen Tel.
+
+If an HVSC directory has further subdirectories, the first section header found
+in that directory is preceded by an (opening) section header given for the
+directory that contains the subdirectories, and the last STIL entry that
+belongs to this directory is followed by another (closing) section header.
+
+The opening and closing section headers look much like a regular section
+header, but they contain the name of the directory instead of the name of the
+composer or group, and the name is followed immediately by a forward slash
+('/') for an opening section header and a backward slash ('\') for a closing
+section header. For example:
+
+### /MUSICIANS/x/Section/ ####################################################
+
+### First Composer in this dir ###############################################
+
+<STIL entries for the first composer go here>
+
+### Second Composer in this dir ##############################################
+
+<STIL entries for the second composer go here>
+
+### /MUSICIANS/x/Section\ ####################################################
+
+So, in effect, all the entries that belong to subdirectories of an HVSC root
+directory (/MUSICIANS/x/Section/ in the above example) are enclosed by the
+opening and closing section headers.
+
+Please note that the example given above is simplified compared to the real
+structure of the STIL.
+
+If you're concerned with parsing the STIL, the best approach is to ignore
+any lines beginning with "#" and concentrate only on the STIL entries
+themselves. Alternatively, take a look at LaLa's STILView library, which takes
+most of the work out of parsing the STIL:
+
+  http://www.transbyte.org/SID/STILView.html
+
+[ 5] Who maintains the STIL? (In other words, who to complain to? :)
+-------------------------------------------------------------------------------
+
+The STIL is maintained by the STIL Administrator (also known as the HOSTILE
+(High Official STIL Executioner) ;-) under the watchful eye of the entire HVSC
+team. The administrator is currently :
+
+iAN CooG <hvsc.crew (sid) gmail.com>
+
+
+Also see the "STIL CONTRIBUTORS" list further down in the FAQ for other
+contributors.
+
+[ 6] What if I find incorrect or missing STIL entries?
+-------------------------------------------------------------------------------
+
+STIL is a living document about SID tunes, changing and growing with each
+subsequent HVSC Update pack. We attempted to make it as accurate as possible,
+but there can be mistakes and missing information here and there.
+
+If we have missed any information about the tunes in HVSC, of if you want to
+provide correction to any of the information contained in STIL, please send an
+email to the STIL Administrator. Please, read the section below about how to
+submit STIL entries before sending any entries, though!
+
+
+[ 7] How do I submit STIL entries?
+-------------------------------------------------------------------------------
+
+If you would like to submit new STIL entries, or you would like to submit
+modifications for existing entries, or you would like to have certain STIL
+entries deleted, simply send an email to the STIL Administrator. But please,
+try to follow the instructions provided below.
+
+If you do decide to send us STIL entries in email, please adhere to our
+standard so that we can effortlessly paste your data into STIL (see the section
+about the format of STIL for details). It is also important to stick to the
+strict STIL format as the STIL is checked and processed by programs (actually,
+Perl scripts), and also, some versions of SIDPlay now show STIL entries (with
+the help of STIL View) when playing SID tunes. Since all of these programs
+expect STIL and the STIL entries to be in a certain format, *PLEASE*, follow
+the outlined standard of STIL entries if you ever decide to send us new
+entries! This will make the life of the STIL Administrator easier, because this
+way no entries will have to be manually processed.
+
+This may look like a lot of restrictions that are hard to understand and
+follow, but we think they are quite logical and follow common sense. Remember,
+though, that anything in this section should be treated as a guideline, and
+submissions to the STIL Administrator will be processed *REGARDLESS* whether
+they are in the format specified below or not. However, it would be nice for
+the STIL Administrator to receive them in this format, since it makes the job
+of STIL administration that much easier.
+
+Thank you for your understanding of all these guidelines and rules!
+
+
+    [ 7.1] General guidelines for submitting entries
+    ---------------------------------------------------------------------------
+
+a)
+
+Anything you submit to the STIL Administrator should be in the format that STIL
+is using. Please, see the section "The format of STIL" for details on how
+STIL is formatted and how the fields in the STIL entries should look like.
+
+If you are in doubt about how to format a STIL entry, consult the STIL itself
+for examples. If *still* in doubt, contact the STIL Administrator for help.
+
+b)
+
+Please, consult the latest version of STIL to make sure that what you are
+trying to submit (a new entry or a modification request) is not already done.
+
+Also, make sure that your HVSC is up-to-date, so you are not submitting STIL
+entries for SID files that got moved or deleted during later HVSC updates.
+
+c)
+
+Reports of bugs in SID files are handled separately in the BUGlist.txt file.
+Please, refer to that file for how to report them (the format is actually very
+similar to STIL's format). STIL lists bugs only if they were in the original
+C64 tunes, too.
+
+d)
+
+Please, do not submit entries that are too vague about the cover information.
+For example, if you think that a given SID tune covers a classical tune by
+some composer, but you are not sure about it, furthermore, you don't even have
+an approximate idea about what the title of the covered music might be, and
+you make up an entry, it will not be accepted. STIL strives to have as
+accurate info in the entries as possible, and having such vague entries is not
+preferred. The current STIL may have such entries, but those should be
+deleted. There used to be a few entries in STIL where such vague comments
+turned out to be totally untrue, so they are not accepted any more.
+
+e)
+
+If you still have questions and/or problems, do not hesitate to send an email
+to the STIL Administrator!
+
+
+    [ 7.2] Submitting new STIL entries
+    ---------------------------------------------------------------------------
+
+To send us an entirely new STIL entry, all you need to do is to send the STIL
+entry surrounded by empty lines, like this:
+
+/Path_in_HVSC/Full_Title.sid
+  TITLE: Title field [from Album]
+ ARTIST: Artist field
+COMMENT: Comment field.
+
+Notice how the STIL entry is surrounded by empty lines!
+
+Naturally, you can send more than one new STIL entry in a single email as long
+as the entries are surrounded by empty lines.
+
+If a STIL entry already exists for the SID file, but not for the given tune
+number that you want to have added, it is enough to submit only the new part of
+the STIL entry. For example, let's say that there is already a STIL entry for
+tune #2 of a given tune and you want to send a new entry for tune #3:
+
+/Path_in_HVSC/Full_Title.sid
+(#3)
+  TITLE: Title field [from Album]
+ ARTIST: Artist field
+COMMENT: Comment field.
+
+In other words, you do NOT have to send in the whole STIL entry (tune #2 and
+tune #3 in the above example), just the new part of it.
+
+
+    [ 7.3] Submitting modifications to specific STIL entries
+    ---------------------------------------------------------------------------
+
+If you would like to send us corrections or modifications to already existing
+entries, it is enough to send just the relevant part of the STIL entry
+containing the corrected or modified fields, with enough info to uniquely
+identify the part of the STIL entry that should get changed. For example, if
+the entry looks like this:
+
+/Path_in_HVSC/Full_Title.sid
+(#1)
+  TITLE: Title field [from Album]
+ ARTIST: Artist field
+COMMENT: Comment field.
+(#2)
+  TITLE: Title field [from Album] (0:05)
+ ARTIST: Artist field
+COMMENT: Comment field.
+  TITLE: Title field [from Album] (1:05)
+ ARTIST: Artist field
+COMMENT: Comment field.
+
+it is perfectly fine to send the STIL Administrator only this:
+
+/Path_in_HVSC/Full_Title.sid
+(#1)
+ ARTIST: The corrected artist field
+
+Here (#1) uniquely identifies the ARTIST field that should get changed.
+Another example:
+
+/Path_in_HVSC/Full_Title.sid
+(#2)
+  TITLE: Title field [from Album] (1:05)
+ ARTIST: The corrected artist field
+COMMENT: The modified comment field.
+
+Here the combination of (#2) and the (1:05) timestamp uniquely identifies the
+fields that you think should get changed. In other words, it is no need to send
+in the whole entry, just the relevant parts of it that you want to see
+modified.
+
+
+    [ 7.4] Submitting general modifications
+    ---------------------------------------------------------------------------
+
+If you would like to send a modification that can potentially impact a lot of
+existing STIL entries (for example, a more precise TITLE field for a tune, or
+you would like to add album info to a TITLE field, etc.), you do not need to
+specify all the STIL entries that you would like to see changed, only the field
+that you want to change. You need to precede it with the command "# ALL", then
+list the old field, then the command "# TO", and list the new field.
+
+Since this can be confusing, here's an example. Let's say you are sure that the
+real title of a tune covered by a SID tune is different than that in STIL:
+
+# ALL
+  TITLE: Old Title [from Album X]
+# TO
+  TITLE: New Title [from Album Y]
+
+This submission requests that every reference to "Old Title" should be changed
+to "New Title" (with the album info changed, too).
+
+
+    [ 7.5] Requesting deletion of a STIL entry
+    ---------------------------------------------------------------------------
+
+If you think that a given STIL entry should get deleted, identify what you
+would like to see deleted (similar to the case when you request modifications
+to existing entries), and precede the entry with the "# DELETE" command. For
+example:
+
+# DELETE
+/Path_in_HVSC/Full_Title.sid
+(#2)
+COMMENT: This will be deleted.
+
+This is requesting the deletion of the COMMENT field from the tune #2 of the
+STIL entry for the given SID file.
+
+# DELETE
+/Path_in_HVSC/Full_Title.sid
+
+This is requesting the deletion of the whole STIL entry for the given SID file.
+
+
+    [ 7.6] Adding personal comments to STIL entries
+    ---------------------------------------------------------------------------
+
+If you would like to have only very specific words deleted and modified from
+STIL entries, or you have some special requests with regards to STIL and/or
+existing STIL entries that are not covered in the above sections, or you simply
+want to add a personal comment to an entry you are submitting, you can attach
+comments to the STIL entries you are submitting by simply putting a '#' in
+front of each line of your comment, and keeping the comment together with the
+STIL entry. For example:
+
+/Path_in_HVSC/Full_Title.sid
+(#3)
+  TITLE: Title field [from Album]
+ ARTIST: Artist field
+COMMENT: Comment here.
+# Please, move the COMMENT to be tune-global, as it refers to the whole sid,
+# not just tune #3.
+
+Another example:
+
+/Path_in_HVSC/Full_Title.sid
+  TITLE: Title field [from Album]
+ ARTIST: Artist field
+# This is the coolest song I've ever heard! You should listen to it, too!
+
+
+[ 8] Who is a STIL Hero?
+-------------------------------------------------------------------------------
+
+After internal discussion prior to HVSC update 42, it was decided to abandon
+the STIL Heroes scheme in favour of an alphabetical contributors list.
+
+[ 9] Where can I find the list of STIL contributors?
+-------------------------------------------------------------------------------
+
+The STIL is largely built from entries provided by astute HVSC users. We thank
+the following people for their support!
+
+STIL CONTRIBUTORS
+=================
+
+Abaddon                                Acker, Devin
+Adolfsson, Daniel                      Ames, John
+AMJ                                    Bamse
+Bergsten, Mattias                      Björnhager, Jens
+Boecker, Sven                          Bolla, Zoltán
+Bolmstedt, Per                         Bordeaux
+Bozzy                                  Branthle, Per
+Caie, Stuart                           Carlsson, Anders
+Casper H.                              Cavén, Tony
+Chiummo, Gaetano                       ColinZeal
+Culot, Jean-Christophe                 Dennis
+Deobald, Dominik                       Derisbourg, Stéphane 'innocent'
+Detering, Volker                       Drueing, Michael
+Dunkels, Adam (Trident)                Dust
+Eclipsed Moon                          Eden, Jack
+efy                                    Ekman, Tobias
+Ekstrom, Ola                           Evert-Jan Slypen
+Ferrara                                Forster, Joe
+Fransesch, Javier Sánchez              Frech, Martin
+Frigren, Jan-Erik                      Frinndal, Tobias
+Gargaj/CNS                             Grannell, Craig
+Griffin, Gaelan                        Gunness, Jacob
+Hamilton. Ciaran                       Haugseth, Lars
+Hermanni, Oliver (aka Wintermute)      Hermans, Roland
+Hesselbom, Anders                      Hillebrandt, Thomas
+Hobizal, Scott                         Hogeborn, Teddy
+Horan, Steve                           Hársfalvi, Levente
+Härnhammar, Ulf                        Jagdmann, Dirk
+Jakobsen, Anders                       Janne, Salmijarvi
+Jax                                    Jones, Scott
+Joos, Andry (Unlock/Albion)            Karppinen, Parsi
+Keränen, Petri                         Kierok, Sebastian
+Kilic, Huseyin                         Knurek
+Koschnick, Rainer                      Kvarme, Per Fredrik (PFK)
+Lankinen, Urpo / Weyfour WWWWolf       Lasse S
+Laurent                                Lehmann, Kai (Ass It)
+Lehtonen, Teppo                        Lindbergh, Pierre
+Linzner, Manfred                       Longhair
+ltx                                    Lönnberg, Jan
+MAD                                    MADrigal
+Maksimovic, Ljubomir                   Marinus, Edo
+mcmeatloaf                             MiKiL
+Miller, Matthew W.                     Mogensen, Thomas (DRAX)
+Molnar Jr., Laszlo                     Momir, Milekic
+Mostert, Jeroen                        Norgate, Graeme
+Nurmi, Ville                           Oedipus
+Ojanen, Eetu                           Olsen, Ole Kasper
+Oppermann. Jürgen                      Paananen, Jarno
+Pattis, Stefan                         PeteD
+PG                                     Pieknyman
+Pitre, Len                             Pohlmann, Stefan 'Pohli'
+Poque, Axel (F.)                       pyksy^dAP
+Rantala, Tuomas (Thor/Extend)          Reisdorf, James
+Riedel, Adric                          Rotzsch, Alexander (Fanta)
+ruiner                                 Rönkkö, Timo (Deadbeat/The Sharks)
+Salo, Tommi                            Samuelsson, Tobias
+Saviranta, Tommi                       Scheiby, Nicolai
+Schelling, Bernd                       Schmidt, Miron
+Schoettke, Vincent                     Schäfer, Markus
+Scott                                  se7en / Digital Excess
+Sidder                                 Sievänen, Timo
+Sjöblom, Gustaf                        Skelly, Jason 'XtC'
+Smith, Jeremy                          smmoran
+Solomon, Aaron                         Spinball/Excess
+Spitzley, Kai                          Steve
+Stone, Dean-Ryan                       Svensson, Peter
+Szabolcs, Temesvári                    Szczygielski, Przemyslaw
+Taylor, Chris                          Temesvári, Szabolcs
+Thomsen, Jan Lund                      Timmermann, Philip
+Tognon, Stefano                        Trauth, Paul
+Turjansalo, Lauri                      Vincent Voois
+Volpi, Patrick                         Vormestrand, Ingve
+Walleij, Linus (King Fisher/Triad)     Waschk, Goetz
+Weighill, Peter                        Wijnhoven, Joachim "Yogibear"
+Winter, Felix                          WoLaNd
+Xavier Thunderbridge                   Xazziri
+Zell, Markus                           Zimmermann, Olaf
+Zowayix                                Zwart, Joris Portegies
+Zyron                                  Åkerlund, Linus
+
+
+[11] Acknowledgments
+-------------------------------------------------------------------------------
+
+Lots of special thanks fly to:
+
+- Andreas Wallstrom and www.c64hq.com for the interviews with Martin Galway,
+  Rob Hubbard and Barry Leitch, from which many of these composers' comments
+  were taken from!
+- Commodore Zone for the interviews they conducted with Rob Hubbard, Martin
+  Galway and Jeroen Tel from which some of these composers' comments were taken
+  from (lots of thanks to Warren Pilkington for STILizing(tm) them! :)
+- Happy Computer for the interviews from where some composers' comments were
+  taken from
+- Kai Spitzley and Jan Zottmann for their "mini" interviews with Ben Daglish
+  and Anthony Lees, respectively.
+
+[12] Are there any tools available that can show STIL entries in a better way?
+-------------------------------------------------------------------------------
+
+Yes, there are!
+
+Most of the latest versions of SIDPlayer programs on most platforms have some
+support to show a specific STIL entry for the SID which is being played.
+Consult the documentation that came with your SIDPlayer to find out how to
+make the program show STIL entries.
+
+For the programmers, LaLa has written STIL View, a freeware program (or more
+precisely, piece of code) that is able to show specific STIL entries for a
+given SID tune. STIL View is available as a multi-platform C++ class.
+
+For more details, visit LaLa's SID pages at:
+
+    http://lala.c64.org
+
+You can also find other STIL-related tools at this website.
+
+Be aware that the site is not maintained anymore so it is already outdated.
+
+
+[13] Gimme some fun statistics about the STIL!
+-------------------------------------------------------------------------------
+
+FUN STATS ABOUT THE STIL
+========================
+
+Top 15 Covered Artists:
+-----------------------
+
+ 1) Johann Sebastian Bach ................................................. 403
+ 2) Rob Hubbard ........................................................... 401
+ 3) Jean Michel Jarre ..................................................... 315
+ 4) Jeroen Tel ............................................................ 245
+ 5) Depeche Mode .......................................................... 225
+ 6) The Beatles ........................................................... 196
+ 7) Chris Hülsbeck ........................................................ 175
+ 8) John Williams ......................................................... 166
+ 9) James Lord Pierpont ................................................... 164
+10) Harold Faltermeyer .................................................... 163
+11) Martin Galway ......................................................... 161
+12) Scott Joplin  ......................................................... 138
+13) Ludwig van Beethoven .................................................. 134
+14) Pet Shop Boys ......................................................... 118
+15) Madonna ............................................................... 109
+
+Not taken into account as they are to be considered unknown artists, but for
+completeness of STIL statistics: "Traditional": 525, "<?>": 291, "Unknown": 54
+
+
+Top 15 Covered Tunes:
+---------------------
+
+ 1) One Horse Open Sleigh ................................................. 165
+ 2) Axel F [from the movie Beverly Hills Cop] ............................. 143
+ 3) Popcorn [from Music To Moog By] .......................................  96
+ 4) Happy Birthday ........................................................  77
+ 5) Funeral March [from Sonate No. 2 in B flat minor Op. 35] ..............  74
+ 6) Airwolf Theme [from the TV series] ....................................  61
+    Living on Video [from Living on Video] ................................  61
+ 8) Crockett's Theme [from the TV series Miami Vice] ......................  60
+    The Entertainer .......................................................  60
+10) Toccata [from Toccata and Fugue in D Minor (BWV 565)] .................  58
+11) James Bond Theme [from the James Bond series of movies] ...............  55
+    Oxygene 4 [from Oxygene] ..............................................  55
+13) Blue Monday ...........................................................  52
+14) In the Hall of the Mountain King [from Peer Gynt] .....................  50
+15) The X-Files [from the TV series] ......................................  49
+    Main Title [from all the Star Wars movies] ............................  49
+
+Not taken into account as the covered tunes titles are unknown, but for
+completeness of STIL statistics: "<?>" (54)
+
+
+Top 15 Covered C64 Artists:
+---------------------------
+
+ 1) Rob Hubbard ........................................................... 401
+ 2) Jeroen Tel ............................................................ 245
+ 3) Chris Hülsbeck ........................................................ 175
+ 4) Martin Galway ......................................................... 161
+ 5) Ben Daglish ...........................................................  91
+    David Whittaker .......................................................  91
+ 7) Thomas Mogensen (DRAX) ................................................  69
+ 8) Matt Gray .............................................................  64
+ 9) Reyn Ouwehand .........................................................  51
+10) Tomas Danko ...........................................................  42
+11) David M. Hanlon .......................................................  38
+12) Mark Cooksey ..........................................................  37
+13) Johannes Bjerregaard ..................................................  35
+14) Matt Simmonds (4-Mat) .................................................  29
+15) Klaus Engell Grøngaard (Link) .........................................  27
+    Jonathan Dunn .........................................................  27
+
+
+Top 15 Covered C64 Tunes:
+-------------------------
+
+ 1) Thalamusik [from the game Sanxion] ....................................  49
+ 2) Comic Bakery, Tune #1 .................................................  37
+ 3) Enlightenment: Druid II, Tune #3 ......................................  35
+ 4) Ghosts'n Goblins, Tune #2 .............................................  28
+ 5) The Wastelands [from the C64 game The Last Ninja] .....................  23
+ 6) Commando, Tune #1 .....................................................  22
+    Delta, Tune #12 .......................................................  22
+    Parallax, Tune #1 .....................................................  22
+ 9) Cybernoid II, Tune #1 .................................................  20
+    Knucklebusters, Tune #1 ...............................................  20
+11) Noisy Pillars, Tune #1 ................................................  18
+12) Crazy Comets, Tune #1 .................................................  17
+    The Human Race, Tune #4 ...............................................  17
+14) Commando, Tune #2 .....................................................  16
+15) Maniac Mansion, Tune #1 [from the game] ...............................  15
+
+
+-------------------------------------------------------------------------------
+--- End of STIL FAQ ---
+-------------------------------------------------------------------------------

@@ -1,0 +1,414 @@
+High Voltage SID Collection: Update #77
+Date: June 25, 2022
+
+Resulting Version: 77
+ Previous Version: 76
+
+After this update, the collection should contain 55,775 SID files!
+
+This update features (all approximates):
+     709 new SIDs
+      24 fixed/better rips
+       1 repeats/bad rips eliminated
+     132 SID credit fixes
+      32 SID model/clock infos
+       5 tunes from /DEMOS/UNKNOWN/ identified
+       1 tunes from /GAMES/ identified
+      21 tunes moved out of /DEMOS/ to their composers' directories
+       4 tunes moved out of /GAMES/ to their composers' directories
+
+We are always looking for others to help make HVSC a better collection.
+If you find any errors or have new rips to add, please email:
+
+ iAN CooG  <hvsc (sid) c64.org>
+
+Thanks to all the people who have helped to make HVSC the collection that it
+is today, without your help it would be a much tougher task.
+
+
+##################
+# GTUltra V1.2.0 #
+##################
+
+GTUltra (GoatTracker Ultra) is an enhanced version of GoatTracker v2.76 Stereo
+made by Jason Page.
+
+Features:
+
+- Up to 4 SID Chip (12 channel) support
+- Transport Bar
+  - Change Skin
+  - Select Octave
+  - Follow On/Off
+  - Loop On/Off
+  - Record (aka Jam Mode) On/Off
+  - Play / Pause (play resumes from stopped position)
+  - Rewind (to start of pattern, to previous pattern, to start of song)
+  - Fast Forward to next pattern
+  - JAM Mode SID chip On/Off
+  - Piano keyboard view (Shows playing notes)
+- Play from any song position or pattern position
+  - All playing / fast forward / rewind selection syncs all channels to their
+    correct positions, taking into consideration channel-specific tempo
+    channels, pattern lengths, repeat info, etc.
+  - Playback also emulates audio playing instruments prior to the selected
+    position
+- MIDI Input
+  - For both jamming and note input
+  - Also allows for listening playing notes whilst editing instruments / tables
+- Note number / ARP chord info display
+  - Shows the number if a single note is held down
+  - shows the arp chord values (eg. 00,04,07) if multiple notes are held down
+- Automatically move to previous / next song position when user scrolls to
+  beginning / end of current pattern
+- Shows the number of times an instrument has been used within a song
+- Shows the overall length of the song (automatically calculated)
+- Table views show each section
+- Full undo (Ctrl-Z)
+- Save song from anywhere (Ctrl-S)
+- Info line (shows details on what cursor is currently over
+- Displays SID chip filter information:
+  - Which channels have filter enabled
+  - Filter type enabled (low. Band, high)
+  - Cutoff and Resonance
+- Save Song / Load Song UI design change to make it less likely to accidentally
+  save over a song instead of loading!
+- F8 now moves cursor to Table area, instead of Song Name
+- JAM Mode polyphony (up to 12 SID channels)
+- Auto-note portamento
+  - Press a single key to add portamento from cursor position to the next note
+    in the pattern. Automatically calculates and inserts the correct portamento
+    speed table value
+- Palette and charset editor
+- Unique table editing views
+- Waveform editing view
+
+Get the latest version from:
+
+https://github.com/jpage8580/GTUltra
+
+
+##################
+# cSID-light 1.1 #
+##################
+
+Hermit (Mihály Horváth) released cSID-light version 1.1. This cSID version is
+pretty much enhanced with better 6581 filter emulation (with filter-distortion)
+and playlist capabilities. Still operates in command line (linux by default),
+and eats much less CPU resource than the original cSID which clocks sound
+emulation at 1MHz.
+Most SIDs can be played with csidl fine though due to the non-cycle based
+operation ADSR can behave differently than on real machine.
+
+The source code has a lot of comments in it which explains the internal workings
+of the SID chip.
+
+Changes:
+
+- 32bit Windows .exe (command line) and Linux executable is now included
+- Calculated combined waveforms resemble more the original SID ones
+- Distortion/clicking-fixes with 2SID/3SID loud tunes like Gliding Gladly
+- Better illegal-opcode support including NOP #immediate and NOP absolute
+- Zero-page-indexing wraparound 6502-CPU 'feature' support (if it's ever needed)
+- Source-code improvements to prevent division-by-zero
+
+Get cSID-light from here: https://csdb.dk/release/?id=214554
+
+
+#########
+# cRSID #
+#########
+
+cRSID is an open-source cycle based sidplayer made by Mihaly Horvath (Hermit).
+This is an integer-only rewrite of cSID and cSID-light. The new sidplayer is
+able to play most RSID tunes and of course PSID tunes. It includes a
+pre-compiled executable for Windows and Linux.
+
+For more details go to:
+
+https://csdb.dk/release/?id=215955
+
+
+###############
+# FlexSID 1.1 #
+###############
+
+FlexSID is a music editor made by Mihaly Horvath (Hermit). FlexSID is primarily
+a tool for you to create small footprint SID music. Yet it provides flexibility
+and most features you usually need for good sound.
+
+To reach this goal it's a bit different conceptually from the traditional music
+trackers: diatonic scale-degree based notation system for better music-data
+compression where it is possible, and the single command-oriented
+instrument-table which is responsible for the small player-code size. The result
+pretty much depends on the musician as well.
+
+The editor is written in C (and some ca65 assembly), compiled with cc65 and gcc
+with a quasi-emulated layer on top of SDL1.2, and therefore runs identically on
+Linux (compiled for 64bit), Windows (compiled for 32bit) and of course C64.
+
+Get it from here:
+
+https://csdb.dk/release/?id=215599
+
+
+############################
+# SID-Wizard Emulator v1.9 #
+############################
+
+Mihaly Horvath (Hermit) released a new version of SID-Wizard with 'built-in'
+emulation for ease of use and faster launching and IO-operations. This is the PC
+version of SID-Wizard that is runnable from PC directly and can be associated to
+.swm workfiles, in order to improve the workflow by shorter loading times and to
+avoid d64-quirks. Current builds run on Windows and Linux.
+
+Check it out here:
+
+https://csdb.dk/release/?id=218819
+
+
+##############
+# VICE 3.6.1 #
+##############
+
+VICE 3.6.1 has been released. VICE is an open source cross-platform emulator of
+several Commodore machines.
+
+VICE also includes VSID which can be used to play SID files.
+
+SID/Audio related changes since VICE 3.5:
+
+- Fixed sound buffer underrun behaviour, it will now cause a small glitch and
+  no longer disable sound or flood the log with warnings
+- Changing host audio settings no longer resets the emulated sound chip
+- Added option to write out the raw data produced by reSID (for debugging)
+- Made 48kHz the default for sound output, since that is what most modern stuff
+  uses natively
+- VSID: Fixed various issues with threading
+- VSID: Implemented proper STOP of playback
+  
+You can get VICE from here:
+
+https://vice-emu.sourceforge.io/
+
+
+###################
+# JSidDevice v4.6 #
+###################
+
+A new version of JSidDevice has been released. JSidDevice is a network SID
+device which can be controlled by SID players like ACID64 Player. JSidDevice
+requires Java 8 or higher.
+
+Check out: https://csdb.dk/release/?id=218656
+
+
+##################
+# JSIDPlay2 v4.6 #
+##################
+
+A new version of JSidplay2 has been released. JSidplay2 is an open-source C64
+emulator specialized for sound reproduction. It is also a SID player for music
+collections like HVSC and CGSC. It is a full C64 emulator and can play games of
+the GameBase64 project as well. The emulator is written in Java and runs on any
+environment that runs Java 8 or higher.
+
+Changelog since v4.4:
+
+- Configuration version changed for jsidplay2.xml, creates a new one and backups
+  the old one to jsidplay2.xml.bak
+- sidplay2.ini has been renamed to jsidplay2.ini
+- All shell-scripts and desktop files renamed to lower case without space in
+  it's name for convenience
+- splash screen removed
+- New java based USB drivers implemented for:
+    SIDBlaster, ExSID, ExSID+, HardSID4U, HardSID Uno and HardSID UPlay
+    Supported platforms: Windows/Linux and MacOSX (MacOSX currently not
+    working with HardSID devices)
+- SID Recordings can now being watched and exported in a new recording view.
+- Player control buttons reworked and rearranged
+- Better C64 breadbox/PC64 images and Composer pictures
+- GameBase64: show musicians photo
+- Use fixed PAL/NTSC setting is now possible
+- New playback option: sequential (repeated) added
+- FLV recordings added
+- Live Video Streaming added
+- Recordings are now created using ffmpeg for better performance and quality control
+- startSong parameter added to restful services API
+- File permissions of linux shell scripts fixed (executable bit)
+- Windows executables have been self-signed
+- Unboosted digis on 8580 are now equally audible for Dag Lem's ReSID 1.0beta
+  same as for Antti's ReSIDfp
+- WhatsSID changes take now effect without restart
+- File extension for SIDDump driver changed to .txt
+- Favorites Tab: Add Column - names are now sorted and ordered
+
+Get it from: https://csdb.dk/release/?id=218657
+
+
+#################################
+# SID Factory II build 20211230 #
+#################################
+
+SID Factory II is a cross-platform music editor made by Thomas Egeskov Petersen
+(also known as Laxity) for editing SID music that can be played on a C64.
+It is a successor of SID Factory which runs natively on a C64.
+
+The latest build is available for Windows, macOS and Linux.
+
+Changelog:
+
+Added
+- Add labels for song list rows. Left-click to edit a label
+- Note delay; delay a note by 0-F ticks. This is the new default driver 11.04
+- Option in the packer to specify the player's base for zero page addresses
+- Documentation on how to customize configuration
+- Configuration options
+
+Changed
+- The list of keycodes that can be used for remapping is complete now
+- The official macOS distribution is now a universal application, meaning it
+  runs on both the M1 (arm64) and the Intel (x86_64) architecture
+
+Fixed
+- More accurate clock speed
+- SF2 won't compile on mac with Silicon M1 CPU
+- Emulation error when starting up Linux version
+- SF2 won't compile on Arch Linux
+- Instability in filter table when jumping to set command in default driver
+
+Check it out:
+
+https://csdb.dk/release/?id=213369
+
+
+###########################
+# ACID 64 Player Pro V4.2 #
+###########################
+
+A new version of ACID64 has been released. ACID 64 Player is a cycle based
+Commodore 64 music player designed for playing SID tunes on external interfaces
+that emulate the sound of the SID chip or that consist of a hardware device
+that has a real SID chip (6581/8580) on board.
+
+What's changed:
+
+New
+- New HardSID USB driver support (WinUSB driver). See Help menu for details on
+  how to install
+- Added model, clock, number of SIDs and data size to info screen
+- Added support for SID links in STIL with sub tune info. Clicking on the link
+  will now play the sub tune
+- Added support for SID links in STIL that are in the same folder and doesn't
+  have a full HVSC path
+- Added support for changing sampling rate in settings for network SID devices
+
+Fixed
+- Mouse up for fast forward button when mouse pointer isn't on icon
+- Parsing STIL bug entries with multiple lines
+- MUS file text inversion on new line
+- Touch event on previous and next tune from history icon skips 1 tune
+- Touch event on next sub tune icon skips 1 sub tune
+- Media key next track and previous track could hang UI when pressed long
+- Reindexing HVSC could ask to reindex again after indexing
+
+Improvements
+- Allow local IP addresses without network (169.245.x.x) for network SID devices
+- Added context menu key support in file browser
+- Changing settings are now applied immediately. Only storing the settings is
+  delayed
+- Some network optimizations for network SID devices
+- Small UI improvements
+
+The new version can be found at:
+
+https://www.acid64.com
+
+
+###################
+# Sidplayfp 2.2.3 #
+###################
+
+Libsidplayfp (and its console frontend sidplayfp) is a fork of sidplay2 born
+with the aim to improve the quality of emulating the 6581, 8580 chips and the
+surrounding C64 system in order to play SID music better.
+
+Changelog:
+
+- VIC II: check badline enabled condition on raster Y increment. Fixes
+  CPU/shxy/shx-test
+- Disable digiboost for residfp when not required
+- Filewriter: only add extension if the given name doesn't provide one already
+- Restore correct default record length
+- Doc: update default playback frequency
+
+Get the new version here: https://github.com/libsidplayfp/sidplayfp
+
+
+##############
+# CGSC v1.43 #
+##############
+
+The Compute Sidplayer Collection has been updated and contains now 15847 MUS
+files, 4337 STR files and 5443 WDS files.
+
+Get the collection here: http://www.c64music.co.uk/
+
+
+########################
+# Music Studio 2.2.0.7 #
+########################
+
+Music Studio is an open-source Windows-based SID music creator software. It uses
+RESID-FP for SID emulation, both old (6581) and new (8580) SID chips. Music
+Studio is capable of creating 1x speed tunes and alternate many SID chip
+parameters directly with various commands. Classic and new C64 sounds can be
+created with envelope parameters that can be set up in a few simple steps.
+
+Changes in this release:
+
+- Exporting to MIDI
+
+Check it out: https://csdb.dk/release/?id=212533
+
+
+###########
+# DeepSID #
+###########
+
+DeepSID is an online SID player made by JCH of Vibrants. It emulates music
+created for the Commodore 64 home computer. It supports nice features like:
+
+- Toggling between WebSID/jsSID/SOASC for SID playback
+- SID player and year display for each song
+- Creature and play playlists
+- Rating folders and SID files
+- Comment / Discuss SID files
+- Profile / CSDb / GB64 / Player / STIL / Piano / Graph view
+- Search through HVSC / STIL
+- and much more
+
+DeepSID is continuously updated. See the Changes tab for the full change log.
+
+Check it out: https://deepsid.chordian.net/
+
+
+###################
+# SID Known v1.23 #
+###################
+
+Wilfred Bos has released SID Known v1.23. This version supports now HVSC #77.
+SID Known is a command line tool which you can use to identify SID tunes from
+SID and PRG files.
+
+This tool can be used if e.g. you want to know which SID tune is used in a
+specific C64 demo or C64 game, or you have a SID tune found or ripped and you
+want to know if it is already in your SID collection.
+
+SID Known can be used to identify music but it also helps to find out which
+tunes are not in the High Voltage SID Collection. If you find music not found
+by SID Known, it would be appreciated if you report this to the HVSC crew
+(https://hvsc.de) or post it in one of the CSDb forums (https://csdb.dk) like
+"SIDs that aren't in HVSC yet".
+
+Get the tool here: https://csdb.dk/release/?id=218988

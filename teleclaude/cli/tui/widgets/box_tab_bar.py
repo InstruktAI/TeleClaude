@@ -17,7 +17,6 @@ from teleclaude.cli.tui.theme import (
     blend_colors,
     get_neutral_color,
     get_terminal_background,
-    get_tui_inactive_background,
     is_dark_mode,
     resolve_haze,
 )
@@ -136,7 +135,6 @@ class BoxTabBar(TelecMixin, Widget):
         sky_fallback = "#000000" if dark_mode else "#C8E8F8"
 
         pane_bg = resolve_haze(get_terminal_background())
-        inactive_bg = get_tui_inactive_background()
         pipe_color = resolve_haze(get_neutral_color("muted"))
 
         # Dark mode: 4 rows (sky, label, bar, transition)
@@ -144,15 +142,16 @@ class BoxTabBar(TelecMixin, Widget):
         num_rows = 4 if dark_mode else 3
         tab_gap = 1
 
-        # Dark mode: white bar, inverted active tab (white bg + dark text)
+        # All tab chrome from neutral palette
         if dark_mode:
-            bar_color = "#FFFFFF"
-            active_tab_bg = bar_color
-            active_tab_fg = pane_bg
+            bar_color = resolve_haze(get_neutral_color("highlight"))
+            active_tab_bg = resolve_haze(get_neutral_color("highlight"))
+            active_tab_fg = resolve_haze(get_neutral_color("subtle"))
         else:
             bar_color = None
-            active_tab_bg = pane_bg
+            active_tab_bg = resolve_haze(get_neutral_color("subtle"))
             active_tab_fg = resolve_haze(get_neutral_color("highlight"))
+        inactive_tab_bg = resolve_haze(get_neutral_color("subtle"))
         inactive_tab_fg = resolve_haze(get_neutral_color("muted"))
 
         tabs: list[tuple[int, int, str, bool, str]] = []
@@ -184,7 +183,7 @@ class BoxTabBar(TelecMixin, Widget):
                     if c <= x < c + w:
                         in_tab = True
                         active_tab_under = is_active
-                        tab_bg = active_tab_bg if is_active else inactive_bg
+                        tab_bg = active_tab_bg if is_active else inactive_tab_bg
                         tab_fg = active_tab_fg if is_active else inactive_tab_fg
                         if y_offset == 1:
                             char = label[x - c]
