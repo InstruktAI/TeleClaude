@@ -7,12 +7,6 @@ type: 'design'
 
 # Redis Transport — Design
 
-## Required reads
-
-- @docs/project/design/adapter-client.md
-- @docs/project/design/cache.md
-- @docs/project/spec/event-types.md
-
 ## Purpose
 
 - Provide reliable cross-computer messaging and responses between TeleClaude daemons.

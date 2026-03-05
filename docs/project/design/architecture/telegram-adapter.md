@@ -10,7 +10,6 @@ type: 'design'
 ## Required reads
 
 - @docs/project/policy/ux-message-cleanup.md
-- @docs/project/design/session-lifecycle.md
 
 ## Purpose
 
