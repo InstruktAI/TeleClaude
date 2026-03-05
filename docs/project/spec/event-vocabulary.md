@@ -94,6 +94,64 @@ hook-level event type so existing consumers that inspect `type`/`event_type` rem
 functional. Downstream adapters (`ucap-web-adapter-alignment`, `ucap-tui-adapter-alignment`)
 will migrate to consume `canonical_type` directly in later phases.
 
+## Core Event Taxonomy
+
+The platform registers the following root-level event families as built-in catalog entries.
+Each family uses a flat prefix pattern. The existing `system.*` and `domain.*` families
+coexist alongside the newer flat families — both patterns are valid.
+
+| Family         | Levels                    | Visibility | Description                              |
+| -------------- | ------------------------- | ---------- | ---------------------------------------- |
+| `system`       | INFRASTRUCTURE, OPERATIONAL | CLUSTER  | Platform health and worker lifecycle     |
+| `domain`       | WORKFLOW, BUSINESS        | LOCAL      | Domain-specific events (e.g. software-development) |
+| `node`         | INFRASTRUCTURE, OPERATIONAL | CLUSTER  | Node presence and metadata updates       |
+| `deployment`   | WORKFLOW, BUSINESS        | LOCAL      | Deployment lifecycle (start → complete → fail → rollback) |
+| `content`      | WORKFLOW, BUSINESS        | LOCAL      | Content capture, processing, publication |
+| `notification` | WORKFLOW, BUSINESS        | LOCAL      | Escalation and resolution meta-events    |
+| `schema`       | OPERATIONAL               | CLUSTER    | Schema change proposals and adoptions    |
+
+### Event type registration
+
+All built-in event types are registered in `teleclaude_events/schemas/` and wired
+into `register_all()` in `teleclaude_events/schemas/__init__.py`. Domain-specific
+cartridges may register additional types in the same catalog.
+
+## Expansion Joint
+
+`EventEnvelope` accepts additional fields beyond its declared schema via
+`model_config = ConfigDict(extra="allow")`. This is the mechanism for organic schema
+evolution: nodes can attach fields that are not yet part of the formal vocabulary,
+and useful fields are promoted through governance.
+
+**Wire format:** Extra fields are JSON-encoded into a single `_extra` key in the Redis
+stream dict during `to_stream_dict()`, and restored from `_extra` in `from_stream_dict()`.
+This preserves the flat `dict[str, str]` Redis stream constraint.
+
+**Promotion path:** Extra fields start in `_extra`, gain usage across nodes, are proposed
+via `schema.proposed`, adopted via `schema.adopted`, and finally declared as first-class
+`EventEnvelope` fields in a schema-version bump.
+
+## JSON Schema for External Consumers
+
+The canonical JSON Schema document for `EventEnvelope` can be generated without importing
+Python code:
+
+```bash
+python -m teleclaude_events.schema_export [output_path]
+```
+
+Or programmatically:
+
+```python
+from teleclaude_events.schema_export import export_json_schema, export_json_schema_file
+
+schema = export_json_schema()           # returns dict
+export_json_schema_file(Path("envelope-schema.json"))  # writes to disk
+```
+
+The schema is versioned by `SCHEMA_VERSION` in `teleclaude_events/envelope.py` and
+regenerated on each release that changes the envelope structure.
+
 ## Known caveats
 
 - Removal or renaming of a standard event type is a breaking change (Minor bump).

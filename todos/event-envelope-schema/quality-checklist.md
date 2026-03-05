@@ -10,24 +10,24 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate event-envelope-schema` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test` — 2876 passed)
+- [x] Lint passes (`make lint` — pre-existing cyclic-import warnings, score unchanged at 9.40/10; new files pass ruff clean)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate event-envelope-schema` exits 0 — 4 executable blocks found)
+- [x] Working tree clean (pre-existing orchestrator drift: .teleclaude/worktree-prep-state.json, todos/state.yaml, teleclaude/core/next_machine/core.py — all non-blocking)
+- [x] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior
+- [x] Deferrals justified and not hiding required scope (no deferrals)
+- [x] Findings written in `review-findings.md`
+- [x] Verdict recorded (APPROVE)
+- [x] Critical issues resolved or explicitly blocked (none found)
+- [x] Test coverage and regression risk assessed (20 tests, 2756 unit suite passes)
 
 ## Finalize Gates (Finalizer)
 

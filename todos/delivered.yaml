@@ -1,5 +1,21 @@
 # Delivered work items. Newest first.
 
+- slug: event-system-cartridges
+  date: '2026-03-05'
+  title: 'System pipeline intelligence: trust evaluator, enrichment, correlation,
+    classification cartridges'
+  description: 'System pipeline intelligence: trust evaluator, enrichment, correlation,
+    classification cartridges'
+- slug: cli-authz-overhaul
+  date: '2026-03-05'
+  title: CLI command authorization matrix with role-based access control
+  description: CLI command authorization matrix with role-based access control
+- slug: event-envelope-schema
+  date: '2026-03-05'
+  title: 'Five-layer envelope: Identity, Semantic, Data, Affordances, Resolution +
+    core taxonomy'
+  description: 'Five-layer envelope: Identity, Semantic, Data, Affordances, Resolution
+    + core taxonomy'
 - slug: transcript-parser-fallback-policy
   date: '2026-03-05'
   title: Define and implement transcript parser fallback policy for unknown/legacy

@@ -92,11 +92,17 @@ from teleclaude_events import (
     configure_producer,
 )
 from teleclaude_events.cartridges import (
+    ClassificationCartridge,
+    CorrelationCartridge,
     DeduplicationCartridge,
+    EnrichmentCartridge,
     IntegrationTriggerCartridge,
     NotificationProjectorCartridge,
     PrepareQualityCartridge,
+    TrustCartridge,
 )
+from teleclaude_events.cartridges.correlation import CorrelationConfig
+from teleclaude_events.cartridges.trust import TrustConfig
 from teleclaude_events.delivery.telegram import TelegramDeliveryAdapter
 from teleclaude_events.envelope import EventEnvelope as EventsEnvelope
 
@@ -1791,14 +1797,28 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 except Exception:
                     logger.warning("Could not load people config for WhatsApp delivery adapter")
 
-            # 5. Pipeline (dedup → integration trigger → notification projector → prepare quality)
+            # 5. Pipeline (trust → dedup → enrichment → correlation → classification → integration trigger → notification projector → prepare quality)
             from teleclaude.core.integration_bridge import spawn_integrator_session
 
             integration_trigger = IntegrationTriggerCartridge(spawn_callback=spawn_integrator_session)
-            context = PipelineContext(catalog=event_catalog, db=self._event_db, push_callbacks=push_callbacks)
+            trust_config = TrustConfig(
+                known_sources=frozenset({"daemon", "prepare-worker", "review-worker", "correlation"})
+            )
+            context = PipelineContext(
+                catalog=event_catalog,
+                db=self._event_db,
+                push_callbacks=push_callbacks,
+                trust_config=trust_config,
+                correlation_config=CorrelationConfig(),
+                producer=event_producer,
+            )
             pipeline = Pipeline(
                 [
+                    TrustCartridge(),
                     DeduplicationCartridge(),
+                    EnrichmentCartridge(),
+                    CorrelationCartridge(),
+                    ClassificationCartridge(),
                     integration_trigger,
                     NotificationProjectorCartridge(),
                     PrepareQualityCartridge(),

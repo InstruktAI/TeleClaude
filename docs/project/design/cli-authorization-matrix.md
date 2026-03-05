@@ -51,10 +51,10 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec sessions send` | W | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Workers need to message each other (reviewer ↔ fixer collaboration) and their orchestrator. Contributors, newcomers, and customers cannot message arbitrary sessions. |
 | `telec sessions tail` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Workers may read peer transcripts for collaboration context. Customers should not see internal transcripts. |
 | `telec sessions run` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Running slash commands on new sessions is orchestration. Same restrictions as `sessions start`. |
-| `telec sessions revive` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Reviving a dead session is session management. Same restrictions as start/run. |
-| `telec sessions end` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Terminating sessions is destructive. Only admins can end sessions. Workers, members, contributors, newcomers, and customers cannot. |
+| `telec sessions revive` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Reviving a dead session is admin infrastructure. Admin only. |
+| `telec sessions end` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Members can end their own sessions (self-scoped enforcement at API layer). Workers, contributors, newcomers, and customers cannot. |
 | `telec sessions unsubscribe` | W | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Workers manage their own notification subscriptions. Matches send restrictions for non-admin human roles. |
-| `telec sessions restart` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Restarting a session is session management. Same restrictions as revive. |
+| `telec sessions restart` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Restarting sessions is admin infrastructure. Admin only. |
 | `telec sessions result` | W | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | Workers send results back to their orchestrator -- this is their primary output mechanism. Newcomers and customers have no reason to send results. |
 | `telec sessions file` | W | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | Workers send files back to their user. Same as result. |
 | `telec sessions widget` | W | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | Workers render widgets for their user. Same as result. |

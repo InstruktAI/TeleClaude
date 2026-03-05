@@ -1,4 +1,10 @@
-"""Event envelope — the core data model for all events in the platform."""
+"""Event envelope — the core data model for all events in the platform.
+
+SCHEMA_VERSION tracks the envelope structure generation. Bump it when fields
+are added, removed, or changed in a way that affects the wire format. This is
+distinct from the package semver: it tracks the schema generation, not the
+full release.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +13,10 @@ from datetime import datetime, timezone
 from enum import Enum, IntEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+#: Current envelope schema generation. Used as the default for EventEnvelope.version.
+SCHEMA_VERSION: int = 1
 
 
 class EventVisibility(str, Enum):
@@ -30,9 +39,11 @@ class ActionDescriptor(BaseModel):
 
 
 class EventEnvelope(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     # Identity
     event: str
-    version: int = 1
+    version: int = SCHEMA_VERSION
     source: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     idempotency_key: str | None = None
@@ -51,8 +62,12 @@ class EventEnvelope(BaseModel):
     resolution_shape: dict[str, str] | None = None
 
     def to_stream_dict(self) -> dict[str, str]:
-        """Serialize to a flat string dict for Redis XADD."""
-        return {
+        """Serialize to a flat string dict for Redis XADD.
+
+        Extra fields (beyond declared model fields) are JSON-encoded into a
+        single ``_extra`` key to preserve the flat dict[str, str] constraint.
+        """
+        d: dict[str, str] = {
             "event": self.event,
             "version": str(self.version),
             "source": self.source,
@@ -68,6 +83,10 @@ class EventEnvelope(BaseModel):
             "terminal_when": self.terminal_when or "",
             "resolution_shape": json.dumps(self.resolution_shape) if self.resolution_shape else "",
         }
+        extra = self.model_extra
+        if extra:
+            d["_extra"] = json.dumps(extra)
+        return d
 
     @classmethod
     def from_stream_dict(cls, data: dict[bytes, bytes] | dict[str, str]) -> "EventEnvelope":
@@ -86,9 +105,14 @@ class EventEnvelope(BaseModel):
         resolution_shape_raw = d.get("resolution_shape", "")
         resolution_shape = json.loads(resolution_shape_raw) if resolution_shape_raw else None
 
+        extra: dict[str, Any] = {}
+        extra_raw = d.get("_extra", "")
+        if extra_raw:
+            extra = json.loads(extra_raw)
+
         return cls(
             event=d["event"],
-            version=int(d.get("version", "1")),
+            version=int(d.get("version", str(SCHEMA_VERSION))),
             source=d["source"],
             timestamp=datetime.fromisoformat(d["timestamp"]),
             idempotency_key=d.get("idempotency_key") or None,
@@ -101,4 +125,5 @@ class EventEnvelope(BaseModel):
             actions=actions,
             terminal_when=d.get("terminal_when") or None,
             resolution_shape=resolution_shape,
+            **extra,
         )

@@ -30,30 +30,30 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/pipeline.py`
 
-- [ ] Add `TrustConfig` import (created in 1.2)
-- [ ] Add `CorrelationConfig` import (created in 3.1)
-- [ ] Add optional fields to `PipelineContext` dataclass:
+- [x] Add `TrustConfig` import (created in 1.2)
+- [x] Add `CorrelationConfig` import (created in 3.1)
+- [x] Add optional fields to `PipelineContext` dataclass:
   ```python
   trust_config: TrustConfig = field(default_factory=TrustConfig)
   correlation_config: CorrelationConfig = field(default_factory=CorrelationConfig)
   producer: EventProducer | None = None   # required by correlation; optional for others
   ```
-- [ ] Verify all existing `PipelineContext(...)` construction sites use keyword args (grep
+- [x] Verify all existing `PipelineContext(...)` construction sites use keyword args (grep
       `teleclaude/daemon.py` and `tests/`). Fix any positional-arg callsites.
 
 ### Task 1.2: Implement trust cartridge
 
 **File(s):** `teleclaude_events/cartridges/trust.py`
 
-- [ ] Define `TrustConfig` dataclass:
+- [x] Define `TrustConfig` dataclass:
   ```python
   @dataclass
   class TrustConfig:
       strictness: Literal["permissive", "standard", "strict"] = "standard"
       known_sources: frozenset[str] = field(default_factory=frozenset)
   ```
-- [ ] Define `TrustOutcome` string enum: `ACCEPT`, `FLAG`, `QUARANTINE`, `REJECT`
-- [ ] Define `TrustCartridge`:
+- [x] Define `TrustOutcome` string enum: `ACCEPT`, `FLAG`, `QUARANTINE`, `REJECT`
+- [x] Define `TrustCartridge`:
   - `name = "trust"`
   - `async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`:
     1. `config = context.trust_config`
@@ -73,7 +73,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/db.py`
 
-- [ ] Add `quarantined_events` table creation in `EventDB.init()`:
+- [x] Add `quarantined_events` table creation in `EventDB.init()`:
   ```sql
   CREATE TABLE IF NOT EXISTS quarantined_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,10 +85,10 @@ Codebase patterns to follow:
     reviewed INTEGER NOT NULL DEFAULT 0
   );
   ```
-- [ ] Add index: `(reviewed, received_at DESC)`
-- [ ] Implement `async quarantine_event(self, envelope: EventEnvelope, flags: list[str]) -> int`:
+- [x] Add index: `(reviewed, received_at DESC)`
+- [x] Implement `async quarantine_event(self, envelope: EventEnvelope, flags: list[str]) -> int`:
       INSERT and return rowid
-- [ ] Implement `async list_quarantined(reviewed: bool | None = None, limit: int = 50) -> list[dict]`
+- [x] Implement `async list_quarantined(reviewed: bool | None = None, limit: int = 50) -> list[dict]`
 
 ---
 
@@ -98,7 +98,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/cartridges/enrichment.py`
 
-- [ ] Define `EnrichmentCartridge`:
+- [x] Define `EnrichmentCartridge`:
   - `name = "enrichment"`
   - `async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`:
     1. If `event.entity` is None: return event (no-op)
@@ -122,8 +122,8 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/db.py`
 
-- [ ] Add `async count_events_by_entity(entity: str, event_type: str, since: datetime | None = None) -> int`
-- [ ] Add `async get_latest_event_payload(entity: str, event_type: str) -> dict | None`
+- [x] Add `async count_events_by_entity(entity: str, event_type: str, since: datetime | None = None) -> int`
+- [x] Add `async get_latest_event_payload(entity: str, event_type: str) -> dict | None`
       — returns payload dict of the most recent matching notification row, or None
 
 ---
@@ -134,7 +134,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/cartridges/correlation.py`
 
-- [ ] Define `CorrelationConfig` dataclass:
+- [x] Define `CorrelationConfig` dataclass:
   ```python
   @dataclass
   class CorrelationConfig:
@@ -144,7 +144,7 @@ Codebase patterns to follow:
       entity_failure_threshold: int = 3
       clock: Callable[[], datetime] = field(default_factory=lambda: datetime.utcnow)
   ```
-- [ ] Define `CorrelationCartridge`:
+- [x] Define `CorrelationCartridge`:
   - `name = "correlation"`
   - `async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`:
     1. If `event.source == "correlation"`: return event (skip — prevents re-entry loops)
@@ -167,7 +167,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/db.py`
 
-- [ ] Add `correlation_windows` table in `EventDB.init()`:
+- [x] Add `correlation_windows` table in `EventDB.init()`:
   ```sql
   CREATE TABLE IF NOT EXISTS correlation_windows (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -177,12 +177,12 @@ Codebase patterns to follow:
     count INTEGER NOT NULL DEFAULT 1
   );
   ```
-- [ ] Add index: `(event_type, entity, window_start)`
-- [ ] Implement `async increment_correlation_window(event_type: str, entity: str | None, ts: datetime) -> None`:
+- [x] Add index: `(event_type, entity, window_start)`
+- [x] Implement `async increment_correlation_window(event_type: str, entity: str | None, ts: datetime) -> None`:
       INSERT or update (upsert by event_type + entity + window_start bucket)
       Window bucket = floor(ts to window_seconds granularity)
-- [ ] Implement `async get_correlation_count(event_type: str, entity: str | None, since: datetime) -> int`
-- [ ] Implement `async prune_correlation_windows(older_than: datetime) -> None`
+- [x] Implement `async get_correlation_count(event_type: str, entity: str | None, since: datetime) -> int`
+- [x] Implement `async prune_correlation_windows(older_than: datetime) -> None`
 
 ---
 
@@ -192,7 +192,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/cartridges/classification.py`
 
-- [ ] Define `ClassificationCartridge`:
+- [x] Define `ClassificationCartridge`:
   - `name = "classification"`
   - `async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`:
     1. `schema = context.catalog.get(event.event)`
@@ -213,19 +213,19 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/schemas/system.py`
 
-- [ ] Add `system.burst.detected`:
+- [x] Add `system.burst.detected`:
   - `level: OPERATIONAL`, `domain: "system"`, `visibility: LOCAL`
   - `idempotency_fields: ["event_type", "window_start"]`
   - `lifecycle: NotificationLifecycle(creates=True)`
   - `actionable: False`
   - Payload shape (documented in description): `event_type: str, window_start: str, count: int`
-- [ ] Add `system.failure_cascade.detected`:
+- [x] Add `system.failure_cascade.detected`:
   - `level: BUSINESS`, `domain: "system"`, `visibility: CLUSTER`
   - `idempotency_fields: ["window_start"]`
   - `lifecycle: NotificationLifecycle(creates=True)`
   - `actionable: True`
   - Payload shape: `crash_count: int, window_start: str, workers: list[str]`
-- [ ] Add `system.entity.degraded`:
+- [x] Add `system.entity.degraded`:
   - `level: WORKFLOW`, `domain: "system"`, `visibility: LOCAL`
   - `idempotency_fields: ["entity"]`
   - `lifecycle: NotificationLifecycle(creates=True, updates=True, group_key="entity", meaningful_fields=["failure_count"])`
@@ -236,7 +236,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude/daemon.py`
 
-- [ ] Import new cartridges:
+- [x] Import new cartridges:
   ```python
   from teleclaude_events.cartridges import (
       TrustCartridge, DeduplicationCartridge, EnrichmentCartridge,
@@ -245,10 +245,10 @@ Codebase patterns to follow:
   from teleclaude_events.cartridges.trust import TrustConfig
   from teleclaude_events.cartridges.correlation import CorrelationConfig
   ```
-- [ ] Build `TrustConfig` with known sources from daemon config (e.g., `frozenset({"daemon", "prepare-worker", "review-worker", "correlation"})`)
-- [ ] Pass `trust_config`, `correlation_config`, and `producer=self._event_producer` when
+- [x] Build `TrustConfig` with known sources from daemon config (e.g., `frozenset({"daemon", "prepare-worker", "review-worker", "correlation"})`)
+- [x] Pass `trust_config`, `correlation_config`, and `producer=self._event_producer` when
       constructing `PipelineContext`
-- [ ] Construct pipeline with 6-cartridge chain:
+- [x] Construct pipeline with 6-cartridge chain:
   ```python
   Pipeline([
       TrustCartridge(),
@@ -264,7 +264,7 @@ Codebase patterns to follow:
 
 **File(s):** `teleclaude_events/cartridges/__init__.py`
 
-- [ ] Export all six cartridges:
+- [x] Export all six cartridges:
   ```python
   from teleclaude_events.cartridges.trust import TrustCartridge
   from teleclaude_events.cartridges.dedup import DeduplicationCartridge
@@ -282,56 +282,56 @@ Codebase patterns to follow:
 
 **File(s):** `tests/unit/test_teleclaude_events/test_cartridge_trust.py`
 
-- [ ] `test_known_source_accepted`: source in known_sources → ACCEPT, payload unchanged
-- [ ] `test_unknown_source_standard_flagged`: unknown source + standard → FLAG, `_trust_flags` in payload
-- [ ] `test_unknown_source_strict_quarantined`: unknown source + strict → quarantine row written, returns None
-- [ ] `test_reject_unknown_level_strict`: unknown level value + strict → returns None (REJECT)
-- [ ] `test_permissive_accepts_all`: permissive mode → all events pass through regardless of source
-- [ ] `test_quarantine_writes_db_row`: verify `quarantined_events` row created on QUARANTINE outcome
+- [x] `test_known_source_accepted`: source in known_sources → ACCEPT, payload unchanged
+- [x] `test_unknown_source_standard_flagged`: unknown source + standard → FLAG, `_trust_flags` in payload
+- [x] `test_unknown_source_strict_quarantined`: unknown source + strict → quarantine row written, returns None
+- [x] `test_reject_unknown_level_strict`: unknown level value + strict → returns None (REJECT)
+- [x] `test_permissive_accepts_all`: permissive mode → all events pass through regardless of source
+- [x] `test_quarantine_writes_db_row`: verify `quarantined_events` row created on QUARANTINE outcome
 
 ### Task 6.2: Unit tests — enrichment cartridge
 
 **File(s):** `tests/unit/test_teleclaude_events/test_cartridge_enrichment.py`
 
-- [ ] `test_no_entity_passthrough`: event with no entity → no `_enrichment` key, returned unchanged
-- [ ] `test_unknown_entity_type_passthrough`: unrecognized URI scheme → no-op
-- [ ] `test_todo_entity_enriched`: todo entity with crash history → `_enrichment` dict present in payload
-- [ ] `test_todo_no_history_no_enrichment`: todo entity with zero DB rows → no `_enrichment` key
-- [ ] `test_worker_entity_enriched`: worker entity with crash rows → `crash_count`, `last_crash_at` present
+- [x] `test_no_entity_passthrough`: event with no entity → no `_enrichment` key, returned unchanged
+- [x] `test_unknown_entity_type_passthrough`: unrecognized URI scheme → no-op
+- [x] `test_todo_entity_enriched`: todo entity with crash history → `_enrichment` dict present in payload
+- [x] `test_todo_no_history_no_enrichment`: todo entity with zero DB rows → no `_enrichment` key
+- [x] `test_worker_entity_enriched`: worker entity with crash rows → `crash_count`, `last_crash_at` present
 
 ### Task 6.3: Unit tests — correlation cartridge
 
 **File(s):** `tests/unit/test_teleclaude_events/test_cartridge_correlation.py`
 
-- [ ] `test_passes_all_events_through`: correlation never returns None
-- [ ] `test_burst_detected_emits_synthetic`: N same-type events in window → producer receives burst event
-- [ ] `test_burst_below_threshold_no_emit`: N-1 events → no synthetic event emitted
-- [ ] `test_correlation_source_skipped`: event with `source="correlation"` → no window increment, no loops
-- [ ] `test_cascade_detected`: N `system.worker.crashed` in window → `system.failure_cascade.detected` emitted
-- [ ] `test_entity_degraded`: N failure events for same entity in window → `system.entity.degraded` emitted
-- [ ] `test_stale_window_pruned`: prune_correlation_windows called; old rows removed from DB
-- [ ] `test_no_producer_logs_warning`: producer=None, burst crossed → logs WARNING, does not raise
+- [x] `test_passes_all_events_through`: correlation never returns None
+- [x] `test_burst_detected_emits_synthetic`: N same-type events in window → producer receives burst event
+- [x] `test_burst_below_threshold_no_emit`: N-1 events → no synthetic event emitted
+- [x] `test_correlation_source_skipped`: event with `source="correlation"` → no window increment, no loops
+- [x] `test_cascade_detected`: N `system.worker.crashed` in window → `system.failure_cascade.detected` emitted
+- [x] `test_entity_degraded`: N failure events for same entity in window → `system.entity.degraded` emitted
+- [x] `test_stale_window_pruned`: prune_correlation_windows called; old rows removed from DB
+- [x] `test_no_producer_logs_warning`: producer=None, burst crossed → logs WARNING, does not raise
 
 ### Task 6.4: Unit tests — classification cartridge
 
 **File(s):** `tests/unit/test_teleclaude_events/test_cartridge_classification.py`
 
-- [ ] `test_known_lifecycle_schema_notification_worthy`: schema with lifecycle → treatment=notification-worthy
-- [ ] `test_actionable_schema_flagged`: actionable schema → `_classification.actionable = True`
-- [ ] `test_no_lifecycle_schema_signal_only`: schema without lifecycle → treatment=signal-only
-- [ ] `test_unknown_event_type_signal_only`: no schema registered → treatment=signal-only, no raise
-- [ ] `test_classification_appended_to_payload`: `_classification` key exists after processing
+- [x] `test_known_lifecycle_schema_notification_worthy`: schema with lifecycle → treatment=notification-worthy
+- [x] `test_actionable_schema_flagged`: actionable schema → `_classification.actionable = True`
+- [x] `test_no_lifecycle_schema_signal_only`: schema without lifecycle → treatment=signal-only
+- [x] `test_unknown_event_type_signal_only`: no schema registered → treatment=signal-only, no raise
+- [x] `test_classification_appended_to_payload`: `_classification` key exists after processing
 
 ### Task 6.5: Integration test — full 6-cartridge pipeline
 
 **File(s):** `tests/unit/test_teleclaude_events/test_pipeline_integration.py`
 
-- [ ] `test_pipeline_order_trust_drops_before_dedup`: event rejected by trust never increments dedup check
-- [ ] `test_pipeline_order_dedup_drops_before_enrichment`: duplicate event never enriched
-- [ ] `test_pipeline_full_pass`: clean event flows through all 6 cartridges, ends with `_classification` in payload
-- [ ] `test_pipeline_synthetic_event_reenters`: correlation emits synthetic; synthetic re-runs through pipeline
+- [x] `test_pipeline_order_trust_drops_before_dedup`: event rejected by trust never increments dedup check
+- [x] `test_pipeline_order_dedup_drops_before_enrichment`: duplicate event never enriched
+- [x] `test_pipeline_full_pass`: clean event flows through all 6 cartridges, ends with `_classification` in payload
+- [x] `test_pipeline_synthetic_event_reenters`: correlation emits synthetic; synthetic re-runs through pipeline
       (use mock producer that captures emitted envelopes)
-- [ ] `test_notification_projector_uses_classification`: projector skips catalog lookup if `_classification` present
+- [x] `test_notification_projector_uses_classification`: projector skips catalog lookup if `_classification` present
 
 ---
 
@@ -339,15 +339,15 @@ Codebase patterns to follow:
 
 ### Task 7.1: Quality checks
 
-- [ ] Run `make test`
-- [ ] Run `make lint`
-- [ ] Verify: `grep -r "from teleclaude\." teleclaude_events/` returns nothing
-- [ ] Verify: `from teleclaude_events.cartridges import TrustCartridge, EnrichmentCartridge, CorrelationCartridge, ClassificationCartridge` succeeds
-- [ ] Verify: all cartridge unit tests pass in isolation (no daemon startup required)
+- [x] Run `make test`
+- [x] Run `make lint`
+- [x] Verify: `grep -r "from teleclaude\." teleclaude_events/` returns nothing
+- [x] Verify: `from teleclaude_events.cartridges import TrustCartridge, EnrichmentCartridge, CorrelationCartridge, ClassificationCartridge` succeeds
+- [x] Verify: all cartridge unit tests pass in isolation (no daemon startup required)
 
 ### Task 7.2: Review readiness
 
-- [ ] Confirm all requirements reflected in code changes
-- [ ] Confirm all tasks marked `[x]`
-- [ ] Run `telec todo demo validate event-system-cartridges`
-- [ ] Document any deferrals in `deferrals.md`
+- [x] Confirm all requirements reflected in code changes
+- [x] Confirm all tasks marked `[x]`
+- [x] Run `telec todo demo validate event-system-cartridges`
+- [x] Document any deferrals in `deferrals.md`

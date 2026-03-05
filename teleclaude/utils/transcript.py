@@ -5,7 +5,7 @@ import logging
 import os
 import re
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -202,6 +202,34 @@ def normalize_transcript_entry_message(
         return cast(dict[str, object], payload)  # guard: loose-dict - External payload message
 
     return None
+
+
+def iter_assistant_blocks(
+    entries: Iterable[Mapping[str, object]],
+) -> Iterator[tuple[dict[str, object], Optional[datetime]]]:
+    """Yield (block, entry_timestamp) for assistant content blocks only.
+
+    Applies normalize_transcript_entry_message, role == "assistant" gate,
+    and content-is-list check. Callers handle format-specific rendering.
+    """
+    for entry in entries:
+        entry_dt: Optional[datetime] = None
+        entry_ts_str = entry.get("timestamp")
+        if isinstance(entry_ts_str, str):
+            entry_dt = _parse_timestamp(entry_ts_str)
+
+        message = normalize_transcript_entry_message(entry)
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            yield block, entry_dt
 
 
 def _should_skip_entry(
@@ -514,66 +542,54 @@ def render_clean_agent_output(
     emitted = False
     last_entry_dt: Optional[datetime] = None
 
-    for entry in assistant_entries:
-        entry_ts_str = entry.get("timestamp")
-        if isinstance(entry_ts_str, str):
-            last_entry_dt = _parse_timestamp(entry_ts_str)
+    for block, entry_dt in iter_assistant_blocks(assistant_entries):
+        if entry_dt:
+            last_entry_dt = entry_dt
 
-        message = normalize_transcript_entry_message(entry)
-        if not isinstance(message, dict) or message.get("role") != "assistant":
-            continue
+        block_type = block.get("type")
 
-        content = message.get("content")
-        if not isinstance(content, list):
-            continue
-
-        for block in content:
-            if not isinstance(block, dict):
-                continue
-            block_type = block.get("type")
-
-            if block_type in ("text", "output_text"):
-                text = block.get("text", "")
-                if text:
-                    if lines:
-                        lines.append("")
-                    lines.append(str(text))
-                    emitted = True
-            elif block_type == "thinking":
-                thinking = block.get("thinking", "")
-                if thinking:
-                    if lines:
-                        lines.append("")
-                    formatted = _format_thinking(str(thinking))
-                    lines.append(formatted)
-                    emitted = True
-            elif block_type == "tool_use":
-                tool_name = str(block.get("name", "unknown"))
-                # Truncate at first newline, open paren, or open brace to ensure single-line name only
-                tool_name_safe = tool_name.split("\n")[0].split("(")[0].split("{")[0].strip()
-
-                # Format using enriched subject logic
-                formatted_name = f"**`{tool_name_safe}`**"
-                subject = _extract_tool_subject(block)
-
-                # Length budget calculation (name + colon-space[2])
-                base_len = len(tool_name_safe)
-                if subject:
-                    base_len += 2
-                budget = max(0, 70 - base_len)
-
-                if subject and budget > 0:
-                    if len(subject) > budget:
-                        subject = subject[: budget - 1] + "…"
-                    content = f"{formatted_name}: `{subject}`"
-                else:
-                    content = formatted_name
-
+        if block_type in ("text", "output_text"):
+            text = block.get("text", "")
+            if text:
                 if lines:
                     lines.append("")
-                lines.append(content)
+                lines.append(str(text))
                 emitted = True
-            # Tool results are completely omitted in this "clean" renderer
+        elif block_type == "thinking":
+            thinking = block.get("thinking", "")
+            if thinking:
+                if lines:
+                    lines.append("")
+                formatted = _format_thinking(str(thinking))
+                lines.append(formatted)
+                emitted = True
+        elif block_type == "tool_use":
+            tool_name = str(block.get("name", "unknown"))
+            # Truncate at first newline, open paren, or open brace to ensure single-line name only
+            tool_name_safe = tool_name.split("\n")[0].split("(")[0].split("{")[0].strip()
+
+            # Format using enriched subject logic
+            formatted_name = f"**`{tool_name_safe}`**"
+            subject = _extract_tool_subject(block)
+
+            # Length budget calculation (name + colon-space[2])
+            base_len = len(tool_name_safe)
+            if subject:
+                base_len += 2
+            budget = max(0, 70 - base_len)
+
+            if subject and budget > 0:
+                if len(subject) > budget:
+                    subject = subject[: budget - 1] + "…"
+                block_content = f"{formatted_name}: `{subject}`"
+            else:
+                block_content = formatted_name
+
+            if lines:
+                lines.append("")
+            lines.append(block_content)
+            emitted = True
+        # Tool results are completely omitted in this "clean" renderer
 
     if not emitted:
         return None, last_entry_dt
@@ -1122,60 +1138,47 @@ def render_agent_output(
     emitted = False
     last_entry_dt: Optional[datetime] = None
 
-    for entry in assistant_entries:
-        entry_ts_str = entry.get("timestamp")
-        if isinstance(entry_ts_str, str):
-            last_entry_dt = _parse_timestamp(entry_ts_str)
+    for block, entry_dt in iter_assistant_blocks(assistant_entries):
+        if entry_dt:
+            last_entry_dt = entry_dt
 
-        message = normalize_transcript_entry_message(entry)
-        if not isinstance(message, dict) or message.get("role") != "assistant":
-            continue
-
-        content = message.get("content")
-        if not isinstance(content, list):
-            continue
-
-        # Restore timestamp if we have a valid entry datetime
         time_prefix = ""
         if include_timestamps and last_entry_dt:
             time_prefix = f"[{last_entry_dt.strftime('%H:%M:%S')}] "
 
-        for block in content:
-            if not isinstance(block, dict):
-                continue
-            block_type = block.get("type")
+        block_type = block.get("type")
 
-            if block_type in ("text", "output_text"):
-                text = block.get("text", "")
-                if text:
-                    if lines:
-                        lines.append("")
-                    lines.append(f"{time_prefix}{text}")
-                    emitted = True
-            elif block_type == "thinking":
-                thinking = block.get("thinking", "")
-                if thinking:
-                    if lines:
-                        lines.append("")
-                    formatted = _format_thinking(str(thinking))
-                    lines.append(f"{time_prefix}{formatted}")
-                    emitted = True
-            elif block_type == "tool_use":
-                if include_tools:
+        if block_type in ("text", "output_text"):
+            text = block.get("text", "")
+            if text:
+                if lines:
                     lines.append("")
-                    _process_tool_use_block(block, time_prefix, lines)
-                    emitted = True
-            elif block_type == "tool_result":
-                if include_tool_results:
+                lines.append(f"{time_prefix}{text}")
+                emitted = True
+        elif block_type == "thinking":
+            thinking = block.get("thinking", "")
+            if thinking:
+                if lines:
                     lines.append("")
-                    _process_tool_result_block(
-                        block,
-                        time_prefix,
-                        lines,
-                        collapse_tool_results=False,
-                        max_chars=2000,
-                    )
-                    emitted = True
+                formatted = _format_thinking(str(thinking))
+                lines.append(f"{time_prefix}{formatted}")
+                emitted = True
+        elif block_type == "tool_use":
+            if include_tools:
+                lines.append("")
+                _process_tool_use_block(block, time_prefix, lines)
+                emitted = True
+        elif block_type == "tool_result":
+            if include_tool_results:
+                lines.append("")
+                _process_tool_result_block(
+                    block,
+                    time_prefix,
+                    lines,
+                    collapse_tool_results=False,
+                    max_chars=2000,
+                )
+                emitted = True
 
     if not emitted:
         return None, last_entry_dt
