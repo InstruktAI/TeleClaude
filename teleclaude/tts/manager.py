@@ -252,9 +252,8 @@ class TTSManager:
         )
 
         # Pause chiptunes while TTS speaks
-        _chiptunes = getattr(self, "_chiptunes_manager", None)
-        if _chiptunes is not None and _chiptunes.is_playing:
-            _chiptunes.pause()
+        if self._chiptunes_manager is not None and self._chiptunes_manager.is_playing:
+            self._chiptunes_manager.pause()
 
         # Queue TTS (non-blocking)
         task = asyncio.create_task(run_tts_with_lock_async(text_to_speak, service_chain, session_id))
@@ -316,10 +315,9 @@ class TTSManager:
 
         Also resumes chiptunes after TTS playback completes.
         """
-        # Resume chiptunes after TTS (regardless of success/failure)
-        _chiptunes = getattr(self, "_chiptunes_manager", None)
-        if _chiptunes is not None:
-            _chiptunes.resume()
+        # Resume chiptunes after TTS (only if chiptunes are enabled)
+        if self._chiptunes_manager is not None and self._chiptunes_manager.enabled:
+            self._chiptunes_manager.resume()
 
         try:
             success, used_service, used_voice = task.result()
