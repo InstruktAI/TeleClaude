@@ -68,6 +68,7 @@ class ValidationWarning(TypedDict):
 
 
 _WARNINGS: list[dict[str, str]] = []
+_ERRORS: list[dict[str, str]] = []
 
 
 def _warn(code: str, path: str = "", **kwargs: str) -> None:
@@ -76,12 +77,23 @@ def _warn(code: str, path: str = "", **kwargs: str) -> None:
     _WARNINGS.append(payload)
 
 
+def _error(code: str, path: str = "", **kwargs: str) -> None:
+    payload: dict[str, str] = {"code": code, "path": path}
+    payload.update({k: str(v) for k, v in kwargs.items()})
+    _ERRORS.append(payload)
+
+
 def get_warnings() -> list[dict[str, str]]:
     return list(_WARNINGS)
 
 
+def get_errors() -> list[dict[str, str]]:
+    return list(_ERRORS)
+
+
 def clear_warnings() -> None:
     _WARNINGS.clear()
+    _ERRORS.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -468,7 +480,7 @@ def _validate_see_also_ref(ref_line: str, path: Path, project_root: Path) -> Non
 
     if is_global:
         if not raw.startswith("~/.teleclaude/docs/"):
-            _warn(
+            _error(
                 "snippet_see_also_bad_prefix",
                 path=str(path),
                 ref=raw,
@@ -477,7 +489,7 @@ def _validate_see_also_ref(ref_line: str, path: Path, project_root: Path) -> Non
             return
     else:
         if not raw.startswith("docs/") and not raw.startswith("~/.teleclaude/docs/"):
-            _warn(
+            _error(
                 "snippet_see_also_bad_prefix",
                 path=str(path),
                 ref=raw,
