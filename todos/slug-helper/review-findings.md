@@ -1,6 +1,6 @@
 # Review Findings: slug-helper
 
-## Verdict: REQUEST CHANGES
+## Verdict: APPROVE
 
 ---
 
@@ -86,7 +86,7 @@ No test asserts that `SLUG_PATTERN.match(normalize_slug(input))` holds for all n
 - **DIP:** Clean. Core module (`slug.py`) has no adapter dependencies. Callers import from core.
 - **SRP:** Clean. `slug.py` does one thing — slug operations. Each function has a single responsibility.
 - **YAGNI/KISS:** Clean. No over-engineering. Three focused functions, no unnecessary abstractions.
-- **Fail Fast:** One violation — the stale slug in `_handle_todo_dump` (Critical finding #1). The event system receives incorrect data without any validation.
+- **Fail Fast:** One violation found (Critical #1 — stale slug in `_handle_todo_dump`), now resolved in commit `7bebf1263`.
 - **Coupling:** Clean. No deep chains, no god-object patterns.
 
 ## Zero-Finding Justification (for Important)
@@ -96,6 +96,14 @@ No Important findings because:
 2. **Requirements traced:** All 7 success criteria are met (module exists, callers wired, no duplicate logic, collision behavior changed, tests pass, new tests added, make test/lint pass).
 3. **Copy-paste checked:** No duplication found in changed code. The `blocked_followup.py` duplicate is explicitly out of scope per requirements.
 4. **The only actionable issue is a missed desync fix** in `_handle_todo_dump`, which is Critical because it corrupts event data.
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Critical #1: stale `slug` in `_handle_todo_dump` event payload and print output | Added `slug = todo_dir.name` after `create_todo_skeleton` call (line 2234) | `7bebf1263` |
+
+---
 
 ## Demo Artifact Review
 

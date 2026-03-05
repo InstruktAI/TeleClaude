@@ -26,8 +26,8 @@ Ownership:
 - [x] Deferrals justified and not hiding required scope — no deferrals.md present
 - [x] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs) — 4 valid blocks
 - [x] Findings written in `review-findings.md`
-- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES
-- [ ] Critical issues resolved or explicitly blocked — 1 Critical: stale slug in `_handle_todo_dump` event payload
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — APPROVE
+- [x] Critical issues resolved or explicitly blocked — Critical #1 fixed in commit `7bebf1263`
 - [x] Test coverage and regression risk assessed — solid coverage, suggestions for invariant tests
 
 ## Finalize Gates (Finalizer)
