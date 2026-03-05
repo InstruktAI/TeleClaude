@@ -1,5 +1,9 @@
 # Delivered work items. Newest first.
 
+- slug: slug-helper
+  date: '2026-03-05'
+  title: Consolidated slug helper module
+  commit: ab2346e59
 - slug: integrator-state-machine
   date: '2026-03-05'
   title: Idempotent state machine for the singleton integrator — deterministic script

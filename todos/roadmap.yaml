@@ -74,7 +74,6 @@
 - slug: web-frontend-test-bugs
 - slug: youtube-scrape-channels-job
 - slug: adapter-boundary-cleanup
-- slug: slug-helper
 - slug: cli-authz-overhaul
 - slug: reflection-routing-ownership
   after:
