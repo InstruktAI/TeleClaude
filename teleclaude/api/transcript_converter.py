@@ -169,8 +169,8 @@ def convert_entry(entry: dict[str, object]) -> Iterator[str]:  # guard: loose-di
     role = message.get("role")
     content = message.get("content")
 
-    # User messages with string content → skip (handled by message ingestion)
-    if role == "user" and isinstance(content, str):
+    # Only process assistant messages — user/system content is handled elsewhere
+    if role != "assistant":
         return
 
     if not isinstance(content, list):

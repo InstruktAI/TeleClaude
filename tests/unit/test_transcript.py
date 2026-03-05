@@ -7,6 +7,7 @@ from pathlib import Path
 from teleclaude.core.agents import AgentName
 from teleclaude.utils.transcript import (
     get_transcript_parser_info,
+    iter_assistant_blocks,
     parse_claude_transcript,
     parse_codex_transcript,
     parse_gemini_transcript,
@@ -489,3 +490,64 @@ def test_parse_transcript_collapses_tool_results(tmp_path):
 
     assert "TOOL RESPONSE (tap to reveal)" in result
     assert "||secret output||" in result
+
+
+# ---------------------------------------------------------------------------
+# iter_assistant_blocks
+# ---------------------------------------------------------------------------
+
+
+def test_iter_assistant_blocks_filters_non_assistant():
+    """Only assistant entries with list content should yield blocks."""
+    entries = [
+        {
+            "timestamp": "2025-01-01T12:00:00Z",
+            "message": {"role": "user", "content": "Hello"},
+        },
+        {
+            "timestamp": "2025-01-01T12:00:01Z",
+            "message": {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "<task-notification>noise</task-notification>"},
+                ],
+            },
+        },
+        {
+            "timestamp": "2025-01-01T12:00:02Z",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Hi there"}],
+            },
+        },
+        {
+            "timestamp": "2025-01-01T12:00:03Z",
+            "message": {"role": "system", "content": [{"type": "text", "text": "sys"}]},
+        },
+    ]
+    blocks = list(iter_assistant_blocks(entries))
+    assert len(blocks) == 1
+    block, dt = blocks[0]
+    assert block == {"type": "text", "text": "Hi there"}
+    assert dt is not None
+
+
+def test_iter_assistant_blocks_multiple_blocks():
+    """Multiple blocks from one assistant message should all be yielded."""
+    entries = [
+        {
+            "timestamp": "2025-01-01T12:00:00Z",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "hmm"},
+                    {"type": "text", "text": "answer"},
+                    {"type": "tool_use", "name": "Read", "input": {}},
+                ],
+            },
+        },
+    ]
+    blocks = list(iter_assistant_blocks(entries))
+    assert len(blocks) == 3
+    types = [b[0]["type"] for b in blocks]
+    assert types == ["thinking", "text", "tool_use"]

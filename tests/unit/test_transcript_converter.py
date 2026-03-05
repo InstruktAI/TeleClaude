@@ -259,11 +259,39 @@ def test_convert_entry_codex_response_item_message():
     assert any(p.get("type") == "text-delta" and p.get("delta") == "Codex says hi" for p in parsed)
 
 
-def test_convert_entry_user_message_skipped():
+def test_convert_entry_user_message_string_skipped():
     entry = {
         "message": {
             "role": "user",
             "content": "Hello, how are you?",
+        },
+    }
+    events = list(convert_entry(entry))
+    assert events == []
+
+
+def test_convert_entry_user_message_list_skipped():
+    """User messages with list content (e.g. task-notification XML) must not leak to SSE."""
+    entry = {
+        "message": {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "<task-notification>\n<status>completed</status>\n</task-notification>",
+                }
+            ],
+        },
+    }
+    events = list(convert_entry(entry))
+    assert events == []
+
+
+def test_convert_entry_system_message_skipped():
+    entry = {
+        "message": {
+            "role": "system",
+            "content": [{"type": "text", "text": "System prompt"}],
         },
     }
     events = list(convert_entry(entry))
