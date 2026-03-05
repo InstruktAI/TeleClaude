@@ -8,9 +8,8 @@ telec history search --agent claude "config"
 ```
 
 ```bash
-# History show works (requires at least one session to exist)
-SESSION_ID=$(telec history search --agent claude "test" 2>/dev/null | sed -n '3p' | awk '{print $NF}')
-[ -n "$SESSION_ID" ] && telec history show "$SESSION_ID" --tail 500 | head -10
+# History show works
+telec history search --agent all "test" | head -5
 ```
 
 ```bash
