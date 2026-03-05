@@ -63,76 +63,86 @@ def test_count_test_failures_partial_match() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_run(stdout_lines: list[str]) -> MagicMock:
-    """Build a CompletedProcess mock returning the given stdout lines."""
+def _make_log_run(file_lines: list[str]) -> MagicMock:
+    """Build a CompletedProcess mock for git log --no-merges --name-only output.
+
+    git log --pretty=format: produces empty lines between commits; the function
+    filters those out via `f.strip()`.
+    """
     result = MagicMock()
-    result.stdout = "\n".join(stdout_lines) + ("\n" if stdout_lines else "")
+    result.stdout = "\n".join(file_lines) + ("\n" if file_lines else "")
     result.returncode = 0
     return result
 
 
 def test_has_meaningful_diff_real_file() -> None:
-    """Returns True when a non-infrastructure file changed."""
-    diff_run = _make_run(["teleclaude/core/next_machine/core.py"])
-    merges_run = _make_run([])  # no merge commits
+    """Returns True when a non-infrastructure file changed in a non-merge commit."""
+    log_run = _make_log_run(["teleclaude/core/next_machine/core.py"])
 
-    with patch("subprocess.run", side_effect=[diff_run, merges_run]):
+    with patch("subprocess.run", return_value=log_run):
         assert _has_meaningful_diff("/repo", "abc", "def") is True
 
 
 def test_has_meaningful_diff_only_todos() -> None:
     """Returns False when only todos/ files changed."""
-    diff_run = _make_run(["todos/some-slug/state.yaml", "todos/roadmap.yaml"])
-    merges_run = _make_run([])
+    log_run = _make_log_run(["todos/some-slug/state.yaml", "todos/roadmap.yaml"])
 
-    with patch("subprocess.run", side_effect=[diff_run, merges_run]):
+    with patch("subprocess.run", return_value=log_run):
         assert _has_meaningful_diff("/repo", "abc", "def") is False
 
 
 def test_has_meaningful_diff_only_teleclaude() -> None:
     """Returns False when only .teleclaude/ files changed."""
-    diff_run = _make_run([".teleclaude/worktree-prep-state.json"])
-    merges_run = _make_run([])
+    log_run = _make_log_run([".teleclaude/worktree-prep-state.json"])
 
-    with patch("subprocess.run", side_effect=[diff_run, merges_run]):
+    with patch("subprocess.run", return_value=log_run):
         assert _has_meaningful_diff("/repo", "abc", "def") is False
 
 
 def test_has_meaningful_diff_mixed_infra_and_real() -> None:
     """Returns True when infra + real files both changed."""
-    diff_run = _make_run(["todos/slug/state.yaml", "teleclaude/core/foo.py"])
-    merges_run = _make_run([])
+    log_run = _make_log_run(["todos/slug/state.yaml", "teleclaude/core/foo.py"])
 
-    with patch("subprocess.run", side_effect=[diff_run, merges_run]):
+    with patch("subprocess.run", return_value=log_run):
         assert _has_meaningful_diff("/repo", "abc", "def") is True
 
 
-def test_has_meaningful_diff_merge_commit_removes_real_file() -> None:
-    """Real file removed from diff when introduced solely by a merge commit."""
-    diff_run = _make_run(["teleclaude/core/foo.py"])
-    merges_run = _make_run(["merge123"])
-    merge_diff_run = _make_run(["teleclaude/core/foo.py"])
+def test_has_meaningful_diff_merge_commit_only_real_file_excluded() -> None:
+    """File introduced solely by a merge commit does not appear in --no-merges log."""
+    # The --no-merges log returns nothing: only the merge commit touched this file.
+    log_run = _make_log_run([])
 
-    with patch("subprocess.run", side_effect=[diff_run, merges_run, merge_diff_run]):
+    with patch("subprocess.run", return_value=log_run):
         assert _has_meaningful_diff("/repo", "abc", "def") is False
 
 
-def test_has_meaningful_diff_merge_removes_only_some() -> None:
-    """Merge removes one file but another real file remains."""
-    diff_run = _make_run(["teleclaude/core/foo.py", "teleclaude/core/bar.py"])
-    merges_run = _make_run(["merge123"])
-    merge_diff_run = _make_run(["teleclaude/core/foo.py"])
+def test_has_meaningful_diff_file_in_merge_and_real_commit_included() -> None:
+    """File touched by BOTH a merge commit and a regular commit is correctly included.
 
-    with patch("subprocess.run", side_effect=[diff_run, merges_run, merge_diff_run]):
+    This is the C-1 regression: the old subtraction algorithm would remove the file
+    because the merge commit touched it. The new --no-merges approach includes it
+    because the regular commit also changed it.
+    """
+    log_run = _make_log_run(["teleclaude/core/foo.py"])
+
+    with patch("subprocess.run", return_value=log_run):
+        assert _has_meaningful_diff("/repo", "abc", "def") is True
+
+
+def test_has_meaningful_diff_merge_removes_only_some() -> None:
+    """When two real files change but one is only from a merge, the other remains."""
+    # --no-merges log only shows bar.py (the regular commit file)
+    log_run = _make_log_run(["teleclaude/core/bar.py"])
+
+    with patch("subprocess.run", return_value=log_run):
         assert _has_meaningful_diff("/repo", "abc", "def") is True
 
 
 def test_has_meaningful_diff_no_changes() -> None:
-    """Returns False when diff is empty."""
-    diff_run = _make_run([])
-    merges_run = _make_run([])
+    """Returns False when no non-merge commits touched any files."""
+    log_run = _make_log_run([])
 
-    with patch("subprocess.run", side_effect=[diff_run, merges_run]):
+    with patch("subprocess.run", return_value=log_run):
         assert _has_meaningful_diff("/repo", "abc", "def") is False
 
 
@@ -428,3 +438,80 @@ def test_run_build_gates_no_retry_when_unparseable_failure_count() -> None:
 
     assert passed is False
     assert mock_run.call_count == 1
+
+
+def test_run_build_gates_retry_timeout_fails_gate() -> None:
+    """When make test fails with 1 failure but the retry subprocess raises TimeoutExpired, gate fails."""
+    fail_result = MagicMock()
+    fail_result.returncode = 1
+    fail_result.stdout = "1 failed in 3.0s"
+    fail_result.stderr = ""
+
+    with (
+        patch(
+            "subprocess.run",
+            side_effect=[fail_result, subprocess.TimeoutExpired(cmd="pytest", timeout=120)],
+        ),
+        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=True),
+    ):
+        passed, output = run_build_gates("/worktree", "my-slug")
+
+    assert passed is False
+    assert "RETRY ERROR" in output
+
+
+# ---------------------------------------------------------------------------
+# Artifact verification failure: review_round behavior (I-5)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_next_work_artifact_failure_review_round_zero_resets_build() -> None:
+    """When artifact verification fails and review_round == 0, build is reset to started."""
+    db = MagicMock(spec=Db)
+    cwd = "/repo"
+    slug = "my-slug"
+    state = {"build": "complete", "review": "pending", "review_round": 0}
+
+    with ExitStack() as stack:
+        mocks = _apply_base_patches(
+            stack,
+            {
+                "read_phase_state": dict(return_value=state),
+                "run_build_gates": dict(return_value=(True, "GATE PASSED: make test")),
+                "verify_artifacts": dict(return_value=(False, "ARTIFACT CHECKS FAILED")),
+                "mark_phase": dict(),
+            },
+        )
+        result = await next_work(db, slug=slug, cwd=cwd)
+
+    mock_mark = mocks["mark_phase"]
+    build_started_calls = [c for c in mock_mark.call_args_list if "started" in str(c) and "build" in str(c)]
+    assert build_started_calls, f"Expected build reset to started; got: {mock_mark.call_args_list}"
+    assert "BUILD GATES FAILED" in result
+
+
+@pytest.mark.asyncio
+async def test_next_work_artifact_failure_review_round_gt_zero_keeps_build_complete() -> None:
+    """When artifact verification fails and review_round > 0, build stays complete."""
+    db = MagicMock(spec=Db)
+    cwd = "/repo"
+    slug = "my-slug"
+    state = {"build": "complete", "review": "pending", "review_round": 1}
+
+    with ExitStack() as stack:
+        mocks = _apply_base_patches(
+            stack,
+            {
+                "read_phase_state": dict(return_value=state),
+                "run_build_gates": dict(return_value=(True, "GATE PASSED: make test")),
+                "verify_artifacts": dict(return_value=(False, "ARTIFACT CHECKS FAILED")),
+                "mark_phase": dict(),
+            },
+        )
+        result = await next_work(db, slug=slug, cwd=cwd)
+
+    mock_mark = mocks["mark_phase"]
+    build_started_calls = [c for c in mock_mark.call_args_list if "started" in str(c) and "build" in str(c)]
+    assert build_started_calls == [], f"Build should NOT be reset; got: {mock_mark.call_args_list}"
+    assert "BUILD GATES FAILED" in result
