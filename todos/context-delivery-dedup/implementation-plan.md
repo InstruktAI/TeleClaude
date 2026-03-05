@@ -70,15 +70,15 @@ Agents discover available snippets via `telec docs index` instead.
 
 **File(s):** Doc snippet `general/policy/context-retrieval` (source file)
 
-- [ ] Update the two-phase flow description to reflect the new behavior: "index → get
+- [x] Update the two-phase flow description to reflect the new behavior: "index → get
       snippets → get missing deps listed in the Required reads header."
-- [ ] Remove any mention of automatic dependency expansion.
+- [x] Remove any mention of automatic dependency expansion.
 
 ### Task 3.2: Update telec-cli spec description if needed
 
 **File(s):** `docs/global/general/spec/tools/telec-cli.md`
 
-- [ ] Update the `telec docs get` notes section if it mentions auto-inclusion behavior.
+- [x] Update the `telec docs get` notes section if it mentions auto-inclusion behavior.
 
 ---
 
