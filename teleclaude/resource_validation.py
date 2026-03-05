@@ -50,6 +50,7 @@ _H1_LINE = re.compile(r"^#\s+")
 _H2_LINE = re.compile(r"^##\s+")
 _INLINE_REF_LINE = re.compile(r"^\s*(?:-\s*)?@\S+")
 _CODE_FENCE_LINE = re.compile(r"^```")
+_HTML_COMMENT_LINE = re.compile(r"^\s*<!--")
 _INLINE_CODE_SPAN = re.compile(r"`[^`]*`")
 _SEE_ALSO_LIST_LINE = re.compile(r"^\s*-\s+(.+)$")
 
@@ -530,6 +531,8 @@ def _validate_snippet_refs(path: Path, lines: list[str], project_root: Path, *, 
         if _H2_LINE.match(line):
             in_required_reads = False
             in_see_also = False
+            continue
+        if _HTML_COMMENT_LINE.match(line):
             continue
         line_without_inline = _INLINE_CODE_SPAN.sub("", line)
         if "@" in line_without_inline:
