@@ -3,9 +3,6 @@
 @~/.teleclaude/docs/general/policy/conflict-resolution.md
 @~/.teleclaude/docs/general/policy/heartbeat.md
 @~/.teleclaude/docs/software-development/policy/version-control-safety.md
-@~/.teleclaude/docs/general/spec/tools/history-search.md
-@~/.teleclaude/docs/general/spec/tools/agent-restart.md
-@~/.teleclaude/docs/general/spec/tools/memory-management-api.md
 @~/.teleclaude/docs/general/spec/tools/telec-cli.md
 @~/.teleclaude/docs/general/principle/attunement.md
-@~/.teleclaude/docs/general/procedure/agent-direct-conversation.md
+@~/.teleclaude/docs/general/principle/calibration.md

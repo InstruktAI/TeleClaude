@@ -16,7 +16,7 @@ class SpriteLayer(NamedTuple):
       - space → transparent (layer does not contribute at this cell)
     """
 
-    color: str = "#FFFFFF"
+    color: Optional[str | list[str]] = "#ffffff"
     positive: Optional[list[str]] = None
     negative: Optional[list[str]] = None
 
@@ -33,8 +33,9 @@ class CompositeSprite:
     positive wins on overlap.
 
     z_weights: depth distribution as (z_level, weight) pairs.
-    y_weights: vertical lane distribution as (lane, weight) pairs.
-               Lane 0 = top, 1 = middle, 2 = bottom.
+    y_weights: vertical position as (y_lo, y_hi, weight) triples.
+               Engine picks a weighted entry, then randomizes Y within
+               [y_lo, y_hi]. Screen Y: 0=top row, 9=bottom (tab bar).
     speed_weights: speed distribution as (speed, weight) pairs.
                    The engine periodically picks a new target speed
                    and eases toward it. Direction is random 50/50.
@@ -45,7 +46,7 @@ class CompositeSprite:
 
     layers: list[SpriteLayer]
     z_weights: Optional[list[tuple[int, int]]] = field(default_factory=list)
-    y_weights: Optional[list[tuple[int, int]]] = field(default_factory=list)
+    y_weights: Optional[list[tuple[int, int, int]]] = field(default_factory=list)
     speed_weights: Optional[list[tuple[float, int]]] = field(default_factory=lambda: list(_DEFAULT_SPEED_WEIGHTS))
     speed_fixed: Optional[tuple[float, float]] = None
     theme: Optional[str] = None  # "dark", "light", or None (both)
@@ -53,6 +54,26 @@ class CompositeSprite:
     def __post_init__(self) -> None:
         if self.speed_fixed is not None and self.speed_weights != list(_DEFAULT_SPEED_WEIGHTS):
             raise ValueError("speed_fixed and non-default speed_weights are mutually exclusive")
+
+    def resolve_colors(self) -> CompositeSprite:
+        """Return a copy with list colors resolved to a single random pick."""
+        needs_resolve = any(isinstance(layer.color, list) for layer in self.layers)
+        if not needs_resolve:
+            return self
+        resolved = []
+        for layer in self.layers:
+            if isinstance(layer.color, list):
+                resolved.append(SpriteLayer(color=random.choice(layer.color), positive=layer.positive, negative=layer.negative))
+            else:
+                resolved.append(layer)
+        return CompositeSprite(
+            layers=resolved,
+            z_weights=self.z_weights,
+            y_weights=self.y_weights,
+            speed_weights=self.speed_weights,
+            speed_fixed=self.speed_fixed,
+            theme=self.theme,
+        )
 
     def tick(self, frame: int) -> CompositeSprite:
         """Static sprite -- returns self every frame."""
@@ -69,14 +90,17 @@ class AnimatedSprite:
     speed_fixed: optional (lo, hi) range — engine picks uniform(lo, hi)
                  once at spawn and speed stays constant. Sign encodes
                  direction. Mutually exclusive with non-default speed_weights.
+    y_offsets: per-frame Y offsets (cycles). Added to base Y each frame.
+               Use for bobbing motion (e.g. butterfly: [0, -1, 0, 1]).
     """
 
     frames: list[list[str] | CompositeSprite]
     z_weights: list[tuple[int, int]] = field(default_factory=list)
-    y_weights: list[tuple[int, int]] = field(default_factory=list)
+    y_weights: list[tuple[int, int, int]] = field(default_factory=list)
     speed_weights: list[tuple[float, int]] = field(default_factory=lambda: list(_DEFAULT_SPEED_WEIGHTS))
     speed_fixed: Optional[tuple[float, float]] = None
     theme: Optional[str] = None  # "dark", "light", or None (both)
+    y_offsets: Optional[list[int]] = None
 
     def __post_init__(self) -> None:
         if self.speed_fixed is not None and self.speed_weights != list(_DEFAULT_SPEED_WEIGHTS):

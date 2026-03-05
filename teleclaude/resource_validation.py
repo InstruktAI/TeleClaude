@@ -50,6 +50,7 @@ _H1_LINE = re.compile(r"^#\s+")
 _H2_LINE = re.compile(r"^##\s+")
 _INLINE_REF_LINE = re.compile(r"^\s*(?:-\s*)?@\S+")
 _CODE_FENCE_LINE = re.compile(r"^```")
+_HTML_COMMENT_LINE = re.compile(r"^\s*<!--")
 _INLINE_CODE_SPAN = re.compile(r"`[^`]*`")
 _SEE_ALSO_LIST_LINE = re.compile(r"^\s*-\s+(.+)$")
 
@@ -68,6 +69,7 @@ class ValidationWarning(TypedDict):
 
 
 _WARNINGS: list[dict[str, str]] = []
+_ERRORS: list[dict[str, str]] = []
 
 
 def _warn(code: str, path: str = "", **kwargs: str) -> None:
@@ -76,12 +78,23 @@ def _warn(code: str, path: str = "", **kwargs: str) -> None:
     _WARNINGS.append(payload)
 
 
+def _error(code: str, path: str = "", **kwargs: str) -> None:
+    payload: dict[str, str] = {"code": code, "path": path}
+    payload.update({k: str(v) for k, v in kwargs.items()})
+    _ERRORS.append(payload)
+
+
 def get_warnings() -> list[dict[str, str]]:
     return list(_WARNINGS)
 
 
+def get_errors() -> list[dict[str, str]]:
+    return list(_ERRORS)
+
+
 def clear_warnings() -> None:
     _WARNINGS.clear()
+    _ERRORS.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -369,9 +382,13 @@ def _validate_baseline_index(path: Path, content: str, project_root: Path, *, do
         except Exception:
             pass
     lines = [line for line in content.splitlines() if line.strip()]
+    ref_lines = [line for line in lines if line.startswith("@")]
     for line in lines:
         if not line.startswith("@"):
-            _warn("snippet_baseline_index_invalid_line", path=str(path), line=line)
+            # Only warn if the file also contains @ refs — mixed content is suspicious.
+            # A pure-instruction baseline file (no @ lines) is intentionally prose-only.
+            if ref_lines:
+                _warn("snippet_baseline_index_invalid_line", path=str(path), line=line)
     for error in collect_inline_ref_errors(project_root, path, lines, domains=domains):
         _warn(error["code"], **{k: v for k, v in error.items() if k != "code"})
 
@@ -468,7 +485,7 @@ def _validate_see_also_ref(ref_line: str, path: Path, project_root: Path) -> Non
 
     if is_global:
         if not raw.startswith("~/.teleclaude/docs/"):
-            _warn(
+            _error(
                 "snippet_see_also_bad_prefix",
                 path=str(path),
                 ref=raw,
@@ -477,7 +494,7 @@ def _validate_see_also_ref(ref_line: str, path: Path, project_root: Path) -> Non
             return
     else:
         if not raw.startswith("docs/") and not raw.startswith("~/.teleclaude/docs/"):
-            _warn(
+            _error(
                 "snippet_see_also_bad_prefix",
                 path=str(path),
                 ref=raw,
@@ -519,6 +536,8 @@ def _validate_snippet_refs(path: Path, lines: list[str], project_root: Path, *, 
             in_required_reads = False
             in_see_also = False
             continue
+        if _HTML_COMMENT_LINE.match(line):
+            continue
         line_without_inline = _INLINE_CODE_SPAN.sub("", line)
         if "@" in line_without_inline:
             if in_see_also:
@@ -542,7 +561,13 @@ def _validate_snippet_sections(
     domains: set[str],
 ) -> None:
     h2_titles: list[str] = []
+    in_code_block = False
     for line in lines:
+        if _CODE_FENCE_LINE.match(line.strip()):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            continue
         if _H2_LINE.match(line):
             h2_titles.append(line.lstrip("#").strip())
     normalized_titles = [_normalize_section_title(t) for t in h2_titles]

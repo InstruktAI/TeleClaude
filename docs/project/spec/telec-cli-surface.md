@@ -7,11 +7,13 @@ description: 'Authoritative surface for the telec command-line tool.'
 
 # CLI Surface — Spec
 
-## Definition
+## What it is
 
 The `telec` command-line tool is the primary interface for human operators. This specification defines the stable subcommands, arguments, and flags.
 
-## Machine-Readable Surface
+## Canonical fields
+
+### Machine-Readable Surface
 
 ```yaml
 tool: telec
@@ -219,9 +221,58 @@ subcommands:
       validate:
         flags:
           -p, --project-root: 'Project root (default: cwd).'
+  history:
+    description: 'Search and view agent session history.'
+    subcommands:
+      search:
+        description: 'Search agent session transcripts.'
+        args:
+          - terms: 'string...'
+        flags:
+          -a, --agent: 'Agent name(s) or all (default: all).'
+          -l, --limit: 'Max results (default: 20).'
+      show:
+        description: 'Show full transcript for a session.'
+        args:
+          - session_id: 'string'
+        flags:
+          -a, --agent: 'Agent name or all (default: all).'
+          --thinking: 'Include thinking blocks.'
+          --tail: 'Limit output to last N chars.'
+  memories:
+    description: 'Search and manage memory observations.'
+    subcommands:
+      search:
+        description: 'Search memory observations.'
+        args:
+          - query: 'string'
+        flags:
+          --limit: 'Max results (default: 20).'
+          --type: 'Filter by type.'
+          --project: 'Filter by project name.'
+      save:
+        description: 'Save a memory observation.'
+        args:
+          - text: 'string'
+        flags:
+          --title: 'Observation title.'
+          --type: 'Observation type.'
+          --project: 'Project name.'
+      delete:
+        description: 'Delete a memory observation by ID.'
+        args:
+          - id: 'integer'
+      timeline:
+        description: 'Show observations around an anchor ID.'
+        args:
+          - id: 'integer'
+        flags:
+          --before: 'Observations before anchor (default: 3).'
+          --after: 'Observations after anchor (default: 3).'
+          --project: 'Filter by project name.'
 ```
 
-## Constraints
+## Known caveats
 
 - Subcommand removals or renames are considered breaking changes (Minor bump).
 - Changes to argument order or required flags are considered breaking changes.

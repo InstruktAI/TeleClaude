@@ -9,17 +9,21 @@ at session start and derive all behavioral calibration from it.
 
 ### In scope
 
-1. **Schema**: Add `proficiency: Literal["novice", "intermediate", "advanced", "expert"]`
+1. **Calibration principle**: Author the `general/principle/calibration` doc snippet defining
+   how agents adapt behavior based on the human's proficiency level. Add to the global
+   baseline so it is loaded into every session. *(Done — `docs/global/general/principle/calibration.md`
+   authored and deployed via `telec sync`.)*
+2. **Schema**: Add `proficiency: Literal["novice", "intermediate", "advanced", "expert"]`
    to `PersonEntry` with default `"intermediate"`.
-2. **Session injection**: Extend `_print_memory_injection()` in `receiver.py` to look up
+3. **Session injection**: Extend `_print_memory_injection()` in `receiver.py` to look up
    the person by `human_email` from global config and prepend a proficiency line
    (`Human in the loop: {name} ({proficiency})`) to the memory context injected at
    `AGENT_SESSION_START`.
-3. **CLI**: Add `--proficiency` flag to `telec config people add` and `telec config people edit`.
-4. **API DTO**: Add `proficiency` field to `PersonDTO`.
-5. **TUI wizard**: Display the proficiency level alongside name and role in the config
+4. **CLI**: Add `--proficiency` flag to `telec config people add` and `telec config people edit`.
+5. **API DTO**: Add `proficiency` field to `PersonDTO`.
+6. **TUI wizard**: Display the proficiency level alongside name and role in the config
    wizard's people tab. Add `proficiency` to the `PersonInfo` dataclass used for JSON output.
-6. **Tests**: Unit tests for schema validation, CLI flag handling, injection output.
+7. **Tests**: Unit tests for schema validation, CLI flag handling, injection output.
 
 ### Out of scope
 
@@ -30,6 +34,9 @@ at session start and derive all behavioral calibration from it.
 
 ## Success Criteria
 
+- [ ] The Calibration principle (`general/principle/calibration`) exists in the global
+      baseline, is indexed by `telec docs index`, and is loaded into agent sessions via
+      `CLAUDE.md`.
 - [ ] `PersonEntry(name="X", email="x@y.com", proficiency="expert")` validates; invalid
       values like `proficiency="guru"` raise `ValidationError`.
 - [ ] At `AGENT_SESSION_START`, when the session has a `human_email` matching a configured

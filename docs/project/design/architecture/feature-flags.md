@@ -23,10 +23,6 @@ To allow safe deployment of new features by toggling them on or off without code
 
 - **Boolean Status**: `True` if the feature is enabled for the requested context, `False` otherwise.
 
-## See Also
-
-- docs/project/policy/feature-flag-usage.md — Rules for when to use (and not use) feature flags
-
 ## Invariants
 
 - **Default Safe**: Experiments are disabled by default if not explicitly listed.
@@ -59,3 +55,7 @@ To allow safe deployment of new features by toggling them on or off without code
 - **Missing `experiments.yml`**: The system proceeds normally using only `config.yml` (or no experiments).
 - **Invalid YAML**: The application will fail to start (standard configuration loading behavior).
 - **Undefined Agent**: If code queries for an agent not present in the configuration, the check simply returns `False` (unless the experiment is global).
+
+## See Also
+
+- docs/project/policy/feature-flag-usage.md — Rules for when to use (and not use) feature flags

@@ -11,7 +11,6 @@ type: 'design'
 
 - @docs/project/design/architecture/outbox.md
 - @docs/project/design/architecture/daemon.md
-- @docs/project/spec/event-types.md
 
 ## Purpose
 
@@ -29,14 +28,14 @@ The hook service is a **monolith subsystem** — it lives inside the TeleClaude
 daemon, not as a separate service. It shares the daemon's DB, event bus, and
 FastAPI app.
 
-## Two event systems in TeleClaude
+### Two event systems in TeleClaude
 
 TeleClaude has two distinct event persistence systems. Understanding the
 boundary prevents confusion:
 
 | System                         | Table(s)                              | Purpose                                      | Producer                                        | Consumer                                          |
 | ------------------------------ | ------------------------------------- | -------------------------------------------- | ----------------------------------------------- | ------------------------------------------------- |
-| **Hook outbox** (agent CLI)    | `hook_outbox`                         | Durable ingest of raw agent CLI hook events  | Agent hook receiver (`bin/hook-receiver`)       | Daemon outbox worker (see @outbox.md)             |
+| **Hook outbox** (agent CLI)    | `hook_outbox`                         | Durable ingest of raw agent CLI hook events  | Agent hook receiver (`bin/hook-receiver`)       | Daemon outbox worker (see outbox.md)             |
 | **Webhook service** (this doc) | `webhook_contracts`, `webhook_outbox` | Contract-based pub/sub for normalized events | EventBusBridge, inbound endpoints, programmatic | HookDispatcher → handlers / WebhookDeliveryWorker |
 
 The hook outbox is the **ingestion layer** — it captures raw agent CLI events
@@ -261,7 +260,7 @@ asyncio.create_task(delivery_worker.run(shutdown_event))
 asyncio.create_task(contract_sweep_loop())   # TTL sweep every 60s
 ```
 
-## Configuration
+### Configuration
 
 The `hooks` section in `teleclaude.yml`:
 
@@ -305,7 +304,7 @@ hooks:
 - `InboundSourceConfig`: `path`, `verify_token`, `secret`, `normalizer`
 - `SubscriptionConfig`: `id`, `contract` (dict), `target` (dict)
 
-## REST API
+### REST API
 
 | Method   | Path                    | Description                                                |
 | -------- | ----------------------- | ---------------------------------------------------------- |
@@ -314,7 +313,7 @@ hooks:
 | `DELETE` | `/hooks/contracts/{id}` | Deactivate a contract                                      |
 | `GET`    | `/hooks/properties`     | Union of all property names/values across active contracts |
 
-## Database tables
+### Database tables
 
 **`webhook_contracts`** — Contract persistence:
 
@@ -342,7 +341,7 @@ hooks:
 | `last_error`      | TEXT       | Most recent failure reason             |
 | `locked_at`       | TEXT       | Claim lock timestamp                   |
 
-## Module layout
+### Module layout
 
 ```
 teleclaude/hooks/

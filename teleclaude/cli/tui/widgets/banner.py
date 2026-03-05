@@ -69,13 +69,14 @@ def _entity_color(ch: str, z: int, dark_mode: bool) -> str:
 
 
 def _scan_sky_entity(
-    engine: object, x: int, y: int, dark_mode: bool, z_levels: list[int]
+    engine: object, x: int, y: int, dark_mode: bool, z_levels: list[int], z_min: int = 0
 ) -> tuple[str, str | None, str | None]:
     """Scan Z-levels top-down for sky entities at (x, y).
 
     Returns (char, fg_color, bg_entity_color).
     bg_entity_color is the color of a deeper entity (e.g. sun behind cloud)
     for transparency compositing.  Defaults to (" ", None, None).
+    z_min: only consider entities above this Z-level.
 
     Buffer value encoding:
       - 1 char: old-style entity char (color from _entity_color)
@@ -99,6 +100,8 @@ def _scan_sky_entity(
     need_behind = False
 
     for z in z_levels:
+        if z <= z_min:
+            break
         val = engine.get_layer_color(z, x, y, target="header")  # type: ignore[union-attr]
         if not val or val == -1:
             continue
@@ -256,7 +259,7 @@ class Banner(TelecMixin, Widget):
     def _render_banner(self) -> Text:
         result = Text()
         engine = self.animation_engine
-        from teleclaude.cli.tui.animations.base import Z0
+        from teleclaude.cli.tui.animations.base import Z0, Z50
         from teleclaude.cli.tui.pixel_mapping import PixelMap
         from teleclaude.cli.tui.theme import (
             blend_colors,
@@ -296,12 +299,20 @@ class Banner(TelecMixin, Widget):
                     is_letter = PixelMap.get_is_letter("banner", x, y) if is_on_plate else False
                     final_bg = plate_bg if is_on_plate else bg_color
 
-                    # 3. Multi-Z entity scan in sky margins
+                    # 3. Multi-Z entity scan — sky freely, entire billboard above Z50
                     fg_char = char
                     fg_color: str | None = None
                     bg_entity_color: str | None = None
-                    if engine and not is_on_plate:
-                        fg_char, fg_color, bg_entity_color = _scan_sky_entity(engine, x, y, dark_mode, z_levels)
+                    entity_override = False
+                    if engine:
+                        z_threshold = Z50 if is_on_plate else 0
+                        ent_char, ent_fg, bg_entity_color = _scan_sky_entity(
+                            engine, x, y, dark_mode, z_levels, z_min=z_threshold
+                        )
+                        if ent_char != " ":
+                            fg_char = ent_char
+                            fg_color = ent_fg
+                            entity_override = True
                         if bg_entity_color:
                             final_bg = bg_entity_color
 
@@ -311,7 +322,7 @@ class Banner(TelecMixin, Widget):
                         is_ext = engine.is_external_light(target="banner")
 
                         is_pipe_char = _is_pipe(char)
-                        if color:
+                        if color and not entity_override:
                             color_str = resolve_haze(str(color))
                             if is_letter:
                                 if dark_mode:
@@ -329,40 +340,43 @@ class Banner(TelecMixin, Widget):
                                 result.append(fg_char, style=Style(color=color_str, bgcolor=_to_color(final_bg)))
                         else:
                             fg = str(fg_color or resolve_haze(get_banner_hex()))
-                            if _is_pipe(char):
+                            if not entity_override and _is_pipe(char):
                                 fg = _dim_color(fg, 0.8)
                             result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
                     else:
-                        is_pipe_char = _is_pipe(char)
                         fg = str(fg_color or resolve_haze(get_banner_hex()))
-                        if is_pipe_char:
+                        if not entity_override and _is_pipe(char):
                             fg = _dim_color(fg, 0.8)
                         result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
             else:
-                # Row 6: Pipes under E (13) and D (70)
+                # Row 6: Pipes under E (13) and D (70) — entities above Z50 pass in front
                 for x in range(total_width):
-                    if x == 13 or x == 70:
-                        result.append("\u2551", style=pipe_color)
-                    else:
-                        bg = engine.get_layer_color(Z0, x, y, target="header") if engine else None
-                        if not isinstance(bg, str):
-                            bg = sky_fallback
+                    bg = engine.get_layer_color(Z0, x, y, target="header") if engine else None
+                    if not isinstance(bg, str):
+                        bg = sky_fallback
 
-                        fg_char = " "
-                        fg_color = None
-                        if engine:
-                            fg_char, fg_color, bg_ent = _scan_sky_entity(engine, x, y, dark_mode, z_levels)
-                            if bg_ent:
-                                bg = bg_ent
+                    is_pipe = x == 13 or x == 70
+                    fg_char = "\u2551" if is_pipe else " "
+                    fg_color_row: str | None = str(pipe_color) if is_pipe else None
+                    if engine:
+                        z_threshold = Z50 if is_pipe else 0
+                        ent_char, ent_color, bg_ent = _scan_sky_entity(
+                            engine, x, y, dark_mode, z_levels, z_min=z_threshold
+                        )
+                        if ent_char != " ":
+                            fg_char = ent_char
+                            fg_color_row = ent_color
+                        if bg_ent:
+                            bg = bg_ent
 
-                        result.append(fg_char, style=Style(color=_to_color(fg_color), bgcolor=_to_color(bg)))
+                    result.append(fg_char, style=Style(color=_to_color(fg_color_row), bgcolor=_to_color(bg)))
 
         return result
 
     def _render_logo(self) -> Text:
         result = Text()
         engine = self.animation_engine
-        from teleclaude.cli.tui.animations.base import Z0
+        from teleclaude.cli.tui.animations.base import Z0, Z50
         from teleclaude.cli.tui.pixel_mapping import PixelMap
         from teleclaude.cli.tui.theme import (
             blend_colors,
@@ -403,8 +417,16 @@ class Banner(TelecMixin, Widget):
                     fg_char = line[x - pad] if (is_on_plate and x - pad < len(line)) else " "
                     fg_color: str | None = None
                     bg_entity_color: str | None = None
-                    if engine and not is_on_plate:
-                        fg_char, fg_color, bg_entity_color = _scan_sky_entity(engine, x, y, dark_mode, z_levels)
+                    entity_override = False
+                    if engine:
+                        z_threshold = Z50 if is_on_plate else 0
+                        ent_char, ent_fg, bg_entity_color = _scan_sky_entity(
+                            engine, x, y, dark_mode, z_levels, z_min=z_threshold
+                        )
+                        if ent_char != " ":
+                            fg_char = ent_char
+                            fg_color = ent_fg
+                            entity_override = True
                         if bg_entity_color:
                             final_bg = bg_entity_color
 
@@ -413,7 +435,7 @@ class Banner(TelecMixin, Widget):
                         color = engine.get_color(x - pad, y, target="logo") if is_on_plate else None
                         is_ext = engine.is_external_light(target="logo")
 
-                        if color:
+                        if color and not entity_override:
                             color_str = resolve_haze(str(color))
                             if is_letter:
                                 if dark_mode:
@@ -431,31 +453,35 @@ class Banner(TelecMixin, Widget):
                                 result.append(fg_char, style=Style(color=color_str, bgcolor=_to_color(final_bg)))
                         else:
                             fg = str(fg_color or resolve_haze(get_banner_hex()))
-                            if is_pipe_char:
+                            if not entity_override and is_pipe_char:
                                 fg = _dim_color(fg, 0.8)
                             result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
                     else:
                         fg = str(fg_color or resolve_haze(get_banner_hex()))
-                        if is_pipe_char:
+                        if not entity_override and is_pipe_char:
                             fg = _dim_color(fg, 0.8)
                         result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
             else:
-                # Logo pipes: E(6), D(34)
+                # Logo pipes: E(6), D(34) — entities above Z50 pass in front
                 for x in range(total_width):
-                    if (x >= pad and x < total_width) and (x - pad == 6 or x - pad == 34):
-                        result.append("\u2551", style=pipe_color)
-                    else:
-                        bg = engine.get_layer_color(Z0, x, y, target="header") if engine else None
-                        if not isinstance(bg, str):
-                            bg = sky_fallback
+                    bg = engine.get_layer_color(Z0, x, y, target="header") if engine else None
+                    if not isinstance(bg, str):
+                        bg = sky_fallback
 
-                        fg_char = " "
-                        fg_color = None
-                        if engine:
-                            fg_char, fg_color, bg_ent = _scan_sky_entity(engine, x, y, dark_mode, z_levels)
-                            if bg_ent:
-                                bg = bg_ent
+                    is_pipe = (x >= pad and x < total_width) and (x - pad == 6 or x - pad == 34)
+                    fg_char = "\u2551" if is_pipe else " "
+                    fg_color_row: str | None = str(pipe_color) if is_pipe else None
+                    if engine:
+                        z_threshold = Z50 if is_pipe else 0
+                        ent_char, ent_color, bg_ent = _scan_sky_entity(
+                            engine, x, y, dark_mode, z_levels, z_min=z_threshold
+                        )
+                        if ent_char != " ":
+                            fg_char = ent_char
+                            fg_color_row = ent_color
+                        if bg_ent:
+                            bg = bg_ent
 
-                        result.append(fg_char, style=Style(color=_to_color(fg_color), bgcolor=_to_color(bg)))
+                    result.append(fg_char, style=Style(color=_to_color(fg_color_row), bgcolor=_to_color(bg)))
 
         return result

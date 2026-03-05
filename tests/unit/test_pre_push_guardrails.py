@@ -37,10 +37,14 @@ def _write_fake_git(bin_dir: Path) -> Path:
 
 
 def _base_env(tmp_path: Path, fake_bin: Path) -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if not k.startswith("TELECLAUDE_")}
-    env["HOME"] = str(tmp_path)
-    env["PATH"] = f"{fake_bin}:/usr/bin:/bin"
-    env["TELECLAUDE_SESSION_ID"] = "sess-789"
+    env: dict[str, str] = {
+        "HOME": str(tmp_path),
+        "PATH": f"{fake_bin}:/usr/bin:/bin",
+        "TELECLAUDE_SESSION_ID": "sess-789",
+    }
+    for key in ("TMPDIR", "LANG", "LC_ALL", "TERM"):
+        if key in os.environ:
+            env[key] = os.environ[key]
     return env
 
 

@@ -8,13 +8,13 @@ description: 'Canonical routing contract for session messages across origin UX a
 
 # Session Output Routing — Spec
 
-## What this defines
+## What it is
 
 This spec defines the routing contract for session messages across origin UX and admin visibility paths.
 
 Core decides delivery scope and broadcasts accordingly. Adapters decide how to present messages (threaded, edit-in-place, multi-placement) and how to route them internally (admin channels, origin UX, suppression).
 
-## Mental model: three lanes
+### Mental model: three lanes
 
 1. **Origin UX lane**: direct user continuity (reply, notice, summary context).
 2. **Dual output lane**: assistant operational output visible at origin and admin destinations.
@@ -55,7 +55,7 @@ Core decides delivery scope and broadcasts accordingly. Adapters decide how to p
 | `input_reflection_mcp`               | `DUAL`        | Same reflection lane policy as text/voice input.                                      |
 | `ctrl_activity`                      | `CTRL`        | Activity control signals: turn start/end, tool events. Internal only; not UI content. |
 
-## Reflection lane contract
+### Reflection lane contract
 
 Reflection is a UX observability feature, not a direct reply. Core broadcasts reflections to all adapters unconditionally. Each adapter owns its local routing decision.
 
@@ -69,7 +69,7 @@ Reflection is a UX observability feature, not a direct reply. Core broadcasts re
 - Attribute reflected input to an actor (best effort name, optional avatar).
 - Origin continuity comes from normal reply delivery, not reflection echo.
 
-### Non-negotiable routing rules
+#### Non-negotiable routing rules
 
 - Recipient selection is based on `message_intent -> delivery_scope`.
 - `origin_endpoint` is for direct reply continuity.

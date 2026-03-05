@@ -180,6 +180,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: general/principle/calibration
+  description: Set the baseline communication register from the human's proficiency
+    level. Attunement fine-tunes in real time; calibration sets the floor.
+  type: principle
+  scope: global
+  path: docs/general/principle/calibration.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/principle/continuity
   description: Agent identity persists through evidence, not sensation. Read the proof
     of who you are.
@@ -471,33 +480,6 @@ snippets:
   scope: global
   path: docs/general/spec/third-party-docs.md
   role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/spec/tools/agent-restart
-  description: Canonical self-restart call for reloading synchronized artifacts without
-    losing session continuity.
-  type: spec
-  scope: global
-  path: docs/general/spec/tools/agent-restart.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/spec/tools/history-search
-  description: Canonical usage of history.py for recovering prior conversations with
-    progressive narrowing.
-  type: spec
-  scope: global
-  path: docs/general/spec/tools/history-search.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/spec/tools/memory-management-api
-  description: Canonical curl signatures for writing and retrieving memory through
-    the daemon API.
-  type: spec
-  scope: global
-  path: docs/general/spec/tools/memory-management-api.md
-  role: admin
   visibility: internal
   source_project: TeleClaude
 - id: general/spec/tools/telec-cli

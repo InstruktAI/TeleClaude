@@ -7,10 +7,6 @@ type: 'design'
 
 # Cache — Design
 
-## Required reads
-
-- @docs/project/design/cache-system.md
-
 ## Purpose
 
 Provide instant, cached reads for API and remote data views.

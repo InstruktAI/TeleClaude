@@ -7,11 +7,13 @@ description: 'Architecture, schema, worker design, and retry policy for the dura
 
 # Inbound Queue — Spec
 
-## Overview
+## What it is
 
 The inbound queue provides guaranteed delivery of user messages to their agent sessions. Adapters enqueue messages and return immediately. A per-session worker drains the queue, delivering messages to the tmux session with FIFO ordering and exponential backoff retry.
 
-## Table Schema
+## Canonical fields
+
+### Table Schema
 
 ```sql
 CREATE TABLE IF NOT EXISTS inbound_queue (
@@ -49,7 +51,7 @@ pending → processing → delivered
 pending/failed/processing → expired (session closed)
 ```
 
-## Worker Design
+### Worker Design
 
 Each session has at most one worker task (`asyncio.create_task`). Workers are per-session FIFO drains:
 
@@ -71,13 +73,13 @@ Access pattern:
 - `get_inbound_queue_manager()` — returns the singleton (raises if not initialized)
 - `reset_inbound_queue_manager()` — test-only reset
 
-## Retry Policy
+### Retry Policy
 
 Exponential backoff: `[5, 10, 20, 40, 80, 160, 300]` seconds. Index is `min(attempt_count, len-1)`. No maximum retry count — messages are retried indefinitely until delivered or the session is closed.
 
 Lock timeout: 5 minutes. Rows locked longer than this are reclaimable (handles worker crash/restart).
 
-## Delivery Function
+### Delivery Function
 
 `deliver_inbound(row, client, start_polling)` in `command_handlers.py`:
 
@@ -91,22 +93,22 @@ Lock timeout: 5 minutes. Rows locked longer than this are reclaimable (handles w
 8. On `process_text` returning False: raise `RuntimeError` (triggers retry)
 9. On success: update `last_activity`, start polling
 
-## Deduplication
+### Deduplication
 
 The unique index on `(origin, source_message_id)` (where `source_message_id IS NOT NULL`) prevents duplicate enqueues. `enqueue_inbound` returns `None` on dedup skip.
 
 Adapters that provide stable message IDs (Discord, Telegram) must pass `source_message_id`. Terminal input can omit it.
 
-## Session Lifecycle Integration
+### Session Lifecycle Integration
 
 - **Session closed**: `expire_session(session_id)` cancels the worker and bulk-expires pending messages.
 - **Daemon startup**: `startup()` scans for pending messages and spawns workers for non-empty sessions.
 - **Daemon shutdown**: `shutdown()` cancels all workers. Messages remain in DB for next startup.
 
-## Cleanup
+### Cleanup
 
 `cleanup_inbound(older_than_iso)` deletes rows with `status IN ('delivered', 'expired')` older than the threshold. Scheduled periodically by the maintenance service.
 
-## Adapter Contract
+### Adapter Contract
 
 Adapters enqueue via `InboundQueueManager.enqueue(...)` and return immediately. After a successful enqueue, adapters show a platform-native typing indicator. Adapters must not contain delivery logic.

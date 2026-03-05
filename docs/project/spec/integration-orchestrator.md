@@ -7,7 +7,7 @@ description: 'Event-driven singleton integrator contract for serial branch-to-ma
 
 # Integration Orchestrator — Spec
 
-## Definition
+## What it is
 
 The Integration Orchestrator is the only role authorized to merge and push canonical `main`.
 It is event-driven, queue-backed, and serialized by a lease so parallel workers can deliver safely
@@ -21,7 +21,9 @@ This spec defines:
 - integrator lifecycle and shutdown behavior,
 - self-end authorization boundaries for session types.
 
-## Machine-Readable Surface
+## Canonical fields
+
+### Machine-Readable Surface
 
 ```yaml
 integrator:
@@ -110,7 +112,7 @@ integrator:
       - checkpoint_written
 ```
 
-## Canonical Events
+### Canonical Events
 
 ### `review_approved`
 
@@ -162,7 +164,7 @@ Required fields:
 - `next_action` (single remediation step)
 - `blocked_at` (ISO8601)
 
-## Readiness Predicate
+### Readiness Predicate
 
 An integration candidate `(slug, branch, sha)` is `READY` only when:
 
@@ -175,7 +177,7 @@ An integration candidate `(slug, branch, sha)` is `READY` only when:
 
 `worktree dirty -> clean` is explicitly not a readiness signal.
 
-## Lease and Queue Semantics
+### Lease and Queue Semantics
 
 ### Lease
 
@@ -202,7 +204,7 @@ Queue is durable and event-derived:
 - Process in FIFO order by `ready_at`.
 - Keep status per item: `queued | in_progress | integrated | blocked | superseded`.
 
-## Integrator Lifecycle
+### Integrator Lifecycle
 
 1. Event ingestion updates projection state for candidate readiness.
 2. If any candidate becomes `READY`, attempt lease acquisition.
@@ -221,7 +223,7 @@ Queue is durable and event-derived:
 Multiple trigger events may arrive concurrently; only one active lease holder processes them.
 Other events are queued and consumed by that same active integrator.
 
-## Integration Workflow Contract
+### Integration Workflow Contract
 
 For each queued candidate:
 
@@ -237,7 +239,7 @@ For each queued candidate:
    - run demo snapshot/cleanup lifecycle,
    - emit `integration_completed`.
 
-## Self-End Authorization Matrix
+### Self-End Authorization Matrix
 
 | Session type                    | Self-end allowed | Conditions                                                                 |
 | ------------------------------- | ---------------- | -------------------------------------------------------------------------- |
@@ -247,7 +249,7 @@ For each queued candidate:
 | Integrator                      | Yes              | Queue empty, no in-progress candidate, lease released, checkpoint emitted. |
 | Non-governed utility session    | Yes              | No pending governed handoff obligations.                                   |
 
-## Constraints
+## Known caveats
 
 - Only integrator may push canonical `main`.
 - Workers may push only their feature/worktree branches.

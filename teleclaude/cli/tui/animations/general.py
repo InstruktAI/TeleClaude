@@ -9,15 +9,7 @@ import time
 from typing import TYPE_CHECKING, TypedDict
 
 from teleclaude.cli.tui.animation_colors import hex_to_rgb, rgb_to_hex
-from teleclaude.cli.tui.animations.base import (
-    Z0,
-    Z10,
-    Z20,
-    Animation,
-    RenderBuffer,
-    Spectrum,
-    render_sprite,
-)
+from teleclaude.cli.tui.animations.base import Z0, Z10, Z20, Animation, RenderBuffer, Spectrum, render_sprite
 from teleclaude.cli.tui.animations.creative import ColorSweep, EQBars, Glitch, LaserScan, LavaLamp, NeonFlicker, Plasma
 from teleclaude.cli.tui.animations.sprites import MOON_SPRITE, SUN_SPRITE
 from teleclaude.cli.tui.animations.sprites.composite import AnimatedSprite, CompositeSprite, SpriteGroup
@@ -37,7 +29,7 @@ class SkyEntity(TypedDict):
 
     sprite: CompositeSprite | AnimatedSprite
     sprite_w: int
-    x: int
+    x: float  # cumulative fractional position
     speed: float
     target_speed: float
     y: int
@@ -120,15 +112,20 @@ class GlobalSky(Animation):
         """Check if a sprite matches the current mode.
 
         group_theme overrides per-sprite theme when set.
+        Uses is_dark_mode() directly because self.dark_mode defaults to True
+        in Animation.__init__ and isn't updated until play() runs — after
+        _spawn_initial_entities has already executed.
         """
+        from teleclaude.cli.tui.theme import is_dark_mode
+
         theme = group_theme if group_theme is not None else getattr(sprite, "theme", None)
         if theme is None:
             return True
-        return theme == ("dark" if self.dark_mode else "light")
+        return theme == ("dark" if is_dark_mode() else "light")
 
     def _spawn_group_entities(self, group: SpriteGroup, entities: list[SkyEntity]) -> None:
         """Spawn entities for a single SpriteGroup, respecting group direction and theme."""
-        group_dir = group.direction
+        group_dir = group.direction if group.direction is not None else self.rng.choice([-1, 1])
         group_theme = group.theme
         for sprite, _weight, (lo, hi) in group.entries:
             if not self._theme_matches(sprite, group_theme=group_theme):
@@ -156,8 +153,13 @@ class GlobalSky(Animation):
         self._spawn_group_entities(cloud_group, entities)
         return entities
 
-    # Vertical lane ranges: (min_y, max_y) for top/mid/bottom of the header
-    _LANE_Y_RANGES = {0: (0, 1), 1: (2, 4), 2: (5, 7)}
+    def _pick_y(self, y_weights: list[tuple[int, int, int]]) -> int:
+        """Pick a Y position from weighted (y_lo, y_hi, weight) triples."""
+        _, _, *_ = y_weights[0]  # validate structure
+        ranges_and_weights = [(lo, hi, w) for lo, hi, w in y_weights]
+        wts = [w for _, _, w in ranges_and_weights]
+        chosen = self.rng.choices(ranges_and_weights, weights=wts, k=1)[0]
+        return self.rng.randint(chosen[0], chosen[1])
 
     def _pick_weighted_float(self, weights: list[tuple[float, int]]) -> float:
         """Pick a float value from a weighted distribution."""
@@ -181,49 +183,91 @@ class GlobalSky(Animation):
                 w = max(w, *(len(row) for row in r))
         return w
 
+    @staticmethod
+    def _sprite_owns_direction(sprite: CompositeSprite | AnimatedSprite) -> bool:
+        """True if all speed_weights share the same strict sign (no zeros)."""
+        vals = [v for v, _ in sprite.speed_weights]
+        return all(v > 0 for v in vals) or all(v < 0 for v in vals)
+
     def _spawn_sky_entity(self, sprite: CompositeSprite | AnimatedSprite, direction: int | None = None) -> SkyEntity:
-        """Spawn a sky entity from any CompositeSprite or AnimatedSprite."""
+        """Spawn a sky entity from any CompositeSprite or AnimatedSprite.
+
+        Direction override chain:
+          1. Sprite has signed speed_weights → sprite owns direction, ignore param.
+          2. direction param provided (from group) → apply as sign.
+          3. Neither → random ±1.
+        """
+        if isinstance(sprite, CompositeSprite):
+            sprite = sprite.resolve_colors()
         z_level = self._pick_z_level(sprite.z_weights)
-        lane = self._pick_z_level(sprite.y_weights) if sprite.y_weights else 1
-        y_lo, y_hi = self._LANE_Y_RANGES.get(lane, (0, 3))
-        if direction is None:
+        y = self._pick_y(sprite.y_weights) if sprite.y_weights else 2
+        owns_dir = self._sprite_owns_direction(sprite)
+
+        if not owns_dir and direction is None:
             direction = self.rng.choice([-1, 1])
 
         if sprite.speed_fixed is not None:
             lo, hi = sprite.speed_fixed
-            speed = self.rng.uniform(lo, hi) * direction
+            speed = self.rng.uniform(lo, hi)
+            if not owns_dir:
+                speed = abs(speed) * direction  # type: ignore[operator]
             return {
                 "sprite": sprite,
                 "sprite_w": self._sprite_max_width(sprite),
                 "x": self.rng.randint(0, self.width),
                 "speed": speed,
                 "target_speed": speed,
-                "y": self.rng.randint(y_lo, y_hi),
+                "y": y,
                 "z": z_level,
                 "next_speed_change": 0,
                 "fixed_speed": True,
             }
 
         initial_speed = self._pick_weighted_float(sprite.speed_weights)
+        if not owns_dir:
+            initial_speed = abs(initial_speed) * direction  # type: ignore[operator]
         return {
             "sprite": sprite,
             "sprite_w": self._sprite_max_width(sprite),
             "x": self.rng.randint(0, self.width),
-            "speed": initial_speed * direction,
-            "target_speed": initial_speed * direction,
-            "y": self.rng.randint(y_lo, y_hi),
+            "speed": initial_speed,
+            "target_speed": initial_speed,
+            "y": y,
             "z": z_level,
             "next_speed_change": self.rng.randint(80, 300),
             "fixed_speed": False,
         }
 
-    def force_spawn_entity(self) -> None:
-        """Force a random sky entity to appear immediately (debug keybinding)."""
-        from teleclaude.cli.tui.animations.sprites import get_sky_entities
+    def force_spawn(self, sprite: object | None = None) -> None:
+        """Force a sky entity to appear immediately.
 
-        entities = get_sky_entities()
-        if entities:
-            self._sky_entities.append(self._spawn_sky_entity(self.rng.choice(entities)))
+        Args:
+            sprite: A specific sprite instance, SpriteGroup, or None for random.
+        """
+        if isinstance(sprite, SpriteGroup):
+            # Pick a random entry from the group, respect group direction
+            entries = sprite.entries
+            if entries:
+                chosen_sprite = self.rng.choices(
+                    [s for s, _, _ in entries],
+                    weights=[w for _, w, _ in entries],
+                    k=1,
+                )[0]
+                group_dir = sprite.direction if sprite.direction is not None else self.rng.choice([-1, 1])
+                self._sky_entities.append(self._spawn_sky_entity(chosen_sprite, direction=group_dir))
+            return
+        if sprite is not None:
+            self._sky_entities.append(self._spawn_sky_entity(sprite))
+        else:
+            from teleclaude.cli.tui.animations.sprites import get_sky_entities
+
+            entities = get_sky_entities()
+            if entities:
+                self._sky_entities.append(self._spawn_sky_entity(self.rng.choice(entities)))
+
+    def force_spawn_entity(self) -> None:
+        """Force a random sky entity to appear immediately (legacy alias)."""
+        self.force_spawn()
 
     def _build_sky_cache(self) -> list[tuple[int, int, int, str]]:
         """Pre-compute static sky gradient pixels for the current theme."""
@@ -249,8 +293,8 @@ class GlobalSky(Animation):
         cy = 1
         # Narrow pane: push partially off-screen
         if term_width <= 130:
-            cx += 7
-            cy -= 3
+            cx += 8
+            cy -= 4
 
         top_left_x = cx - sprite_w + 1
         render_sprite(buffer, Z20, top_left_x, cy, sprite, self.width, self.height)
@@ -310,23 +354,29 @@ class GlobalSky(Animation):
                 next_change = int(entity.get("next_speed_change", 0))
                 if frame >= next_change:
                     sprite_ref = entity["sprite"]
-                    direction = 1 if float(entity["speed"]) >= 0 else -1
-                    new_target = self._pick_weighted_float(sprite_ref.speed_weights) * direction  # type: ignore[union-attr]
+                    new_target = self._pick_weighted_float(sprite_ref.speed_weights)  # type: ignore[union-attr]
+                    if not self._sprite_owns_direction(sprite_ref):  # type: ignore[arg-type]
+                        direction = 1 if float(entity["speed"]) >= 0 else -1
+                        new_target = abs(new_target) * direction
                     entity["target_speed"] = new_target
                     entity["next_speed_change"] = frame + self.rng.randint(80, 300)
                 current = float(entity["speed"])
                 target = float(entity.get("target_speed", current))
                 entity["speed"] = current + (target - current) * 0.05
 
-            entity_z = int(entity["z"])
-            entity_speed = float(entity["speed"])
+            # Accumulate position from speed (avoids jumps when speed changes)
+            entity["x"] = float(entity["x"]) + float(entity["speed"])
             sprite = entity["sprite"]
             renderable = sprite.tick(frame)  # type: ignore[union-attr]
             sprite_w = int(entity["sprite_w"])
             wrap = self.width + sprite_w + 20
-            ex = int(int(entity["x"]) + frame * entity_speed) % wrap - sprite_w - 10
+            ex = int(entity["x"]) % wrap - sprite_w - 10
             ey = int(entity["y"])
-            render_sprite(buffer, entity_z, ex, ey, renderable, self.width, self.height)
+            # Per-frame Y offset (bobbing) for AnimatedSprite with y_offsets
+            y_offsets = getattr(sprite, "y_offsets", None)
+            if y_offsets:
+                ey += y_offsets[frame % len(y_offsets)]
+            render_sprite(buffer, int(entity["z"]), ex, ey, renderable, self.width, self.height)
 
         return buffer
 

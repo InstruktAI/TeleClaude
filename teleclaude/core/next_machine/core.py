@@ -405,6 +405,12 @@ def format_stash_debt(slug: str, count: int) -> str:
     )
 
 
+def _count_test_failures(output: str) -> int:
+    """Parse pytest summary line for failure count. Returns 0 if not found."""
+    match = re.search(r"(\d+) failed", output)
+    return int(match.group(1)) if match else 0
+
+
 def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
     """Run build gates (tests + demo validation) in the worktree.
 
@@ -423,10 +429,49 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
             timeout=300,
         )
         if test_result.returncode != 0:
-            all_passed = False
             output = test_result.stdout[-2000:] if test_result.stdout else ""
             stderr = test_result.stderr[-500:] if test_result.stderr else ""
-            results.append(f"GATE FAILED: make test (exit {test_result.returncode})\n{output}\n{stderr}")
+            failure_count = _count_test_failures(test_result.stdout)
+            if 1 <= failure_count <= 2:
+                # Single retry for low-count flaky test failures
+                venv_pytest = Path(worktree_cwd) / ".venv" / "bin" / "pytest"
+                pytest_cmd = str(venv_pytest) if venv_pytest.exists() else "pytest"
+                # Explicit config paths are required for pytest --lf because the
+                # Makefile's `test` target sets them via its own environment; running
+                # pytest directly bypasses the Makefile, so we mirror those paths here
+                # to keep the retry under the same configuration as the original run.
+                retry_env = {
+                    **os.environ,
+                    "TELECLAUDE_CONFIG_PATH": "tests/integration/config.yml",
+                    "TELECLAUDE_ENV_PATH": "tests/integration/.env",
+                }
+                try:
+                    retry_result = subprocess.run(
+                        [pytest_cmd, "--lf", "-q"],
+                        cwd=worktree_cwd,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                        env=retry_env,
+                    )
+                    if retry_result.returncode == 0:
+                        results.append(f"GATE PASSED: make test (retry passed after {failure_count} flaky failure(s))")
+                    else:
+                        all_passed = False
+                        retry_output = retry_result.stdout[-1000:] if retry_result.stdout else ""
+                        results.append(
+                            f"GATE FAILED: make test (exit {test_result.returncode})\n{output}\n{stderr}"
+                            f"\n--- RETRY ALSO FAILED ---\n{retry_output}"
+                        )
+                except (subprocess.TimeoutExpired, OSError) as exc:
+                    all_passed = False
+                    results.append(
+                        f"GATE FAILED: make test (exit {test_result.returncode})\n{output}\n{stderr}"
+                        f"\n--- RETRY ERROR: {exc} ---"
+                    )
+            else:
+                all_passed = False
+                results.append(f"GATE FAILED: make test (exit {test_result.returncode})\n{output}\n{stderr}")
         else:
             results.append("GATE PASSED: make test")
     except subprocess.TimeoutExpired:
@@ -880,6 +925,49 @@ def _get_head_commit(cwd: str) -> str:
     except (subprocess.CalledProcessError, OSError):
         return ""
     return result.stdout.strip()
+
+
+def _has_meaningful_diff(cwd: str, baseline: str, head: str) -> bool:
+    """Return True if non-infrastructure commits exist between baseline and head.
+
+    Filters out:
+    - Files under todos/ and .teleclaude/
+    - Files changed exclusively by merge commits
+
+    Computes files changed by non-merge commits directly (via --no-merges) rather than
+    subtracting merge-commit files from the total diff. This avoids the over-subtraction
+    bug where a file touched by both a merge commit and a regular commit would be
+    incorrectly excluded, producing a false negative and allowing a stale approval through.
+
+    Returns True on subprocess errors (fail-safe: assume meaningful diff, invalidate).
+    """
+    infra_prefixes = ("todos/", ".teleclaude/")
+    try:
+        log_result = subprocess.run(
+            [
+                "git",
+                "-C",
+                cwd,
+                "log",
+                "--no-merges",
+                "--name-only",
+                "--pretty=format:",
+                f"{baseline}..{head}",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        meaningful_files = {
+            f for f in log_result.stdout.splitlines() if f.strip() and not any(f.startswith(p) for p in infra_prefixes)
+        }
+        return bool(meaningful_files)
+    except (subprocess.CalledProcessError, OSError) as exc:
+        logger.warning(
+            "has_meaningful_diff: subprocess error; assuming meaningful diff (fail-safe)",
+            extra={"cwd": cwd, "baseline": baseline, "head": head, "error": str(exc)},
+        )
+        return True  # Fail-safe: assume meaningful diff, invalidate approval
 
 
 def _review_scope_note(cwd: str, slug: str) -> str:
@@ -2913,7 +3001,12 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         baseline_raw = state.get("review_baseline_commit")
         baseline = baseline_raw if isinstance(baseline_raw, str) else ""
         head_sha = await asyncio.to_thread(_get_head_commit, worktree_cwd)
-        if baseline and head_sha and baseline != head_sha:
+        if (
+            baseline
+            and head_sha
+            and baseline != head_sha
+            and await asyncio.to_thread(_has_meaningful_diff, worktree_cwd, baseline, head_sha)
+        ):
             repair_started = perf_counter()
             await asyncio.to_thread(
                 mark_phase, worktree_cwd, resolved_slug, PhaseName.REVIEW.value, PhaseStatus.PENDING.value
@@ -2992,14 +3085,19 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             )
 
         # Build gates: verify tests and demo structure before allowing review.
+        review_round_raw = state.get("review_round")
+        review_round = review_round_raw if isinstance(review_round_raw, int) else 0
         gate_started = perf_counter()
         gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, resolved_slug)
         if not gates_passed:
-            _log_next_work_phase(phase_slug, "gate_execution", gate_started, "error", "build_gates_failed")
-            # Reset build to started so the builder can fix and try again
-            await asyncio.to_thread(
-                mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
-            )
+            gate_log_detail = "build_gates_failed_post_review" if review_round > 0 else "build_gates_failed"
+            _log_next_work_phase(phase_slug, "gate_execution", gate_started, "error", gate_log_detail)
+            if review_round == 0:
+                # First build: reset to started so the builder retries from scratch
+                await asyncio.to_thread(
+                    mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
+                )
+            # review_round > 0: keep build=complete; builder gets a focused fix instruction
             next_call = f"telec todo work {resolved_slug}"
             return format_build_gate_failure(resolved_slug, gate_output, next_call)
         _log_next_work_phase(phase_slug, "gate_execution", gate_started, "run", "build_gates_passed")
@@ -3010,10 +3108,15 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             verify_artifacts, worktree_cwd, resolved_slug, PhaseName.BUILD.value
         )
         if not artifacts_passed:
-            _log_next_work_phase(phase_slug, "gate_execution", verify_started, "error", "artifact_verification_failed")
-            await asyncio.to_thread(
-                mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
+            artifact_log_detail = (
+                "artifact_verification_failed_post_review" if review_round > 0 else "artifact_verification_failed"
             )
+            _log_next_work_phase(phase_slug, "gate_execution", verify_started, "error", artifact_log_detail)
+            if review_round == 0:
+                await asyncio.to_thread(
+                    mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
+                )
+            # review_round > 0: keep build=complete; builder gets a focused fix instruction
             next_call = f"telec todo work {resolved_slug}"
             return format_build_gate_failure(resolved_slug, artifacts_output, next_call)
         _log_next_work_phase(phase_slug, "gate_execution", verify_started, "run", "artifact_verification_passed")

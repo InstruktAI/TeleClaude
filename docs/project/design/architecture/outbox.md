@@ -7,11 +7,6 @@ type: 'design'
 
 # Outbox — Design
 
-## Required reads
-
-- @docs/project/design/database.md
-- @docs/project/spec/event-types.md
-
 ## Purpose
 
 - Provide durable delivery semantics for agent hook events.

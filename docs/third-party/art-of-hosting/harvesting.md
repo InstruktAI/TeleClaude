@@ -82,9 +82,8 @@ Developed by Mary Alice Arthur, Monica Nissen, and Toke Paludan Moller. Groups l
 
 ## Sources
 
-- Chris Corrigan — [chriscorrigan.com/parkinglot](https://chriscorrigan.com/parkinglot)
-- Monica Nissen & Chris Corrigan, _Art of Harvesting_ booklet v3.1 (2008)
-- Robin Wall Kimmerer, _Braiding Sweetgrass_ — the Honorable Harvest
-- Sam Kaner, _Facilitator's Guide to Participatory Decision-Making_
+- [Chris Corrigan — The Art of Harvesting](https://www.chriscorrigan.com/parkinglot/the-art-of-harvesting/)
+- [Monica Nissen & Chris Corrigan — Art of Harvesting booklet v3.1 (PDF)](https://globaltfokus.dk/images/Kapacitetsudvikling/indsatser/SOL_ressourcedatabase/1._Toolbox/Article_The_art_of_harvesting.pdf)
+- [Robin Wall Kimmerer — Braiding Sweetgrass (Milkweed Editions)](https://milkweed.org/book/braiding-sweetgrass)
+- [Sam Kaner — Facilitator's Guide to Participatory Decision-Making (Community at Work)](https://communityatwork.com/our-publications/)
 - [Core Art of Hosting Practices](http://artofhosting.ning.com/page/core-art-of-hosting-practices)
-- Full deep dives: `~/.teleclaude/explore/art-of-hosting/`

@@ -77,9 +77,8 @@ Craig Reynolds' Boids (1986): three simple local rules produce emergent flocking
 
 ## Sources
 
-- Dee Hock, _One From Many: VISA and the Rise of Chaordic Organization_ (2005)
-- Dave Snowden & Mary Boone, "A Leader's Framework for Decision Making," _HBR_ (2007)
-- Stuart Kauffman, _At Home in the Universe_ (1995)
+- [Dee Hock — One From Many: VISA and the Rise of Chaordic Organization (Internet Archive)](https://archive.org/details/onefrommanyvisar0000hock)
+- [Dave Snowden & Mary Boone — A Leader's Framework for Decision Making (HBR, 2007)](https://hbr.org/2007/11/a-leaders-framework-for-decision-making)
+- [Stuart Kauffman — At Home in the Universe (Internet Archive)](https://archive.org/details/athomeinuniverse00kauf_0)
 - [Chris Corrigan — Chaordic Stepping Stones](https://www.chriscorrigan.com/parkinglot/wp-content/uploads/2015/01/Chaordic-Stepping-Stones-1.pdf)
 - [Art of Hosting — The Chaordic Path](https://artofhosting.org/what-is-aoh/methods/the-chaordic-path/)
-- Full deep dives: `~/.teleclaude/explore/art-of-hosting/`

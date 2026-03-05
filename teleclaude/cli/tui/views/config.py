@@ -12,6 +12,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.events import Key
+from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 
@@ -21,7 +22,9 @@ from teleclaude.cli.tui.config_components.guidance import get_guidance_for_env
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, get_neutral_color
 from teleclaude.config.schema import PersonEntry
 
-_SUBTABS = ("adapters", "people", "notifications", "environment", "validate")
+_SUBTABS = ("adapters", "people", "notifications", "environment")
+_PERSON_EDITABLE_FIELDS = ("email", "role", "username")
+_VALID_ROLES = ("admin", "member", "contributor", "newcomer")
 _ADAPTER_TABS = ("telegram", "discord", "ai_keys", "whatsapp")
 _ADAPTER_LABELS = {
     "telegram": "Telegram",
@@ -96,7 +99,6 @@ _GUIDED_STEPS: tuple[GuidedStep, ...] = (
     GuidedStep(subtab="people", title="Review People"),
     GuidedStep(subtab="notifications", title="Review Notifications"),
     GuidedStep(subtab="environment", title="Review Environment"),
-    GuidedStep(subtab="validate", title="Run Validation"),
 )
 
 
@@ -209,19 +211,6 @@ class ConfigView(Widget, can_focus=True):
         self.active_adapter_tab = content.active_adapter_tab
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
-        content = self._content_or_none()
-        if (
-            content is not None
-            and content.guided_mode
-            and action
-            in (
-                "next_subtab",
-                "prev_subtab",
-                "next_adapter_tab",
-                "prev_adapter_tab",
-            )
-        ):
-            return False
         if action in ("next_adapter_tab", "prev_adapter_tab"):
             return self.active_subtab == 0
         return True
@@ -237,11 +226,26 @@ class ConfigView(Widget, can_focus=True):
             self.app.refresh_bindings()
 
     def compose(self) -> ComposeResult:
-        with VerticalScroll(id="config-scroll"):
+        scroll = VerticalScroll(id="config-scroll")
+        scroll.can_focus = False
+        with scroll:
             yield ConfigContent(id="config-content")
 
     def on_mount(self) -> None:
         self._refresh_content()
+
+    def on_focus(self) -> None:
+        self.styles.border = ("none", "transparent")
+        self.app.refresh_bindings()
+
+    def on_click(self) -> None:
+        self.focus()
+
+    def on_config_content_subtab_selected(self, msg: ConfigContent.SubtabSelected) -> None:
+        self.active_subtab = msg.idx
+
+    def on_config_content_adapter_tab_selected(self, msg: ConfigContent.AdapterTabSelected) -> None:
+        self.active_adapter_tab = msg.idx
 
     def on_key(self, event: Key) -> None:
         content = self._content_or_none()
@@ -270,9 +274,7 @@ class ConfigView(Widget, can_focus=True):
         content.active_adapter_tab = self.active_adapter_tab
 
     def action_run_validation(self) -> None:
-        self.active_subtab = 4
         content = self.query_one("#config-content", ConfigContent)
-        content.active_subtab = 4
         content.run_validation()
 
     def action_refresh_config(self) -> None:
@@ -295,6 +297,8 @@ class ConfigView(Widget, can_focus=True):
         content = self.query_one("#config-content", ConfigContent)
         if content.is_editing:
             content.cancel_edit()
+        elif content.is_person_expanded:
+            content.collapse_person()
         elif content.guided_mode:
             content.toggle_guided_mode()
             self._sync_from_content()
@@ -334,6 +338,16 @@ class ConfigContent(TelecMixin, Widget):
     }
     """
 
+    class SubtabSelected(Message):
+        def __init__(self, idx: int) -> None:
+            super().__init__()
+            self.idx = idx
+
+    class AdapterTabSelected(Message):
+        def __init__(self, idx: int) -> None:
+            super().__init__()
+            self.idx = idx
+
     active_subtab = reactive(0, layout=True)
     active_adapter_tab = reactive(0, layout=True)
 
@@ -357,6 +371,11 @@ class ConfigContent(TelecMixin, Widget):
         self._status_is_error = False
         self._guided_mode = False
         self._guided_step_index = 0
+        self._tab_click_regions: list[tuple[int, int, int, int]] = []  # (row, x_start, x_end, subtab_idx)
+        self._row_click_map: dict[int, tuple] = {}  # {content_row: action_tuple}
+        self._expanded_person: str | None = None
+        self._person_field_cursor: int = 0
+        self._editing_person_field: str | None = None
 
     @property
     def guided_mode(self) -> bool:
@@ -364,7 +383,11 @@ class ConfigContent(TelecMixin, Widget):
 
     @property
     def is_editing(self) -> bool:
-        return self._editing_var_name is not None
+        return self._editing_var_name is not None or self._editing_person_field is not None
+
+    @property
+    def is_person_expanded(self) -> bool:
+        return self._expanded_person is not None
 
     def refresh_data(self) -> None:
         from teleclaude.cli.config_handlers import check_env_vars, list_people
@@ -474,6 +497,15 @@ class ConfigContent(TelecMixin, Widget):
         self._cursor_by_context[self._current_context_key()] = index
 
     def _clamp_current_cursor(self) -> None:
+        tab = _SUBTABS[self.active_subtab]
+        if tab == "people":
+            count = len(self._people_data)
+            if count:
+                self._set_current_cursor(max(0, min(self._current_cursor(), count - 1)))
+            else:
+                self._set_current_cursor(0)
+            self._person_field_cursor = max(0, min(self._person_field_cursor, len(_PERSON_EDITABLE_FIELDS) - 1))
+            return
         rows = self._selectable_env_rows()
         if not rows:
             self._set_current_cursor(0)
@@ -493,6 +525,14 @@ class ConfigContent(TelecMixin, Widget):
     def move_cursor(self, delta: int) -> None:
         if self.is_editing:
             return
+        tab = _SUBTABS[self.active_subtab]
+        if tab == "people":
+            if self._expanded_person is not None:
+                self._person_field_cursor = max(0, min(self._person_field_cursor + delta, len(_PERSON_EDITABLE_FIELDS) - 1))
+            elif self._people_data:
+                self._set_current_cursor(max(0, min(self._current_cursor() + delta, len(self._people_data) - 1)))
+            self.refresh(layout=True)
+            return
         rows = self._selectable_env_rows()
         if not rows:
             return
@@ -501,28 +541,30 @@ class ConfigContent(TelecMixin, Widget):
         self.refresh(layout=True)
 
     def activate_current(self) -> None:
-        if self.is_editing:
+        if self._editing_person_field is not None:
+            self._save_person_field()
+            return
+        if self._editing_var_name is not None:
             self.save_edit()
             return
 
-        if self._guided_mode:
-            step = _GUIDED_STEPS[self._guided_step_index]
-            if step.subtab in ("adapters", "environment"):
-                selected = self._current_selected_env()
-                if selected is not None and not selected.is_set:
-                    self._begin_edit(selected)
-                    return
-            if step.subtab == "validate":
-                self.run_validation()
-                if self._is_current_guided_step_complete():
-                    self._advance_guided_step()
-                return
-            self._advance_guided_step()
-            return
-
         tab = _SUBTABS[self.active_subtab]
-        if tab == "validate":
-            self.run_validation()
+        if tab == "people":
+            if self._expanded_person is None:
+                if self._people_data:
+                    cursor = self._current_cursor()
+                    if 0 <= cursor < len(self._people_data):
+                        self._expanded_person = self._people_data[cursor].name
+                        self._person_field_cursor = 0
+                        self.refresh(layout=True)
+            else:
+                person = next((p for p in self._people_data if p.name == self._expanded_person), None)
+                if person is not None:
+                    field = _PERSON_EDITABLE_FIELDS[self._person_field_cursor]
+                    if field == "role":
+                        self._cycle_person_role(person)
+                    else:
+                        self._begin_person_field_edit(person, field)
             return
 
         selected = self._current_selected_env()
@@ -534,6 +576,71 @@ class ConfigContent(TelecMixin, Widget):
         self._edit_buffer = os.environ.get(status.info.name, "")
         self._status_message = f"Editing {status.info.name}. Enter saves, Esc cancels."
         self._status_is_error = False
+        self.refresh(layout=True)
+
+    def _cycle_person_role(self, person: PersonEntry) -> None:
+        from teleclaude.cli.config_handlers import get_global_config, save_global_config
+
+        current = person.role
+        idx = _VALID_ROLES.index(current) if current in _VALID_ROLES else -1
+        next_role = _VALID_ROLES[(idx + 1) % len(_VALID_ROLES)]
+        try:
+            config = get_global_config()
+            for p in config.people:
+                if p.name == person.name:
+                    p.role = next_role  # type: ignore[assignment]
+                    break
+            save_global_config(config)
+            self._status_message = f"Role set to {next_role}"
+            self._status_is_error = False
+        except Exception as exc:
+            self._status_message = f"Failed to save role: {exc}"
+            self._status_is_error = True
+        self.refresh_data()
+
+    def _begin_person_field_edit(self, person: PersonEntry, field: str) -> None:
+        self._editing_person_field = field
+        self._edit_buffer = str(getattr(person, field, "") or "")
+        self._status_message = f"Editing {person.name}.{field}. Enter saves, Esc cancels."
+        self._status_is_error = False
+        self.refresh(layout=True)
+
+    def _save_person_field(self) -> None:
+        if self._editing_person_field is None or self._expanded_person is None:
+            return
+        from teleclaude.cli.config_handlers import get_global_config, save_global_config
+
+        field = self._editing_person_field
+        value = self._edit_buffer
+        person_name = self._expanded_person
+
+        if field == "role" and value not in _VALID_ROLES:
+            self._status_message = f"Invalid role. Valid: {', '.join(_VALID_ROLES)}"
+            self._status_is_error = True
+            self.refresh(layout=True)
+            return
+
+        try:
+            config = get_global_config()
+            for p in config.people:
+                if p.name == person_name:
+                    setattr(p, field, value or None)
+                    break
+            save_global_config(config)
+            self._status_message = f"Saved {person_name}.{field}"
+            self._status_is_error = False
+        except Exception as exc:
+            self._status_message = f"Failed to save: {exc}"
+            self._status_is_error = True
+
+        self._editing_person_field = None
+        self._edit_buffer = ""
+        self.refresh_data()
+
+    def collapse_person(self) -> None:
+        self._expanded_person = None
+        self._editing_person_field = None
+        self._edit_buffer = ""
         self.refresh(layout=True)
 
     def append_edit_character(self, char: str) -> None:
@@ -576,6 +683,14 @@ class ConfigContent(TelecMixin, Widget):
         self.refresh_data()
 
     def cancel_edit(self) -> None:
+        if self._editing_person_field is not None:
+            field = self._editing_person_field
+            self._editing_person_field = None
+            self._edit_buffer = ""
+            self._status_message = f"Canceled edit for {field}"
+            self._status_is_error = False
+            self.refresh(layout=True)
+            return
         if not self.is_editing:
             return
         var_name = self._editing_var_name
@@ -597,7 +712,6 @@ class ConfigContent(TelecMixin, Widget):
         self._guided_mode = True
         self._guided_step_index = 0
         self._apply_guided_step()
-        self._auto_advance_completed_steps()
         self._status_message = "Guided mode started"
         self._status_is_error = False
         self.refresh(layout=True)
@@ -652,8 +766,6 @@ class ConfigContent(TelecMixin, Widget):
             return self._notification_projection.configured
         if step.subtab == "environment":
             return all(status.is_set for status in self._env_data) if self._env_data else False
-        if step.subtab == "validate":
-            return bool(self._validation_results) and all(result.passed for result in self._validation_results)
         return False
 
     def _render_guidance(self, result: Text, env_name: str) -> None:
@@ -678,11 +790,17 @@ class ConfigContent(TelecMixin, Widget):
         result.append("      └─\n", style=_SEP)
 
     def _render_tab_bar(self, result: Text, tabs: tuple[str, ...], active: int) -> None:
+        row = result.plain.count("\n")
+        x = 0
         for idx, tab in enumerate(tabs):
             style = _TAB_ACTIVE if idx == active else _TAB_INACTIVE
-            result.append(f" {tab} ", style=style)
+            label = f" {tab} "
+            self._tab_click_regions.append((row, x, x + len(label), idx))
+            result.append(label, style=style)
+            x += len(label)
             if idx < len(tabs) - 1:
                 result.append(" ", style=_DIM)
+                x += 1
         result.append("\n")
 
     def _render_header(self, result: Text) -> None:
@@ -722,6 +840,8 @@ class ConfigContent(TelecMixin, Widget):
             selected = idx == self.active_adapter_tab
             prefix = "▶" if selected else " "
             card_style = Style(reverse=True) if selected else _normal_style()
+            row = result.plain.count("\n")
+            self._row_click_map[row] = ("adapter_tab", idx)
             result.append(f"  {prefix} {section.label:<11} ", style=card_style)
             result.append(section.status.upper(), style=self._status_style(section.status))
             result.append(f"  ({section.configured_count}/{section.total_count})\n", style=_DIM)
@@ -742,6 +862,9 @@ class ConfigContent(TelecMixin, Widget):
             selected = idx == cursor
             row_style = Style(reverse=True) if selected else _normal_style()
             prefix = "▶" if selected else " "
+
+            row = result.plain.count("\n")
+            self._row_click_map[row] = ("env_row", status.info.name)
 
             if self._editing_var_name == status.info.name:
                 result.append(f"  {prefix} {status.info.name} = {self._edit_buffer}\n", style=row_style)
@@ -764,12 +887,50 @@ class ConfigContent(TelecMixin, Widget):
             result.append("  Next: telec config people add --name <name> --email <email>\n", style=_DIM)
             return
 
-        for person in self._people_data:
-            result.append(f"  • {person.name}", style=_normal_style())
+        cursor = self._current_cursor()
+        for idx, person in enumerate(self._people_data):
+            selected = idx == cursor
+            prefix = "▶" if selected else " "
+            row_style = Style(reverse=True) if selected else _normal_style()
+
+            row = result.plain.count("\n")
+            self._row_click_map[row] = ("person_select", person.name)
+
+            result.append(f"  {prefix} {person.name}", style=row_style)
             result.append(f" ({person.role})", style=_DIM)
             if person.email:
                 result.append(f" <{person.email}>", style=_DIM)
             result.append("\n")
+
+            if selected and self._expanded_person == person.name:
+                for field_idx, field in enumerate(_PERSON_EDITABLE_FIELDS):
+                    field_selected = field_idx == self._person_field_cursor
+                    field_prefix = "▶" if field_selected else " "
+                    field_row_style = Style(reverse=True) if field_selected else _DIM
+
+                    field_row = result.plain.count("\n")
+                    self._row_click_map[field_row] = ("person_field", field)
+
+                    if self._editing_person_field == field:
+                        result.append(f"      {field_prefix} {field} = {self._edit_buffer}█\n", style=field_row_style)
+                        result.append("          Enter save  Esc cancel  Ctrl+U clear\n", style=_DIM)
+                    elif field == "role":
+                        value = str(getattr(person, field, "") or "")
+                        result.append(f"      {field_prefix} ", style=_DIM)
+                        result.append("role: ", style=_DIM)
+                        for opt in _VALID_ROLES:
+                            opt_style = _TAB_ACTIVE if opt == value else _TAB_INACTIVE
+                            result.append(f" {opt} ", style=opt_style)
+                        if field_selected:
+                            result.append("  ↵ cycle", style=_DIM)
+                        result.append("\n")
+                    else:
+                        value = str(getattr(person, field, "") or "")
+                        icon = "✔" if value else "○"
+                        icon_style = _OK if value else _DIM
+                        result.append(f"      {field_prefix} {icon} ", style=icon_style)
+                        result.append(f"{field}: ", style=_DIM)
+                        result.append(f"{value or '(not set)'}\n", style=field_row_style)
 
     def _render_notifications(self, result: Text) -> None:
         projection = self._notification_projection
@@ -797,6 +958,9 @@ class ConfigContent(TelecMixin, Widget):
             row_style = Style(reverse=True) if selected else _normal_style()
             prefix = "▶" if selected else " "
 
+            row = result.plain.count("\n")
+            self._row_click_map[row] = ("env_row", status.info.name)
+
             if self._editing_var_name == status.info.name:
                 result.append(f"  {prefix} {status.info.name} = {self._edit_buffer}\n", style=row_style)
                 result.append("      Enter save  Esc cancel  Ctrl+U clear\n", style=_DIM)
@@ -810,31 +974,10 @@ class ConfigContent(TelecMixin, Widget):
             if selected:
                 self._render_guidance(result, status.info.name)
 
-    def _render_validate(self, result: Text) -> None:
-        result.append("\n")
-        result.append("  Validation\n", style=Style(bold=True))
-
-        if not self._validation_results:
-            result.append("  Press 'v' or Enter to run validation\n", style=_DIM)
-            return
-
-        passed = sum(1 for item in self._validation_results if item.passed)
-        total = len(self._validation_results)
-        summary_style = _OK if passed == total else _FAIL
-        result.append(f"  {passed}/{total} checks passed\n\n", style=summary_style)
-
-        for validation in self._validation_results:
-            icon = "✔" if validation.passed else "✖"
-            icon_style = _OK if validation.passed else _FAIL
-            result.append("  ")
-            result.append(f"{icon} ", style=icon_style)
-            result.append(f"{validation.area}\n", style=_normal_style())
-            for error in validation.errors:
-                result.append(f"      Error: {error}\n", style=_FAIL)
-            for suggestion in validation.suggestions:
-                result.append(f"      Tip: {suggestion}\n", style=_DIM)
 
     def render(self) -> Text:
+        self._tab_click_regions = []
+        self._row_click_map = {}
         result = Text()
 
         self._render_tab_bar(result, _SUBTABS, self.active_subtab)
@@ -850,10 +993,60 @@ class ConfigContent(TelecMixin, Widget):
             self._render_notifications(result)
         elif tab == "environment":
             self._render_environment(result)
-        elif tab == "validate":
-            self._render_validate(result)
 
         return result
+
+    def on_click(self, event: object) -> None:
+        x = getattr(event, "x", -1)
+        y = getattr(event, "y", -1)
+
+        for row, x_start, x_end, subtab_idx in self._tab_click_regions:
+            if y == row and x_start <= x < x_end:
+                self.post_message(self.SubtabSelected(subtab_idx))
+                return
+
+        action = self._row_click_map.get(y)
+        if action is None:
+            return
+
+        action_type = action[0]
+        if action_type == "adapter_tab":
+            self.post_message(self.AdapterTabSelected(action[1]))
+        elif action_type == "env_row":
+            env_name = action[1]
+            rows = self._selectable_env_rows()
+            for i, status in enumerate(rows):
+                if status.info.name == env_name:
+                    self._set_current_cursor(i)
+                    self._begin_edit(status)
+                    break
+        elif action_type == "person_select":
+            person_name = action[1]
+            if self._editing_person_field is not None:
+                self._editing_person_field = None
+                self._edit_buffer = ""
+            for i, p in enumerate(self._people_data):
+                if p.name == person_name:
+                    self._set_current_cursor(i)
+                    if self._expanded_person == person_name:
+                        self._expanded_person = None
+                    else:
+                        self._expanded_person = person_name
+                        self._person_field_cursor = 0
+                    self.refresh(layout=True)
+                    break
+        elif action_type == "person_field":
+            field = action[1]
+            for field_idx, f in enumerate(_PERSON_EDITABLE_FIELDS):
+                if f == field:
+                    self._person_field_cursor = field_idx
+                    person = next((p for p in self._people_data if p.name == self._expanded_person), None)
+                    if person is not None:
+                        if field == "role":
+                            self._cycle_person_role(person)
+                        else:
+                            self._begin_person_field_edit(person, field)
+                    break
 
     def watch_active_subtab(self, _value: int) -> None:
         self._clamp_current_cursor()

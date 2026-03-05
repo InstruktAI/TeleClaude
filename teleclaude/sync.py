@@ -15,6 +15,7 @@ from teleclaude.paths import REPO_ROOT
 from teleclaude.project_manifest import MANIFEST_PATH, register_project
 from teleclaude.resource_validation import (
     clear_warnings,
+    get_errors,
     get_warnings,
     validate_all_artifacts,
     validate_all_snippets,
@@ -44,10 +45,14 @@ def sync(
     artifact_errors = validate_all_artifacts(project_root)
     errors.extend(artifact_errors)
     errors.extend(validate_jobs_config(project_root))
+    errors.extend(
+        f"{e['code']}: {e['path']} (ref={e.get('ref', '')} expected={e.get('expected', '')})" for e in get_errors()
+    )
 
     warnings = get_warnings()
     if warnings:
         _print_warnings(warnings, quiet=warn_only)
+        errors.extend(f"{w['code']}: {w['path']}" for w in warnings)
 
     if errors:
         for error in errors:

@@ -11,37 +11,20 @@ type: 'spec'
 
 @~/.teleclaude/docs/general/procedure/agent-job-hygiene.md
 
-## What it does
+## What it is
 
-For each person with YouTube subscriptions configured, runs the tagging script
-against their `youtube.csv`. The script finds channels with empty tags and
-classifies them using AI. Already-tagged channels are skipped. Results are
-written back to CSV.
+A nightly AI job that classifies untagged YouTube subscriptions per person. For each person with YouTube subscriptions configured, runs the tagging script against their `youtube.csv`. The script finds channels with empty tags and classifies them using AI. Already-tagged channels are skipped. Results are written back to CSV.
 
-## How it works
+## Canonical fields
 
-The agent supervises the existing tagging pipeline:
+- `trigger`: nightly cron schedule.
+- `input`: per-person `youtube.csv` files at `~/.teleclaude/people/{name}/subscriptions/youtube.csv`.
+- `output`: updated `youtube.csv` with AI-classified tags; run report.
+- `csv_columns`: `channel_id`, `channel_name`, `handle`, `tags`.
 
-1. `teleclaude/cron/discovery.py` scans `~/.teleclaude/people/*/teleclaude.yml`
-   for entries with `subscriptions.youtube` configured.
-2. For each subscriber, the tagging script `teleclaude/tagging/youtube.py` is
-   invoked via `sync_youtube_subscriptions()`.
-3. The tagging script reads the CSV, enriches untagged channels with About page
-   descriptions, sends batches to AI with the subscriber's allowed tag list,
-   validates responses, and falls back to web research for channels tagged `n/a`.
-4. Only untagged rows are processed. Tagged rows are never touched unless explicitly
-   called with `refresh=True` (not used by the nightly job).
-5. The agent writes a run report and stops.
+### Per-person configuration
 
-## Scope (fix-forward boundary)
-
-- `teleclaude/tagging/youtube.py`
-- `teleclaude/cron/discovery.py`
-- `jobs/youtube_sync_subscriptions.py`
-
-## Configuration
-
-Per-person at `~/.teleclaude/people/{name}/teleclaude.yml`:
+At `~/.teleclaude/people/{name}/teleclaude.yml`:
 
 ```yaml
 subscriptions:
@@ -53,7 +36,16 @@ interests:
     - geopolitics
 ```
 
-## Data
+### Fix-forward boundary
 
-`~/.teleclaude/people/{name}/subscriptions/youtube.csv` with columns:
-`channel_id`, `channel_name`, `handle`, `tags`.
+- `teleclaude/tagging/youtube.py`
+- `teleclaude/cron/discovery.py`
+- `jobs/youtube_sync_subscriptions.py`
+
+### How it works
+
+1. `teleclaude/cron/discovery.py` scans `~/.teleclaude/people/*/teleclaude.yml` for entries with `subscriptions.youtube` configured.
+2. For each subscriber, the tagging script `teleclaude/tagging/youtube.py` is invoked via `sync_youtube_subscriptions()`.
+3. The tagging script reads the CSV, enriches untagged channels with About page descriptions, sends batches to AI with the subscriber's allowed tag list, validates responses, and falls back to web research for channels tagged `n/a`.
+4. Only untagged rows are processed. Tagged rows are never touched unless explicitly called with `refresh=True` (not used by the nightly job).
+5. The agent writes a run report and stops.

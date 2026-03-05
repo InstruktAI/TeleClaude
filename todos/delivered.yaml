@@ -1,5 +1,13 @@
 # Delivered work items. Newest first.
 
+- slug: cli-knowledge-commands
+  date: '2026-03-05'
+  title: telec history + telec memory CLI commands, retire standalone tool specs
+  description: telec history + telec memory CLI commands, retire standalone tool specs
+- slug: context-delivery-dedup
+  date: '2026-03-05'
+- slug: state-machine-gate-sharpening
+  date: '2026-03-05'
 - slug: default-agent-resolution
   date: '2026-03-05'
   commit: 806fd11c9c215477328a1793b368c64d63dd840e

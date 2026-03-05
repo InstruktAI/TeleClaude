@@ -7,12 +7,6 @@ description: 'State-driven layout model for the Telec TUI sessions and preparati
 
 # Tui State Layout — Design
 
-## Required reads
-
-- @docs/project/design/system-overview.md
-- @docs/project/design/ui-adapter.md
-- @docs/project/design/tmux-management.md
-
 ## Purpose
 
 Define the single source of truth for TUI state and deterministic pane layout derived from it, so session panes remain stable across tabs and all view interactions share one state model. The TUI is a local UI client of the API server; it owns its view state and must not mutate core daemon state directly. Applies to all TUI views in `teleclaude/cli/tui/views/` (Sessions, Preparation) and shared UI components (tab bar, modals, widgets) which emit intents but do not own state.

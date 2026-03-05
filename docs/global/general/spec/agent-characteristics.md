@@ -70,4 +70,4 @@ Selection is not rigid — read the domain and pick the complement that covers t
 
 ## See Also
 
-- general/policy/agent-dispatch
+- ~/.teleclaude/docs/general/policy/agent-dispatch.md
