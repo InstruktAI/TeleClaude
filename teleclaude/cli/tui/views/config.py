@@ -156,6 +156,9 @@ class ConfigView(Widget, can_focus=True):
         width: 100%;
         height: 1fr;
     }
+    ConfigView:focus {
+        border: none;
+    }
     ConfigView VerticalScroll {
         width: 100%;
         height: 1fr;
@@ -224,11 +227,14 @@ class ConfigView(Widget, can_focus=True):
             self.app.refresh_bindings()
 
     def compose(self) -> ComposeResult:
-        with VerticalScroll(id="config-scroll"):
+        with VerticalScroll(id="config-scroll", can_focus=False):
             yield ConfigContent(id="config-content")
 
     def on_mount(self) -> None:
         self._refresh_content()
+
+    def on_click(self) -> None:
+        self.focus()
 
     def on_key(self, event: Key) -> None:
         content = self._content_or_none()
