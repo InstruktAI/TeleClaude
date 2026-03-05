@@ -1,5 +1,5 @@
-project_root: /Users/Morriz/.teleclaude
-snippets_root: /Users/Morriz/.teleclaude/docs
+project_root: ~/.teleclaude
+snippets_root: ~/.teleclaude/docs
 snippets:
 - id: general/concept/agent-invocation-modes
   description: Standardized invocation patterns for AI agent CLIs, separating structured
