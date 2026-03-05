@@ -26,16 +26,9 @@
 - slug: telec-init-enrichment
   description: 'Rich project bootstrapping: deep analysis, doc scaffolding, intelligence
     seeding'
-- slug: event-envelope-schema
-  description: 'Five-layer envelope: Identity, Semantic, Data, Affordances, Resolution
-    + core taxonomy'
 - slug: event-platform
   description: 'Event processing platform: cartridges, domain pipelines, signal processing,
     mesh distribution (container for phases 2-7)'
-- slug: event-system-cartridges
-  group: event-platform
-  description: 'System pipeline intelligence: trust evaluator, enrichment, correlation,
-    classification cartridges'
 - slug: event-domain-infrastructure
   group: event-platform
   after:
@@ -74,10 +67,7 @@
 - slug: web-frontend-test-bugs
 - slug: youtube-scrape-channels-job
 - slug: adapter-boundary-cleanup
-- slug: cli-authz-overhaul
 - slug: reflection-routing-ownership
-  after:
-  - adapter-boundary-cleanup
   description: Move reflection routing decisions from core to adapters
 - slug: telegram-callback-payload-migration
   description: Migrate Telegram explicit user-selection callback payloads to canonical
@@ -85,3 +75,6 @@
 - slug: chiptunes-audio
   description: Play ChipTunes .sid audio via libsidplayfp with TUI integration and
     runtime settings
+- slug: integration-event-chain-phase2
+  after:
+  - event-system-cartridges
