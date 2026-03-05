@@ -63,7 +63,9 @@ class CompositeSprite:
         resolved = []
         for layer in self.layers:
             if isinstance(layer.color, list):
-                resolved.append(SpriteLayer(color=random.choice(layer.color), positive=layer.positive, negative=layer.negative))
+                resolved.append(
+                    SpriteLayer(color=random.choice(layer.color), positive=layer.positive, negative=layer.negative)
+                )
             else:
                 resolved.append(layer)
         return CompositeSprite(

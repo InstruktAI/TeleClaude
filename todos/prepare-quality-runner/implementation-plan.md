@@ -15,14 +15,14 @@ notification projector). It is the first domain-logic cartridge in the codebase.
 
 **File(s):** `teleclaude_events/cartridges/prepare_quality.py` (new)
 
-- [ ] Implement `PrepareQualityCartridge` class with `Cartridge` protocol:
+- [x] Implement `PrepareQualityCartridge` class with `Cartridge` protocol:
   - `name = "prepare-quality"`
   - `async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None`
-- [ ] Filter: only process `domain.software-development.planning.*` events.
+- [x] Filter: only process `domain.software-development.planning.*` events.
       Pass through all other events immediately.
-- [ ] Extract slug from `event.payload["slug"]`.
-- [ ] Skip if slug is in `todos/delivered.yaml` or `todos/icebox.md`.
-- [ ] Always return the event (pass-through for downstream cartridges).
+- [x] Extract slug from `event.payload["slug"]`.
+- [x] Skip if slug is in `todos/delivered.yaml` or `todos/icebox.md`.
+- [x] Always return the event (pass-through for downstream cartridges).
 
 **Verification:** Cartridge passes through non-planning events unchanged. Planning
 events trigger processing.
@@ -31,11 +31,11 @@ events trigger processing.
 
 **File(s):** `teleclaude_events/cartridges/prepare_quality.py`
 
-- [ ] Compute current git commit hash of `todos/{slug}/` folder via
+- [x] Compute current git commit hash of `todos/{slug}/` folder via
       `git log -1 --format=%h -- todos/{slug}/`.
-- [ ] Read `state.yaml` dor section. If `assessed_commit` matches and `status == pass`,
+- [x] Read `state.yaml` dor section. If `assessed_commit` matches and `status == pass`,
       skip processing. Log skip reason.
-- [ ] If different commit or no prior assessment, proceed.
+- [x] If different commit or no prior assessment, proceed.
 
 **Verification:** Duplicate event for unchanged slug is skipped. Changed slug is processed.
 
@@ -46,7 +46,7 @@ events trigger processing.
 **File(s):** `teleclaude_events/cartridges/prepare_quality.py` (scorer as internal module
 or separate file `teleclaude_events/cartridges/dor_scorer.py` — builder's choice)
 
-- [ ] Define scoring rubric as structured criteria:
+- [x] Define scoring rubric as structured criteria:
   - Requirements dimensions:
     - Intent clarity (0-2): problem statement and outcome explicit?
     - Scope atomicity (0-2): fits one session? Cross-cutting called out?
@@ -60,9 +60,9 @@ or separate file `teleclaude_events/cartridges/dor_scorer.py` — builder's choi
     - Task-to-requirement traceability (0-2): every task maps to a requirement?
     - Plan-requirement consistency (0-1): no contradictions?
   - Maximum: 16 raw points → normalized to 1..10 scale.
-- [ ] `score_requirements(content: str) -> dict` with per-dimension scores and gaps.
-- [ ] `score_plan(content: str, requirements: str) -> dict` with per-dimension scores.
-- [ ] Combine into overall DOR score with verdict:
+- [x] `score_requirements(content: str) -> dict` with per-dimension scores and gaps.
+- [x] `score_plan(content: str, requirements: str) -> dict` with per-dimension scores.
+- [x] Combine into overall DOR score with verdict:
   - > = 8 → `pass`
   - < 8 with improvable gaps → `needs_work`
   - < 7 with no safe improvements → `needs_decision`
@@ -73,11 +73,11 @@ or separate file `teleclaude_events/cartridges/dor_scorer.py` — builder's choi
 
 **File(s):** Same as 2.1.
 
-- [ ] Parse plan tasks (markdown checkboxes / section headers).
-- [ ] Parse requirements sections (FR1..FRn).
-- [ ] Flag plan tasks that reference no requirement.
-- [ ] Flag contradictions where plan prescribes opposite of requirement.
-- [ ] Contradictions are `needs_work` blockers.
+- [x] Parse plan tasks (markdown checkboxes / section headers).
+- [x] Parse requirements sections (FR1..FRn).
+- [x] Flag plan tasks that reference no requirement.
+- [x] Flag contradictions where plan prescribes opposite of requirement.
+- [x] Contradictions are `needs_work` blockers.
 
 **Verification:** Fixture with contradicting plan/requirement produces `needs_work`.
 
@@ -87,11 +87,11 @@ or separate file `teleclaude_events/cartridges/dor_scorer.py` — builder's choi
 
 **File(s):** `teleclaude_events/cartridges/prepare_quality.py`
 
-- [ ] When requirements.md is missing dependency section: add from `roadmap.yaml`.
-- [ ] When plan is missing verification steps: add "**Verification:** TBD" placeholders.
-- [ ] When requirements are missing constraint section: flag gap in report.
-- [ ] Do NOT rewrite prose or change technical approach.
-- [ ] Return list of edits made.
+- [x] When requirements.md is missing dependency section: add from `roadmap.yaml`.
+- [x] When plan is missing verification steps: add "**Verification:** TBD" placeholders.
+- [x] When requirements are missing constraint section: flag gap in report.
+- [x] Do NOT rewrite prose or change technical approach.
+- [x] Return list of edits made.
 
 **Verification:** Missing structural sections are filled. Prose is untouched.
 
@@ -99,9 +99,9 @@ or separate file `teleclaude_events/cartridges/dor_scorer.py` — builder's choi
 
 **File(s):** `teleclaude_events/cartridges/prepare_quality.py`
 
-- [ ] After structural improvements, re-run scorer on updated content.
-- [ ] Update score and verdict.
-- [ ] If still below threshold: verdict is final.
+- [x] After structural improvements, re-run scorer on updated content.
+- [x] Update score and verdict.
+- [x] If still below threshold: verdict is final.
 
 **Verification:** Improved artifact rescores higher. Still-weak artifact stays at lower score.
 
@@ -111,7 +111,7 @@ or separate file `teleclaude_events/cartridges/dor_scorer.py` — builder's choi
 
 **File(s):** `teleclaude_events/cartridges/prepare_quality.py`
 
-- [ ] Write `todos/{slug}/dor-report.md` with template:
+- [x] Write `todos/{slug}/dor-report.md` with template:
   - Score + verdict
   - Assessment timestamp
   - Assessed commit hash
@@ -126,11 +126,11 @@ or separate file `teleclaude_events/cartridges/dor_scorer.py` — builder's choi
 
 **File(s):** `teleclaude_events/cartridges/prepare_quality.py`
 
-- [ ] Read existing `state.yaml` and update dor section:
+- [x] Read existing `state.yaml` and update dor section:
   - `last_assessed_at`, `score`, `status`, `schema_version`, `blockers`,
     `actions_taken`, `assessed_commit`
-- [ ] Preserve all non-dor keys in `state.yaml`.
-- [ ] Use YAML safe dump with consistent formatting.
+- [x] Preserve all non-dor keys in `state.yaml`.
+- [x] Use YAML safe dump with consistent formatting.
 
 **Verification:** `state.yaml` dor section matches schema. Non-dor keys preserved.
 
@@ -138,12 +138,12 @@ or separate file `teleclaude_events/cartridges/dor_scorer.py` — builder's choi
 
 **File(s):** `teleclaude_events/cartridges/prepare_quality.py`
 
-- [ ] Look up notification row from `context.db` by idempotency key or group key
+- [x] Look up notification row from `context.db` by idempotency key or group key
       (slug) from the event.
-- [ ] Claim: `context.db.update_agent_status(id, "claimed", "prepare-quality-runner")`.
-- [ ] On `pass` or `needs_work`: resolve via `context.db.resolve_notification(id, resolution)`.
-- [ ] On `needs_decision`: leave unresolved. Log blockers.
-- [ ] Emit `domain.software-development.planning.dor_assessed` event via producer
+- [x] Claim: `context.db.update_agent_status(id, "claimed", "prepare-quality-runner")`.
+- [x] On `pass` or `needs_work`: resolve via `context.db.resolve_notification(id, resolution)`.
+- [x] On `needs_decision`: leave unresolved. Log blockers.
+- [x] Emit `domain.software-development.planning.dor_assessed` event via producer
       (requires producer reference — either passed via context or imported from module-level).
 
 **Verification:** Notification resolved for pass/needs_work. Unresolved for needs_decision.
@@ -154,15 +154,15 @@ or separate file `teleclaude_events/cartridges/dor_scorer.py` — builder's choi
 
 **File(s):** `teleclaude/daemon.py`
 
-- [ ] Import `PrepareQualityCartridge` from `teleclaude_events.cartridges.prepare_quality`.
-- [ ] Add to pipeline construction after system cartridges:
+- [x] Import `PrepareQualityCartridge` from `teleclaude_events.cartridges.prepare_quality`.
+- [x] Add to pipeline construction after system cartridges:
   ```python
   pipeline = Pipeline(
       [DeduplicationCartridge(), NotificationProjectorCartridge(), PrepareQualityCartridge()],
       context,
   )
   ```
-- [ ] Cartridge lifecycle follows daemon lifecycle (no special start/stop needed).
+- [x] Cartridge lifecycle follows daemon lifecycle (no special start/stop needed).
 
 **Verification:** Daemon startup logs show three cartridges. Event emission triggers assessment.
 
@@ -170,7 +170,7 @@ or separate file `teleclaude_events/cartridges/dor_scorer.py` — builder's choi
 
 **File(s):** `teleclaude_events/cartridges/__init__.py`
 
-- [ ] Add `PrepareQualityCartridge` to package exports.
+- [x] Add `PrepareQualityCartridge` to package exports.
 
 **Verification:** Import works from both daemon and tests.
 
@@ -178,20 +178,20 @@ or separate file `teleclaude_events/cartridges/dor_scorer.py` — builder's choi
 
 ### Task 6.1: Tests
 
-- [ ] Unit tests for DOR scorer (rubric evaluation, threshold mapping).
-- [ ] Unit tests for idempotency (skip logic, commit hash comparison).
-- [ ] Unit tests for structural improver (gap filling, prose preservation).
-- [ ] Integration test: create pipeline with all three cartridges, feed a planning event,
+- [x] Unit tests for DOR scorer (rubric evaluation, threshold mapping).
+- [x] Unit tests for idempotency (skip logic, commit hash comparison).
+- [x] Unit tests for structural improver (gap filling, prose preservation).
+- [x] Integration test: create pipeline with all three cartridges, feed a planning event,
       verify DOR report written and state updated.
-- [ ] Test `needs_decision` path: notification left unresolved.
-- [ ] Run `make test`.
+- [x] Test `needs_decision` path: notification left unresolved.
+- [x] Run `make test`.
 
 ### Task 6.2: Quality checks
 
-- [ ] Run `make lint`.
-- [ ] Verify cartridge does not import daemon internals (only `teleclaude_events`).
-- [ ] Verify `state.yaml` schema compliance across test fixtures.
-- [ ] Verify pipeline pass-through: non-planning events are unaffected.
+- [x] Run `make lint`.
+- [x] Verify cartridge does not import daemon internals (only `teleclaude_events`).
+- [x] Verify `state.yaml` schema compliance across test fixtures.
+- [x] Verify pipeline pass-through: non-planning events are unaffected.
 
 ## Risks
 

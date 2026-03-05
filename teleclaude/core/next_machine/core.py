@@ -235,19 +235,8 @@ WHEN WORKER COMPLETES:
 4. Confirm worker reported exactly `FINALIZE_READY: {args}` in session `<session_id>` transcript.
    If missing: send worker feedback to report FINALIZE_READY and stop (do NOT apply).
 5. telec sessions end <session_id>
-6. EMIT DEPLOYMENT EVENT (hand off to the singleton integrator):
-   a. Get branch name and HEAD sha from the worktree:
-      BRANCH="{args}"
-      SHA="$(git -C trees/{args} rev-parse HEAD)"
-   b. Emit deployment.started:
-      python -c "
-      import asyncio
-      from teleclaude.core.integration_bridge import emit_deployment_started
-      asyncio.run(emit_deployment_started(
-          slug='{args}', branch='$BRANCH', sha='$SHA',
-          orchestrator_session_id='$TELECLAUDE_SESSION_ID',
-      ))
-      " || echo "WARNING: deployment.started emission failed (non-blocking)"
+6. TRIGGER INTEGRATION (hand off to the singleton integrator):
+   telec todo integrate {args}
 7. Release finalize lock:
    rm -f todos/.finalize-lock
 8. Report: "Candidate {args} queued for integration. Integrator will process."

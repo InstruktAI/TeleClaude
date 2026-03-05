@@ -95,6 +95,7 @@ from teleclaude_events.cartridges import (
     DeduplicationCartridge,
     IntegrationTriggerCartridge,
     NotificationProjectorCartridge,
+    PrepareQualityCartridge,
 )
 from teleclaude_events.delivery.telegram import TelegramDeliveryAdapter
 from teleclaude_events.envelope import EventEnvelope as EventsEnvelope
@@ -1790,13 +1791,19 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 except Exception:
                     logger.warning("Could not load people config for WhatsApp delivery adapter")
 
-            # 5. Pipeline (dedup → integration trigger → notification projector)
+            # 5. Pipeline (dedup → integration trigger → notification projector → prepare quality)
             from teleclaude.core.integration_bridge import spawn_integrator_session
 
             integration_trigger = IntegrationTriggerCartridge(spawn_callback=spawn_integrator_session)
             context = PipelineContext(catalog=event_catalog, db=self._event_db, push_callbacks=push_callbacks)
             pipeline = Pipeline(
-                [DeduplicationCartridge(), integration_trigger, NotificationProjectorCartridge()], context
+                [
+                    DeduplicationCartridge(),
+                    integration_trigger,
+                    NotificationProjectorCartridge(),
+                    PrepareQualityCartridge(),
+                ],
+                context,
             )
 
             # 6. Processor

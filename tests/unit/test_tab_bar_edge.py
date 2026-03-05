@@ -51,7 +51,6 @@ def _light_mode():
     with (
         patch(f"{_MOD}.is_dark_mode", return_value=False),
         patch(f"{_MOD}.get_terminal_background", return_value=TERMINAL_BG),
-        patch(f"{_MOD}.get_tui_inactive_background", return_value=INACTIVE_BG),
         patch(f"{_MOD}.resolve_haze", side_effect=lambda x: x),
         patch(f"{_MOD}.get_neutral_color", return_value="#888888"),
         patch(f"{_MOD}.blend_colors", side_effect=lambda a, b, p: a),
@@ -91,10 +90,11 @@ def test_transition_row_under_tabs_is_pane():
 
 
 @pytest.mark.usefixtures("_light_mode")
-def test_active_tab_bg_matches_pane():
-    """Active tab bg should equal pane_bg (same routine as CSS $background)."""
+def test_active_tab_bg_uses_neutral_subtle():
+    """Active tab bg should use the neutral 'subtle' color in light mode."""
     rows = _render(_make_fake_bar())
-    pane = TERMINAL_BG.lower()
+    # get_neutral_color is patched to return #888888, resolve_haze is passthrough
+    expected = "#888888"
     # Row 1 (label row), x=5 is inside active tab
     bg = _bg_hex(_style_at(rows[1], 5))
-    assert bg == pane, f"Active tab bg should match pane_bg, got {bg}"
+    assert bg == expected, f"Active tab bg should match neutral subtle, got {bg}"

@@ -556,7 +556,9 @@ class ConfigContent(TelecMixin, Widget):
         tab = _SUBTABS[self.active_subtab]
         if tab == "people":
             if self._expanded_person is not None:
-                self._person_field_cursor = max(0, min(self._person_field_cursor + delta, len(_PERSON_EDITABLE_FIELDS) - 1))
+                self._person_field_cursor = max(
+                    0, min(self._person_field_cursor + delta, len(_PERSON_EDITABLE_FIELDS) - 1)
+                )
             elif self._people_data:
                 self._set_current_cursor(max(0, min(self._current_cursor() + delta, len(self._people_data) - 1)))
             self.refresh(layout=True)
@@ -999,7 +1001,6 @@ class ConfigContent(TelecMixin, Widget):
             result.append(f" ({status.info.adapter})\n", style=_DIM)
             if selected:
                 self._render_guidance(result, status.info.name)
-
 
     def render(self) -> Text:
         self._tab_click_regions = []
