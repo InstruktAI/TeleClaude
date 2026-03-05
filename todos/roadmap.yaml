@@ -82,7 +82,6 @@
   description: Agent session identity and credential lifecycle — token issuance, ledger,
     two principal types (human-delegated, system/job), revocation on session close
 - slug: adapter-boundary-cleanup
-- slug: person-knowledge-level
 - slug: slug-helper
 - slug: cli-authz-overhaul
 - slug: reflection-routing-ownership
