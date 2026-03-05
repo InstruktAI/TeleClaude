@@ -111,39 +111,39 @@ backward-compatible with existing consumers.
 
 ### Task 5.1: Tests for expansion joint
 
-**File(s):** `tests/test_event_envelope_schema.py` (new)
+**File(s):** `tests/unit/test_teleclaude_events/test_event_envelope_schema.py` (new)
 
-- [ ] Test: extra fields survive `EventEnvelope` construction
-- [ ] Test: extra fields round-trip through `to_stream_dict()` → `from_stream_dict()`
-- [ ] Test: extra fields do not appear in the base model's declared fields
+- [x] Test: extra fields survive `EventEnvelope` construction
+- [x] Test: extra fields round-trip through `to_stream_dict()` → `from_stream_dict()`
+- [x] Test: extra fields do not appear in the base model's declared fields
 
 ### Task 5.2: Tests for core taxonomy
 
-**File(s):** `tests/test_event_envelope_schema.py`
+**File(s):** `tests/unit/test_teleclaude_events/test_event_envelope_schema.py`
 
-- [ ] Test: all root families are registered in `build_default_catalog()`
-- [ ] Test: each registered event type has required fields (description, level, domain)
-- [ ] Test: idempotency key generation works for new event types
+- [x] Test: all root families are registered in `build_default_catalog()`
+- [x] Test: each registered event type has required fields (description, level, domain)
+- [x] Test: idempotency key generation works for new event types
 
 ### Task 5.3: Tests for schema versioning
 
-**File(s):** `tests/test_event_envelope_schema.py`
+**File(s):** `tests/unit/test_teleclaude_events/test_event_envelope_schema.py`
 
-- [ ] Test: `SCHEMA_VERSION` equals the expected value
-- [ ] Test: default `EventEnvelope().version` matches `SCHEMA_VERSION`
+- [x] Test: `SCHEMA_VERSION` equals the expected value
+- [x] Test: default `EventEnvelope().version` matches `SCHEMA_VERSION`
 
 ### Task 5.4: Tests for JSON Schema export
 
-**File(s):** `tests/test_event_envelope_schema.py`
+**File(s):** `tests/unit/test_teleclaude_events/test_event_envelope_schema.py`
 
-- [ ] Test: `export_json_schema()` returns a valid JSON Schema dict
-- [ ] Test: the exported schema validates a real envelope from the catalog
-- [ ] Run `make test`
+- [x] Test: `export_json_schema()` returns a valid JSON Schema dict
+- [x] Test: the exported schema validates a real envelope from the catalog
+- [x] Run `make test`
 
 ### Task 5.5: Quality checks
 
-- [ ] Run `make lint`
-- [ ] Verify no unchecked implementation tasks remain
+- [x] Run `make lint`
+- [x] Verify no unchecked implementation tasks remain
 
 ---
 
