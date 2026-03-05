@@ -161,6 +161,7 @@ class ConfigView(Widget, can_focus=True):
     ConfigView VerticalScroll {
         width: 100%;
         height: 1fr;
+        scrollbar-size: 0 0;
     }
     """
 
