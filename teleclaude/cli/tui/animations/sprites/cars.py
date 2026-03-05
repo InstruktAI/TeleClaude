@@ -56,7 +56,7 @@ CAR_SPRITE_LEFT = CompositeSprite(
                 "                 ",
                 "  ▚▂▞       ▚▂▞  ",
             ],
-            color="#000000",
+            color="#525252",
         ),
     ],
 )
