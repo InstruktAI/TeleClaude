@@ -30,6 +30,7 @@ from teleclaude.cli.tool_commands import (  # noqa: E402
     handle_computers,
     handle_projects,
     handle_sessions,
+    handle_todo_integrate,
     handle_todo_mark_phase,
     handle_todo_prepare,
     handle_todo_set_deps,
@@ -414,6 +415,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "work": CommandDef(
                 desc="Run the Phase B (work) state machine",
+                args="[<slug>]",
+                flags=[_H],
+            ),
+            "integrate": CommandDef(
+                desc="Run the Phase C (integrate) state machine",
                 args="[<slug>]",
                 flags=[_H],
             ),
@@ -1670,6 +1676,8 @@ def _handle_todo(args: list[str]) -> None:
         handle_todo_prepare(args[1:])
     elif subcommand == "work":
         handle_todo_work(args[1:])
+    elif subcommand == "integrate":
+        handle_todo_integrate(args[1:])
     elif subcommand == "mark-phase":
         handle_todo_mark_phase(args[1:])
     elif subcommand == "set-deps":

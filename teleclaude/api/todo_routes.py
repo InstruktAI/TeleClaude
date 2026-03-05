@@ -14,6 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from teleclaude.api.auth import (
+    CLEARANCE_TODOS_INTEGRATE,
     CLEARANCE_TODOS_MARK_PHASE,
     CLEARANCE_TODOS_PREPARE,
     CLEARANCE_TODOS_SET_DEPS,
@@ -22,6 +23,7 @@ from teleclaude.api.auth import (
 )
 from teleclaude.config import config
 from teleclaude.core.db import db
+from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.next_machine import next_prepare, next_work
 from teleclaude.core.next_machine.core import (
     detect_circular_dependency,
@@ -77,6 +79,29 @@ async def todo_work(  # pyright: ignore
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
     result = await next_work(db, slug, cwd, identity.session_id)
+    return {"result": result}
+
+
+@router.post("/integrate")
+async def todo_integrate(  # pyright: ignore
+    slug: Annotated[str | None, Body()] = None,
+    cwd: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(CLEARANCE_TODOS_INTEGRATE),
+) -> dict[str, str]:
+    """Run the integration state machine.
+
+    Executes the next deterministic integration step: acquires the lease,
+    pops the next candidate from the queue, merges, commits, pushes, and
+    cleans up. Returns structured instructions at decision points where
+    agent intelligence is required (squash commit composition, conflict
+    resolution, push rejection recovery).
+
+    Uses the caller's session_id as the lease owner. Requires integrator
+    clearance — workers cannot invoke this directly.
+    """
+    if not cwd:
+        raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
+    result = await next_integrate(db, slug, cwd, identity.session_id)
     return {"result": result}
 
 

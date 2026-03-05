@@ -809,6 +809,44 @@ def handle_todo_work(args: list[str]) -> None:
     print_json(data)
 
 
+def handle_todo_integrate(args: list[str]) -> None:
+    """Run the integration state machine.
+
+    Usage: telec todo integrate [<slug>]
+
+    Executes the next deterministic integration step: acquires the integration
+    lease, pops the next candidate from the queue, merges, pushes, and cleans
+    up. Returns structured instructions at decision points where agent
+    intelligence is required (squash commit, conflict resolution, push recovery).
+
+    Requires integrator clearance. The queue is FIFO; if a slug is provided,
+    it must match the next item or an error is returned.
+
+    Options:
+      <slug>       Candidate slug (optional; must match next in FIFO queue)
+
+    Examples:
+      telec todo integrate
+      telec todo integrate my-feature
+    """
+    if "--help" in args or "-h" in args:
+        print(handle_todo_integrate.__doc__ or "")
+        return
+
+    body: dict[str, object] = {"cwd": os.getcwd()}  # guard: loose-dict - JSON request body
+
+    i = 0
+    while i < len(args):
+        if not args[i].startswith("-"):
+            body["slug"] = args[i]
+            i += 1
+        else:
+            i += 1
+
+    data = tool_api_call("POST", "/todos/integrate", json_body=body)
+    print_json(data)
+
+
 def handle_todo_mark_phase(args: list[str]) -> None:
     """Mark a work phase as complete/approved in state.yaml.
 
