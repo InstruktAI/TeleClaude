@@ -12,7 +12,7 @@ Ownership:
 
 - [x] Requirements implemented according to scope
 - [x] Implementation-plan task checkboxes all `[x]`
-- [x] Tests pass (`make test`) — 2845 pass; 4 pre-existing failures unrelated to this scope
+- [x] Tests pass (`make test`) — 2849 pass; 0 failures
 - [x] Lint passes (`make lint`) — score 9.40/10; all issues pre-existing
 - [x] No silent deferrals in implementation plan
 - [x] Code committed
