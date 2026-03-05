@@ -2235,6 +2235,8 @@ def _handle_todo_dump(args: list[str]) -> None:
         print(f"Error: {exc}")
         raise SystemExit(1) from exc
 
+    slug = todo_dir.name  # Use resolved name in case collision resolution renamed it
+
     # Overwrite input.md with brain dump content
     input_path = todo_dir / "input.md"
     input_path.write_text(f"# {todo_dir.name} — Input\n\n{content}\n", encoding="utf-8")
