@@ -418,7 +418,7 @@ def test_role_cycles_through_valid_values_on_activate(monkeypatch) -> None:
     monkeypatch.setattr(config_handlers_mod, "save_global_config", lambda _: None)
     monkeypatch.setattr(content, "refresh_data", lambda: None)
 
-    content.activate_current()
+    content.cycle_enum_field(1)
 
     expected_next = _VALID_ROLES[(_VALID_ROLES.index("member") + 1) % len(_VALID_ROLES)]
     assert person.role == expected_next
@@ -440,7 +440,7 @@ def test_role_wraps_from_last_to_first(monkeypatch) -> None:
     monkeypatch.setattr(config_handlers_mod, "save_global_config", lambda _: None)
     monkeypatch.setattr(content, "refresh_data", lambda: None)
 
-    content.activate_current()
+    content.cycle_enum_field(1)
 
     assert person.role == _VALID_ROLES[0]
 
