@@ -2463,91 +2463,6 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
     logger.info("No worktree preparation targets found for %s", slug)
 
 
-def is_main_ahead(cwd: str, slug: str) -> bool | None:
-    """Check if local main has commits not in the worktree branch.
-
-    Args:
-        cwd: Project root directory
-        slug: Work item slug (worktree is at trees/{slug})
-
-    Returns:
-        True if main is ahead of HEAD for the worktree, False if not ahead,
-        or None when ahead-state cannot be determined.
-    """
-    worktree_path = Path(cwd) / "trees" / slug
-    if not worktree_path.exists():
-        return None
-
-    try:
-        repo = Repo(worktree_path)
-        ahead_count_raw = repo.git.rev_list("--count", "HEAD..main")  # type: ignore[misc]
-        if not isinstance(ahead_count_raw, str):
-            return None
-        ahead_count = ahead_count_raw.strip()
-        if not ahead_count.isdigit():
-            return None
-        return int(ahead_count) > 0
-    except (InvalidGitRepositoryError, GitCommandError, ValueError):
-        logger.warning("Cannot determine main ahead status for %s", worktree_path)
-        return None
-
-
-def get_finalize_canonical_dirty_paths(cwd: str) -> list[str] | None:
-    """Return canonical dirty paths, or None when git state cannot be inspected."""
-    try:
-        repo = Repo(cwd)
-        return _dirty_paths(repo)
-    except (InvalidGitRepositoryError, NoSuchPathError, GitCommandError):
-        logger.warning("Cannot inspect canonical dirty state for finalize preconditions at %s", cwd)
-        return None
-
-
-def check_finalize_preconditions(cwd: str, slug: str) -> str | None:
-    """Validate canonical main safety before finalize dispatch/apply."""
-    allowed_dirty_paths = {f"todos/{_FINALIZE_LOCK_NAME}"}
-
-    dirty_paths = get_finalize_canonical_dirty_paths(cwd)
-    if dirty_paths is None:
-        return format_error(
-            "FINALIZE_PRECONDITION_GIT_STATE_UNKNOWN",
-            "Cannot inspect canonical main git state for finalize safety preconditions.",
-            next_call=f"Restore git access/health, then call telec todo work {slug} again.",
-        )
-
-    blocked_paths: list[str] = []
-    for raw_path in dirty_paths:
-        normalized = raw_path.replace("\\", "/").lstrip("./")
-        if normalized in allowed_dirty_paths:
-            continue
-        blocked_paths.append(normalized)
-
-    if blocked_paths:
-        unique_paths = sorted(dict.fromkeys(blocked_paths))
-        preview = ", ".join(unique_paths[:5])
-        if len(unique_paths) > 5:
-            preview += ", ..."
-        return format_error(
-            "FINALIZE_PRECONDITION_DIRTY_CANONICAL_MAIN",
-            (f"Canonical main has uncommitted changes that make finalize apply unsafe: {preview}."),
-            next_call=f"Commit or clean canonical main changes, then call telec todo work {slug} again.",
-        )
-
-    main_ahead = is_main_ahead(cwd, slug)
-    if main_ahead is None:
-        return format_error(
-            "FINALIZE_PRECONDITION_GIT_STATE_UNKNOWN",
-            "Cannot determine whether canonical main is ahead of the finalize branch.",
-            next_call=f"Restore git access/health, then call telec todo work {slug} again.",
-        )
-    if main_ahead:
-        return format_error(
-            "FINALIZE_PRECONDITION_MAIN_AHEAD",
-            (f"Canonical main has commits not present on branch '{slug}', so deterministic finalize apply is blocked."),
-            next_call=f"Update {slug} with latest main (merge/rebase), then call telec todo work {slug} again.",
-        )
-
-    return None
-
 
 # =============================================================================
 # Main Functions
@@ -3179,10 +3094,6 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     if lock_error:
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "finalize_lock_held")
         return lock_error
-    finalize_precondition_error = await asyncio.to_thread(check_finalize_preconditions, cwd, resolved_slug)
-    if finalize_precondition_error:
-        release_finalize_lock(cwd, session_id)
-        return finalize_precondition_error
     try:
         guidance = await compose_agent_guidance(db)
     except RuntimeError as exc:

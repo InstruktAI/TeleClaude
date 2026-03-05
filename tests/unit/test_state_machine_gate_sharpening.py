@@ -222,7 +222,6 @@ async def test_next_work_review_approved_infra_only_diff_holds() -> None:
                 "mark_phase": dict(),
                 "has_pending_deferrals": dict(return_value=False),
                 "acquire_finalize_lock": dict(return_value=None),
-                "check_finalize_preconditions": dict(return_value=None),
                 "release_finalize_lock": dict(),
             },
         )
