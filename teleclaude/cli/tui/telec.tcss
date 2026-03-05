@@ -120,6 +120,8 @@ ConfigView {
 
 #config-scroll {
     padding: 1 0;
+    scrollbar-color: $background;
+    scrollbar-background: $background;
 }
 
 #config-content {
@@ -128,7 +130,7 @@ ConfigView {
 }
 
 ConfigView:focus #config-content {
-    border-left: thick $connector;
+    border-left: thick $background;
 }
 
 /* ── Footer ────────────────────────────────────────────── */

@@ -115,8 +115,8 @@ CAR_SPRITE_RIGHT = CompositeSprite(
 
 CAR_SPRITE = SpriteGroup(
     entries=[
-        (CAR_SPRITE_LEFT, 0.5, (1, 1)),
-        (CAR_SPRITE_RIGHT, 0.5, (1, 1)),
+        (CAR_SPRITE_LEFT, 0.5, (0, 1)),
+        (CAR_SPRITE_RIGHT, 0.5, (0, 1)),
     ],
     direction=None,
 )

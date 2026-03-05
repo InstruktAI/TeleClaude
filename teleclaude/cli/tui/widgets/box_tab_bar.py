@@ -199,7 +199,7 @@ class BoxTabBar(TelecMixin, Widget):
                         top_half = blend_colors(sky_color, "#ffffff", 0.05)
 
                     if engine:
-                        z_min = (Z80 if active_tab_under else Z60) if in_tab else Z70
+                        z_min = Z80 if active_tab_under else Z70
                         hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, pane_bg)
                         if hit:
                             e_char, e_fg, e_bg = hit
