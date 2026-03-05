@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: event-envelope-schema
+  date: '2026-03-05'
+  title: 'Five-layer envelope: Identity, Semantic, Data, Affordances, Resolution +
+    core taxonomy'
+  description: 'Five-layer envelope: Identity, Semantic, Data, Affordances, Resolution
+    + core taxonomy'
 - slug: transcript-parser-fallback-policy
   date: '2026-03-05'
   title: Define and implement transcript parser fallback policy for unknown/legacy
