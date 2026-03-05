@@ -7,6 +7,7 @@ import pytest
 from teleclaude.resource_validation import (
     clear_warnings,
     collect_inline_ref_errors,
+    get_errors,
     get_warnings,
     resolve_ref_path,
     validate_all_snippets,
@@ -348,13 +349,13 @@ class TestSeeAlsoValidation:
     def test_global_doc_bad_prefix_warns(self, tmp_path: Path) -> None:
         snippet, content = self._make_snippet(tmp_path, "global", ["- docs/project/policy/some.md"])
         validate_snippet(snippet, content, tmp_path, domains={"software-development"})
-        codes = [w["code"] for w in get_warnings()]
+        codes = [e["code"] for e in get_errors()]
         assert "snippet_see_also_bad_prefix" in codes
 
     def test_global_doc_shorthand_warns(self, tmp_path: Path) -> None:
         snippet, content = self._make_snippet(tmp_path, "global", ["- general/principle/continuity"])
         validate_snippet(snippet, content, tmp_path, domains={"software-development"})
-        codes = [w["code"] for w in get_warnings()]
+        codes = [e["code"] for e in get_errors()]
         assert "snippet_see_also_bad_prefix" in codes
 
     def test_project_doc_valid_docs_ref(self, tmp_path: Path) -> None:
@@ -382,7 +383,7 @@ class TestSeeAlsoValidation:
     def test_project_doc_shorthand_warns(self, tmp_path: Path) -> None:
         snippet, content = self._make_snippet(tmp_path, "project", ["- project/spec/thing"])
         validate_snippet(snippet, content, tmp_path, domains={"software-development"})
-        codes = [w["code"] for w in get_warnings()]
+        codes = [e["code"] for e in get_errors()]
         assert "snippet_see_also_bad_prefix" in codes
 
     def test_missing_extension_warns(self, tmp_path: Path) -> None:
