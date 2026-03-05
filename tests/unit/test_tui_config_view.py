@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.cli.config_handlers import EnvVarInfo, EnvVarStatus, ValidationResult
+from teleclaude.cli.config_handlers import EnvVarInfo, EnvVarStatus
 from teleclaude.cli.tui.views import config as config_view
 from teleclaude.cli.tui.views.config import (
     _ADAPTER_TABS,
@@ -244,17 +244,11 @@ def test_notifications_view_does_not_render_placeholder_literal() -> None:
     assert "Not implemented yet" not in rendered
 
 
-def test_guided_validate_step_advances_on_passing_validation(monkeypatch) -> None:
+def test_guided_last_step_advance_ends_guided_mode() -> None:
     content = ConfigContent()
     content._guided_mode = True
-    content._guided_step_index = 7
-    content._apply_guided_step()
-
-    def fake_run_validation() -> None:
-        content._validation_results = [ValidationResult(area="global", passed=True)]
-
-    monkeypatch.setattr(content, "run_validation", fake_run_validation)
-    content.activate_current()
+    content._guided_step_index = 6  # Last valid step (environment)
+    content._advance_guided_step()
 
     assert content.guided_mode is False
     assert "Guided setup complete" in content._status_message
