@@ -29,10 +29,6 @@
 - slug: event-platform
   description: 'Event processing platform: cartridges, domain pipelines, signal processing,
     mesh distribution (container for phases 2-7)'
-- slug: event-system-cartridges
-  group: event-platform
-  description: 'System pipeline intelligence: trust evaluator, enrichment, correlation,
-    classification cartridges'
 - slug: event-domain-infrastructure
   group: event-platform
   after:
