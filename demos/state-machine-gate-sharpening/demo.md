@@ -10,7 +10,7 @@ grep -n "def _count_test_failures" teleclaude/core/next_machine/core.py
 
 ```bash
 # Verify stale baseline guard uses diff-based check instead of SHA comparison
-grep -A5 "review_approval_stale_baseline" teleclaude/core/next_machine/core.py | grep "_has_meaningful_diff"
+grep -B5 "_has_meaningful_diff" teleclaude/core/next_machine/core.py | head -10
 ```
 
 ```bash
@@ -20,7 +20,7 @@ grep -B2 -A5 "build_gates_failed_post_review" teleclaude/core/next_machine/core.
 
 ```bash
 # Run the unit tests for the new behavior
-pytest tests/unit/test_next_machine_state_deps.py -v -k "stale_baseline or gate_failure_review or test_failures" --no-header
+pytest tests/unit/test_state_machine_gate_sharpening.py -v -k "stale_baseline or gate_failure_review or test_failures" --no-header
 ```
 
 ```bash
