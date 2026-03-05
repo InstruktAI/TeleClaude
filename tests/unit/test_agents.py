@@ -208,3 +208,51 @@ def test_get_agent_command_codex_restricted_profile_uses_full_auto():
     cmd = agents.get_agent_command("codex", thinking_mode="med", profile="restricted")
     assert "--full-auto" in cmd
     assert "--profile full_auto" not in cmd
+
+
+# --- resolve_parser_agent tests ---
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("claude", agents.AgentName.CLAUDE),
+        ("codex", agents.AgentName.CODEX),
+        ("gemini", agents.AgentName.GEMINI),
+    ],
+)
+def test_resolve_parser_agent_canonical_values(value, expected):
+    assert agents.resolve_parser_agent(value) == expected
+
+
+def test_resolve_parser_agent_none_defaults_to_claude():
+    assert agents.resolve_parser_agent(None) == agents.AgentName.CLAUDE
+
+
+def test_resolve_parser_agent_empty_defaults_to_claude():
+    assert agents.resolve_parser_agent("") == agents.AgentName.CLAUDE
+
+
+def test_resolve_parser_agent_unknown_defaults_to_claude():
+    assert agents.resolve_parser_agent("gpt4") == agents.AgentName.CLAUDE
+
+
+def test_resolve_parser_agent_case_insensitive():
+    assert agents.resolve_parser_agent(" CODEX ") == agents.AgentName.CODEX
+
+
+def test_resolve_parser_agent_logs_warning_for_unknown(caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="teleclaude.core.agents"):
+        agents.resolve_parser_agent("gpt4")
+    assert any("gpt4" in r.message for r in caplog.records if r.levelno == logging.WARNING)
+
+
+def test_resolve_parser_agent_logs_debug_for_none(caplog):
+    import logging
+
+    with caplog.at_level(logging.DEBUG, logger="teleclaude.core.agents"):
+        agents.resolve_parser_agent(None)
+    assert any(r.levelno == logging.DEBUG for r in caplog.records)
+    assert not any(r.levelno == logging.WARNING for r in caplog.records)

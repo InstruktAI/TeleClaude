@@ -1071,7 +1071,7 @@ class APIServer:
             from teleclaude.api.session_access import check_session_access
 
             await check_session_access(request, session_id)
-            from teleclaude.core.agents import AgentName
+            from teleclaude.core.agents import resolve_parser_agent
             from teleclaude.utils.transcript import extract_messages_from_chain
 
             try:
@@ -1094,10 +1094,7 @@ class APIServer:
                 messages: list[MessageDTO] = []
                 if chain:
                     # Determine agent for parser selection
-                    try:
-                        agent_name = AgentName.from_str(session.active_agent or "claude")
-                    except ValueError:
-                        agent_name = AgentName.CLAUDE
+                    agent_name = resolve_parser_agent(session.active_agent)
 
                     raw_messages = extract_messages_from_chain(
                         chain,

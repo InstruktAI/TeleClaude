@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from enum import Enum
 from typing import Optional
 
 from teleclaude.config import AgentConfig, config
+
+logger = logging.getLogger(__name__)
 
 
 class AgentName(str, Enum):
@@ -31,6 +34,25 @@ class AgentName(str, Enum):
 
 
 KNOWN_AGENT_IDS: tuple[str, ...] = AgentName.choices()
+
+
+def resolve_parser_agent(active_agent: str | None) -> AgentName:
+    """Resolve a raw active_agent string to AgentName with fallback to Claude.
+
+    Logs at debug level for None/empty (expected on fresh sessions) and at
+    warning level for genuinely unknown values.
+    """
+    if not active_agent:
+        logger.debug("active_agent is None or empty; defaulting parser to Claude")
+        return AgentName.CLAUDE
+    try:
+        return AgentName.from_str(active_agent)
+    except ValueError:
+        logger.warning(
+            "Unknown active_agent %r; defaulting parser to Claude",
+            active_agent,
+        )
+        return AgentName.CLAUDE
 
 
 def normalize_agent_name(value: str) -> str:

@@ -24,7 +24,7 @@ from teleclaude.api.transcript_converter import (
     message_start,
     stream_done,
 )
-from teleclaude.core.agents import AgentName
+from teleclaude.core.agents import AgentName, resolve_parser_agent
 from teleclaude.core.db import db
 from teleclaude.core.db_models import Session
 from teleclaude.utils.transcript import (
@@ -118,11 +118,7 @@ def _get_transcript_chain(session: Session) -> list[str]:
 
 def _get_agent_name(session: Session) -> AgentName:
     """Resolve agent name from session, defaulting to Claude."""
-    active_agent = session.active_agent or "claude"
-    try:
-        return AgentName.from_str(active_agent)
-    except ValueError:
-        return AgentName.CLAUDE
+    return resolve_parser_agent(session.active_agent)
 
 
 def _iter_entries_for_file(
