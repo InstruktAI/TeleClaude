@@ -12,6 +12,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.events import Key
+from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 
@@ -233,11 +234,17 @@ class ConfigView(Widget, can_focus=True):
         self._refresh_content()
 
     def on_focus(self) -> None:
-        self.styles.border = ("none", "")
+        self.styles.border = ("none", "transparent")
         self.app.refresh_bindings()
 
     def on_click(self) -> None:
         self.focus()
+
+    def on_config_content_subtab_selected(self, msg: ConfigContent.SubtabSelected) -> None:
+        self.active_subtab = msg.idx
+
+    def on_config_content_adapter_tab_selected(self, msg: ConfigContent.AdapterTabSelected) -> None:
+        self.active_adapter_tab = msg.idx
 
     def on_key(self, event: Key) -> None:
         content = self._content_or_none()
@@ -330,6 +337,16 @@ class ConfigContent(TelecMixin, Widget):
     }
     """
 
+    class SubtabSelected(Message):
+        def __init__(self, idx: int) -> None:
+            super().__init__()
+            self.idx = idx
+
+    class AdapterTabSelected(Message):
+        def __init__(self, idx: int) -> None:
+            super().__init__()
+            self.idx = idx
+
     active_subtab = reactive(0, layout=True)
     active_adapter_tab = reactive(0, layout=True)
 
@@ -353,6 +370,8 @@ class ConfigContent(TelecMixin, Widget):
         self._status_is_error = False
         self._guided_mode = False
         self._guided_step_index = 0
+        self._tab_click_regions: list[tuple[int, int, int, int]] = []  # (row, x_start, x_end, subtab_idx)
+        self._row_click_map: dict[int, tuple] = {}  # {content_row: action_tuple}
 
     @property
     def guided_mode(self) -> bool:
@@ -658,11 +677,17 @@ class ConfigContent(TelecMixin, Widget):
         result.append("      └─\n", style=_SEP)
 
     def _render_tab_bar(self, result: Text, tabs: tuple[str, ...], active: int) -> None:
+        row = result.plain.count("\n")
+        x = 0
         for idx, tab in enumerate(tabs):
             style = _TAB_ACTIVE if idx == active else _TAB_INACTIVE
-            result.append(f" {tab} ", style=style)
+            label = f" {tab} "
+            self._tab_click_regions.append((row, x, x + len(label), idx))
+            result.append(label, style=style)
+            x += len(label)
             if idx < len(tabs) - 1:
                 result.append(" ", style=_DIM)
+                x += 1
         result.append("\n")
 
     def _render_header(self, result: Text) -> None:
@@ -702,6 +727,8 @@ class ConfigContent(TelecMixin, Widget):
             selected = idx == self.active_adapter_tab
             prefix = "▶" if selected else " "
             card_style = Style(reverse=True) if selected else _normal_style()
+            row = result.plain.count("\n")
+            self._row_click_map[row] = ("adapter_tab", idx)
             result.append(f"  {prefix} {section.label:<11} ", style=card_style)
             result.append(section.status.upper(), style=self._status_style(section.status))
             result.append(f"  ({section.configured_count}/{section.total_count})\n", style=_DIM)
@@ -722,6 +749,9 @@ class ConfigContent(TelecMixin, Widget):
             selected = idx == cursor
             row_style = Style(reverse=True) if selected else _normal_style()
             prefix = "▶" if selected else " "
+
+            row = result.plain.count("\n")
+            self._row_click_map[row] = ("env_row", status.info.name)
 
             if self._editing_var_name == status.info.name:
                 result.append(f"  {prefix} {status.info.name} = {self._edit_buffer}\n", style=row_style)
@@ -777,6 +807,9 @@ class ConfigContent(TelecMixin, Widget):
             row_style = Style(reverse=True) if selected else _normal_style()
             prefix = "▶" if selected else " "
 
+            row = result.plain.count("\n")
+            self._row_click_map[row] = ("env_row", status.info.name)
+
             if self._editing_var_name == status.info.name:
                 result.append(f"  {prefix} {status.info.name} = {self._edit_buffer}\n", style=row_style)
                 result.append("      Enter save  Esc cancel  Ctrl+U clear\n", style=_DIM)
@@ -795,6 +828,8 @@ class ConfigContent(TelecMixin, Widget):
         result.append("  Validation\n", style=Style(bold=True))
 
         if not self._validation_results:
+            row = result.plain.count("\n")
+            self._row_click_map[row] = ("validate",)
             result.append("  Press 'v' or Enter to run validation\n", style=_DIM)
             return
 
@@ -815,6 +850,8 @@ class ConfigContent(TelecMixin, Widget):
                 result.append(f"      Tip: {suggestion}\n", style=_DIM)
 
     def render(self) -> Text:
+        self._tab_click_regions = []
+        self._row_click_map = {}
         result = Text()
 
         self._render_tab_bar(result, _SUBTABS, self.active_subtab)
@@ -834,6 +871,33 @@ class ConfigContent(TelecMixin, Widget):
             self._render_validate(result)
 
         return result
+
+    def on_click(self, event: object) -> None:
+        x = getattr(event, "x", -1)
+        y = getattr(event, "y", -1)
+
+        for row, x_start, x_end, subtab_idx in self._tab_click_regions:
+            if y == row and x_start <= x < x_end:
+                self.post_message(self.SubtabSelected(subtab_idx))
+                return
+
+        action = self._row_click_map.get(y)
+        if action is None:
+            return
+
+        action_type = action[0]
+        if action_type == "adapter_tab":
+            self.post_message(self.AdapterTabSelected(action[1]))
+        elif action_type == "env_row":
+            env_name = action[1]
+            rows = self._selectable_env_rows()
+            for i, status in enumerate(rows):
+                if status.info.name == env_name:
+                    self._set_current_cursor(i)
+                    self._begin_edit(status)
+                    break
+        elif action_type == "validate":
+            self.run_validation()
 
     def watch_active_subtab(self, _value: int) -> None:
         self._clamp_current_cursor()
