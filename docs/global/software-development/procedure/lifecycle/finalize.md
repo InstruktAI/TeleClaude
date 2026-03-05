@@ -11,7 +11,7 @@ type: 'procedure'
 
 Advance `origin/main` only through canonical-root orchestrator apply after a worker proves the branch is finalize-ready.
 
-Required reads before executing this procedure:
+## Required reads
 
 - @~/.teleclaude/docs/software-development/policy/commits.md
 

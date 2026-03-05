@@ -48,5 +48,4 @@ The shared helper library also eliminates drift — the same CLI flags, environm
 
 ## See Also
 
-- ~/.teleclaude/docs/project/design/architecture/jobs-runner.md
 - ~/.teleclaude/docs/general/procedure/agent-job-hygiene.md
