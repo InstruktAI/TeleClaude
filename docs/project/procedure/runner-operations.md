@@ -9,7 +9,7 @@ description: 'Self-hosted GitHub Actions runner lifecycle, diagnostics, and reco
 
 ## Required reads
 
-@project/procedure/troubleshooting
+@docs/project/procedure/troubleshooting.md
 
 ## Goal
 

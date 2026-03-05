@@ -7,15 +7,15 @@ type: 'procedure'
 
 # Troubleshooting Runbooks — Procedure
 
-## Purpose
+## Goal
 
 Give operators short, direct playbooks for common incidents.
 
 Use this when something is broken now and you need a safe recovery path.
 
-## Allowed control commands
+## Preconditions
 
-Use only:
+Allowed control commands:
 
 - `make status`
 - `make restart`
@@ -26,7 +26,9 @@ If restart is not enough, use:
 - `make stop`
 - `make start`
 
-## Universal first-response sequence
+## Steps
+
+### Universal first-response sequence
 
 1. `make status`
 2. `instrukt-ai-logs teleclaude --since 2m`
@@ -34,185 +36,185 @@ If restart is not enough, use:
 4. Follow that runbook exactly.
 5. Verify recovery with `make status` and fresh logs.
 
-## Runbook: telec/API calls time out or fail
+### Runbook: telec/API calls time out or fail
 
-### Symptom
+**Symptom**
 
 - `telec` or API calls hang, time out, or return backend unavailable errors.
 
-### Likely causes
+**Likely causes**
 
 - API socket unhealthy or restarting repeatedly.
 - Daemon restarting before API initialization stabilizes.
 
-### Fast checks
+**Fast checks**
 
 1. `make status`
 2. `instrukt-ai-logs teleclaude --since 2m --grep "api|socket|restart|health"`
 
-### Recover
+**Recover**
 
 1. `make restart`
 2. Wait for readiness.
 3. Re-check daemon logs for repeated restart loops.
 
-### Verify
+**Verify**
 
 - `telec`/API calls complete normally.
 - No repeating API socket or restart failures in last 2 minutes.
 
-## Runbook: Session output is frozen/stale
+### Runbook: Session output is frozen/stale
 
-### Symptom
+**Symptom**
 
 - Session is running but output in UI stops updating.
 
-### Likely causes
+**Likely causes**
 
 - Poller watch loop failed.
 - Poller not aligned with tmux session state.
 
-### Fast checks
+**Fast checks**
 
 1. `make status`
 2. `instrukt-ai-logs teleclaude --since 2m --grep "poller|output|tmux|watch"`
 
-### Recover
+**Recover**
 
 1. `make restart`
 2. Re-open affected session and confirm output starts moving.
 
-### Verify
+**Verify**
 
 - New output events appear.
 - No poller watch errors in recent logs.
 
-## Runbook: Agent finished but no notification/summary
+### Runbook: Agent finished but no notification/summary
 
-### Symptom
+**Symptom**
 
 - Agent turn ends, but no stop notification, summary, or downstream update appears.
 
-### Likely causes
+**Likely causes**
 
 - Hook outbox backlog.
 - Hook event processing failures.
 - Session parser mismatch: `session.active_agent` points to Gemini while hook payload/transcript is Claude JSONL, causing repeated `Extra data` decode failures.
 
-### Fast checks
+**Fast checks**
 
 1. `make status`
 2. `instrukt-ai-logs teleclaude --since 2m --grep "hook|outbox|agent_stop|dispatch|retry"`
 3. `instrukt-ai-logs teleclaude --since 5m --grep "Evaluating incremental output|Extra data"`
 
-### Recover
+**Recover**
 
 1. `make restart`
 2. Watch logs for outbox processing resuming.
 
-### Verify
+**Verify**
 
 - Delayed notifications/summaries appear.
 - Hook dispatch errors stop repeating.
 
-## Runbook: Headless session cannot be recovered
+### Runbook: Headless session cannot be recovered
 
-### Symptom
+**Symptom**
 
 - Headless session exists, but transcript retrieval/resume fails.
 
-### Likely causes
+**Likely causes**
 
 - Missing native transcript path.
 - Native identity not mapped correctly.
 
-### Fast checks
+**Fast checks**
 
 1. `instrukt-ai-logs teleclaude --since 5m --grep "headless|native_session_id|native_log_file|session_map"`
 2. Confirm latest hook events carried native identity fields.
 
-### Recover
+**Recover**
 
 1. Restart daemon if mapping updates were not applied.
 2. Re-trigger hook flow from source session.
 
-### Verify
+**Verify**
 
 - Session now has native identity fields populated.
 - Session data retrieval works.
 
-## Runbook: Cleanup is not happening (old sessions/artifacts pile up)
+### Runbook: Cleanup is not happening (old sessions/artifacts pile up)
 
-### Symptom
+**Symptom**
 
 - Old sessions remain open forever.
 - Orphan tmux/workspace artifacts accumulate.
 
-### Likely causes
+**Likely causes**
 
 - Periodic cleanup loop failed.
 - Cleanup errors repeating each cycle.
 
-### Fast checks
+**Fast checks**
 
 1. `make status`
 2. `instrukt-ai-logs teleclaude --since 10m --grep "cleanup|inactive_72h|orphan|workspace|voice"`
 
-### Recover
+**Recover**
 
 1. `make restart`
 2. Wait one cleanup cycle window for normal behavior.
 
-### Verify
+**Verify**
 
 - Cleanup logs show successful pass.
 - Orphan artifacts no longer increase.
 
-## Runbook: API appears unhealthy
+### Runbook: API appears unhealthy
 
-### Symptom
+**Symptom**
 
 - API-backed tools or TUI calls fail unexpectedly.
 
-### Likely causes
+**Likely causes**
 
 - API interface startup/runtime failure.
 - Daemon not healthy overall.
 
-### Fast checks
+**Fast checks**
 
 1. `make status`
 2. `instrukt-ai-logs teleclaude --since 2m --grep "api|socket|bind|watch|error"`
 
-### Recover
+**Recover**
 
 1. `make restart`
 2. If restart fails, run `make stop` then `make start`.
 
-### Verify
+**Verify**
 
 - `make status` reports healthy.
 - Recent logs show normal API startup without repeated failures.
 
-## Runbook: Discord/Web output missing after UCAP output unification
+### Runbook: Discord/Web output missing after UCAP output unification
 
-### Symptom
+**Symptom**
 
 - Codex session appears active, but Discord shows little or no live output.
 - Web chat stream shows status transitions but little or no assistant content.
 
-### Likely causes
+**Likely causes**
 
 - Discord threaded-output experiment suppresses standard poller output, and incremental threaded output has no usable transcript input (`missing_transcript_path` or `no_assistant_messages`).
 - Web SSE transcript conversion skips Codex `response_item` payload entries, so Codex assistant blocks are not emitted to the web client stream.
 
-### Fast checks
+**Fast checks**
 
 1. `make status`
 2. `instrukt-ai-logs teleclaude --since 10m --grep "UI_SEND_OUTPUT|missing_transcript_path|no_assistant_messages|Sending incremental output"`
 3. `instrukt-ai-logs teleclaude --since 10m --grep "session_status|Invalid WebSocket event payload"`
 
-### Recover
+**Recover**
 
 1. If logs show repeated `missing_transcript_path` for an active session, trigger one controlled restart:
    `make restart`
@@ -220,35 +222,35 @@ If restart is not enough, use:
    `instrukt-ai-logs teleclaude --since 10m --grep "Resolved Codex transcript|Codex transcript watcher bound transcript|Sending incremental output|<session_id_prefix>"`
 3. If web stream is still missing assistant text while transcript exists, escalate as converter regression in `teleclaude/api/transcript_converter.py` (Codex `response_item` support gap) and patch before expecting parity.
 
-### Verify
+**Verify**
 
 - Discord logs show threaded sends, not only suppression:
   `Sending incremental output` appears for affected sessions.
 - No repeated `missing_transcript_path` for active Codex sessions.
 - Web stream emits assistant text events (`text-delta`) for Codex transcripts.
 
-## Runbook: API restart churn (SIGTERM storm)
+### Runbook: API restart churn (SIGTERM storm)
 
-### Symptom
+**Symptom**
 
 - API socket repeatedly disappears/rebinds.
 - CLI/API clients show bursts of connection-refused errors.
 - Logs show frequent `Received SIGTERM signal...`.
 
-### Likely causes
+**Likely causes**
 
 - External restart trigger loop (automation/operator flow repeatedly issuing restarts).
 - Checkpoint-driven housekeeping loops forcing repeated daemon restarts.
 - Less likely: internal daemon crash (verify via logs before assuming this).
 
-### Fast checks
+**Fast checks**
 
 1. `make status`
 2. `instrukt-ai-logs teleclaude --since 30m --grep "Received SIGTERM signal"`
 3. `instrukt-ai-logs teleclaude --since 30m --grep "Removing API server socket|Connection refused"`
 4. `instrukt-ai-logs teleclaude --since 30m --grep "API server task crashed|API server task exited unexpectedly"`
 
-### Recover
+**Recover**
 
 1. Stop issuing additional restart commands.
 2. Perform one controlled restart: `make restart`.
@@ -257,30 +259,30 @@ If restart is not enough, use:
 4. Validate once: `make status`.
 5. Monitor for 10 minutes and confirm SIGTERM events do not continue repeating.
 
-### Verify
+**Verify**
 
 - No new `Received SIGTERM signal...` lines in the verification window.
 - No sustained connection-refused bursts in CLI/API logs.
 - API socket remains present and healthy in `make status`.
 
-## Infrastructure & Environment
+### Infrastructure and environment runbooks
 
 These runbooks cover failures outside TeleClaude itself — host OS, network, CI runners — that silently stall operations without producing TeleClaude-level errors.
 
-### Runbook: Ephemeral port exhaustion (macOS)
+#### Runbook: Ephemeral port exhaustion (macOS)
 
-#### Symptom
+**Symptom**
 
 - Network calls fail with "Can't assign requested address" or ETIMEDOUT.
 - `curl https://github.com` hangs or fails despite Wi-Fi/Ethernet being connected.
 - GitHub Actions runner shows "Failed to connect" in logs but launchd reports service as running.
 
-#### Likely causes
+**Likely causes**
 
 - TCP sockets stuck in TIME_WAIT exhaust the ephemeral port range.
 - macOS default range is 49152–65535 (only ~16K ports). High-throughput services (Docker builds, runners, CI) can saturate this.
 
-#### Fast checks
+**Fast checks**
 
 1. Count TIME_WAIT sockets:
    ```bash
@@ -292,7 +294,7 @@ These runbooks cover failures outside TeleClaude itself — host OS, network, CI
    sysctl net.inet.ip.portrange.first net.inet.ip.portrange.last
    ```
 
-#### Recover
+**Recover**
 
 1. Expand ephemeral port range (immediate, survives until reboot):
    ```bash
@@ -304,27 +306,27 @@ These runbooks cover failures outside TeleClaude itself — host OS, network, CI
    net.inet.ip.portrange.first=10000
    ```
 
-#### Verify
+**Verify**
 
 - `curl https://github.com` returns 200.
 - `sysctl net.inet.ip.portrange.first` shows 10000.
 - Affected services (runner, Docker) resume normal operation.
 
-### Runbook: Self-hosted GitHub Actions runner silently offline
+#### Runbook: Self-hosted GitHub Actions runner silently offline
 
-#### Symptom
+**Symptom**
 
 - CI jobs stay in "queued" state indefinitely.
 - `gh run view <id> --json jobs` shows status `queued` with no runner assignment.
 - The runner host reports launchd service as running.
 
-#### Likely causes
+**Likely causes**
 
 - Network failure on the runner host (see port exhaustion above).
 - Runner process crashed but launchd did not restart it.
 - Runner labels mismatch between workflow `runs-on` and registered labels.
 
-#### Fast checks
+**Fast checks**
 
 1. SSH to runner host and check service:
    ```bash
@@ -343,7 +345,7 @@ These runbooks cover failures outside TeleClaude itself — host OS, network, CI
    gh api orgs/InstruktAI/actions/runners --jq '.runners[] | {name, labels: [.labels[].name]}'
    ```
 
-#### Recover
+**Recover**
 
 1. Fix underlying network issue first (if port exhaustion, see runbook above).
 2. Restart runner service:
@@ -355,26 +357,26 @@ These runbooks cover failures outside TeleClaude itself — host OS, network, CI
    ssh morriz@mozmini.local 'tail -20 ~/Apps/actions-runner/_diag/Runner_*.log | grep -i "connect\|listen"'
    ```
 
-#### Verify
+**Verify**
 
 - `gh api orgs/InstruktAI/actions/runners` shows runner status `online`.
 - Queued jobs start executing.
 
-### Runbook: Little Snitch blocks git/python HTTPS connections
+#### Runbook: Little Snitch blocks git/python HTTPS connections
 
-#### Symptom
+**Symptom**
 
 - `git clone` or `git fetch` hangs for 5 minutes then fails with "Failed to connect to github.com port 443 after 300004 ms: Timeout was reached".
 - `python3` HTTPS requests time out.
 - `curl https://github.com` works (200).
 - CI checkout step hangs indefinitely.
 
-#### Likely causes
+**Likely causes**
 
 - Little Snitch has per-application rules. `/usr/bin/curl` is allowed, but `git-remote-https` and `python3` are not.
 - Little Snitch may be in "Silent Mode - Deny" which silently blocks unmatched connections.
 
-#### Fast checks
+**Fast checks**
 
 1. Test which binaries can reach GitHub:
    ```bash
@@ -386,7 +388,7 @@ These runbooks cover failures outside TeleClaude itself — host OS, network, CI
    ssh morriz@mozmini.local 'pgrep -fl "Little Snitch"'
    ```
 
-#### Recover
+**Recover**
 
 **Immediate (SSH bypass):** Configure git to use SSH instead of HTTPS:
 
@@ -407,24 +409,24 @@ Requires a passphrase-less SSH key (`~/.ssh/id_ci_runner`) registered with GitHu
    ```
 3. Or import a `.lsrules` file (see `/tmp/teleclaude-git-allow.lsrules` on mozmini).
 
-#### Verify
+**Verify**
 
 - `git clone --depth=1 https://github.com/InstruktAI/TeleClaude /tmp/test && rm -rf /tmp/test` completes within seconds.
 - CI checkout step completes.
 
-### Runbook: Runner label mismatch
+#### Runbook: Runner label mismatch
 
-#### Symptom
+**Symptom**
 
 - Jobs stay queued even though the runner is online.
 - Runner logs show it is connected but not picking up jobs.
 
-#### Likely causes
+**Likely causes**
 
 - Workflow `runs-on` specifies labels the runner does not have.
 - MozMini has custom labels `[self-hosted, macOS, ARM64]` — not the macOS defaults `[self-hosted, OSX, Arm64]`.
 
-#### Fast checks
+**Fast checks**
 
 1. Compare workflow labels with runner labels:
    ```bash
@@ -435,95 +437,83 @@ Requires a passphrase-less SSH key (`~/.ssh/id_ci_runner`) registered with GitHu
    gh run view <run-id> --json jobs --jq '.jobs[].labels'
    ```
 
-#### Recover
+**Recover**
 
 1. Update workflow `runs-on` to match registered labels, OR
 2. Update runner labels via GitHub UI (Settings → Actions → Runners → edit labels).
 
-#### Verify
+**Verify**
 
 - Queued jobs start executing after label correction.
 
-### Runbook: DNS resolution failure
+#### Runbook: DNS resolution failure
 
-#### Symptom
+**Symptom**
 
 - `curl` and `git` operations fail with "Could not resolve host".
 - Network interfaces show connected.
 
-#### Likely causes
+**Likely causes**
 
 - Router/ISP DNS outage.
 - `/etc/resolv.conf` or macOS DNS settings misconfigured.
 - mDNS conflicts on local network.
 
-#### Fast checks
+**Fast checks**
 
-1. ```bash
-   ssh morriz@mozmini.local 'nslookup github.com'
-   ```
-2. ```bash
-   ssh morriz@mozmini.local 'scutil --dns | head -20'
-   ```
-3. Try public DNS directly:
-   ```bash
-   ssh morriz@mozmini.local 'nslookup github.com 1.1.1.1'
-   ```
+```bash
+ssh morriz@mozmini.local 'nslookup github.com'
+ssh morriz@mozmini.local 'scutil --dns | head -20'
+# Try public DNS directly:
+ssh morriz@mozmini.local 'nslookup github.com 1.1.1.1'
+```
 
-#### Recover
+**Recover**
 
-1. If public DNS works but system DNS doesn't, add fallback:
-   ```bash
-   ssh morriz@mozmini.local 'sudo networksetup -setdnsservers "Ethernet" 1.1.1.1 8.8.8.8'
-   ```
-2. Flush DNS cache:
-   ```bash
-   ssh morriz@mozmini.local 'sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder'
-   ```
+```bash
+# If public DNS works but system DNS doesn't, add fallback:
+ssh morriz@mozmini.local 'sudo networksetup -setdnsservers "Ethernet" 1.1.1.1 8.8.8.8'
+# Flush DNS cache:
+ssh morriz@mozmini.local 'sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder'
+```
 
-#### Verify
+**Verify**
 
 - `nslookup github.com` resolves immediately.
 - `curl https://github.com` returns 200.
 
-### Runbook: Disk space exhaustion
+#### Runbook: Disk space exhaustion
 
-#### Symptom
+**Symptom**
 
 - Builds fail with "No space left on device".
 - Docker images and build caches accumulate silently.
 
-#### Fast checks
+**Fast checks**
 
-1. ```bash
-   ssh morriz@mozmini.local 'df -h /'
-   ```
-2. Largest consumers:
-   ```bash
-   ssh morriz@mozmini.local 'du -sh ~/Library/Caches /tmp ~/Apps/actions-runner/_work 2>/dev/null | sort -rh'
-   ```
-3. Docker specifically:
-   ```bash
-   ssh morriz@mozmini.local 'docker system df 2>/dev/null'
-   ```
+```bash
+ssh morriz@mozmini.local 'df -h /'
+# Largest consumers:
+ssh morriz@mozmini.local 'du -sh ~/Library/Caches /tmp ~/Apps/actions-runner/_work 2>/dev/null | sort -rh'
+# Docker specifically:
+ssh morriz@mozmini.local 'docker system df 2>/dev/null'
+```
 
-#### Recover
+**Recover**
 
-1. Docker cleanup:
-   ```bash
-   ssh morriz@mozmini.local 'docker system prune -af --volumes'
-   ```
-2. Runner work directory cleanup (only if no jobs running):
-   ```bash
-   ssh morriz@mozmini.local 'rm -rf ~/Apps/actions-runner/_work/_temp/*'
-   ```
+```bash
+# Docker cleanup:
+ssh morriz@mozmini.local 'docker system prune -af --volumes'
+# Runner work directory cleanup (only if no jobs running):
+ssh morriz@mozmini.local 'rm -rf ~/Apps/actions-runner/_work/_temp/*'
+```
 
-#### Verify
+**Verify**
 
 - `df -h /` shows >20% free.
 - Builds complete successfully.
 
-## Incident Trail For Next AI
+### Incident trail for next AI
 
 When an incident is non-trivial, preserve the reasoning trail in two places:
 
@@ -540,7 +530,7 @@ Minimum fields for each case-trail entry:
 - verification result
 - next decision
 
-## Escalate when
+### Escalation criteria
 
 Escalate immediately if any of the following persists after one controlled restart:
 
@@ -555,3 +545,15 @@ When escalating, include:
 - Time window
 - Commands run
 - Relevant log excerpts from `instrukt-ai-logs`
+
+## Outputs
+
+- Incident identified and resolved using the appropriate runbook.
+- Recovery verified via `make status` and log inspection.
+- Non-trivial incidents documented in the case trail.
+
+## Recovery
+
+- If a single `make restart` does not resolve the issue, use `make stop` then `make start`.
+- If the daemon repeatedly fails to start, inspect logs before retrying: `instrukt-ai-logs teleclaude --since 2m`.
+- If the issue persists after two controlled restart attempts, escalate with full context (symptom, time window, commands run, log excerpts).

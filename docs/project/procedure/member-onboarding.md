@@ -20,16 +20,12 @@ Send a new member an email containing deep links to start a private conversation
 
 - At least one adapter is configured (Telegram bot token, Discord bot, or WhatsApp Business number).
 - Email delivery is configured (Brevo SMTP credentials in env: `BREVO_SMTP_USER`, `BREVO_SMTP_PASS`, `BREVO_SENDER_EMAIL`).
-
-## Invite token
-
-Each person gets a single `invite_token` stored in their per-person config (`~/.teleclaude/people/{name}/teleclaude.yml`). The same token is embedded in all platform links. The platform the person arrives on tells us which credential to store — the token just answers "who is this person."
-
-- Generated on `people add` (automatic) or `invite` (manual resend).
-- Format: `inv_` + 16 random hex chars (e.g., `inv_a8f3b2c9d1e4f071`).
-- Stays valid until a new invite is sent, which rotates the token.
-- No time-based expiry.
-- Already-bound credentials are never overwritten. If telegram is already set and the person clicks the Telegram link again, resume their session — don't re-bind.
+- Each person gets a single `invite_token` stored in their per-person config (`~/.teleclaude/people/{name}/teleclaude.yml`). The same token is embedded in all platform links.
+  - Generated on `people add` (automatic) or `invite` (manual resend).
+  - Format: `inv_` + 16 random hex chars (e.g., `inv_a8f3b2c9d1e4f071`).
+  - Stays valid until a new invite is sent, which rotates the token.
+  - No time-based expiry.
+  - Already-bound credentials are never overwritten. If telegram is already set and the person clicks the Telegram link again, resume their session — don't re-bind.
 
 ## Steps
 
@@ -54,7 +50,7 @@ Adding a person automatically:
 
 5. Composes the onboarding email from a template (see below).
 6. Sends via Brevo SMTP.
-7. Prints confirmation: "Added John Doe — invite sent to john@example.com".
+7. Prints confirmation: "Added John Doe — invite sent to `john@example.com`".
 
 ### 1b. Admin resends invite
 
@@ -98,7 +94,7 @@ The personal assistant session starts with:
 - The person's name and role from config
 - A welcome message: "Hi {name}, I'm your personal assistant. What would you like to work on?"
 
-## Email template
+### Email template
 
 Subject: **Welcome to {org_name} — Your Personal AI Assistant**
 
@@ -120,7 +116,18 @@ If you have questions, reply to this email.
 
 Each button is a styled link to the corresponding deep link. The template lives at `templates/emails/member-invite.html`.
 
-## What needs to exist (current gaps)
+### MVP scope
+
+Telegram + email only. Discord and WhatsApp links are generated in the email but land on a "coming soon" or simply don't resolve until those adapters support private chats. The Telegram flow is the critical path:
+
+1. Invite token generation + storage in per-person config
+2. `people add` auto-sends invite email when email is provided
+3. `invite` resends with fresh token
+4. Brevo SMTP email sending
+5. Telegram private chat `/start` handler with token-based credential binding
+6. Session creation in personal workspace
+
+### Implementation gaps
 
 | Component                             | Status           | What's needed                                                                                               |
 | ------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -134,17 +141,6 @@ Each button is a styled link to the corresponding deep link. The template lives 
 | WhatsApp adapter                      | Missing (icebox) | Out of scope for MVP — include link in email anyway                                                         |
 | Person workspace creation             | Partially exists | `~/.teleclaude/people/{name}/` exists in config, `/workspace/` subfolder needs scaffolding on first session |
 | Token-based credential binding        | Missing          | On first private message, match invite token → bind platform user ID to PersonEntry                         |
-
-## MVP scope
-
-Telegram + email only. Discord and WhatsApp links are generated in the email but land on a "coming soon" or simply don't resolve until those adapters support private chats. The Telegram flow is the critical path:
-
-1. Invite token generation + storage in per-person config
-2. `people add` auto-sends invite email when email is provided
-3. `invite` resends with fresh token
-4. Brevo SMTP email sending
-5. Telegram private chat `/start` handler with token-based credential binding
-6. Session creation in personal workspace
 
 ## Outputs
 

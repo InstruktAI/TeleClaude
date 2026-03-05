@@ -55,4 +55,3 @@ The Art of Hosting community calls this "the breath of design" — the pulsation
 - [Chris Corrigan — What is the Art of Hosting?](https://www.chriscorrigan.com/parkinglot/what-is-the-art-of-hosting/)
 - [Art of Hosting — Wikipedia](https://en.wikipedia.org/wiki/Art_of_Hosting)
 - [Chris Corrigan — Extending the Four-Fold Practice](https://www.chriscorrigan.com/parkinglot/extending-the-four-fold-practice-of-the-art-of-hosting/)
-- Full deep dives: `~/.teleclaude/explore/art-of-hosting/`
