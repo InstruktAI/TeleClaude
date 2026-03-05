@@ -221,6 +221,55 @@ subcommands:
       validate:
         flags:
           -p, --project-root: 'Project root (default: cwd).'
+  history:
+    description: 'Search and view agent session history.'
+    subcommands:
+      search:
+        description: 'Search agent session transcripts.'
+        args:
+          - terms: 'string...'
+        flags:
+          -a, --agent: 'Agent name(s) or all (default: all).'
+          -l, --limit: 'Max results (default: 20).'
+      show:
+        description: 'Show full transcript for a session.'
+        args:
+          - session_id: 'string'
+        flags:
+          -a, --agent: 'Agent name or all (default: all).'
+          --thinking: 'Include thinking blocks.'
+          --tail: 'Limit output to last N chars.'
+  memories:
+    description: 'Search and manage memory observations.'
+    subcommands:
+      search:
+        description: 'Search memory observations.'
+        args:
+          - query: 'string'
+        flags:
+          --limit: 'Max results (default: 20).'
+          --type: 'Filter by type.'
+          --project: 'Filter by project name.'
+      save:
+        description: 'Save a memory observation.'
+        args:
+          - text: 'string'
+        flags:
+          --title: 'Observation title.'
+          --type: 'Observation type.'
+          --project: 'Project name.'
+      delete:
+        description: 'Delete a memory observation by ID.'
+        args:
+          - id: 'integer'
+      timeline:
+        description: 'Show observations around an anchor ID.'
+        args:
+          - id: 'integer'
+        flags:
+          --before: 'Observations before anchor (default: 3).'
+          --after: 'Observations after anchor (default: 3).'
+          --project: 'Filter by project name.'
 ```
 
 ## Known caveats

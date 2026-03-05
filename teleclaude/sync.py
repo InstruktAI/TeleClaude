@@ -46,8 +46,7 @@ def sync(
     errors.extend(artifact_errors)
     errors.extend(validate_jobs_config(project_root))
     errors.extend(
-        f"{e['code']}: {e['path']} (ref={e.get('ref', '')} expected={e.get('expected', '')})"
-        for e in get_errors()
+        f"{e['code']}: {e['path']} (ref={e.get('ref', '')} expected={e.get('expected', '')})" for e in get_errors()
     )
 
     warnings = get_warnings()

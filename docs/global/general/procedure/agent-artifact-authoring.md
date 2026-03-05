@@ -41,4 +41,4 @@ Create or update agent artifacts that follow the schema and compile correctly fo
 
 ## See Also
 
-- ~/.teleclaude/docs/general/spec/tools/agent-restart.md
+- ~/.teleclaude/docs/general/spec/tools/telec-cli.md

@@ -745,3 +745,111 @@ class TelecAPIClient:
         """
         resp = await self._request("POST", f"/sessions/{session_id}/revive", timeout=30.0)
         return TypeAdapter(CreateSessionResult).validate_json(resp.text)
+
+    async def memory_search(
+        self,
+        query: str,
+        limit: int = 20,
+        obs_type: str | None = None,
+        project: str | None = None,
+    ) -> list[dict[str, object]]:  # guard: loose-dict - JSON response from daemon memory API
+        """Search memory observations.
+
+        Args:
+            query: Search query
+            limit: Max results
+            obs_type: Optional observation type filter
+            project: Optional project filter
+
+        Returns:
+            List of observation dicts
+
+        Raises:
+            APIError: If request fails
+        """
+        params: dict[str, str] = {"query": query, "limit": str(limit)}
+        if obs_type:
+            params["type"] = obs_type
+        if project:
+            params["project"] = project
+        resp = await self._request("GET", "/api/memory/search", params=params)
+        return resp.json()
+
+    async def memory_save(
+        self,
+        text: str,
+        title: str | None = None,
+        obs_type: str | None = None,
+        project: str | None = None,
+    ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
+        """Save a memory observation.
+
+        Args:
+            text: Observation text
+            title: Optional title
+            obs_type: Optional observation type
+            project: Optional project name
+
+        Returns:
+            Saved observation dict with id, title, project
+
+        Raises:
+            APIError: If request fails
+        """
+        body: dict[str, str | None] = {"text": text}
+        if title:
+            body["title"] = title
+        if obs_type:
+            body["type"] = obs_type
+        if project:
+            body["project"] = project
+        resp = await self._request("POST", "/api/memory/save", json_body=body)
+        return resp.json()
+
+    async def memory_delete(
+        self, observation_id: int
+    ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
+        """Delete a memory observation by ID.
+
+        Args:
+            observation_id: Observation ID to delete
+
+        Returns:
+            Confirmation dict
+
+        Raises:
+            APIError: If request fails
+        """
+        resp = await self._request("DELETE", f"/api/memory/{observation_id}")
+        return resp.json()
+
+    async def memory_timeline(
+        self,
+        anchor: int,
+        before: int = 3,
+        after: int = 3,
+        project: str | None = None,
+    ) -> list[dict[str, object]]:  # guard: loose-dict - JSON response from daemon memory API
+        """Get observations around an anchor ID.
+
+        Args:
+            anchor: Anchor observation ID
+            before: Observations before anchor
+            after: Observations after anchor
+            project: Optional project filter
+
+        Returns:
+            List of observation dicts
+
+        Raises:
+            APIError: If request fails
+        """
+        params: dict[str, str] = {
+            "anchor": str(anchor),
+            "depth_before": str(before),
+            "depth_after": str(after),
+        }
+        if project:
+            params["project"] = project
+        resp = await self._request("GET", "/api/memory/timeline", params=params)
+        return resp.json()

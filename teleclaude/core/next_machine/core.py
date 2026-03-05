@@ -455,9 +455,7 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
                         env=retry_env,
                     )
                     if retry_result.returncode == 0:
-                        results.append(
-                            f"GATE PASSED: make test (retry passed after {failure_count} flaky failure(s))"
-                        )
+                        results.append(f"GATE PASSED: make test (retry passed after {failure_count} flaky failure(s))")
                     else:
                         all_passed = False
                         retry_output = retry_result.stdout[-1000:] if retry_result.stdout else ""
@@ -961,9 +959,7 @@ def _has_meaningful_diff(cwd: str, baseline: str, head: str) -> bool:
             check=True,
         )
         meaningful_files = {
-            f
-            for f in log_result.stdout.splitlines()
-            if f.strip() and not any(f.startswith(p) for p in infra_prefixes)
+            f for f in log_result.stdout.splitlines() if f.strip() and not any(f.startswith(p) for p in infra_prefixes)
         }
         return bool(meaningful_files)
     except (subprocess.CalledProcessError, OSError) as exc:
@@ -3005,8 +3001,11 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         baseline_raw = state.get("review_baseline_commit")
         baseline = baseline_raw if isinstance(baseline_raw, str) else ""
         head_sha = await asyncio.to_thread(_get_head_commit, worktree_cwd)
-        if baseline and head_sha and baseline != head_sha and await asyncio.to_thread(
-            _has_meaningful_diff, worktree_cwd, baseline, head_sha
+        if (
+            baseline
+            and head_sha
+            and baseline != head_sha
+            and await asyncio.to_thread(_has_meaningful_diff, worktree_cwd, baseline, head_sha)
         ):
             repair_started = perf_counter()
             await asyncio.to_thread(

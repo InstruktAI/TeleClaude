@@ -223,7 +223,7 @@ sequenceDiagram
 
 ## See Also
 
-- ~/.teleclaude/docs/general/spec/tools/memory-management-api.md — HTTP API spec for agents
+- ~/.teleclaude/docs/general/spec/tools/telec-cli.md — telec CLI spec (includes `telec memories` commands)
 - ~/.teleclaude/docs/general/procedure/memory-management.md — What to store and the Gem standard
 - ~/.teleclaude/docs/general/concept/memory-tiers.md — Where memory fits in the agent knowledge gradient
 - docs/project/design/architecture/database.md — Parent database architecture
