@@ -6,9 +6,26 @@ description: 'Per-command authorization matrix for telec CLI across all system a
 ---
 # CLI Authorization Matrix — Design
 
+## Purpose
+
 Per-command authorization matrix for `telec` CLI. Both system role (worker/orchestrator) and human role (admin/member/contributor/newcomer/customer) must allow a command for it to execute. Composition: `allowed(cmd) = system_allows(cmd) AND human_allows(cmd)`.
 
-## Role Definitions
+## Inputs/Outputs
+
+- **Input:** Caller session identity (system role derivation) and person identity (human role lookup from `people` config).
+- **Output:** Allow/deny decision for each `telec` command invocation.
+
+## Invariants
+
+1. Both the system gate and human gate must pass for a command to execute.
+2. Workers cannot spawn sessions, orchestrate, or drive the todo state machine.
+3. Customers use an allow-list model (only: `version`, `docs *`, `auth *`, `sessions escalate`).
+4. Admins are the escalation target and must not be able to escalate themselves.
+5. Per-role exclusion sets must be distinct: member, contributor, and newcomer have meaningfully different access levels.
+
+## Primary flows
+
+### Role Definitions
 
 **System roles** (session type):
 - **Worker**: dispatched agent doing scoped task work. Cannot spawn sessions, cannot orchestrate, cannot drive the todo state machine.
@@ -21,7 +38,7 @@ Per-command authorization matrix for `telec` CLI. Both system role (worker/orche
 - **Newcomer**: onboarding person, read-heavy, very limited write.
 - **Customer**: external user via help desk. Can interact with own session, can escalate. No access to internal tooling.
 
-## Authorization Table
+### Authorization Table
 
 Legend: R = read, W = write. Worker and Orchestrator columns show system-role gate. Admin through Customer columns show human-role gate.
 
@@ -145,7 +162,7 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec config notify` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Toggling notifications is personal config. Members can manage their own notifications. |
 | `telec config invite` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Generating invite links is admin infrastructure. |
 
-## Disagreements with Current `tool_access.py`
+### Disagreements with Current `tool_access.py`
 
 The current code in `teleclaude/core/tool_access.py` uses exclusion sets. Below are commands where the current implementation disagrees with this matrix.
 
@@ -231,7 +248,7 @@ The following commands have no entries in any exclusion set and therefore defaul
 **Current code**: `UNAUTHORIZED_EXCLUDED_TOOLS` is used as the fallback for unknown/unauthenticated users AND is the base for customer exclusions.
 **Matrix**: Unauthorized (no identity) should have the most restrictive access -- essentially the same as customer or even less. The current set misses many commands that should be restricted.
 
-## Implementation Recommendations
+### Implementation Recommendations
 
 1. **Switch customers to an allow-list.** The customer role is so restricted that an allow-list is cleaner than a deny-list. Customer allowed commands: `telec version`, `telec docs index`, `telec docs get`, `telec auth login`, `telec auth whoami`, `telec auth logout`, `telec sessions escalate`.
 
@@ -242,3 +259,13 @@ The following commands have no entries in any exclusion set and therefore defaul
 4. **Fix the worker escalate bug.** Workers must be able to escalate. Remove `telec sessions escalate` from `WORKER_EXCLUDED_TOOLS`.
 
 5. **Enumerate all leaf commands in enforcement.** The current code only covers ~15 commands. This matrix covers 65+ leaf commands. Every command needs a gate, or the system must default-deny unknown commands.
+
+## Failure modes
+
+| Scenario                                       | Behavior                                                                                           |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Command not in any exclusion set               | Defaults to allowed for all roles; must default-deny unknown commands to close this gap.           |
+| Shared exclusion set applied to multiple roles | Under-restricts contributors and newcomers; requires distinct per-role sets.                       |
+| Worker attempts to escalate (current bug)      | Blocked by `WORKER_EXCLUDED_TOOLS`; fix requires removing `sessions escalate` from worker set.    |
+| Admin attempts to escalate                     | Currently allowed; must create `ADMIN_EXCLUDED_TOOLS = {"telec sessions escalate"}` to block it.  |
+| Customer bypasses via non-enumerated command   | Deny-list approach misses new commands; switch to allow-list for customer role to close the gap.  |

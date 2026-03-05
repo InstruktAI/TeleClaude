@@ -7,11 +7,13 @@ description: 'Authoritative vocabulary for TeleClaude internal and external even
 
 # Event Vocabulary — Spec
 
-## Definition
+## What it is
 
 The Event Vocabulary defines the shared language used between TeleClaude adapters, the daemon, and external clients.
 
-## Machine-Readable Surface
+## Canonical fields
+
+### Machine-Readable Surface
 
 ```yaml
 standard_events:
@@ -40,7 +42,7 @@ canonical_outbound_activity_events:
   - agent_notification
 ```
 
-## Canonical Outbound Activity Vocabulary
+### Canonical Outbound Activity Vocabulary
 
 Canonical activity events are the stable outbound vocabulary for all consumer adapters
 (Web, TUI, hooks). They are derived from agent hook events via the canonical contract
@@ -92,7 +94,7 @@ hook-level event type so existing consumers that inspect `type`/`event_type` rem
 functional. Downstream adapters (`ucap-web-adapter-alignment`, `ucap-tui-adapter-alignment`)
 will migrate to consume `canonical_type` directly in later phases.
 
-## Constraints
+## Known caveats
 
 - Removal or renaming of a standard event type is a breaking change (Minor bump).
 - Changes to the mapping of agent-specific hooks to these standard types are breaking changes.

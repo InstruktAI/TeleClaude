@@ -7,11 +7,13 @@ description: 'Authoritative surface for TeleClaude YAML configuration and enviro
 
 # Teleclaude Config — Spec
 
-## Definition
+## What it is
 
 The Teleclaude Config surface defines how the daemon and CLI are initialized and validated.
 
-## Machine-Readable Surface
+## Canonical fields
+
+### Machine-Readable Surface
 
 ```yaml
 config_keys:
@@ -66,11 +68,11 @@ environment_variables:
   - EMAIL_FROM
 ```
 
-## Maintenance
+### Maintenance
 
 This spec must be updated whenever config keys or env vars are added, renamed, or removed. The config wizard, `_ADAPTER_ENV_VARS` registry, and `GuidanceRegistry` must stay in sync with this spec.
 
-## Constraints
+## Known caveats
 
 - `config.yml:agents` is required; startup fails if it is missing.
 - `config.yml:agents` must only contain known agent keys (`claude`, `gemini`, `codex`).

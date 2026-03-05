@@ -7,10 +7,6 @@ type: 'spec'
 
 # Cache Ttl Matrix — Spec
 
-## Required reads
-
-- @docs/project/design/cache.md
-
 ## What it is
 
 - TTL and scope matrix for cache refresh behavior.

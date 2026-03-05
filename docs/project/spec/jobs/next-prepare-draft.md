@@ -13,27 +13,14 @@ type: 'spec'
 - @~/.teleclaude/docs/general/procedure/maintenance/next-prepare.md
 - @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-draft.md
 
-## Job contract
+## What it is
 
 `next-prepare-draft` creates and refines preparation artifacts.
 It must not perform final gate decisions or readiness promotion.
 
-## Scope contract
+## Canonical fields
 
-- Handles missing or weak prep artifacts for active slugs.
-- Supports explicit slug or batch mode.
-- May process `input.md` when present.
-
-## Output contract
-
-Per processed slug:
-
-- `requirements.md`
-- `implementation-plan.md`
-- `dor-report.md` (draft analysis)
-- `state.json.dor` (draft metadata)
-
-## Phase contract
-
-- Must not transition item phase from `pending` to `ready` in `state.json`.
-- Leaves final readiness decision to `next-prepare-gate`.
+- `scope`: explicit slug or batch mode over active slugs.
+- `inputs`: active todo slugs; optional `input.md` per slug.
+- `outputs` per processed slug: `requirements.md`, `implementation-plan.md`, `dor-report.md` (draft analysis), `state.json.dor` (draft metadata).
+- `phase_constraint`: must not transition item phase from `pending` to `ready` in `state.json`; leaves final readiness decision to `next-prepare-gate`.
