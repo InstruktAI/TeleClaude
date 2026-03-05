@@ -7,10 +7,6 @@ type: 'design'
 
 # Context Selection — Design
 
-## Required reads
-
-- @docs/project/design/context-index.md
-
 ## Purpose
 
 - Select relevant documentation docs for a given request.

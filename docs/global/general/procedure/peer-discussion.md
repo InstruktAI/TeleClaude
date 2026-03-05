@@ -41,6 +41,8 @@ Enable two peer agents to cover a topic together — each owning a segment, work
 
 7. **Signal peer via L4** when your segment is complete: `[hold] §AgentA done → scratchpad`. Then wait.
 
+   If the peer does not signal `[exhale]` within a reasonable time, check the scratchpad. If findings are present, consolidate what exists and note the incomplete segment in the report. Do not block the user indefinitely.
+
 8. **Convergence.** When peer signals `[exhale]`, read the full scratchpad. Identify cross-segment patterns neither side would have named alone. Send L4 exhale confirmation.
 
 9. **Write L1 report to user.** Consolidate both halves into a single structured report:
@@ -50,10 +52,6 @@ Enable two peer agents to cover a topic together — each owning a segment, work
    - Immediate actions.
 
 10. **End the peer session** via `telec sessions end`.
-
-## Convergence timeout
-
-If the peer does not signal `[exhale]` within a reasonable time, check the scratchpad. If findings are present, consolidate what exists and note the incomplete segment in the report. Do not block the user indefinitely.
 
 ## Outputs
 

@@ -7,10 +7,6 @@ type: 'policy'
 
 # Cache Contract — Policy
 
-## Required reads
-
-- @docs/project/design/cache.md
-
 ## Rules
 
 - API reads return cached data immediately.

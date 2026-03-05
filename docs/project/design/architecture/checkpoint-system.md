@@ -216,6 +216,3 @@ sequenceDiagram
 | Large transcript (>512KB JSONL)                               | Extraction reads full file via `_get_entries_for_agent()`       | Performance acceptable for checkpoint frequency     |
 | False suppression (evidence substring in unrelated command)   | Action incorrectly suppressed                                   | Acceptable: false suppression > false negative (R8) |
 
-## See Also
-
-- docs/project/spec/event-types.md — Canonical event type definitions including `tool_use`

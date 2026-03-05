@@ -19,3 +19,9 @@ A maintenance job that proactively scans daemon logs for errors.
 Feeds the same bug pipeline as `telec bugs report` — the log-bug-hunter
 is an automated bug source, not a standalone fix system.
 The procedure doc defines the full workflow. This spec defines the job contract.
+
+## Canonical fields
+
+- `trigger`: hourly cron schedule.
+- `scan_source`: daemon logs (instrukt-ai-logs / journald).
+- `output`: bug pipeline entry via `telec bugs report` for each discovered error.

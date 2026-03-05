@@ -27,7 +27,7 @@ Replaces the external `memory-management-api` dependency (TypeScript/Bun on port
 - Markdown context block injected into agent sessions at startup
 - Search results via HTTP API for on-demand recall
 
-## Module Layout
+### Module Layout
 
 ```
 teleclaude/memory/
@@ -44,7 +44,7 @@ teleclaude/memory/
     └── renderer.py      # Render timeline entries to markdown
 ```
 
-## Data Model
+### Data Model
 
 ```mermaid
 erDiagram
@@ -95,7 +95,7 @@ erDiagram
     MEMORY_OBSERVATIONS ||--|| MEMORY_OBSERVATIONS_FTS : "synced via triggers"
 ```
 
-## Observation Types
+### Observation Types
 
 Types are validated at the application layer via `ObservationType` enum (not a SQL CHECK constraint). All API boundaries enforce strict enum typing — invalid types receive a 422 response with allowed values.
 
@@ -111,7 +111,7 @@ Types are validated at the application layer via `ObservationType` enum (not a S
 
 The `files_read` and `files_modified` columns are retained in the schema for backward compatibility with migrated data but are not populated by the current API.
 
-## Access Patterns
+### Access Patterns
 
 ### 1. HTTP API (agent-facing)
 

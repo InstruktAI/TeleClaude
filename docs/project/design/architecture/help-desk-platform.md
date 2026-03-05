@@ -47,9 +47,9 @@ The platform operates on two planes:
 - Discord relay channels for admin-customer direct communication
 - Admin notifications on escalation events
 
-## Architecture
+### Architecture
 
-### Operator Workspace
+#### Operator Workspace
 
 The help desk is a standalone git repository, separate from the TeleClaude codebase. Each organization gets its own help desk repo with its own documentation, operator brain, and runtime artifacts. The location is configurable via `help_desk_dir` in computer config; the default is a sibling directory next to the TeleClaude project.
 

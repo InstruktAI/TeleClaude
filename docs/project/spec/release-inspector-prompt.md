@@ -7,11 +7,18 @@ description: 'Canonical prompt for AI release inspectors.'
 
 # Release Inspector Prompt — Spec
 
-## Objective
+## What it is
 
-Analyze the diff between the current HEAD and the provided baseline tag. Determine the semver release classification based on the project's public surface manifests.
+Canonical prompt for AI release inspectors. Analyzes the diff between the current HEAD and the provided baseline tag to determine the semver release classification based on the project's public surface manifests.
 
-## The Prompt
+## Canonical fields
+
+- `role`: Meticulous Release Inspector.
+- `input`: public surface manifests (`telec-cli-surface.md`, `event-vocabulary.md`, `teleclaude-config.md`) and the git diff between HEAD and last release tag.
+- `output`: valid JSON matching the release-report-schema.
+- `classification_policy`: Semver 0.x — Minor for any surface change, Patch for internal-only changes, None for non-functional changes.
+
+### Prompt
 
 ```markdown
 # Role
@@ -48,4 +55,4 @@ Return ONLY valid JSON matching the release-report-schema.
 
 ## See Also
 
-- project/spec/release-report-schema
+- docs/project/spec/release-report-schema.md

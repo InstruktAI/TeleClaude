@@ -13,25 +13,14 @@ type: 'spec'
 - @~/.teleclaude/docs/general/procedure/maintenance/next-prepare.md
 - @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-gate.md
 
-## Job contract
+## What it is
 
 `next-prepare-gate` performs formal Definition-of-Ready validation over draft artifacts.
 It must run in a separate worker session from draft.
 
-## Scope contract
+## Canonical fields
 
-- Handles only slugs with preparation artifacts present.
-- Supports explicit slug or batch mode.
-- Focuses on validation and minimal factual tightening.
-
-## Output contract
-
-Per processed slug:
-
-- Updated `dor-report.md` with gate verdict
-- Updated `state.json.dor` with final gate status and score
-- Optional minimal refinements to requirements/plan when needed for accuracy
-
-## Phase contract
-
-- Gate sets `dor.score` in `state.json`; readiness is derived from `dor.score >= 8`.
+- `scope`: explicit slug or batch mode; handles only slugs with preparation artifacts present.
+- `focus`: validation and minimal factual tightening.
+- `outputs` per processed slug: updated `dor-report.md` with gate verdict; updated `state.json.dor` with final gate status and score; optional minimal refinements to requirements/plan.
+- `phase_authority`: gate sets `dor.score` in `state.json`; readiness is derived from `dor.score >= 8`. Only this variant may authorize phase transition to `ready`.

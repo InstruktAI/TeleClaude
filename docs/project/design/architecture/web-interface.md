@@ -9,8 +9,8 @@ description: 'High-level architecture of the TeleClaude Next.js web interface.'
 
 ## Required reads
 
-- @project/design/architecture/web-api-facade
-- @project/spec/identity-and-auth
+- @docs/project/design/architecture/web-api-facade.md
+- @docs/project/spec/identity-and-auth.md
 
 ## Purpose
 

@@ -24,7 +24,7 @@ One-off operations (e.g., initial YouTube subscription fetch during onboarding)
 live in `scripts/` or `teleclaude/entrypoints/` and are invoked directly — they
 are not jobs.
 
-## Philosophy
+### Philosophy
 
 **Agents are supervisors, scripts are workers.** The target architecture is for all
 jobs to be agent-supervised. The agent owns the outcome: it runs the existing
@@ -38,7 +38,7 @@ If the issue is outside its scope, it records the failure and moves on.
 
 See the Agent Job Hygiene procedure for the full contract.
 
-## Architecture
+### Architecture
 
 ```
 launchd (every 5 minutes)
@@ -67,7 +67,7 @@ teleclaude.yml                  Schedule configuration (frequency, timing, execu
 ~/.teleclaude/cron_state.yaml   Persistent state (last_run, status, errors)
 ```
 
-### Execution Modes
+#### Execution Modes
 
 The `script` field is the discriminator. Its presence determines the execution mode:
 
@@ -87,7 +87,7 @@ etc.) and MCP access when the daemon is running. The agent reads its spec doc
 (`docs/project/spec/jobs/<job>.md`), runs whatever scripts and tools the spec
 describes, fixes forward within scope, writes a run report, and stops.
 
-See: [Agent Invocation Modes](@general/concept/agent-invocation-modes)
+See: [Agent Invocation Modes](general/concept/agent-invocation-modes)
 
 Agent jobs are daemon-independent: they run as direct subprocesses, not as daemon
 API calls. If the daemon is down, the agent still spawns and executes — it just
@@ -98,7 +98,7 @@ based jobs.
 lobotomized invocations for structured JSON output (e.g., YouTube tagging) with
 no tool or MCP access.
 
-### Role Resolution
+#### Role Resolution
 
 Agent jobs accept a `role` parameter that propagates to the subprocess environment
 via `TELECLAUDE_JOB_ROLE`. The MCP wrapper reads this for tool filtering.
@@ -111,7 +111,7 @@ Resolution chain:
 No warnings are emitted for daemon unavailability. The fallback is silent because
 other runners (log-bug-hunter) monitor daemon health.
 
-### Components
+#### Components
 
 | Component   | Path                           | Role                                                               |
 | ----------- | ------------------------------ | ------------------------------------------------------------------ |
@@ -148,7 +148,7 @@ other runners (log-bug-hunter) monitor daemon health.
 - Agent jobs produce a run report every run, even when there is nothing to process.
 - Agent jobs fix forward within scope; they do not chase out-of-scope issues.
 
-## Configuration Surface
+### Configuration Surface
 
 ### Project-level: `teleclaude.yml`
 
@@ -229,7 +229,7 @@ subscriptions.
 `cron_runner.py --force` bypasses all schedule checks. Every discovered job runs
 regardless of config or last run time.
 
-## Job Contract
+### Job Contract
 
 ### Script jobs
 
@@ -308,7 +308,7 @@ or the timeout is reached.
 A job only runs when both conditions are met: minimum interval elapsed AND preferred
 timing reached. Jobs that have never run execute immediately.
 
-## State Persistence
+### State Persistence
 
 File: `~/.teleclaude/cron_state.yaml`
 
@@ -346,7 +346,7 @@ File: `~/.teleclaude/cron_state.yaml`
   based jobs (prepare, gate) work normally. Jobs requiring teleclaude\_\_\* tools degrade
   gracefully — the tools are simply absent from the agent's tool set.
 
-## Service Integration
+### Service Integration
 
 - **Launchd label**: `ai.instrukt.teleclaude.cron`
 - **Plist**: `templates/ai.instrukt.teleclaude.cron.plist`
@@ -366,7 +366,7 @@ cron_runner.py --dry-run    Check what would run without executing
 cron_runner.py --list       List available jobs and their status
 ```
 
-## Scripts vs Jobs
+### Scripts vs Jobs
 
 | Concern    | Scripts (`scripts/`)                           | Jobs (`jobs/`)                 |
 | ---------- | ---------------------------------------------- | ------------------------------ |
@@ -376,12 +376,12 @@ cron_runner.py --list       List available jobs and their status
 | State      | None                                           | Tracked in `cron_state.yaml`   |
 | Scheduling | None                                           | Configured in `teleclaude.yml` |
 
-## Job Specs
+### Job Specs
 
 Each job has a spec document in `docs/project/spec/jobs/` describing what it does,
 how it works, its files, configuration, and known issues. The spec doc is the agent's
 complete mandate — the agent reads it, executes it, and stays within its scope.
 
-## Known Issues
+### Known Issues
 
 1. **No tests.** No unit tests exist for the cron engine or job implementations.

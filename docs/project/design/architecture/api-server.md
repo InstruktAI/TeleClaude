@@ -7,11 +7,6 @@ type: 'design'
 
 # Api Server — Design
 
-## Required reads
-
-- @docs/project/design/cache.md
-- @docs/project/spec/event-types.md
-
 ## Purpose
 
 Provide a resource-first API for TUI and CLI clients.

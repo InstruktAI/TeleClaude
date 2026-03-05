@@ -13,13 +13,17 @@ description: 'SQLite persistence for sessions, hook outbox, memory, UX state, an
 - Provide durable command/session behavior across daemon restarts.
 - Back hook delivery, UX cleanup state, agent availability, and memory storage.
 
-## Storage model
+## Invariants
 
-- Single DB file per repo root: `teleclaude.db`.
+- **Single Database File**: Production daemon state lives in one SQLite file (`teleclaude.db`) per repo root.
+- **Fail Before Serve**: Migrations run before interfaces are considered ready.
+- **Headless Compatibility**: Sessions may have `tmux_session_name = NULL` and still be valid (`lifecycle_status='headless'`).
+- **Durable Hook Queue**: Hook events are persisted before daemon processing.
+- **Best-effort Exactly-once Effects**: Outbox uses lock + idempotent handlers to tolerate retries.
 - Schema bootstraps from `teleclaude/core/schema.sql`.
 - Incremental schema changes run through numbered migrations (`teleclaude/core/migrations/*.py`) tracked in `schema_migrations`.
 
-## Core tables
+### Core tables
 
 ```mermaid
 erDiagram
@@ -116,14 +120,6 @@ erDiagram
 - Queryable snapshots for API/cache layers.
 - Retryable hook delivery queue (`hook_outbox`).
 - Persistent memory observations/summaries for context injection and search.
-
-## Invariants
-
-- **Single Database File**: Production daemon state lives in one SQLite file (`teleclaude.db`) per repo root.
-- **Fail Before Serve**: Migrations run before interfaces are considered ready.
-- **Headless Compatibility**: Sessions may have `tmux_session_name = NULL` and still be valid (`lifecycle_status='headless'`).
-- **Durable Hook Queue**: Hook events are persisted before daemon processing.
-- **Best-effort Exactly-once Effects**: Outbox uses lock + idempotent handlers to tolerate retries.
 
 ## Primary flows
 

@@ -7,15 +7,15 @@ description: 'Architecture of the automated webhook-driven deployment pipeline.'
 
 # Deployment Pipeline — Design
 
-## Overview
+## Purpose
 
 TeleClaude uses an automated webhook-driven deployment pipeline. When code is
 pushed to `main` or a GitHub release is published, computers self-update based
 on their configured deployment channel. No manual operator command is needed.
 
-## Components
+### Components
 
-### `teleclaude/deployment/handler.py`
+#### `teleclaude/deployment/handler.py`
 
 Receives webhook events from GitHub (push, release). Evaluates the event
 against the computer's channel configuration and triggers an update if the
@@ -30,15 +30,15 @@ event matches.
 | Release published           | `stable` | Within `pinned_minor` series      | Update |
 | Fan-out `version_available` | any      | Own channel matches event channel | Update |
 
-### `teleclaude/deployment/executor.py`
+#### `teleclaude/deployment/executor.py`
 
 Runs the actual update: `git pull --ff-only`, migration runner, daemon restart.
 
-### `teleclaude/deployment/migration_runner.py`
+#### `teleclaude/deployment/migration_runner.py`
 
 Discovers and runs sequential migration scripts between versions.
 
-### Redis Fan-out
+#### Redis Fan-out
 
 When a GitHub-source event triggers an update on the receiving computer, that
 computer also publishes a `version_available` event to the Redis stream
@@ -48,7 +48,7 @@ evaluate the event and update if their channel config matches.
 This means only one computer needs a direct GitHub webhook connection. Others
 receive updates via Redis fan-out.
 
-## Deployment Channels
+### Deployment Channels
 
 Configured in `project.deployment.channel` in `config.yml`:
 
@@ -59,7 +59,27 @@ project:
     pinned_minor: '1.2' # required when channel=stable
 ```
 
-## Flow Diagram
+## Inputs/Outputs
+
+**Inputs:**
+
+- GitHub webhook events (push to `main`, release published)
+- `config.yml` with `project.deployment.channel` and optional `pinned_minor`
+- Redis `version_available` stream messages from peer computers
+
+**Outputs:**
+
+- `git pull --ff-only` + migration run + daemon restart on matching computers
+- Redis `version_available` fan-out event to notify peer computers
+
+## Invariants
+
+- **Channel-gated updates**: A computer only applies an update when the event matches its configured channel.
+- **Single webhook receiver**: Only one computer needs a direct GitHub webhook connection; others update via Redis fan-out.
+- **Fan-out loop prevention**: Events with `source=deployment` do not re-broadcast.
+- **Idempotent migration runner**: Sequential migrations are tracked; re-running skips already-applied steps.
+
+## Primary flows
 
 ```
 GitHub → Webhook → handler.py
@@ -78,7 +98,7 @@ GitHub → Webhook → handler.py
     (evaluate own channel)
 ```
 
-## Error Handling
+## Failure modes
 
 - Config load failure: logged, update skipped (non-fatal).
 - `execute_update` failure: logged via task exception handler.
@@ -86,5 +106,5 @@ GitHub → Webhook → handler.py
 
 ## See Also
 
-- `docs/project/procedure/deploy.md` — operator procedure
-- `docs/project/spec/teleclaude-config.md` — config schema for deployment
+- docs/project/procedure/deploy.md — operator procedure
+- docs/project/spec/teleclaude-config.md — config schema for deployment

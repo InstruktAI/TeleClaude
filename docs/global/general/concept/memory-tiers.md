@@ -19,8 +19,6 @@ The agent's memory is not a single store. It is a gradient of tiers, each
 trading durability for specificity, permanence for richness. Together they
 form a stack that ranges from deep and immutable to vivid and fleeting.
 
-## The Gradient
-
 ### Instinct — Model Weights
 
 The deepest layer. Language, reasoning, code patterns, world knowledge — all
@@ -68,7 +66,7 @@ when it grows too long, lossy and summarized. What felt vivid becomes a
 paragraph. The agent must write anything worth keeping to a more durable tier
 before the window closes.
 
-## The Reach
+### The Reach
 
 Beyond the tiers that are loaded at start, the agent can extend into deeper
 stores on demand:
@@ -89,7 +87,7 @@ stores on demand:
   durable memory of all: every commit is a decision recorded, every test is
   an expectation preserved.
 
-## Why This Matters
+## Why
 
 The gradient reveals a fundamental tradeoff: what is permanent is general;
 what is specific is temporary. Instinct knows everything about nothing in

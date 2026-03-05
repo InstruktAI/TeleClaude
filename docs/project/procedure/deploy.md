@@ -12,13 +12,15 @@ description: 'How TeleClaude updates propagate to computers via the automated de
 Understand how code updates reach TeleClaude computers via the automated
 webhook-driven deployment pipeline.
 
-## Overview
+## Preconditions
 
-Deployment is fully automated. Computers subscribe to GitHub events
-(push to main, release published) and self-update based on their configured
-deployment channel. No manual `telec deploy` command is needed.
+- Deployment is fully automated. Computers subscribe to GitHub events
+  (push to main, release published) and self-update based on their configured
+  deployment channel. No manual `telec deploy` command is needed.
 
-## Deployment Channels
+## Steps
+
+### Deployment channels
 
 Each computer declares a channel in `config.yml`:
 
@@ -28,7 +30,7 @@ Each computer declares a channel in `config.yml`:
 | `beta`   | GitHub release published           | Tagged releases only              |
 | `stable` | Release within pinned minor series | Requires `pinned_minor` in config |
 
-## How It Works
+### How it works
 
 1. A GitHub webhook fires on push or release event.
 2. The daemon's webhook handler evaluates the event against the computer's channel config.
@@ -36,10 +38,14 @@ Each computer declares a channel in `config.yml`:
 4. For `alpha` and `beta`, the daemon also publishes a fan-out event to Redis
    (`deployment:version_available`) so remote computers on the same channel also update.
 
-## Monitoring
+### Monitoring
 
 After a push or release, verify computers updated via `make status` or by
 checking the daemon version: `telec version`.
+
+## Outputs
+
+- Automatic daemon restart with updated code on all subscribed computers.
 
 ## Recovery
 
@@ -51,11 +57,7 @@ ssh -A {user}@{host} 'cd <teleclaude-path> && git pull --ff-only origin main && 
 
 (See `config.yml` for computer list, host names, and teleclaude paths.)
 
-## Outputs
-
-- Automatic daemon restart with updated code on all subscribed computers.
-
 ## See Also
 
-- `docs/project/design/architecture/deployment-pipeline.md` — full architecture
-- `docs/project/spec/teleclaude-config.md` — deployment channel configuration
+- docs/project/design/architecture/deployment-pipeline.md — full architecture
+- docs/project/spec/teleclaude-config.md — deployment channel configuration

@@ -79,4 +79,3 @@ Created by Rainer von Leoprechting and Ria Baeck in Brussels.
 - [The World Cafe](https://theworldcafe.com)
 - [Center for Appreciative Inquiry](https://centerforappreciativeinquiry.net)
 - [Art of Hosting Methods](https://artofhosting.org/what-is-aoh/methods/)
-- Full deep dives: `~/.teleclaude/explore/art-of-hosting/`

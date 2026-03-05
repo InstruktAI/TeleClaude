@@ -117,7 +117,7 @@ sequenceDiagram
 - If session missing → emit OUTPUT_UPDATE with process exit status
 - Mark session as closed, stop polling
 
-## Adapter-level Output QoS
+### Adapter-level Output QoS
 
 Between `AdapterClient.send_output_update` and the platform API sits an optional adapter-level QoS
 scheduler (`teleclaude/adapters/qos/output_scheduler.py`). It runs per-adapter and operates in one

@@ -16,7 +16,12 @@ description: 'Preview and sticky session interaction model for TUI pane manageme
 
 Define the user-facing interaction model for previewing and pinning sessions in the TUI. The session list supports two pane visibility modes — preview (ephemeral, one at a time) and sticky (persistent, up to N) — that determine which tmux panes are visible alongside the TUI. This document specifies what happens for every combination of user action and session state so that behavior is deterministic and intuitive.
 
-## Concepts
+## Inputs/Outputs
+
+- **Input:** User press events (single press, double press) on session list items; current session visibility state (preview set, sticky set).
+- **Output:** Updated preview/sticky state in the TUI reducer; tmux pane layout changes (slot add/remove/swap).
+
+### Concepts
 
 **Preview**: A temporary pane shown alongside the TUI. Only one preview can exist at a time. Navigating to a different session replaces the preview. The preview is the weakest form of visibility — any other action can dismiss it.
 
@@ -24,7 +29,7 @@ Define the user-facing interaction model for previewing and pinning sessions in 
 
 **Precedence**: Sticky > Preview. The user's most recent action always wins for determining what stays visible.
 
-## Interaction rules
+## Primary flows
 
 ### Single press (preview)
 

@@ -17,13 +17,20 @@ External bugs arrive via GitHub Issues and are processed by the maintenance runn
 For CLI bug intake, default to `telec bugs report` (scaffold + dispatch); use
 `telec bugs create` only when explicitly requested to stage a bug without dispatch.
 
-## Track 1: Inline (Internal Discovery)
+Two tracks apply depending on how the bug was discovered: inline (internal) or via maintenance (external).
 
-### Preconditions
+## Preconditions
 
+**Track 1 — Inline:**
 - You discovered a bug during your current work.
 
-### Steps
+**Track 2 — Maintenance:**
+- Bug reports exist as GitHub Issues (labeled `bug`).
+- The maintenance runner (jobs/maintenance.py) triggers periodically.
+
+## Steps
+
+### Track 1: Inline (Internal Discovery)
 
 1. **Assess scope.** Can you fix this in a few minutes without derailing your current
    task? Most bugs encountered during active work are small — a wrong condition, a
@@ -39,19 +46,7 @@ For CLI bug intake, default to `telec bugs report` (scaffold + dispatch); use
 4. **Never log a bug and move on.** That middle ground — "I'll note it for later" —
    creates noise that goes stale. Either fix it or promote it. There is no third option.
 
-### Outputs
-
-- Bug fixed and committed on the current branch, or
-- New work item in `todos/` with the issue promoted to a roadmap entry.
-
-## Track 2: Maintenance (External Reports)
-
-### Preconditions
-
-- Bug reports exist as GitHub Issues (labeled `bug`).
-- The maintenance runner (jobs/maintenance.py) triggers periodically.
-
-### Steps
+### Track 2: Maintenance (External Reports)
 
 1. **Pull issues.** `gh issue list --label bug --state open` to discover actionable reports.
 2. **Triage.** Skip stale, duplicates, issues already with linked PRs.
@@ -59,8 +54,13 @@ For CLI bug intake, default to `telec bugs report` (scaffold + dispatch); use
    PR referencing the issue (`gh pr create --closes #N`).
 4. **Review.** Accumulated PRs are reviewed and merged on a controlled cadence.
 
-### Outputs
+## Outputs
 
+**Track 1:**
+- Bug fixed and committed on the current branch, or
+- New work item in `todos/` with the issue promoted to a roadmap entry.
+
+**Track 2:**
 - PRs created for each resolved issue, referencing the GitHub Issue number.
 - Issues auto-closed when PRs merge.
 

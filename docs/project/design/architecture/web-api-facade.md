@@ -22,7 +22,24 @@ Define the web boundary where Next.js route handlers are the only public API for
 - Daemon remains source of truth for sessions, cache snapshots, and command execution.
 - Migration proceeds route-by-route from proxy to native Next.js logic without changing browser contract.
 
-## Public Contract
+## Inputs/Outputs
+
+**Inputs:**
+
+- Browser HTTP and WebSocket requests to `/api/*` routes
+- Daemon API responses via Unix socket proxy
+
+**Outputs:**
+
+- JSON responses for session, project, people, and settings resources
+- Streamed SSE/chat responses proxied from the daemon
+- WebSocket bridge to daemon transport layer
+
+## Primary flows
+
+All routes in phase 1 proxy to the daemon. See the Public Contract table for the full route map.
+
+### Public Contract
 
 The stable public surface is the Next.js API namespace (`/api/*` in frontend app), not daemon URLs.
 
@@ -45,7 +62,7 @@ The stable public surface is the Next.js API namespace (`/api/*` in frontend app
 | `PATCH /api/settings`                  | `proxy` | auth + admin           | daemon settings endpoint           |
 | `WebSocket /api/ws`                    | `proxy` | auth (cookie validate) | daemon WebSocket bridge            |
 
-## Data/Transport Strategy
+### Data/Transport Strategy
 
 ### Chat stream
 
@@ -59,7 +76,7 @@ The stable public surface is the Next.js API namespace (`/api/*` in frontend app
 - Web clients consume state via websocket path backed by daemon cache updates.
 - Preferred integration: Next.js websocket/SSE gateway that relays daemon `/ws` updates, so browser never needs daemon host knowledge.
 
-## Identity Boundary
+### Identity Boundary
 
 Only Next.js server code may inject trusted identity metadata.
 
@@ -69,7 +86,7 @@ Only Next.js server code may inject trusted identity metadata.
 
 Browser-provided identity headers are never trusted.
 
-## Migration Model
+### Migration Model
 
 Per route, use explicit status:
 

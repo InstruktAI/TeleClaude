@@ -11,12 +11,18 @@ type: 'spec'
 
 @~/.teleclaude/docs/general/procedure/agent-job-hygiene.md
 
-## What it does
+## What it is
 
 Reviews all recent memories from the Memory API, analyzes them for patterns and
 staleness, and writes actionable findings to `ideas/` as new idea files.
 
-## How it works
+## Canonical fields
+
+- `trigger`: periodic scheduled job.
+- `input`: Memory API observations (all types).
+- `output`: idea files under `ideas/` (YYMMDD-slug.md format) and a run report.
+
+### How it works
 
 1. Call the Memory API search endpoint to pull recent observations.
 2. Analyze for: recurring themes, stale entries, contradictions, actionable patterns.

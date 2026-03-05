@@ -130,5 +130,5 @@ A layer accesses another layer's internals directly instead of going through the
 
 ## See Also
 
-- project/design/architecture/system-overview
-- project/design/architecture/daemon
+- docs/project/design/architecture/system-overview.md
+- docs/project/design/architecture/daemon.md

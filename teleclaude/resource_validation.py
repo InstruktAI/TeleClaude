@@ -561,7 +561,13 @@ def _validate_snippet_sections(
     domains: set[str],
 ) -> None:
     h2_titles: list[str] = []
+    in_code_block = False
     for line in lines:
+        if _CODE_FENCE_LINE.match(line.strip()):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            continue
         if _H2_LINE.match(line):
             h2_titles.append(line.lstrip("#").strip())
     normalized_titles = [_normalize_section_title(t) for t in h2_titles]

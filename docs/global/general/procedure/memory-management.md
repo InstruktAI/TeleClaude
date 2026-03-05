@@ -11,9 +11,12 @@ description: 'Guidelines for saving high-signal memories to the long-term databa
 
 Curate the **User-Agent Relationship** by saving _only_ high-signal, durable context that improves future partnership. Distinguish "Memory" (relationship context) from your own "internal memory" (AGENTS.md, CLAUDE.md, GEMINI.md, CODEX.md etc), "Documentation" (system rules) and "Bugs" (defects).
 
-## The Filter: What goes where?
+## Preconditions
 
-Before saving anything, route the information to its proper home.
+- You have encountered something important about the relationship, user preference, or collaboration context during a session.
+- The item has passed the routing check: it is not a bug (fix inline), not a work item (`todos/`), and not a system rule (doc snippet).
+
+Before saving, route the information to its proper home:
 
 | Item Type                 | Destination       | Why?                                                                          |
 | :------------------------ | :---------------- | :---------------------------------------------------------------------------- |
@@ -24,52 +27,52 @@ Before saving anything, route the information to its proper home.
 | **User Preference**       | **Memory**        | It's a fact about the user (e.g., "Don't use filler words").                  |
 | **Relationship Friction** | **Memory**        | It's a lesson on how to work better together (e.g., "User dislikes X").       |
 
-## The "Gem" Standard for Memory
-
-Memory is **sacred ground**. Do not pollute it with gravel. Save only "Gems".
-
-**A Gem is:**
-
-1.  **User-Centric:** It is about _us_ (the user and agent), not just the code.
-2.  **Durable:** It will still be true and useful next month.
-3.  **Painful to Rediscover:** "If I forget this, we will run into this again."
-
-**Gravel (DO NOT SAVE):**
-
-- **"I fixed the bug."** (Check git log).
-- **"I ran the tests."** (Routine work).
-- **"The system works."** (Expected state).
-- **"I am analyzing..."** (Meta-commentary).
-- **AI-to-AI Chatter:** Worker agents reporting to Orchestrators should _never_ save memories. Their interaction is transactional, not relational.
-
-## Observation Types
-
-Each memory observation is classified by type for progressive disclosure:
-
-| Type         | When to use                                                    |
-| ------------ | -------------------------------------------------------------- |
-| `preference` | User likes/dislikes, working style, communication preferences. |
-| `decision`   | Architectural or design choices with rationale.                |
-| `discovery`  | Something learned about a system, codebase, or domain.         |
-| `gotcha`     | Pitfalls, traps, surprising behavior that bit us.              |
-| `pattern`    | Recurring approaches that work well.                           |
-| `friction`   | What causes slowdowns, miscommunication, or frustration.       |
-| `context`    | Project/team/domain background knowledge.                      |
-
 ## Steps
 
-1.  **Spot the Gem:** You realize something important about the _relationship_, _context_, or _user preference_.
-2.  **Route Check:**
-    - Is it a bug? -> Fix it inline now. If too large, create a todo.
-    - Is it a doc update? -> Update the doc snippet (PR).
-3.  **Classify:** Pick the observation type that best matches the gem.
-4.  **Refine:** Strip the noise.
-    - _Bad:_ "I noticed the user prefers concise answers so I will be concise."
-    - _Good:_ "User demands extreme conciseness; max 3 lines for non-tool responses."
-5.  **Save:** Use the memory HTTP API (see `memory-management-api` spec).
-    - Title: Short, searchable hook.
-    - Text: The standalone truth.
-    - Type: One of the observation types above.
+1. **Spot the Gem:** You realize something important about the _relationship_, _context_, or _user preference_.
+
+   Memory is **sacred ground**. Do not pollute it with gravel. Save only "Gems."
+
+   A Gem is:
+   1. **User-Centric:** It is about _us_ (the user and agent), not just the code.
+   2. **Durable:** It will still be true and useful next month.
+   3. **Painful to Rediscover:** "If I forget this, we will run into this again."
+
+   Gravel (DO NOT SAVE):
+   - **"I fixed the bug."** (Check git log).
+   - **"I ran the tests."** (Routine work).
+   - **"The system works."** (Expected state).
+   - **"I am analyzing..."** (Meta-commentary).
+   - **AI-to-AI Chatter:** Worker agents reporting to Orchestrators should _never_ save memories. Their interaction is transactional, not relational.
+
+2. **Route Check:**
+   - Is it a bug? -> Fix it inline now. If too large, create a todo.
+   - Is it a doc update? -> Update the doc snippet (PR).
+
+3. **Classify:** Pick the observation type that best matches the gem:
+
+   | Type         | When to use                                                    |
+   | ------------ | -------------------------------------------------------------- |
+   | `preference` | User likes/dislikes, working style, communication preferences. |
+   | `decision`   | Architectural or design choices with rationale.                |
+   | `discovery`  | Something learned about a system, codebase, or domain.         |
+   | `gotcha`     | Pitfalls, traps, surprising behavior that bit us.              |
+   | `pattern`    | Recurring approaches that work well.                           |
+   | `friction`   | What causes slowdowns, miscommunication, or frustration.       |
+   | `context`    | Project/team/domain background knowledge.                      |
+
+4. **Refine:** Strip the noise.
+   - _Bad:_ "I noticed the user prefers concise answers so I will be concise."
+   - _Good:_ "User demands extreme conciseness; max 3 lines for non-tool responses."
+
+5. **Save:** Use the memory HTTP API (see `memory-management-api` spec).
+   - Title: Short, searchable hook.
+   - Text: The standalone truth.
+   - Type: One of the observation types above.
+
+## Outputs
+
+- A memory entry saved to the long-term database via the Memory Management API, classified by type and project.
 
 ## Recovery
 

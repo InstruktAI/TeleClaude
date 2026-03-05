@@ -10,7 +10,7 @@ description: 'Execution contract for scripts/: portable invocation, uv metadata,
 ## Required reads
 
 - @docs/project/design/architecture/jobs-runner.md
-- @docs/global/general/spec/tools/telec-cli.md
+- @~/.teleclaude/docs/general/spec/tools/telec-cli.md
 
 ## Rules
 

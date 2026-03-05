@@ -9,9 +9,9 @@ description: 'Authoritative surface for system-wide identity, authentication, an
 
 ## Required reads
 
-- @project/spec/teleclaude-config
-- @project/spec/command-surface
-- @project/spec/session-identity-truth
+- @docs/project/spec/teleclaude-config.md
+- @docs/project/spec/command-surface.md
+- @docs/project/spec/session-identity-truth.md
 
 ## What it is
 
