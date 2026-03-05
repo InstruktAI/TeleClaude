@@ -436,6 +436,10 @@ def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
                 # Single retry for low-count flaky test failures
                 venv_pytest = Path(worktree_cwd) / ".venv" / "bin" / "pytest"
                 pytest_cmd = str(venv_pytest) if venv_pytest.exists() else "pytest"
+                # Explicit config paths are required for pytest --lf because the
+                # Makefile's `test` target sets them via its own environment; running
+                # pytest directly bypasses the Makefile, so we mirror those paths here
+                # to keep the retry under the same configuration as the original run.
                 retry_env = {
                     **os.environ,
                     "TELECLAUDE_CONFIG_PATH": "tests/integration/config.yml",
@@ -930,47 +934,43 @@ def _has_meaningful_diff(cwd: str, baseline: str, head: str) -> bool:
 
     Filters out:
     - Files under todos/ and .teleclaude/
-    - Files whose changes were introduced solely by merge commits
+    - Files changed exclusively by merge commits
+
+    Computes files changed by non-merge commits directly (via --no-merges) rather than
+    subtracting merge-commit files from the total diff. This avoids the over-subtraction
+    bug where a file touched by both a merge commit and a regular commit would be
+    incorrectly excluded, producing a false negative and allowing a stale approval through.
 
     Returns True on subprocess errors (fail-safe: assume meaningful diff, invalidate).
     """
     infra_prefixes = ("todos/", ".teleclaude/")
     try:
-        diff_result = subprocess.run(
-            ["git", "-C", cwd, "diff", "--name-only", f"{baseline}..{head}"],
+        log_result = subprocess.run(
+            [
+                "git",
+                "-C",
+                cwd,
+                "log",
+                "--no-merges",
+                "--name-only",
+                "--pretty=format:",
+                f"{baseline}..{head}",
+            ],
             capture_output=True,
             text=True,
             check=True,
         )
-        changed_files: set[str] = {
-            f for f in diff_result.stdout.splitlines() if not any(f.startswith(p) for p in infra_prefixes)
+        meaningful_files = {
+            f
+            for f in log_result.stdout.splitlines()
+            if f.strip() and not any(f.startswith(p) for p in infra_prefixes)
         }
-        if not changed_files:
-            return False
-
-        merges_result = subprocess.run(
-            ["git", "-C", cwd, "rev-list", "--merges", f"{baseline}..{head}"],
-            capture_output=True,
-            text=True,
-            check=True,
+        return bool(meaningful_files)
+    except (subprocess.CalledProcessError, OSError) as exc:
+        logger.warning(
+            "has_meaningful_diff: subprocess error; assuming meaningful diff (fail-safe)",
+            extra={"cwd": cwd, "baseline": baseline, "head": head, "error": str(exc)},
         )
-        for merge_commit in merges_result.stdout.splitlines():
-            merge_commit = merge_commit.strip()
-            if not merge_commit:
-                continue
-            try:
-                merge_diff = subprocess.run(
-                    ["git", "-C", cwd, "diff", "--name-only", f"{merge_commit}^..{merge_commit}"],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
-                changed_files -= set(merge_diff.stdout.splitlines())
-            except subprocess.CalledProcessError:
-                continue  # Best-effort: skip unparseable merge commit
-
-        return bool(changed_files)
-    except (subprocess.CalledProcessError, OSError):
         return True  # Fail-safe: assume meaningful diff, invalidate approval
 
 
@@ -3005,7 +3005,9 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         baseline_raw = state.get("review_baseline_commit")
         baseline = baseline_raw if isinstance(baseline_raw, str) else ""
         head_sha = await asyncio.to_thread(_get_head_commit, worktree_cwd)
-        if baseline and head_sha and baseline != head_sha and _has_meaningful_diff(worktree_cwd, baseline, head_sha):
+        if baseline and head_sha and baseline != head_sha and await asyncio.to_thread(
+            _has_meaningful_diff, worktree_cwd, baseline, head_sha
+        ):
             repair_started = perf_counter()
             await asyncio.to_thread(
                 mark_phase, worktree_cwd, resolved_slug, PhaseName.REVIEW.value, PhaseStatus.PENDING.value
@@ -3115,6 +3117,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 await asyncio.to_thread(
                     mark_phase, worktree_cwd, resolved_slug, PhaseName.BUILD.value, PhaseStatus.STARTED.value
                 )
+            # review_round > 0: keep build=complete; builder gets a focused fix instruction
             next_call = f"telec todo work {resolved_slug}"
             return format_build_gate_failure(resolved_slug, artifacts_output, next_call)
         _log_next_work_phase(phase_slug, "gate_execution", verify_started, "run", "artifact_verification_passed")
