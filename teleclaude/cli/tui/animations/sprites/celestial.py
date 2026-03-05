@@ -10,6 +10,7 @@ from teleclaude.cli.tui.animations.sprites.composite import CompositeSprite, Spr
 
 # fmt: off
 MOON_SPRITE = CompositeSprite(
+    
     layers=[
         SpriteLayer(
             positive=[

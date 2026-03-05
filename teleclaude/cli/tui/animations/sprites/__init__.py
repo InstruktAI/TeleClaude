@@ -1,13 +1,9 @@
 """AnimatedSprite definitions for TUI sky animations."""
 
 from teleclaude.cli.tui.animations.sprites.birds import BIRD_FLOCK
+from teleclaude.cli.tui.animations.sprites.cars import CAR_SPRITE
 from teleclaude.cli.tui.animations.sprites.celestial import MOON_SPRITE, SUN_SPRITE
-from teleclaude.cli.tui.animations.sprites.clouds import (
-    CLOUDS_CLEAR,
-    CLOUDS_CLOUDY,
-    CLOUDS_FAIR,
-    CLOUDS_OVERCAST,
-)
+from teleclaude.cli.tui.animations.sprites.clouds import CLOUDS_CLEAR, CLOUDS_CLOUDY, CLOUDS_FAIR, CLOUDS_OVERCAST
 from teleclaude.cli.tui.animations.sprites.composite import AnimatedSprite, CompositeSprite, SpriteGroup, SpriteLayer
 from teleclaude.cli.tui.animations.sprites.ufo import UFO_SPRITE
 
@@ -23,6 +19,7 @@ __all__ = [
     "SpriteLayer",
     "SUN_SPRITE",
     "UFO_SPRITE",
+    "CAR_SPRITE",
 ]
 
 

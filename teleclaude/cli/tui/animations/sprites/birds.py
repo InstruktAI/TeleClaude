@@ -6,7 +6,7 @@ from teleclaude.cli.tui.animations.sprites.composite import AnimatedSprite, Comp
 BIRD_SMALL = AnimatedSprite(
     frames=[["v"], ["^"]],
     z_weights=[(29, 40), (39, 60)],
-    y_weights=[(0, 50), (1, 40), (2, 10)],
+    y_weights=[(0, 1, 50), (2, 4, 40), (5, 7, 10)],
     speed_weights=[(0.2, 20), (0.3, 40), (0.5, 30), (0.8, 10)],
     theme="light",
 )
@@ -18,7 +18,7 @@ BIRD_SMALL = AnimatedSprite(
 #         "◜◝",
 #     ]],
 #     z_weights=[(49, 50), (59, 50)],
-#     y_weights=[(0, 20), (1, 20), (2, 20)],
+#     y_weights=[(0, 1, 20), (2, 4, 20), (5, 7, 20)],
 #     speed_weights=[(0.8, 20), (1.1, 40), (1.4, 30), (1.8, 10)],
 # )
 
@@ -51,7 +51,7 @@ BIRD_LARGE = AnimatedSprite(
         ])]),
     ],
     z_weights=[(49, 50), (59, 50)],
-    y_weights=[(0, 20), (1, 20), (2, 20)],
+    y_weights=[(0, 1, 20), (2, 4, 20), (5, 7, 20)],
     speed_weights=[(0.7, 20), (0.8, 40), (1.0, 30), (1.2, 10)],
     theme="light",
 )

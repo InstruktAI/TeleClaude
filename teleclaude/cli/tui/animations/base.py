@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 # Z-depth scale: 0–90 in steps of 10.
 # Fixed positions (engine uses these):
 #   Z0  = sky gradient background
-#   Z40 = billboard animation layer
+#   Z50 = billboard (letters + stakes) occlusion threshold
 #   Z60 = inactive tab occlusion threshold
 #   Z80 = active tab occlusion threshold
 # Everything else is free for sprite z_weights.

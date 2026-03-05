@@ -35,6 +35,39 @@ def _to_color(c: str | int | None) -> str | None:
     return None
 
 
+def _scan_entity_at(
+    engine: "AnimationEngine",
+    entity_z_scan: list[int],
+    x: int,
+    global_y: int,
+    z_min: int,
+    sky_color: str,
+) -> tuple[str | None, str | None, str | None] | None:
+    """Scan for entity above z_min at (x, global_y).
+
+    Returns (fg_char, fg_color, bg_color) or None.
+    fg_char=None means bg-only (ambient glow).
+    """
+    for z in entity_z_scan:
+        if z <= z_min:
+            break
+        val = engine.get_layer_color(z, x, global_y, target="header")
+        if val and val != -1 and isinstance(val, str):
+            elen = len(val)
+            if elen == 15 and val[0] == "#" and val[7] == "#":
+                return val[14], val[0:7], val[7:14]
+            if elen == 8 and val[0] == "#":
+                return val[7], val[0:7], None
+            if elen == 9 and val[0] == "\x01" and val[1] == "#":
+                return val[8], sky_color, val[1:8]
+            if elen == 7 and val[0] == "#":
+                return None, None, val
+            if elen == 1:
+                return val, "#FFFFFF", None
+            break
+    return None
+
+
 class BoxTabBar(TelecMixin, Widget):
     """Tab bar. Dark mode: 3-row box-drawing. Light mode: 2-row half-block."""
 
@@ -173,6 +206,24 @@ class BoxTabBar(TelecMixin, Widget):
 
                 # Transition row: ▄ half-block for smooth tab-to-content edge
                 if y_offset == num_rows - 1:
+                    # Entity override: high-Z sprites render in front
+                    if engine:
+                        z_min = (Z80 if active_tab_under else Z60) if in_tab else 0
+                        hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, sky_color)
+                        if hit:
+                            e_char, e_fg, e_bg = hit
+                            if e_char is not None:
+                                row_text.append(
+                                    e_char,
+                                    style=Style(color=_to_color(e_fg), bgcolor=_to_color(e_bg or pane_bg)),
+                                )
+                                continue
+                            elif e_bg is not None:
+                                row_text.append(
+                                    "\u2584",
+                                    style=Style(color=_to_color(pane_bg), bgcolor=_to_color(e_bg)),
+                                )
+                                continue
                     if not in_tab:
                         # Sample sky from the row above for seamless visual continuity
                         sky_above = engine.get_layer_color(Z0, x, global_y - 1, target="header") if engine else None
@@ -204,6 +255,22 @@ class BoxTabBar(TelecMixin, Widget):
 
                 # Light mode row 0: ▀ half-block — fg=sky fills top, bg=tab fills bottom
                 if not dark_mode and in_tab and y_offset == 0:
+                    if engine:
+                        hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_base, sky_color)
+                        if hit:
+                            e_char, e_fg, e_bg = hit
+                            if e_char is not None:
+                                row_text.append(
+                                    e_char,
+                                    style=Style(color=_to_color(e_fg), bgcolor=_to_color(e_bg or tab_bg)),
+                                )
+                                continue
+                            elif e_bg is not None:
+                                row_text.append(
+                                    char,
+                                    style=Style(color=_to_color(sky_color), bgcolor=_to_color(e_bg)),
+                                )
+                                continue
                     row_text.append(
                         char,
                         style=Style(color=_to_color(sky_color), bgcolor=_to_color(tab_bg)),
@@ -219,36 +286,15 @@ class BoxTabBar(TelecMixin, Widget):
                 is_opaque_ui = in_tab or (dark_mode and y_offset == 2)
 
                 if engine:
-                    # Multi-Z entity scan: opaque UI elements occlude entities
-                    # behind them; sky gaps render all entities freely.
-                    for z in entity_z_scan:
-                        if is_opaque_ui and z <= z_base:
-                            break
-                        entity = engine.get_layer_color(z, x, global_y, target="header")
-                        if entity and entity != -1 and isinstance(entity, str):
-                            if not is_opaque_ui:
-                                elen = len(entity)
-                                if elen == 15 and entity[0] == "#" and entity[7] == "#":
-                                    # Fully resolved sprite pixel: #fg#bgc
-                                    fg_char = entity[14]
-                                    fg_color = entity[0:7]
-                                    final_bg = entity[7:14]
-                                elif elen == 8 and entity[0] == "#":
-                                    # Positive colored char: #RRGGBBc
-                                    fg_char = entity[7]
-                                    fg_color = entity[0:7]
-                                elif elen == 9 and entity[0] == "\x01" and entity[1] == "#":
-                                    # Negative colored char: \x01#RRGGBBc
-                                    fg_char = entity[8]
-                                    fg_color = sky_color
-                                    final_bg = entity[1:8]
-                                elif elen == 7 and entity[0] == "#":
-                                    # Pure color (glow/ambient)
-                                    final_bg = entity
-                                elif elen == 1:
-                                    fg_char = entity
-                                    fg_color = "#FFFFFF"
-                            break
+                    z_min = z_base if is_opaque_ui else 0
+                    hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, sky_color)
+                    if hit:
+                        e_char, e_fg, e_bg = hit
+                        if e_char is not None:
+                            fg_char = e_char
+                            fg_color = e_fg
+                        if e_bg is not None:
+                            final_bg = e_bg
 
                     if not is_opaque_ui and engine.has_active_animation and engine.is_external_light():
                         color = engine.get_color(x, global_y)
