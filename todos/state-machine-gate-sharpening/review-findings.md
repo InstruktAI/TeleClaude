@@ -125,6 +125,24 @@ The build gate path has a comment at line 3099 explaining the `review_round > 0`
 2. **Requirements validated:** All seven success criteria (SC-1 through SC-7) have corresponding code paths and test coverage. Conditional logic at gate failure matches requirements exactly.
 3. **Copy-paste checked:** No duplication detected — the three features are distinct functions/branches. The `review_round` conditional appears in two places (build gate, artifact verification) intentionally for the same logic.
 
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| C-1 | Replaced over-subtracting merge diff algorithm with `git log --no-merges --name-only`; added regression test for file-in-both-merge-and-real-commit scenario | 44420b51 |
+| C-2 | Wrapped `_has_meaningful_diff` call in `asyncio.to_thread` | 44420b51 |
+| C-3 | Replaced `test_next_machine_state_deps.py` with `test_state_machine_gate_sharpening.py` in demo block 4 | 62a4c178 |
+| I-1 | Added `logger.warning` with cwd/baseline/head/error context in subprocess error handler | 44420b51 |
+| I-2 | Added comment explaining why retry env mirrors Makefile config paths | 44420b51 |
+| I-3 | Replaced broken `grep -A5 ... \| grep "_has_meaningful_diff"` with `grep -B5 "_has_meaningful_diff" ... \| head -10` | 62a4c178 |
+| I-4 | Added `test_run_build_gates_retry_timeout_fails_gate` covering `subprocess.TimeoutExpired` in retry path | bcd05aed |
+| I-5 | Added `test_next_work_artifact_failure_review_round_zero_resets_build` and `test_next_work_artifact_failure_review_round_gt_zero_keeps_build_complete` | bcd05aed |
+| S-4 | Added `# review_round > 0: keep build=complete` comment to artifact verification path | 44420b51 |
+
+Tests: 27 passed (unit), 2710 passed (full suite). Pre-existing failures in `test_resource_validation.py` and `test_telec_sync.py` (7 tests) are unrelated to this feature — those files were not modified on this branch.
+
 ## Verdict: REQUEST CHANGES
 
 3 Critical, 5 Important, 4 Suggestions. The merge-commit over-subtraction (C-1) violates the stated fail-safe contract, the synchronous event loop call (C-2) is a correctness bug in async code, and the demo references the wrong file (C-3).
+
+_(Original verdict preserved; re-review pending.)_
