@@ -100,9 +100,9 @@ backward-compatible with existing consumers.
 
 **File(s):** `teleclaude_events/schema_export.py` (new)
 
-- [ ] Create `export_json_schema() -> dict` that returns `EventEnvelope.model_json_schema()`
-- [ ] Create `export_json_schema_file(path: Path) -> None` that writes the schema to disk
-- [ ] Include a `if __name__ == "__main__"` block for CLI invocation:
+- [x] Create `export_json_schema() -> dict` that returns `EventEnvelope.model_json_schema()`
+- [x] Create `export_json_schema_file(path: Path) -> None` that writes the schema to disk
+- [x] Include a `if __name__ == "__main__"` block for CLI invocation:
       `python -m teleclaude_events.schema_export [output_path]`
 
 ---
