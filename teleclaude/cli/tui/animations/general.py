@@ -53,9 +53,11 @@ class GlobalSky(Animation):
     _WEATHER_NAMES = ["clear", "fair", "cloudy", "overcast"]
     _WEATHER_WEIGHTS = [30, 35, 25, 10]
 
-    # City glow: 3 rows behind tab bar (y=7,8,9)
-    _CITY_GLOW_DARK = ["#1A0035", "#270055", "#0A0010"]
-    _CITY_GLOW_LIGHT = ["#A0D8F0", "#B8E4F8", "#D0F0FF"]
+    # Sky: base color at top, progressive blend toward target at bottom (1% per row)
+    _SKY_BASE_DARK = "#000000"
+    _SKY_TARGET_DARK = "#1A0035"  # deep purple
+    _SKY_BASE_LIGHT = "#87CEEB"
+    _SKY_TARGET_LIGHT = "#FFFFFF"  # white
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         kwargs.setdefault("target", "header")
@@ -63,10 +65,6 @@ class GlobalSky(Animation):
         self.width = 400
         self.height = 10
         self._all_pixels = [(x, y) for y in range(self.height) for x in range(self.width)]
-
-        # Sky gradients
-        self.day_sky = Spectrum(["#87CEEB", "#9DD4F0", "#B8E0F5", "#C8E8F8"])
-        self.night_sky = Spectrum(["#000000", "#080012", "#120028", "#1A0035"])
 
         # Pre-computed sky gradient caches (avoid 4000 interpolations per frame)
         self._cached_dark_mode: bool | None = None
@@ -271,16 +269,18 @@ class GlobalSky(Animation):
         self.force_spawn()
 
     def _build_sky_cache(self) -> list[tuple[int, int, int, str]]:
-        """Pre-compute static sky gradient pixels for the current theme."""
+        """Pre-compute static sky gradient pixels for the current theme.
+
+        Progressive blend: row 0 = base color, each row adds 1% toward target.
+        """
+        from teleclaude.cli.tui.theme import blend_colors
+
+        base = self._SKY_BASE_DARK if self.dark_mode else self._SKY_BASE_LIGHT
+        target = self._SKY_TARGET_DARK if self.dark_mode else self._SKY_TARGET_LIGHT
+        row_colors = [blend_colors(base, target, y * 0.02) for y in range(self.height)]
         pixels: list[tuple[int, int, int, str]] = []
-        sky = self.night_sky if self.dark_mode else self.day_sky
         for x, y in self._all_pixels:
-            pos_factor = y / max(1, self.height - 1)
-            pixels.append((Z0, x, y, sky.get_color(pos_factor)))
-        glow = self._CITY_GLOW_DARK if self.dark_mode else self._CITY_GLOW_LIGHT
-        for dy, glow_color in enumerate(glow):
-            for x in range(self.width):
-                pixels.append((Z0, x, 7 + dy, glow_color))
+            pixels.append((Z0, x, y, row_colors[y]))
         return pixels
 
     def _render_quarter_celestial(self, buffer: RenderBuffer, term_width: int) -> None:
