@@ -13,17 +13,17 @@ backward-compatible with existing consumers.
 
 **File(s):** `teleclaude_events/envelope.py`
 
-- [ ] Add `model_config = ConfigDict(extra="allow")` to `EventEnvelope`
-- [ ] Update `to_stream_dict()` to collect extra fields into a JSON-encoded `_extra` key
-- [ ] Update `from_stream_dict()` to deserialize `_extra` back into model extra fields
+- [x] Add `model_config = ConfigDict(extra="allow")` to `EventEnvelope`
+- [x] Update `to_stream_dict()` to collect extra fields into a JSON-encoded `_extra` key
+- [x] Update `from_stream_dict()` to deserialize `_extra` back into model extra fields
 
 ### Task 1.2: Update EventDB for extra field storage
 
 **File(s):** `teleclaude_events/db.py`
 
-- [ ] Verify the `payload` column (JSON) can carry extra fields if needed, OR
+- [x] Verify the `payload` column (JSON) can carry extra fields if needed, OR
       confirm extra fields are envelope-level and do not affect notification projection
-- [ ] No schema migration needed — extra fields live on the envelope, not in SQLite
+- [x] No schema migration needed — extra fields live on the envelope, not in SQLite
 
 ---
 
@@ -87,9 +87,9 @@ backward-compatible with existing consumers.
 
 **File(s):** `teleclaude_events/envelope.py`
 
-- [ ] Add `SCHEMA_VERSION: int = 1` constant at module level
-- [ ] Update `EventEnvelope.version` field default to use `SCHEMA_VERSION`
-- [ ] Add a docstring explaining that SCHEMA_VERSION tracks the envelope structure
+- [x] Add `SCHEMA_VERSION: int = 1` constant at module level
+- [x] Update `EventEnvelope.version` field default to use `SCHEMA_VERSION`
+- [x] Add a docstring explaining that SCHEMA_VERSION tracks the envelope structure
       generation and is bumped when fields are added/removed/changed
 
 ---
