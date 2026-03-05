@@ -164,108 +164,101 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 
 ### Disagreements with Current `tool_access.py`
 
-The current code in `teleclaude/core/tool_access.py` uses exclusion sets. Below are commands where the current implementation disagrees with this matrix.
+Workers now use a **whitelist** (`WORKER_ALLOWED_TOOLS`): only explicitly listed tools pass; all others are denied by default. This means new clearance-gated tools are automatically blocked for workers until whitelisted. Human roles still use exclusion sets (deny-lists).
 
-### 1. `telec sessions escalate` — Worker gate
+### Resolved
 
-**Current code**: `WORKER_EXCLUDED_TOOLS` contains `telec sessions escalate` (workers CANNOT escalate).
-**Matrix**: Workers SHOULD be able to escalate. A stuck worker needs a way to ask for help. Blocking escalate from workers means they silently fail.
-**Action**: Remove `telec sessions escalate` from `WORKER_EXCLUDED_TOOLS`.
+- **Worker escalate bug** — `telec sessions escalate` is in `WORKER_ALLOWED_TOOLS`. Workers can escalate when stuck.
+- **Worker send bug** — `telec sessions send` is in `WORKER_ALLOWED_TOOLS`. Workers can message each other (reviewer ↔ fixer collaboration).
+- **Worker default-deny** — New clearance-gated tools are denied by default for workers (whitelist model).
 
-### 2. `telec sessions escalate` — Member gate
+### Still Open
+
+### 1. `telec sessions escalate` — Member gate
 
 **Current code**: `MEMBER_EXCLUDED_TOOLS` contains `telec sessions escalate` (members CANNOT escalate).
 **Matrix**: Members SHOULD be able to escalate. Escalation is for all non-admins. Admins are the target, not the source.
 **Action**: Remove `telec sessions escalate` from `MEMBER_EXCLUDED_TOOLS`. Add `telec sessions escalate` to a new admin-excluded set (since admins don't escalate to themselves).
 
-### 3. `telec sessions escalate` — Admin gate
+### 2. `telec sessions escalate` — Admin gate
 
 **Current code**: Admins have no exclusions, so admins CAN escalate.
 **Matrix**: Admins SHOULD NOT escalate. They are the escalation target. Allowing admin escalation is a logical error.
 **Action**: Create an `ADMIN_EXCLUDED_TOOLS` set containing `telec sessions escalate`.
 
-### 4. Missing commands — no enforcement at all
+### 3. Missing commands — no enforcement at all
 
-The following commands have no entries in any exclusion set and therefore default to "allowed for everyone" at the tool-access layer. Many of these need restrictions per this matrix:
+Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API endpoint) and therefore bypass the tool-access layer entirely. These need enforcement:
 
 | Command | Should be restricted for |
 |---|---|
-| `telec sessions list` | Workers (system) |
-| `telec sessions tail` | Workers (system) |
-| `telec sessions revive` | Workers, contributors, newcomers, customers |
-| `telec sessions restart` | Workers, contributors, newcomers, customers |
+| `telec sessions revive` | Contributors, newcomers, customers |
+| `telec sessions restart` | Contributors, newcomers, customers |
 | `telec sessions result` | Newcomers, customers |
 | `telec sessions widget` | Newcomers, customers |
-| `telec computers list` | Workers, contributors, newcomers, customers |
-| `telec projects list` | Workers, customers |
-| `telec agents availability` | Workers, customers |
-| `telec channels list` | Workers, contributors, newcomers, customers |
-| `telec channels publish` | Workers, contributors, newcomers, customers |
-| `telec init` | Workers, contributors, newcomers, customers |
-| `telec sync` | Workers, contributors, newcomers, customers |
-| `telec watch` | Workers, contributors, newcomers, customers |
-| `telec todo create` | Workers, newcomers, customers |
-| `telec todo remove` | Workers, contributors, newcomers, customers |
+| `telec init` | Contributors, newcomers, customers |
+| `telec sync` | Contributors, newcomers, customers |
+| `telec watch` | Contributors, newcomers, customers |
+| `telec todo create` | Newcomers, customers |
+| `telec todo remove` | Contributors, newcomers, customers |
 | `telec todo validate` | Customers |
 | `telec todo demo *` | Various per subcommand |
 | `telec todo verify-artifacts` | Customers |
-| `telec todo dump` | Workers (no -- allowed), newcomers, customers |
-| `telec roadmap list` | Workers, customers |
-| `telec roadmap add` | Workers, contributors, newcomers, customers |
-| `telec roadmap remove` | Workers, contributors, newcomers, customers |
-| `telec roadmap move` | Workers, contributors, newcomers, customers |
-| `telec roadmap deps` | Workers, contributors, newcomers, customers |
-| `telec roadmap freeze` | Workers, contributors, newcomers, customers |
-| `telec roadmap deliver` | Workers, contributors, newcomers, customers |
+| `telec todo dump` | Newcomers, customers |
+| `telec roadmap list` | Customers |
+| `telec roadmap add` | Contributors, newcomers, customers |
+| `telec roadmap remove` | Contributors, newcomers, customers |
+| `telec roadmap move` | Contributors, newcomers, customers |
+| `telec roadmap deps` | Contributors, newcomers, customers |
+| `telec roadmap freeze` | Contributors, newcomers, customers |
+| `telec roadmap deliver` | Contributors, newcomers, customers |
 | `telec bugs report` | Customers |
-| `telec bugs create` | Workers, newcomers, customers |
+| `telec bugs create` | Newcomers, customers |
 | `telec bugs list` | Customers |
 | `telec content dump` | Newcomers, customers |
 | `telec events list` | Customers |
-| `telec config wizard` | Workers, members, contributors, newcomers, customers |
+| `telec config wizard` | Members, contributors, newcomers, customers |
 | `telec config get` | Customers |
-| `telec config patch` | Workers, members, contributors, newcomers, customers |
+| `telec config patch` | Members, contributors, newcomers, customers |
 | `telec config validate` | Customers |
-| `telec config people *` | Workers, members, contributors, newcomers, customers |
-| `telec config env *` | Workers, members, contributors, newcomers, customers |
-| `telec config notify` | Workers, contributors, newcomers, customers |
-| `telec config invite` | Workers, members, contributors, newcomers, customers |
+| `telec config people *` | Members, contributors, newcomers, customers |
+| `telec config env *` | Members, contributors, newcomers, customers |
+| `telec config notify` | Contributors, newcomers, customers |
+| `telec config invite` | Members, contributors, newcomers, customers |
 
-### 5. `MEMBER_EXCLUDED_TOOLS` applied too broadly
+### 4. `MEMBER_EXCLUDED_TOOLS` applied too broadly
 
 **Current code**: The `MEMBER_EXCLUDED_TOOLS` set is applied to members, contributors, AND newcomers equally (all three share the same exclusion set).
 **Matrix**: These three roles have meaningfully different access levels. Contributors should not start/send/run sessions. Newcomers should be even more restricted (read-heavy). The current code under-restricts contributors and newcomers.
 **Action**: Create separate `CONTRIBUTOR_EXCLUDED_TOOLS` and `NEWCOMER_EXCLUDED_TOOLS` sets.
 
-### 6. `CUSTOMER_EXCLUDED_TOOLS` — missing many commands
+### 5. `CUSTOMER_EXCLUDED_TOOLS` — missing many commands
 
 **Current code**: Customer exclusions are built from `UNAUTHORIZED_EXCLUDED_TOOLS` plus `sessions list`, `roadmap list`, `channels publish`, and `channels list`, minus `sessions escalate`.
 **Matrix**: Customers should also be excluded from: `sessions tail`, `sessions revive`, `sessions restart`, `sessions result`, `sessions widget`, `computers list`, `projects list`, `agents availability`, `agents status`, all `todo *`, all `roadmap *` (not just list), all `bugs *`, `content dump`, `events list`, all `config *` commands (except auth is universal).
-**Action**: Rebuild `CUSTOMER_EXCLUDED_TOOLS` to be a comprehensive deny-list, or switch to an allow-list approach for customers (which would be simpler: allow only `version`, `docs *`, `auth *`, `sessions escalate`).
+**Action**: Switch to an allow-list approach for customers (simpler: allow only `version`, `docs *`, `auth *`, `sessions escalate`).
 
-### 7. `UNAUTHORIZED_EXCLUDED_TOOLS` — inconsistent with newcomer
+### 6. `UNAUTHORIZED_EXCLUDED_TOOLS` — inconsistent with newcomer
 
 **Current code**: `UNAUTHORIZED_EXCLUDED_TOOLS` is used as the fallback for unknown/unauthenticated users AND is the base for customer exclusions.
 **Matrix**: Unauthorized (no identity) should have the most restrictive access -- essentially the same as customer or even less. The current set misses many commands that should be restricted.
 
 ### Implementation Recommendations
 
-1. **Switch customers to an allow-list.** The customer role is so restricted that an allow-list is cleaner than a deny-list. Customer allowed commands: `telec version`, `telec docs index`, `telec docs get`, `telec auth login`, `telec auth whoami`, `telec auth logout`, `telec sessions escalate`.
+1. **Extend whitelist model to customers and unauthorized.** Workers already use a whitelist. Customers and unauthorized roles are equally restricted — switch them to allow-lists too.
 
 2. **Create per-role exclusion sets.** Replace the current shared `MEMBER_EXCLUDED_TOOLS` with distinct sets for member, contributor, and newcomer.
 
 3. **Add admin exclusions.** Create `ADMIN_EXCLUDED_TOOLS = {"telec sessions escalate"}` -- admins are the escalation target.
 
-4. **Fix the worker escalate bug.** Workers must be able to escalate. Remove `telec sessions escalate` from `WORKER_EXCLUDED_TOOLS`.
-
-5. **Enumerate all leaf commands in enforcement.** The current code only covers ~15 commands. This matrix covers 65+ leaf commands. Every command needs a gate, or the system must default-deny unknown commands.
+4. **Enumerate all leaf commands in enforcement.** The current code only covers ~20 commands with clearance gates. This matrix covers 65+ leaf commands. Every command needs a gate, or the system must default-deny unknown commands.
 
 ## Failure modes
 
 | Scenario                                       | Behavior                                                                                           |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Command not in any exclusion set               | Defaults to allowed for all roles; must default-deny unknown commands to close this gap.           |
+| New clearance-gated tool added for workers     | Denied by default (whitelist model). Must be added to `WORKER_ALLOWED_TOOLS` to permit.           |
+| Command not in any exclusion set (human roles) | Defaults to allowed; must default-deny unknown commands or add clearance gates to close this gap.  |
 | Shared exclusion set applied to multiple roles | Under-restricts contributors and newcomers; requires distinct per-role sets.                       |
-| Worker attempts to escalate (current bug)      | Blocked by `WORKER_EXCLUDED_TOOLS`; fix requires removing `sessions escalate` from worker set.    |
 | Admin attempts to escalate                     | Currently allowed; must create `ADMIN_EXCLUDED_TOOLS = {"telec sessions escalate"}` to block it.  |
 | Customer bypasses via non-enumerated command   | Deny-list approach misses new commands; switch to allow-list for customer role to close the gap.  |
