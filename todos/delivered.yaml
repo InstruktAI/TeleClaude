@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: integrator-state-machine
+  date: '2026-03-05'
+  title: Idempotent state machine for the singleton integrator — deterministic script
+    with agent decision points
+  description: Idempotent state machine for the singleton integrator — deterministic
+    script with agent decision points
 - slug: person-proficiency-level
   date: '2026-03-05'
   title: Add proficiency field to PersonEntry for agent behavioral calibration
