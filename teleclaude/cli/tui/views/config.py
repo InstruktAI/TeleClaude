@@ -561,7 +561,10 @@ class ConfigContent(TelecMixin, Widget):
                 person = next((p for p in self._people_data if p.name == self._expanded_person), None)
                 if person is not None:
                     field = _PERSON_EDITABLE_FIELDS[self._person_field_cursor]
-                    self._begin_person_field_edit(person, field)
+                    if field == "role":
+                        self._cycle_person_role(person)
+                    else:
+                        self._begin_person_field_edit(person, field)
             return
 
         selected = self._current_selected_env()
@@ -574,6 +577,26 @@ class ConfigContent(TelecMixin, Widget):
         self._status_message = f"Editing {status.info.name}. Enter saves, Esc cancels."
         self._status_is_error = False
         self.refresh(layout=True)
+
+    def _cycle_person_role(self, person: PersonEntry) -> None:
+        from teleclaude.cli.config_handlers import get_global_config, save_global_config
+
+        current = person.role
+        idx = _VALID_ROLES.index(current) if current in _VALID_ROLES else -1
+        next_role = _VALID_ROLES[(idx + 1) % len(_VALID_ROLES)]
+        try:
+            config = get_global_config()
+            for p in config.people:
+                if p.name == person.name:
+                    p.role = next_role  # type: ignore[assignment]
+                    break
+            save_global_config(config)
+            self._status_message = f"Role set to {next_role}"
+            self._status_is_error = False
+        except Exception as exc:
+            self._status_message = f"Failed to save role: {exc}"
+            self._status_is_error = True
+        self.refresh_data()
 
     def _begin_person_field_edit(self, person: PersonEntry, field: str) -> None:
         self._editing_person_field = field
@@ -891,6 +914,16 @@ class ConfigContent(TelecMixin, Widget):
                     if self._editing_person_field == field:
                         result.append(f"      {field_prefix} {field} = {self._edit_buffer}█\n", style=field_row_style)
                         result.append("          Enter save  Esc cancel  Ctrl+U clear\n", style=_DIM)
+                    elif field == "role":
+                        value = str(getattr(person, field, "") or "")
+                        result.append(f"      {field_prefix} ", style=_DIM)
+                        result.append("role: ", style=_DIM)
+                        for opt in _VALID_ROLES:
+                            opt_style = _TAB_ACTIVE if opt == value else _TAB_INACTIVE
+                            result.append(f" {opt} ", style=opt_style)
+                        if field_selected:
+                            result.append("  ↵ cycle", style=_DIM)
+                        result.append("\n")
                     else:
                         value = str(getattr(person, field, "") or "")
                         icon = "✔" if value else "○"
@@ -1009,7 +1042,10 @@ class ConfigContent(TelecMixin, Widget):
                     self._person_field_cursor = field_idx
                     person = next((p for p in self._people_data if p.name == self._expanded_person), None)
                     if person is not None:
-                        self._begin_person_field_edit(person, field)
+                        if field == "role":
+                            self._cycle_person_role(person)
+                        else:
+                            self._begin_person_field_edit(person, field)
                     break
 
     def watch_active_subtab(self, _value: int) -> None:
