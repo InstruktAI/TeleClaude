@@ -69,7 +69,7 @@ def _scan_entity_at(
 
 
 class BoxTabBar(TelecMixin, Widget):
-    """Tab bar. Dark mode: 3-row box-drawing. Light mode: 2-row half-block."""
+    """Tab bar. Dark mode: label + white bar + transition. Light mode: label + transition."""
 
     TABS = [
         ("sessions", "[1] AI Sessions"),
@@ -114,23 +114,29 @@ class BoxTabBar(TelecMixin, Widget):
         width = self.size.width or 80
         engine = self.animation_engine
         dark_mode = is_dark_mode()
-        from teleclaude.cli.tui.animations.base import (
-            Z0,
-            Z60,
-            Z80,
-        )
+        from teleclaude.cli.tui.animations.base import Z0, Z60, Z70, Z80
 
         sky_fallback = "#000000" if dark_mode else "#C8E8F8"
 
-        # Tab and pane backgrounds — same routine as CSS $background in app.py
         pane_bg = resolve_haze(get_terminal_background())
-        active_bg = pane_bg
         inactive_bg = get_tui_inactive_background()
+        pipe_color = resolve_haze(get_neutral_color("muted"))
 
-        # Dark mode: 3 rows (box-drawing) + 1 transition, 2-char gap (borders touch)
-        # Light mode: 2 rows (half-block + label) + 1 transition, 3-char gap (1-char sky between tabs)
+        # Dark mode: 4 rows (sky, label, bar, transition)
+        # Light mode: 3 rows (sky, label, transition)
         num_rows = 4 if dark_mode else 3
-        tab_gap = 2 if dark_mode else 3
+        tab_gap = 1
+
+        # Dark mode: white bar, inverted active tab (white bg + dark text)
+        if dark_mode:
+            bar_color = "#FFFFFF"
+            active_tab_bg = bar_color
+            active_tab_fg = pane_bg
+        else:
+            bar_color = None
+            active_tab_bg = pane_bg
+            active_tab_fg = resolve_haze(get_neutral_color("highlight"))
+        inactive_tab_fg = resolve_haze(get_neutral_color("muted"))
 
         tabs: list[tuple[int, int, str, bool, str]] = []
         col = 1
@@ -141,150 +147,123 @@ class BoxTabBar(TelecMixin, Widget):
             tabs.append((col, w, padded, is_active, tab_id))
             col += w + tab_gap
 
-        self._click_regions = [(c, c + w + 2, tid) for c, w, _, _, tid in tabs]
+        self._click_regions = [(c, c + w, tid) for c, w, _, _, tid in tabs]
 
-        # Entity Z-levels: all populated levels from the buffer, highest first
         entity_z_scan = engine.get_entity_z_levels("header") if engine else []
 
         rows = []
         for y_offset in range(num_rows):
             row_text = Text()
-            global_y = 7 + y_offset  # Tab bar starts at Y=7
+            global_y = 7 + y_offset
 
             for x in range(width):
                 char = " "
                 in_tab = False
                 active_tab_under = False
                 tab_bg: str | None = None
+                tab_fg: str | None = None
 
                 for c, w, label, is_active, _ in tabs:
-                    if c <= x < c + w + 2:
+                    if c <= x < c + w:
                         in_tab = True
                         active_tab_under = is_active
-                        tab_bg = active_bg if is_active else inactive_bg
-                        rel_x = x - c
-
-                        if dark_mode:
-                            if y_offset == 0:
-                                if rel_x == 0:
-                                    char = "\u256d"  # ╭
-                                elif rel_x == w + 1:
-                                    char = "\u256e"  # ╮
-                                else:
-                                    char = "\u2500"  # ─
-                            elif y_offset == 1:
-                                if rel_x == 0 or rel_x == w + 1:
-                                    char = "\u2502"  # │
-                                elif 1 <= rel_x <= w:
-                                    char = label[rel_x - 1]
-                            elif y_offset == 2:
-                                if is_active:
-                                    if rel_x == 0 or rel_x == w + 1:
-                                        char = "\u2534"  # ┴
-                                    else:
-                                        char = " "
-                                else:
-                                    char = "\u2500"  # ─ (inactive blends into pane border)
-                        else:
-                            # Light mode
-                            if y_offset == 0:
-                                char = "\u2580"  # ▀ — fg=sky (top), bg=tab (bottom)
-                            elif y_offset == 1:
-                                if rel_x == 0 or rel_x == w + 1:
-                                    char = " "
-                                elif 1 <= rel_x <= w:
-                                    char = label[rel_x - 1]
+                        tab_bg = active_tab_bg if is_active else inactive_bg
+                        tab_fg = active_tab_fg if is_active else inactive_tab_fg
+                        if y_offset == 1:
+                            char = label[x - c]
                         break
 
-                if dark_mode and not in_tab and y_offset == 2:
-                    char = "\u2500"  # ─ connector line between tabs
-
-                # Sky color at this position
                 sky_color = engine.get_layer_color(Z0, x, global_y, target="header") if engine else None
                 if not isinstance(sky_color, str):
                     sky_color = sky_fallback
 
-                # Transition row: ▄ half-block for smooth tab-to-content edge
+                # --- Transition row (last row) ---
                 if y_offset == num_rows - 1:
-                    # Entity override: high-Z sprites render in front
+                    if dark_mode and in_tab:
+                        top_half = bar_color
+                    elif in_tab:
+                        top_half = tab_bg or pane_bg
+                    else:
+                        sky_above = engine.get_layer_color(Z0, x, global_y - 1, target="header") if engine else None
+                        if isinstance(sky_above, str):
+                            sky_color = sky_above
+                        top_half = sky_color
+
                     if engine:
-                        z_min = (Z80 if active_tab_under else Z60) if in_tab else 0
+                        z_min = (Z80 if active_tab_under else Z60) if in_tab else Z70
                         hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, sky_color)
                         if hit:
                             e_char, e_fg, e_bg = hit
                             if e_char is not None:
-                                row_text.append(
-                                    e_char,
-                                    style=Style(color=_to_color(e_fg), bgcolor=_to_color(e_bg or pane_bg)),
-                                )
-                                continue
-                            elif e_bg is not None:
-                                row_text.append(
-                                    "\u2584",
-                                    style=Style(color=_to_color(pane_bg), bgcolor=_to_color(e_bg)),
-                                )
-                                continue
-                    if not in_tab:
-                        # Sample sky from the row above for seamless visual continuity
-                        sky_above = engine.get_layer_color(Z0, x, global_y - 1, target="header") if engine else None
-                        if isinstance(sky_above, str):
-                            sky_color = sky_above
-                        # Check for entity above too (clouds, etc.)
-                        if engine:
-                            for z in entity_z_scan:
-                                val = engine.get_layer_color(z, x, global_y - 1, target="header")
-                                if val and val != -1:
-                                    if isinstance(val, str) and len(val) == 1:
-                                        # Entity char above — use sky_color as bg_above
-                                        pass
-                                    break
-                    bg_above = pane_bg if in_tab else sky_color
+                                top_half = e_fg or top_half
+                            if e_bg is not None:
+                                top_half = e_bg
+
                     row_text.append(
-                        "\u2584",
-                        style=Style(color=_to_color(pane_bg), bgcolor=_to_color(bg_above)),
+                        "\u2580",
+                        style=Style(color=_to_color(top_half), bgcolor=_to_color(pane_bg)),
                     )
                     continue
 
-                z_base = Z80 if active_tab_under else Z60
+                # --- Bar row (dark mode row 2) ---
                 if dark_mode and y_offset == 2:
-                    fg_text = resolve_haze(get_neutral_color("highlight"))
-                else:
-                    fg_text = resolve_haze(
-                        get_neutral_color("highlight") if active_tab_under else get_neutral_color("muted")
-                    )
+                    final_bg = bar_color if in_tab else sky_color
+                    fg_char = " "
+                    fg_color = None
 
-                # Light mode row 0: ▀ half-block — fg=sky fills top, bg=tab fills bottom
-                if not dark_mode and in_tab and y_offset == 0:
                     if engine:
-                        hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_base, sky_color)
+                        z_min = (Z80 if active_tab_under else Z60) if in_tab else Z70
+                        hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, sky_color)
                         if hit:
                             e_char, e_fg, e_bg = hit
                             if e_char is not None:
-                                row_text.append(
-                                    e_char,
-                                    style=Style(color=_to_color(e_fg), bgcolor=_to_color(e_bg or tab_bg)),
-                                )
-                                continue
-                            elif e_bg is not None:
-                                row_text.append(
-                                    char,
-                                    style=Style(color=_to_color(sky_color), bgcolor=_to_color(e_bg)),
-                                )
-                                continue
+                                fg_char = e_char
+                                fg_color = e_fg
+                            if e_bg is not None:
+                                final_bg = e_bg
+
                     row_text.append(
-                        char,
-                        style=Style(color=_to_color(sky_color), bgcolor=_to_color(tab_bg)),
+                        fg_char,
+                        style=Style(color=_to_color(fg_color), bgcolor=_to_color(final_bg)),
                     )
                     continue
 
-                # All other positions
-                final_bg: str = (tab_bg or sky_color) if in_tab else sky_color
+                # --- Sky row (y_offset == 0) ---
+                if y_offset == 0:
+                    final_bg = sky_color
+                    is_pipe = x == 13 or x == 70
+                    fg_char = "\u2551" if is_pipe else " "
+                    fg_color: str | None = pipe_color if is_pipe else None
+
+                    if engine:
+                        hit = _scan_entity_at(engine, entity_z_scan, x, global_y, 0, sky_color)
+                        if hit:
+                            e_char, e_fg, e_bg = hit
+                            if e_char is not None:
+                                fg_char = e_char
+                                fg_color = e_fg
+                            if e_bg is not None:
+                                final_bg = e_bg
+
+                        if engine.has_active_animation and engine.is_external_light():
+                            color = engine.get_color(x, global_y)
+                            if color:
+                                color_str = str(color)
+                                final_bg = blend_colors(final_bg, color_str, 0.1)
+
+                    row_text.append(
+                        fg_char,
+                        style=Style(color=_to_color(fg_color), bgcolor=_to_color(final_bg)),
+                    )
+                    continue
+
+                # --- Label row (y_offset == 1) ---
+                z_base = Z80 if active_tab_under else Z60
+                final_bg = (tab_bg or sky_color) if in_tab else sky_color
                 fg_char = char
-                fg_color: str | None = None
+                fg_color = None
 
-                # The connector line (dark mode row 2) is solid pane border
-                is_opaque_ui = in_tab or (dark_mode and y_offset == 2)
-
+                is_opaque_ui = in_tab
                 if engine:
                     z_min = z_base if is_opaque_ui else 0
                     hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, sky_color)
@@ -301,11 +280,13 @@ class BoxTabBar(TelecMixin, Widget):
                         if color:
                             color_str = str(color)
                             final_bg = blend_colors(final_bg, color_str, 0.1)
-                            fg_text = blend_colors(fg_text, color_str, 0.5)
+
+                if not fg_color:
+                    fg_color = tab_fg if in_tab else resolve_haze(get_neutral_color("muted"))
 
                 row_text.append(
                     fg_char,
-                    style=Style(color=_to_color(fg_color or fg_text), bgcolor=_to_color(final_bg)),
+                    style=Style(color=_to_color(fg_color), bgcolor=_to_color(final_bg)),
                 )
             rows.append(row_text)
 

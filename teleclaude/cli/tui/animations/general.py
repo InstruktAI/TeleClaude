@@ -185,8 +185,9 @@ class GlobalSky(Animation):
 
     @staticmethod
     def _sprite_owns_direction(sprite: CompositeSprite | AnimatedSprite) -> bool:
-        """True if speed_weights contain negative values (direction baked in)."""
-        return any(v < 0 for v, _ in sprite.speed_weights)
+        """True if all speed_weights share the same strict sign (no zeros)."""
+        vals = [v for v, _ in sprite.speed_weights]
+        return all(v > 0 for v in vals) or all(v < 0 for v in vals)
 
     def _spawn_sky_entity(self, sprite: CompositeSprite | AnimatedSprite, direction: int | None = None) -> SkyEntity:
         """Spawn a sky entity from any CompositeSprite or AnimatedSprite.
@@ -196,6 +197,8 @@ class GlobalSky(Animation):
           2. direction param provided (from group) → apply as sign.
           3. Neither → random ±1.
         """
+        if isinstance(sprite, CompositeSprite):
+            sprite = sprite.resolve_colors()
         z_level = self._pick_z_level(sprite.z_weights)
         y = self._pick_y(sprite.y_weights) if sprite.y_weights else 2
         owns_dir = self._sprite_owns_direction(sprite)

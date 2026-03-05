@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 #   Z0  = sky gradient background
 #   Z50 = billboard (letters + stakes) occlusion threshold
 #   Z60 = inactive tab occlusion threshold
+#   Z70 = tab bar / pane border occlusion threshold
 #   Z80 = active tab occlusion threshold
 # Everything else is free for sprite z_weights.
 Z0 = 0

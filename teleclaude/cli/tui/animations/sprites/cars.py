@@ -6,16 +6,16 @@ from teleclaude.cli.tui.animations.sprites.composite import CompositeSprite, Spr
 CAR_SPRITE_LEFT = CompositeSprite(
     z_weights=[(75, 100)],
     y_weights=[(7, 7, 100)],
-    speed_weights=[(0.3, 10), (0.5, 10), (0.7, 20), (0.9, 30), (1.1, 20), (1.2, 10)],
+    speed_weights=[(-0.3, 10), (-0.5, 10), (-0.7, 20), (-0.9, 30), (-1.1, 20), (-1.2, 10)],
     layers=[
         SpriteLayer(
             positive=[
-                "    ▁╱    █   ▎  ",
+                "    ▁╱  █ █   ▎  ",
                 "▆▇███▆▆▆▆▆█▆▆▆██▇",
                 "                 ",
             ],
             negative=[
-                "      ▇▇▇▇ ▇▇▇   ",
+                "      ▇▇ ▇ ▇▇▇   ",
                 "                 ",
                 "▅▅   ▅▅▅▅▅▅▅   ▅▅",
             ],
@@ -24,6 +24,14 @@ CAR_SPRITE_LEFT = CompositeSprite(
         SpriteLayer(
             positive=[
                 "                 ",
+                "                 ",
+                "                 ",
+            ],
+            color="#C48507FF",
+        ),
+        SpriteLayer(
+            positive=[
+                "        ▇        ",
                 "                 ",
                 "   █         █   ",
             ],
@@ -37,7 +45,7 @@ CAR_SPRITE_LEFT = CompositeSprite(
             ],
             negative=[
                 "                 ",
-                "                 ",
+                "        ▆        ",
                 "                 ",
             ],
             color="#000000",
@@ -45,18 +53,18 @@ CAR_SPRITE_LEFT = CompositeSprite(
     ],
 )
 CAR_SPRITE_RIGHT = CompositeSprite(
-    z_weights=[(75, 100)],
+    z_weights=[(76, 100)],
     y_weights=[(7, 7, 100)],
-    speed_weights=[(-0.3, 10), (-0.5, 10), (-0.7, 20), (-0.9, 30), (-1.1, 20), (-1.2, 10)],
-    layers=[
+    speed_weights=[(0.3, 10), (0.5, 10), (0.7, 20), (0.9, 30), (1.1, 20), (1.2, 10)],
+    layers=[  
         SpriteLayer(
             positive=[
-                "      █    ╲▁    ",
+                "      █ █  ╲▁    ",
                 "▇██▆▆▆█▆▆▆▆▆███▇▆",
                 "                 ",
             ],
             negative=[
-                "  ▊▇▇▇ ▇▇▇▇      ",
+                "  ▊▇▇▇ ▇ ▇▇      ",
                 "                 ",
                 "▅▅   ▅▅▅▅▅▅▅   ▅▅",
             ],
@@ -64,7 +72,7 @@ CAR_SPRITE_RIGHT = CompositeSprite(
         ),
         SpriteLayer(
             positive=[
-                "                 ",
+                "        ▇        ",
                 "                 ",
                 "   █         █   ",
             ],
@@ -72,14 +80,14 @@ CAR_SPRITE_RIGHT = CompositeSprite(
         ),
         SpriteLayer(
             positive=[
-                "                ",
-                "                ",
-                "  ▚▂▞      ▚▂▞  ",
+                "                 ",
+                "                 ",
+                "  ▚▂▞       ▚▂▞  ",
             ],
             negative=[
-                "                ",
-                "                ",
-                "                ",
+                "                 ",
+                "        ▆        ",
+                "                 ",
             ],
             color="#000000",
         ),

@@ -16,7 +16,7 @@ class SpriteLayer(NamedTuple):
       - space → transparent (layer does not contribute at this cell)
     """
 
-    color: Optional[str] = "#ffffff"
+    color: Optional[str | list[str]] = "#ffffff"
     positive: Optional[list[str]] = None
     negative: Optional[list[str]] = None
 
@@ -54,6 +54,26 @@ class CompositeSprite:
     def __post_init__(self) -> None:
         if self.speed_fixed is not None and self.speed_weights != list(_DEFAULT_SPEED_WEIGHTS):
             raise ValueError("speed_fixed and non-default speed_weights are mutually exclusive")
+
+    def resolve_colors(self) -> CompositeSprite:
+        """Return a copy with list colors resolved to a single random pick."""
+        needs_resolve = any(isinstance(layer.color, list) for layer in self.layers)
+        if not needs_resolve:
+            return self
+        resolved = []
+        for layer in self.layers:
+            if isinstance(layer.color, list):
+                resolved.append(SpriteLayer(color=random.choice(layer.color), positive=layer.positive, negative=layer.negative))
+            else:
+                resolved.append(layer)
+        return CompositeSprite(
+            layers=resolved,
+            z_weights=self.z_weights,
+            y_weights=self.y_weights,
+            speed_weights=self.speed_weights,
+            speed_fixed=self.speed_fixed,
+            theme=self.theme,
+        )
 
     def tick(self, frame: int) -> CompositeSprite:
         """Static sprite -- returns self every frame."""

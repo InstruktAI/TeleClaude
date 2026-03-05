@@ -15,37 +15,37 @@ from teleclaude.cli.tui.animations.sprites.composite import CompositeSprite, Spr
 
 WISP_1 = CompositeSprite(
     layers=[SpriteLayer(positive=["━━━━━━"])],
-    z_weights=[(20, 60), (30, 40)],
+    z_weights=[(25, 60), (30, 40)],
     y_weights=[(0, 1, 40), (2, 4, 40), (5, 7, 20)],
     speed_weights=[(0.08, 30), (0.12, 40), (0.18, 30)],
 )
 WISP_2 = CompositeSprite(
     layers=[SpriteLayer(positive=["━━━━━━━━━"])],
-    z_weights=[(20, 60), (30, 40)],
+    z_weights=[(25, 60), (30, 40)],
     y_weights=[(0, 1, 40), (2, 4, 40), (5, 7, 20)],
     speed_weights=[(0.08, 30), (0.12, 40), (0.18, 30)],
 )
 WISP_3 = CompositeSprite(
     layers=[SpriteLayer(positive=["━━━━━━━━━━━━━"])],
-    z_weights=[(20, 60), (30, 40)],
+    z_weights=[(25, 60), (30, 40)],
     y_weights=[(0, 1, 40), (2, 4, 40), (5, 7, 20)],
     speed_weights=[(0.08, 30), (0.12, 40), (0.18, 30)],
 )
 WISP_4 = CompositeSprite(
     layers=[SpriteLayer(positive=["━━━━━━━━━━━━━━━"])],
-    z_weights=[(20, 60), (30, 40)],
+    z_weights=[(25, 60), (30, 40)],
     y_weights=[(0, 1, 40), (2, 4, 40), (5, 7, 20)],
     speed_weights=[(0.08, 30), (0.12, 40), (0.18, 30)],
 )
 WISP_5 = CompositeSprite(
     layers=[SpriteLayer(positive=["─────────"])],
-    z_weights=[(15, 60), (25, 40)],
+    z_weights=[(20, 60), (25, 40)],
     y_weights=[(0, 1, 40), (2, 4, 40), (5, 7, 20)],
     speed_weights=[(0.08, 30), (0.12, 40), (0.18, 30)],
 )
 WISP_6 = CompositeSprite(
     layers=[SpriteLayer(positive=["─────────"])],
-    z_weights=[(15, 60), (25, 30), (35, 10)],
+    z_weights=[(20, 60), (25, 30), (35, 10)],
     y_weights=[(0, 1, 40), (2, 4, 40), (5, 7, 20)],
     speed_weights=[(0.08, 30), (0.12, 40), (0.18, 30)],
 )
@@ -58,15 +58,6 @@ PUFF_1 = CompositeSprite(
     ])],
     z_weights=[(30, 50), (42, 50)],
     y_weights=[(0, 1, 30), (2, 4, 40), (5, 7, 30)],
-    speed_weights=[(0.15, 30), (0.22, 40), (0.30, 30)],
-)
-
-PUFF_1_1 = CompositeSprite(
-    layers=[SpriteLayer(positive=[
-        "░░░░░░░",
-    ])],
-    z_weights=[(61, 50), (71, 50)],
-    y_weights=[(6, 7, 30), (7, 8, 40), (9, 9, 30)],
     speed_weights=[(0.15, 30), (0.22, 40), (0.30, 30)],
 )
 
@@ -86,7 +77,7 @@ PUFF_2_1 = CompositeSprite(
         "░░░░░   "
     ])],
     z_weights=[(61, 50), (71, 50)],
-    y_weights=[(0, 1, 30), (2, 4, 40), (5, 7, 30)],
+    y_weights=[(5, 7, 30)],
     speed_weights=[(0.15, 30), (0.22, 40), (0.30, 30)],
 )
 
@@ -176,9 +167,8 @@ CLOUDS_FAIR = SpriteGroup(
         (WISP_6, 0.10, (1, 2)),
         (CLOUD_MEDIUM_1, 0.20, (1, 2)),
         (PUFF_1, 0.04, (1, 2)),
-        (PUFF_1_1, 0.04, (1, 2)),
         (PUFF_2, 0.04, (1, 2)),
-        (PUFF_2_1, 0.04, (1, 2)),
+        (PUFF_2_1, 0.08, (1, 2)),
         (PUFF_3, 0.04, (1, 2)),
     ],
     direction=None,
