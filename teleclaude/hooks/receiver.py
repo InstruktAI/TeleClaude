@@ -240,6 +240,7 @@ def _print_memory_injection(cwd: str | None, adapter: object, session_id: str | 
 
     # Resolve identity_key from session adapter metadata for identity-scoped memories
     identity_key: str | None = None
+    proficiency_line: str | None = None
     if session_id:
         try:
             from teleclaude.core.identity import derive_identity_key
@@ -248,15 +249,28 @@ def _print_memory_injection(cwd: str | None, adapter: object, session_id: str | 
 
             with SqlSession(_create_sync_engine()) as db_session:
                 row = db_session.get(db_models.Session, session_id)
-                if row and row.adapter_metadata:
-                    adapter_meta = SessionAdapterMetadata.from_json(row.adapter_metadata)
-                    identity_key = derive_identity_key(adapter_meta)
+                if row:
+                    if row.adapter_metadata:
+                        adapter_meta = SessionAdapterMetadata.from_json(row.adapter_metadata)
+                        identity_key = derive_identity_key(adapter_meta)
+                    human_email = getattr(row, "human_email", None)
+                    if human_email:
+                        person = next(
+                            (p for p in config.people if p.email == human_email),
+                            None,
+                        )
+                        if person:
+                            person_proficiency = getattr(person, "proficiency", "intermediate")
+                            proficiency_line = f"Human in the loop: {person.name} ({person_proficiency})"
         except Exception:  # noqa: BLE001 - fail-open: identity resolution is best-effort
             logger.debug("Identity key derivation failed for session %s", (session_id or "")[:8])
 
     context = _get_memory_context(project_name, identity_key=identity_key)
-    if not context:
+    if not context and not proficiency_line:
         return
+
+    if proficiency_line:
+        context = f"{proficiency_line}\n{context}" if context else proficiency_line
 
     logger.debug("Memory context fetched", project=project_name, length=len(context), identity_key=identity_key or "")
     payload = adapter.format_memory_injection(context)  # type: ignore[union-attr]

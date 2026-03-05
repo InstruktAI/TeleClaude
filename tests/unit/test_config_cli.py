@@ -354,6 +354,63 @@ class TestInvite:
         assert out.count("https://t.me/teleclaude_bot?start=tok123") == 1
 
 
+class TestProficiency:
+    def test_add_person_with_proficiency_expert(self, tmp_path, capsys):
+        p1, p2 = _setup_config(tmp_path, people=[])
+        with p1, p2:
+            from teleclaude.cli.config_cli import handle_config_cli
+            from teleclaude.cli.config_handlers import get_global_config
+
+            handle_config_cli(
+                [
+                    "people",
+                    "add",
+                    "--name",
+                    "Expert",
+                    "--email",
+                    "expert@example.com",
+                    "--proficiency",
+                    "expert",
+                    "--json",
+                ]
+            )
+
+            config = get_global_config()
+            person = next((p for p in config.people if p.name == "Expert"), None)
+            assert person is not None
+            assert person.proficiency == "expert"
+
+    def test_edit_proficiency_novice(self, tmp_path, capsys):
+        p1, p2 = _setup_config(tmp_path)
+        with p1, p2:
+            from teleclaude.cli.config_cli import handle_config_cli
+            from teleclaude.cli.config_handlers import get_global_config
+
+            handle_config_cli(["people", "edit", "Alice", "--proficiency", "novice", "--json"])
+
+            config = get_global_config()
+            person = next((p for p in config.people if p.name == "Alice"), None)
+            assert person is not None
+            assert person.proficiency == "novice"
+
+        out = json.loads(capsys.readouterr().out)
+        assert out["ok"] is True
+        assert "proficiency" in out["updated"]
+
+    def test_list_json_includes_proficiency(self, tmp_path, capsys):
+        p1, p2 = _setup_config(tmp_path)
+        with p1, p2:
+            from teleclaude.cli.config_cli import handle_config_cli
+
+            handle_config_cli(["people", "list", "--json"])
+
+        out = json.loads(capsys.readouterr().out)
+        assert isinstance(out, list)
+        assert len(out) == 1
+        assert "proficiency" in out[0]
+        assert out[0]["proficiency"] == "intermediate"
+
+
 class TestRouting:
     def test_unknown_subcommand_fails(self):
         from teleclaude.cli.config_cli import handle_config_cli

@@ -160,6 +160,7 @@ class PersonDTO(BaseModel):  # type: ignore[explicit-any]
     name: str
     email: str | None = None
     role: Literal["admin", "member", "contributor", "newcomer"] = "member"
+    proficiency: Literal["novice", "intermediate", "advanced", "expert"] = "intermediate"
 
 
 class ComputerDTO(BaseModel):  # type: ignore[explicit-any]

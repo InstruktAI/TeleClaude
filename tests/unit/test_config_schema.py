@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from teleclaude.config.loader import load_global_config, load_person_config, load_project_config
 from teleclaude.config.schema import (
@@ -6,6 +7,7 @@ from teleclaude.config.schema import (
     JobScheduleConfig,
     JobSubscription,
     JobWhenConfig,
+    PersonEntry,
     Subscription,
     SubscriptionNotification,
     TelegramCreds,
@@ -398,3 +400,22 @@ def test_integrator_cutover_can_be_enabled_when_parity_accepted():
     )
     assert cfg.enabled is True
     assert cfg.parity_evidence_accepted is True
+
+
+# --- Task 1.1: PersonEntry proficiency field ---
+
+
+def test_person_entry_proficiency_default():
+    entry = PersonEntry(name="Alice", email="alice@example.com")
+    assert entry.proficiency == "intermediate"
+
+
+def test_person_entry_proficiency_valid_values():
+    for level in ("novice", "intermediate", "advanced", "expert"):
+        entry = PersonEntry(name="Alice", email="alice@example.com", proficiency=level)
+        assert entry.proficiency == level
+
+
+def test_person_entry_proficiency_invalid_value():
+    with pytest.raises(ValidationError):
+        PersonEntry(name="Alice", email="alice@example.com", proficiency="guru")

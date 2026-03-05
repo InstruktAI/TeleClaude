@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from rich.style import Style
 from rich.text import Text
@@ -383,7 +383,7 @@ class ConfigContent(TelecMixin, Widget):
         self._guided_mode = False
         self._guided_step_index = 0
         self._tab_click_regions: list[tuple[int, int, int, int]] = []  # (row, x_start, x_end, subtab_idx)
-        self._row_click_map: dict[int, tuple] = {}  # {content_row: action_tuple}
+        self._row_click_map: dict[int, tuple[str, Any]] = {}  # {content_row: action_tuple}
         self._expanded_person: str | None = None
         self._person_field_cursor: int = 0
         self._editing_person_field: str | None = None
@@ -928,6 +928,7 @@ class ConfigContent(TelecMixin, Widget):
             result.append(f" ({person.role})", style=_DIM)
             if person.email:
                 result.append(f" <{person.email}>", style=_DIM)
+            result.append(f" [{getattr(person, 'proficiency', 'intermediate')}]", style=_DIM)
             result.append("\n")
 
             if selected and self._expanded_person == person.name:

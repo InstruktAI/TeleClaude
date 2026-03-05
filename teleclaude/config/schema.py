@@ -126,6 +126,7 @@ class PersonEntry(BaseModel):
     email: str
     username: Optional[str] = None
     role: Literal["admin", "member", "contributor", "newcomer"] = "member"
+    proficiency: Literal["novice", "intermediate", "advanced", "expert"] = "intermediate"
 
 
 class TelegramCreds(BaseModel):

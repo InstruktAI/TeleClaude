@@ -84,6 +84,7 @@ class PersonInfo:
     role: str
     email: str | None = None
     username: str | None = None
+    proficiency: str | None = None
     telegram: str | None = None
     telegram_id: int | None = None
     interests: list[str] = field(default_factory=list)
@@ -154,7 +155,13 @@ def _people_list(use_json: bool) -> None:
     if use_json:
         data = []
         for p in people:
-            info = PersonInfo(name=p.name, role=p.role, email=p.email, username=p.username)
+            info = PersonInfo(
+                name=p.name,
+                role=p.role,
+                email=p.email,
+                username=p.username,
+                proficiency=getattr(p, "proficiency", "intermediate"),
+            )
             try:
                 pc = get_person_config(p.name)
                 info.telegram = pc.creds.telegram.user_name if pc.creds.telegram else None
@@ -205,6 +212,7 @@ def _people_add(args: list[str], use_json: bool) -> None:
         email=email,
         username=opts.get("username"),
         role=opts.get("role", "member"),  # type: ignore[arg-type]
+        proficiency=opts.get("proficiency", "intermediate"),  # type: ignore[arg-type]
     )
 
     try:
@@ -302,8 +310,8 @@ def _people_edit(args: list[str], use_json: bool) -> None:
 
     changed = False
 
-    # Edit global entry fields (role, email, username)
-    if any(k in opts for k in ("role", "email", "username")):
+    # Edit global entry fields (role, email, username, proficiency)
+    if any(k in opts for k in ("role", "email", "username", "proficiency")):
         from teleclaude.cli.config_handlers import get_global_config, save_global_config
 
         config = get_global_config()
@@ -315,6 +323,8 @@ def _people_edit(args: list[str], use_json: bool) -> None:
                     p.email = opts["email"]
                 if "username" in opts:
                     p.username = opts["username"]
+                if "proficiency" in opts:
+                    p.proficiency = opts["proficiency"]  # type: ignore[assignment]
                 changed = True
                 break
         if changed:
@@ -326,7 +336,7 @@ def _people_edit(args: list[str], use_json: bool) -> None:
         changed = True
 
     if not changed:
-        msg = "No changes specified. Use --role, --email, --username, --telegram-user, --telegram-id"
+        msg = "No changes specified. Use --role, --email, --username, --proficiency, --telegram-user, --telegram-id"
         if use_json:
             print(json.dumps({"error": msg}))
         else:
