@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from instrukt_ai_logging import get_logger
+
 try:
     import py65emu  # type: ignore[import-untyped]
     from py65emu.mmu import MMU  # type: ignore[import-untyped]
@@ -16,6 +18,8 @@ except ImportError:
 
 if TYPE_CHECKING:
     from teleclaude.chiptunes.sid_parser import SIDHeader
+
+logger = get_logger(__name__)
 
 # SID register range on the C64 memory map
 _SID_BASE = 0xD400
@@ -99,7 +103,8 @@ class SIDDriver:
             # py65emu 0.1.0 step() returns cycles consumed
             try:
                 cycles += self._cpu.step()
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.debug("CPU exception during emulation: %s", exc)
                 break  # Treat CPU exceptions as end-of-routine
 
     def _push_word(self, word: int) -> None:
