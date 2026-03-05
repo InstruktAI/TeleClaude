@@ -446,7 +446,8 @@ def _resolve_requires(
         # Read @ refs from the snippet file's Required reads section
         try:
             content = current.path.read_text(encoding="utf-8")
-        except Exception:
+        except Exception as exc:
+            logger.warning("resolve_requires_read_failed", path=str(current.path), error=str(exc))
             continue
         ref_paths = extract_required_reads(content)
         for ref in ref_paths:
