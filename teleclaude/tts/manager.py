@@ -2,7 +2,7 @@
 
 import asyncio
 import random
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from instrukt_ai_logging import get_logger
 
@@ -12,6 +12,9 @@ from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.voice_assignment import VoiceConfig
 from teleclaude.tts.queue_runner import run_tts_with_lock_async
+
+if TYPE_CHECKING:
+    from teleclaude.chiptunes.manager import ChiptunesManager
 
 SESSION_START_MESSAGES = [
     "Standing by with grep patterns locked and loaded. What can I find?",
@@ -42,10 +45,15 @@ logger = get_logger(__name__)
 class TTSManager:
     """Manages TTS configuration and event triggering."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize TTS manager from config."""
         self.tts_config = self._load_tts_config()
         self.enabled = self.tts_config.enabled
+        self._chiptunes_manager: "ChiptunesManager | None" = None
+
+    def set_chiptunes_manager(self, manager: "ChiptunesManager") -> None:
+        """Inject ChiptunesManager reference for pause/resume during TTS."""
+        self._chiptunes_manager = manager
 
     def _load_tts_config(self) -> TTSConfig:
         """Load TTS config from config.yaml."""
@@ -243,6 +251,11 @@ class TTSManager:
             extra={"session_id": session_id[:8]},
         )
 
+        # Pause chiptunes while TTS speaks
+        _chiptunes = getattr(self, "_chiptunes_manager", None)
+        if _chiptunes is not None and _chiptunes.is_playing:
+            _chiptunes.pause()
+
         # Queue TTS (non-blocking)
         task = asyncio.create_task(run_tts_with_lock_async(text_to_speak, service_chain, session_id))
         task.add_done_callback(
@@ -276,6 +289,11 @@ class TTSManager:
 
         service_chain: list[tuple[str, Optional[str]]] = [(voice.service_name, voice.voice)]
         logger.debug("TTS speak queued (voice %s): %s...", voice.voice, text[:50])
+
+        # Pause chiptunes while TTS speaks
+        if self._chiptunes_manager is not None and self._chiptunes_manager.is_playing:
+            self._chiptunes_manager.pause()
+
         task = asyncio.create_task(run_tts_with_lock_async(text, service_chain, session_id))
         task.add_done_callback(
             lambda t: asyncio.create_task(self._handle_tts_result(t, session_id, voice.service_name))
@@ -294,7 +312,15 @@ class TTSManager:
         session_id: str,
         primary_service: str,
     ) -> None:
-        """Persist fallback voice when a non-primary service succeeds."""
+        """Persist fallback voice when a non-primary service succeeds.
+
+        Also resumes chiptunes after TTS playback completes.
+        """
+        # Resume chiptunes after TTS (regardless of success/failure)
+        _chiptunes = getattr(self, "_chiptunes_manager", None)
+        if _chiptunes is not None:
+            _chiptunes.resume()
+
         try:
             success, used_service, used_voice = task.result()
         except Exception as exc:  # noqa: BLE001 - background task failure should not crash

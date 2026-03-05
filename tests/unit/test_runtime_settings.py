@@ -155,14 +155,18 @@ def settings_client(api_with_settings: APIServer):
 def test_get_settings(settings_client: TestClient, mock_runtime_settings: MagicMock) -> None:
     resp = settings_client.get("/settings")
     assert resp.status_code == 200
-    assert resp.json() == {"tts": {"enabled": True}}
+    data = resp.json()
+    assert data["tts"] == {"enabled": True}
+    assert "chiptunes" in data
     mock_runtime_settings.get_state.assert_called_once()
 
 
 def test_patch_settings_success(settings_client: TestClient, mock_runtime_settings: MagicMock) -> None:
     resp = settings_client.patch("/settings", json={"tts": {"enabled": False}})
     assert resp.status_code == 200
-    assert resp.json() == {"tts": {"enabled": False}}
+    data = resp.json()
+    assert data["tts"] == {"enabled": False}
+    assert "chiptunes" in data
     mock_runtime_settings.patch.assert_called_once()
 
 

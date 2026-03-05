@@ -31,6 +31,7 @@ class TelecFooter(Widget):
     """
 
     tts_enabled = reactive(False)
+    chiptunes_enabled = reactive(False)
     animation_mode = reactive("periodic")
     pane_theming_mode = reactive("off")
     persistence_key = "status_bar"
@@ -45,6 +46,8 @@ class TelecFooter(Widget):
         self._toggle_start_x: int = 0
         self._tts_start_x: int = 0
         self._tts_end_x: int = 0
+        self._chiptunes_start_x: int = 0
+        self._chiptunes_end_x: int = 0
         self._anim_start_x: int = 0
         self._agent_regions: list[tuple[int, int, str]] = []
 
@@ -180,10 +183,18 @@ class TelecFooter(Widget):
             toggles.append(cell_char, style=cell_style)
         toggles.append("  ")
 
+        # TTS icon: 🗣️ (enabled) / dim (disabled)
         tts_start = toggles.cell_len
-        tts_icon = "\U0001f50a" if self.tts_enabled else "\U0001f507"
+        tts_icon = "\U0001f5e3" if self.tts_enabled else "\U0001f5e3"
         toggles.append(tts_icon, style="bold" if self.tts_enabled else "dim")
         tts_end = toggles.cell_len
+        toggles.append("  ")
+
+        # ChipTunes icon: 🔊 (enabled) / 🔇 (disabled)
+        chiptunes_start = toggles.cell_len
+        chiptunes_icon = "\U0001f50a" if self.chiptunes_enabled else "\U0001f507"
+        toggles.append(chiptunes_icon, style="bold" if self.chiptunes_enabled else "dim")
+        chiptunes_end = toggles.cell_len
         toggles.append("  ")
 
         anim_start = toggles.cell_len
@@ -201,6 +212,8 @@ class TelecFooter(Widget):
         self._toggle_start_x = offset
         self._tts_start_x = offset + tts_start
         self._tts_end_x = offset + tts_end
+        self._chiptunes_start_x = offset + chiptunes_start
+        self._chiptunes_end_x = offset + chiptunes_end
         self._anim_start_x = offset + anim_start
 
         line.append_text(toggles)
@@ -228,12 +241,17 @@ class TelecFooter(Widget):
             idx = cycle.index(self.animation_mode) if self.animation_mode in cycle else 0
             new_mode = cycle[(idx + 1) % len(cycle)]
             self.post_message(SettingsChanged("animation_mode", new_mode))
+        elif x >= self._chiptunes_start_x:
+            self.post_message(SettingsChanged("chiptunes_enabled", not self.chiptunes_enabled))
         elif x >= self._tts_start_x:
             self.post_message(SettingsChanged("tts_enabled", not self.tts_enabled))
         elif x >= self._toggle_start_x:
             self.post_message(SettingsChanged("pane_theming_mode", "cycle"))
 
     def watch_tts_enabled(self, _value: bool) -> None:
+        self.refresh()
+
+    def watch_chiptunes_enabled(self, _value: bool) -> None:
         self.refresh()
 
     def watch_animation_mode(self, _value: str) -> None:
