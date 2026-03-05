@@ -18,10 +18,6 @@ def _mock_session_listeners(monkeypatch):
         "teleclaude.core.agent_coordinator.notify_stop",
         AsyncMock(return_value=0),
     )
-    monkeypatch.setattr(
-        "teleclaude.core.agent_coordinator.notify_input_request",
-        AsyncMock(return_value=0),
-    )
 
 
 @pytest.fixture

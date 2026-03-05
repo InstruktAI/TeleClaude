@@ -1,6 +1,6 @@
 """Agent Coordinator - orchestrates agent events and cross-computer communication.
 
-Handles agent lifecycle events (start, stop, notification) and routes them to:
+Handles agent lifecycle events (start, stop) and routes them to:
 1. Local listeners (via tmux injection)
 2. Remote initiators (via Redis transport)
 3. Human UI (via AdapterClient feedback)
@@ -37,7 +37,6 @@ from teleclaude.core.events import (
     AgentActivityEvent,
     AgentEventContext,
     AgentHookEvents,
-    AgentNotificationPayload,
     AgentOutputPayload,
     AgentSessionEndPayload,
     AgentSessionStartPayload,
@@ -53,7 +52,6 @@ from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import (
     get_active_links_for_session,
     get_peer_members,
-    notify_input_request,
     notify_stop,
 )
 from teleclaude.core.status_contract import (
@@ -641,8 +639,6 @@ class AgentCoordinator:
             await self.handle_tool_use(context)
         elif context.event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
             await self.handle_user_prompt_submit(context)
-        elif context.event_type == AgentHookEvents.AGENT_NOTIFICATION:
-            await self.handle_notification(context)
         elif context.event_type == AgentHookEvents.AGENT_SESSION_END:
             await self.handle_session_end(context)
 
@@ -1334,27 +1330,6 @@ class AgentCoordinator:
         payload = AgentOutputPayload(session_id=session_id, transcript_path=session.native_log_file)
         return await self._maybe_send_incremental_output(session_id, payload)
 
-    async def handle_notification(self, context: AgentEventContext) -> None:
-        """Handle notification event - input request."""
-        session_id = context.session_id
-        payload = cast(AgentNotificationPayload, context.data)
-        message = payload.message
-        source_computer = payload.source_computer
-
-        # 1. Notify local listeners
-        computer = source_computer or LOCAL_COMPUTER
-        await notify_input_request(session_id, computer, str(message))
-
-        # 2. Forward to remote initiator (skip if already forwarded from remote)
-        if not source_computer:
-            await self._forward_notification_to_initiator(session_id, str(message))
-
-        # Update notification flag
-        await db.set_notification_flag(session_id, True)
-
-        # 3. Emit canonical activity event so Web/TUI consumers receive agent_notification
-        self._emit_activity_event(session_id, AgentHookEvents.AGENT_NOTIFICATION, message=str(message))
-
     async def handle_session_end(self, context: AgentEventContext) -> None:
         """Handle session_end event - agent session ended."""
         _payload = cast(AgentSessionEndPayload, context.data)
@@ -1600,30 +1575,6 @@ class AgentCoordinator:
                 delivered,
             )
         return delivered
-
-    async def _forward_notification_to_initiator(self, session_id: str, message: str) -> None:
-        """Forward notification to remote initiator."""
-        session = await db.get_session(session_id)
-        if not session:
-            return
-
-        redis_meta = session.get_metadata().get_transport().get_redis()
-        if not redis_meta.target_computer:
-            return
-
-        initiator_computer = redis_meta.target_computer
-        if initiator_computer == config.computer.name:
-            return
-
-        message_b64 = base64.b64encode(message.encode()).decode()
-        try:
-            await self.client.send_request(
-                computer_name=initiator_computer,
-                command=f"/input_notification {session_id} {config.computer.name} {message_b64}",
-                metadata=MessageMetadata(),
-            )
-        except Exception as e:
-            logger.warning("Failed to forward notification to %s: %s", initiator_computer, e)
 
     async def _maybe_inject_checkpoint(self, session_id: str, session: "Session | None") -> None:
         """Conditionally inject a checkpoint message into the agent's tmux pane.

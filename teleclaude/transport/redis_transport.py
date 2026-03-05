@@ -1182,38 +1182,6 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 await self.client.agent_event_handler(context)
             return {"status": "success", "data": None}
 
-        if cmd_name == "input_notification":
-            if len(args) < 3:
-                logger.warning(
-                    "input_notification requires 3 args (session_id, source_computer, message_b64), got %d",
-                    len(args),
-                )
-                return {"status": "error", "error": "invalid input_notification args"}
-
-            target_session_id = args[0]
-            source_computer = args[1]
-            message_b64 = args[2]
-            message = ""
-
-            try:
-                message = base64.b64decode(message_b64).decode()
-            except Exception as e:
-                logger.warning("Failed to decode input_notification message: %s", e)
-
-            event_data = {
-                "session_id": target_session_id,
-                "source_computer": source_computer,
-                "message": message,
-            }
-            context = AgentEventContext(
-                session_id=target_session_id,
-                event_type=AgentHookEvents.AGENT_NOTIFICATION,
-                data=build_agent_payload(AgentHookEvents.AGENT_NOTIFICATION, event_data),
-            )
-            if self.client.agent_event_handler:
-                await self.client.agent_event_handler(context)
-            return {"status": "success", "data": None}
-
         return {"status": "error", "error": f"unsupported agent notification: {cmd_name}"}
 
     async def _execute_command(self, command: object) -> dict[str, object]:

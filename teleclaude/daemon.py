@@ -201,7 +201,6 @@ HOOK_EVENT_CLASS_CRITICAL: frozenset[str] = frozenset(
         AgentHookEvents.USER_PROMPT_SUBMIT,
         AgentHookEvents.AGENT_STOP,
         AgentHookEvents.AGENT_SESSION_END,
-        AgentHookEvents.AGENT_NOTIFICATION,
         AgentHookEvents.AGENT_ERROR,
     }
 )
