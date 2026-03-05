@@ -31,8 +31,8 @@ Ownership:
 - [x] Deferrals justified and not hiding required scope — no deferrals.md present
 - [x] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs) — Critical finding C1: lead block uses snippet with no deps
 - [x] Findings written in `review-findings.md`
-- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES
-- [ ] Critical issues resolved or explicitly blocked — C1 (demo) and I1 (test gap) pending
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — APPROVE
+- [x] Critical issues resolved or explicitly blocked — C1 (demo), I1 (test), I2 (logging) all fixed
 - [x] Test coverage and regression risk assessed — I1 identifies missing test for primary workflow
 
 ## Finalize Gates (Finalizer)
