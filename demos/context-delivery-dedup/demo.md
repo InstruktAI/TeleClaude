@@ -5,9 +5,9 @@
 ```bash
 # Before: dependencies expanded inline (duplicate tokens)
 # After: dependencies listed as IDs only
-telec docs get general/policy/context-retrieval
-# Expected: content for context-retrieval only
-# Header shows: # Required reads (not loaded): <dep-ids>
+telec docs get general/procedure/orchestration
+# Expected: content for orchestration only
+# Header shows: # Required reads (not loaded): software-development/procedure/lifecycle-overview
 # NO dependency content expanded inline
 ```
 
