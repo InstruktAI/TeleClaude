@@ -79,9 +79,6 @@
   after:
   - adapter-boundary-cleanup
   description: Move reflection routing decisions from core to adapters
-- slug: transcript-parser-fallback-policy
-  description: Define and implement transcript parser fallback policy for unknown/legacy
-    agent identifiers
 - slug: telegram-callback-payload-migration
   description: Migrate Telegram explicit user-selection callback payloads to canonical
     agent identifiers (deferred from default-agent-resolution)

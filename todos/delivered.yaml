@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: transcript-parser-fallback-policy
+  date: '2026-03-05'
+  title: Define and implement transcript parser fallback policy for unknown/legacy
+    agent identifiers
+  description: Define and implement transcript parser fallback policy for unknown/legacy
+    agent identifiers
 - slug: slug-helper
   date: '2026-03-05'
   title: Consolidated slug helper module
