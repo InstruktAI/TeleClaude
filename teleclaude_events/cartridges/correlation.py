@@ -67,9 +67,7 @@ class CorrelationCartridge:
 
         # Crash cascade detection
         if event.event == "system.worker.crashed":
-            crash_count = await context.db.get_correlation_count(
-                "system.worker.crashed", None, window_start
-            )
+            crash_count = await context.db.get_correlation_count("system.worker.crashed", None, window_start)
             if crash_count >= config.crash_cascade_threshold:
                 workers = [event.entity] if event.entity else []
                 await self._emit_synthetic(
@@ -84,9 +82,7 @@ class CorrelationCartridge:
 
         # Entity failure detection
         if event.entity is not None and _is_failure_type(event.event):
-            entity_fail_count = await context.db.get_correlation_count(
-                event.event, event.entity, window_start
-            )
+            entity_fail_count = await context.db.get_correlation_count(event.event, event.entity, window_start)
             if entity_fail_count >= config.entity_failure_threshold:
                 await self._emit_synthetic(
                     "system.entity.degraded",
@@ -100,9 +96,7 @@ class CorrelationCartridge:
 
         return event
 
-    async def _emit_synthetic(
-        self, event_type: str, payload: dict[str, Any], context: PipelineContext
-    ) -> None:
+    async def _emit_synthetic(self, event_type: str, payload: dict[str, Any], context: PipelineContext) -> None:
         if context.producer is None:
             logger.warning(
                 "correlation: no producer configured, cannot emit synthetic event",

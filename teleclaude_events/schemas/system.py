@@ -67,7 +67,9 @@ def register_system(catalog: "EventCatalog") -> None:
             domain="system",
             default_visibility=EventVisibility.LOCAL,
             idempotency_fields=["entity"],
-            lifecycle=NotificationLifecycle(creates=True, updates=True, group_key="entity", meaningful_fields=["failure_count"]),
+            lifecycle=NotificationLifecycle(
+                creates=True, updates=True, group_key="entity", meaningful_fields=["failure_count"]
+            ),
             actionable=True,
         )
     )

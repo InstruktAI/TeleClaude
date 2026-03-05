@@ -366,18 +366,14 @@ class EventDB:
 
     # --- Correlation window methods ---
 
-    async def increment_correlation_window(
-        self, event_type: str, entity: str | None, ts: datetime
-    ) -> None:
+    async def increment_correlation_window(self, event_type: str, entity: str | None, ts: datetime) -> None:
         await self._db().execute(
             "INSERT INTO correlation_windows (event_type, entity, window_start, count) VALUES (?, ?, ?, 1)",
             (event_type, entity, ts.isoformat()),
         )
         await self._db().commit()
 
-    async def get_correlation_count(
-        self, event_type: str, entity: str | None, since: datetime
-    ) -> int:
+    async def get_correlation_count(self, event_type: str, entity: str | None, since: datetime) -> int:
         if entity is None:
             cursor = await self._db().execute(
                 "SELECT COALESCE(SUM(count), 0) FROM correlation_windows WHERE event_type = ? AND window_start >= ?",

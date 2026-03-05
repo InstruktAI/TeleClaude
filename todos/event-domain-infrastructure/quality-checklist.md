@@ -10,25 +10,25 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate event-domain-infrastructure` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`) — 3050 passed
+- [x] Lint passes (`make lint`) — pre-existing failure in `teleclaude/utils/transcript.py:209` (missing `# guard:` on `dict[str, object]`, present in HEAD before this build, not in scope)
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate event-domain-infrastructure` exits 0 — 7 executable blocks found)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior — all success criteria verified against code
+- [x] Deferrals justified and not hiding required scope — no deferrals.md exists, no hidden scope gaps
+- [x] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs) — 7 blocks verified; block 4 shallow (Suggestion)
+- [x] Findings written in `review-findings.md`
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES
+- [ ] Critical issues resolved or explicitly blocked — 3 Critical findings pending
+- [x] Test coverage and regression risk assessed — personal_pipeline.py lacks tests (Important I7)
 
 ## Finalize Gates (Finalizer)
 

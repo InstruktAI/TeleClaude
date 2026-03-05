@@ -3346,6 +3346,10 @@ def _handle_config(args: list[str]) -> None:
         from teleclaude.cli.config_cmd import handle_config_command
 
         handle_config_command(args)
+    elif subcommand == "cartridges":
+        from teleclaude.cli.cartridge_cli import handle_cartridge_cli
+
+        handle_cartridge_cli(args[1:])
     elif subcommand in ("people", "env", "notify", "validate", "invite"):
         from teleclaude.cli.config_cli import handle_config_cli
 

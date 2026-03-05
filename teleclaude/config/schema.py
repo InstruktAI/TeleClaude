@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from teleclaude_events.domain_config import DomainsConfig
 
 
 class AgentDispatchConfig(BaseModel):
@@ -267,6 +271,7 @@ class GlobalConfig(ProjectConfig):
     people: List[PersonEntry] = []
     subscriptions: List[SubscriptionEntry] = []
     interests: List[str] = []
+    event_domains: Optional[DomainsConfig] = None
 
     @field_validator("interests", mode="before")
     @classmethod

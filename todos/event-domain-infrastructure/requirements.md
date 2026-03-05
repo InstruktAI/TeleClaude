@@ -55,24 +55,24 @@ and role-scoped access control.
 
 ## Success Criteria
 
-- [ ] Domain pipeline executes per-domain in parallel after system pipeline; events with no
+- [x] Domain pipeline executes per-domain in parallel after system pipeline; events with no
       domain routing skip domain stage without error.
-- [ ] Cartridges loaded from `company/domains/{name}/cartridges/` are topologically sorted;
+- [x] Cartridges loaded from `company/domains/{name}/cartridges/` are topologically sorted;
       cycle in DAG raises `CartridgeCycleError` at startup.
-- [ ] Cartridges at the same DAG level within a domain run concurrently.
-- [ ] Personal cartridges for a member are loaded as leaf nodes and execute after domain
+- [x] Cartridges at the same DAG level within a domain run concurrently.
+- [x] Personal cartridges for a member are loaded as leaf nodes and execute after domain
       cartridges; member can only affect their own subscription scope.
-- [ ] `telec config patch` can set autonomy level for a specific `event_type/cartridge/domain`;
+- [x] `telec config patch` can set autonomy level for a specific `event_type/cartridge/domain`;
       pipeline honors it at runtime.
-- [ ] `install` / `remove` / `promote` lifecycle commands work end-to-end; promote fails with
+- [x] `install` / `remove` / `promote` lifecycle commands work end-to-end; promote fails with
       permission error for non-admin callers.
-- [ ] Pipeline validation on startup rejects: missing dependency, scope mismatch, output
+- [x] Pipeline validation on startup rejects: missing dependency, scope mismatch, output
       slot conflict — with specific error messages identifying the offending cartridge.
-- [ ] Domain guardian config block is read per domain and passed to domain pipeline context;
+- [x] Domain guardian config block is read per domain and passed to domain pipeline context;
       no runtime errors when block is absent.
-- [ ] `make test` passes with coverage for: DAG resolution, parallel execution, lifecycle ops,
+- [x] `make test` passes with coverage for: DAG resolution, parallel execution, lifecycle ops,
       autonomy matrix lookup, validation errors.
-- [ ] `make lint` passes.
+- [x] `make lint` passes.
 
 ## Constraints
 

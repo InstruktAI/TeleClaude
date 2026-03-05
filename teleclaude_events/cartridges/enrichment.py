@@ -33,7 +33,7 @@ class EnrichmentCartridge:
         if not entity_uri.startswith("telec://"):
             return None
 
-        remainder = entity_uri[len("telec://"):]
+        remainder = entity_uri[len("telec://") :]
         parts = remainder.split("/", 1)
         if len(parts) != 2:
             return None
