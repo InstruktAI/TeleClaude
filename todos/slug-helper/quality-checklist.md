@@ -22,13 +22,13 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior — all 7 success criteria verified; 1 incomplete desync fix found
+- [x] Deferrals justified and not hiding required scope — no deferrals.md present
+- [x] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs) — 4 valid blocks
+- [x] Findings written in `review-findings.md`
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES
+- [ ] Critical issues resolved or explicitly blocked — 1 Critical: stale slug in `_handle_todo_dump` event payload
+- [x] Test coverage and regression risk assessed — solid coverage, suggestions for invariant tests
 
 ## Finalize Gates (Finalizer)
 
