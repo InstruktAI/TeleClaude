@@ -85,7 +85,7 @@ def _scan_entity_at(
 
 
 class BoxTabBar(TelecMixin, Widget):
-    """Tab bar. Dark mode: label + white bar + transition. Light mode: label + transition."""
+    """Tab bar: sky row, label row, half-block transition row."""
 
     TABS = [
         ("sessions", "[1] AI Sessions"),
@@ -97,7 +97,7 @@ class BoxTabBar(TelecMixin, Widget):
     DEFAULT_CSS = """
     BoxTabBar {
         width: 100%;
-        height: 2;
+        height: 3;
     }
     """
 
@@ -114,6 +114,9 @@ class BoxTabBar(TelecMixin, Widget):
         super().__init__(**kwargs)
         self.animation_engine: AnimationEngine | None = None
         self._click_regions: list[tuple[int, int, str]] = []
+
+    def on_mount(self) -> None:
+        pass
 
     def render(self) -> Group:
         try:
@@ -133,20 +136,15 @@ class BoxTabBar(TelecMixin, Widget):
         pane_bg = resolve_haze(get_terminal_background())
         pipe_color = resolve_haze(get_neutral_color("muted"))
 
-        # Dark mode: 4 rows (sky, label, bar, transition)
-        # Light mode: 3 rows (sky, label, transition)
-        num_rows = 4 if dark_mode else 3
+        num_rows = 3  # sky, label, transition
         tab_gap = 1
 
-        # All tab chrome from neutral palette
         if dark_mode:
-            bar_color = resolve_haze(get_neutral_color("peak"))
-            active_tab_bg = resolve_haze(get_neutral_color("peak"))
-            active_tab_fg = resolve_haze(get_neutral_color("base"))
+            active_tab_bg = "#FFFFFF"
+            active_tab_fg = "#000000"
         else:
-            bar_color = None
-            active_tab_bg = resolve_haze(get_neutral_color("base"))
-            active_tab_fg = resolve_haze(get_neutral_color("peak"))
+            active_tab_bg = pane_bg
+            active_tab_fg = resolve_haze(get_neutral_color("highlight"))
         inactive_tab_bg = resolve_haze(get_neutral_color("subtle"))
         inactive_tab_fg = resolve_haze(get_neutral_color("muted"))
 
@@ -190,10 +188,8 @@ class BoxTabBar(TelecMixin, Widget):
                     sky_color = sky_fallback
 
                 # --- Transition row (last row) ---
-                if y_offset == num_rows - 1:
-                    if dark_mode and in_tab:
-                        top_half = bar_color
-                    elif in_tab:
+                if y_offset == 2:
+                    if in_tab:
                         top_half = tab_bg or pane_bg
                     else:
                         sky_above = engine.get_layer_color(Z0, x, global_y - 1, target="header") if engine else None
@@ -218,29 +214,6 @@ class BoxTabBar(TelecMixin, Widget):
                     row_text.append(
                         "\u2580",
                         style=Style(color=_to_color(top_half), bgcolor=_to_color(pane_bg)),
-                    )
-                    continue
-
-                # --- Bar row (dark mode row 2) ---
-                if dark_mode and y_offset == 2:
-                    final_bg = bar_color if in_tab else sky_color
-                    fg_char = " "
-                    fg_color = None
-
-                    if engine:
-                        z_min = (Z80 if active_tab_under else Z60) if in_tab else Z70
-                        hit = _scan_entity_at(engine, entity_z_scan, x, global_y, z_min, pane_bg)
-                        if hit:
-                            e_char, e_fg, e_bg = hit
-                            if e_char is not None:
-                                fg_char = e_char
-                                fg_color = e_fg
-                            if e_bg is not None:
-                                final_bg = e_bg
-
-                    row_text.append(
-                        fg_char,
-                        style=Style(color=_to_color(fg_color), bgcolor=_to_color(final_bg)),
                     )
                     continue
 
