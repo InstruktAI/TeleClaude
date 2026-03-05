@@ -181,9 +181,7 @@ class GlobalSky(Animation):
                 w = max(w, *(len(row) for row in r))
         return w
 
-    def _spawn_sky_entity(
-        self, sprite: CompositeSprite | AnimatedSprite, direction: int | None = None
-    ) -> SkyEntity:
+    def _spawn_sky_entity(self, sprite: CompositeSprite | AnimatedSprite, direction: int | None = None) -> SkyEntity:
         """Spawn a sky entity from any CompositeSprite or AnimatedSprite."""
         z_level = self._pick_z_level(sprite.z_weights)
         lane = self._pick_z_level(sprite.y_weights) if sprite.y_weights else 1
