@@ -46,14 +46,14 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 
 | Command | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning |
 |---|---|---|---|---|---|---|---|---|---|
-| `telec sessions list` | R | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Workers have no business listing sessions. Customers should not see internal session inventory. Newcomers can list to orient themselves. |
+| `telec sessions list` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Workers need to discover peer sessions for collaboration (e.g., reviewer finding fixer). Customers should not see internal session inventory. |
 | `telec sessions start` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Starting sessions is orchestration. Workers cannot spawn. Contributors, newcomers, and customers cannot create sessions -- only admins and members can. |
-| `telec sessions send` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Sending to another session is orchestration. Workers cannot send (they use result/file/widget). Contributors, newcomers, and customers cannot message arbitrary sessions. |
-| `telec sessions tail` | R | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Workers should not read other sessions' transcripts. Customers should not see internal transcripts. Contributors and newcomers can tail for visibility. |
+| `telec sessions send` | W | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Workers need to message each other (reviewer ↔ fixer collaboration) and their orchestrator. Contributors, newcomers, and customers cannot message arbitrary sessions. |
+| `telec sessions tail` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Workers may read peer transcripts for collaboration context. Customers should not see internal transcripts. |
 | `telec sessions run` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Running slash commands on new sessions is orchestration. Same restrictions as `sessions start`. |
 | `telec sessions revive` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Reviving a dead session is session management. Same restrictions as start/run. |
 | `telec sessions end` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Terminating sessions is destructive. Only admins can end sessions. Workers, members, contributors, newcomers, and customers cannot. |
-| `telec sessions unsubscribe` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Unsubscribing from notifications is session management. Workers don't have subscriptions. Matches send restrictions for non-admin human roles. |
+| `telec sessions unsubscribe` | W | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Workers manage their own notification subscriptions. Matches send restrictions for non-admin human roles. |
 | `telec sessions restart` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Restarting a session is session management. Same restrictions as revive. |
 | `telec sessions result` | W | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | Workers send results back to their orchestrator -- this is their primary output mechanism. Newcomers and customers have no reason to send results. |
 | `telec sessions file` | W | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | Workers send files back to their user. Same as result. |
@@ -64,12 +64,12 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 
 | Command | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning |
 |---|---|---|---|---|---|---|---|---|---|
-| `telec computers list` | R | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Internal infrastructure. Workers have no need. Only admins and members see the computer inventory. |
-| `telec projects list` | R | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Project listing is useful for orientation. Workers don't need it. Customers should not see the project inventory. |
-| `telec agents availability` | R | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Read-only agent status. Workers don't need it. Customers don't interact with agent dispatch. |
+| `telec computers list` | R | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Read-only context. Workers may need environment awareness. Only team members see the computer inventory. |
+| `telec projects list` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Read-only context. Workers may need project awareness. Customers should not see the project inventory. |
+| `telec agents availability` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Read-only agent status. Workers may check availability before requesting help. Customers don't interact with agent dispatch. |
 | `telec agents status` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Setting agent dispatch status is infrastructure management. Admin only. |
-| `telec channels list` | R | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Internal channels are infrastructure. Workers don't need them. Only admins and members see channels. |
-| `telec channels publish` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Publishing to channels is internal coordination. Only admins and members. |
+| `telec channels list` | R | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Workers need channel awareness for status publishing. Only team members see channels. |
+| `telec channels publish` | W | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Workers publish status updates to channels. Only team members can publish. |
 
 ### System
 
