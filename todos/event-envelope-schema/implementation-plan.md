@@ -153,14 +153,14 @@ backward-compatible with existing consumers.
 
 **File(s):** `docs/project/spec/event-vocabulary.md`
 
-- [ ] Add a "Core Event Taxonomy" section listing the root families and their schemas
-- [ ] Add an "Expansion Joint" section documenting the additional-properties mechanism
-- [ ] Reference the JSON Schema export path for external consumers
+- [x] Add a "Core Event Taxonomy" section listing the root families and their schemas
+- [x] Add an "Expansion Joint" section documenting the additional-properties mechanism
+- [x] Reference the JSON Schema export path for external consumers
 
 ---
 
 ## Phase 7: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)
