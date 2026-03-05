@@ -1,5 +1,9 @@
 # Delivered work items. Newest first.
 
+- slug: cli-knowledge-commands
+  date: '2026-03-05'
+  title: telec history + telec memory CLI commands, retire standalone tool specs
+  description: telec history + telec memory CLI commands, retire standalone tool specs
 - slug: context-delivery-dedup
   date: '2026-03-05'
 - slug: state-machine-gate-sharpening

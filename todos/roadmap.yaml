@@ -84,8 +84,6 @@
 - slug: adapter-boundary-cleanup
 - slug: person-knowledge-level
 - slug: slug-helper
-- slug: cli-knowledge-commands
-  description: telec history + telec memory CLI commands, retire standalone tool specs
 - slug: cli-authz-overhaul
 - slug: reflection-routing-ownership
   after:
