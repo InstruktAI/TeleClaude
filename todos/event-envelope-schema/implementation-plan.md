@@ -33,7 +33,7 @@ backward-compatible with existing consumers.
 
 **File(s):** `teleclaude_events/schemas/node.py` (new)
 
-- [ ] Create `register_node(catalog)` with:
+- [x] Create `register_node(catalog)` with:
   - `node.alive` — heartbeat/presence (INFRASTRUCTURE, CLUSTER)
   - `node.leaving` — graceful departure (INFRASTRUCTURE, CLUSTER)
   - `node.descriptor_updated` — node metadata changed (OPERATIONAL, CLUSTER)
@@ -42,7 +42,7 @@ backward-compatible with existing consumers.
 
 **File(s):** `teleclaude_events/schemas/deployment.py` (new)
 
-- [ ] Create `register_deployment(catalog)` with:
+- [x] Create `register_deployment(catalog)` with:
   - `deployment.started` — deploy initiated (WORKFLOW, LOCAL)
   - `deployment.completed` — deploy succeeded (WORKFLOW, LOCAL)
   - `deployment.failed` — deploy failed (BUSINESS, LOCAL, actionable)
@@ -52,7 +52,7 @@ backward-compatible with existing consumers.
 
 **File(s):** `teleclaude_events/schemas/content.py` (new)
 
-- [ ] Create `register_content(catalog)` with:
+- [x] Create `register_content(catalog)` with:
   - `content.dumped` — raw content captured (WORKFLOW, LOCAL)
   - `content.refined` — content processed/edited (WORKFLOW, LOCAL)
   - `content.published` — content made available (BUSINESS, LOCAL)
@@ -61,7 +61,7 @@ backward-compatible with existing consumers.
 
 **File(s):** `teleclaude_events/schemas/notification.py` (new)
 
-- [ ] Create `register_notification(catalog)` with:
+- [x] Create `register_notification(catalog)` with:
   - `notification.escalation` — escalated to human (BUSINESS, LOCAL, actionable)
   - `notification.resolution` — escalation resolved (WORKFLOW, LOCAL)
 
@@ -69,7 +69,7 @@ backward-compatible with existing consumers.
 
 **File(s):** `teleclaude_events/schemas/schema.py` (new)
 
-- [ ] Create `register_schema(catalog)` with:
+- [x] Create `register_schema(catalog)` with:
   - `schema.proposed` — schema change proposed (OPERATIONAL, CLUSTER)
   - `schema.adopted` — schema change merged (OPERATIONAL, CLUSTER)
 
@@ -77,7 +77,7 @@ backward-compatible with existing consumers.
 
 **File(s):** `teleclaude_events/schemas/__init__.py`
 
-- [ ] Import and call all new `register_*` functions in `register_all()`
+- [x] Import and call all new `register_*` functions in `register_all()`
 
 ---
 
