@@ -144,13 +144,13 @@ class BoxTabBar(TelecMixin, Widget):
 
         # All tab chrome from neutral palette
         if dark_mode:
-            bar_color = resolve_haze(get_neutral_color("highlight"))
-            active_tab_bg = resolve_haze(get_neutral_color("highlight"))
-            active_tab_fg = resolve_haze(get_neutral_color("subtle"))
+            bar_color = resolve_haze(get_neutral_color("peak"))
+            active_tab_bg = resolve_haze(get_neutral_color("peak"))
+            active_tab_fg = resolve_haze(get_neutral_color("base"))
         else:
             bar_color = None
-            active_tab_bg = resolve_haze(get_neutral_color("subtle"))
-            active_tab_fg = resolve_haze(get_neutral_color("highlight"))
+            active_tab_bg = resolve_haze(get_neutral_color("base"))
+            active_tab_fg = resolve_haze(get_neutral_color("peak"))
         inactive_tab_bg = resolve_haze(get_neutral_color("subtle"))
         inactive_tab_fg = resolve_haze(get_neutral_color("muted"))
 

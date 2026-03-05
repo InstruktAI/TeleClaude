@@ -27,7 +27,7 @@ from fastapi import Depends, Header, HTTPException, Request
 from teleclaude.config.loader import load_global_config
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLES, ROLE_ORCHESTRATOR, ROLE_WORKER
 from teleclaude.core.db import db
-from teleclaude.core.tool_access import get_excluded_tools
+from teleclaude.core.tool_access import is_tool_allowed
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -239,8 +239,7 @@ async def verify_caller(
 
 def _is_tool_denied(tool_name: str, identity: CallerIdentity) -> bool:
     """Check if a tool (mapped from endpoint) is denied for this identity."""
-    excluded = get_excluded_tools(identity.system_role, identity.human_role)
-    return tool_name in excluded
+    return not is_tool_allowed(identity.system_role, tool_name, identity.human_role)
 
 
 def require_clearance(tool_name: str):

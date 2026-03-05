@@ -193,7 +193,7 @@ POST_COMPLETION: dict[str, str] = {
    h. When fixer reports FIX COMPLETE:
       - Read review-findings.md verdict
       - If APPROVE: telec sessions end <fixer_session_id>, telec sessions end <reviewer_session_id>,
-          telec todo mark-phase {args} --phase review --status approved --cwd <project-root>,
+          telec todo mark-phase {args} --phase review --status approved,
           call {next_call}
       - If still REQUEST CHANGES: telec sessions end <fixer_session_id>,
           telec sessions end <reviewer_session_id>,
@@ -3057,7 +3057,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 return format_error("NO_AGENTS", str(exc))
 
             # Build pre-dispatch marking instructions
-            pre_dispatch = f"telec todo mark-phase {resolved_slug} --phase build --status started --cwd <project-root>"
+            pre_dispatch = f"telec todo mark-phase {resolved_slug} --phase build --status started"
 
             # Bugs use next-bugs-fix instead of next-build
             # Check main repo's todos/ (bug.md lives there, not synced to worktree)

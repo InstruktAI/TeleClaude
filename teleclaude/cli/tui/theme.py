@@ -175,8 +175,8 @@ STRUCTURAL_PALETTE: dict[str, dict[str, str]] = {
 }
 
 NEUTRAL_PALETTE: dict[str, dict[str, str]] = {
-    "dark": {"subtle": "#484848", "muted": "#707070", "normal": "#a0a0a0", "highlight": "#e0e0e0"},
-    "light": {"subtle": "#b8b8b8", "muted": "#909090", "normal": "#606060", "highlight": "#202020"},
+    "dark": {"base": "#000000", "subtle": "#484848", "muted": "#707070", "normal": "#a0a0a0", "highlight": "#e0e0e0", "peak": "#ffffff"},
+    "light": {"base": "#ffffff", "subtle": "#b8b8b8", "muted": "#909090", "normal": "#606060", "highlight": "#202020", "peak": "#000000"},
 }
 
 PEACEFUL_PALETTE: dict[str, dict[str, str]] = {
