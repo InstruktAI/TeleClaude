@@ -82,10 +82,14 @@ def _render_gh_wrapper(tmp_path: Path, canonical_root: Path) -> Path:
 
 
 def _base_env(tmp_path: Path, wrapper_dir: Path, fake_bin: Path) -> dict[str, str]:
-    env = os.environ.copy()
-    env["HOME"] = str(tmp_path)
-    env["PATH"] = f"{wrapper_dir}:{fake_bin}:/usr/bin:/bin"
-    env["TELECLAUDE_SESSION_ID"] = "sess-456"
+    env: dict[str, str] = {
+        "HOME": str(tmp_path),
+        "PATH": f"{wrapper_dir}:{fake_bin}:/usr/bin:/bin",
+        "TELECLAUDE_SESSION_ID": "sess-456",
+    }
+    for key in ("TMPDIR", "LANG", "LC_ALL", "TERM"):
+        if key in os.environ:
+            env[key] = os.environ[key]
     return env
 
 
@@ -240,11 +244,15 @@ def test_gh_wrapper_preserves_first_real_binary_failure(tmp_path: Path) -> None:
     _write_logging_gh(second_bin, "GH2", 0)
     calls_file = tmp_path / "gh-calls.log"
 
-    env = os.environ.copy()
-    env["HOME"] = str(tmp_path)
-    env["PATH"] = f"{wrapper.parent}:{first_bin}:{second_bin}:/usr/bin:/bin"
-    env["TELECLAUDE_SESSION_ID"] = "sess-456"
-    env["FAKE_GH_CALLS_FILE"] = str(calls_file)
+    env: dict[str, str] = {
+        "HOME": str(tmp_path),
+        "PATH": f"{wrapper.parent}:{first_bin}:{second_bin}:/usr/bin:/bin",
+        "TELECLAUDE_SESSION_ID": "sess-456",
+        "FAKE_GH_CALLS_FILE": str(calls_file),
+    }
+    for key in ("TMPDIR", "LANG", "LC_ALL", "TERM"):
+        if key in os.environ:
+            env[key] = os.environ[key]
 
     result = subprocess.run(
         [str(wrapper), "auth", "status"],

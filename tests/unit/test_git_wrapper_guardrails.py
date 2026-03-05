@@ -79,10 +79,14 @@ def _render_git_wrapper(tmp_path: Path, canonical_root: Path) -> Path:
 
 
 def _base_env(tmp_path: Path, wrapper_dir: Path, fake_bin: Path) -> dict[str, str]:
-    env = os.environ.copy()
-    env["HOME"] = str(tmp_path)
-    env["PATH"] = f"{wrapper_dir}:{fake_bin}:/usr/bin:/bin"
-    env["TELECLAUDE_SESSION_ID"] = "sess-123"
+    env: dict[str, str] = {
+        "HOME": str(tmp_path),
+        "PATH": f"{wrapper_dir}:{fake_bin}:/usr/bin:/bin",
+        "TELECLAUDE_SESSION_ID": "sess-123",
+    }
+    for key in ("TMPDIR", "LANG", "LC_ALL", "TERM"):
+        if key in os.environ:
+            env[key] = os.environ[key]
     return env
 
 
@@ -234,11 +238,15 @@ def test_git_wrapper_preserves_first_real_binary_failure(tmp_path: Path) -> None
     _write_logging_git(second_bin, "BIN2", 0)
     calls_file = tmp_path / "git-calls.log"
 
-    env = os.environ.copy()
-    env["HOME"] = str(tmp_path)
-    env["PATH"] = f"{wrapper.parent}:{first_bin}:{second_bin}:/usr/bin:/bin"
-    env["TELECLAUDE_SESSION_ID"] = "sess-123"
-    env["FAKE_GIT_CALLS_FILE"] = str(calls_file)
+    env: dict[str, str] = {
+        "HOME": str(tmp_path),
+        "PATH": f"{wrapper.parent}:{first_bin}:{second_bin}:/usr/bin:/bin",
+        "TELECLAUDE_SESSION_ID": "sess-123",
+        "FAKE_GIT_CALLS_FILE": str(calls_file),
+    }
+    for key in ("TMPDIR", "LANG", "LC_ALL", "TERM"):
+        if key in os.environ:
+            env[key] = os.environ[key]
 
     result = subprocess.run(
         [str(wrapper), "status"],
