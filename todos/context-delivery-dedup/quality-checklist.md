@@ -37,10 +37,10 @@ Ownership:
 
 ## Finalize Gates (Finalizer)
 
-- [ ] Review verdict is APPROVE
-- [ ] Build gates all checked
-- [ ] Review gates all checked
-- [ ] Merge to main complete
-- [ ] Delivery logged in `todos/delivered.md`
-- [ ] Roadmap updated
-- [ ] Todo/worktree cleanup complete
+- [x] Review verdict is APPROVE
+- [x] Build gates all checked
+- [x] Review gates all checked
+- [x] Merge to main complete — fast-forward merge 593524eb..4aabf9c0
+- [x] Delivery logged in `todos/delivered.yaml`
+- [x] Roadmap updated
+- [x] Todo/worktree cleanup complete
