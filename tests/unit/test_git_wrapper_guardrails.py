@@ -79,7 +79,7 @@ def _render_git_wrapper(tmp_path: Path, canonical_root: Path) -> Path:
 
 
 def _base_env(tmp_path: Path, wrapper_dir: Path, fake_bin: Path) -> dict[str, str]:
-    env = os.environ.copy()
+    env = {k: v for k, v in os.environ.items() if not k.startswith("TELECLAUDE_")}
     env["HOME"] = str(tmp_path)
     env["PATH"] = f"{wrapper_dir}:{fake_bin}:/usr/bin:/bin"
     env["TELECLAUDE_SESSION_ID"] = "sess-123"
