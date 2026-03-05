@@ -347,6 +347,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: project/design/ux/tui-animations
+  description: Physical architecture and animation catalog for the TUI cinematic rooftop
+    banner.
+  type: design
+  scope: project
+  path: docs/project/design/ux/tui-animations.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: project/policy/adapter-boundaries
   description: Strict separation between adapters and core logic.
   type: policy

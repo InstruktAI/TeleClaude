@@ -1,6 +1,6 @@
 # person-proficiency-level — Input
 
-## Person Knowledge Level — Feature
+## Person Proficiency Level — Feature
 
 Add a `proficiency` field to PersonEntry so agents know the human's proficiency level at session start and derive all behavioral calibration from it.
 

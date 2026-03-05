@@ -4,8 +4,7 @@ type: 'design'
 scope: 'project'
 description: 'Physical architecture and animation catalog for the TUI cinematic rooftop banner.'
 ---
-
-# TUI Animation Specification: The Cinematic Rooftop
+# TUI Animation Specification: The Cinematic Rooftop — Design
 
 ## Purpose
 

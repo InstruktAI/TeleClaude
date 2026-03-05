@@ -10,7 +10,7 @@ from typing import Callable, Deque, Optional, Tuple
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.tui.animations.base import Z40, Animation, RenderBuffer
+from teleclaude.cli.tui.animations.base import Z50, Animation, RenderBuffer
 
 logger = get_logger(__name__)
 
@@ -184,9 +184,9 @@ class AnimationEngine:
                             back_buffer[z].update(pixels)
                     else:
                         # Legacy single-layer update (default to billboard level)
-                        if Z40 not in back_buffer:
-                            back_buffer[Z40] = {}
-                        back_buffer[Z40].update(result)
+                        if Z50 not in back_buffer:
+                            back_buffer[Z50] = {}
+                        back_buffer[Z50].update(result)
 
                     slot.frame_count += 1
                     slot.last_update_ms = current_time_ms

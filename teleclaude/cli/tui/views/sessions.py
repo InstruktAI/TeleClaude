@@ -84,7 +84,7 @@ class SessionsView(Widget, can_focus=True):
         Binding("R", "restart_session", "Restart"),
         Binding("R", "restart_project", "Restart All"),
         Binding("R", "restart_all", "Restart All"),
-        Binding("s", "toggle_sticky_sessions", "Sticky", group=Binding.Group("global")),
+        Binding("escape", "toggle_sticky_sessions", "Clear", key_display="Esc", group=Binding.Group("global")),
     ]
 
     preview_session_id = reactive[str | None](None)
@@ -926,7 +926,12 @@ class SessionsView(Widget, can_focus=True):
             computer = item.data.computer.name
             scope_ids = {s.session_id for s in self._sessions if (s.computer or "local") == computer}
         else:
-            # Global: any node — only reachable when stickies exist (check_action guards this)
+            # Global: clear all stickies and preview
+            if not self._sticky_session_ids and self.preview_session_id is None:
+                return
+            if self.preview_session_id is not None:
+                self.preview_session_id = None
+                self.post_message(PreviewChanged(None, request_focus=False))
             if not self._sticky_session_ids:
                 return
             scope_ids = set(self._sticky_session_ids)
