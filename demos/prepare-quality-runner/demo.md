@@ -51,7 +51,7 @@ roadmap.yaml. Rescore lands above threshold. Report documents all actions.
 1. Trigger assessment for a todo with ambiguous requirements that cannot be structurally improved.
 2. Cartridge scores below 7, marks `needs_decision`.
 3. DOR report lists specific blockers and decisions needed.
-4. Notification remains `agent_status=claimed` (not resolved) — visible for human attention.
+4. Notification remains `agent_status=none` (not resolved) — visible for human attention.
 
 **Expected:** Human sees the unresolved notification, reads the blockers, provides direction.
 

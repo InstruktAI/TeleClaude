@@ -55,9 +55,9 @@ class GlobalSky(Animation):
 
     # Sky gradient: top row = base, bottom row = target, linear interpolation between
     _SKY_BASE_DARK = "#000000"
-    _SKY_TARGET_DARK = "#2A0050"  # lighter purple at bottom
+    _SKY_TARGET_DARK = "#350065"  # lighter purple at bottom
     _SKY_BASE_LIGHT = "#87CEEB"
-    _SKY_TARGET_LIGHT = "#D0EFFC"  # lighter blue at bottom
+    _SKY_TARGET_LIGHT = "#DAF3FF"  # lighter blue at bottom
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         kwargs.setdefault("target", "header")

@@ -1,5 +1,9 @@
 # Delivered work items. Newest first.
 
+- slug: prepare-quality-runner
+  date: '2026-03-05'
+  title: Automated DOR quality runner for todo preparation
+  description: Automated DOR quality runner for todo preparation
 - slug: cli-knowledge-commands
   date: '2026-03-05'
   title: telec history + telec memory CLI commands, retire standalone tool specs
