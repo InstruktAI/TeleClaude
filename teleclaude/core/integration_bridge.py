@@ -137,6 +137,85 @@ async def emit_deployment_failed(
 
 
 # ---------------------------------------------------------------------------
+# Integration lifecycle event helpers (state machine emissions)
+# ---------------------------------------------------------------------------
+
+
+async def emit_integration_started(
+    slug: str,
+    session_id: str,
+    queue_depth: int,
+) -> str:
+    """Emit integration.started when the state machine begins processing a candidate."""
+    return await emit_event(
+        event="domain.software-development.integration.started",
+        source=f"integrator/{session_id or os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+        level=EventLevel.WORKFLOW,
+        domain="software-development",
+        description=f"Integration started for {slug} (queue depth: {queue_depth})",
+        entity=slug,
+        payload={
+            "slug": slug,
+            "session_id": session_id,
+            "queue_depth": queue_depth,
+        },
+    )
+
+
+async def emit_integration_candidate_delivered(
+    slug: str,
+    branch: str,
+    merge_commit_sha: str,
+    *,
+    integrated_at: str | None = None,
+) -> str:
+    """Emit integration.candidate.delivered after a candidate is fully integrated."""
+    ts = integrated_at or datetime.now(timezone.utc).isoformat()
+    return await emit_event(
+        event="domain.software-development.integration.candidate.delivered",
+        source=f"integrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+        level=EventLevel.WORKFLOW,
+        domain="software-development",
+        description=f"Candidate delivered: {slug} ({branch} \u2192 main, merge {merge_commit_sha[:8]})",
+        entity=slug,
+        payload={
+            "slug": slug,
+            "branch": branch,
+            "merge_commit_sha": merge_commit_sha,
+            "integrated_at": ts,
+        },
+    )
+
+
+async def emit_integration_candidate_blocked(
+    slug: str,
+    branch: str,
+    sha: str,
+    *,
+    reason: str = "",
+    blocked_at: str | None = None,
+) -> str:
+    """Emit integration.candidate.blocked when a candidate cannot be integrated."""
+    ts = blocked_at or datetime.now(timezone.utc).isoformat()
+    return await emit_event(
+        event="domain.software-development.integration.candidate.blocked",
+        source=f"integrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+        level=EventLevel.BUSINESS,
+        domain="software-development",
+        description=f"Integration blocked for {slug} ({branch}@{sha[:8]}): {reason or 'unknown reason'}",
+        entity=slug,
+        payload={
+            "slug": slug,
+            "branch": branch,
+            "sha": sha,
+            "reason": reason,
+            "blocked_at": ts,
+        },
+        visibility=EventVisibility.LOCAL,
+    )
+
+
+# ---------------------------------------------------------------------------
 class _SpawnResult(TypedDict, total=False):
     status: str
     slug: str

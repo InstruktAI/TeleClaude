@@ -12,6 +12,109 @@ from typing import Literal, Mapping, NotRequired, TypedDict, cast
 
 IntegrationEventType = Literal["review_approved", "finalize_ready", "branch_pushed", "integration_blocked"]
 
+# ---------------------------------------------------------------------------
+# Lifecycle event payload TypedDicts (emitted by state machine via bridge)
+# ---------------------------------------------------------------------------
+
+LifecycleEventType = Literal[
+    "integration.started",
+    "integration.candidate.dequeued",
+    "integration.merge.succeeded",
+    "integration.merge.conflicted",
+    "integration.conflict.resolved",
+    "integration.candidate.committed",
+    "integration.push.succeeded",
+    "integration.push.rejected",
+    "integration.candidate.delivered",
+    "integration.candidate.blocked",
+    "integration.completed",
+]
+
+
+class IntegrationStartedPayload(TypedDict):
+    """Payload for `integration.started`."""
+
+    slug: str
+    session_id: str
+    queue_depth: int
+
+
+class CandidateDequeuedPayload(TypedDict):
+    """Payload for `integration.candidate.dequeued`."""
+
+    slug: str
+    branch: str
+    sha: str
+
+
+class MergeSucceededPayload(TypedDict):
+    """Payload for `integration.merge.succeeded`."""
+
+    slug: str
+    branch: str
+
+
+class MergeConflictedPayload(TypedDict):
+    """Payload for `integration.merge.conflicted`."""
+
+    slug: str
+    branch: str
+    conflicted_files: list[str]
+
+
+class ConflictResolvedPayload(TypedDict):
+    """Payload for `integration.conflict.resolved`."""
+
+    slug: str
+    branch: str
+
+
+class CandidateCommittedPayload(TypedDict):
+    """Payload for `integration.candidate.committed`."""
+
+    slug: str
+    commit_sha: str
+
+
+class PushSucceededPayload(TypedDict):
+    """Payload for `integration.push.succeeded`."""
+
+    slug: str
+    commit_sha: str
+
+
+class PushRejectedPayload(TypedDict):
+    """Payload for `integration.push.rejected`."""
+
+    slug: str
+    rejection_reason: str
+
+
+class CandidateDeliveredPayload(TypedDict):
+    """Payload for `integration.candidate.delivered`."""
+
+    slug: str
+    branch: str
+    merge_commit_sha: str
+
+
+class CandidateBlockedPayload(TypedDict):
+    """Payload for `integration.candidate.blocked`."""
+
+    slug: str
+    branch: str
+    block_reason: str
+    follow_up_slug: NotRequired[str]
+
+
+class IntegrationCompletedPayload(TypedDict):
+    """Payload for `integration.completed`."""
+
+    candidates_processed: int
+    candidates_blocked: int
+    duration_ms: int
+    session_id: str
+
 
 class ReviewApprovedPayload(TypedDict):
     """Payload for `review_approved`."""
