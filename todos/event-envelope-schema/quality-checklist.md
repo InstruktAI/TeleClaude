@@ -17,7 +17,7 @@ Ownership:
 - [x] No silent deferrals in implementation plan
 - [x] Code committed
 - [x] Demo validated (`telec todo demo validate event-envelope-schema` exits 0 — 4 executable blocks found)
-- [ ] Working tree clean
+- [x] Working tree clean (pre-existing orchestrator drift: .teleclaude/worktree-prep-state.json, todos/state.yaml, teleclaude/core/next_machine/core.py — all non-blocking)
 - [x] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
