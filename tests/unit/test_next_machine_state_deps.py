@@ -740,7 +740,7 @@ async def test_next_work_finalize_next_call_without_slug():
     assert "Call telec todo work" in result
     assert "Call telec todo work(slug=" not in result
     assert "FINALIZE_READY: final-item" in result
-    assert "deployment.started" in result
+    assert "telec todo integrate" in result
     assert "Integrator will process" in result
 
 

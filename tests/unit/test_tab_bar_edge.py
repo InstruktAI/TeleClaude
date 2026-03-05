@@ -91,10 +91,11 @@ def test_transition_row_under_tabs_is_pane():
 
 @pytest.mark.usefixtures("_light_mode")
 def test_active_tab_bg_uses_neutral_subtle():
-    """Active tab bg should use the neutral 'subtle' color in light mode."""
+    """Active tab bg in light mode uses pane_bg (terminal background), not neutral color."""
     rows = _render(_make_fake_bar())
-    # get_neutral_color is patched to return #888888, resolve_haze is passthrough
-    expected = "#888888"
+    # In light mode: active_tab_bg = pane_bg = resolve_haze(get_terminal_background())
+    # resolve_haze is patched as passthrough, get_terminal_background returns TERMINAL_BG
+    expected = TERMINAL_BG.lower()
     # Row 1 (label row), x=5 is inside active tab
     bg = _bg_hex(_style_at(rows[1], 5))
-    assert bg == expected, f"Active tab bg should match neutral subtle, got {bg}"
+    assert bg == expected, f"Active tab bg should match pane_bg (terminal bg), got {bg}"

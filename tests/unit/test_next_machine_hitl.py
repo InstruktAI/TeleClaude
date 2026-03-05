@@ -849,7 +849,7 @@ def test_post_completion_finalize_hands_off_to_integrator():
     assert "todos/.finalize-lock" in instructions
     assert "TELECLAUDE_SESSION_ID" in instructions
     assert "<session_id>" in instructions
-    assert "deployment.started" in instructions
+    assert "telec todo integrate" in instructions
     assert "Integrator will process" in instructions
     # Old merge/push flow is gone
     assert "make restart" not in instructions
