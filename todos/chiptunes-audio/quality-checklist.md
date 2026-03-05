@@ -26,8 +26,8 @@ Ownership:
 - [x] Deferrals justified and not hiding required scope
 - [x] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
 - [x] Findings written in `review-findings.md`
-- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — REQUEST CHANGES
-- [ ] Critical issues resolved or explicitly blocked — 2 Critical findings open (C1, C2)
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES) — APPROVE
+- [x] Critical issues resolved or explicitly blocked — all findings addressed
 - [x] Test coverage and regression risk assessed
 
 ## Finalize Gates (Finalizer)

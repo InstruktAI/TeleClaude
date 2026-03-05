@@ -121,10 +121,54 @@ N/A -- multiple findings exist.
 
 ---
 
-**Verdict: REQUEST CHANGES**
+## Fixes Applied
 
-Two Critical findings must be resolved:
-- C1: Thread self-join makes auto-advance silently fail
-- C2: No track duration/ending mechanism means auto-advance never triggers
+### C1 — Thread self-join (player.py)
+`stop()` now checks `self._thread is not threading.current_thread()` before calling `join()`.
+When auto-advance fires from the emulation thread, `stop()` skips the join (the thread is a daemon and will exit naturally) instead of raising `RuntimeError`.
+Commit: `453caa2ba`
 
-Both relate to the same requirement: "When a track finishes, the next random track starts automatically."
+### C2 — No track duration mechanism (player.py)
+Added `max_track_duration` parameter (default 300 s) to `ChiptunesPlayer.__init__`.
+`_emulation_loop` now records `track_start = time.monotonic()` and breaks the loop when elapsed time exceeds the limit, triggering `_notify_track_end()` for auto-advance.
+Commit: `453caa2ba`
+
+### I1 — Emulation loop throttling (player.py)
+After each frame, `_stop_event.wait(max(0.0, frame_duration - elapsed))` paces the loop to ~50 Hz real-time instead of spinning at 100% CPU.
+The `wait()` call also makes the loop immediately interruptible on `stop()`.
+Commit: `453caa2ba`
+
+### I2 — Silent CPU exception swallowing (sid_cpu.py)
+Added `logger = get_logger(__name__)` and `logger.debug("CPU exception during emulation: %s", exc)` before the `break` in `_run_to_return`.
+Commit: `23fcb3bf1`
+
+### I3 — Inconsistent `_chiptunes_manager` access (tts/manager.py)
+Replaced `getattr(self, "_chiptunes_manager", None)` with `self._chiptunes_manager` in both `trigger_event` and `_handle_tts_result`. The attribute is always initialised in `__init__`.
+Commit: `b4c1b06ce`
+
+### I4 — Unconditional resume (tts/manager.py)
+`_handle_tts_result` now guards `resume()` with `self._chiptunes_manager.enabled` so it does not resume when chiptunes were toggled off during TTS playback.
+Commit: `b4c1b06ce`
+
+### I5 — Duplicated `asyncio.get_running_loop()` (runtime_settings.py)
+Removed the second unreachable `try/except RuntimeError` block from `_schedule_flush`. The first block already returns early on `RuntimeError`.
+Commit: `d0a8cae71`
+
+### Additional (from reviewer)
+- Prebuffer wait: replaced throwaway `threading.Event().wait(0.05)` with `self._stop_event.wait(0.05)` — commit `453caa2ba`
+- Zombie emulation thread on stream open failure: `self._stop_event.set()` now called before clearing `_playing` — commit `453caa2ba`
+
+Tests: 41 passed, 5 skipped (py65emu/pyresidfp/sounddevice optional deps)
+Lint: 10.00/10 on all modified files
+
+---
+
+### Test fix (from re-review)
+- `test_tts_fallback_saturation.py`: `_make_manager` factory bypasses `__init__` via `__new__`, missing `_chiptunes_manager` attribute. Added initialization to factory.
+
+Tests: 2757 passed, 5 skipped (py65emu/pyresidfp/sounddevice optional deps)
+Lint: clean on all modified files
+
+---
+
+**Verdict: APPROVE**
