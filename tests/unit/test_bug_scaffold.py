@@ -75,17 +75,16 @@ class TestCreateBugSkeleton:
         assert not (result / "quality-checklist.md").exists()
         assert not (result / "input.md").exists()
 
-    def test_create_bug_skeleton_rejects_existing_dir(self, tmp_path: Path):
-        """Raises FileExistsError when directory already exists."""
+    def test_create_bug_skeleton_uses_counter_suffix_on_collision(self, tmp_path: Path):
+        """Uses counter suffix instead of raising on collision."""
         project_root = tmp_path
         slug = "fix-test-bug"
 
-        # Create once
-        create_bug_skeleton(project_root, slug, "Test bug")
+        first = create_bug_skeleton(project_root, slug, "Test bug")
+        assert first.name == "fix-test-bug"
 
-        # Try to create again
-        with pytest.raises(FileExistsError, match="Todo already exists"):
-            create_bug_skeleton(project_root, slug, "Test bug")
+        second = create_bug_skeleton(project_root, slug, "Test bug")
+        assert second.name == "fix-test-bug-2"
 
     def test_create_bug_skeleton_rejects_invalid_slug(self, tmp_path: Path):
         """Raises ValueError for invalid slug."""

@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import re
 import shutil
 from pathlib import Path
 
 import yaml
 
+from teleclaude.slug import ensure_unique_slug, validate_slug
 from teleclaude.types.todos import BreakdownState, DorState, TodoState
-
-SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-
 
 _DEFAULT_STATE = TodoState(
     build="pending",
@@ -72,17 +69,12 @@ def create_todo_skeleton(
 
     Optionally registers the slug in todos/roadmap.yaml when ``after`` is provided.
     """
+    validate_slug(slug)
     slug = slug.strip()
-    if not slug:
-        raise ValueError("Slug is required")
-    if not SLUG_PATTERN.match(slug):
-        raise ValueError("Invalid slug. Use lowercase letters, numbers, and hyphens only")
 
     todos_root = project_root / "todos"
+    slug = ensure_unique_slug(todos_root, slug)
     todo_dir = todos_root / slug
-
-    if todo_dir.exists():
-        raise FileExistsError(f"Todo already exists: {todo_dir}")
 
     req = _read_template("requirements.md").format(slug=slug)
     plan = _read_template("implementation-plan.md").format(slug=slug)
@@ -131,17 +123,12 @@ def create_bug_skeleton(
     """
     from datetime import datetime, timezone
 
+    validate_slug(slug)
     slug = slug.strip()
-    if not slug:
-        raise ValueError("Slug is required")
-    if not SLUG_PATTERN.match(slug):
-        raise ValueError("Invalid slug. Use lowercase letters, numbers, and hyphens only")
 
     todos_root = project_root / "todos"
+    slug = ensure_unique_slug(todos_root, slug)
     todo_dir = todos_root / slug
-
-    if todo_dir.exists():
-        raise FileExistsError(f"Todo already exists: {todo_dir}")
 
     date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -183,11 +170,8 @@ def remove_todo(project_root: Path, slug: str) -> None:
         remove_from_roadmap,
     )
 
+    validate_slug(slug)
     slug = slug.strip()
-    if not slug:
-        raise ValueError("Slug is required")
-    if not SLUG_PATTERN.match(slug):
-        raise ValueError("Invalid slug. Use lowercase letters, numbers, and hyphens only")
 
     # Guard: check if worktree exists
     worktree_path = project_root / "trees" / slug

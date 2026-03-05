@@ -527,7 +527,7 @@ class CreateSlugModal(ModalScreen[str | None]):
             self._do_create()
 
     def _do_create(self) -> None:
-        from teleclaude.todo_scaffold import SLUG_PATTERN
+        from teleclaude.slug import SLUG_PATTERN
 
         slug_input = self.query_one("#slug-input", Input)
         error_label = self.query_one("#slug-error", Label)

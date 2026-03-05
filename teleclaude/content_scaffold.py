@@ -10,6 +10,8 @@ from typing import TypedDict
 
 import yaml
 
+from teleclaude.slug import ensure_unique_slug, normalize_slug
+
 logger = logging.getLogger(__name__)
 
 
@@ -18,8 +20,7 @@ def _derive_slug(text: str) -> str:
     lowered = text.lower()
     words_only = re.sub(r"[^a-z0-9\s]+", " ", lowered)
     words = [w for w in words_only.split() if len(w) > 1][:5]
-    slug = "-".join(words)
-    slug = re.sub(r"-+", "-", slug).strip("-")
+    slug = normalize_slug("-".join(words))
     return slug or "dump"
 
 
@@ -97,12 +98,8 @@ def create_content_inbox_entry(
     inbox_dir = project_root / "publications" / "inbox"
     inbox_dir.mkdir(parents=True, exist_ok=True)
 
+    folder_name = ensure_unique_slug(inbox_dir, folder_name)
     entry_dir = inbox_dir / folder_name
-    if entry_dir.exists():
-        counter = 2
-        while (inbox_dir / f"{folder_name}-{counter}").exists():
-            counter += 1
-        entry_dir = inbox_dir / f"{folder_name}-{counter}"
 
     entry_dir.mkdir(parents=True)
 
