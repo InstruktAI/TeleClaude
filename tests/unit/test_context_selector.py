@@ -165,6 +165,23 @@ def test_explicit_dep_request_returns_content(tmp_path: Path, monkeypatch: pytes
     assert "# Required reads" not in output
 
 
+def test_snippet_and_dep_requested_together_no_header(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Requesting both snippet-a and its dependency snippet-c together emits no Required reads header."""
+    project_root, global_snippets_root = _setup_dep_fixture(tmp_path)
+    monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_snippets_root)
+
+    output = context_selector.build_context_output(
+        snippet_ids=["area/snippet-a", "area/snippet-c"],
+        areas=["policy"],
+        project_root=project_root,
+        caller_role="admin",
+    )
+
+    assert "Content of A." in output
+    assert "Content of C." in output
+    assert "# Required reads" not in output
+
+
 def test_phase2_invalid_ids_returns_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project_root = tmp_path / "project"
     global_root = tmp_path / "global"
