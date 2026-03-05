@@ -54,7 +54,8 @@ class GlobalSky(Animation):
     _WEATHER_WEIGHTS = [30, 35, 25, 10]
 
     # City glow: 3 rows behind tab bar (y=7,8,9)
-    _CITY_GLOW = ["#1A0035", "#270055", "#0A0010"]
+    _CITY_GLOW_DARK = ["#1A0035", "#270055", "#0A0010"]
+    _CITY_GLOW_LIGHT = ["#A0D8F0", "#B8E4F8", "#D0F0FF"]
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         kwargs.setdefault("target", "header")
@@ -64,8 +65,8 @@ class GlobalSky(Animation):
         self._all_pixels = [(x, y) for y in range(self.height) for x in range(self.width)]
 
         # Sky gradients
-        self.day_sky = Spectrum(["#87CEEB", "#C8E8F8"])
-        self.night_sky = Spectrum(["#000000", "#05000A", "#0F001A", "#05000A"])
+        self.day_sky = Spectrum(["#87CEEB", "#9DD4F0", "#B8E0F5", "#C8E8F8"])
+        self.night_sky = Spectrum(["#000000", "#080012", "#120028", "#1A0035"])
 
         # Pre-computed sky gradient caches (avoid 4000 interpolations per frame)
         self._cached_dark_mode: bool | None = None
@@ -276,10 +277,10 @@ class GlobalSky(Animation):
         for x, y in self._all_pixels:
             pos_factor = y / max(1, self.height - 1)
             pixels.append((Z0, x, y, sky.get_color(pos_factor)))
-        if self.dark_mode:
-            for dy, glow_color in enumerate(self._CITY_GLOW):
-                for x in range(self.width):
-                    pixels.append((Z0, x, 7 + dy, glow_color))
+        glow = self._CITY_GLOW_DARK if self.dark_mode else self._CITY_GLOW_LIGHT
+        for dy, glow_color in enumerate(glow):
+            for x in range(self.width):
+                pixels.append((Z0, x, 7 + dy, glow_color))
         return pixels
 
     def _render_quarter_celestial(self, buffer: RenderBuffer, term_width: int) -> None:
