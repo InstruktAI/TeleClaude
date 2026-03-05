@@ -62,6 +62,28 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 """
 
+_CREATE_QUARANTINED_TABLE = """
+CREATE TABLE IF NOT EXISTS quarantined_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    source TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    envelope_json TEXT NOT NULL,
+    trust_flags TEXT NOT NULL DEFAULT '[]',
+    reviewed INTEGER NOT NULL DEFAULT 0
+);
+"""
+
+_CREATE_CORRELATION_TABLE = """
+CREATE TABLE IF NOT EXISTS correlation_windows (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    entity TEXT,
+    window_start TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 1
+);
+"""
+
 _CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_notifications_event_type ON notifications (event_type);",
     "CREATE INDEX IF NOT EXISTS idx_notifications_level ON notifications (level);",
@@ -70,6 +92,8 @@ _CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_notifications_agent_status ON notifications (agent_status);",
     "CREATE INDEX IF NOT EXISTS idx_notifications_visibility ON notifications (visibility);",
     "CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications (created_at DESC);",
+    "CREATE INDEX IF NOT EXISTS idx_quarantined_reviewed ON quarantined_events (reviewed, received_at DESC);",
+    "CREATE INDEX IF NOT EXISTS idx_correlation_windows ON correlation_windows (event_type, entity, window_start);",
 ]
 
 
@@ -92,6 +116,8 @@ class EventDB:
         self._conn.row_factory = aiosqlite.Row
         await self._conn.execute("PRAGMA journal_mode=WAL;")
         await self._conn.execute(_CREATE_TABLE)
+        await self._conn.execute(_CREATE_QUARANTINED_TABLE)
+        await self._conn.execute(_CREATE_CORRELATION_TABLE)
         for idx_sql in _CREATE_INDEXES:
             await self._conn.execute(idx_sql)
         await self._conn.commit()
@@ -269,3 +295,105 @@ class EventDB:
             )
         await self._db().commit()
         return cursor.rowcount > 0  # type: ignore[union-attr]
+
+    # --- Quarantine methods ---
+
+    async def quarantine_event(self, envelope: EventEnvelope, flags: list[str]) -> int:
+        cursor = await self._db().execute(
+            """
+            INSERT INTO quarantined_events (event_type, source, received_at, envelope_json, trust_flags, reviewed)
+            VALUES (?, ?, ?, ?, ?, 0)
+            """,
+            (
+                envelope.event,
+                envelope.source,
+                envelope.timestamp.isoformat(),
+                envelope.model_dump_json(),
+                json.dumps(flags),
+            ),
+        )
+        await self._db().commit()
+        return cursor.lastrowid or 0  # type: ignore[union-attr]
+
+    async def list_quarantined(self, reviewed: bool | None = None, limit: int = 50) -> list[dict[str, Any]]:
+        params: list[Any] = []
+        where = ""
+        if reviewed is not None:
+            where = "WHERE reviewed = ?"
+            params.append(1 if reviewed else 0)
+        params.append(limit)
+        cursor = await self._db().execute(
+            f"SELECT * FROM quarantined_events {where} ORDER BY received_at DESC LIMIT ?",
+            params,
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+    # --- Enrichment query helpers ---
+
+    async def count_events_by_entity(
+        self,
+        entity: str,
+        event_type: str,
+        since: datetime | None = None,
+        payload_filter: dict[str, Any] | None = None,
+    ) -> int:
+        params: list[Any] = [entity, event_type]
+        where = "entity = ? AND event_type = ?"
+        if since is not None:
+            where += " AND created_at >= ?"
+            params.append(since.isoformat())
+        if payload_filter:
+            for key, value in payload_filter.items():
+                where += f" AND json_extract(payload, '$.{key}') = ?"
+                params.append(value)
+        cursor = await self._db().execute(
+            f"SELECT COUNT(*) FROM notifications WHERE {where}",
+            params,
+        )
+        row = await cursor.fetchone()
+        return int(row[0]) if row else 0
+
+    async def get_latest_event_payload(self, entity: str, event_type: str) -> dict[str, Any] | None:
+        cursor = await self._db().execute(
+            "SELECT payload FROM notifications WHERE entity = ? AND event_type = ? ORDER BY created_at DESC LIMIT 1",
+            (entity, event_type),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return json.loads(row[0])  # type: ignore[no-any-return]
+
+    # --- Correlation window methods ---
+
+    async def increment_correlation_window(
+        self, event_type: str, entity: str | None, ts: datetime
+    ) -> None:
+        await self._db().execute(
+            "INSERT INTO correlation_windows (event_type, entity, window_start, count) VALUES (?, ?, ?, 1)",
+            (event_type, entity, ts.isoformat()),
+        )
+        await self._db().commit()
+
+    async def get_correlation_count(
+        self, event_type: str, entity: str | None, since: datetime
+    ) -> int:
+        if entity is None:
+            cursor = await self._db().execute(
+                "SELECT COALESCE(SUM(count), 0) FROM correlation_windows WHERE event_type = ? AND window_start >= ?",
+                (event_type, since.isoformat()),
+            )
+        else:
+            cursor = await self._db().execute(
+                "SELECT COALESCE(SUM(count), 0) FROM correlation_windows WHERE event_type = ? AND entity = ? AND window_start >= ?",
+                (event_type, entity, since.isoformat()),
+            )
+        row = await cursor.fetchone()
+        return int(row[0]) if row else 0
+
+    async def prune_correlation_windows(self, older_than: datetime) -> None:
+        await self._db().execute(
+            "DELETE FROM correlation_windows WHERE window_start < ?",
+            (older_than.isoformat(),),
+        )
+        await self._db().commit()

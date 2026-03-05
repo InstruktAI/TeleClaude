@@ -1,5 +1,9 @@
 # Delivered work items. Newest first.
 
+- slug: cli-authz-overhaul
+  date: '2026-03-05'
+  title: 'CLI command authorization matrix with role-based access control'
+  description: 'CLI command authorization matrix with role-based access control'
 - slug: event-envelope-schema
   date: '2026-03-05'
   title: 'Five-layer envelope: Identity, Semantic, Data, Affordances, Resolution +

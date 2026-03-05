@@ -266,6 +266,7 @@ filterwarnings = [
   "ignore:The default datetime adapter is deprecated:DeprecationWarning:aiosqlite",
   "ignore::pytest.PytestUnraisableExceptionWarning",
   "ignore::pytest.PytestUnhandledThreadExceptionWarning",
+  "ignore:.*datetime.utcnow.*:DeprecationWarning",
 ]
 
 [tool.coverage.run]

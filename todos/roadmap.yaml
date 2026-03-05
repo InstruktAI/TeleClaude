@@ -70,7 +70,7 @@
 - slug: a2ui-showcase-component
 - slug: web-frontend-test-bugs
 - slug: youtube-scrape-channels-job
-- slug: cli-authz-overhaul
+- slug: adapter-boundary-cleanup
 - slug: reflection-routing-ownership
   description: Move reflection routing decisions from core to adapters
 - slug: telegram-callback-payload-migration
