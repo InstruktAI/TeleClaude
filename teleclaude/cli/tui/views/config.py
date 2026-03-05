@@ -212,6 +212,9 @@ class ConfigView(Widget, can_focus=True):
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         if action in ("next_adapter_tab", "prev_adapter_tab"):
+            content = self._content_or_none()
+            if content is not None and content.is_on_enum_field:
+                return True
             return self.active_subtab == 0
         return True
 
@@ -317,11 +320,19 @@ class ConfigView(Widget, can_focus=True):
         self._sync_content()
 
     def action_next_adapter_tab(self) -> None:
+        content = self._content_or_none()
+        if content is not None and content.is_on_enum_field:
+            content.cycle_enum_field(1)
+            return
         if self.active_subtab == 0:
             self.active_adapter_tab = (self.active_adapter_tab + 1) % len(_ADAPTER_TABS)
             self._sync_content()
 
     def action_prev_adapter_tab(self) -> None:
+        content = self._content_or_none()
+        if content is not None and content.is_on_enum_field:
+            content.cycle_enum_field(-1)
+            return
         if self.active_subtab == 0:
             self.active_adapter_tab = (self.active_adapter_tab - 1) % len(_ADAPTER_TABS)
             self._sync_content()
@@ -388,6 +399,23 @@ class ConfigContent(TelecMixin, Widget):
     @property
     def is_person_expanded(self) -> bool:
         return self._expanded_person is not None
+
+    @property
+    def is_on_enum_field(self) -> bool:
+        tab = _SUBTABS[self.active_subtab]
+        return (
+            tab == "people"
+            and self._expanded_person is not None
+            and not self.is_editing
+            and _PERSON_EDITABLE_FIELDS[self._person_field_cursor] == "role"
+        )
+
+    def cycle_enum_field(self, direction: int) -> None:
+        if not self.is_on_enum_field:
+            return
+        person = next((p for p in self._people_data if p.name == self._expanded_person), None)
+        if person is not None:
+            self._cycle_person_role(person, direction)
 
     def refresh_data(self) -> None:
         from teleclaude.cli.config_handlers import check_env_vars, list_people
@@ -561,9 +589,7 @@ class ConfigContent(TelecMixin, Widget):
                 person = next((p for p in self._people_data if p.name == self._expanded_person), None)
                 if person is not None:
                     field = _PERSON_EDITABLE_FIELDS[self._person_field_cursor]
-                    if field == "role":
-                        self._cycle_person_role(person)
-                    else:
+                    if field != "role":
                         self._begin_person_field_edit(person, field)
             return
 
@@ -578,12 +604,12 @@ class ConfigContent(TelecMixin, Widget):
         self._status_is_error = False
         self.refresh(layout=True)
 
-    def _cycle_person_role(self, person: PersonEntry) -> None:
+    def _cycle_person_role(self, person: PersonEntry, direction: int = 1) -> None:
         from teleclaude.cli.config_handlers import get_global_config, save_global_config
 
         current = person.role
         idx = _VALID_ROLES.index(current) if current in _VALID_ROLES else -1
-        next_role = _VALID_ROLES[(idx + 1) % len(_VALID_ROLES)]
+        next_role = _VALID_ROLES[(idx + direction) % len(_VALID_ROLES)]
         try:
             config = get_global_config()
             for p in config.people:
@@ -922,7 +948,7 @@ class ConfigContent(TelecMixin, Widget):
                             opt_style = _TAB_ACTIVE if opt == value else _TAB_INACTIVE
                             result.append(f" {opt} ", style=opt_style)
                         if field_selected:
-                            result.append("  ↵ cycle", style=_DIM)
+                            result.append("  ← → cycle", style=_DIM)
                         result.append("\n")
                     else:
                         value = str(getattr(person, field, "") or "")
