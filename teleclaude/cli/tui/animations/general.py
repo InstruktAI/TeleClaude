@@ -53,11 +53,11 @@ class GlobalSky(Animation):
     _WEATHER_NAMES = ["clear", "fair", "cloudy", "overcast"]
     _WEATHER_WEIGHTS = [30, 35, 25, 10]
 
-    # Sky: base color at top, progressive blend toward target at bottom (1% per row)
+    # Sky: base color at top, progressive blend toward target at bottom
     _SKY_BASE_DARK = "#000000"
-    _SKY_TARGET_DARK = "#1A0035"  # deep purple
+    _SKY_TARGET_DARK = "#270055"  # visible purple at horizon
     _SKY_BASE_LIGHT = "#87CEEB"
-    _SKY_TARGET_LIGHT = "#FFFFFF"  # white
+    _SKY_TARGET_LIGHT = "#FFFFFF"  # white at horizon
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         kwargs.setdefault("target", "header")
@@ -277,7 +277,7 @@ class GlobalSky(Animation):
 
         base = self._SKY_BASE_DARK if self.dark_mode else self._SKY_BASE_LIGHT
         target = self._SKY_TARGET_DARK if self.dark_mode else self._SKY_TARGET_LIGHT
-        row_colors = [blend_colors(base, target, y * 0.02) for y in range(self.height)]
+        row_colors = [blend_colors(base, target, y * 0.03) for y in range(self.height)]
         pixels: list[tuple[int, int, int, str]] = []
         for x, y in self._all_pixels:
             pixels.append((Z0, x, y, row_colors[y]))
