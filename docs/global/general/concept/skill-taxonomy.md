@@ -25,11 +25,9 @@ Exploratory skills pair naturally with extracted procedure docs because their va
 
 Disciplinary and creative skills carry context that is often too entangled with wrapper structure to separate cleanly — they are deferred to later passes.
 
----
+### Exploratory lane — migration pass 1
 
-## Exploratory lane — migration pass 1
-
-### In-scope skills (5)
+In-scope skills (5):
 
 | Skill                        | Why exploratory                                                                |
 | ---------------------------- | ------------------------------------------------------------------------------ |
@@ -39,7 +37,7 @@ Disciplinary and creative skills carry context that is often too entangled with 
 | `tech-stack-docs`            | Documentation research — gathers authoritative sources before writing snippets |
 | `youtube`                    | Information gathering and research — retrieves and processes external content  |
 
-### Excluded from this pass (4 non-exploratory unmigrated skills)
+Excluded from this pass (4 non-exploratory unmigrated skills):
 
 | Skill                            | Lane         | Reason excluded                                                 |
 | -------------------------------- | ------------ | --------------------------------------------------------------- |
@@ -48,7 +46,7 @@ Disciplinary and creative skills carry context that is often too entangled with 
 | `verification-before-completion` | Disciplinary | Completion gate — evidence validation, not discovery            |
 | `frontend-design`                | Creative     | Artifact generation — produces UI directly, not diagnostic      |
 
-### Already-migrated skills (future-pass candidates)
+Already-migrated skills (future-pass candidates):
 
 These 7 skills already use `## Required reads` to reference policy/spec docs but retain inline procedure content. Full procedure extraction is deferred to a follow-up pass.
 

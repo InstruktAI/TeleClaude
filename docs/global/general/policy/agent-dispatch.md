@@ -54,5 +54,5 @@ Codex's cognitive profile â€” methodical, skeptical, surfaces what others miss â
 
 ## See Also
 
-- general/spec/agent-characteristics
-- general/concept/orchestrator
+- ~/.teleclaude/docs/general/spec/agent-characteristics.md
+- ~/.teleclaude/docs/general/concept/orchestrator.md

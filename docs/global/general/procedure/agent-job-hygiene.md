@@ -78,7 +78,7 @@ them after Errors.
 You are done. Do not explore the codebase. Do not save memories (jobs are transactional,
 not relational). Do not start bonus work. Go idle immediately.
 
-## Anti-patterns
+Avoid these anti-patterns:
 
 - **Scope creep**: touching code outside the files listed in your spec.
 - **Memory saves**: job agents must not call the Memory API to save observations.
@@ -93,3 +93,9 @@ not relational). Do not start bonus work. Go idle immediately.
 - A run report at `~/.teleclaude/jobs/{job_name}/runs/{YYMMDD-HHMMSS}.md`.
 - Whatever artifacts the job spec defines (ideas files, CSV updates, etc.).
 - Any fixes committed to the job's own scripts (within spec scope only).
+
+## Recovery
+
+- If the run report directory does not exist, create it before writing. Never skip the report.
+- If the job spec cannot be found or is malformed, write an error report and stop — do not invent scope.
+- If a tool call produces an unexpected error outside the job's scope, record it in the Errors section and continue. Do not chase unrelated failures.

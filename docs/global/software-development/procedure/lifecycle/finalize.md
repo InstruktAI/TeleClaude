@@ -7,13 +7,13 @@ type: 'procedure'
 
 # Finalize — Procedure
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/commits.md
-
 ## Goal
 
 Advance `origin/main` only through canonical-root orchestrator apply after a worker proves the branch is finalize-ready.
+
+Required reads before executing this procedure:
+
+- @~/.teleclaude/docs/software-development/policy/commits.md
 
 ## Preconditions
 
@@ -21,7 +21,9 @@ Advance `origin/main` only through canonical-root orchestrator apply after a wor
 - `todos/{slug}/quality-checklist.md` exists.
 - No unresolved deferrals.
 
-## Stage A — Worker: finalize-prepare (worktree)
+## Steps
+
+### Stage A — Worker: finalize-prepare (worktree)
 
 1. Read `todos/{slug}/review-findings.md` and confirm verdict APPROVE.
 2. Integrate latest main inside the worktree:
@@ -40,7 +42,7 @@ Advance `origin/main` only through canonical-root orchestrator apply after a wor
 
 5. Stop. Do **not** merge into canonical `main`, push, or modify delivery bookkeeping.
 
-## Stage B — Orchestrator: finalize-apply (canonical root)
+### Stage B — Orchestrator: finalize-apply (canonical root)
 
 1. Verify worker output contains `FINALIZE_READY: {slug}`.
 2. From canonical repository root on branch `main`, run apply:
@@ -63,7 +65,7 @@ Advance `origin/main` only through canonical-root orchestrator apply after a wor
 
 5. Continue orchestrator-owned snapshot/cleanup workflow.
 
-## Report format (worker)
+Worker report format:
 
 ```
 FINALIZE_READY: {slug}

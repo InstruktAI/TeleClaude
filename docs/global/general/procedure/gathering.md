@@ -98,6 +98,18 @@ Each artifact flows to its natural home — not to meeting notes. The exhale pro
 
 Hosting the exhale means initiating the harvest and curating the convergence: "Here's what I heard us converge on." The host of this moment structures the output so it can be picked up and executed in parallel by different hands.
 
+Within the exhale phase, facilitation patterns from the Art of Hosting tradition may serve when the moment calls for them. Sense the need; don't prescribe the tool:
+
+| Pattern                    | When it fits                                 | What it does                                                           |
+| -------------------------- | -------------------------------------------- | ---------------------------------------------------------------------- |
+| **Circle** (talking piece) | Always, during the hold                      | Creates listening. The default communication form.                     |
+| **World Café**             | When many threads need cross-pollination     | Small rotating groups; insights travel between tables.                 |
+| **Open Space**             | When the agenda should emerge, not be set    | Topics self-organize; "the law of two feet" — go where you contribute. |
+| **Appreciative Inquiry**   | When energy is low or the system feels stuck | Ask "what gives life?" instead of "what's broken?"                     |
+| **Pro Action Café**        | When one agent has a specific challenge      | Bring a question; the group helps shape it through structured rounds.  |
+
+These are not steps to follow. They are shapes to recognize. An agent attuned to the moment will know which one fits — or that none does, and the simple circle is enough.
+
 ### 5. Close
 
 The circle closes. A brief synthesis:
@@ -122,22 +134,7 @@ The close is not a summary of the meeting. It is a gift back to the system — t
 - If only one agent shows up, the gathering still happens. A solitary breath is still sensing. Record the observations and carry them to the next gathering.
 - If the system pulse reveals nothing notable, the breath may be short. No obligation to fill time. You can skip breaths — no guilt, no debt. The rhythm serves life, not the other way around.
 
-## Facilitation Patterns
-
-The gathering itself needs no specific method — the breath cycle IS the method. But within the phases, certain patterns from the Art of Hosting tradition may serve when the moment calls for them. Sense the need; don't prescribe the tool.
-
-| Pattern                    | When it fits                                 | What it does                                                           |
-| -------------------------- | -------------------------------------------- | ---------------------------------------------------------------------- |
-| **Circle** (talking piece) | Always, during the hold                      | Creates listening. The default communication form.                     |
-| **World Café**             | When many threads need cross-pollination     | Small rotating groups; insights travel between tables.                 |
-| **Open Space**             | When the agenda should emerge, not be set    | Topics self-organize; "the law of two feet" — go where you contribute. |
-| **Appreciative Inquiry**   | When energy is low or the system feels stuck | Ask "what gives life?" instead of "what's broken?"                     |
-| **Pro Action Café**        | When one agent has a specific challenge      | Bring a question; the group helps shape it through structured rounds.  |
-
-These are not steps to follow. They are shapes to recognize. An agent attuned to the moment will know which one fits — or that none does, and the simple circle is enough.
-
 ## See Also
 
 - ~/.teleclaude/docs/general/principle/attunement.md — The relational intelligence within each breath phase. Attunement is the micro; the gathering is the macro.
 - ~/.teleclaude/docs/general/procedure/agent-direct-conversation.md — Peer-to-peer messaging protocol used during the hold phase.
-- Third-party influence: Art of Hosting (overview, methods, harvesting, chaordic design) — The four-fold practice, Diamond of Participation, Open Space Technology principles, four-quadrant harvest model, Honorable Harvest, Chaordic Path, and the Hock Principle.
