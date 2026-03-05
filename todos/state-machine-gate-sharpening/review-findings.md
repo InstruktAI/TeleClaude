@@ -1,148 +1,90 @@
-# Review Findings: state-machine-gate-sharpening
+# Review Findings: state-machine-gate-sharpening (Round 2)
+
+## Previous Findings Resolution
+
+All 3 Critical and 5 Important findings from round 1 have been properly addressed:
+
+| Issue | Status | Verification |
+|-------|--------|-------------|
+| C-1: Over-subtraction in merge diff algorithm | Fixed | Replaced with `git log --no-merges --name-only`; regression test added (`test_has_meaningful_diff_file_in_merge_and_real_commit_included`) |
+| C-2: `_has_meaningful_diff` called synchronously on event loop | Fixed | Wrapped in `asyncio.to_thread` at core.py:3008 |
+| C-3: Demo references wrong test file | Fixed | Now references `test_state_machine_gate_sharpening.py` |
+| I-1: No logging on subprocess errors in `_has_meaningful_diff` | Fixed | `logger.warning` with context at core.py:970-973 |
+| I-2: Retry path hardcodes config paths | Fixed | Comment at core.py:439-442 explains why paths mirror Makefile |
+| I-3: Demo grep produces no output | Fixed | Block uses `grep -B5 "_has_meaningful_diff"` |
+| I-4: Missing test for retry TimeoutExpired | Fixed | `test_run_build_gates_retry_timeout_fails_gate` added |
+| I-5: Missing artifact verification tests | Fixed | Two tests added for review_round 0 and >0 |
 
 ## Critical
 
-### C-1: `_has_meaningful_diff` over-subtracts files touched by both merge and non-merge commits
-
-**File:** `teleclaude/core/next_machine/core.py:957-968`
-
-The merge-commit filtering uses set subtraction (`changed_files -= set(merge_diff.stdout.splitlines())`) which removes a file from the "meaningful" set if *any* merge commit touched it — even if a non-merge commit also modified the same file. This causes false negatives: the function returns `False` (no meaningful diff) when it should return `True`, allowing a stale review approval to proceed to finalize unchecked.
-
-**Concrete scenario:** A merge from main introduces changes to `core.py`. A regular commit on the branch also changes `core.py`. The diff shows `core.py` changed. The merge commit subtraction removes `core.py`. Function returns `False`. Stale review approval persists.
-
-This violates the function's own documented fail-safe contract: "Returns True on subprocess errors (fail-safe: assume meaningful diff, invalidate)." The same fail-safe intent should apply to ambiguous merge overlaps.
-
-**Fix:** Compute files changed by non-merge commits explicitly, rather than subtracting merge files from the total diff. Check if non-merge commits touch any non-infrastructure files.
-
-### C-2: `_has_meaningful_diff` called synchronously on async event loop
-
-**File:** `teleclaude/core/next_machine/core.py:3008`
-
-```python
-head_sha = await asyncio.to_thread(_get_head_commit, worktree_cwd)
-if baseline and head_sha and baseline != head_sha and _has_meaningful_diff(worktree_cwd, baseline, head_sha):
-```
-
-`_get_head_commit` (one subprocess call) is correctly wrapped in `asyncio.to_thread`. `_has_meaningful_diff` (N+2 subprocess calls: one diff, one rev-list, one per merge commit) is called **directly on the event loop thread**. Each `subprocess.run` call blocks the event loop. Under load, this causes timeouts or sluggish responses for concurrent work items.
-
-**Fix:** Wrap in `asyncio.to_thread`:
-```python
-if baseline and head_sha and baseline != head_sha and await asyncio.to_thread(
-    _has_meaningful_diff, worktree_cwd, baseline, head_sha
-):
-```
-
-### C-3: Demo references wrong test file
-
-**File:** `demos/state-machine-gate-sharpening/demo.md` block 4
-
-The demo runs `pytest tests/unit/test_next_machine_state_deps.py -v -k "stale_baseline or gate_failure_review or test_failures"` but the actual tests live in `tests/unit/test_state_machine_gate_sharpening.py`. The referenced file contains no tests matching the `-k` filter — the command exercises zero new tests.
-
-**Fix:** Replace `test_next_machine_state_deps.py` with `test_state_machine_gate_sharpening.py`.
+None.
 
 ## Important
 
-### I-1: No logging on `_has_meaningful_diff` subprocess errors
+### I-1: Demo narrative describes old algorithm
 
-**File:** `teleclaude/core/next_machine/core.py:973-974`
+**File:** `demos/state-machine-gate-sharpening/demo.md:37-39`
 
-The outer exception handler returns `True` (fail-safe) with zero logging. An operator seeing `review_approval_stale_baseline` in logs will conclude a real diff was detected, when a subprocess error actually occurred. The cause of review invalidation is invisible.
+The Guided Presentation Step 1 says:
 
-**Fix:** Add `logger.warning` before returning `True`, including `cwd`, `baseline`, `head`, and the exception.
+> The function runs `git diff --name-only` between baseline and HEAD, filters out
+> `todos/` and `.teleclaude/` paths, excludes merge-introduced files...
 
-### I-2: Retry path hardcodes test config paths, diverging from original `make test` environment
+The function actually uses `git log --no-merges --name-only --pretty=format:`, not `git diff --name-only`. The C-1 fix in commit `44420b51` replaced the two-pass subtraction algorithm with a single `--no-merges` approach. The narrative was not updated to match. The executable blocks are all correct; only the presenter description is inaccurate.
 
-**File:** `teleclaude/core/next_machine/core.py:439-443`
-
-```python
-retry_env = {
-    **os.environ,
-    "TELECLAUDE_CONFIG_PATH": "tests/integration/config.yml",
-    "TELECLAUDE_ENV_PATH": "tests/integration/.env",
-}
-```
-
-The initial `make test` call uses no explicit `env=` parameter (inheriting the current process environment). The retry constructs a custom env with hardcoded config paths. If the Makefile's `test` target sets different paths, the retry runs under different configuration. The retry could pass when the original would still fail (or vice versa), undermining the flaky-test retry purpose.
-
-**Fix:** Either omit the custom env (let `pytest --lf` inherit the same environment), or extract the env-setup from the Makefile and share it. At minimum, add a comment explaining why these paths are needed.
-
-### I-3: Demo block 3 grep produces no output
-
-**File:** `demos/state-machine-gate-sharpening/demo.md` block 3
-
-`grep -A5 "review_approval_stale_baseline" | grep "_has_meaningful_diff"` would produce no output. `_has_meaningful_diff` is at line 3008, which is 11 lines *before* the log string at line 3019, not within 5 lines after it.
-
-**Fix:** Adjust the grep to use `-B15` or target the actual guard condition directly, e.g.:
-```bash
-grep -B5 "_has_meaningful_diff" teleclaude/core/next_machine/core.py | head -10
-```
-
-### I-4: Missing test — retry `TimeoutExpired`/`OSError` handler
-
-**File:** `tests/unit/test_state_machine_gate_sharpening.py`
-
-The production code at `core.py:464-469` has an explicit `except (subprocess.TimeoutExpired, OSError)` handler for when the retry subprocess fails. This error path is not tested. A refactor could silently drop the handler and cause an unhandled crash mid-gate-check.
-
-**Fix:** Add a test where `make test` fails with 1 failure but the retry `subprocess.run` raises `subprocess.TimeoutExpired`. Assert `passed is False` and `"RETRY ERROR"` in output.
-
-### I-5: Missing test — artifact verification failure with `review_round > 0`
-
-**File:** `tests/unit/test_state_machine_gate_sharpening.py`
-
-The artifact verification failure path (`core.py:3109-3119`) has the exact same `review_round` conditional as the build gate path, but only the build gate path is tested. A future edit could fix one path and forget the other.
-
-**Fix:** Add tests mirroring `test_next_work_gate_failure_review_round_*` but with `run_build_gates` returning `(True, ...)` and `verify_artifacts` returning `(False, ...)`.
+**Fix:** Update lines 37-39 to describe the actual `git log --no-merges` approach.
 
 ## Suggestions
 
-### S-1: Variable shadowing — `merge_commit` loop variable reassigned
+### S-1: Missing structured logging in retry exception handler
 
-**File:** `teleclaude/core/next_machine/core.py:957-958`
+**File:** `teleclaude/core/next_machine/core.py:468-473`
 
-`merge_commit` is the loop variable and is immediately reassigned via `.strip()`. Using distinct names (`raw_line` / `merge_sha`) improves readability.
+The retry error is captured in the output string but no `logger.warning` is emitted. A structured log would make retry failures searchable in log aggregation.
 
-### S-2: `_count_test_failures` regex — first vs. last match
+### S-2: Missing structured logging in retry success path
 
-**File:** `teleclaude/core/next_machine/core.py:408-411`
+**File:** `teleclaude/core/next_machine/core.py:457-460`
 
-`re.search` returns the first match. In verbose pytest output, assertion messages could contain "N failed" before the summary line. Using `re.findall(...)[-1]` would be more robust. Low probability in practice.
+When a retry passes, the event is only captured in the output string. A `logger.info` for flaky test recovery would make flaky test frequency observable via log aggregation without parsing output strings.
 
-### S-3: Missing logging on inner merge-commit catch
+### S-3: Strip inconsistency in `_has_meaningful_diff` filter
 
-**File:** `teleclaude/core/next_machine/core.py:969-970`
+**File:** `teleclaude/core/next_machine/core.py:966`
 
-The `continue` on `CalledProcessError` is best-effort and biases toward invalidation (correct direction), but a `logger.debug` would make degradation traceable.
+`f.strip()` is used as a truthiness guard but `f.startswith(p)` operates on the raw `f`. Harmless in practice since `git log --name-only` never emits leading whitespace on filenames, but `stripped = f.strip()` followed by `stripped.startswith(p)` would be more internally consistent.
 
-### S-4: Comment parity for artifact "keep build complete" decision
+## Paradigm-Fit Assessment
 
-**File:** `teleclaude/core/next_machine/core.py:3118`
+1. **Data flow:** All changes follow established patterns — `subprocess.run` for git/make calls, `asyncio.to_thread` for blocking work, `read_phase_state`/`mark_phase` for state transitions. No bypasses.
+2. **Component reuse:** `_has_meaningful_diff` and `_count_test_failures` are properly extracted as private helpers following the existing `_get_head_commit` pattern. No copy-paste.
+3. **Pattern consistency:** Logging uses the existing `logger` and `_log_next_work_phase` patterns. Error handling follows the established `(subprocess.CalledProcessError, OSError)` convention. Type coercion for YAML state follows the `isinstance` guard pattern used throughout the file.
 
-The build gate path has a comment at line 3099 explaining the `review_round > 0` behavior. The artifact path at line 3118 lacks the same comment.
+## Principle Violation Hunt
 
-## Why No Issues — Paradigm Fit
+1. **Fallback & silent degradation:** `_has_meaningful_diff` returns `True` on error (fail-safe: invalidate). `_count_test_failures` returns 0 on no match, causing gate failure (correct direction). No unjustified fallbacks in changed code.
+2. **Fail fast:** Boundary validation via `isinstance` guards on YAML state values. Internal code trusts typed function signatures.
+3. **DIP:** No adapter imports in core. No transport-specific conditionals.
+4. **Coupling:** No deep chains. No god-object dependencies introduced.
+5. **SRP:** Each helper has one responsibility. `run_build_gates` is larger with retry but still singular (run build gates).
+6. **YAGNI/KISS:** Retry mechanism justified by documented 50% flaky failure rate. No premature abstractions.
+7. **Encapsulation:** No direct state mutation. State changes go through `mark_phase`.
+8. **Immutability:** `retry_env` creates a new dict. No shared mutable state.
 
-1. **Patterns checked:** `asyncio.to_thread` wrapping, `read_phase_state` / `mark_phase` pipeline, private helper naming, type-coercion pattern, `subprocess.run` usage in `_get_head_commit`.
-2. **Requirements validated:** All seven success criteria (SC-1 through SC-7) have corresponding code paths and test coverage. Conditional logic at gate failure matches requirements exactly.
-3. **Copy-paste checked:** No duplication detected — the three features are distinct functions/branches. The `review_round` conditional appears in two places (build gate, artifact verification) intentionally for the same logic.
+## Requirements Tracing
 
-## Fixes Applied
+| Requirement | Implementation | Test |
+|---|---|---|
+| SC-1: Infra-only diff preserves approval | `_has_meaningful_diff` returns False for todos/ and .teleclaude/ files | `test_next_work_review_approved_infra_only_diff_holds` |
+| SC-2: Real diff invalidates approval | `_has_meaningful_diff` returns True for non-infra files | `test_next_work_review_approved_real_diff_invalidates` |
+| SC-3: Gate failure with review_round > 0 keeps build=complete | Conditional at core.py:3096 | `test_next_work_gate_failure_review_round_gt_zero_keeps_build_complete` |
+| SC-4: Gate failure with review_round == 0 resets build | Conditional at core.py:3096-3100 | `test_next_work_gate_failure_review_round_zero_resets_build` |
+| SC-5: Retry on <=2 test failures, passes if retry passes | Retry block at core.py:435-460 | `test_run_build_gates_retry_on_one_failure_passes`, `test_run_build_gates_retry_on_two_failures_passes` |
+| SC-6: No retry on >2 failures | Else branch at core.py:474-476 | `test_run_build_gates_no_retry_when_three_failures` |
+| SC-7: Combined output on retry failure | Retry failure at core.py:461-467 | `test_run_build_gates_retry_fails_gate_fails_combined_output` |
 
-| Issue | Fix | Commit |
-|-------|-----|--------|
-| C-1 | Replaced over-subtracting merge diff algorithm with `git log --no-merges --name-only`; added regression test for file-in-both-merge-and-real-commit scenario | 44420b51 |
-| C-2 | Wrapped `_has_meaningful_diff` call in `asyncio.to_thread` | 44420b51 |
-| C-3 | Replaced `test_next_machine_state_deps.py` with `test_state_machine_gate_sharpening.py` in demo block 4 | 62a4c178 |
-| I-1 | Added `logger.warning` with cwd/baseline/head/error context in subprocess error handler | 44420b51 |
-| I-2 | Added comment explaining why retry env mirrors Makefile config paths | 44420b51 |
-| I-3 | Replaced broken `grep -A5 ... \| grep "_has_meaningful_diff"` with `grep -B5 "_has_meaningful_diff" ... \| head -10` | 62a4c178 |
-| I-4 | Added `test_run_build_gates_retry_timeout_fails_gate` covering `subprocess.TimeoutExpired` in retry path | bcd05aed |
-| I-5 | Added `test_next_work_artifact_failure_review_round_zero_resets_build` and `test_next_work_artifact_failure_review_round_gt_zero_keeps_build_complete` | bcd05aed |
-| S-4 | Added `# review_round > 0: keep build=complete` comment to artifact verification path | 44420b51 |
+All seven success criteria have corresponding code paths and test coverage.
 
-Tests: 27 passed (unit), 2710 passed (full suite). Pre-existing failures in `test_resource_validation.py` and `test_telec_sync.py` (7 tests) are unrelated to this feature — those files were not modified on this branch.
+## Verdict: APPROVE
 
-## Verdict: REQUEST CHANGES
-
-3 Critical, 5 Important, 4 Suggestions. The merge-commit over-subtraction (C-1) violates the stated fail-safe contract, the synchronous event loop call (C-2) is a correctness bug in async code, and the demo references the wrong file (C-3).
-
-_(Original verdict preserved; re-review pending.)_
+0 Critical, 1 Important (demo narrative only — no production code issues), 3 Suggestions. All prior critical and important findings from round 1 have been properly resolved. Production code is correct, well-tested, and follows established patterns. The Important finding is a documentation inaccuracy in a non-executable section of the demo and does not affect code correctness or safety.
