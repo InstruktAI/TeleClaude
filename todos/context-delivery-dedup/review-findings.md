@@ -138,13 +138,18 @@ These code paths are straightforward (list comprehension + stack traversal), so 
 
 This review produced 1 Critical, 3 Important, and 3 Suggestion findings.
 
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|---|---|---|
+| C1: Demo uses dep-free snippet | Changed block 1 to `general/procedure/orchestration` (requires `software-development/procedure/lifecycle-overview`) | a239a19a |
+| I1: Missing dual-fetch test | Added `test_snippet_and_dep_requested_together_no_header` verifying both contents appear with no header | e8ddc0d1 |
+| I2: Silent exception in `_resolve_requires` | Added `logger.warning` at bare `except Exception` site | 98bb0ffb |
+
 ## Verdict
 
-**REQUEST CHANGES**
+**REQUEST CHANGES** → **READY FOR RE-REVIEW**
 
-The Critical demo finding (C1) must be fixed — the demo's lead block exercises a snippet with no
-dependencies, making the expected output fabricated. The Important test gap (I1) should be addressed
-to cover the primary agent dedup workflow.
-
-I2 and I3 are pre-existing or external-cause issues that can be tracked as follow-ups rather than
-blocking this delivery.
+C1, I1, and I2 addressed. I3 (CLAUDE.md size) remains a pre-existing/external-cause issue tracked
+as a follow-up — the three targeted removals achieved their goal (~11k reduction). SC4 success
+criteria should be updated or tracked separately.
