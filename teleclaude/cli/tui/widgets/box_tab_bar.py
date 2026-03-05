@@ -196,7 +196,7 @@ class BoxTabBar(TelecMixin, Widget):
                         sky_above = engine.get_layer_color(Z0, x, global_y - 1, target="header") if engine else None
                         if isinstance(sky_above, str):
                             sky_color = sky_above
-                        top_half = sky_color
+                        top_half = blend_colors(sky_color, "#ffffff", 0.05)
 
                     if engine:
                         z_min = (Z80 if active_tab_under else Z60) if in_tab else Z70
