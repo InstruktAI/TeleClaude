@@ -70,11 +70,8 @@
 - slug: a2ui-showcase-component
 - slug: web-frontend-test-bugs
 - slug: youtube-scrape-channels-job
-- slug: adapter-boundary-cleanup
 - slug: cli-authz-overhaul
 - slug: reflection-routing-ownership
-  after:
-  - adapter-boundary-cleanup
   description: Move reflection routing decisions from core to adapters
 - slug: telegram-callback-payload-migration
   description: Migrate Telegram explicit user-selection callback payloads to canonical

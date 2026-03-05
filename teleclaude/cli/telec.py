@@ -36,7 +36,17 @@ from teleclaude.cli.tool_commands import (  # noqa: E402
     handle_todo_set_deps,
     handle_todo_work,
 )
-from teleclaude.constants import ENV_ENABLE, MAIN_MODULE  # noqa: E402
+from teleclaude.constants import (  # noqa: E402
+    ENV_ENABLE,
+    HUMAN_ROLE_ADMIN,
+    HUMAN_ROLE_CONTRIBUTOR,
+    HUMAN_ROLE_CUSTOMER,
+    HUMAN_ROLE_MEMBER,
+    HUMAN_ROLE_NEWCOMER,
+    MAIN_MODULE,
+    ROLE_ORCHESTRATOR,
+    ROLE_WORKER,
+)
 from teleclaude.content_scaffold import (  # noqa: E402
     _emit_content_dumped,
     _resolve_author,
@@ -98,6 +108,13 @@ class TelecCommand(str, Enum):
 # =============================================================================
 
 
+@dataclass(frozen=True)
+class CommandAuth:
+    system: frozenset[str]  # allowed system roles
+    human: frozenset[str]  # allowed human roles (admin always implicit except escalate)
+    exclude_human: frozenset[str] = field(default_factory=frozenset)  # roles denied even with admin bypass
+
+
 @dataclass
 class Flag:
     long: str
@@ -120,6 +137,7 @@ class CommandDef:
     examples: list[str] = field(default_factory=list)  # explicit examples when auto-generation is misleading
     hidden: bool = False  # hide from help output and completion
     standalone: bool = False  # bare invocation has behavior (not just help text)
+    auth: "CommandAuth | None" = None
 
     @property
     def visible_flags(self) -> list[Flag]:
@@ -139,6 +157,20 @@ class CommandDef:
 
 _H = Flag("--help", "-h", "Show usage information", hidden=True)
 
+# =============================================================================
+# Auth shorthand constants — used in CLI_SURFACE auth fields
+# =============================================================================
+
+_SYS_ORCH = frozenset({ROLE_ORCHESTRATOR})
+_SYS_ALL = frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR})
+
+_HR_ADMIN = frozenset()  # admin implicit; no other human roles
+_HR_MEMBER = frozenset({HUMAN_ROLE_MEMBER})
+_HR_MEMBER_CONTRIB = frozenset({HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR})
+_HR_MEMBER_CONTRIB_NEWCOMER = frozenset({HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER})
+_HR_ALL_NON_ADMIN = frozenset({HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER, HUMAN_ROLE_CUSTOMER})
+_HR_ALL = frozenset({HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER, HUMAN_ROLE_CUSTOMER})
+
 CLI_SURFACE: dict[str, CommandDef] = {
     "sessions": CommandDef(
         desc="Manage agent sessions",
@@ -150,6 +182,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--all", desc="Show all sessions"),
                     Flag("--closed", desc="Include closed sessions"),
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "start": CommandDef(
                 desc="Start a new agent session",
@@ -176,6 +209,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     'telec sessions start --project /tmp/project --message "Implement feature X"',
                     "telec sessions start --project /tmp/project --direct",
                 ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "send": CommandDef(
                 desc="Send a message to a running session",
@@ -200,6 +234,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     'telec sessions send sess-123 "Let\'s discuss the architecture" --direct',
                     "telec sessions send sess-123 --close-link",
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
             ),
             "tail": CommandDef(
                 desc="Get recent messages from a session's transcript",
@@ -211,6 +246,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--tools", desc="Include tool use entries"),
                     Flag("--thinking", desc="Include thinking blocks"),
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "run": CommandDef(
                 desc="Run a slash command on a new agent session",
@@ -231,11 +267,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Example: telec sessions run --command /next-build --args my-slug --project /repo/path",
                     "Use --detach for fire-and-forget dispatch: child inherits identity but caller receives no notifications.",
                 ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "revive": CommandDef(
                 desc="Revive session by TeleClaude session ID",
                 args="<session_id>",
                 flags=[_H, Flag("--attach", desc="Attach to tmux session after revive")],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
             ),
             "end": CommandDef(
                 desc="End (terminate) a session",
@@ -245,21 +283,25 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--session", "-s", "Session ID"),
                     Flag("--computer", desc="Target computer (optional; defaults to local)"),
                 ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "unsubscribe": CommandDef(
                 desc="Stop receiving notifications from a session",
                 args="<session_id>",
                 flags=[_H],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
             ),
             "restart": CommandDef(
                 desc="Restart an agent session ('self' to restart own session)",
                 args="<session_id>",
                 flags=[_H],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
             ),
             "result": CommandDef(
                 desc="Send a formatted result to the session's user",
                 args="<content>",
                 flags=[_H, Flag("--format", desc="Output format: markdown, html")],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
             "file": CommandDef(
                 desc="Send a file to the session's user",
@@ -269,10 +311,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--filename", desc="Display filename"),
                     Flag("--caption", desc="Optional caption"),
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
             "widget": CommandDef(
                 desc="Render a rich widget to the session's user",
                 flags=[_H, Flag("--data", desc="Widget expression as JSON")],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
             "escalate": CommandDef(
                 desc="Escalate to an admin via Discord",
@@ -282,6 +326,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--reason", desc="Reason for escalation"),
                     Flag("--summary", desc="Context summary for the admin"),
                 ],
+                auth=CommandAuth(
+                    system=_SYS_ALL,
+                    human=_HR_ALL_NON_ADMIN,
+                    exclude_human=frozenset({HUMAN_ROLE_ADMIN}),
+                ),
             ),
         },
     ),
@@ -291,6 +340,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "list": CommandDef(
                 desc="List available computers (local + cached remote)",
                 flags=[_H],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
             ),
         },
     ),
@@ -300,13 +350,17 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "list": CommandDef(
                 desc="List projects on local and remote computers",
                 flags=[_H, Flag("--computer", desc="Filter to a specific computer")],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
         },
     ),
     "agents": CommandDef(
         desc="Manage agent dispatch status and availability",
         subcommands={
-            "availability": CommandDef(desc="Get current availability for all agents"),
+            "availability": CommandDef(
+                desc="Get current availability for all agents",
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+            ),
             "status": CommandDef(
                 desc="Set dispatch status for a specific agent",
                 args="<agent>",
@@ -317,6 +371,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--until", desc="ISO8601 UTC expiry for unavailable"),
                     Flag("--clear", desc="Reset to available immediately"),
                 ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
             ),
         },
     ),
@@ -326,16 +381,24 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "list": CommandDef(
                 desc="List active channels",
                 flags=[_H, Flag("--project", desc="Filter by project name")],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
             ),
             "publish": CommandDef(
                 desc="Publish a message to a channel",
                 args="<channel>",
                 flags=[_H, Flag("--data", desc="JSON payload to publish")],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
             ),
         },
     ),
-    "init": CommandDef(desc="Initialize docs sync and auto-rebuild watcher"),
-    "version": CommandDef(desc="Print version, channel, and commit"),
+    "init": CommandDef(
+        desc="Initialize docs sync and auto-rebuild watcher",
+        auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+    ),
+    "version": CommandDef(
+        desc="Print version, channel, and commit",
+        auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
+    ),
     "sync": CommandDef(
         desc="Validate, build indexes, and deploy artifacts",
         flags=[
@@ -343,11 +406,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
             Flag("--warn-only", desc="Warn but don't fail"),
             Flag("--validate-only", desc="Validate without building"),
         ],
+        auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
     ),
     "watch": CommandDef(
         desc="Watch project for changes and auto-sync",
         flags=[_H],
         hidden=True,
+        auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
     ),
     "docs": CommandDef(
         desc="Query documentation snippets",
@@ -361,11 +426,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--areas", "-a", "Filter by taxonomy type"),
                     Flag("--domains", "-d", "Filter by domain"),
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "get": CommandDef(
                 desc="Fetch full snippet content by ID (phase 2)",
                 args="<id> [id...]",
                 flags=[_H],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
         },
         notes=[
@@ -384,28 +451,49 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--after", desc="Comma-separated dependency slugs"),
                 ],
                 notes=["Also registers the entry in roadmap.yaml when --after is provided."],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB),
             ),
             "remove": CommandDef(
                 desc="Remove a todo and its roadmap entry",
                 args="<slug>",
                 flags=[],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "validate": CommandDef(
                 desc="Validate todo files and state.yaml schema",
                 args="[slug]",
                 flags=[],
                 notes=["If slug is omitted, all active todos are checked."],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "demo": CommandDef(
                 desc="Manage and run demo artifacts",
-                args="<list|validate|run|create> [slug]",
-                flags=[],
+                subcommands={
+                    "list": CommandDef(
+                        desc="List available demos",
+                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                    ),
+                    "validate": CommandDef(
+                        desc="Validate demo artifact for a slug",
+                        args="<slug>",
+                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                    ),
+                    "run": CommandDef(
+                        desc="Execute demo bash blocks for a slug",
+                        args="<slug>",
+                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
+                    ),
+                    "create": CommandDef(
+                        desc="Promote demo artifact for a slug",
+                        args="<slug>",
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB),
+                    ),
+                },
                 notes=[
                     "Use 'list' explicitly to list available demos.",
                     "validate <slug>: check todos/{slug}/demo.md has executable bash blocks.",
                     "run <slug>: execute bash blocks from demos/{slug}/demo.md.",
                     "create <slug>: promote todos/{slug}/demo.md to demos/{slug}/demo.md.",
-                    "list: show all available demos.",
                 ],
             ),
             "prepare": CommandDef(
@@ -415,16 +503,19 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _H,
                     Flag("--no-hitl", desc="Disable human-in-the-loop gate"),
                 ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "work": CommandDef(
                 desc="Run the Phase B (work) state machine",
                 args="[<slug>]",
                 flags=[_H],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "integrate": CommandDef(
                 desc="Run the Phase C (integrate) state machine",
                 args="[<slug>]",
                 flags=[_H],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "mark-phase": CommandDef(
                 desc="Mark a work phase as complete/approved in state.yaml",
@@ -434,6 +525,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--phase", desc="Phase: build or review"),
                     Flag("--status", desc="Status: pending, started, complete, approved, changes_requested"),
                 ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "set-deps": CommandDef(
                 desc="Set dependencies for a work item in the roadmap",
@@ -442,6 +534,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _H,
                     Flag("--after", desc="Dependency slug (repeatable)"),
                 ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "verify-artifacts": CommandDef(
                 desc="Mechanically verify artifacts for a phase (build or review)",
@@ -455,6 +548,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Checks artifact presence and consistency — does not run tests or demo.",
                     "Integrated into next_work() before dispatching review.",
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "dump": CommandDef(
                 desc="Fire-and-forget brain dump with notification trigger",
@@ -465,6 +559,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=[
                     "Emits todo.dumped notification for autonomous processing.",
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
         },
     ),
@@ -480,6 +575,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--delivered-only", desc="Show only delivered items"),
                     Flag("--json", desc="Output as JSON"),
                 ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "add": CommandDef(
                 desc="Add entry to the roadmap",
@@ -490,11 +586,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--before", desc="Insert before this slug (default: append)"),
                     Flag("--description", desc="Summary description"),
                 ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "remove": CommandDef(
                 desc="Remove entry from the roadmap",
                 args="<slug>",
                 flags=[],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "move": CommandDef(
                 desc="Reorder an entry in the roadmap",
@@ -503,6 +601,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--before", desc="Move before this slug"),
                     Flag("--after", desc="Move after this slug"),
                 ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "deps": CommandDef(
                 desc="Set dependencies for an entry",
@@ -510,11 +609,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     Flag("--after", desc="Comma-separated dependency slugs"),
                 ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "freeze": CommandDef(
                 desc="Move entry to icebox",
                 args="<slug>",
                 flags=[],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "deliver": CommandDef(
                 desc="Move entry to delivered",
@@ -523,6 +624,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--commit", desc="Commit hash"),
                     Flag("--title", desc="Delivery title (default: entry description)"),
                 ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
         },
     ),
@@ -535,15 +637,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     Flag("--slug", desc="Custom slug (default: auto-generated)"),
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "create": CommandDef(
                 desc="Scaffold bug files for a slug",
                 args="<slug>",
                 flags=[],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB),
             ),
             "list": CommandDef(
                 desc="List in-flight bug fixes with status",
                 flags=[],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
         },
     ),
@@ -569,6 +674,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     'telec content dump "Deep dive into mesh" --slug mesh-deep-dive --tags "mesh,architecture"',
                     'telec content dump "Content for review" --author alice',
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
         },
     ),
@@ -580,6 +686,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     Flag("--domain", desc="Filter by domain"),
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
         },
     ),
@@ -593,31 +700,84 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Stores auth state in a TTY-scoped file.",
                     "Running login again on the same TTY overwrites the existing file.",
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "whoami": CommandDef(
                 desc="Show terminal login identity for this TTY",
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "logout": CommandDef(
                 desc="Clear terminal login identity for this TTY",
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
         },
     ),
     "config": CommandDef(
         desc="Manage configuration",
         subcommands={
-            "wizard": CommandDef(desc="Open the interactive configuration wizard"),
-            "get": CommandDef(desc="Get config values", args="[paths...]"),
-            "patch": CommandDef(desc="Patch config values", args="[--yaml '...']"),
-            "validate": CommandDef(desc="Full validation"),
+            "wizard": CommandDef(
+                desc="Open the interactive configuration wizard",
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+            ),
+            "get": CommandDef(
+                desc="Get config values",
+                args="[paths...]",
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+            ),
+            "patch": CommandDef(
+                desc="Patch config values",
+                args="[--yaml '...']",
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+            ),
+            "validate": CommandDef(
+                desc="Full validation",
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+            ),
             "people": CommandDef(
-                desc="Manage people (list/add/edit/remove)",
+                desc="Manage people",
+                subcommands={
+                    "list": CommandDef(
+                        desc="List people",
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
+                    "add": CommandDef(
+                        desc="Add a person",
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
+                    "edit": CommandDef(
+                        desc="Edit a person",
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
+                    "remove": CommandDef(
+                        desc="Remove a person",
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
+                },
                 notes=[
                     "To edit people's subscriptions, modify the person config: ~/.teleclaude/people/{name}/teleclaude.yml"
                 ],
             ),
-            "env": CommandDef(desc="Manage environment variables (list/set)"),
-            "notify": CommandDef(desc="Toggle notification settings"),
-            "invite": CommandDef(desc="Generate invite links for a person"),
+            "env": CommandDef(
+                desc="Manage environment variables",
+                subcommands={
+                    "list": CommandDef(
+                        desc="List environment variables",
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
+                    "set": CommandDef(
+                        desc="Set environment variables",
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
+                },
+            ),
+            "notify": CommandDef(
+                desc="Toggle notification settings",
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
+            "invite": CommandDef(
+                desc="Generate invite links for a person",
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+            ),
         },
     ),
     "history": CommandDef(
@@ -636,6 +796,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec history search --agent all memory observations",
                     "telec history search --agent claude,codex bug fix",
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "show": CommandDef(
                 desc="Show full transcript for a session",
@@ -651,6 +812,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec history show f3625680 --agent claude --tail 5000",
                     "telec history show f3625680 --thinking",
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
         },
     ),
@@ -673,6 +835,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     'telec memories search "session reason"',
                     'telec memories search "config wizard" --type discovery --project teleclaude',
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
             "save": CommandDef(
                 desc="Save a memory observation",
@@ -686,12 +849,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 examples=[
                     'telec memories save "Root cause identified for session update reason suppression." --title "Session reason fix" --type discovery --project teleclaude',
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
             "delete": CommandDef(
                 desc="Delete a memory observation by ID",
                 args="<id>",
                 flags=[_H],
                 examples=["telec memories delete 123"],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
             "timeline": CommandDef(
                 desc="Show observations around an anchor ID",
@@ -703,6 +868,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--project", desc="Filter by project name"),
                 ],
                 examples=["telec memories timeline 42 --before 3 --after 3"],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
         },
     ),
@@ -710,20 +876,75 @@ CLI_SURFACE: dict[str, CommandDef] = {
 
 # Help-only expansion for second-level action groups.
 # This keeps runtime dispatch unchanged while making `telec -h` explicit.
-HELP_SUBCOMMAND_EXPANSIONS: dict[str, dict[str, list[tuple[str, str]]]] = {
-    "config": {
-        "people": [
-            ("list", "List people"),
-            ("add", "Add a person"),
-            ("edit", "Edit a person"),
-            ("remove", "Remove a person"),
-        ],
-        "env": [
-            ("list", "List environment variables"),
-            ("set", "Set environment variables"),
-        ],
-    }
-}
+# Note: config people and config env were previously expanded here, but are now
+# real leaf subcommands in CLI_SURFACE with explicit auth fields.
+HELP_SUBCOMMAND_EXPANSIONS: dict[str, dict[str, list[tuple[str, str]]]] = {}
+
+# =============================================================================
+# Authorization — is_command_allowed() canonical check
+# =============================================================================
+
+
+def _resolve_command_auth(command_path: str) -> "CommandAuth | None":
+    """Resolve a command path to its CommandAuth, or None if not found."""
+    # Normalize: accept "sessions.start" or "telec sessions start" or "sessions start"
+    path = command_path.strip()
+    if path.startswith("telec "):
+        path = path[len("telec ") :]
+    parts = path.replace(".", " ").split()
+    if not parts:
+        return None
+    node = CLI_SURFACE.get(parts[0])
+    if node is None:
+        return None
+    for part in parts[1:]:
+        if not node.subcommands:
+            return None
+        node = node.subcommands.get(part)
+        if node is None:
+            return None
+    return node.auth
+
+
+def is_command_allowed(
+    command_path: str,
+    system_role: str | None,
+    human_role: str | None,
+) -> bool:
+    """Check whether a caller is authorized to run a CLI command.
+
+    Both gates must pass: system_allows(cmd) AND human_allows(cmd).
+
+    - system_role=None (non-session callers like TUI/terminal) is treated as
+      orchestrator for the system-role check.
+    - human_role=None denies all human-role-gated commands (fail closed).
+    - Unknown command paths return False (fail closed).
+    - Admin bypasses the human-role allow-list for all commands except those
+      with an explicit exclude_human containing HUMAN_ROLE_ADMIN.
+    """
+    auth = _resolve_command_auth(command_path)
+    if auth is None:
+        return False
+
+    # Normalize None system_role to orchestrator (TUI/terminal callers are never workers).
+    effective_system = system_role if system_role is not None else ROLE_ORCHESTRATOR
+
+    if effective_system not in auth.system:
+        return False
+
+    if human_role is None:
+        return False
+
+    # Admin exclusion check (e.g., sessions escalate explicitly blocks admin).
+    if human_role == HUMAN_ROLE_ADMIN and human_role in auth.exclude_human:
+        return False
+
+    # Admin bypasses the human allow-list (unless excluded above).
+    if human_role == HUMAN_ROLE_ADMIN:
+        return True
+
+    return human_role in auth.human
+
 
 # Derived constants for completion (from schema)
 _COMMANDS = [name for name, cmd in CLI_SURFACE.items() if not cmd.hidden]
@@ -783,11 +1004,13 @@ def _usage_main() -> str:
                 entry = f"telec {name}"
                 lines.append(f"  {entry:<{col}}# {cmd.desc}")
             for sub_name, sub_cmd in cmd.subcommands.items():
-                expanded = HELP_SUBCOMMAND_EXPANSIONS.get(name, {}).get(sub_name)
-                if expanded:
-                    for child_name, child_desc in expanded:
-                        entry = f"telec {name} {sub_name} {child_name}"
-                        lines.append(f"  {entry:<{col}}# {child_desc}")
+                if sub_cmd.subcommands:
+                    # Two-level nesting: expand leaf subcommands inline
+                    for child_name, child_cmd in sub_cmd.subcommands.items():
+                        child_args = f" {child_cmd.args}" if child_cmd.args else ""
+                        child_flag_str = " [options]" if child_cmd.visible_flags else ""
+                        entry = f"telec {name} {sub_name} {child_name}{child_args}{child_flag_str}"
+                        lines.append(f"  {entry:<{col}}# {child_cmd.desc}")
                     continue
                 sub_args = f" {sub_cmd.args}" if sub_cmd.args else ""
                 sub_flag_str = " [options]" if sub_cmd.visible_flags else ""
@@ -968,11 +1191,13 @@ def _usage_subcmd(cmd_name: str) -> str:
                         lines.append(f"  {example}")
 
         for sub_name, sub_cmd in cmd.subcommands.items():
-            expanded = HELP_SUBCOMMAND_EXPANSIONS.get(cmd_name, {}).get(sub_name)
-            if expanded:
-                for child_name, child_desc in expanded:
-                    entry = f"telec {cmd_name} {sub_name} {child_name}"
-                    lines.append(f"  {entry:<{col}}# {child_desc}")
+            if sub_cmd.subcommands:
+                # Two-level nesting: expand leaf subcommands inline
+                for child_name, child_cmd in sub_cmd.subcommands.items():
+                    child_args = f" {child_cmd.args}" if child_cmd.args else ""
+                    child_flag_hints = " [options]" if child_cmd.flags else ""
+                    entry = f"telec {cmd_name} {sub_name} {child_name}{child_args}{child_flag_hints}"
+                    lines.append(f"  {entry:<{col}}# {child_cmd.desc}")
                 continue
             args_str = f" {sub_cmd.args}" if sub_cmd.args else ""
             flag_hints = " [options]" if sub_cmd.flags else ""
