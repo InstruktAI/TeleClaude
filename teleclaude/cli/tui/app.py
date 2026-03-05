@@ -130,6 +130,7 @@ class TelecApp(App[str | None]):
         Binding("t", "cycle_pane_theming", "Cycle Theme", key_display="t"),
         Binding("a", "cycle_animation", "Cycle Anim", key_display="a"),
         Binding("u", "spawn_ufo", "UFO", key_display="u", show=False),
+        Binding("c", "spawn_car", "Car", key_display="c", show=False),
         Binding("v", "toggle_tts", "Voice", key_display="v"),
     ]
 
@@ -837,13 +838,25 @@ class TelecApp(App[str | None]):
         new_mode = cycle[(idx + 1) % len(cycle)]
         self._cycle_animation(new_mode)
 
-    def action_spawn_ufo(self) -> None:
-        """u: force a UFO to spawn in the sky animation."""
+    def _force_spawn_sky(self, sprite: object | None = None) -> None:
+        """Force-spawn a sky entity (or random if sprite is None)."""
         from teleclaude.cli.tui.animations.general import GlobalSky
 
         slot = self._animation_engine._targets.get("header")
         if slot and isinstance(slot.animation, GlobalSky):
-            slot.animation.force_spawn_entity()
+            slot.animation.force_spawn(sprite)
+
+    def action_spawn_ufo(self) -> None:
+        """u: force a UFO to spawn in the sky animation."""
+        from teleclaude.cli.tui.animations.sprites.ufo import UFO_SPRITE
+
+        self._force_spawn_sky(UFO_SPRITE)
+
+    def action_spawn_car(self) -> None:
+        """c: force a car to spawn in the sky animation."""
+        from teleclaude.cli.tui.animations.sprites.cars import CAR_SPRITE
+
+        self._force_spawn_sky(CAR_SPRITE)
 
     def action_toggle_tts(self) -> None:
         """v: toggle TTS on/off.
@@ -990,8 +1003,9 @@ class TelecApp(App[str | None]):
         try:
             config_view = self.query_one("#config-view", ConfigView)
             config_view.action_toggle_guided_mode()
+            config_view.focus()
         except Exception:
-            pass  # config view unavailable at startup — skip guided mode activation
+            logger.exception("Failed to activate config guided mode")
 
     # --- State persistence ---
 
