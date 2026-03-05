@@ -25,10 +25,3 @@ There are many of course, but this section is now intended to reveal the full su
 
 <!-- @exec: telec docs -h -->
 
-### `telec sessions`
-
-<!-- @exec: telec sessions -h -->
-
-### `telec sessions send`
-
-<!-- @exec: telec sessions send -h -->

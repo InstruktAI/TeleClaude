@@ -37,25 +37,25 @@ through `telec sync` for the generated output.
 
 **File(s):** `docs/global/baseline.md`
 
-- [ ] Remove the `@...agent-direct-conversation.md` reference line from `baseline.md`.
-- [ ] Verify the snippet still exists in the doc index and is loadable via
+- [x] Remove the `@...agent-direct-conversation.md` reference line from `baseline.md`.
+- [x] Verify the snippet still exists in the doc index and is loadable via
       `telec docs get general/procedure/agent-direct-conversation`.
 
 ### Task 2.2: Trim Telec CLI spec — remove sessions expanded sections
 
 **File(s):** `docs/global/general/spec/tools/telec-cli.md`
 
-- [ ] Remove the `<!-- @exec: telec sessions -h -->` directive and its `### telec sessions` heading.
-- [ ] Remove the `<!-- @exec: telec sessions send -h -->` directive and its
+- [x] Remove the `<!-- @exec: telec sessions -h -->` directive and its `### telec sessions` heading.
+- [x] Remove the `<!-- @exec: telec sessions send -h -->` directive and its
       `### telec sessions send` heading.
-- [ ] Keep the `### telec docs` section with its `<!-- @exec: telec docs -h -->` directive.
-- [ ] Keep the `## CLI surface` section with `<!-- @exec: telec -h -->` (the overview block).
+- [x] Keep the `### telec docs` section with its `<!-- @exec: telec docs -h -->` directive.
+- [x] Keep the `## CLI surface` section with `<!-- @exec: telec -h -->` (the overview block).
 
 ### Task 2.3: Replace baseline index with one-liner
 
 **File(s):** `docs/global/baseline-progressive.md`
 
-- [ ] Replace the 16 `@` reference lines with a single instruction line:
+- [x] Replace the 16 `@` reference lines with a single instruction line:
       `Run telec docs index --baseline-only before any task where context might be needed.`
       This makes the baseline index discoverable at runtime without pre-loading 2.4k of IDs.
 
