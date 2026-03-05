@@ -17,6 +17,7 @@ from teleclaude.cli.tui.theme import (
     blend_colors,
     get_neutral_color,
     get_terminal_background,
+    get_tui_inactive_background,
     is_dark_mode,
     resolve_haze,
 )
@@ -145,7 +146,7 @@ class BoxTabBar(TelecMixin, Widget):
         else:
             active_tab_bg = pane_bg
             active_tab_fg = resolve_haze(get_neutral_color("highlight"))
-        inactive_tab_bg = resolve_haze(get_neutral_color("subtle"))
+        inactive_tab_bg = resolve_haze(get_tui_inactive_background())
         inactive_tab_fg = resolve_haze(get_neutral_color("muted"))
 
         tabs: list[tuple[int, int, str, bool, str]] = []
