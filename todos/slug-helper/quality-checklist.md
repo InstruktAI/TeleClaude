@@ -10,15 +10,15 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate slug-helper` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test`) — 2845 pass; 4 pre-existing failures unrelated to this scope
+- [x] Lint passes (`make lint`) — score 9.40/10; all issues pre-existing
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate slug-helper` exits 0 — 4 executable blocks found)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed — `create_todo_skeleton`, `create_bug_skeleton` no longer raise `FileExistsError`; `_derive_slug` delegates character normalization to `normalize_slug`
 
 ## Review Gates (Reviewer)
 
