@@ -53,11 +53,11 @@ class GlobalSky(Animation):
     _WEATHER_NAMES = ["clear", "fair", "cloudy", "overcast"]
     _WEATHER_WEIGHTS = [30, 35, 25, 10]
 
-    # Sky: base color at top, progressive blend toward target at bottom
+    # Sky gradient: top row = base, bottom row = target, linear interpolation between
     _SKY_BASE_DARK = "#000000"
-    _SKY_TARGET_DARK = "#270055"  # visible purple at horizon
+    _SKY_TARGET_DARK = "#0F001A"  # slightly lighter purple at bottom
     _SKY_BASE_LIGHT = "#87CEEB"
-    _SKY_TARGET_LIGHT = "#FFFFFF"  # white at horizon
+    _SKY_TARGET_LIGHT = "#A8DBF0"  # slightly lighter blue at bottom
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         kwargs.setdefault("target", "header")
@@ -269,15 +269,13 @@ class GlobalSky(Animation):
         self.force_spawn()
 
     def _build_sky_cache(self) -> list[tuple[int, int, int, str]]:
-        """Pre-compute static sky gradient pixels for the current theme.
-
-        Progressive blend: row 0 = base color, each row adds 1% toward target.
-        """
+        """Pre-compute static sky gradient pixels for the current theme."""
         from teleclaude.cli.tui.theme import blend_colors
 
         base = self._SKY_BASE_DARK if self.dark_mode else self._SKY_BASE_LIGHT
         target = self._SKY_TARGET_DARK if self.dark_mode else self._SKY_TARGET_LIGHT
-        row_colors = [blend_colors(base, target, y * 0.03) for y in range(self.height)]
+        max_y = max(1, self.height - 1)
+        row_colors = [blend_colors(base, target, y / max_y) for y in range(self.height)]
         pixels: list[tuple[int, int, int, str]] = []
         for x, y in self._all_pixels:
             pixels.append((Z0, x, y, row_colors[y]))
