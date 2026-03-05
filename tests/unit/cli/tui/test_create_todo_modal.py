@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from teleclaude.todo_scaffold import SLUG_PATTERN
+from teleclaude.slug import SLUG_PATTERN
 
 
 def test_slug_pattern_accepts_valid_slugs() -> None:

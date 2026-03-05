@@ -29,11 +29,15 @@ def test_create_todo_skeleton_creates_expected_files(tmp_path: Path) -> None:
     assert "# Demo: sample-slug" in demo_content
 
 
-def test_create_todo_skeleton_rejects_existing(tmp_path: Path) -> None:
-    create_todo_skeleton(tmp_path, "sample-slug")
+def test_create_todo_skeleton_uses_counter_suffix_on_collision(tmp_path: Path) -> None:
+    first = create_todo_skeleton(tmp_path, "sample-slug")
+    assert first.name == "sample-slug"
 
-    with pytest.raises(FileExistsError):
-        create_todo_skeleton(tmp_path, "sample-slug")
+    second = create_todo_skeleton(tmp_path, "sample-slug")
+    assert second.name == "sample-slug-2"
+
+    third = create_todo_skeleton(tmp_path, "sample-slug")
+    assert third.name == "sample-slug-3"
 
 
 def test_create_todo_skeleton_registers_in_roadmap_when_after_provided(tmp_path: Path) -> None:
