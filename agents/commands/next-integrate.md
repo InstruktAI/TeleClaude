@@ -9,70 +9,71 @@ You are now the Integrator.
 
 ## Purpose
 
-Acquire the integration lease, drain the READY candidate queue, merge each
-candidate into canonical main, do delivery bookkeeping and cleanup, push
-main, and self-end when done.
+Drive the integration state machine by calling `telec todo integrate` in a loop,
+executing the decision instructions returned at each step, then calling again until
+the queue is empty or a terminal error is returned.
 
-Only one integrator session may be active at a time.  The lease mechanism
-enforces this.  If another integrator is running, this session must exit
-immediately.
+Only one integrator session may be active at a time. The lease mechanism enforces
+this. If another integrator is running, the state machine returns a LEASE_BUSY
+instruction — exit this session immediately.
 
 ## Inputs
 
-- Slug: "$ARGUMENTS" (the initial READY candidate that triggered this session)
-- The integration queue may contain additional READY candidates
+- Slug: "$ARGUMENTS" (optional — pass to target a specific candidate; must match
+  the next item in the FIFO queue, or omit to let the state machine pick)
 
 ## Outputs
 
 - Merged candidates on canonical main
-- Delivery bookkeeping (roadmap, delivered.yaml)
-- Demo snapshots
-- Cleaned up worktrees and branches
-- deployment.completed events for each successful integration
-- deployment.failed events for blocked candidates
+- Delivery bookkeeping (roadmap delivered, demo snapshot promoted)
+- Cleaned worktrees and branches
+- `integration.*` lifecycle events at each state transition
+- Exit instruction when queue is drained
 
 ## Steps
 
-1. **Acquire lease:**
-   The lease is file-based at `~/.teleclaude/integration/lease.json`.
-   Use `IntegratorShadowRuntime` with `shadow_mode=False`.
+Call `telec todo integrate $ARGUMENTS` and follow the instruction block verbatim.
 
-2. **Drain the queue** (FIFO by ready_at):
-   For each READY candidate in the queue:
+**INTEGRATION DECISION: SQUASH COMMIT REQUIRED**
 
-   a. **Fetch and merge:**
-      Fetch origin/main and origin/branch, switch to main, pull --ff-only,
-      merge --squash the branch. Extract title from requirements.md for commit
-      message.
+The branch has been squash-merged; staged changes are ready. Read the context:
+diff stats, branch commit history, requirements.md, implementation-plan.md.
+Compose a commit message capturing the full delivery intent:
+- Subject: imperative, scoped — e.g. `feat(my-feature): deliver my-feature`
+- Body: summarize what changed, key decisions, scope
+- Footer: `Co-Authored-By: TeleClaude <noreply@instrukt.ai>`
 
-   b. **If merge conflict:**
-      - Emit `deployment.failed` event via bridge
-      - Create follow-up todo (via BlockedFollowUpStore)
-      - Mark queue item as blocked
-      - Continue to next candidate
+Run `git commit -m '<your message>'`, then call `telec todo integrate`.
 
-   c. **Delivery bookkeeping** (skip for bug fixes):
-      Run `telec roadmap deliver <slug>`, stage delivery files, commit.
+**INTEGRATION DECISION: CONFLICT RESOLUTION REQUIRED**
 
-   d. **Demo snapshot** (if demo.md exists):
-      Run `telec todo demo create <slug>`.
+The squash merge encountered conflicts. Read each conflicted file; understand the
+code on both sides. Resolve all conflict markers (`<<<<`, `====`, `>>>>`). Stage
+resolved files with `git add <files>`. Compose a commit message (same quality
+standard as squash commit). Run `git commit -m '<your message>'`, then call
+`telec todo integrate`. If conflicts are genuinely unresolvable, call
+`telec todo integrate` without committing — the state machine will detect this
+and re-prompt.
 
-   e. **Cleanup:**
-      Remove worktree, delete branch, remove todo directory, commit cleanup.
+**INTEGRATION DECISION: PUSH REJECTION RECOVERY**
 
-   f. **Push main:**
-      Push origin main.
+Push of main to origin was rejected (likely non-fast-forward). Diagnose with
+`git fetch origin && git log --oneline origin/main ^main`. Rebase:
+`git rebase origin/main`. Resolve any new conflicts, then `git push origin main`,
+then call `telec todo integrate`.
 
-   g. **Emit deployment.completed** event via bridge.
+**INTEGRATION WAIT: Main branch not clear**
 
-   h. **Restart daemon** via `make restart`.
+Another session is active or main has uncommitted changes. Wait for blockers to
+clear, then call `telec todo integrate`.
 
-3. **When queue is empty:**
-   - Release the integration lease
-   - Write checkpoint
-   - Self-end the session
+**INTEGRATION ERROR: LEASE_BUSY**
 
-4. **Error recovery:**
-   - Merge conflicts: emit deployment.failed, create follow-up todo, continue
-   - Push failures: retry once, then emit deployment.failed
-   - Lease acquisition failure: exit immediately (another integrator is running)
+Another integrator session already holds the lease. Exit this session immediately.
+Do not attempt to break the lease.
+
+**INTEGRATION COMPLETE: Queue empty**
+
+All candidates have been processed. Self-end: `telec sessions end self`.
+
+Repeat until INTEGRATION COMPLETE or LEASE_BUSY.
