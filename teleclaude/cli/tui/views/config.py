@@ -209,19 +209,6 @@ class ConfigView(Widget, can_focus=True):
         self.active_adapter_tab = content.active_adapter_tab
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
-        content = self._content_or_none()
-        if (
-            content is not None
-            and content.guided_mode
-            and action
-            in (
-                "next_subtab",
-                "prev_subtab",
-                "next_adapter_tab",
-                "prev_adapter_tab",
-            )
-        ):
-            return False
         if action in ("next_adapter_tab", "prev_adapter_tab"):
             return self.active_subtab == 0
         return True
@@ -505,21 +492,6 @@ class ConfigContent(TelecMixin, Widget):
             self.save_edit()
             return
 
-        if self._guided_mode:
-            step = _GUIDED_STEPS[self._guided_step_index]
-            if step.subtab in ("adapters", "environment"):
-                selected = self._current_selected_env()
-                if selected is not None and not selected.is_set:
-                    self._begin_edit(selected)
-                    return
-            if step.subtab == "validate":
-                self.run_validation()
-                if self._is_current_guided_step_complete():
-                    self._advance_guided_step()
-                return
-            self._advance_guided_step()
-            return
-
         tab = _SUBTABS[self.active_subtab]
         if tab == "validate":
             self.run_validation()
@@ -597,7 +569,6 @@ class ConfigContent(TelecMixin, Widget):
         self._guided_mode = True
         self._guided_step_index = 0
         self._apply_guided_step()
-        self._auto_advance_completed_steps()
         self._status_message = "Guided mode started"
         self._status_is_error = False
         self.refresh(layout=True)
