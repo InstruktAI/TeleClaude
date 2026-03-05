@@ -2463,7 +2463,6 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
     logger.info("No worktree preparation targets found for %s", slug)
 
 
-
 # =============================================================================
 # Main Functions
 # =============================================================================
