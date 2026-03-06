@@ -847,7 +847,8 @@ def test_post_completion_finalize_hands_off_to_integrator():
     instructions = POST_COMPLETION["next-finalize"]
     assert "FINALIZE_READY: {args}" in instructions
     assert "<session_id>" in instructions
-    assert "telec todo integrate" in instructions
+    assert "deployment.started" in instructions
+    assert "emit_deployment_started" in instructions
     assert "Integrator will process" in instructions
     # Lock mechanism is gone — integrator handles serialization via its own lease
     assert "todos/.finalize-lock" not in instructions
@@ -856,6 +857,7 @@ def test_post_completion_finalize_hands_off_to_integrator():
     assert "make restart" not in instructions
     assert "FINALIZE APPLY SAFETY RE-CHECK" not in instructions
     assert "git push origin main" not in instructions
+    assert "telec todo integrate" not in instructions
 
 
 def test_format_build_gate_failure_structure():

@@ -462,6 +462,7 @@ def test_post_completion_no_longer_merges_main() -> None:
     # Should not contain the old merge/push sequence
     assert "git merge --squash" not in finalize_instructions
     assert "git push origin main" not in finalize_instructions
-    # Should contain the new handoff
-    assert "telec todo integrate" in finalize_instructions
+    # Should contain the event-driven handoff
+    assert "deployment.started" in finalize_instructions
+    assert "emit_deployment_started" in finalize_instructions
     assert "Integrator will process" in finalize_instructions

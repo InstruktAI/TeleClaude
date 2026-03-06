@@ -177,7 +177,7 @@ if [ "$base_branch" = "main" ]; then
         cat >&2 <<'MSG'
 ERROR: MAIN_GUARDRAIL_BLOCKED
 Main-targeting operations are allowed only from the canonical repository root on branch main.
-Stop now and report FINALIZE_READY to the orchestrator so finalize-apply can run in canonical context.
+Stop now and report FINALIZE_READY to the orchestrator so it can hand off to the integrator in canonical context.
 MSG
         exit 1
     fi

@@ -6,10 +6,11 @@ breakdown:
   todos: []
 dor:
   last_assessed_at: '2026-03-06T14:45:00Z'
-  score: 9
-  status: pass
+  score: 0
+  status: needs_work
   schema_version: 1
-  blockers: []
+  blockers:
+    - 'Superseded by integration-event-chain-phase2 after regression recovery on 2026-03-06.'
   actions_taken:
     requirements_updated: true
     implementation_plan_updated: true

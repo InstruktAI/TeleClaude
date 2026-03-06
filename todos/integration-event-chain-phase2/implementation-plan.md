@@ -2,13 +2,15 @@
 
 ## Overview
 
-Wire the ReadinessProjection into the IntegrationTriggerCartridge as the integration gate,
-create the missing `branch.pushed` event emission, and remove the legacy finalize lock
-mechanism. The approach reuses existing projection and queue infrastructure, injecting them
-into the cartridge via callbacks to maintain the `teleclaude_events/` → `teleclaude/`
-dependency boundary.
+The recovered finalize handoff stays as-is. The remaining work is split into two
+coherent slices:
+1. finish the three-event readiness gate with `branch.pushed`
+2. align integrator delivery bookkeeping and cleanup with worker role boundaries
 
-## Phase 1: Event Infrastructure
+The approach reuses existing projection, queue, and checkpoint infrastructure.
+No new orchestration model is introduced.
+
+## Phase 1: Three-Event Gate
 
 ### Task 1.1: Register `branch.pushed` event schema
 
@@ -83,47 +85,41 @@ dependency boundary.
 
 ---
 
-## Phase 3: Legacy Removal
+## Phase 3: Integrator Ownership Alignment
 
-### Task 3.1: Remove finalize lock functions
+### Task 3.1: Convert delivery bookkeeping to AI-directed instructions
 
-**File(s):** `teleclaude/core/next_machine/core.py`
+**File(s):** `teleclaude/core/integration/state_machine.py`
 
-- [ ] Remove constants: `_FINALIZE_LOCK_NAME`, `_FINALIZE_LOCK_STALE_MINUTES`
-- [ ] Remove `_finalize_lock_path()` helper
-- [ ] Remove `acquire_finalize_lock()` function (~line 2165)
-- [ ] Remove `release_finalize_lock()` function (~line 2221)
-- [ ] Remove `get_finalize_lock_holder()` function (~line 2242)
-- [ ] Remove lock acquisition in step 9 (finalize dispatch, ~line 3092)
-- [ ] Remove lock release on `compose_agent_guidance` failure (~line 3099)
-- [ ] Remove lock re-entry check at `next_work()` entry (~lines 2674-2683)
+- [ ] Refactor `_step_committed()` so it no longer runs `telec roadmap deliver` directly
+- [ ] Refactor `_step_committed()` so it no longer runs `telec todo demo create` directly
+- [ ] Refactor `_step_committed()` so it no longer stages/commits delivery changes directly
+- [ ] Return explicit integrator instructions instead:
+      run delivery bookkeeping, stage/commit with the prescribed message, then call
+      `telec todo integrate` again
+- [ ] Preserve checkpoint semantics so re-entry can detect when the agent has completed
+      the requested bookkeeping step
 
-### Task 3.2: Remove `caller_session_id` parameter
+### Task 3.2: Convert cleanup to AI-directed instructions
 
-**File(s):** `teleclaude/core/next_machine/core.py`, `teleclaude/api/todo_routes.py`
+**File(s):** `teleclaude/core/integration/state_machine.py`
 
-- [ ] Remove `caller_session_id` parameter from `next_work()` signature (~line 2647)
-- [ ] Remove all conditional logic that depended on `caller_session_id`
-- [ ] Remove `caller_session_id` check in finalize dispatch guard (~line 3079-3090)
-- [ ] Update `/todos/work` API route to not pass `identity.session_id` to `next_work()`
+- [ ] Refactor `_do_cleanup()` so it no longer directly removes the worktree, branches,
+      todo directory, stages cleanup, commits cleanup, or restarts the daemon
+- [ ] Return explicit integrator instructions for those operations instead
+- [ ] Keep `queue.mark_integrated()` and checkpoint advancement deterministic; only advance
+      once the integrator has completed the requested cleanup step
+- [ ] Preserve idempotent re-entry when cleanup partially completed before retry
 
-### Task 3.3: Rewrite POST_COMPLETION["next-finalize"]
+### Task 3.3: Remove stale direct-integrate assumptions
 
-**File(s):** `teleclaude/core/next_machine/core.py`
+**File(s):** tests, wrappers, and any user-facing guidance that still references the old path
 
-- [ ] Remove step 3-4 (lock ownership verification)
-- [ ] Remove step 6 (`telec todo integrate {args}`)
-- [ ] Remove step 7 (`rm -f todos/.finalize-lock`)
-- [ ] Keep: read worker output, confirm FINALIZE_READY, end worker session, call `{next_call}`
-- [ ] The integrator is now triggered by the event chain, not the orchestrator
-
-### Task 3.4: Remove lock from session cleanup
-
-**File(s):** `teleclaude/core/session_cleanup.py`
-
-- [ ] Remove `from teleclaude.core.next_machine.core import release_finalize_lock`
-- [ ] Remove `release_finalize_lock(project_path, session_id)` call from
-      `cleanup_session_resources()` (~line 66-68)
+- [ ] Update tests that currently expect orchestrator-owned `telec todo integrate` handoff
+- [ ] Update wrapper/help text so `FINALIZE_READY` points to integrator handoff, not
+      `finalize-apply`
+- [ ] Verify no user-facing text implies that non-integrator sessions call
+      `telec todo integrate`
 
 ---
 
@@ -146,11 +142,10 @@ dependency boundary.
 
 ### Task 4.3: Update existing tests
 
-- [ ] Update tests that pass `caller_session_id` to `next_work()` calls
-- [ ] Remove tests for `acquire_finalize_lock`, `release_finalize_lock`,
-      `get_finalize_lock_holder`
 - [ ] Update `test_integrator_wiring.py` to verify new three-event trigger behavior
-- [ ] Update mocks that patch `release_finalize_lock` in test suites
+- [ ] Add tests for the AI-directed delivery-bookkeeping checkpoint transition
+- [ ] Add tests for the AI-directed cleanup checkpoint transition
+- [ ] Update any stale assertions that still encode orchestrator-owned integration
 
 ### Task 4.4: Quality checks
 

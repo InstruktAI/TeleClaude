@@ -702,9 +702,9 @@ def _try_auto_enqueue(*, queue: IntegrationQueue, slug: str, cwd: str) -> bool:
     """Auto-enqueue a candidate when called by slug but not yet in the queue.
 
     Derives branch name from slug (convention: branch == slug) and resolves
-    the SHA from the local branch ref.  Used when the orchestrator calls
-    ``telec todo integrate <slug>`` directly without a prior queue population
-    step (e.g. deployment.started event path not taken).
+    the SHA from the local branch ref. Used for legacy/manual direct-integrate
+    entry when a caller invokes ``telec todo integrate <slug>`` without a
+    prior queue population step.
     """
     branch = slug  # branch == slug by project convention
     rc, stdout, _ = _run_git(["rev-parse", branch], cwd=cwd)
@@ -741,9 +741,9 @@ def _step_idle(
     queued_items = [item for item in queue.items() if item.status == "queued"]
     if not queued_items:
         # When a specific slug is requested, auto-enqueue from the local branch
-        # (branch == slug by convention). This handles the direct-integrate path
-        # where the orchestrator calls ``telec todo integrate <slug>`` without a
-        # prior deployment.started event enqueuing the candidate.
+        # (branch == slug by convention). This preserves the legacy/manual
+        # direct-integrate path where a caller invokes
+        # ``telec todo integrate <slug>`` without a prior deployment event.
         if slug is not None:
             _try_auto_enqueue(queue=queue, slug=slug, cwd=cwd)
             queued_items = [item for item in queue.items() if item.status == "queued"]
