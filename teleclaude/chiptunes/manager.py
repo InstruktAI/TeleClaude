@@ -5,8 +5,12 @@ from __future__ import annotations
 import random
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from teleclaude.chiptunes.player import ChiptunesPlayer
 
@@ -34,6 +38,7 @@ class ChiptunesManager:
         self._player: ChiptunesPlayer | None = None
         self._track_list: list[Path] | None = None  # lazy-cached on first use
         self._enabled = False
+        self.on_track_start: Callable[[str], None] | None = None
 
     @property
     def enabled(self) -> bool:
