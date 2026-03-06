@@ -1145,10 +1145,8 @@ def _do_cleanup(
         {"slug": key.slug, "branch": key.branch, "merge_commit_sha": merge_commit},
     )
 
-    # Restart daemon (non-fatal)
-    subprocess.run(["make", "restart"], capture_output=True, text=True, cwd=cwd)
-
-    # Mark integrated and advance checkpoint
+    # Mark integrated and advance checkpoint BEFORE restarting the daemon
+    # (restart severs the connection, so these must complete first)
     try:
         queue.mark_integrated(key=key, reason="integrated via state machine")
     except Exception as exc:
@@ -1158,6 +1156,9 @@ def _do_cleanup(
     checkpoint.items_processed += 1
     _write_checkpoint(checkpoint_path, checkpoint)
     logger.info("%s slug=%s phase=CANDIDATE_DELIVERED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
+
+    # Restart daemon (non-fatal; done last so state is persisted first)
+    subprocess.run(["make", "restart"], capture_output=True, text=True, cwd=cwd)
 
     return True, ""  # loop to pop next candidate
 
