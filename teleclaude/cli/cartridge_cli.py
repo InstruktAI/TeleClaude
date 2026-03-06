@@ -94,7 +94,9 @@ def handle_cartridge_cli(args: list[str]) -> None:
     p_promote.add_argument("--from", required=True, dest="from_scope", choices=["personal", "domain", "platform"])
     p_promote.add_argument("--to", required=True, dest="to_scope", choices=["personal", "domain", "platform"])
     p_promote.add_argument("--domain", required=True, dest="target_domain", help="Target domain name")
-    p_promote.add_argument("--member", default=None, dest="source_member_id", help="Source member id (required when --from=personal)")
+    p_promote.add_argument(
+        "--member", default=None, dest="source_member_id", help="Source member id (required when --from=personal)"
+    )
     p_promote.add_argument("--json", action="store_true", help="Output JSON")
 
     # list
@@ -117,7 +119,8 @@ def handle_cartridge_cli(args: list[str]) -> None:
         use_json = getattr(parsed, "json", False)
 
         if parsed.action == "install":
-            manager.install(                source_path=Path(parsed.path).expanduser(),
+            manager.install(
+                source_path=Path(parsed.path).expanduser(),
                 scope=CartridgeScope(parsed.scope),
                 target=parsed.target,
                 caller_is_admin=is_admin,
@@ -129,7 +132,8 @@ def handle_cartridge_cli(args: list[str]) -> None:
                 print(f"Installed cartridge from {parsed.path} to {parsed.scope}/{parsed.target}")
 
         elif parsed.action == "remove":
-            manager.remove(                cartridge_id=parsed.cartridge_id,
+            manager.remove(
+                cartridge_id=parsed.cartridge_id,
                 scope=CartridgeScope(parsed.scope),
                 target=parsed.target,
                 caller_is_admin=is_admin,
@@ -141,7 +145,8 @@ def handle_cartridge_cli(args: list[str]) -> None:
                 print(f"Removed cartridge '{parsed.cartridge_id}' from {parsed.scope}/{parsed.target}")
 
         elif parsed.action == "promote":
-            manager.promote(                cartridge_id=parsed.cartridge_id,
+            manager.promote(
+                cartridge_id=parsed.cartridge_id,
                 from_scope=CartridgeScope(parsed.from_scope),
                 to_scope=CartridgeScope(parsed.to_scope),
                 target_domain=parsed.target_domain,

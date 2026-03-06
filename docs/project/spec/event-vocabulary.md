@@ -90,7 +90,7 @@ hook-level event type so existing consumers that inspect `type`/`event_type` rem
 functional. Downstream adapters (`ucap-web-adapter-alignment`, `ucap-tui-adapter-alignment`)
 will migrate to consume `canonical_type` directly in later phases.
 
-## Core Event Taxonomy
+### Core Event Taxonomy
 
 The platform registers the following root-level event families as built-in catalog entries.
 Each family uses a flat prefix pattern. The existing `system.*` and `domain.*` families
@@ -112,7 +112,7 @@ All built-in event types are registered in `teleclaude_events/schemas/` and wire
 into `register_all()` in `teleclaude_events/schemas/__init__.py`. Domain-specific
 cartridges may register additional types in the same catalog.
 
-## Expansion Joint
+### Expansion Joint
 
 `EventEnvelope` accepts additional fields beyond its declared schema via
 `model_config = ConfigDict(extra="allow")`. This is the mechanism for organic schema
@@ -127,7 +127,7 @@ This preserves the flat `dict[str, str]` Redis stream constraint.
 via `schema.proposed`, adopted via `schema.adopted`, and finally declared as first-class
 `EventEnvelope` fields in a schema-version bump.
 
-## JSON Schema for External Consumers
+### JSON Schema for External Consumers
 
 The canonical JSON Schema document for `EventEnvelope` can be generated without importing
 Python code:

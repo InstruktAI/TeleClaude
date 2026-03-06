@@ -389,6 +389,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.codex_transcript_watch_task: asyncio.Task[object] | None = None
         self.webhook_delivery_task: asyncio.Task[object] | None = None
         self.channel_subscription_worker_task: asyncio.Task[object] | None = None
+        self._ingest_scheduler_task: asyncio.Task[object] | None = None
 
         self.lifecycle = DaemonLifecycle(
             client=self.client,
@@ -1867,6 +1868,75 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             )
             logger.info("Event 'system.daemon.restarted' emitted")
 
+            # 8. Signal pipeline (optional — only if config.signal section is present)
+            signal_cfg = getattr(config, "signal", None)
+            if signal_cfg is not None:
+                try:
+                    import anthropic  # pylint: disable=import-outside-toplevel
+
+                    from company.cartridges.signal import (  # pylint: disable=import-outside-toplevel
+                        SignalClusterCartridge,
+                        SignalIngestCartridge,
+                        SignalSynthesizeCartridge,
+                    )
+                    from teleclaude_events.signal.ai import (  # pylint: disable=import-outside-toplevel
+                        DefaultSignalAIClient,
+                    )
+                    from teleclaude_events.signal.clustering import (  # pylint: disable=import-outside-toplevel
+                        ClusteringConfig,
+                    )
+                    from teleclaude_events.signal.scheduler import (  # pylint: disable=import-outside-toplevel
+                        IngestScheduler,
+                    )
+                    from teleclaude_events.signal.sources import (  # pylint: disable=import-outside-toplevel
+                        SignalSourceConfig,
+                    )
+
+                    raw_ai = anthropic.AsyncAnthropic()
+                    signal_ai = DefaultSignalAIClient(raw_ai)
+                    signal_db = self._event_db.signal
+                    source_config_data = signal_cfg if isinstance(signal_cfg, dict) else {}
+                    source_config = SignalSourceConfig(**source_config_data)
+
+                    context.ai_client = signal_ai
+                    context.emit = event_producer.emit  # type: ignore[assignment]
+
+                    ingest_cartridge = SignalIngestCartridge(config=source_config, ai=signal_ai, signal_db=signal_db)
+                    cluster_cartridge = SignalClusterCartridge(
+                        config=ClusteringConfig(), ai=signal_ai, signal_db=signal_db
+                    )
+
+                    from company.cartridges.signal.synthesize import (  # pylint: disable=import-outside-toplevel
+                        SynthesizeConfig,
+                    )
+
+                    synthesize_cartridge = SignalSynthesizeCartridge(
+                        config=SynthesizeConfig(), ai=signal_ai, signal_db=signal_db
+                    )
+
+                    self._ingest_scheduler_task = asyncio.create_task(
+                        IngestScheduler(ingest_cartridge, context, source_config.pull_interval_seconds).run(
+                            self.shutdown_event
+                        )
+                    )
+                    self._ingest_scheduler_task.add_done_callback(
+                        self._log_background_task_exception("ingest_scheduler")
+                    )
+                    pipeline.register(cluster_cartridge)
+                    pipeline.register(synthesize_cartridge)
+                    logger.info(
+                        "Signal pipeline started (%d sources, interval=%ds)",
+                        len(source_config.sources),
+                        source_config.pull_interval_seconds,
+                    )
+                except ImportError:
+                    logger.warning(
+                        "Signal pipeline failed to start (missing optional dependency); signal ingestion disabled",
+                        exc_info=True,
+                    )
+                except Exception:  # pylint: disable=broad-exception-caught
+                    logger.error("Signal pipeline failed to start; signal ingestion disabled", exc_info=True)
+
         except Exception:
             logger.exception("Event platform startup failed; continuing without event platform")
 
@@ -2220,6 +2290,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("Launchd watch task stopped")
+
+        # Stop signal ingest scheduler (before event processor so pending emits complete)
+        if self._ingest_scheduler_task:
+            self._ingest_scheduler_task.cancel()
+            try:
+                await self._ingest_scheduler_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("IngestScheduler stopped")
 
         # Stop event processor
         if self._event_processor_task:

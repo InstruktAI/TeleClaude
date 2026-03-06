@@ -270,6 +270,11 @@ subcommands:
           --before: 'Observations before anchor (default: 3).'
           --after: 'Observations after anchor (default: 3).'
           --project: 'Filter by project name.'
+  signals:
+    description: 'Signal pipeline status and diagnostics.'
+    subcommands:
+      status:
+        description: 'Show signal pipeline counts and last ingest time.'
 ```
 
 ## Known caveats

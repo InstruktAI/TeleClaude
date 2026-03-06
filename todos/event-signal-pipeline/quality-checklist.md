@@ -10,25 +10,25 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
-- [ ] Implementation-plan task checkboxes all `[x]`
-- [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate event-signal-pipeline` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Requirements implemented according to scope
+- [x] Implementation-plan task checkboxes all `[x]`
+- [x] Tests pass (`make test` — 3103 passed; 1 pre-existing flaky in parallel, passes in isolation)
+- [x] Lint passes (`make lint` — score 9.39/10 unchanged; no new failures introduced)
+- [x] No silent deferrals in implementation plan (Task 6.4 CLI stub noted as optional; skipped)
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate event-signal-pipeline` — 8 executable blocks found)
+- [x] Working tree clean (except orchestrator-managed drift: state.yaml, worktree-prep-state.json)
+- [x] Comments/docstrings updated where behavior changed (fetch.py Atom parser fix documented via commit)
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
-- [ ] Deferrals justified and not hiding required scope
-- [ ] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
+- [x] Requirements traced to implemented behavior
+- [x] Deferrals justified and not hiding required scope
+- [x] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
+- [x] Findings written in `review-findings.md`
+- [x] Verdict recorded (APPROVE or REQUEST CHANGES)
+- [x] Critical issues resolved or explicitly blocked
+- [x] Test coverage and regression risk assessed
 
 ## Finalize Gates (Finalizer)
 

@@ -83,7 +83,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["teleclaude*"]
+include = ["teleclaude*", "company*"]
 
 [project.scripts]
 telec = "teleclaude.cli.telec:main"

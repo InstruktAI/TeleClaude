@@ -14,6 +14,7 @@ def register_all(catalog: "EventCatalog") -> None:
     from teleclaude_events.schemas.node import register_node
     from teleclaude_events.schemas.notification import register_notification
     from teleclaude_events.schemas.schema import register_schema
+    from teleclaude_events.schemas.signal import register_signal
     from teleclaude_events.schemas.software_development import register_software_development
     from teleclaude_events.schemas.system import register_system
 
@@ -24,3 +25,4 @@ def register_all(catalog: "EventCatalog") -> None:
     register_content(catalog)
     register_notification(catalog)
     register_schema(catalog)
+    register_signal(catalog)

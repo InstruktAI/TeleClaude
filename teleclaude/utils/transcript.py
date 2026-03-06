@@ -206,7 +206,7 @@ def normalize_transcript_entry_message(
 
 def iter_assistant_blocks(
     entries: Iterable[Mapping[str, object]],
-) -> Iterator[tuple[dict[str, object], Optional[datetime]]]:
+) -> Iterator[tuple[dict[str, object], Optional[datetime]]]:  # guard: loose-dict
     """Yield (block, entry_timestamp) for assistant content blocks only.
 
     Applies normalize_transcript_entry_message, role == "assistant" gate,

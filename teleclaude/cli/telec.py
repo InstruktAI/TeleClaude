@@ -101,6 +101,7 @@ class TelecCommand(str, Enum):
     CONTENT = "content"
     HISTORY = "history"
     MEMORIES = "memories"
+    SIGNALS = "signals"
 
 
 # =============================================================================
@@ -686,6 +687,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     Flag("--domain", desc="Filter by domain"),
                 ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+            ),
+        },
+    ),
+    "signals": CommandDef(
+        desc="Signal pipeline status and diagnostics",
+        subcommands={
+            "status": CommandDef(
+                desc="Show signal pipeline counts and last ingest time",
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
         },
@@ -1600,6 +1610,8 @@ def _handle_cli_command(argv: list[str]) -> None:
         _handle_history(args)
     elif cmd_enum is TelecCommand.MEMORIES:
         _handle_memories(args)
+    elif cmd_enum is TelecCommand.SIGNALS:
+        _handle_signals(args)
     else:
         print(f"Unknown command: /{cmd}")
         print(_usage())
@@ -3497,6 +3509,48 @@ def _handle_events_list(args: list[str]) -> None:
             ]
         )
         print(row)
+
+
+def _handle_signals(args: list[str]) -> None:
+    """Handle telec signals subcommands."""
+    if not args or args[0] == "status":
+        _handle_signals_status()
+    else:
+        print(f"Unknown signals subcommand: {args[0]}")
+        print(_usage("signals"))
+        raise SystemExit(1)
+
+
+def _handle_signals_status() -> None:
+    """Show signal pipeline item/cluster/synthesis counts and last ingest time."""
+    import asyncio  # pylint: disable=import-outside-toplevel
+
+    async def _query() -> None:
+        import aiosqlite  # pylint: disable=import-outside-toplevel
+
+        from teleclaude.config import config  # pylint: disable=import-outside-toplevel
+        from teleclaude_events.signal.db import SignalDB  # pylint: disable=import-outside-toplevel
+
+        db_path = config.database.path
+        async with aiosqlite.connect(db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            sdb = SignalDB(conn)
+            try:
+                counts = await sdb.get_signal_counts()
+                last_ingest = await sdb.get_last_ingest_time()
+            except Exception:  # pylint: disable=broad-exception-caught
+                print("Signal tables not initialized. Start the daemon to enable signal ingestion.")
+                return
+
+        print("Signal Pipeline Status")
+        print("----------------------")
+        print(f"Items ingested:  {counts['items']}")
+        print(f"Clusters formed: {counts['clusters']}")
+        print(f"Syntheses ready: {counts['syntheses']}")
+        print(f"Pending cluster: {counts['pending']}")
+        print(f"Last ingest:     {last_ingest or 'never'}")
+
+    asyncio.run(_query())
 
 
 def _handle_auth(args: list[str]) -> None:

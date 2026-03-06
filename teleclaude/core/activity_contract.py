@@ -76,9 +76,7 @@ class CanonicalActivityEvent:
 # Validation (R3)
 # ---------------------------------------------------------------------------
 
-_CANONICAL_TYPES: frozenset[str] = frozenset(
-    {"user_prompt_submit", "agent_output_update", "agent_output_stop"}
-)
+_CANONICAL_TYPES: frozenset[str] = frozenset({"user_prompt_submit", "agent_output_update", "agent_output_stop"})
 _DELIVERY_SCOPES: frozenset[str] = frozenset({"ORIGIN_ONLY", "DUAL", "CTRL"})
 
 

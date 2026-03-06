@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Protocol
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Protocol
 
 from instrukt_ai_logging import get_logger
 
@@ -41,6 +41,10 @@ class PipelineContext:
     trust_config: TrustConfig = field(default_factory=_default_trust_config)
     correlation_config: CorrelationConfig = field(default_factory=_default_correlation_config)
     producer: EventProducer | None = None
+    # Optional: AI client for signal pipeline cartridges
+    ai_client: object | None = None
+    # Optional: emit callback for cartridges that need to fire additional events
+    emit: Callable[[EventEnvelope], Awaitable[object]] | None = None
 
 
 class Cartridge(Protocol):
@@ -59,6 +63,10 @@ class Pipeline:
         self._cartridges = cartridges
         self._context = context
         self._domain_runner = domain_runner
+
+    def register(self, cartridge: Cartridge) -> None:
+        """Append a cartridge to the end of the processing chain."""
+        self._cartridges.append(cartridge)
 
     async def execute(self, event: EventEnvelope) -> EventEnvelope | None:
         current: EventEnvelope | None = event

@@ -1,4 +1,4 @@
-"""Event DB — SQLite storage for notification projections."""
+"""Event DB — SQLite storage for notification projections and signal pipeline data."""
 
 from __future__ import annotations
 
@@ -111,6 +111,8 @@ class EventDB:
         self._conn: aiosqlite.Connection | None = None
 
     async def init(self) -> None:
+        from teleclaude_events.signal.db import SignalDB
+
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = await aiosqlite.connect(str(self._db_path))
         self._conn.row_factory = aiosqlite.Row
@@ -121,6 +123,16 @@ class EventDB:
         for idx_sql in _CREATE_INDEXES:
             await self._conn.execute(idx_sql)
         await self._conn.commit()
+        # Initialize signal pipeline tables (same DB, WAL already active)
+        await SignalDB(self._conn).init()
+
+    @property
+    def signal(self) -> "SignalDB":
+        from teleclaude_events.signal.db import SignalDB
+
+        if self._conn is None:
+            raise RuntimeError("EventDB not initialized. Call init() first.")
+        return SignalDB(self._conn)
 
     async def close(self) -> None:
         if self._conn:
