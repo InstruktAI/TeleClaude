@@ -35,6 +35,7 @@ from teleclaude.core.events import (
 from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.file_handler import handle_file as handle_file_upload
+from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import (
     AgentResumeArgs,
@@ -980,7 +981,9 @@ async def deliver_inbound(
 
     session = await db.get_session(session_id)
     if not session:
-        raise RuntimeError(f"Session {session_id[:8]} not found")
+        raise SessionMessageRejectedError(session_id=session_id, reason="not_found")
+    if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+        raise SessionMessageRejectedError(session_id=session_id, reason="closed")
 
     # Gate: wait for session to exit "initializing" before injecting into tmux.
     if session.lifecycle_status == "initializing":
@@ -1021,9 +1024,11 @@ async def deliver_inbound(
             actor_avatar_url=row["actor_avatar_url"],
         )
 
-    # System messages are observability-only — do not inject into the agent.
-    # Injecting would cause the agent to auto-respond (e.g. linked output bounce loop).
-    if message_text.startswith(TELECLAUDE_SYSTEM_PREFIX):
+    linked_output_prefix = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "
+
+    # Most system messages are observability-only. Linked peer output is the
+    # one exception: direct conversations rely on it reaching the agent.
+    if message_text.startswith(TELECLAUDE_SYSTEM_PREFIX) and not message_text.startswith(linked_output_prefix):
         logger.debug("Skipping tmux injection for system message: session=%s", session_id[:8])
         return
 
@@ -1059,6 +1064,12 @@ async def process_message(
 
     session_id = cmd.session_id
     logger.debug("Enqueueing message for session %s: %s...", session_id[:8], cmd.text[:50])
+
+    session = await db.get_session(session_id)
+    if not session:
+        raise SessionMessageRejectedError(session_id=session_id, reason="not_found")
+    if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
+        raise SessionMessageRejectedError(session_id=session_id, reason="closed")
 
     await get_inbound_queue_manager().enqueue(
         session_id=session_id,

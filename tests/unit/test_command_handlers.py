@@ -11,8 +11,10 @@ import pytest
 from typing_extensions import TypedDict
 
 from teleclaude.config import AgentConfig
+from teleclaude.constants import format_system_message
 from teleclaude.core import command_handlers
 from teleclaude.core.db import Db, InboundQueueRow
+from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.identity import IdentityContext
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
@@ -24,6 +26,7 @@ from teleclaude.types.commands import (
     HandleFileCommand,
     HandleVoiceCommand,
     KeysCommand,
+    ProcessMessageCommand,
     RestartAgentCommand,
     ResumeAgentCommand,
     RunAgentCommand,
@@ -2029,6 +2032,123 @@ async def test_deliver_inbound_breaks_threaded_turn_before_broadcast():
 
 
 @pytest.mark.asyncio
+async def test_deliver_inbound_skips_non_linked_system_message():
+    """Non-linked TeleClaude system messages should remain observer-only."""
+    mock_session = MagicMock()
+    mock_session.session_id = "sess-system-only"
+    mock_session.lifecycle_status = "active"
+    mock_session.closed_at = None
+    mock_session.tmux_session_name = "tc_system_only"
+    mock_session.active_agent = None
+    mock_session.project_path = "/tmp"
+    mock_session.subdir = None
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=mock_session)
+    mock_db.update_session = AsyncMock()
+    mock_db.update_last_activity = AsyncMock()
+
+    mock_client = AsyncMock()
+    start_polling = AsyncMock()
+
+    row = cast(
+        InboundQueueRow,
+        {
+            "id": 1,
+            "session_id": "sess-system-only",
+            "origin": InputOrigin.REDIS.value,
+            "message_type": "text",
+            "content": format_system_message("Notification", "Observe only"),
+            "payload_json": None,
+            "actor_id": "system:test",
+            "actor_name": "system@test",
+            "actor_avatar_url": None,
+            "status": "pending",
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "attempt_count": 0,
+            "next_retry_at": None,
+            "last_error": None,
+            "source_message_id": None,
+            "source_channel_id": None,
+        },
+    )
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(command_handlers, "tmux_io") as mock_tmux_io,
+        patch.object(command_handlers, "polling_coordinator"),
+    ):
+        mock_tmux_io.wrap_bracketed_paste.return_value = row["content"]
+        mock_tmux_io.process_text = AsyncMock(return_value=True)
+
+        await command_handlers.deliver_inbound(row, mock_client, start_polling)
+
+    mock_tmux_io.process_text.assert_not_awaited()
+    start_polling.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_deliver_inbound_injects_linked_output_system_message():
+    """Linked peer output must be injected into the peer agent despite the system prefix."""
+    mock_session = MagicMock()
+    mock_session.session_id = "sess-linked-output"
+    mock_session.lifecycle_status = "active"
+    mock_session.closed_at = None
+    mock_session.tmux_session_name = "tc_linked_output"
+    mock_session.active_agent = None
+    mock_session.project_path = "/tmp"
+    mock_session.subdir = None
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=mock_session)
+    mock_db.update_session = AsyncMock()
+    mock_db.update_last_activity = AsyncMock()
+
+    mock_client = AsyncMock()
+    start_polling = AsyncMock()
+
+    linked_output = format_system_message(
+        'Linked output from "Peer Session" (peer-123) on RemotePC',
+        "Final peer answer",
+    )
+    row = cast(
+        InboundQueueRow,
+        {
+            "id": 1,
+            "session_id": "sess-linked-output",
+            "origin": InputOrigin.REDIS.value,
+            "message_type": "text",
+            "content": linked_output,
+            "payload_json": None,
+            "actor_id": "system:RemotePC:peer-123",
+            "actor_name": "system@RemotePC",
+            "actor_avatar_url": None,
+            "status": "pending",
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "attempt_count": 0,
+            "next_retry_at": None,
+            "last_error": None,
+            "source_message_id": None,
+            "source_channel_id": None,
+        },
+    )
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(command_handlers, "tmux_io") as mock_tmux_io,
+        patch.object(command_handlers, "polling_coordinator"),
+    ):
+        mock_tmux_io.wrap_bracketed_paste.return_value = linked_output
+        mock_tmux_io.process_text = AsyncMock(return_value=True)
+
+        await command_handlers.deliver_inbound(row, mock_client, start_polling)
+
+    mock_tmux_io.wrap_bracketed_paste.assert_called_once_with(linked_output, active_agent=None)
+    mock_tmux_io.process_text.assert_awaited_once()
+    start_polling.assert_awaited_once_with("sess-linked-output", "tc_linked_output")
+
+
+@pytest.mark.asyncio
 async def test_handle_voice_updates_last_input_origin_before_feedback():
     """last_input_origin must be persisted before any feedback/status messages.
 
@@ -2281,6 +2401,78 @@ async def test_deliver_inbound_active_session_skips_gate():
     # get_session called exactly once (no polling loop)
     assert mock_db.get_session.await_count == 1
     mock_tmux_io.process_text.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_process_message_rejects_missing_session():
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=None)
+
+    cmd = ProcessMessageCommand(
+        session_id="missing-session",
+        text="hello",
+        origin=InputOrigin.TERMINAL.value,
+    )
+
+    with patch.object(command_handlers, "db", mock_db):
+        with pytest.raises(SessionMessageRejectedError, match="not found"):
+            await command_handlers.process_message(cmd, AsyncMock(), AsyncMock())
+
+
+@pytest.mark.asyncio
+async def test_process_message_rejects_closed_session():
+    closed_session = MagicMock()
+    closed_session.closed_at = datetime.now(timezone.utc)
+    closed_session.lifecycle_status = "closed"
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=closed_session)
+
+    cmd = ProcessMessageCommand(
+        session_id="closed-session",
+        text="hello",
+        origin=InputOrigin.TERMINAL.value,
+    )
+
+    with patch.object(command_handlers, "db", mock_db):
+        with pytest.raises(SessionMessageRejectedError, match="is closed"):
+            await command_handlers.process_message(cmd, AsyncMock(), AsyncMock())
+
+
+@pytest.mark.asyncio
+async def test_deliver_inbound_rejects_closed_session():
+    closed_session = MagicMock()
+    closed_session.closed_at = datetime.now(timezone.utc)
+    closed_session.lifecycle_status = "closed"
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=closed_session)
+
+    row = cast(
+        InboundQueueRow,
+        {
+            "id": 1,
+            "session_id": "closed-session",
+            "origin": InputOrigin.TELEGRAM.value,
+            "message_type": "text",
+            "content": "hello",
+            "payload_json": None,
+            "actor_id": None,
+            "actor_name": None,
+            "actor_avatar_url": None,
+            "status": "pending",
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "attempt_count": 0,
+            "next_retry_at": None,
+            "last_error": None,
+            "source_message_id": None,
+            "source_channel_id": None,
+        },
+    )
+
+    with patch.object(command_handlers, "db", mock_db):
+        with pytest.raises(SessionMessageRejectedError, match="is closed"):
+            await command_handlers.deliver_inbound(row, AsyncMock(), AsyncMock())
 
 
 class ExecuteKwargs(TypedDict, total=False):

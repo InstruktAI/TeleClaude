@@ -13,6 +13,7 @@ from typing import Awaitable, Callable, Optional
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import InboundQueueRow, db
+from teleclaude.core.inbound_errors import SessionMessageRejectedError
 
 logger = get_logger(__name__)
 
@@ -170,6 +171,19 @@ class InboundQueueManager:
                 await self._deliver_fn(row)
                 await db.mark_inbound_delivered(row_id, datetime.now(timezone.utc).isoformat())
                 logger.debug("Delivered inbound row %d for session %s", row_id, session_id[:8])
+            except SessionMessageRejectedError as exc:
+                error_str = str(exc)
+                await db.mark_inbound_expired(
+                    row_id,
+                    error=error_str,
+                    now_iso=datetime.now(timezone.utc).isoformat(),
+                )
+                logger.info(
+                    "Inbound row %d expired permanently for session %s: %s",
+                    row_id,
+                    session_id[:8],
+                    error_str,
+                )
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 error_str = str(exc)
                 backoff = _backoff_for_attempt(row["attempt_count"])

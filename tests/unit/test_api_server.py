@@ -703,14 +703,26 @@ def test_end_session_success(test_client, mock_command_service):  # type: ignore
     assert cmd.session_id == "sess-123"
 
 
+def _active_session(*, title: str = "Session", computer: str = "local") -> SimpleNamespace:
+    return SimpleNamespace(
+        title=title,
+        computer_name=computer,
+        lifecycle_status="active",
+        closed_at=None,
+    )
+
+
 def test_send_message_success(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     """Test send_message endpoint."""
     mock_command_service.process_message.return_value = None
 
-    response = test_client.post(
-        "/sessions/sess-123/message?computer=local",
-        json={"message": "Hello AI"},
-    )
+    with patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock) as mock_get_session:
+        mock_get_session.return_value = _active_session(title="Target Session")
+        response = test_client.post(
+            "/sessions/sess-123/message?computer=local",
+            json={"message": "Hello AI"},
+        )
+
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -722,19 +734,47 @@ def test_send_message_success(test_client, mock_command_service):  # type: ignor
     assert cmd.text == "Hello AI"
 
 
+def test_send_message_rejects_closed_target_session(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """Closed targets should reject inbound sends with 409."""
+    closed = _active_session(title="Closed Target")
+    closed.closed_at = "2026-03-06T00:13:06Z"
+    closed.lifecycle_status = "closed"
+
+    with patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock) as mock_get_session:
+        mock_get_session.return_value = closed
+        response = test_client.post(
+            "/sessions/sess-123/message?computer=local",
+            json={"message": "Should fail"},
+        )
+
+    assert response.status_code == 409
+    assert "is closed" in response.json()["detail"]
+    mock_command_service.process_message.assert_not_awaited()
+
+
+def test_send_message_rejects_missing_target_session(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """Missing targets should reject inbound sends with 404."""
+    with patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock) as mock_get_session:
+        mock_get_session.return_value = None
+        response = test_client.post(
+            "/sessions/sess-123/message?computer=local",
+            json={"message": "Should fail"},
+        )
+
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"]
+    mock_command_service.process_message.assert_not_awaited()
+
+
 def test_send_message_direct_creates_link_and_routes_to_peers(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
-    """Direct send should create/reuse link and deliver to linked peer sessions."""
+    """Direct send should create a link and deliver the introduction to linked peers."""
     mock_command_service.process_message.return_value = None
     link = SimpleNamespace(link_id="link-123")
     members = [SimpleNamespace(session_id="test-session"), SimpleNamespace(session_id="sess-123")]
     peer = SimpleNamespace(session_id="sess-123", computer_name="local")
 
-    caller_session = MagicMock()
-    caller_session.title = "Caller Session"
-    caller_session.computer_name = "local"
-    target_session = MagicMock()
-    target_session.title = "Target Session"
-    target_session.computer_name = "local"
+    caller_session = _active_session(title="Caller Session")
+    target_session = _active_session(title="Target Session")
 
     with (
         patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock) as mock_get_session,
@@ -744,7 +784,7 @@ def test_send_message_direct_creates_link_and_routes_to_peers(test_client, mock_
         patch("teleclaude.core.session_listeners.create_or_reuse_direct_link", new_callable=AsyncMock) as mock_create,
         patch("teleclaude.core.session_listeners.get_peer_members", new_callable=AsyncMock) as mock_peers,
     ):
-        mock_get_session.side_effect = [caller_session, target_session]
+        mock_get_session.side_effect = [target_session, caller_session, target_session]
         mock_resolve.side_effect = [None, (link, members)]
         mock_create.return_value = (link, True)
         mock_peers.return_value = [peer]
@@ -769,9 +809,77 @@ def test_send_message_direct_creates_link_and_routes_to_peers(test_client, mock_
     assert cmd.text == "Hello peer"
 
 
+def test_send_message_direct_warns_when_link_already_active(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """Repeated --direct should warn and avoid sending once the link is established."""
+    link = SimpleNamespace(link_id="link-123")
+    members = [SimpleNamespace(session_id="test-session"), SimpleNamespace(session_id="sess-123")]
+
+    caller_session = _active_session(title="Caller Session")
+    target_session = _active_session(title="Target Session")
+
+    with (
+        patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch(
+            "teleclaude.core.session_listeners.resolve_link_for_sender_target", new_callable=AsyncMock
+        ) as mock_resolve,
+    ):
+        mock_get_session.side_effect = [target_session, caller_session]
+        mock_resolve.return_value = (link, members)
+
+        response = test_client.post(
+            "/sessions/sess-123/message?computer=local",
+            json={"message": "Hello again", "direct": True},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "error"
+    assert data["mode"] == "direct"
+    assert data["link_id"] == "link-123"
+    assert "already active" in data["message"]
+    assert "automatically shared" in data["message"]
+    mock_command_service.process_message.assert_not_awaited()
+
+
+def test_send_message_work_mode_warns_when_direct_link_active(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """Regular send should also warn once an active direct conversation exists."""
+    link = SimpleNamespace(link_id="link-123")
+    members = [SimpleNamespace(session_id="test-session"), SimpleNamespace(session_id="sess-123")]
+
+    with (
+        patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch("teleclaude.core.session_listeners.resolve_link_for_sender_target", new_callable=AsyncMock) as mock_resolve,
+    ):
+        mock_get_session.return_value = _active_session(title="Target Session")
+        mock_resolve.return_value = (link, members)
+
+        response = test_client.post(
+            "/sessions/sess-123/message?computer=local",
+            json={"message": "Fallback follow-up"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "error"
+    assert data["mode"] == "direct"
+    assert data["link_id"] == "link-123"
+    assert "direct link is active" in data["message"]
+    assert "just talk" in data["message"]
+    mock_command_service.process_message.assert_not_awaited()
+
+
 def test_send_message_close_link(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
-    """close_link should return success without sending a message to the target session."""
-    with patch("teleclaude.core.session_listeners.close_link_for_member", new_callable=AsyncMock) as mock_close:
+    """close_link without a message should sever the link without sending."""
+    link = SimpleNamespace(link_id="link-closed-1")
+    members = [SimpleNamespace(session_id="test-session"), SimpleNamespace(session_id="sess-123")]
+
+    with (
+        patch(
+            "teleclaude.core.session_listeners.resolve_link_for_sender_target", new_callable=AsyncMock
+        ) as mock_resolve,
+        patch("teleclaude.core.session_listeners.close_link_for_member", new_callable=AsyncMock) as mock_close,
+    ):
+        mock_resolve.return_value = (link, members)
         mock_close.return_value = "link-closed-1"
         response = test_client.post(
             "/sessions/sess-123/message?computer=local",
@@ -785,6 +893,49 @@ def test_send_message_close_link(test_client, mock_command_service):  # type: ig
     assert data["action"] == "closed"
     assert data["link_id"] == "link-closed-1"
     mock_command_service.process_message.assert_not_awaited()
+
+
+def test_send_message_close_link_with_final_message_delivers_then_closes(
+    test_client, mock_command_service
+):  # type: ignore[explicit-any, unused-ignore]
+    """close_link should allow one last message and only then sever the link."""
+    call_order: list[str] = []
+    link = SimpleNamespace(link_id="link-closed-1")
+    members = [SimpleNamespace(session_id="test-session"), SimpleNamespace(session_id="sess-123")]
+
+    async def record_process(cmd) -> None:
+        call_order.append(f"process:{cmd.session_id}:{cmd.text}")
+
+    async def record_close(*, caller_session_id: str, target_session_id: str) -> str:
+        call_order.append(f"close:{caller_session_id}:{target_session_id}")
+        return "link-closed-1"
+
+    mock_command_service.process_message.side_effect = record_process
+
+    with (
+        patch(
+            "teleclaude.core.session_listeners.resolve_link_for_sender_target", new_callable=AsyncMock
+        ) as mock_resolve,
+        patch("teleclaude.core.session_listeners.close_link_for_member", side_effect=record_close),
+        patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock) as mock_get_session,
+    ):
+        mock_get_session.return_value = _active_session(title="Target Session")
+        mock_resolve.return_value = (link, members)
+        response = test_client.post(
+            "/sessions/sess-123/message?computer=local",
+            json={"message": "Final handoff", "close_link": True},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["mode"] == "direct"
+    assert data["action"] == "closed"
+    assert data["link_id"] == "link-closed-1"
+    assert call_order == [
+        "process:sess-123:Final handoff",
+        "close:test-session:sess-123",
+    ]
 
 
 def test_create_session_direct_establishes_link(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
@@ -1328,10 +1479,13 @@ def test_send_message_handler_exception(test_client, mock_command_service):  # t
     """Test send_message endpoint with handler exception."""
     mock_command_service.process_message.side_effect = Exception("Internal error")
 
-    response = test_client.post(
-        "/sessions/sess-123/message?computer=local",
-        json={"message": "Hello AI"},
-    )
+    with patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock) as mock_get_session:
+        mock_get_session.return_value = _active_session(title="Target Session")
+        response = test_client.post(
+            "/sessions/sess-123/message?computer=local",
+            json={"message": "Hello AI"},
+        )
+
     assert response.status_code == 500
     assert "Internal error" in response.json()["detail"]
 

@@ -101,6 +101,7 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     parse_command_string,
 )
+from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.models import (
     MessageMetadata,
     ProjectInfo,
@@ -778,16 +779,38 @@ class APIServer:
 
             await check_session_access(http_request, session_id)
             try:
+                target_session = None
+                if request.message:
+                    target_session = await db.get_session(session_id)
+                    if not target_session:
+                        raise HTTPException(status_code=404, detail=f"Session {session_id[:8]} not found")
+                    if target_session.closed_at or target_session.lifecycle_status in {"closed", "closing"}:
+                        raise HTTPException(status_code=409, detail=f"Session {session_id[:8]} is closed")
+
                 if request.close_link:
                     if not identity.session_id:
                         raise HTTPException(status_code=400, detail="close_link requires caller session identity")
+
+                    active_link = await resolve_link_for_sender_target(
+                        sender_session_id=identity.session_id,
+                        target_session_id=session_id,
+                    )
+                    if not active_link:
+                        return {"status": "error", "message": "no active direct link found"}
+
+                    if request.message:
+                        metadata = self._metadata()
+                        cmd = CommandMapper.map_api_input(
+                            "message",
+                            {"session_id": session_id, "text": request.message},
+                            metadata,
+                        )
+                        await get_command_service().process_message(cmd)
 
                     closed_link_id = await close_link_for_member(
                         caller_session_id=identity.session_id,
                         target_session_id=session_id,
                     )
-                    if not closed_link_id:
-                        return {"status": "error", "message": "no active direct link found"}
                     return {"status": "success", "mode": "direct", "action": "closed", "link_id": closed_link_id}
 
                 if not request.message:
@@ -800,7 +823,8 @@ class APIServer:
                         raise HTTPException(status_code=400, detail="direct mode requires caller session identity")
 
                     caller_session = await db.get_session(identity.session_id)
-                    target_session = await db.get_session(session_id)
+                    if target_session is None:
+                        target_session = await db.get_session(session_id)
                     caller_label = (
                         caller_session.title if caller_session and caller_session.title else identity.session_id
                     )
@@ -843,20 +867,37 @@ class APIServer:
                     _, members = link_ctx
                     peers = await get_peer_members(link_id=link.link_id, sender_session_id=identity.session_id)
                     delivery_targets = [peer.session_id for peer in peers] or [session_id]
+                    delivered_to = 0
                     for target_id in delivery_targets:
+                        target_for_delivery = await db.get_session(target_id)
+                        if not target_for_delivery:
+                            logger.info("Skipping direct delivery to missing session %s", target_id[:8])
+                            continue
+                        if target_for_delivery.closed_at or target_for_delivery.lifecycle_status in {"closed", "closing"}:
+                            logger.info("Skipping direct delivery to closed session %s", target_id[:8])
+                            continue
                         cmd = CommandMapper.map_api_input(
                             "message",
                             {"session_id": target_id, "text": message_text},
                             metadata,
                         )
                         await get_command_service().process_message(cmd)
+                        delivered_to += 1
+
+                    if delivered_to == 0:
+                        return {
+                            "status": "error",
+                            "mode": "direct",
+                            "link_id": link.link_id,
+                            "message": "No active target sessions available for delivery",
+                        }
 
                     return {
                         "status": "success",
                         "mode": "direct",
                         "link_id": link.link_id,
                         "link_state": "created",
-                        "delivered_to": len(delivery_targets),
+                        "delivered_to": delivered_to,
                         "members": len(members),
                     }
 
@@ -885,6 +926,8 @@ class APIServer:
                 )
                 await get_command_service().process_message(cmd)
                 return {"status": "success", "mode": "work"}
+            except SessionMessageRejectedError as exc:
+                raise HTTPException(status_code=exc.http_status_code, detail=str(exc)) from exc
             except HTTPException:
                 raise
             except Exception as e:

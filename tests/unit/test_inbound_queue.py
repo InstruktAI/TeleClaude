@@ -9,8 +9,11 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from sqlmodel import select
 
+from teleclaude.core import db_models
 from teleclaude.core.db import Db, InboundQueueRow
+from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.inbound_queue import (
     InboundQueueManager,
     _backoff_for_attempt,
@@ -141,6 +144,29 @@ class TestInboundQueueDb:
         # Row should no longer appear in pending fetch
         rows = await test_db.fetch_inbound_pending("sess-del", 10, _now(), _past())
         assert len(rows) == 0
+
+    @pytest.mark.asyncio
+    async def test_mark_inbound_expired_records_permanent_drop(self, test_db: Db) -> None:
+        row_id = await test_db.enqueue_inbound(
+            session_id="sess-expired",
+            origin="telegram",
+            content="hello",
+            message_type="text",
+        )
+        assert row_id is not None
+        now = _now()
+        await test_db.claim_inbound(row_id, now, _past())
+        await test_db.mark_inbound_expired(row_id, "Session dead", _now())
+
+        rows = await test_db.fetch_inbound_pending("sess-expired", 10, _now(), _past())
+        assert len(rows) == 0
+
+        async with test_db._session() as db_session:  # noqa: SLF001 - test-only DB inspection
+            result = await db_session.exec(select(db_models.InboundQueue).where(db_models.InboundQueue.id == row_id))
+            stored = result.first()
+            assert stored is not None
+            assert stored.status == "expired"
+            assert stored.last_error == "Session dead"
 
     @pytest.mark.asyncio
     async def test_mark_inbound_failed_schedules_retry(self, test_db: Db) -> None:
@@ -336,6 +362,27 @@ class TestInboundQueueManager:
             iq._BACKOFF_SCHEDULE = orig_schedule
 
         assert call_count >= 2
+
+    @pytest.mark.asyncio
+    async def test_worker_expires_permanent_session_rejection(self, test_db: Db) -> None:
+        async def deliver(row: InboundQueueRow) -> None:
+            raise SessionMessageRejectedError(session_id=row["session_id"], reason="closed")
+
+        manager = InboundQueueManager(deliver_fn=deliver)
+
+        with patch("teleclaude.core.inbound_queue.db", test_db):
+            row_id = await manager.enqueue("sess-perm", "tg", "drop-me", message_type="text")
+            assert row_id is not None
+            await asyncio.sleep(0.1)
+            await manager.shutdown()
+
+        async with test_db._session() as db_session:  # noqa: SLF001 - test-only DB inspection
+            result = await db_session.exec(select(db_models.InboundQueue).where(db_models.InboundQueue.id == row_id))
+            stored = result.first()
+            assert stored is not None
+            assert stored.status == "expired"
+            assert "is closed" in (stored.last_error or "")
+            assert stored.attempt_count == 0
 
     @pytest.mark.asyncio
     async def test_worker_self_terminates_on_empty_queue(self, test_db: Db) -> None:

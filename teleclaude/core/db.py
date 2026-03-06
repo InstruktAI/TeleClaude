@@ -1528,6 +1528,24 @@ class Db:
             await db_session.exec(stmt)
             await db_session.commit()
 
+    async def mark_inbound_expired(self, row_id: int, error: str, now_iso: str) -> None:
+        """Mark an inbound queue row as expired (permanent drop)."""
+        from sqlalchemy import update
+
+        stmt = (
+            update(db_models.InboundQueue)
+            .where(db_models.InboundQueue.id == row_id)
+            .values(
+                status="expired",
+                processed_at=now_iso,
+                last_error=error,
+                locked_at=None,
+            )
+        )
+        async with self._session() as db_session:
+            await db_session.exec(stmt)
+            await db_session.commit()
+
     async def mark_inbound_failed(
         self,
         row_id: int,

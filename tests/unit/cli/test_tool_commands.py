@@ -7,6 +7,7 @@ from typing import cast
 
 import pytest
 
+from teleclaude.cli.telec import CLI_SURFACE
 from teleclaude.cli import tool_commands
 
 
@@ -225,6 +226,18 @@ def test_handle_sessions_send_close_link_without_message(monkeypatch: pytest.Mon
     assert captured.method == "POST"
     assert captured.path == "/sessions/sess-123/message"
     assert captured.json_body == {"close_link": True}
+
+
+def test_sessions_send_help_contract_is_one_time_ignition() -> None:
+    """CLI help should describe --direct as one-time ignition, not reusable send mode."""
+    send_def = CLI_SURFACE["sessions"].subcommands["send"]
+    notes = send_def.notes
+    doc = tool_commands.handle_sessions_send.__doc__ or ""
+
+    assert "One-time ignition: sending once with --direct establishes the link." in notes
+    assert not any("reuses the link" in note for note in notes)
+    assert "With --direct, create a shared conversation link." in doc
+    assert "create/reuse" not in doc
 
 
 def test_handle_sessions_send_named_short_compatibility(monkeypatch: pytest.MonkeyPatch) -> None:

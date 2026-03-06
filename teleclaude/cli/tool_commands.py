@@ -200,7 +200,7 @@ def handle_sessions_send(args: list[str]) -> None:
            telec sessions send --session <session_id> --message <text> [--direct]  # compatibility
 
     Delivers a message to the target session.
-    With --direct, create/reuse a shared conversation link.
+    With --direct, create a shared conversation link.
     With --close-link, sever a shared conversation link.
 
     Examples:
