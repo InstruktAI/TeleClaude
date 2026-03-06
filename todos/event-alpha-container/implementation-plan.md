@@ -52,13 +52,16 @@ Codebase patterns to follow:
     2. Loop until `shutdown_event` is set; close server on shutdown
   - `async _handle_client(self, reader, writer) -> None`:
     1. Read one `AlphaRequest` frame
-    2. Load cartridge module from `cartridges_dir/<cartridge_name>.py` via `importlib`
-    3. Deserialize `EventEnvelope.from_stream_dict(request.envelope)`
-    4. Construct a minimal `PipelineContext` (catalog rebuilt from snapshot, no DB)
-    5. Call `await asyncio.wait_for(cartridge.process(envelope, ctx), timeout=10.0)`
-    6. Build `AlphaResponse(envelope=result.to_stream_dict() if result else None)`
-    7. Write response frame; close writer
-    8. On any exception: write `AlphaResponse(envelope=None, error=str(e))`
+    2. **Ping handler (must be first):** if `request.cartridge_name == "__ping__"`,
+       write `AlphaResponse(envelope=None, error=None, duration_ms=0)` and return.
+       This prevents the health-check from falling through to disk lookup.
+    3. Load cartridge module from `cartridges_dir/<cartridge_name>.py` via `importlib`
+    4. Deserialize `EventEnvelope.from_stream_dict(request.envelope)`
+    5. Construct a minimal `PipelineContext` (catalog rebuilt from snapshot, no DB)
+    6. Call `await asyncio.wait_for(cartridge.process(envelope, ctx), timeout=10.0)`
+    7. Build `AlphaResponse(envelope=result.to_stream_dict() if result else None)`
+    8. Write response frame; close writer
+    9. On any exception: write `AlphaResponse(envelope=None, error=str(e))`
 - [ ] Cartridge loading: each request reloads from disk (no module cache). Use
       `importlib.util.spec_from_file_location` + `spec.loader.exec_module()` into a fresh
       module object. This ensures hot-reload without container restart.
@@ -174,7 +177,9 @@ Codebase patterns to follow:
 - [ ] In `daemon.py` startup (after existing pipeline construction):
   1. `manager = AlphaContainerManager(socket_path=..., cartridges_dir=..., image=...)`
   2. `alpha_bridge = AlphaBridgeCartridge(manager=manager)`
-  3. Append `alpha_bridge` to the cartridge list (after `NotificationProjectorCartridge`).
+  3. Append `alpha_bridge` to the cartridge list (after `PrepareQualityCartridge` — the
+     current last cartridge in the system pipeline). The alpha bridge must be last because
+     it is advisory and should not affect upstream cartridge processing.
   4. Start background tasks:
      - `asyncio.create_task(manager.watch_cartridges_dir(self.shutdown_event))`
      - `asyncio.create_task(manager.watch_health(self.shutdown_event))`
@@ -198,21 +203,26 @@ Codebase patterns to follow:
 
 ## Phase 4: CLI, Tests & Quality
 
-### Task 4.1: `telec cartridges promote` CLI command
+### Task 4.1: Extend `telec config cartridges` with alpha scope
 
-**File(s):** `teleclaude/cli/` (new `cartridges` subcommand or extend `events`)
+**File(s):** `teleclaude/cli/cartridge_cli.py`, `teleclaude_events/lifecycle.py`
 
-- [ ] `telec cartridges promote <name>` command:
+The existing CLI at `teleclaude/cli/cartridge_cli.py` already provides `telec config
+cartridges list/install/remove/promote`. Extend it with alpha scope support rather than
+creating a new top-level `telec cartridges` namespace (avoids collision with
+`event-mesh-distribution`).
+
+- [ ] Add `CartridgeScope.alpha` to the `CartridgeScope` enum in `lifecycle.py`.
+- [ ] `telec config cartridges list --scope alpha` command:
+  1. List files in `~/.teleclaude/alpha-cartridges/` with size and modification time.
+  2. Display filename stem, file size, and last modified timestamp.
+- [ ] `telec config cartridges promote --from alpha --to domain --domain <name> --id <name>`:
   1. Resolve `~/.teleclaude/alpha-cartridges/<name>.py`.
   2. Validate file exists and is importable (syntax check via `ast.parse()`).
-  3. Determine destination: prompt user for target subdirectory within
-     `teleclaude_events/cartridges/` (or accept `--dest` flag).
-  4. Copy file to destination.
-  5. Remove from alpha cartridges directory.
-  6. Print: "Promoted <name>.py → teleclaude_events/cartridges/<dest>/<name>.py\n"
-     "Next: wire it into the pipeline in teleclaude/daemon.py, then commit."
-- [ ] `telec cartridges list` command: list files in `~/.teleclaude/alpha-cartridges/` with
-      size and modification time.
+  3. Copy file into the cartridge lifecycle directory for the target domain.
+  4. Remove from alpha cartridges directory.
+  5. Print: "Promoted <name>.py to domain/<domain>/cartridges/\n"
+     "Next: wire it into the domain pipeline configuration, then commit."
 
 ### Task 4.2: Unit tests
 

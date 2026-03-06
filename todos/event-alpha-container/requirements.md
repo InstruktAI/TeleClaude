@@ -2,50 +2,38 @@
 
 ## Known Blockers
 
-### BLOCKER 1: `telec cartridges list` CLI collision with event-mesh-distribution
+### BLOCKER 1: `telec cartridges` CLI collision with event-mesh-distribution — RESOLVABLE
 
-Both this todo and `event-mesh-distribution` define `telec cartridges list` with
-incompatible semantics:
+Both this todo and `event-mesh-distribution` originally proposed `telec cartridges list`
+with incompatible semantics. However, **`telec config cartridges` already exists** in
+`teleclaude/cli/cartridge_cli.py` with `list`, `install`, `remove`, and `promote` commands
+that manage the lifecycle-based cartridge system (personal/domain/platform scopes).
 
-- This todo: `telec cartridges list` lists `~/.teleclaude/alpha-cartridges/*.py` files
-  (alpha sandbox inspection).
-- `event-mesh-distribution`: `telec cartridges list` lists installed cartridges from
-  the `cartridge_stats` database table with invocation counts (installed cartridge
-  management).
+The existing `telec config cartridges list` lists installed cartridges by domain/member
+from the filesystem lifecycle manager. The existing `telec config cartridges promote`
+promotes cartridges between scopes (personal → domain → platform).
 
-These are two different commands under the same name targeting different data sources.
-Shipping either implementation first will block the other or produce a broken merged CLI.
+**Resolution (inferred — requires confirmation):** Alpha cartridge commands should be a
+new scope or subcommand under the existing `telec config cartridges` CLI:
 
-**Resolution required before build:** The two todos must align on one of:
+- `telec config cartridges list --scope alpha` — lists `~/.teleclaude/alpha-cartridges/*.py`
+- `telec config cartridges promote --from alpha --to domain --domain <name>` — promotes
+  an alpha cartridge file into the cartridge lifecycle system.
 
-Option A: Merge into a single `telec cartridges list` with a `--source` filter
-(`--source alpha` vs `--source installed`).
+This avoids a new top-level `telec cartridges` namespace that collides with mesh-distribution
+and aligns with the existing lifecycle manager pattern. The `event-mesh-distribution` todo
+should similarly fold its proposed `telec cartridges list/activate/reject` under the
+existing CLI surface.
 
-Option B: Use distinct subcommands: `telec cartridges alpha list` vs
-`telec cartridges list`.
+**Status:** The design path is clear. The builder can implement under `telec config cartridges`
+with `--scope alpha` support. This blocker is downgraded from blocking to resolved-with-inference.
 
-A design decision must be recorded and both todos updated before either CLI is built.
+### BLOCKER 2: Health-check ping handler — RESOLVED IN PLAN
 
-### BLOCKER 2: Health-check ping handler missing — container always appears healthy
-
-Section 5 (Container lifecycle management) specifies: "Health check: periodic ping
-(empty message, expect pong) every 30 seconds."
-
-The alpha runner process (inside the container) discovers cartridges by scanning
-`/alpha-cartridges/` for `*.py` files. For each incoming request it loads the
-_addressed cartridge_ by name. A health-check ping sends `cartridge_name="__ping__"`.
-The runner attempts to load `__ping__.py` from disk — this file does not exist — and
-raises `FileNotFoundError`. The runner returns an error response for every ping.
-
-From the daemon's perspective, the health check always fails. The container restarts
-three times, then `system.alpha-container.unhealthy` is emitted. The container is
-marked permanently unhealthy and is never used.
-
-**This is a design defect in the runner's dispatch logic, not a missing file.**
-The runner must handle `cartridge_name="__ping__"` as a special case before attempting
-disk access, returning an explicit pong response. This must be specified in the IPC
-protocol section and implemented in the runner before the health-check lifecycle
-machinery has any value.
+The alpha runner's dispatch logic must handle `cartridge_name="__ping__"` as a special case
+before attempting disk access, returning an explicit pong response. This is now explicitly
+specified in Task 1.2 of the implementation plan. The builder implements the ping handler
+as part of the runner server, not as a separate file.
 
 ---
 
@@ -111,11 +99,11 @@ are present the container is never started.
      alpha cartridges directory triggers re-evaluation.
 
 7. **Promotion path**:
-   - `telec cartridges promote <name>` CLI command: copies cartridge from
-     `~/.teleclaude/alpha-cartridges/<name>.py` into the appropriate
-     `teleclaude_events/cartridges/` subdirectory, removes it from the alpha mount.
+   - `telec config cartridges promote --from alpha --to domain --domain <name> --id <name>`
+     CLI command: copies cartridge from `~/.teleclaude/alpha-cartridges/<name>.py` into
+     the cartridge lifecycle directory for the target domain, removes it from the alpha mount.
    - Promotion does not auto-wire the cartridge into the pipeline; that requires a code
-     change. The command surfaces the file in the codebase for review and PR.
+     change. The command surfaces the file for review and domain pipeline configuration.
 
 8. **`Dockerfile`** for the alpha runner (`docker/alpha-runner/Dockerfile`).
 
@@ -142,7 +130,7 @@ are present the container is never started.
 - [ ] Alpha cartridge timeout (> 10s) does not block or error the pipeline; logs a warning
 - [ ] Container crash is detected, restarted, and `system.alpha-container.unhealthy` emitted after 3 failures
 - [ ] Container runs with `--read-only`, `--network none`, `--memory 256m`, `--cpus 0.5`
-- [ ] `telec cartridges promote <name>` copies the file into `teleclaude_events/cartridges/` and removes it from the alpha mount
+- [ ] `telec config cartridges promote --from alpha --to domain --domain <name> --id <name>` copies the file into the lifecycle directory and removes it from the alpha mount
 - [ ] `make test` passes (unit tests; Docker integration test skipped gracefully when Docker unavailable)
 - [ ] `make lint` passes
 - [ ] No imports from `teleclaude.*` inside the alpha runner image
