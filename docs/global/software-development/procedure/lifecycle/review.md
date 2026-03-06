@@ -79,69 +79,50 @@ If manual verification is not possible in the review environment, the reviewer m
    Treat orchestrator-managed planning/state drift as non-blocking review noise:
    - `todos/roadmap.yaml`
    - `todos/{slug}/state.yaml`
-     Do not raise findings solely for this drift unless review scope explicitly includes planning/state edits.
+   Do not raise findings solely for this drift unless review scope explicitly includes planning/state edits.
 
 4. Validate deferrals:
    - If `deferrals.md` exists, confirm each deferral is justified.
    - If unjustified, add a finding and set verdict to REQUEST CHANGES.
-5. Update only the Review section in `quality-checklist.md`.
-   - Do not edit Build or Finalize sections.
+5. Ensure all implementation-plan tasks are checked; otherwise, add a finding and set verdict to REQUEST CHANGES.
 6. Run review lanes in parallel where possible:
 
-   ```bash
-   git diff $(git merge-base HEAD main)..HEAD --name-only
-   git diff $(git merge-base HEAD main)..HEAD
-   ```
+   | Aspect     | When to use              | Skill                      | Task                                                  |
+   | ---------- | ------------------------ | -------------------------- | ----------------------------------------------------- |
+   | code       | Always                   | next-code-reviewer         | Find bugs and pattern violations                      |
+   | principles | Always                   | _(reviewer direct)_        | Hunt principle violations (see procedure)             |
+   | tests      | Test files changed       | next-test-analyzer         | Evaluate coverage and quality                         |
+   | errors     | Always                   | next-silent-failure-hunter | Find silent failures                                  |
+   | types      | Types added/modified     | next-type-design-analyzer  | Validate type design                                  |
+   | comments   | Comments/docs added      | next-comment-analyzer      | Check accuracy                                        |
+   | logging    | Logging changed or noisy | next-code-reviewer         | Enforce logging policy; reject ad-hoc debug probes    |
+   | demo       | Always                   | _(manual)_                 | Verify demo.md has real executable blocks (see below) |
+   | simplify   | After other reviews pass | next-code-simplifier       | Simplify without behavior changes                     |
 
-7. Validate deferrals:
-   - If `deferrals.md` exists, confirm each deferral is justified.
-   - If unjustified, add a finding and set verdict to REQUEST CHANGES.
-8. Ensure all implementation-plan tasks are checked; otherwise, add a finding and set verdict to REQUEST CHANGES.
-9. Validate Build section in `quality-checklist.md` is fully checked.
-   - If not, add a finding and set verdict to REQUEST CHANGES.
-10. Update only the Review section in `quality-checklist.md`.
-    - Do not edit Build or Finalize sections.
-11. Run review lanes in parallel where possible:
-
-    | Aspect   | When to use              | Skill                      | Task                                                  |
-    | -------- | ------------------------ | -------------------------- | ----------------------------------------------------- |
-    | code       | Always                   | next-code-reviewer         | Find bugs and pattern violations                      |
-    | principles | Always                   | _(reviewer direct)_        | Hunt principle violations (see procedure)              |
-    | tests      | Test files changed       | next-test-analyzer         | Evaluate coverage and quality                         |
-    | errors     | Always                   | next-silent-failure-hunter | Find silent failures                                  |
-    | types      | Types added/modified     | next-type-design-analyzer  | Validate type design                                  |
-    | comments   | Comments/docs added      | next-comment-analyzer      | Check accuracy                                        |
-    | logging    | Logging changed or noisy | next-code-reviewer         | Enforce logging policy; reject ad-hoc debug probes    |
-    | demo       | Always                   | _(manual)_                 | Verify demo.md has real executable blocks (see below) |
-    | simplify   | After other reviews pass | next-code-simplifier       | Simplify without behavior changes                     |
-
-12. Demo artifact review (required):
-    - Read `todos/{slug}/demo.md` (or `demos/{slug}/demo.md`).
-    - For each executable bash block, cross-check against the actual implementation:
-      - Do the commands, flags, and subcommands used actually exist in the codebase?
-      - Does expected output match what the code would produce? (Check return values, field names, message text.)
-      - Does the demo exercise features that were actually implemented — not planned, not old behavior?
-    - Raise a Critical finding if any block uses flags or commands that don't exist or were removed.
-    - Raise an Important finding if the demo is shallow (exercises nothing new), if expected output is fabricated, or if the demo could pass `demo validate` while being functionally wrong.
-    - If `<!-- no-demo: reason -->` is present, this is a **hard gate**:
-      - The only valid justification is a pure internal refactor with zero user-visible behavior change.
-      - If the delivery touches CLI output, TUI behavior, config, API responses, or messaging, the no-demo marker is invalid — raise a **Critical** finding and set verdict to REQUEST CHANGES.
-      - "Requires live terminal interaction" is never valid — the AI presenter can spin up TUI instances, drive Playwright, and call APIs.
-      - If the justification is legitimate (truly internal-only), explicitly note acceptance in findings.
-
-13. Logging hygiene check (required):
-    - Reject temporary debug probes (e.g., `print("DEBUG: ...")`, one-off file/line probes).
-    - Require structured logger usage per logging policy.
-    - Escalate violations as at least Important findings.
-14. Test quality hygiene check (required):
-
-- Reject tests that lock narrative documentation wording or style.
-- Allow exact-string assertions only for execution-significant tokens/contracts.
-- Prefer behavior/structure assertions (parsed outputs, references, idempotence, emitted actions).
-
-11. Write findings to `todos/{slug}/review-findings.md`.
-12. Commit review findings (and Review section checklist updates if present). Do not edit `state.yaml` in the reviewer session.
-13. Report summary and verdict to the caller. The orchestrator records the verdict in `state.yaml` via phase-marking commands.
+7. Demo artifact review (required):
+   - Read `todos/{slug}/demo.md` (or `demos/{slug}/demo.md`).
+   - For each executable bash block, cross-check against the actual implementation:
+     - Do the commands, flags, and subcommands used actually exist in the codebase?
+     - Does expected output match what the code would produce? (Check return values, field names, message text.)
+     - Does the demo exercise features that were actually implemented — not planned, not old behavior?
+   - Raise a Critical finding if any block uses flags or commands that don't exist or were removed.
+   - Raise an Important finding if the demo is shallow (exercises nothing new), if expected output is fabricated, or if the demo could pass `demo validate` while being functionally wrong.
+   - If `<!-- no-demo: reason -->` is present, this is a **hard gate**:
+     - The only valid justification is a pure internal refactor with zero user-visible behavior change.
+     - If the delivery touches CLI output, TUI behavior, config, API responses, or messaging, the no-demo marker is invalid — raise a **Critical** finding and set verdict to REQUEST CHANGES.
+     - "Requires live terminal interaction" is never valid — the AI presenter can spin up TUI instances, drive Playwright, and call APIs.
+     - If the justification is legitimate (truly internal-only), explicitly note acceptance in findings.
+8. Logging hygiene check (required):
+   - Reject temporary debug probes (e.g., `print("DEBUG: ...")`, one-off file/line probes).
+   - Require structured logger usage per logging policy.
+   - Escalate violations as at least Important findings.
+9. Test quality hygiene check (required):
+   - Reject tests that lock narrative documentation wording or style.
+   - Allow exact-string assertions only for execution-significant tokens/contracts.
+   - Prefer behavior/structure assertions (parsed outputs, references, idempotence, emitted actions).
+10. Write findings to `todos/{slug}/review-findings.md`.
+11. Commit review findings. Do not edit `state.yaml` in the reviewer session.
+12. Report summary and verdict to the caller. The orchestrator records the verdict in `state.yaml` via phase-marking commands.
 
 ## Report format
 

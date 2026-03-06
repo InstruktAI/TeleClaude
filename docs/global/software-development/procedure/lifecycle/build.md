@@ -34,8 +34,6 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
    - Do not use `git stash`/`git stash pop`; keep the flow commit-based inside the current worktree.
    - When adding or updating tests, assert behavioral contracts; avoid exact wording assertions on docs/agent prose unless execution depends on that exact token.
 4. If a task is truly out of scope, create `deferrals.md` with the required template and continue with remaining tasks.
-5. Update only the Build section in `quality-checklist.md`.
-   - Do not edit Review or Finalize sections.
 
 ## Pre-completion checklist
 
@@ -65,7 +63,6 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
    - If dirty files are limited to that drift allowlist, continue without escalation.
    - If dirty files do not overlap this slug's build scope, continue; do not force-commit unrelated files during build unless the task explicitly requires editing them.
 8. Verify commits exist: `git log --oneline -10`.
-9. Build section in `quality-checklist.md` is fully checked.
 
 ## Report format
 

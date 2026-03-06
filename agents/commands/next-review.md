@@ -53,5 +53,4 @@ Review code changes against requirements and architecture and produce a verdict.
   - `todos/roadmap.yaml`
   - `todos/{slug}/state.yaml`
 - Do not request commits or raise findings solely for those files unless review scope explicitly includes planning/state edits.
-- Update only `## Review Gates (Reviewer)` in `todos/{slug}/quality-checklist.md` (if it exists).
 - Write findings to `todos/{slug}/review-findings.md` with verdict: APPROVE or REQUEST CHANGES.
