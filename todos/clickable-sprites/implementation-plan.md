@@ -94,7 +94,9 @@ adding interactive features.
 - [ ] Map the click's `(event.x, event.y)` to the banner's pixel coordinate
       system (accounting for compact mode offset).
 - [ ] Call the animation engine's sky animation's `hit_test()` with the
-      mapped coordinates.
+      mapped coordinates. Note: the `AnimationEngine` does not currently expose
+      a reference to `GlobalSky`. The builder must add a path (e.g., a property
+      or method on the engine) to reach the `GlobalSky` instance for hit-testing.
 - [ ] If a `source_url` is returned, call `webbrowser.open(source_url)`.
 
 ### Task 2.5: Replace `_show_animation_toast` with attribution callback
