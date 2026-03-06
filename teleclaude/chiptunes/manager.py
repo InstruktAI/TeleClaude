@@ -88,7 +88,13 @@ class ChiptunesManager:
         player = ChiptunesPlayer(volume=self._volume)
         player.on_track_end = self._on_track_end
         self._player = player
-        logger.info("ChipTunes: playing %s", track.name)
+        track_label = track.stem.replace("_", " ")
+        logger.info("ChipTunes: playing %s", track_label)
+        if self.on_track_start is not None:
+            try:
+                self.on_track_start(track_label)
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger.debug("on_track_start callback error", exc_info=True)
         player.play(track)
 
     def _pick_random_track(self) -> Path | None:

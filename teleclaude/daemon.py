@@ -318,6 +318,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         chiptunes_music_dir = Path(chiptunes_cfg.music_dir) if chiptunes_cfg and chiptunes_cfg.music_dir else project_root / "assets" / "audio" / "C64Music"
         chiptunes_volume = chiptunes_cfg.volume if chiptunes_cfg else 0.5
         self.chiptunes_manager = ChiptunesManager(chiptunes_music_dir, volume=chiptunes_volume)
+        self.chiptunes_manager.on_track_start = self._on_chiptunes_track_start
         self.tts_manager.set_chiptunes_manager(self.chiptunes_manager)
         logger.info("ChiptunesManager initialized (music_dir=%s)", chiptunes_music_dir)
 

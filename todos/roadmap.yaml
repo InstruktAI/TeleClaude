@@ -38,12 +38,6 @@
   - mesh-architecture
   description: 'Cross-node event distribution: local/cluster/public visibility, cartridge
     publishing via mesh'
-- slug: event-domain-pillars
-  group: event-platform
-  after:
-  - event-domain-infrastructure
-  - event-signal-pipeline
-  description: 'Out-of-box domain configs: software-dev, marketing, creative, customer-relations'
 - slug: public-website-blog
   description: Public website with landing page and blog for InstruktAI/TeleClaude
 - slug: mesh-architecture
@@ -64,4 +58,5 @@
   after:
   - event-system-cartridges
 - slug: async-operation-receipts
-  description: Durable receipt-and-poll contract for long-running commands, starting with `telec todo work`
+  description: Durable receipt-and-poll contract for long-running commands, starting
+    with `telec todo work`

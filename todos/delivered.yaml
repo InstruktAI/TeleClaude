@@ -1,5 +1,9 @@
 # Delivered work items. Newest first.
 
+- slug: event-domain-pillars
+  date: '2026-03-06'
+  title: 'Out-of-box domain configs: software-dev, marketing, creative, customer-relations'
+  description: 'Out-of-box domain configs: software-dev, marketing, creative, customer-relations'
 - slug: chiptunes-audio
   date: '2026-03-06'
   title: Play ChipTunes .sid audio via libsidplayfp with TUI integration and runtime
