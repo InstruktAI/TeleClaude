@@ -66,7 +66,7 @@ stateDiagram-v2
 - **Finalize Serialization**: Only one finalize may run at a time across all orchestrators, enforced by the singleton integrator's lease system.
 - **Conditional Prep**: Worktree prep is required on new worktree creation or prep-input drift; unchanged known-good worktrees skip prep.
 - **Per-Repo+Slug Single-Flight**: Concurrent `/todos/work` calls for the same slug share one ensure/prep/sync critical section only within the same project root.
-- **Conditional Sync**: Main-to-worktree and slug-artifact sync copy only changed files; unchanged files are skipped.
+- **Conditional Sync**: Main-to-worktree sync mirrors only shared planning inputs needed for orchestration. Today that means `todos/roadmap.yaml`, copied only when content differs.
 - **Phase Observability**: `/todos/work` emits per-phase timing logs with stable `NEXT_WORK_PHASE` markers.
 
 ## Primary flows
@@ -128,9 +128,9 @@ For each `/todos/work` request, Next Machine applies deterministic prep/sync dec
    - Same-slug concurrent calls in the same repo wait and reuse resulting ready state.
    - Same-slug calls in different repos run independently.
 4. **Sync decision**
-   - `sync_main_to_worktree` and `sync_slug_todo_from_main_to_worktree` compare source/destination file contents.
-   - Copy happens only when destination is missing or content differs.
-   - `state.yaml` remains seed-only (copied from main only when missing in worktree).
+   - `sync_main_to_worktree` compares source/destination file contents before copying.
+   - The only mirrored file is `todos/roadmap.yaml`.
+   - Slug todo artifacts (`state.yaml`, `requirements.md`, `implementation-plan.md`, `review-findings.md`, `dor-report.md`, etc.) are branch-owned and are not synced from main into the worktree.
 
 ### `/todos/work` Phase Logs
 

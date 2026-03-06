@@ -85,7 +85,7 @@ from teleclaude.api_models import (
     VoiceInputRequest,
 )
 from teleclaude.config import config
-from teleclaude.constants import API_SOCKET_PATH
+from teleclaude.constants import API_SOCKET_PATH, format_system_message
 from teleclaude.core import command_handlers
 from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
 from teleclaude.core.command_mapper import CommandMapper
@@ -165,6 +165,35 @@ def _filter_sessions_by_role(request: Request, sessions: list[SessionSnapshot]) 
 
     # Contributor/newcomer/unknown: own sessions only
     return [s for s in sessions if s.human_email == email]
+
+
+def _format_direct_conversation_intro(
+    *,
+    caller_session_id: str,
+    caller_label: str,
+    caller_computer: str,
+    message_text: str,
+) -> str:
+    """Wrap the first direct-conversation message with the required operating instructions."""
+    body = "\n".join(
+        [
+            f'The direct conversation is active with "{caller_label}" ({caller_session_id}) on {caller_computer}.',
+            "",
+            "Rules:",
+            "- Set a Note To Self anchor before engaging.",
+            "- Do not use `telec sessions send` for follow-up messages.",
+            "- Just talk in normal output; your turn-complete output is delivered automatically.",
+            "- Do not acknowledge, echo, or narrate. Reply only if it changes the peer's next action.",
+            "",
+            "Protocol:",
+            "- Agent-only default: `PROTOCOL: phase-locked (L4 inhale/hold, L3 exhale), artifacts in prose`",
+            "- Human-observed default: `PROTOCOL: L1 prose, human in loop`",
+            "",
+            "Peer introduction:",
+            message_text.strip(),
+        ]
+    )
+    return format_system_message("Direct Conversation", body)
 
 
 class APIServer:
@@ -555,6 +584,7 @@ class APIServer:
             title = title or "Untitled"
 
             effective_thinking_mode = request.thinking_mode or "slow"
+            direct_caller_session = None
 
             def _resolve_enabled_agent(requested_agent: str | None) -> str:
                 if requested_agent:
@@ -613,12 +643,29 @@ class APIServer:
                 elif launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
                     if request.message is None:
                         raise HTTPException(status_code=400, detail="message required for agent_then_message")
+                    direct_message = request.message
+                    if request.direct and identity.session_id:
+                        direct_caller_session = await db.get_session(identity.session_id)
+                        caller_label = (
+                            direct_caller_session.title
+                            if direct_caller_session and direct_caller_session.title
+                            else identity.session_id
+                        )
+                        caller_computer = (
+                            direct_caller_session.computer_name if direct_caller_session else config.computer.name
+                        )
+                        direct_message = _format_direct_conversation_intro(
+                            caller_session_id=identity.session_id,
+                            caller_label=caller_label,
+                            caller_computer=caller_computer,
+                            message_text=request.message,
+                        )
                     effective_agent = _effective_launch_agent()
                     launch_intent = SessionLaunchIntent(
                         kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
                         agent=effective_agent,
                         thinking_mode=effective_thinking_mode,
-                        message=request.message,
+                        message=direct_message,
                     )
                 else:
                     effective_agent = _effective_launch_agent()
@@ -703,7 +750,7 @@ class APIServer:
                         caller_session_id=identity.session_id,
                     )
 
-                    caller_session = await db.get_session(identity.session_id)
+                    caller_session = direct_caller_session or await db.get_session(identity.session_id)
                     target_session = await db.get_session(str(session_id))
                     caller_label = (
                         caller_session.title if caller_session and caller_session.title else identity.session_id
@@ -870,6 +917,12 @@ class APIServer:
                         raise HTTPException(status_code=500, detail="failed to resolve direct link")
 
                     _, members = link_ctx
+                    message_text = _format_direct_conversation_intro(
+                        caller_session_id=identity.session_id,
+                        caller_label=caller_label,
+                        caller_computer=caller_computer,
+                        message_text=message_text,
+                    )
                     peers = await get_peer_members(link_id=link.link_id, sender_session_id=identity.session_id)
                     delivery_targets = [peer.session_id for peer in peers] or [session_id]
                     delivered_to = 0

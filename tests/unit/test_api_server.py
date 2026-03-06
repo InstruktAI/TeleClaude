@@ -806,7 +806,11 @@ def test_send_message_direct_creates_link_and_routes_to_peers(test_client, mock_
     assert mock_command_service.process_message.await_count == 1
     cmd = mock_command_service.process_message.await_args.args[0]
     assert cmd.session_id == "sess-123"
-    assert cmd.text == "Hello peer"
+    assert cmd.text.startswith("[TeleClaude Direct Conversation]")
+    assert 'The direct conversation is active with "Caller Session" (test-session) on local.' in cmd.text
+    assert "Do not use `telec sessions send` for follow-up messages." in cmd.text
+    assert "PROTOCOL: phase-locked (L4 inhale/hold, L3 exhale), artifacts in prose" in cmd.text
+    assert cmd.text.rstrip().endswith("Hello peer")
 
 
 def test_send_message_direct_warns_when_link_already_active(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
@@ -973,6 +977,45 @@ def test_create_session_direct_establishes_link(test_client, mock_command_servic
         caller_session_id="test-session",
     )
     assert mock_link.await_count == 1
+
+
+def test_create_session_direct_message_wraps_ignition_packet(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """direct session start with a message should inject the direct-conversation protocol packet."""
+    mock_command_service.create_session.return_value = {
+        "session_id": "sess-direct-2",
+        "tmux_session_name": "tc_direct_2",
+    }
+    caller_session = MagicMock()
+    caller_session.title = "Caller Session"
+    caller_session.computer_name = "local"
+    target_session = MagicMock()
+    target_session.title = "Direct Peer"
+    target_session.computer_name = "local"
+
+    with (
+        patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock) as mock_get_session,
+        patch("teleclaude.core.session_listeners.unregister_listener", new_callable=AsyncMock),
+        patch("teleclaude.core.session_listeners.create_or_reuse_direct_link", new_callable=AsyncMock) as mock_link,
+    ):
+        mock_get_session.side_effect = [caller_session, target_session]
+        mock_link.return_value = (SimpleNamespace(link_id="link-2"), True)
+        response = test_client.post(
+            "/sessions",
+            json={
+                "project_path": "/home/user/project",
+                "computer": "local",
+                "message": "Need your view on the final review edge case.",
+                "direct": True,
+            },
+        )
+
+    assert response.status_code == 200
+    cmd = mock_command_service.create_session.call_args.args[0]
+    assert cmd.auto_command.startswith("agent_then_message ")
+    assert "[TeleClaude Direct Conversation]" in cmd.auto_command
+    assert "Do not use `telec sessions send` for follow-up messages." in cmd.auto_command
+    assert "PROTOCOL: phase-locked (L4 inhale/hold, L3 exhale), artifacts in prose" in cmd.auto_command
+    assert "Need your view on the final review edge case." in cmd.auto_command
 
 
 def test_revive_session_success(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]

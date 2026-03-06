@@ -2153,6 +2153,73 @@ async def test_deliver_inbound_injects_linked_output_system_message():
 
 
 @pytest.mark.asyncio
+async def test_deliver_inbound_injects_direct_conversation_system_message():
+    """The direct-conversation ignition packet must reach the agent despite the system prefix."""
+    mock_session = MagicMock()
+    mock_session.session_id = "sess-direct-intro"
+    mock_session.lifecycle_status = "active"
+    mock_session.closed_at = None
+    mock_session.tmux_session_name = "tc_direct_intro"
+    mock_session.active_agent = None
+    mock_session.project_path = "/tmp"
+    mock_session.subdir = None
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=mock_session)
+    mock_db.update_session = AsyncMock()
+    mock_db.update_last_activity = AsyncMock()
+
+    mock_client = AsyncMock()
+    start_polling = AsyncMock()
+
+    direct_intro = format_system_message(
+        "Direct Conversation",
+        (
+            'The direct conversation is active with "Caller Session" (peer-123) on RemotePC.\n\n'
+            "Rules:\n"
+            "- Do not use `telec sessions send` for follow-up messages.\n\n"
+            "Peer introduction:\n"
+            "Discuss the review findings."
+        ),
+    )
+    row = cast(
+        InboundQueueRow,
+        {
+            "id": 1,
+            "session_id": "sess-direct-intro",
+            "origin": InputOrigin.REDIS.value,
+            "message_type": "text",
+            "content": direct_intro,
+            "payload_json": None,
+            "actor_id": "system:RemotePC:peer-123",
+            "actor_name": "system@RemotePC",
+            "actor_avatar_url": None,
+            "status": "pending",
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "attempt_count": 0,
+            "next_retry_at": None,
+            "last_error": None,
+            "source_message_id": None,
+            "source_channel_id": None,
+        },
+    )
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(command_handlers, "tmux_io") as mock_tmux_io,
+        patch.object(command_handlers, "polling_coordinator"),
+    ):
+        mock_tmux_io.wrap_bracketed_paste.return_value = direct_intro
+        mock_tmux_io.process_text = AsyncMock(return_value=True)
+
+        await command_handlers.deliver_inbound(row, mock_client, start_polling)
+
+    mock_tmux_io.wrap_bracketed_paste.assert_called_once_with(direct_intro, active_agent=None)
+    mock_tmux_io.process_text.assert_awaited_once()
+    start_polling.assert_awaited_once_with("sess-direct-intro", "tc_direct_intro")
+
+
+@pytest.mark.asyncio
 async def test_handle_voice_updates_last_input_origin_before_feedback():
     """last_input_origin must be persisted before any feedback/status messages.
 

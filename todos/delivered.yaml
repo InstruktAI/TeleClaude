@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: async-operation-receipts
+  date: '2026-03-06'
+  title: Durable receipt-and-poll contract for long-running commands, starting with
+    `telec todo work`
+  description: Durable receipt-and-poll contract for long-running commands, starting
+    with `telec todo work`
 - slug: event-platform
   date: '2026-03-06'
   title: Container vision delivered — 5/7 phases shipped, remaining children are independent

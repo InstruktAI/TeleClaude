@@ -1025,10 +1025,13 @@ async def deliver_inbound(
         )
 
     linked_output_prefix = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "
+    direct_conversation_prefix = f"{TELECLAUDE_SYSTEM_PREFIX} Direct Conversation]"
 
-    # Most system messages are observability-only. Linked peer output is the
-    # one exception: direct conversations rely on it reaching the agent.
-    if message_text.startswith(TELECLAUDE_SYSTEM_PREFIX) and not message_text.startswith(linked_output_prefix):
+    # Most system messages are observability-only. Linked peer output and the
+    # direct-conversation ignition packet must both reach the agent.
+    if message_text.startswith(TELECLAUDE_SYSTEM_PREFIX) and not (
+        message_text.startswith(linked_output_prefix) or message_text.startswith(direct_conversation_prefix)
+    ):
         logger.debug("Skipping tmux injection for system message: session=%s", session_id[:8])
         return
 
