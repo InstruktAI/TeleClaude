@@ -2,12 +2,23 @@
 
 ## Overview
 
-Three-phase approach: (1) enable the --cwd flag so mark-phase can target the
-correct state.yaml, (2) wire post-finalize event emission into `next_work()`
-and update the orchestrator guidance, (3) update the VCS policy. Each phase
-builds on the previous.
+Four-phase approach: (1) extend the phase schema to include finalize and add
+the --cwd flag so mark-phase can target the correct state.yaml, (2) wire
+post-finalize event emission into `next_work()` and update the orchestrator
+guidance, (3) update the VCS policy, (4) validate. Each phase builds on the
+previous.
 
-## Phase 1: mark-phase --cwd Enabler
+## Phase 1: Phase Schema Extension & mark-phase --cwd Enabler
+
+### Task 1.0: Extend PhaseName enum and API validation to include finalize
+
+**File(s):** `teleclaude/core/next_machine/core.py` (line ~42-44),
+`teleclaude/api/todo_routes.py` (line ~133)
+
+- [ ] Add `FINALIZE = "finalize"` to the `PhaseName` enum (currently only `BUILD` and `REVIEW`)
+- [ ] Update API validation at `todo_routes.py:133` to accept `"finalize"`:
+      change `if phase not in ("build", "review")` to include `"finalize"`
+- [ ] Update CLI handler docstring (`tool_commands.py:960`) to list finalize as a valid phase
 
 ### Task 1.1: Add --cwd argument to mark-phase CLI handler
 
@@ -17,10 +28,11 @@ builds on the previous.
 - [ ] When `--cwd` is provided, use it instead of `os.getcwd()` in the request body
 - [ ] Validate the path exists before sending
 
-### Task 1.2: Test --cwd flag
+### Task 1.2: Test Phase 1 changes
 
 **File(s):** `tests/unit/test_tool_commands.py` (or appropriate test file)
 
+- [ ] Test that `--phase finalize` is accepted (no HTTP 400)
 - [ ] Test that `--cwd /some/path` overrides the default `os.getcwd()`
 - [ ] Test that omitting `--cwd` preserves existing behavior
 
@@ -30,11 +42,12 @@ builds on the previous.
 
 ### Task 2.1: Add post-finalize detection in next_work()
 
-**File(s):** `teleclaude/core/next_machine/core.py` (in `next_work()`, after the
-review-approved / finalize dispatch section around line 3022)
+**File(s):** `teleclaude/core/next_machine/core.py` (in `next_work()`, insert
+the detection BEFORE the review-approved finalize dispatch at line ~2850, not
+after line 3022 — line 3022 is where finalize is dispatched for the first time)
 
-- [ ] After the existing finalize dispatch check, add a branch that detects
-      finalize is marked complete in state.yaml
+- [ ] Add a branch that detects `state.get("finalize") == "complete"` early in
+      the routing logic, before the review-approved check dispatches finalize
 - [ ] Guard: verify the worktree exists at `{cwd}/{WORKTREE_DIR}/{slug}`
 - [ ] Derive branch: `git -C {worktree_path} rev-parse --abbrev-ref HEAD`
 - [ ] Derive SHA: `git -C {worktree_path} rev-parse HEAD`
@@ -109,9 +122,13 @@ review-approved / finalize dispatch section around line 3022)
 
 - **Import**: `emit_deployment_started` is in `teleclaude.core.integration_bridge`.
   It is async and already exists — do not create a new function.
-- **State detection**: Investigate how `mark-phase` stores phase status in `state.yaml`.
-  If there is no `finalize` field yet, extend the schema minimally. The field must be
-  readable by `next_work()`.
+- **State detection**: After Task 1.0, `mark-phase --phase finalize --status complete`
+  will write `finalize: complete` to `state.yaml`. `next_work()` reads this with
+  `state.get("finalize")`. The PhaseName extension in Task 1.0 is the prerequisite.
+- **Insertion point**: The post-finalize detection branch (Task 2.1) must go BEFORE
+  the review-approved check that dispatches finalize (line ~3022). If finalize is
+  already complete, `next_work()` should emit the event and return COMPLETE — it
+  should not re-dispatch finalize.
 - **Backward compatibility**: The old `telec todo integrate` path MUST still work. Both
   paths (event-driven and direct) can coexist until `next-machine-old-code-cleanup` lands.
 - **Dependency**: `next-machine-old-code-cleanup` depends on this todo. Once verified,

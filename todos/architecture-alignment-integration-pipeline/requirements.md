@@ -11,16 +11,20 @@ event chain wiring that `next-machine-old-code-cleanup` depends on.
 
 ### In scope
 
-1. **mark-phase --cwd flag** — Add `--cwd` argument to the `handle_todo_mark_phase`
+1. **Extend PhaseName to include finalize** — Add `FINALIZE` to the `PhaseName` enum
+   (`core.py:42-44`) and update the API validation whitelist (`todo_routes.py:133`) to
+   accept `"finalize"` alongside `"build"` and `"review"`. Without this, `mark-phase
+   --phase finalize` returns HTTP 400.
+2. **mark-phase --cwd flag** — Add `--cwd` argument to the `handle_todo_mark_phase`
    CLI handler so the orchestrator can target the correct `state.yaml` regardless
    of its working directory.
-2. **Post-finalize event emission** — Add a detection branch in `next_work()` that
+3. **Post-finalize event emission** — Add a detection branch in `next_work()` that
    recognises finalize-complete state, derives branch/sha from the worktree, calls
    `emit_deployment_started()`, and returns COMPLETE.
-3. **Orchestrator guidance update** — Rewrite `POST_COMPLETION["next-finalize"]` to
+4. **Orchestrator guidance update** — Rewrite `POST_COMPLETION["next-finalize"]` to
    instruct the orchestrator to mark the finalize phase complete (via mark-phase) and
    call `telec todo work` instead of `telec todo integrate` directly.
-4. **Version Control Safety policy** — Change the state-files commit strategy from
+5. **Version Control Safety policy** — Change the state-files commit strategy from
    "don't commit orchestrator-managed files unless task requires" to "workers commit
    all dirty files at end of work" (worktree branches never hit main directly).
 
@@ -67,9 +71,6 @@ event chain wiring that `next-machine-old-code-cleanup` depends on.
 
 ## Risks
 
-- **State signal for finalize completion**: `state.yaml` may not currently have a
-  `finalize` field. The builder must verify how `mark-phase` stores phase status and
-  ensure `next_work()` can read it. If the schema needs extension, keep it minimal.
 - **Worktree availability**: `next_work()` assumes the worktree still exists when it
   runs post-finalize. If the worktree was cleaned up prematurely, branch/sha derivation
   fails. Add a guard.
