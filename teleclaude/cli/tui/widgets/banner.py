@@ -248,7 +248,16 @@ class Banner(TelecMixin, Widget):
         self.animation_engine: AnimationEngine | None = None
 
     def on_click(self, event: Click) -> None:
-        """Open the sprites README on GitHub when the banner is clicked."""
+        """Open the sprites README on GitHub when the banner plate is clicked."""
+        x = event.x
+        if self.is_compact:
+            total_width = self.size.width or 40
+            pad = max(0, total_width - LOGO_WIDTH)
+            if x < pad or x >= pad + LOGO_WIDTH:
+                return
+        else:
+            if x >= 85:
+                return
         try:
             webbrowser.open(SPRITES_URL)
         except Exception:
