@@ -4,14 +4,11 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import Callable
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.chiptunes.player import ChiptunesPlayer
-
-if TYPE_CHECKING:
-    pass
 
 logger = get_logger(__name__)
 
@@ -39,6 +36,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         self._history_index: int = -1
         self._player: ChiptunesPlayer | None = None
         self._enabled: bool = False
+        self._lock = threading.RLock()
 
     # ------------------------------------------------------------------ #
     # Public control                                                        #
@@ -51,10 +49,11 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
 
     def disable(self) -> None:
         """Mark worker as disabled and stop playback."""
-        self._enabled = False
-        if self._player is not None:
-            self._player.stop()
-            self._player = None
+        with self._lock:
+            self._enabled = False
+            if self._player is not None:
+                self._player.stop()
+                self._player = None
 
     def pause(self) -> None:
         """Pause current playback."""
@@ -81,6 +80,8 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             threading.Thread(target=self._play_next, daemon=True, name="chiptunes-next").start()
         elif name == "prev":
             threading.Thread(target=self._play_prev, daemon=True, name="chiptunes-prev").start()
+        else:
+            logger.warning("ChipTunes: unknown command %r", name)
 
     # ------------------------------------------------------------------ #
     # Internal navigation                                                   #
@@ -88,21 +89,19 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
 
     def _play_track(self, track: Path) -> None:
         """Stop current player, emit track_start callback, and start playback."""
-        if self._player is not None:
-            self._player.stop()
+        with self._lock:
+            if self._player is not None:
+                self._player.stop()
 
-        player = ChiptunesPlayer(volume=self._volume)
-        player.on_track_end = self._on_track_end
-        self._player = player
+            player = ChiptunesPlayer(volume=self._volume)
+            player.on_track_end = self._on_track_end
+            self._player = player
 
         track_label = track.stem.replace("_", " ")
         logger.info("ChipTunes: playing %s", track_label)
 
         if self.on_track_start is not None:
-            try:
-                self.on_track_start(track_label, str(track))
-            except Exception:  # pylint: disable=broad-exception-caught
-                logger.debug("on_track_start callback error", exc_info=True)
+            self.on_track_start(track_label, str(track))
 
         player.play(track)
 
@@ -112,34 +111,40 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         If the history index is not at the end, advance it and replay from
         history. Otherwise pick a new random track, append it, and play it.
         """
-        if not self._enabled:
-            return
-
-        if self._history_index < len(self._history) - 1:
-            self._history_index += 1
-            self._play_track(self._history[self._history_index])
-        else:
-            track = self._pick_random_track()
-            if track is None:
-                logger.warning("ChipTunes: no tracks available for next()")
+        with self._lock:
+            if not self._enabled:
                 return
-            self._history.append(track)
-            self._history_index = len(self._history) - 1
-            self._play_track(track)
+
+            if self._history_index < len(self._history) - 1:
+                self._history_index += 1
+                track = self._history[self._history_index]
+            else:
+                track = self._pick_random_track()
+                if track is None:
+                    logger.warning("ChipTunes: no tracks available for next()")
+                    return
+                self._history.append(track)
+                self._history_index = len(self._history) - 1
+
+        self._play_track(track)
 
     def _play_prev(self) -> None:
         """Go back to the previous track in history.
 
         No-op when already at the beginning of the history.
         """
-        if not self._enabled:
-            return
+        with self._lock:
+            if not self._enabled:
+                return
 
-        if self._history_index > 0:
-            self._history_index -= 1
-            self._play_track(self._history[self._history_index])
-        else:
-            logger.debug("ChipTunes: already at beginning of history, prev() is no-op")
+            if self._history_index > 0:
+                self._history_index -= 1
+                track = self._history[self._history_index]
+            else:
+                logger.debug("ChipTunes: already at beginning of history, prev() is no-op")
+                return
+
+        self._play_track(track)
 
     def _on_track_end(self) -> None:
         """Called by the player when a track finishes — auto-advance."""
