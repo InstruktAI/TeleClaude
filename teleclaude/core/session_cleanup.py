@@ -22,7 +22,6 @@ from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
-from teleclaude.core.next_machine.core import release_finalize_lock
 from teleclaude.core.session_listeners import cleanup_caller_listeners, cleanup_session_links, pop_listeners
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 
@@ -61,11 +60,6 @@ async def cleanup_session_resources(
         adapter_client: AdapterClient for deleting channels
     """
     session_id = session.session_id
-
-    # Release any finalize lock held by this session (prevents stale locks on session death).
-    project_path = getattr(session, "project_path", None)
-    if project_path:
-        release_finalize_lock(project_path, session_id)
 
     closed_links = await cleanup_session_links(session_id)
     if closed_links:

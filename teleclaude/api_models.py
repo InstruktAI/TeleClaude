@@ -373,6 +373,7 @@ class ChiptunesTrackEventDTO(BaseModel):  # type: ignore[explicit-any]
 
     event: Literal["chiptunes_track"] = "chiptunes_track"
     track: str
+    sid_path: str = ""
 
 
 class SessionLifecycleStatusEventDTO(BaseModel):  # type: ignore[explicit-any]

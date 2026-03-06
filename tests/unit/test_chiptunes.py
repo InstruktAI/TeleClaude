@@ -479,3 +479,204 @@ class TestTTSChiptunesCoexistence:
         chiptunes = MagicMock()
         mgr.set_chiptunes_manager(chiptunes)
         assert mgr._chiptunes_manager is chiptunes
+
+
+# --- Worker track history and navigation ---
+
+
+class TestWorkerTrackHistory:
+    def _make_worker(self, tracks: list[Path]) -> object:
+        from teleclaude.chiptunes.worker import _Worker
+
+        track_iter = iter(tracks)
+
+        def _pick() -> Path | None:
+            return next(track_iter, None)
+
+        worker = _Worker(pick_random_track=_pick, volume=0.0)
+        worker._enabled = True
+        # Patch _play_track to record calls without side effects
+        worker._played: list[Path] = []
+
+        def _fake_play(track: Path) -> None:
+            worker._played.append(track)
+
+        worker._play_track = _fake_play  # type: ignore[assignment]
+        return worker
+
+    def test_play_next_appends_to_history(self, tmp_path: Path) -> None:
+        tracks = [tmp_path / "a.sid", tmp_path / "b.sid"]
+        worker = self._make_worker(tracks)
+
+        worker._play_next()
+        assert worker._history == [tracks[0]]
+        assert worker._history_index == 0
+
+        worker._play_next()
+        assert worker._history == [tracks[0], tracks[1]]
+        assert worker._history_index == 1
+
+    def test_play_prev_goes_back(self, tmp_path: Path) -> None:
+        tracks = [tmp_path / "a.sid", tmp_path / "b.sid"]
+        worker = self._make_worker(tracks)
+
+        worker._play_next()
+        worker._play_next()
+        worker._play_prev()
+
+        assert worker._history_index == 0
+        assert worker._played[-1] == tracks[0]
+
+    def test_play_prev_at_start_is_noop(self, tmp_path: Path) -> None:
+        tracks = [tmp_path / "a.sid"]
+        worker = self._make_worker(tracks)
+
+        worker._play_next()
+        played_count = len(worker._played)
+        worker._play_prev()  # already at beginning
+
+        assert len(worker._played) == played_count  # no additional play
+
+    def test_play_next_replays_history_before_end(self, tmp_path: Path) -> None:
+        tracks = [tmp_path / "a.sid", tmp_path / "b.sid", tmp_path / "c.sid"]
+        worker = self._make_worker(tracks)
+
+        worker._play_next()  # a
+        worker._play_next()  # b
+        worker._play_prev()  # back to a
+        worker._play_next()  # forward to b (from history, not new)
+
+        assert worker._history == [tracks[0], tracks[1]]  # no c added yet
+        assert worker._history_index == 1
+        assert worker._played[-1] == tracks[1]
+
+    def test_handle_cmd_next(self, tmp_path: Path) -> None:
+        tracks = [tmp_path / "x.sid"]
+        worker = self._make_worker(tracks)
+
+        worker.handle_cmd({"cmd": "next"})
+        import time
+        time.sleep(0.05)  # wait for daemon thread
+
+        assert len(worker._history) == 1
+
+    def test_handle_cmd_prev_noop_at_start(self, tmp_path: Path) -> None:
+        tracks = [tmp_path / "x.sid"]
+        worker = self._make_worker(tracks)
+
+        worker._play_next()
+        played_before = len(worker._played)
+        worker.handle_cmd({"cmd": "prev"})
+        import time
+        time.sleep(0.05)
+
+        assert len(worker._played) == played_before  # no extra play at beginning
+
+    def test_handle_cmd_unknown_ignored(self, tmp_path: Path) -> None:
+        tracks = [tmp_path / "x.sid"]
+        worker = self._make_worker(tracks)
+
+        worker.handle_cmd({"cmd": "shuffle"})  # unknown — no-op
+
+
+# --- Manager next_track / prev_track proxy methods ---
+
+
+class TestManagerNavigation:
+    def test_next_track_delegates_to_worker(self, tmp_path: Path) -> None:
+        from teleclaude.chiptunes.manager import ChiptunesManager
+
+        manager = ChiptunesManager(tmp_path)
+        manager._worker.handle_cmd = MagicMock()  # type: ignore[method-assign]
+
+        manager.next_track()
+        manager._worker.handle_cmd.assert_called_once_with({"cmd": "next"})
+
+    def test_prev_track_delegates_to_worker(self, tmp_path: Path) -> None:
+        from teleclaude.chiptunes.manager import ChiptunesManager
+
+        manager = ChiptunesManager(tmp_path)
+        manager._worker.handle_cmd = MagicMock()  # type: ignore[method-assign]
+
+        manager.prev_track()
+        manager._worker.handle_cmd.assert_called_once_with({"cmd": "prev"})
+
+
+# --- Favorites persistence ---
+
+
+class TestFavorites:
+    def test_save_and_load(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from teleclaude.chiptunes import favorites as fav_mod
+
+        fav_path = tmp_path / "chiptunes-favorites.json"
+        monkeypatch.setattr(fav_mod, "FAVORITES_PATH", fav_path)
+
+        fav_mod.save_favorite("Test Tune", "/music/test.sid")
+        loaded = fav_mod.load_favorites()
+
+        assert len(loaded) == 1
+        assert loaded[0]["track_name"] == "Test Tune"
+        assert loaded[0]["sid_path"] == "/music/test.sid"
+        assert "saved_at" in loaded[0]
+
+    def test_is_favorited_true(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from teleclaude.chiptunes import favorites as fav_mod
+
+        fav_path = tmp_path / "chiptunes-favorites.json"
+        monkeypatch.setattr(fav_mod, "FAVORITES_PATH", fav_path)
+
+        fav_mod.save_favorite("Track A", "/music/a.sid")
+        assert fav_mod.is_favorited("/music/a.sid") is True
+
+    def test_is_favorited_false(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from teleclaude.chiptunes import favorites as fav_mod
+
+        fav_path = tmp_path / "chiptunes-favorites.json"
+        monkeypatch.setattr(fav_mod, "FAVORITES_PATH", fav_path)
+
+        assert fav_mod.is_favorited("/music/missing.sid") is False
+
+    def test_deduplication(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from teleclaude.chiptunes import favorites as fav_mod
+
+        fav_path = tmp_path / "chiptunes-favorites.json"
+        monkeypatch.setattr(fav_mod, "FAVORITES_PATH", fav_path)
+
+        fav_mod.save_favorite("Track A", "/music/a.sid")
+        fav_mod.save_favorite("Track A Again", "/music/a.sid")  # duplicate sid_path
+
+        assert len(fav_mod.load_favorites()) == 1
+
+    def test_load_returns_empty_on_missing_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from teleclaude.chiptunes import favorites as fav_mod
+
+        monkeypatch.setattr(fav_mod, "FAVORITES_PATH", tmp_path / "nonexistent.json")
+        assert fav_mod.load_favorites() == []
+
+    def test_load_returns_empty_on_malformed_json(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from teleclaude.chiptunes import favorites as fav_mod
+
+        fav_path = tmp_path / "bad.json"
+        fav_path.write_text("{not valid json")
+        monkeypatch.setattr(fav_mod, "FAVORITES_PATH", fav_path)
+
+        assert fav_mod.load_favorites() == []
+
+
+# --- ChiptunesTrackEventDTO sid_path field ---
+
+
+class TestChiptunesTrackEventDTO:
+    def test_default_sid_path_is_empty(self) -> None:
+        from teleclaude.api_models import ChiptunesTrackEventDTO
+
+        dto = ChiptunesTrackEventDTO(track="Cool Tune")
+        assert dto.sid_path == ""
+
+    def test_explicit_sid_path(self) -> None:
+        from teleclaude.api_models import ChiptunesTrackEventDTO
+
+        dto = ChiptunesTrackEventDTO(track="Cool Tune", sid_path="/music/cool.sid")
+        assert dto.sid_path == "/music/cool.sid"
+        assert dto.event == "chiptunes_track"

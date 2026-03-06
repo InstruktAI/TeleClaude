@@ -63,7 +63,7 @@ stateDiagram-v2
 - **Dependency Blocking**: Cannot claim item until all dependencies complete.
 - **Phase Ordering**: Phases progress sequentially; no phase skipping.
 - **Git Requirement**: All work items must be in git for worktree accessibility.
-- **Finalize Serialization**: Only one finalize may run at a time across all orchestrators, enforced by a session-bound file lock (`todos/.finalize-lock`).
+- **Finalize Serialization**: Only one finalize may run at a time across all orchestrators, enforced by the singleton integrator's lease system.
 - **Conditional Prep**: Worktree prep is required on new worktree creation or prep-input drift; unchanged known-good worktrees skip prep.
 - **Per-Repo+Slug Single-Flight**: Concurrent `/todos/work` calls for the same slug share one ensure/prep/sync critical section only within the same project root.
 - **Conditional Sync**: Main-to-worktree and slug-artifact sync copy only changed files; unchanged files are skipped.
@@ -101,18 +101,13 @@ flowchart TD
     AcquireLock{Acquire<br/>finalize lock}
     Finalize[Dispatch Finalize]
 
-    Start --> ReleaseLock
-    ReleaseLock -->|Yes| Release[Release lock]
-    ReleaseLock -->|No| CheckState
-    Release --> CheckState
+    Start --> CheckState
     CheckState --> Build
     Build -->|No| DispatchBuilder[Dispatch builder AI]
     Build -->|Yes| Review
     Review -->|Pending| DispatchReviewer[Dispatch reviewer AI]
     Review -->|Changes| Fix
-    Review -->|Approved| AcquireLock
-    AcquireLock -->|Acquired| Finalize
-    AcquireLock -->|Held| LOCKED[Return FINALIZE_LOCKED]
+    Review -->|Approved| Finalize
     Fix --> DispatchFixer[Dispatch fixer AI]
 ```
 
@@ -159,16 +154,6 @@ For the worktree setup boundary specifically:
 - `next_work()` emits context logs before entering the combined ensure/sync section so failures can be pinned to worktree setup vs later phases.
 - Unexpected exceptions in `ensure_prepare` are surfaced as `reason=unexpected_<ExceptionType>` instead of disappearing behind a generic API 500.
 
-### Finalize Lock
-
-Multiple orchestrators may reach the finalize step concurrently for different slugs. A session-bound file lock (`todos/.finalize-lock`) serializes merges to main:
-
-- **Acquire**: `next_work()` step 9 acquires the lock with the orchestrator's `caller_session_id` before dispatching a finalize worker.
-- **Release (completion)**: On re-entry, `next_work()` checks if the locked slug is done (phase=DONE or removed from roadmap) and releases only then.
-- **Release (session death)**: `cleanup_session_resources()` releases the lock if the dying session holds it.
-- **Release (stale)**: If the lock is older than 30 minutes, `acquire_finalize_lock()` breaks it as a safety valve.
-- **Concurrency safety**: The lock file contains `session_id`; only the holding session can release it.
-
 ### 3. Dependency Resolution
 
 ```mermaid
@@ -207,5 +192,4 @@ sequenceDiagram
 - **Stale Artifacts**: Requirements updated but plan not regenerated. Reviewer catches mismatch; fix manually.
 - **Worker Crash**: Dispatched AI never completes. Orchestrator must timeout and retry or escalate.
 - **Phase Mark Failure**: mark_phase tool fails due to uncommitted changes. Worker must commit before marking.
-- **Finalize Lock Contention**: Another orchestrator holds the finalize lock. Returns `FINALIZE_LOCKED` with holder info. Orchestrator waits and retries.
-- **Stale Finalize Lock**: Holding session died without cleanup. Lock broken after 30 minutes by the next acquire attempt.
+- **Finalize Contention**: Multiple orchestrators reach finalize simultaneously. Serialized by the singleton integrator's lease; each candidate is queued and processed in order.

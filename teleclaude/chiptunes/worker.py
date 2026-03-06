@@ -1,203 +1,153 @@
-"""Chiptunes subprocess worker — runs SID playback in an isolated process.
-
-Communicates via a Unix domain socket at /tmp/teleclaude-chiptunes.sock.
-The daemon connects as a client; the worker accepts one connection at a time.
-When the daemon restarts, the old connection closes and the new daemon reconnects.
-Music continues playing through reconnections.
-
-Commands (JSON lines, daemon→worker):
-  {"cmd": "start"}           Start playing a random track
-  {"cmd": "stop"}            Stop playback
-  {"cmd": "pause"}           Pause audio output
-  {"cmd": "resume"}          Resume audio output
-
-Events (JSON lines, worker→daemon):
-  {"event": "track_start", "track": "Song Name"}
-  {"event": "track_end"}
-"""
+"""Chiptunes playback worker — track history and navigation state."""
 
 from __future__ import annotations
 
-import json
-import os
-import random
-import signal
-import socket
 import threading
 from pathlib import Path
+from typing import Callable
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.chiptunes.player import ChiptunesPlayer
 
-SOCKET_PATH = "/tmp/teleclaude-chiptunes.sock"
-PID_PATH = "/tmp/teleclaude-chiptunes.pid"
-
-_RSID_MAGIC = b"RSID"
+logger = get_logger(__name__)
 
 
-def _is_rsid(path: Path) -> bool:
-    try:
-        with path.open("rb") as f:
-            return f.read(4) == _RSID_MAGIC
-    except OSError:
-        return False
+class _Worker:  # pyright: ignore[reportUnusedClass]
+    """Manages chiptunes playback with session-scoped track history.
 
+    The worker maintains an ordered history of played tracks so the user can
+    navigate backwards. ``_play_next()`` either advances the history index or
+    picks a new random track when at the end. ``_play_prev()`` goes back one
+    step; at the beginning of history it is a no-op.
+    """
 
-class _Worker:
-    """Chiptunes playback worker with socket-based command interface."""
-
-    def __init__(self, music_dir: Path, volume: float) -> None:
-        self._music_dir = music_dir
+    def __init__(
+        self,
+        pick_random_track: Callable[[], Path | None],
+        volume: float,
+        on_track_start: Callable[[str, str], None] | None = None,
+    ) -> None:
+        self._pick_random_track = pick_random_track
         self._volume = volume
-        self._track_list: list[Path] | None = None
+        self.on_track_start = on_track_start
+
+        self._history: list[Path] = []
+        self._history_index: int = -1
         self._player: ChiptunesPlayer | None = None
-        self._conn: socket.socket | None = None
-        self._conn_lock = threading.Lock()
-        self._running = True
+        self._enabled: bool = False
+        self._lock = threading.RLock()
 
-    def run(self) -> None:
-        """Main loop: accept connections and process commands."""
-        Path(PID_PATH).write_text(str(os.getpid()))
+    # ------------------------------------------------------------------ #
+    # Public control                                                        #
+    # ------------------------------------------------------------------ #
 
-        if os.path.exists(SOCKET_PATH):
-            os.unlink(SOCKET_PATH)
+    def enable(self) -> None:
+        """Mark worker as enabled and start the first track."""
+        self._enabled = True
+        threading.Thread(target=self._play_next, daemon=True, name="chiptunes-start").start()
 
-        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        server.bind(SOCKET_PATH)
-        server.listen(1)
-        server.settimeout(1.0)
-
-        signal.signal(signal.SIGTERM, lambda *_: self._request_stop())
-
-        while self._running:
-            try:
-                conn, _ = server.accept()
-            except socket.timeout:
-                continue
-            except OSError:
-                break
-
-            with self._conn_lock:
-                self._conn = conn
-
-            self._handle_connection(conn)
-
-            with self._conn_lock:
-                self._conn = None
-
-        # Cleanup
-        if self._player is not None:
-            self._player.stop()
-        server.close()
-        for path in (SOCKET_PATH, PID_PATH):
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
-
-    def _request_stop(self) -> None:
-        self._running = False
-
-    def _handle_connection(self, conn: socket.socket) -> None:
-        """Read commands from a connected daemon until it disconnects."""
-        try:
-            buf = b""
-            while self._running:
-                conn.settimeout(1.0)
-                try:
-                    data = conn.recv(4096)
-                except socket.timeout:
-                    continue
-                except OSError:
-                    break
-                if not data:
-                    break  # daemon disconnected
-                buf += data
-                while b"\n" in buf:
-                    line, buf = buf.split(b"\n", 1)
-                    self._process_command(line.decode())
-        except OSError:
-            pass
-        finally:
-            try:
-                conn.close()
-            except OSError:
-                pass
-
-    def _process_command(self, line: str) -> None:
-        try:
-            msg = json.loads(line)
-        except json.JSONDecodeError:
-            return
-
-        cmd = msg.get("cmd")
-        if cmd == "start":
-            self._play_random()
-        elif cmd == "stop":
+    def disable(self) -> None:
+        """Mark worker as disabled and stop playback."""
+        with self._lock:
+            self._enabled = False
             if self._player is not None:
                 self._player.stop()
                 self._player = None
-        elif cmd == "pause":
-            if self._player is not None:
-                self._player.pause()
-        elif cmd == "resume":
-            if self._player is not None:
-                self._player.resume()
 
-    def _play_random(self) -> None:
-        track = self._pick_random_track()
-        if track is None:
-            return
-
+    def pause(self) -> None:
+        """Pause current playback."""
         if self._player is not None:
-            self._player.stop()
+            self._player.pause()
 
-        player = ChiptunesPlayer(volume=self._volume)
-        player.on_track_end = self._on_track_end
-        self._player = player
+    def resume(self) -> None:
+        """Resume paused playback."""
+        if self._player is not None:
+            self._player.resume()
+
+    @property
+    def is_playing(self) -> bool:
+        """Return True if a track is currently active."""
+        return self._player is not None and self._player.is_playing
+
+    def handle_cmd(self, cmd: dict[str, object]) -> None:  # guard: loose-dict - cmd payload
+        """Dispatch a command dict to the appropriate navigation method.
+
+        Supported commands: ``{"cmd": "next"}``, ``{"cmd": "prev"}``.
+        """
+        name = cmd.get("cmd")
+        if name == "next":
+            threading.Thread(target=self._play_next, daemon=True, name="chiptunes-next").start()
+        elif name == "prev":
+            threading.Thread(target=self._play_prev, daemon=True, name="chiptunes-prev").start()
+        else:
+            logger.warning("ChipTunes: unknown command %r", name)
+
+    # ------------------------------------------------------------------ #
+    # Internal navigation                                                   #
+    # ------------------------------------------------------------------ #
+
+    def _play_track(self, track: Path) -> None:
+        """Stop current player, emit track_start callback, and start playback."""
+        with self._lock:
+            if self._player is not None:
+                self._player.stop()
+
+            player = ChiptunesPlayer(volume=self._volume)
+            player.on_track_end = self._on_track_end
+            self._player = player
+
         track_label = track.stem.replace("_", " ")
-        self._emit("track_start", track=track_label)
+        logger.info("ChipTunes: playing %s", track_label)
+
+        if self.on_track_start is not None:
+            self.on_track_start(track_label, str(track))
+
         player.play(track)
 
+    def _play_next(self) -> None:
+        """Advance to the next track.
+
+        If the history index is not at the end, advance it and replay from
+        history. Otherwise pick a new random track, append it, and play it.
+        """
+        with self._lock:
+            if not self._enabled:
+                return
+
+            if self._history_index < len(self._history) - 1:
+                self._history_index += 1
+                track = self._history[self._history_index]
+            else:
+                track = self._pick_random_track()
+                if track is None:
+                    logger.warning("ChipTunes: no tracks available for next()")
+                    return
+                self._history.append(track)
+                self._history_index = len(self._history) - 1
+
+        self._play_track(track)
+
+    def _play_prev(self) -> None:
+        """Go back to the previous track in history.
+
+        No-op when already at the beginning of the history.
+        """
+        with self._lock:
+            if not self._enabled:
+                return
+
+            if self._history_index > 0:
+                self._history_index -= 1
+                track = self._history[self._history_index]
+            else:
+                logger.debug("ChipTunes: already at beginning of history, prev() is a no-op")
+                return
+
+        self._play_track(track)
+
     def _on_track_end(self) -> None:
-        """Auto-advance to next track (works even without daemon connection)."""
-        self._play_random()
-
-    def _emit(self, event: str, **kwargs: object) -> None:
-        """Send a JSON event to the connected daemon (if any)."""
-        with self._conn_lock:
-            conn = self._conn
-        if conn is None:
-            return
-        try:
-            payload = json.dumps({"event": event, **kwargs}) + "\n"
-            conn.sendall(payload.encode())
-        except (BrokenPipeError, OSError):
-            pass
-
-    def _pick_random_track(self) -> Path | None:
-        if self._track_list is None:
-            self._track_list = self._discover_tracks()
-        if not self._track_list:
-            return None
-        return random.choice(self._track_list)
-
-    def _discover_tracks(self) -> list[Path]:
-        if not self._music_dir.exists():
-            return []
-        return [p for p in self._music_dir.rglob("*.sid") if not _is_rsid(p)]
-
-
-def _run() -> None:
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--music-dir", required=True)
-    parser.add_argument("--volume", type=float, default=0.5)
-    args = parser.parse_args()
-
-    worker = _Worker(Path(args.music_dir), args.volume)
-    worker.run()
-
-
-if __name__ == "__main__":
-    _run()
+        """Called by the player when a track finishes — auto-advance."""
+        if self._enabled:
+            logger.debug("ChipTunes: track ended, advancing to next")
+            threading.Thread(target=self._play_next, daemon=True, name="chiptunes-auto-next").start()

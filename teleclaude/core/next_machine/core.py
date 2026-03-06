@@ -228,24 +228,17 @@ WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data.
 2. Accept completion only for the dispatched worker session `<session_id>`.
    Ignore notifications from any other session.
-3. Verify finalize lock ownership before consuming FINALIZE_READY:
-   - Lock file `todos/.finalize-lock` must exist.
-   - Lock `slug` must equal `{args}`.
-   - Lock `session_id` must equal your orchestrator `TELECLAUDE_SESSION_ID`.
-   If any check fails: stop and report FINALIZE_LOCK_MISMATCH (do NOT apply).
-4. Confirm worker reported exactly `FINALIZE_READY: {args}` in session `<session_id>` transcript.
+3. Confirm worker reported exactly `FINALIZE_READY: {args}` in session `<session_id>` transcript.
    If missing: send worker feedback to report FINALIZE_READY and stop (do NOT apply).
-5. telec sessions end <session_id>
-6. TRIGGER INTEGRATION (hand off to the singleton integrator):
+4. telec sessions end <session_id>
+5. TRIGGER INTEGRATION (hand off to the singleton integrator):
    telec todo integrate {args}
-7. Release finalize lock:
-   rm -f todos/.finalize-lock
-8. Report: "Candidate {args} queued for integration. Integrator will process."
-9. Call {next_call}
-10. Non-recoverable errors (FATAL/BLOCKER reported by worker):
-    - Do NOT end the session — keep it alive as a signal for human investigation
-    - Report the error status and session ID to the user for manual intervention
-11. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+6. Report: "Candidate {args} queued for integration. Integrator will process."
+7. Call {next_call}
+8. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+   - Do NOT end the session — keep it alive as a signal for human investigation
+   - Report the error status and session ID to the user for manual intervention
+9. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
 }
 
@@ -2152,105 +2145,6 @@ def has_git_stash_entries(cwd: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Finalize lock — serializes merges to main across parallel orchestrators
-# ---------------------------------------------------------------------------
-
-_FINALIZE_LOCK_NAME = ".finalize-lock"
-_FINALIZE_LOCK_STALE_MINUTES = 30
-
-
-def _finalize_lock_path(cwd: str) -> Path:
-    return Path(cwd) / "todos" / _FINALIZE_LOCK_NAME
-
-
-def acquire_finalize_lock(cwd: str, slug: str, session_id: str) -> str | None:
-    """Acquire the finalize lock. Returns None on success, error message on failure."""
-    lock_path = _finalize_lock_path(cwd)
-    if lock_path.exists():
-        try:
-            lock_data = json.loads(lock_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            # Corrupt lock — treat as stale
-            lock_path.unlink(missing_ok=True)
-        else:
-            from datetime import datetime, timezone
-
-            acquired_at = lock_data.get("acquired_at", "")
-            holding_session = lock_data.get("session_id", "unknown")
-            holding_slug = lock_data.get("slug", "unknown")
-
-            # Check staleness by timestamp
-            try:
-                lock_time = datetime.fromisoformat(acquired_at)
-                age_minutes = (datetime.now(timezone.utc) - lock_time).total_seconds() / 60
-                if age_minutes > _FINALIZE_LOCK_STALE_MINUTES:
-                    logger.warning(
-                        "Breaking stale finalize lock (age=%.0fm, slug=%s, session=%s)",
-                        age_minutes,
-                        holding_slug,
-                        holding_session[:8],
-                    )
-                    lock_path.unlink(missing_ok=True)
-                else:
-                    return (
-                        f"FINALIZE_LOCKED\n"
-                        f"Another finalize is in progress: slug={holding_slug}, "
-                        f"session={holding_session[:8]}, age={age_minutes:.0f}m.\n"
-                        f"Wait for it to complete or check if the session is still alive."
-                    )
-            except (ValueError, TypeError):
-                # Unparseable timestamp — stale
-                lock_path.unlink(missing_ok=True)
-
-    # Acquire
-    from datetime import datetime, timezone
-
-    lock_data = {
-        "slug": slug,
-        "session_id": session_id,
-        "acquired_at": datetime.now(timezone.utc).isoformat(),
-    }
-    try:
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        lock_path.write_text(json.dumps(lock_data, indent=2), encoding="utf-8")
-        logger.info("Finalize lock acquired: slug=%s, session=%s", slug, session_id[:8])
-        return None
-    except OSError as exc:
-        return f"FINALIZE_LOCK_ERROR\nFailed to acquire finalize lock: {exc}"
-
-
-def release_finalize_lock(cwd: str, session_id: str | None = None) -> bool:
-    """Release the finalize lock. If session_id is given, only release if it matches."""
-    lock_path = _finalize_lock_path(cwd)
-    if not lock_path.exists():
-        return True
-    if session_id:
-        try:
-            lock_data = json.loads(lock_path.read_text(encoding="utf-8"))
-            if lock_data.get("session_id") != session_id:
-                logger.debug(
-                    "Finalize lock held by different session (%s), not releasing",
-                    lock_data.get("session_id", "unknown")[:8],
-                )
-                return False
-        except (json.JSONDecodeError, OSError):
-            pass
-    lock_path.unlink(missing_ok=True)
-    logger.info("Finalize lock released (session=%s)", (session_id or "any")[:8])
-    return True
-
-
-def get_finalize_lock_holder(cwd: str) -> dict[str, str] | None:
-    """Return lock holder info or None if unlocked."""
-    lock_path = _finalize_lock_path(cwd)
-    if not lock_path.exists():
-        return None
-    try:
-        return json.loads(lock_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-
-
 def _worktree_prep_state_path(cwd: str, slug: str) -> Path:
     """Get prep-state marker path inside worktree."""
     return Path(cwd) / WORKTREE_DIR / slug / _WORKTREE_PREP_STATE_REL
@@ -2679,7 +2573,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         db: Database instance
         slug: Optional explicit slug (resolved from roadmap if not provided)
         cwd: Current working directory (project root)
-        caller_session_id: Session ID of the calling orchestrator (for finalize lock)
+        caller_session_id: Session ID of the calling orchestrator (used for review.approved event)
 
     Returns:
         Plain text instructions for the orchestrator to execute
@@ -2693,19 +2587,6 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
 
     # Sweep completed group parents before resolving next slug
     await asyncio.to_thread(sweep_completed_groups, cwd)
-
-    # Release finalize lock ONLY if the locked item's finalize is confirmed complete.
-    # Finalize removes the slug from roadmap, so "not in roadmap" is the completion signal.
-    if caller_session_id:
-        lock_holder = get_finalize_lock_holder(cwd)
-        if lock_holder and lock_holder.get("session_id") == caller_session_id:
-            locked_slug = lock_holder.get("slug", "")
-            if locked_slug:
-                finalize_done = get_item_phase(cwd, locked_slug) == ItemPhase.DONE.value or not slug_in_roadmap(
-                    cwd, locked_slug
-                )
-                if finalize_done:
-                    release_finalize_lock(cwd, caller_session_id)
 
     phase_slug = slug or "<auto>"
     slug_resolution_started = perf_counter()
@@ -3132,31 +3013,13 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             next_call=f"telec todo work {resolved_slug}",
         )
 
-    # 9. Review approved - dispatch finalize prepare (serialized via finalize lock)
+    # 9. Review approved - dispatch finalize prepare
     if has_uncommitted_changes(cwd, resolved_slug):
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "uncommitted_changes")
         return format_uncommitted_changes(resolved_slug)
-    if not caller_session_id:
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "caller_session_missing")
-        return format_error(
-            "CALLER_SESSION_REQUIRED",
-            (
-                "Finalize dispatch requires caller_session_id so FINALIZE_READY consumption stays "
-                "bound to the orchestrator lock owner."
-            ),
-            next_call=(
-                "Call telec todo work from a wrapper-injected orchestrator session so caller_session_id is present."
-            ),
-        )
-    session_id = caller_session_id
-    lock_error = acquire_finalize_lock(cwd, resolved_slug, session_id)
-    if lock_error:
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "finalize_lock_held")
-        return lock_error
     try:
         guidance = await compose_agent_guidance(db)
     except RuntimeError as exc:
-        release_finalize_lock(cwd, session_id)
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
         return format_error("NO_AGENTS", str(exc))
 
@@ -3166,7 +3029,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     try:
         await emit_review_approved(
             slug=resolved_slug,
-            reviewer_session_id=session_id,
+            reviewer_session_id=caller_session_id or "",
             review_round=review_round,
         )
     except Exception:

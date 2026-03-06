@@ -843,14 +843,15 @@ async def test_next_work_single_flight_is_scoped_to_repo_and_slug():
 
 
 def test_post_completion_finalize_hands_off_to_integrator():
-    """POST_COMPLETION for next-finalize emits deployment.started and hands off to integrator."""
+    """POST_COMPLETION for next-finalize confirms FINALIZE_READY and hands off to integrator."""
     instructions = POST_COMPLETION["next-finalize"]
     assert "FINALIZE_READY: {args}" in instructions
-    assert "todos/.finalize-lock" in instructions
-    assert "TELECLAUDE_SESSION_ID" in instructions
     assert "<session_id>" in instructions
     assert "telec todo integrate" in instructions
     assert "Integrator will process" in instructions
+    # Lock mechanism is gone — integrator handles serialization via its own lease
+    assert "todos/.finalize-lock" not in instructions
+    assert "TELECLAUDE_SESSION_ID" not in instructions
     # Old merge/push flow is gone
     assert "make restart" not in instructions
     assert "FINALIZE APPLY SAFETY RE-CHECK" not in instructions

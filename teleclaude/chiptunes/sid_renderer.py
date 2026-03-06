@@ -12,7 +12,7 @@ try:
     _pyresidfp_available = True  # pylint: disable=invalid-name
 
     # Map SID register offsets (0-24) to pyresidfp WritableRegister enum values
-    _REGISTER_MAP: list[WritableRegister] = list(WritableRegister)
+    _REGISTER_MAP: list[WritableRegister] = list(WritableRegister)  # pyright: ignore[reportInvalidTypeForm]
 except ImportError:
     _pyresidfp_available = False  # pylint: disable=invalid-name
     SoundInterfaceDevice = None  # type: ignore[assignment]
