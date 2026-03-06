@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import webbrowser
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 from rich.style import Style
 from rich.text import Text
+from textual.events import Click
 from textual.reactive import reactive
 from textual.widget import Widget
 
@@ -35,6 +37,8 @@ LOGO_LINES = [
 BANNER_HEIGHT = len(BANNER_LINES) + 1
 LOGO_HEIGHT = len(LOGO_LINES) + 1
 LOGO_WIDTH = 40
+
+SPRITES_URL = "https://github.com/InstruktAI/TeleClaude/tree/main/teleclaude/cli/tui/animations/sprites"
 
 
 def _to_color(c: str | int | None) -> str | None:
@@ -242,6 +246,13 @@ class Banner(TelecMixin, Widget):
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self.animation_engine: AnimationEngine | None = None
+
+    def on_click(self, event: Click) -> None:
+        """Open the sprites README on GitHub when the banner is clicked."""
+        try:
+            webbrowser.open(SPRITES_URL)
+        except Exception:
+            logger.exception("Failed to open sprites URL")
 
     def watch_is_compact(self, value: bool) -> None:
         """Update widget height when compactness changes."""
