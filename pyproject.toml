@@ -57,6 +57,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+chiptunes = [
+    "pyresidfp>=0.17.0",
+    "py65emu>=0.1.0",
+    "sounddevice>=0.5.0",
+]
 mlx = [
     "mlx-audio @ git+https://github.com/Blaizzy/mlx-audio.git@main",
     "misaki[en]",

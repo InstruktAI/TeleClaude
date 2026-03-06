@@ -132,6 +132,7 @@ class TelecApp(App[str | None]):
         Binding("u", "spawn_ufo", "UFO", key_display="u", show=False),
         Binding("c", "spawn_car", "Car", key_display="c", show=False),
         Binding("v", "toggle_tts", "Voice", key_display="v"),
+        Binding("m", "toggle_chiptunes", "Music", key_display="m"),
         Binding("escape", "clear_layout", "Clear", key_display="Esc"),
     ]
 
@@ -395,6 +396,11 @@ class TelecApp(App[str | None]):
             except Exception:
                 tts_enabled = False
 
+            try:
+                chiptunes_enabled = settings.chiptunes.enabled if settings else False
+            except Exception:
+                chiptunes_enabled = False
+
             self.post_message(
                 DataRefreshed(
                     computers=computers,
@@ -404,6 +410,7 @@ class TelecApp(App[str | None]):
                     availability=availability,
                     jobs=jobs,
                     tts_enabled=tts_enabled,
+                    chiptunes_enabled=chiptunes_enabled,
                 )
             )
         except Exception:
@@ -428,6 +435,7 @@ class TelecApp(App[str | None]):
         jobs_view.update_data(message.jobs)
         status_bar.update_availability(message.availability)
         status_bar.tts_enabled = message.tts_enabled
+        status_bar.chiptunes_enabled = message.chiptunes_enabled
 
         logger.trace("[PERF] on_data_refreshed views updated dt=%.3f", _t.monotonic() - _d0)
 
@@ -723,6 +731,8 @@ class TelecApp(App[str | None]):
             self.action_cycle_pane_theming()
         elif key == "tts_enabled":
             self._toggle_tts()
+        elif key == "chiptunes_enabled":
+            self._toggle_chiptunes()
         elif key == "animation_mode":
             self._cycle_animation(str(message.value))
         elif key == "agent_status":
@@ -892,6 +902,10 @@ class TelecApp(App[str | None]):
         """
         self._toggle_tts()
 
+    def action_toggle_chiptunes(self) -> None:
+        """m: toggle ChipTunes music on/off."""
+        self._toggle_chiptunes()
+
     # --- TTS toggle ---
 
     @work(exclusive=True, group="settings")
@@ -906,6 +920,21 @@ class TelecApp(App[str | None]):
             status_bar.tts_enabled = new_val
         except Exception as e:
             self.notify(f"Failed to toggle TTS: {e}", severity="error")
+
+    # --- ChipTunes toggle ---
+
+    @work(exclusive=True, group="settings")
+    async def _toggle_chiptunes(self) -> None:
+        """Toggle ChipTunes music on/off via API."""
+        from teleclaude.cli.models import ChiptunesSettingsPatchInfo, SettingsPatchInfo
+
+        new_val = not self.query_one("#telec-footer", TelecFooter).chiptunes_enabled
+        try:
+            await self.api.patch_settings(SettingsPatchInfo(chiptunes=ChiptunesSettingsPatchInfo(enabled=new_val)))
+            status_bar = self.query_one("#telec-footer", TelecFooter)
+            status_bar.chiptunes_enabled = new_val
+        except Exception as e:
+            self.notify(f"Failed to toggle ChipTunes: {e}", severity="error")
 
     # --- Banner compactness ---
 

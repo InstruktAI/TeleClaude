@@ -50,6 +50,7 @@ from teleclaude.api_models import (
     AgentActivityEventDTO,
     AgentAvailabilityDTO,
     AgentStatusRequest,
+    ChiptunesSettingsDTO,
     ComputerDTO,
     CreateSessionRequest,
     CreateSessionResponseDTO,
@@ -1732,6 +1733,7 @@ class APIServer:
             state = self.runtime_settings.get_state()
             return SettingsDTO(
                 tts=TTSSettingsDTO(enabled=state.tts.enabled),
+                chiptunes=ChiptunesSettingsDTO(enabled=state.chiptunes.enabled),
             )
 
         @self.app.patch("/settings")
@@ -1746,6 +1748,7 @@ class APIServer:
                 state = self.runtime_settings.patch(typed_patch)
                 return SettingsDTO(
                     tts=TTSSettingsDTO(enabled=state.tts.enabled),
+                    chiptunes=ChiptunesSettingsDTO(enabled=state.chiptunes.enabled),
                 )
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc

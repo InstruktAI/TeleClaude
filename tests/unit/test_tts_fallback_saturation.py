@@ -31,6 +31,7 @@ def _make_manager(
 
     mgr = TTSManager.__new__(TTSManager)
     mgr.enabled = True
+    mgr._chiptunes_manager = None  # noqa: SLF001 — bypass __init__
     mgr.tts_config = TTSConfig(
         enabled=True,
         service_priority=service_priority,

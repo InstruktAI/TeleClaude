@@ -268,6 +268,15 @@ class STTConfig:
 
 
 @dataclass
+class ChiptunesConfig:
+    """ChipTunes background music configuration."""
+
+    enabled: bool = False
+    music_dir: str | None = None  # default: assets/audio/C64Music
+    volume: float = 0.5
+
+
+@dataclass
 class TerminalConfig:
     """Terminal display settings."""
 
@@ -323,6 +332,7 @@ class Config:
     whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig)
     tts: TTSConfig | None = None
     stt: STTConfig | None = None
+    chiptunes: ChiptunesConfig | None = None
     experiments: list[ExperimentConfig] = field(default_factory=list)
 
     def is_experiment_enabled(self, name: str, agent: str | None = None, adapter: str | None = None) -> bool:
@@ -633,6 +643,17 @@ def _parse_tts_config(raw_tts: dict[str, object] | None) -> TTSConfig | None:  #
     return TTSConfig(enabled=tts_enabled, service_priority=service_priority, events=events, services=services)
 
 
+def _parse_chiptunes_config(raw: dict[str, object] | None) -> ChiptunesConfig | None:  # guard: loose-dict
+    """Parse chiptunes config from raw dict."""
+    if not raw:
+        return None
+    return ChiptunesConfig(
+        enabled=bool(raw.get("enabled", False)),
+        music_dir=str(raw["music_dir"]) if raw.get("music_dir") else None,
+        volume=float(raw.get("volume", 0.5)),  # type: ignore[arg-type]
+    )
+
+
 def _parse_stt_config(raw_stt: dict[str, object] | None) -> STTConfig | None:  # guard: loose-dict
     """Parse STT config from raw dict."""
     if not raw_stt:
@@ -716,6 +737,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
     terminal_raw = raw.get("terminal", {"strip_ansi": True})
     tts_raw = raw.get("tts", None)
     stt_raw = raw.get("stt", None)
+    chiptunes_raw = raw.get("chiptunes", None)
     experiments_raw = raw.get("experiments", [])
     agents_raw = dict(_require_agents_section(raw))
 
@@ -918,6 +940,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
         ),
         tts=_parse_tts_config(tts_raw),  # type: ignore[arg-type]
         stt=_parse_stt_config(stt_raw),  # type: ignore[arg-type]
+        chiptunes=_parse_chiptunes_config(chiptunes_raw),  # type: ignore[arg-type]
         experiments=experiments,
     )
 

@@ -423,16 +423,33 @@ class TTSSettingsDTO(BaseModel):  # type: ignore[explicit-any]
     enabled: bool = False
 
 
+class ChiptunesSettingsDTO(BaseModel):  # type: ignore[explicit-any]
+    """ChipTunes section of settings response."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = False
+
+
 class SettingsDTO(BaseModel):  # type: ignore[explicit-any]
     """Runtime settings response."""
 
     model_config = ConfigDict(frozen=True)
 
     tts: TTSSettingsDTO
+    chiptunes: ChiptunesSettingsDTO = ChiptunesSettingsDTO()
 
 
 class TTSSettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
     """TTS section of settings patch request."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool | None = None
+
+
+class ChiptunesSettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
+    """ChipTunes section of settings patch request."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -445,6 +462,7 @@ class SettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     tts: TTSSettingsPatchDTO | None = None
+    chiptunes: ChiptunesSettingsPatchDTO | None = None
 
 
 class MessageDTO(BaseModel):  # type: ignore[explicit-any]

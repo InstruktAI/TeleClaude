@@ -28,6 +28,7 @@ class DataRefreshed(Message):
         availability: dict[str, AgentAvailabilityInfo],
         jobs: list[JobInfo],
         tts_enabled: bool,
+        chiptunes_enabled: bool = False,
     ) -> None:
         super().__init__()
         self.computers = computers
@@ -37,6 +38,7 @@ class DataRefreshed(Message):
         self.availability = availability
         self.jobs = jobs
         self.tts_enabled = tts_enabled
+        self.chiptunes_enabled = chiptunes_enabled
 
 
 # --- Session interaction messages ---

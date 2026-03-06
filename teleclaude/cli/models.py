@@ -11,6 +11,9 @@ from teleclaude.api_models import (
     AgentAvailabilityDTO as AgentAvailabilityInfo,
 )
 from teleclaude.api_models import (
+    ChiptunesSettingsPatchDTO as ChiptunesSettingsPatchInfo,
+)
+from teleclaude.api_models import (
     ComputerDTO as ComputerInfo,
 )
 from teleclaude.api_models import (
@@ -99,6 +102,7 @@ __all__ = [
     "SessionStartedEvent",
     "SessionUpdatedEvent",
     "SettingsInfo",
+    "ChiptunesSettingsPatchInfo",
     "SettingsPatchInfo",
     "TTSSettingsPatchInfo",
     "TodoInfo",
