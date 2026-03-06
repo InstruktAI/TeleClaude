@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: chiptunes-audio
+  date: '2026-03-06'
+  title: Play ChipTunes .sid audio via libsidplayfp with TUI integration and runtime
+    settings
+  description: Play ChipTunes .sid audio via libsidplayfp with TUI integration and
+    runtime settings
 - slug: event-signal-pipeline
   date: '2026-03-06'
   title: 'Three-stage feed aggregation: ingest, cluster, synthesize utility cartridges'
