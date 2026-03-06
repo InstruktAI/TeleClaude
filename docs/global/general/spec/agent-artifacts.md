@@ -49,6 +49,35 @@ the H1 title, ordered from general to concrete: concept → principle → policy
 7. `## Steps`
 8. `## Examples` (optional)
 
+#### Command content contract
+
+Commands are thin wrappers — session entry points, not procedure manuals. A command
+answers three questions: who am I, what do I know, and what did I receive. The
+procedure handles the rest.
+
+**What belongs in each section:**
+
+- **Required reads**: The procedure that governs this command's work, plus the role
+  concept. This is how the agent learns what to do — not from inline steps.
+- **Purpose**: One sentence. What this command achieves, not how.
+- **Inputs**: Arguments, flags, and what the agent receives. No validation logic.
+- **Outputs**: What the agent must produce — report format, files, state changes.
+  Describe the shape, not the process of producing it.
+- **Steps**: The mechanical invocation sequence only. Parse args, call a CLI command,
+  read a file, act on the result. If a step requires judgement, it belongs in the
+  procedure, not here.
+
+**What never goes in a command:**
+
+- Decision trees or conditional logic ("if X, then negotiate with Y").
+- Behavioral rules or policy fragments (drift allowlists, review criteria).
+- Content that duplicates or paraphrases a required-read procedure.
+- Rationale for why steps are done in a certain order.
+
+A command that grows beyond ~35 lines is a signal that procedural content has leaked in.
+Extract it to the procedure, add the procedure as a required read, and replace the
+inline content with a pointer.
+
 ### Skills
 
 1. `# <Skill Name>`

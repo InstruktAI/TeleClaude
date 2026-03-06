@@ -25,7 +25,7 @@ def register_software_development(catalog: "EventCatalog") -> None:
     catalog.register(
         EventSchema(
             event_type="domain.software-development.planning.todo_dumped",
-            description="A work item was deferred/discarded",
+            description="A brain dump was captured for a work item via telec todo dump",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
             idempotency_fields=["slug"],
@@ -187,6 +187,114 @@ def register_software_development(catalog: "EventCatalog") -> None:
             domain="software-development",
             idempotency_fields=["advisory_id"],
             lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["advisory_id", "severity"]),
+            actionable=True,
+        )
+    )
+
+    # --- Prepare lifecycle events ---
+
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.prepare.input_refined",
+            description="Human thinking was captured or updated in input.md",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            idempotency_fields=["slug"],
+            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.prepare.triangulation_started",
+            description="Two-agent requirements triangulation dispatched",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            idempotency_fields=["slug"],
+            lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.prepare.requirements_drafted",
+            description="Requirements derived from triangulation",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            idempotency_fields=["slug"],
+            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.prepare.requirements_approved",
+            description="Requirements reviewed and approved, ready for plan drafting",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            idempotency_fields=["slug"],
+            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.prepare.plan_drafted",
+            description="Implementation plan drafted from approved requirements",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            idempotency_fields=["slug"],
+            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.prepare.plan_approved",
+            description="Implementation plan reviewed and approved",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            idempotency_fields=["slug"],
+            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.prepare.grounding_invalidated",
+            description="Preparation artifacts invalidated due to drift",
+            default_level=EventLevel.OPERATIONAL,
+            domain="software-development",
+            idempotency_fields=["slug", "reason"],
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", meaningful_fields=["reason", "changed_paths"]
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.prepare.regrounded",
+            description="Preparation artifacts updated against current truth",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            idempotency_fields=["slug"],
+            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.prepare.completed",
+            description="Preparation complete, todo ready for build",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            idempotency_fields=["slug"],
+            lifecycle=NotificationLifecycle(resolves=True, group_key="slug"),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.prepare.blocked",
+            description="Preparation blocked, requires human decision",
+            default_level=EventLevel.BUSINESS,
+            domain="software-development",
+            idempotency_fields=["slug"],
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", meaningful_fields=["blocker"]
+            ),
             actionable=True,
         )
     )

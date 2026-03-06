@@ -50,6 +50,10 @@ Report summary and readiness for re-review.
 2. Apply minimal fixes for Critical and Important issues.
 3. Verify via lint/unit tests after each fix.
 4. Record fixes with commit hashes in review-findings.
+5. If a `--direct` peer link exists with a reviewer session: respond to reviewer
+   feedback inline, address findings iteratively, and update the verdict to APPROVE
+   when all findings are resolved. Silence is a valid response when the reviewer's
+   message requires only action.
 
 ## Outputs
 

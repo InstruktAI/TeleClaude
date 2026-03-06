@@ -530,7 +530,7 @@ class TelecAPIClient:
             APIError: If request fails
         """
         resp = await self._request("DELETE", f"/sessions/{session_id}", params={"computer": computer})
-        return resp.status_code == 200
+        return resp.status_code in {200, 202}
 
     async def send_message(self, session_id: str, computer: str, message: str) -> bool:
         """Send message to a session.

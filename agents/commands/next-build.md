@@ -42,21 +42,5 @@ Execute the build phase for the slug and verify completion.
 
 ## Steps
 
-- Execute the build phase for the slug.
-- Run verification steps required by the build procedure.
-- Never use stash workflows; keep worktree transitions commit-based.
-- Do not stop with uncommitted build changes.
-- Before reporting completion, commit all build work for this slug (including `implementation-plan.md` checkbox updates).
-- Do not claim completion while any planned task is still unchecked.
-- Final state before reporting must be:
-  - all implementation-plan tasks done (`[x]`)
-  - Build Gates section fully checked in `quality-checklist.md`
-  - tests passing
-  - lint passing
-  - clean working tree for build-scope changes; pre-existing orchestrator-managed planning/state drift is allowed:
-    - `todos/roadmap.yaml`
-    - `todos/{slug}/state.yaml`
-  - do not commit those orchestrator-managed drift files unless this build explicitly requires planning/state edits
-  - if only those files are dirty, continue to completion without extra escalation about cleanliness
+- Follow the build procedure.
 - End with: `Ready for review.`
-- Summarize results in the completion report.

@@ -9,16 +9,15 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
-from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
+from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge
 from teleclaude.core.adapter_client import AdapterClient
-from teleclaude.core.agents import AgentName, get_agent_command
+from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.models import Session
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
-from teleclaude.core.session_utils import get_output_file, resolve_working_dir
-from teleclaude.core.voice_assignment import get_voice_env_vars
+from teleclaude.core.session_utils import get_output_file
 
 logger = get_logger(__name__)
 
@@ -160,14 +159,18 @@ class MaintenanceService:
                     continue
 
             if session.tmux_session_name not in active_tmux_sessions:
-                recreated = await self.ensure_tmux_session(session)
-                if not recreated:
-                    continue
+                logger.debug(
+                    "Skipping poller recovery for session %s: tmux session missing",
+                    session.session_id[:8],
+                )
+                continue
 
             if await tmux_bridge.is_pane_dead(session.tmux_session_name):
-                recovered = await self.ensure_tmux_session(session)
-                if not recovered:
-                    continue
+                logger.debug(
+                    "Skipping poller recovery for session %s: tmux pane is dead",
+                    session.session_id[:8],
+                )
+                continue
 
             await polling_coordinator.schedule_polling(
                 session_id=session.session_id,
@@ -277,63 +280,6 @@ class MaintenanceService:
                         logger.info("Adapter %s cleaned %d stale resources", adapter_type, cleaned)
                 except Exception as exc:
                     logger.warning("Adapter %s cleanup failed: %s", adapter_type, exc)
-
-    async def ensure_tmux_session(self, session: Session) -> bool:
-        working_dir = resolve_working_dir(session.project_path, session.subdir)
-        env_vars = await self._build_tmux_env_vars(session.session_id)
-        existed = await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False)
-        created = False
-        if not existed:
-            created = await tmux_bridge.ensure_tmux_session(
-                name=session.tmux_session_name,
-                working_dir=working_dir,
-                session_id=session.session_id,
-                env_vars=env_vars,
-            )
-            if not created:
-                logger.warning("Failed to recreate tmux session for %s", session.session_id[:8])
-                return False
-        else:
-            return True
-
-        if session.active_agent and session.native_session_id:
-            cmd = get_agent_command(
-                agent=session.active_agent,
-                thinking_mode=session.thinking_mode,
-                exec=False,
-                native_session_id=session.native_session_id,
-            )
-
-            wrapped_cmd = tmux_io.wrap_bracketed_paste(cmd, active_agent=session.active_agent)
-
-            restored = await tmux_bridge.send_keys(
-                session_name=session.tmux_session_name,
-                text=wrapped_cmd,
-                session_id=session.session_id,
-                working_dir=working_dir,
-                active_agent=session.active_agent,
-            )
-            if restored:
-                logger.info(
-                    "Restored agent %s for session %s (native=%s)",
-                    session.active_agent,
-                    session.session_id[:8],
-                    session.native_session_id[:8],
-                )
-            else:
-                logger.warning(
-                    "Failed to restore agent %s for session %s",
-                    session.active_agent,
-                    session.session_id[:8],
-                )
-        return created
-
-    async def _build_tmux_env_vars(self, session_id: str) -> dict[str, str]:
-        env_vars: dict[str, str] = {}
-        voice = await db.get_voice(session_id)
-        if voice:
-            env_vars.update(get_voice_env_vars(voice))
-        return env_vars
 
     @staticmethod
     def _get_output_file_path(session_id: str) -> Path:

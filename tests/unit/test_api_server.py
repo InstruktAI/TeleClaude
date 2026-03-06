@@ -10,6 +10,7 @@ from typing_extensions import TypedDict
 
 from teleclaude.api.auth import CallerIdentity, verify_caller
 from teleclaude.api_server import APIServer
+from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot, TodoInfo
 from teleclaude.core.origins import InputOrigin
 from teleclaude.transport.redis_transport import RedisTransport
@@ -689,18 +690,25 @@ def test_create_session_populates_tmux_session_name(test_client, mock_command_se
 
 
 def test_end_session_success(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
-    """Test end_session endpoint calls command handler."""
-    mock_command_service.end_session.return_value = {"status": "success", "message": "ok"}
+    """Test end_session accepts close intent without blocking on cleanup."""
+    session = _active_session()
 
-    response = test_client.delete("/sessions/sess-123?computer=local")
-    assert response.status_code == 200
+    with (
+        patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock, return_value=session),
+        patch("teleclaude.api_server.db.update_session", new_callable=AsyncMock) as mock_update_session,
+        patch("teleclaude.api_server.event_bus.emit") as mock_emit,
+    ):
+        response = test_client.delete("/sessions/sess-123?computer=local")
+
+    assert response.status_code == 202
     data = response.json()
-    assert data["status"] == "success"
-
-    # Verify internal command dispatch
-    call_args = mock_command_service.end_session.call_args
-    cmd = call_args.args[0]
-    assert cmd.session_id == "sess-123"
+    assert data["status"] == "accepted"
+    assert "closing" in data["message"]
+    mock_command_service.end_session.assert_not_called()
+    mock_update_session.assert_awaited_once_with("sess-123", lifecycle_status="closing")
+    emitted_event, emitted_context = mock_emit.call_args.args
+    assert emitted_event == TeleClaudeEvents.SESSION_CLOSE_REQUESTED
+    assert emitted_context.session_id == "sess-123"
 
 
 def _active_session(*, title: str = "Session", computer: str = "local") -> SimpleNamespace:
@@ -1576,10 +1584,16 @@ def test_list_projects_handler_exception(test_client):  # type: ignore[explicit-
 
 
 def test_end_session_handler_exception(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
-    """Test end_session returns 500 when command handler raises exception."""
-    mock_command_service.end_session = AsyncMock(side_effect=Exception("Session not found"))
+    """Test end_session returns 500 when close intent setup fails."""
+    session = _active_session()
 
-    response = test_client.delete("/sessions/sess-123?computer=local")
+    with (
+        patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock, return_value=session),
+        patch("teleclaude.api_server.db.update_session", new_callable=AsyncMock) as mock_update_session,
+    ):
+        mock_update_session.side_effect = Exception("Session close failed")
+        response = test_client.delete("/sessions/sess-123?computer=local")
+
     assert response.status_code == 500
     assert "Failed to end session" in response.json()["detail"]
 

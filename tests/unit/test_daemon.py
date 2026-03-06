@@ -1608,76 +1608,6 @@ async def test_cleanup_purges_closed_sessions_older_than_72h():
         assert kwargs["delete_db"] is True
         assert kwargs["kill_tmux"] is False
 
-
-@pytest.mark.asyncio
-async def test_ensure_tmux_session_recreates_when_missing():
-    service = MaintenanceService(client=MagicMock(), output_poller=MagicMock(), poller_watch_interval_s=1.0)
-
-    session = Session(
-        session_id="sess-123",
-        computer_name="TestMac",
-        tmux_session_name="tc_sess-123",
-        last_input_origin=InputOrigin.TELEGRAM.value,
-        title="Test session",
-        project_path="/tmp/project",
-        subdir="subdir",
-    )
-
-    with (
-        patch(
-            "teleclaude.services.maintenance_service.tmux_bridge.session_exists",
-            new_callable=AsyncMock,
-            return_value=False,
-        ),
-        patch(
-            "teleclaude.services.maintenance_service.tmux_bridge.ensure_tmux_session",
-            new_callable=AsyncMock,
-            return_value=True,
-        ) as create_tmux,
-        patch.object(service, "_build_tmux_env_vars", new_callable=AsyncMock, return_value={}),
-    ):
-        result = await service.ensure_tmux_session(session)
-
-        assert result is True
-        assert create_tmux.called
-        kwargs = create_tmux.await_args.kwargs
-        assert kwargs["name"] == "tc_sess-123"
-        assert kwargs["working_dir"] == "/tmp/project/subdir"
-        assert kwargs["session_id"] == "sess-123"
-        assert kwargs["env_vars"] == {}
-
-
-@pytest.mark.asyncio
-async def test_ensure_tmux_session_skips_when_exists():
-    service = MaintenanceService(client=MagicMock(), output_poller=MagicMock(), poller_watch_interval_s=1.0)
-
-    session = Session(
-        session_id="sess-456",
-        computer_name="TestMac",
-        tmux_session_name="tc_sess-456",
-        last_input_origin=InputOrigin.TELEGRAM.value,
-        title="Test session",
-        project_path="/tmp/project",
-    )
-
-    with (
-        patch(
-            "teleclaude.services.maintenance_service.tmux_bridge.session_exists",
-            new_callable=AsyncMock,
-            return_value=True,
-        ),
-        patch.object(service, "_build_tmux_env_vars", new_callable=AsyncMock, return_value={}),
-        patch(
-            "teleclaude.services.maintenance_service.tmux_bridge.ensure_tmux_session",
-            new_callable=AsyncMock,
-            return_value=True,
-        ) as ensure_tmux,
-    ):
-        result = await service.ensure_tmux_session(session)
-
-        assert result is True
-        assert not ensure_tmux.called
-
     @pytest.mark.asyncio
     async def test_cleanup_skips_recently_active_sessions(self):
         """Test that recently active sessions are not cleaned up."""
@@ -1766,7 +1696,6 @@ async def test_ensure_output_polling_uses_tmux():
     daemon.client = MagicMock()
     daemon.client.create_channel = AsyncMock()
     daemon.maintenance_service = MagicMock()
-    daemon.maintenance_service.ensure_tmux_session = AsyncMock(return_value=True)
 
     session = Session(
         session_id="sess-term",
@@ -1779,12 +1708,41 @@ async def test_ensure_output_polling_uses_tmux():
 
     with (
         patch("teleclaude.daemon.polling_coordinator.is_polling", new=AsyncMock(return_value=False)),
+        patch("teleclaude.daemon.tmux_bridge.session_exists", new=AsyncMock(return_value=True)),
     ):
         await daemon._ensure_output_polling(session)
 
     assert daemon._poll_and_send_output.called
     args, _kwargs = daemon._poll_and_send_output.call_args
     assert args == (session.session_id, session.tmux_session_name)
+
+
+@pytest.mark.asyncio
+async def test_ensure_output_polling_skips_missing_tmux():
+    """Output polling should not recreate a missing tmux session."""
+
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon._poll_and_send_output = AsyncMock()
+    daemon.client = MagicMock()
+    daemon.client.create_channel = AsyncMock()
+    daemon.maintenance_service = MagicMock()
+
+    session = Session(
+        session_id="sess-missing",
+        computer_name="TestMac",
+        tmux_session_name="telec_missing",
+        last_input_origin=InputOrigin.API.value,
+        title="TeleClaude: $TestMac - Missing Tmux",
+        project_path="/tmp/project",
+    )
+
+    with (
+        patch("teleclaude.daemon.polling_coordinator.is_polling", new=AsyncMock(return_value=False)),
+        patch("teleclaude.daemon.tmux_bridge.session_exists", new=AsyncMock(return_value=False)),
+    ):
+        await daemon._ensure_output_polling(session)
+
+    daemon._poll_and_send_output.assert_not_awaited()
 
 
 @pytest.mark.asyncio

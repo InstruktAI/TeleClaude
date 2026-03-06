@@ -1,0 +1,88 @@
+---
+id: 'software-development/procedure/lifecycle/integration'
+type: 'procedure'
+scope: 'domain'
+description: 'Integration phase. Drive the integration state machine, handle squash commits, conflicts, push rejections, and lease contention.'
+---
+
+# Integration — Procedure
+
+## Goal
+
+Merge candidate branches to canonical main via the integration state machine, handling
+each decision point until the queue is drained.
+
+## Preconditions
+
+- Candidate branches exist in the FIFO queue.
+- No other integrator session holds the lease.
+
+## Steps
+
+1. Call `telec todo integrate [slug]` to enter the state machine.
+2. Read the returned instruction block and execute it verbatim.
+3. After executing, call `telec todo integrate` again to advance.
+4. Repeat until a terminal instruction is returned (COMPLETE or LEASE_BUSY).
+
+The state machine returns one of the following instruction blocks at each step.
+
+### SQUASH COMMIT REQUIRED
+
+The branch has been squash-merged; staged changes are ready.
+
+1. Read the context: diff stats, branch commit history, `requirements.md`,
+   `implementation-plan.md`.
+2. Compose a commit message capturing the full delivery intent:
+   - Subject: imperative, scoped — e.g. `feat(my-feature): deliver my-feature`
+   - Body: summarize what changed, key decisions, scope
+   - Footer: `Co-Authored-By: TeleClaude <noreply@instrukt.ai>`
+3. Run `git commit -m '<message>'`, then call `telec todo integrate`.
+
+### CONFLICT RESOLUTION REQUIRED
+
+The squash merge encountered conflicts.
+
+1. Read each conflicted file; understand the code on both sides.
+2. Resolve all conflict markers (`<<<<`, `====`, `>>>>`).
+3. Stage resolved files with `git add <files>`.
+4. Compose a commit message (same quality standard as squash commit).
+5. Run `git commit -m '<message>'`, then call `telec todo integrate`.
+6. If conflicts are genuinely unresolvable, call `telec todo integrate` without
+   committing — the state machine will detect this and re-prompt.
+
+### PUSH REJECTION RECOVERY
+
+Push of main to origin was rejected (likely non-fast-forward).
+
+1. Diagnose: `git fetch origin && git log --oneline origin/main ^main`.
+2. Rebase: `git rebase origin/main`.
+3. Resolve any new conflicts, then `git push origin main`.
+4. Call `telec todo integrate`.
+
+### INTEGRATION WAIT
+
+Main branch not clear — another session is active or main has uncommitted changes.
+Wait for blockers to clear, then call `telec todo integrate`.
+
+### LEASE_BUSY
+
+Another integrator session already holds the lease. Exit immediately.
+Do not attempt to break the lease.
+
+### INTEGRATION COMPLETE
+
+All candidates have been processed. Self-end: `telec sessions end self`.
+
+## Outputs
+
+- Merged candidates on canonical main.
+- Delivery bookkeeping (roadmap delivered, demo snapshot promoted).
+- Cleaned worktrees and branches.
+- `integration.*` lifecycle events at each state transition.
+
+## Recovery
+
+- If a squash commit fails, read the error and retry.
+- If conflicts cannot be resolved, call `telec todo integrate` to let the state machine
+  handle the unresolved state.
+- If push is repeatedly rejected, check for concurrent integrators.

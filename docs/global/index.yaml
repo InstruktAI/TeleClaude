@@ -1,6 +1,14 @@
 project_root: /Users/Morriz/.teleclaude
 snippets_root: /Users/Morriz/.teleclaude/docs
 snippets:
+- id: general/concept/agent-characteristics
+  description: Cognitive profiles and collaboration selection heuristics for AI agents.
+  type: concept
+  scope: global
+  path: docs/general/concept/agent-characteristics.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/concept/agent-invocation-modes
   description: Standardized invocation patterns for AI agent CLIs, separating structured
     extraction from autonomous execution.
@@ -60,15 +68,6 @@ snippets:
   type: concept
   scope: global
   path: docs/general/concept/skill-taxonomy.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/policy/agent-dispatch
-  description: Role-to-agent dispatch assignments. Designates which agent holds each
-    operational role.
-  type: policy
-  scope: global
-  path: docs/general/policy/agent-dispatch.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -225,6 +224,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: general/principle/grounding
+  description: Re-ground in sources of truth before reasoning. Memory is incomplete;
+    conclusions require evidence.
+  type: principle
+  scope: global
+  path: docs/general/principle/grounding.md
+  role: member
+  visibility: public
+  source_project: TeleClaude
 - id: general/principle/intent-first-documentation
   description: Preserve intent, boundaries, and durable reasoning in documentation.
   type: principle
@@ -340,8 +348,8 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/maintenance/next-prepare
-  description: Orchestration procedure for next-prepare. Routes work to discovery,
-    draft, or gate with strict phase separation and session lifecycle management.
+  description: Orchestration procedure for next-prepare. Calls the prepare state machine
+    in a loop, dispatching workers as instructed until the todo is prepared.
   type: procedure
   scope: global
   path: docs/general/procedure/maintenance/next-prepare.md
@@ -349,8 +357,8 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/maintenance/next-prepare-discovery
-  description: Collaborative discovery phase for next-prepare. Two agents research
-    in parallel and converge to produce preparation artifacts when input is thin.
+  description: Triangulation phase for next-prepare. Two agents research in parallel
+    and converge to derive requirements from input, codebase, and documentation.
   type: procedure
   scope: global
   path: docs/general/procedure/maintenance/next-prepare-discovery.md
@@ -358,8 +366,8 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/maintenance/next-prepare-draft
-  description: Draft phase for next-prepare. Creates or refines prep artifacts but
-    does not make final readiness decisions.
+  description: Plan drafting phase for next-prepare. Derives implementation-plan.md
+    from approved requirements. Single-agent work.
   type: procedure
   scope: global
   path: docs/general/procedure/maintenance/next-prepare-draft.md
@@ -367,8 +375,8 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/maintenance/next-prepare-gate
-  description: Gate phase for next-prepare. Performs formal DOR validation and is
-    the only phase allowed to drive readiness decisions.
+  description: Gate phase for next-prepare. Performs formal DOR validation on the
+    complete artifact set and is the only phase allowed to drive readiness decisions.
   type: procedure
   scope: global
   path: docs/general/procedure/maintenance/next-prepare-gate.md
@@ -445,15 +453,6 @@ snippets:
   type: spec
   scope: global
   path: docs/general/spec/agent-artifacts.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/spec/agent-characteristics
-  description: Cognitive profiles, capability boundaries, and collaboration pairs
-    for AI agents in the system.
-  type: spec
-  scope: global
-  path: docs/general/spec/agent-characteristics.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -739,6 +738,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: software-development/procedure/lifecycle/bugs-fix
+  description: Bug fix phase. Investigate, document, fix, and verify a reported bug
+    in a worktree.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/bugs-fix.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: software-development/procedure/lifecycle/build
   description: Build phase. Execute implementation plan tasks, commit per task, and
     manage deferrals.
@@ -797,46 +805,30 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/lifecycle/maintenance
-  description: Maintenance phase for repo-wide upkeep (security, dependencies, infra).
+- id: software-development/procedure/lifecycle/integration
+  description: Integration phase. Drive the integration state machine, handle squash
+    commits, conflicts, push rejections, and lease contention.
   type: procedure
   scope: domain
-  path: docs/software-development/procedure/lifecycle/maintenance.md
+  path: docs/software-development/procedure/lifecycle/integration.md
   role: member
   visibility: internal
   source_project: TeleClaude
 - id: software-development/procedure/lifecycle/prepare
-  description: Prepare phase entry point. Decide roadmap focus, assess input readiness,
-    and review requirements/plan.
+  description: Prepare phase overview. Sequential artifact production with review
+    gates, driven by the prepare state machine.
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/prepare.md
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: software-development/procedure/lifecycle/prepare/implementation-planning
-  description: Analyze or draft implementation-plan.md with approach, files, tasks,
-    risks.
+- id: software-development/procedure/lifecycle/refine-input
+  description: Refine input phase. Capture evolving human thinking about a todo and
+    crystallize it into input.md, then invalidate grounding.
   type: procedure
   scope: domain
-  path: docs/software-development/procedure/lifecycle/prepare/implementation-planning.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle/prepare/input-assessment
-  description: Assess input.md readiness using Definition of Ready criteria and decide
-    whether to split.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/prepare/input-assessment.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/procedure/lifecycle/prepare/requirements-analysis
-  description: Analyze or verify requirements.md content for completeness and clarity.
-  type: procedure
-  scope: domain
-  path: docs/software-development/procedure/lifecycle/prepare/requirements-analysis.md
+  path: docs/software-development/procedure/lifecycle/refine-input.md
   role: member
   visibility: internal
   source_project: TeleClaude

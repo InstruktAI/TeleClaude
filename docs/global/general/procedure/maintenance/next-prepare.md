@@ -2,150 +2,129 @@
 id: 'general/procedure/maintenance/next-prepare'
 type: 'procedure'
 scope: 'global'
-description: 'Orchestration procedure for next-prepare. Routes work to discovery, draft, or gate with strict phase separation and session lifecycle management.'
+description: 'Orchestration procedure for next-prepare. Calls the prepare state machine in a loop, dispatching workers as instructed until the todo is prepared.'
 ---
 
-# Next Prepare Maintenance — Procedure
+# Next Prepare — Procedure
 
 ## Required reads
 
-@~/.teleclaude/docs/general/procedure/maintenance/next-prepare-discovery.md
-@~/.teleclaude/docs/general/procedure/maintenance/next-prepare-draft.md
-@~/.teleclaude/docs/general/procedure/maintenance/next-prepare-gate.md
-@~/.teleclaude/docs/general/spec/agent-characteristics.md
+- @~/.teleclaude/docs/general/concept/agent-characteristics.md
+- @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-discovery.md
+- @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-draft.md
+- @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-gate.md
 
 ## Goal
 
-Route todo preparation through the appropriate artifact-creation phase, supervise the
-gate outcome, and clean up all sessions when the todo artifacts contain the final verdict.
+Drive the prepare state machine by calling `telec todo prepare [slug]` in a loop.
+Each call returns an instruction block. Execute it, then call again. Repeat until
+the machine returns a terminal state (PREPARED or a blocker).
 
-1. **Discovery** or **draft** phase for artifact creation (router chooses one, never both).
-2. Gate phase for formal DOR validation (runs in a separate worker session).
-3. Supervise-and-conclude phase: read verdict, iterate if needed, clean up.
-
-Discovery and draft produce the same output contract. Discovery uses two agents with
-complementary profiles researching in parallel and converging. Draft uses a single agent.
-The router selects based on input signal strength.
-
-The router is responsible for the full lifecycle — including ending worker sessions
-and itself when done.
+The state machine determines what happens. The orchestrator dispatches what is requested.
+The orchestrator never makes routing decisions — the machine owns sequencing.
 
 ## Preconditions
 
 1. `todos/roadmap.yaml` exists.
 2. Target slug is active (not icebox, not delivered) when slug is provided.
-3. Worker command selected is explicit: `next-prepare-draft`, `next-prepare-gate`,
-   or discovery runs inline in the router per the discovery procedure.
 
 ## Steps
 
-### Routing
+### 1. Enter the state machine
 
-1. Inspect slug state and assess input signal strength:
-   - Read `input.md`, `requirements.md`, `implementation-plan.md` if they exist.
-   - Assess whether existing content is substantive (grounded in codebase and domain
-     knowledge) or thin (scaffold templates, one-liner descriptions, vague intent).
-2. **If input is thin** — route to discovery (inline). Thin means: `input.md` is empty
-   or contains only scaffold comments, requirements are absent or skeletal, the roadmap
-   description is the only signal. The router follows the Next Prepare Discovery procedure:
-   it spawns a complementary agent, both research in parallel, converge, and produce artifacts.
-3. **If input is substantive** — route to draft (inline). Substantive means: `input.md`
-   contains a real brain dump with intent, requirements exist with concrete success criteria,
-   or the implementation plan is already sketched. Run `/next-prepare-draft` inline.
-4. If artifacts already exist and need formal DOR validation, dispatch gate directly (step 6).
-5. Enforce session isolation: never reuse the same worker session for multiple phases.
+Call `telec todo prepare [slug]`. Read the returned instruction block.
 
-### Supervision
+### 2. Execute the instruction
 
-6. Dispatch gate to a NEW worker session. Record the gate session ID.
-7. After dispatching gate, set a heartbeat and wait for the gate worker notification.
-8. On notification: read `state.yaml` to determine the gate verdict.
-9. **Verify artifact delivery**: the gate worker commits its own artifacts. The router
-   verifies the commit exists (`git log` on the todo folder). The commit is the proof
-   of delivery — not the file state on disk. If the commit is missing, the router opens
-   a direct conversation with the gate worker to resolve. Only the gate worker can
-   produce its own assessment; the router never reconstructs gate output.
-10. Only gate outcomes can authorize readiness transition criteria.
+The state machine returns one of the following instruction types:
 
-### Verdict handling
+#### TRIANGULATION REQUIRED
 
-11. **Pass** (`dor.score >= 8`): proceed to cleanup.
-12. **Needs work** (`dor.status == needs_work`): open a direct conversation with the
-    gate worker per the Agent Direct Conversation procedure. The router has codebase
-    context from running discovery or draft; the gate worker has the DOR assessment.
-    Together they iterate on the artifacts until quality lands. Gate worker updates
-    artifacts. Router re-reads `state.yaml` after each iteration. When pass: proceed
-    to cleanup.
-13. **Needs decision** (`dor.status == needs_decision`): blockers require human input.
-    Proceed to cleanup. The blockers in `dor-report.md` are the signal for the human.
+`input.md` exists and requirements need derivation. Dispatch the two-agent
+triangulation team per the triangulation procedure. The orchestrator is one
+of the two agents — it spawns the complementary partner and runs convergence
+inline.
 
-### Cleanup
+After requirements are written, call `telec todo prepare [slug]` again.
 
-14. **Pass / needs_work resolved**: End the gate worker session (`telec sessions end <gate_session_id>`).
-    The todo folder is the durable evidence trail. Do NOT stay alive to report results —
-    the commit is the report. Then end yourself:
-    ```bash
-    telec sessions end "$(cat "$TMPDIR/teleclaude_session_id")"
-    ```
-15. **Needs decision**: Do NOT end the gate session — it stays alive as a visible signal
-    to the human. The blockers in `dor-report.md` are the signal. End yourself:
-    ```bash
-    telec sessions end "$(cat "$TMPDIR/teleclaude_session_id")"
-    ```
-16. The todo folder (`todos/<slug>/`) is the durable evidence trail for all outcomes.
-    The gate session persists only when human attention is required.
-    The router session never persists — ending yourself is always the final action.
+#### REQUIREMENTS REVIEW REQUIRED
+
+`requirements.md` exists but is not yet approved. Dispatch a reviewer to
+validate requirements against the quality standard (completeness, testability,
+grounding, review-awareness). The reviewer writes a verdict to `state.yaml`.
+
+After review, call `telec todo prepare [slug]` again.
+
+#### PLAN DRAFTING REQUIRED
+
+Requirements are approved but `implementation-plan.md` does not exist.
+Dispatch `next-prepare-draft` to a worker session. The draft agent writes
+the plan per the plan draft procedure.
+
+After the plan is written, call `telec todo prepare [slug]` again.
+
+#### PLAN REVIEW REQUIRED
+
+`implementation-plan.md` exists but is not yet approved. Dispatch a reviewer
+to validate the plan against policies, DoD gates, and review lane expectations.
+The reviewer writes a verdict to `state.yaml`.
+
+After review, call `telec todo prepare [slug]` again.
+
+#### GROUNDING CHECK
+
+All artifacts exist and are approved. The machine checks freshness:
+- If `grounding.valid` is true and digests match: returns PREPARED.
+- If stale: returns RE_GROUNDING REQUIRED with the diff of what changed.
+
+#### RE_GROUNDING REQUIRED
+
+The plan references files or policies that have changed since last grounding.
+Dispatch an agent with the diff to update the plan. After update, the plan
+re-enters review.
+
+Call `telec todo prepare [slug]` again.
+
+#### PREPARED
+
+Terminal state. The todo is ready for build. Sync to worktree if needed.
+End all worker sessions and end yourself.
+
+#### BLOCKER
+
+The machine encountered a condition it cannot resolve (missing input, human
+decision needed, superseded todo). Report the blocker and stop.
+
+### 3. Supervision
+
+After dispatching a worker:
+
+1. Set a heartbeat timer.
+2. Wait for the worker notification.
+3. On notification: call `telec todo prepare [slug]` again to advance.
+4. If the worker stalls (heartbeat fires with no progress), open a direct
+   conversation to resolve. If still stuck after two iterations, record
+   blockers and stop.
+
+### 4. Cleanup
+
+- **PREPARED**: end all worker sessions, then end yourself.
+- **BLOCKER**: report the blocker. End worker sessions. End yourself.
+  The todo folder is the durable evidence trail.
 
 ## Outputs
 
-1. Clear phase routing decision (discovery or draft).
-2. Preparation artifacts from discovery or draft phase.
-3. Final DOR verdict from gate phase (written to todo artifacts).
-4. On pass: all sessions ended. On needs_decision: gate stays alive as signal.
-
-### DOR contract
-
-Per processed slug, both phases may update:
-
-- `requirements.md`
-- `implementation-plan.md`
-- `dor-report.md`
-- `state.yaml` (`dor` section)
-
-`state.yaml.dor` schema:
-
-```json
-{
-  "dor": {
-    "last_assessed_at": "2026-02-09T17:00:00Z",
-    "score": 8,
-    "status": "pass",
-    "schema_version": 1,
-    "blockers": [],
-    "actions_taken": {
-      "requirements_updated": true,
-      "implementation_plan_updated": true
-    }
-  }
-}
-```
-
-Allowed values:
-
-- `dor.score`: integer `1..10`
-- `dor.status`: `pass`, `needs_work`, `needs_decision`
-
-Threshold constants:
-
-- Target quality: `8`
-- Decision required: `< 7`
+1. Preparation artifacts produced through the state machine phases:
+   `requirements.md`, `implementation-plan.md`, `demo.md`.
+2. Each artifact reviewed and approved before the next phase begins.
+3. Grounding metadata in `state.yaml` for staleness detection.
+4. All sessions ended on completion.
 
 ## Recovery
 
-1. If phase routing is ambiguous, default to discovery (the heavier path catches what
-   the lighter path would miss; the reverse is not true).
-2. If gate lacks required draft artifacts, stop and return `needs_work` with missing files listed.
-3. If gate session ends without notification (flaky delivery), tail it once and proceed
-   with verdict reading.
-4. If direct conversation stalls (heartbeat fires with no progress after two iterations),
-   write blockers to `dor-report.md` and proceed to cleanup.
+1. If a worker session fails, read the error and retry once. On second failure,
+   record the blocker and stop.
+2. If the state machine returns an unexpected instruction, log it and stop.
+   Do not improvise — the machine owns sequencing.
+3. If direct conversation with a worker stalls, write blockers to `dor-report.md`
+   and proceed to cleanup.

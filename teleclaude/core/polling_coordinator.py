@@ -963,10 +963,10 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                             event.exit_code,
                         )
                 else:
-                    # Tmux session disappeared (no exit code). Do NOT terminate:
-                    # allow auto-heal to recreate tmux and resume the session.
+                    # Tmux session disappeared without a clean process exit.
+                    # Recovery is demand-driven; do not attempt background healing here.
                     logger.warning(
-                        "Tmux session missing for %s; leaving session active for auto-heal",
+                        "Tmux session missing for %s; polling stopped without recovery",
                         event.session_id[:8],
                     )
     except Exception as exc:

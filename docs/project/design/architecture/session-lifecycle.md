@@ -22,7 +22,7 @@ description: 'Complete lifecycle of a terminal session from creation to cleanup.
 ### 2. Active Operation
 
 - **Self-Identification**: The agent's own TeleClaude session ID is available at `$TMPDIR/teleclaude_session_id`. This is the prerequisite for self-referential operations: `telec sessions end` (self-termination), agent-restart API calls, and `telec sessions tail` on own output.
-- **Input**: Commands are sent to the `tmux` pane via `tmux_io`.
+- **Input**: Commands are sent to the `tmux` pane via `tmux_io`. Normal message delivery requires a routable tmux session, except for intentional `headless` sessions, which may be adopted into tmux on user input.
 - **Output**: The `OutputPoller` reads from `tmux` and emits `OutputEvent`s.
 - **Summarization**: Periodic AI-summarization updates the Telegram topic.
 - **Clutter Control**: User inputs and feedback are cleaned up based on session state.
@@ -59,6 +59,7 @@ description: 'Complete lifecycle of a terminal session from creation to cleanup.
     - For true headless identity resolution, native-session mapping is authoritative.
 - **Pipeline**: Hook events flow through the normal outbox → daemon → summarization → TTS pipeline. Output polling is skipped (no tmux to poll).
 - **Cleanup**: Headless sessions are cleaned up by the 72h inactivity sweep, same as regular sessions. They are excluded from stale-tmux detection (no tmux to check) but **are visible in UI listings** for observability.
+- **Adoption boundary**: Transparent adoption is reserved for true `headless` sessions. Closed sessions are not reopened by normal message flow, and non-headless sessions with missing tmux require explicit recovery rather than passive background healing.
 
 ```mermaid
 stateDiagram-v2
@@ -81,14 +82,14 @@ stateDiagram-v2
 - Session creation command (computer, project_path, agent, title, message)
 - User messages and commands during operation
 - Agent output via tmux streams
-- Close/end session command
+- Close/end session request
 
 **Outputs:**
 
 - Tmux session with running agent
 - Session metadata in SQLite (session_id, tmux_session_name, status, timestamps)
 - Adapter channel creation (Telegram topic, TUI pane)
-- Domain events (SESSION_STARTED, OUTPUT_UPDATE, SESSION_CLOSED)
+- Domain events (SESSION_STARTED, OUTPUT_UPDATE, SESSION_CLOSE_REQUESTED, SESSION_CLOSED)
 - Final transcript and summary artifacts
 
 ## Invariants
@@ -136,20 +137,21 @@ sequenceDiagram
 ### 3. Termination Flow
 
 1. **Close Trigger**: User calls `/close-session` or AI calls `telec sessions end $(cat "$TMPDIR/teleclaude_session_id")`
-2. **Status Update**: Mark session status=closing
-3. **Tmux Kill**: Send SIGTERM to tmux session
-4. **Poller Stop**: OutputPoller detects exit and stops
-5. **Final Summary**: Generate and post session summary (if applicable)
-6. **Channel Archive**: Adapter archives or marks channel inactive
-7. **Metadata Finalize**: Set status=closed, closed_at timestamp
-8. **Event Emission**: Broadcast SESSION_CLOSED
-9. **Resource Cleanup**: Remove listeners, delete workspace directories if temporary
+2. **Intent Record**: API/tooling marks session status=`closing`, emits `SESSION_CLOSE_REQUESTED`, and returns accepted immediately
+3. **Daemon Cleanup Start**: Daemon handler receives `SESSION_CLOSE_REQUESTED` and begins termination exactly once
+4. **Tmux Kill**: Send SIGTERM to tmux session
+5. **Poller Stop**: OutputPoller detects exit and stops
+6. **Final Summary**: Generate and post session summary (if applicable)
+7. **Channel Archive**: Adapter archives or marks channel inactive
+8. **Metadata Finalize**: Set status=`closed`, `closed_at` timestamp
+9. **Event Emission**: Broadcast `SESSION_CLOSED`
+10. **Resource Cleanup**: Remove listeners, delete workspace directories if temporary
 
 ## Failure modes
 
 - **Tmux Startup Failure**: Agent command invalid or environment broken. Session marked failed immediately. No cleanup needed.
-- **Mid-Session Crash**: Tmux dies unexpectedly. OutputPoller detects exit code, marks session failed, emits event. Stale tmux zombie processes may remain.
+- **Mid-Session Crash**: Tmux dies unexpectedly. OutputPoller detects exit code, marks session failed or unavailable, and emits event. The system does not background-heal ordinary tmux-backed sessions; only explicit recovery flows or true `headless` adoption may restore routability.
 - **Cleanup Timeout**: Channel archival or final summary hangs. Session marked closed anyway. Channel may show stale state.
 - **Orphaned Tmux**: Daemon crash during active session leaves tmux running. Next startup detects orphan via process scan, marks session as recovered or failed.
-- **Double Close**: Second close command is idempotent and returns success without action.
+- **Double Close**: Second close request is idempotent and returns success/accepted without duplicate cleanup.
 - **Hook Delivery Delay**: Session closes before agent hook processes. Hook delivered late causes out-of-order notification.

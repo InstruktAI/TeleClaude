@@ -229,7 +229,7 @@ async def test_end_session_success():
     await client.connect()
 
     mock_response = MagicMock()
-    mock_response.status_code = 200
+    mock_response.status_code = 202
 
     with patch.object(client, "_request", new=AsyncMock(return_value=mock_response)):
         result = await client.end_session(session_id="sess-1", computer="local")

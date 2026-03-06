@@ -11,10 +11,11 @@ You are now the Bug Fixer.
 
 - @~/.teleclaude/docs/software-development/policy/commits.md
 - @~/.teleclaude/docs/software-development/policy/version-control-safety.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/bugs-fix.md
 
 ## Purpose
 
-Investigate the bug, apply a fix, and document findings in bug.md.
+Investigate a bug, apply a fix, and document findings in bug.md.
 
 ## Inputs
 
@@ -42,20 +43,6 @@ Investigate the bug, apply a fix, and document findings in bug.md.
 
 ## Steps
 
-- FIRST: Invoke `superpowers:systematic-debugging` skill before proceeding
-- Read `todos/{slug}/bug.md` to understand the symptom and discovery context
-- Investigate the bug following the debugging skill's guidance
-- Document your investigation in the `## Investigation` section of `bug.md`
-- Identify and document the root cause in the `## Root Cause` section
-- Apply the minimal fix required
-- Document what you changed in the `## Fix Applied` section
-- Commit the fix and `bug.md` updates together
-- Run tests: `make test`
-- Run lint: `make lint`
-- Verify no unexpected dirty files remain.
-- Expected orchestrator-managed planning/state drift is non-blocking:
-  - `todos/roadmap.yaml`
-  - `todos/{slug}/state.yaml`
-- Do not commit those orchestrator-managed drift files unless this bug task explicitly requires planning/state edits.
+- Invoke `superpowers:systematic-debugging` skill before proceeding.
+- Follow the bug fix procedure.
 - End with: `Ready for review.`
-- Summarize results in the completion report

@@ -244,6 +244,20 @@ async def _ensure_tmux_for_headless(
     return refreshed or session
 
 
+async def _session_message_delivery_available(session: Session) -> bool:
+    """Return True when a session can accept normal message delivery.
+
+    Headless sessions are intentionally adoptable on-demand. Initializing sessions
+    are allowed to queue input and will be gated later during delivery. All other
+    sessions require an existing tmux session; missing tmux is not healed here.
+    """
+    if session.lifecycle_status in {"headless", "initializing"}:
+        return True
+    if not session.tmux_session_name:
+        return False
+    return await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False)
+
+
 async def create_session(  # pylint: disable=too-many-locals  # Session creation requires many variables
     cmd: CreateSessionCommand,
     client: "AdapterClient",
@@ -991,7 +1005,7 @@ async def deliver_inbound(
         if not session:
             raise RuntimeError(f"Startup gate timeout for session {session_id[:8]}")
 
-    if session.lifecycle_status == "headless" or not session.tmux_session_name:
+    if session.lifecycle_status == "headless":
         adopted = await _ensure_tmux_for_headless(
             session,
             client,
@@ -1001,6 +1015,8 @@ async def deliver_inbound(
         if not adopted:
             raise RuntimeError(f"Failed to adopt headless session {session_id[:8]}")
         session = adopted
+    elif not await _session_message_delivery_available(session):
+        raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
 
     # Treat every user message as an explicit turn boundary in threaded mode.
     if is_threaded_output_enabled(session.active_agent):
@@ -1073,6 +1089,8 @@ async def process_message(
         raise SessionMessageRejectedError(session_id=session_id, reason="not_found")
     if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
         raise SessionMessageRejectedError(session_id=session_id, reason="closed")
+    if not await _session_message_delivery_available(session):
+        raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
 
     await get_inbound_queue_manager().enqueue(
         session_id=session_id,

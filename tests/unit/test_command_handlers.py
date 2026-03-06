@@ -1945,6 +1945,7 @@ async def test_deliver_inbound_updates_last_input_origin_before_broadcast():
         patch.object(command_handlers, "db", mock_db),
         patch.object(command_handlers, "tmux_io") as mock_tmux_io,
         patch.object(command_handlers, "polling_coordinator"),
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
     ):
         mock_tmux_io.wrap_bracketed_paste.return_value = "hello"
         mock_tmux_io.process_text = AsyncMock(return_value=True)
@@ -2026,6 +2027,7 @@ async def test_deliver_inbound_breaks_threaded_turn_before_broadcast():
         patch.object(command_handlers, "tmux_io") as mock_tmux_io,
         patch.object(command_handlers, "polling_coordinator"),
         patch("teleclaude.core.command_handlers.is_threaded_output_enabled", return_value=True),
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
     ):
         mock_tmux_io.wrap_bracketed_paste.return_value = "hello"
         mock_tmux_io.process_text = AsyncMock(return_value=True)
@@ -2081,6 +2083,7 @@ async def test_deliver_inbound_skips_non_linked_system_message():
         patch.object(command_handlers, "db", mock_db),
         patch.object(command_handlers, "tmux_io") as mock_tmux_io,
         patch.object(command_handlers, "polling_coordinator"),
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
     ):
         mock_tmux_io.wrap_bracketed_paste.return_value = row["content"]
         mock_tmux_io.process_text = AsyncMock(return_value=True)
@@ -2141,6 +2144,7 @@ async def test_deliver_inbound_injects_linked_output_system_message():
         patch.object(command_handlers, "db", mock_db),
         patch.object(command_handlers, "tmux_io") as mock_tmux_io,
         patch.object(command_handlers, "polling_coordinator"),
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
     ):
         mock_tmux_io.wrap_bracketed_paste.return_value = linked_output
         mock_tmux_io.process_text = AsyncMock(return_value=True)
@@ -2208,6 +2212,7 @@ async def test_deliver_inbound_injects_direct_conversation_system_message():
         patch.object(command_handlers, "db", mock_db),
         patch.object(command_handlers, "tmux_io") as mock_tmux_io,
         patch.object(command_handlers, "polling_coordinator"),
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
     ):
         mock_tmux_io.wrap_bracketed_paste.return_value = direct_intro
         mock_tmux_io.process_text = AsyncMock(return_value=True)
@@ -2356,6 +2361,7 @@ async def test_deliver_inbound_waits_through_initializing_then_dispatches():
         patch.object(command_handlers, "polling_coordinator"),
         patch.object(command_handlers, "STARTUP_GATE_TIMEOUT_S", 5),
         patch.object(command_handlers, "STARTUP_GATE_POLL_INTERVAL_S", 0),
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
     ):
         mock_tmux_io.wrap_bracketed_paste.return_value = "hello"
         mock_tmux_io.process_text = AsyncMock(return_value=True)
@@ -2469,6 +2475,7 @@ async def test_deliver_inbound_active_session_skips_gate():
         patch.object(command_handlers, "db", mock_db),
         patch.object(command_handlers, "tmux_io") as mock_tmux_io,
         patch.object(command_handlers, "polling_coordinator"),
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
     ):
         mock_tmux_io.wrap_bracketed_paste.return_value = "hello"
         mock_tmux_io.process_text = AsyncMock(return_value=True)
@@ -2517,6 +2524,30 @@ async def test_process_message_rejects_closed_session():
 
 
 @pytest.mark.asyncio
+async def test_process_message_rejects_unavailable_non_headless_session():
+    unavailable_session = MagicMock()
+    unavailable_session.closed_at = None
+    unavailable_session.lifecycle_status = "active"
+    unavailable_session.tmux_session_name = "tc_missing"
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=unavailable_session)
+
+    cmd = ProcessMessageCommand(
+        session_id="unavailable-session",
+        text="hello",
+        origin=InputOrigin.TERMINAL.value,
+    )
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=False)),
+    ):
+        with pytest.raises(SessionMessageRejectedError, match="is unavailable"):
+            await command_handlers.process_message(cmd, AsyncMock(), AsyncMock())
+
+
+@pytest.mark.asyncio
 async def test_deliver_inbound_rejects_closed_session():
     closed_session = MagicMock()
     closed_session.closed_at = datetime.now(timezone.utc)
@@ -2549,6 +2580,114 @@ async def test_deliver_inbound_rejects_closed_session():
 
     with patch.object(command_handlers, "db", mock_db):
         with pytest.raises(SessionMessageRejectedError, match="is closed"):
+            await command_handlers.deliver_inbound(row, AsyncMock(), AsyncMock())
+
+
+@pytest.mark.asyncio
+async def test_deliver_inbound_adopts_headless_session_before_tmux_delivery():
+    headless_session = MagicMock()
+    headless_session.session_id = "headless-session"
+    headless_session.closed_at = None
+    headless_session.lifecycle_status = "headless"
+    headless_session.tmux_session_name = None
+    headless_session.project_path = "/tmp"
+    headless_session.subdir = None
+    headless_session.active_agent = "codex"
+
+    adopted_session = MagicMock()
+    adopted_session.session_id = "headless-session"
+    adopted_session.closed_at = None
+    adopted_session.lifecycle_status = "active"
+    adopted_session.tmux_session_name = "tc_headless"
+    adopted_session.project_path = "/tmp"
+    adopted_session.subdir = None
+    adopted_session.active_agent = "codex"
+
+    row = cast(
+        InboundQueueRow,
+        {
+            "id": 1,
+            "session_id": "headless-session",
+            "origin": InputOrigin.TELEGRAM.value,
+            "message_type": "text",
+            "content": "hello",
+            "payload_json": None,
+            "actor_id": None,
+            "actor_name": None,
+            "actor_avatar_url": None,
+            "status": "pending",
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "attempt_count": 0,
+            "next_retry_at": None,
+            "last_error": None,
+            "source_message_id": None,
+            "source_channel_id": None,
+        },
+    )
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=headless_session)
+    mock_db.update_session = AsyncMock()
+    mock_db.update_last_activity = AsyncMock()
+    mock_client = AsyncMock()
+    start_polling = AsyncMock()
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(
+            command_handlers,
+            "_ensure_tmux_for_headless",
+            new=AsyncMock(return_value=adopted_session),
+        ) as mock_adopt,
+        patch.object(command_handlers.tmux_io, "process_text", new=AsyncMock(return_value=True)) as mock_process_text,
+    ):
+        await command_handlers.deliver_inbound(row, mock_client, start_polling)
+
+    mock_adopt.assert_awaited_once()
+    mock_process_text.assert_awaited_once()
+    process_args = mock_process_text.await_args.args
+    assert process_args[0] is adopted_session
+    start_polling.assert_awaited_once_with("headless-session", "tc_headless")
+
+
+@pytest.mark.asyncio
+async def test_deliver_inbound_rejects_unavailable_non_headless_session():
+    unavailable_session = MagicMock()
+    unavailable_session.session_id = "missing-tmux-session"
+    unavailable_session.closed_at = None
+    unavailable_session.lifecycle_status = "active"
+    unavailable_session.tmux_session_name = "tc_missing"
+
+    row = cast(
+        InboundQueueRow,
+        {
+            "id": 1,
+            "session_id": "missing-tmux-session",
+            "origin": InputOrigin.TELEGRAM.value,
+            "message_type": "text",
+            "content": "hello",
+            "payload_json": None,
+            "actor_id": None,
+            "actor_name": None,
+            "actor_avatar_url": None,
+            "status": "pending",
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "attempt_count": 0,
+            "next_retry_at": None,
+            "last_error": None,
+            "source_message_id": None,
+            "source_channel_id": None,
+        },
+    )
+
+    mock_db = AsyncMock()
+    mock_db.get_session = AsyncMock(return_value=unavailable_session)
+
+    with (
+        patch.object(command_handlers, "db", mock_db),
+        patch.object(command_handlers.tmux_bridge, "session_exists", new=AsyncMock(return_value=False)),
+    ):
+        with pytest.raises(SessionMessageRejectedError, match="is unavailable"):
             await command_handlers.deliver_inbound(row, AsyncMock(), AsyncMock())
 
 

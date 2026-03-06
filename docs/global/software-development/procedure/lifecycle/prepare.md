@@ -1,5 +1,5 @@
 ---
-description: 'Prepare phase entry point. Decide roadmap focus, assess input readiness, and review requirements/plan.'
+description: 'Prepare phase overview. Sequential artifact production with review gates, driven by the prepare state machine.'
 id: 'software-development/procedure/lifecycle/prepare'
 scope: 'domain'
 type: 'procedure'
@@ -7,64 +7,106 @@ type: 'procedure'
 
 # Prepare — Procedure
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/input-assessment.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/requirements-analysis.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/implementation-planning.md
-
 ## Goal
 
-1. Read `todos/roadmap.yaml`.
-2. Report current items and recommendations:
-   - What items are pending?
-   - What should be prioritized and why?
-   - Any items that need clarification?
-3. Discuss with the orchestrator until a slug is chosen.
+Produce reviewed, approved, and grounded preparation artifacts for a todo through
+sequential phases, each producing one artifact that is reviewed before the next begins.
 
-```
-ANALYSIS: {slug}
-
-**Context:** [What I found in the codebase]
-
-**Findings:**
-- [Finding 1]
-- [Finding 2]
-
-**Recommendations:**
-- [Recommendation 1]
-- [Recommendation 2]
-
-**Open Questions:**
-- [Question 1]
-- [Question 2]
-
-What are your thoughts?
-```
-
-Return:
-
-```
-PREPARED: {slug}
-Ready for implementation.
-```
+The prepare state machine (`telec todo prepare`) owns sequencing. The orchestrator
+calls it in a loop and dispatches what is requested.
 
 ## Preconditions
 
 - `todos/roadmap.yaml` exists and is readable.
-- Target slug folder exists or can be created.
+- Target slug is active (not icebox, not delivered).
 
 ## Steps
 
-1. Review roadmap and identify candidate slugs.
-2. Run input assessment and requirements analysis for the chosen slug.
-3. Review or draft the implementation plan.
-4. Confirm readiness with the orchestrator and return `PREPARED`.
+### 1. Input refinement (human-driven, optional)
+
+The human refines their thinking via `next-refine-input`, which rewrites
+`todos/{slug}/input.md` and invalidates grounding.
+
+### 2. Triangulation (two-agent)
+
+When `input.md` exists and `requirements.md` is not yet approved, the state machine
+dispatches two agents to triangulate: one grounds in the codebase, the other in domain
+intent and documentation. They converge to produce `requirements.md`.
+
+Triangulation is always two-agent. There is no single-agent path for requirements derivation.
+
+### 3. Requirements review
+
+`requirements.md` is reviewed for completeness, testability, grounding, and
+review-awareness before advancing.
+
+### 4. Plan drafting (single-agent)
+
+From approved requirements, a single agent produces `implementation-plan.md` and
+`demo.md`. The plan is rationale-rich and review-aware — anticipating what the
+reviewer will check so the builder produces no surprises.
+
+### 5. Plan review
+
+`implementation-plan.md` is reviewed against policies, Definition of Done gates,
+and review lane expectations before advancing.
+
+### 6. DOR gate (formal validation)
+
+The complete artifact set is validated as a coherent whole. Cross-artifact fidelity,
+DOR gate compliance, and review-readiness preview. This is the only phase that
+can authorize readiness transition.
+
+### 7. Grounding check (idempotent)
+
+When all artifacts exist and are approved, the state machine verifies freshness:
+referenced file paths are diffed against current main, input.md digest is checked,
+policy docs are checked. If everything matches: PREPARED. If stale: re-grounding
+dispatches an agent to update the plan.
+
+This makes `telec todo prepare` safe to call at any time — first call creates,
+subsequent calls verify and heal.
 
 ## Outputs
 
-- Preparation report and selected slug marked ready for implementation.
+- `todos/{slug}/requirements.md` — triangulated, reviewed, approved.
+- `todos/{slug}/implementation-plan.md` — review-aware, rationale-rich, reviewed, approved.
+- `todos/{slug}/demo.md` — draft demonstration plan.
+- `todos/{slug}/dor-report.md` — gate assessment.
+- `todos/{slug}/state.yaml` — grounding metadata and DOR verdict.
+- Events emitted at each phase transition (see below).
+
+### Events
+
+The state machine emits events at each phase transition for automation,
+notifications, and auditing. The human does not interact with these — they
+are consumed by automation (invalidation checks, notifications).
+
+| Phase transition | Event |
+|---|---|
+| Input refined | `prepare.input_refined` |
+| Triangulation dispatched | `prepare.triangulation_started` |
+| Requirements written | `prepare.requirements_drafted` |
+| Requirements approved | `prepare.requirements_approved` |
+| Plan written | `prepare.plan_drafted` |
+| Plan approved | `prepare.plan_approved` |
+| Grounding invalidated | `prepare.grounding_invalidated` |
+| Re-grounding completed | `prepare.regrounded` |
+| Preparation complete | `prepare.completed` |
+| Preparation blocked | `prepare.blocked` |
+
+The `grounding_invalidated` event is also emitted by automation outside the
+state machine — when `telec todo prepare --invalidate-check` detects file path
+overlap after an integration delivery.
+
+### HITL boundary
+
+The human interacts only with `input.md` via `next-refine-input`. Once the
+state machine starts, all phases are fully autonomous. No human gates exist
+inside the machine. The only human-facing event is `prepare.blocked` when
+a decision genuinely requires human input.
 
 ## Recovery
 
-- If no ready items, return `NO_READY_ITEMS` and recommend next preparation tasks.
+- If any phase blocks, the state machine records the blocker and stops.
+- The todo folder is the durable evidence trail for all outcomes.

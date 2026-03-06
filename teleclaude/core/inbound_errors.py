@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-SessionMessageRejectionReason = Literal["not_found", "closed"]
+SessionMessageRejectionReason = Literal["not_found", "closed", "unavailable"]
 
 
 class SessionMessageRejectedError(RuntimeError):
@@ -15,6 +15,8 @@ class SessionMessageRejectedError(RuntimeError):
         self.reason = reason
         if reason == "not_found":
             message = f"Session {session_id[:8]} not found"
+        elif reason == "unavailable":
+            message = f"Session {session_id[:8]} is unavailable"
         else:
             message = f"Session {session_id[:8]} is closed"
         super().__init__(message)

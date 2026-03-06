@@ -12,7 +12,8 @@ type: 'design'
 Provide a resource-first API for TUI and CLI clients.
 
 - Read endpoints return cached data immediately (local-only if cache is absent).
-- Write endpoints map to explicit command objects via CommandService.
+- Most write endpoints map to explicit command objects via CommandService.
+- Session close is a direct lifecycle handoff: the API marks the session `closing`, emits `SESSION_CLOSE_REQUESTED`, and returns immediately while the daemon finishes cleanup asynchronously.
 - WebSocket subscriptions drive cache interest tracking and refresh pushes.
 - API handlers do not fetch remote data directly; cache owns refresh.
 - Session updates are merged from local DB and cached remote summaries.
@@ -39,7 +40,8 @@ flowchart LR
 **Inputs:**
 
 - HTTP GET requests for resources (sessions, computers, projects, todos)
-- HTTP POST requests for commands (create session, send message, end session)
+- HTTP POST requests for commands (create session, send message)
+- HTTP lifecycle requests (for example session close)
 - WebSocket subscription requests
 - Cache update notifications
 - HTTP requests and WebSocket subscriptions
@@ -55,8 +57,9 @@ flowchart LR
 ## Invariants
 
 - **Read-Only Cache Access**: API never writes to cache; only reads snapshots.
-- **Command Pipeline for Writes**: All mutations go through CommandService, never direct DB writes.
+- **Explicit Write Boundaries**: Agent/session mutations either go through CommandService or through a documented lifecycle intent handoff owned by the API.
 - **Immediate Response**: API returns cached data instantly; never blocks on refresh.
+- **Non-Blocking Session Close**: `DELETE /sessions/{id}` returns after recording close intent; cleanup continues in daemon event handlers.
 - **Subscription Cleanup**: WebSocket disconnect removes all subscriptions for that client.
 - **No Remote Fetching**: API does not perform remote computer queries; cache owns that responsibility.
 - **Integrated Memory Router**: Memory routes are served by the same API server process and share daemon lifecycle.
@@ -122,7 +125,7 @@ sequenceDiagram
 | GET    | /sessions            | List sessions                    | sessions:{computer} |
 | POST   | /sessions            | Create session                   | Command             |
 | POST   | /sessions/{id}/msg   | Send message                     | Command             |
-| DELETE | /sessions/{id}       | End session                      | Command             |
+| DELETE | /sessions/{id}       | Request async session close      | Lifecycle intent    |
 | GET    | /computers           | List computers                   | computers:all       |
 | GET    | /projects            | List projects                    | projects:{computer} |
 | GET    | /todos               | List todos                       | todos:{project}     |
@@ -136,6 +139,7 @@ sequenceDiagram
 
 - **Cache Miss**: Returns empty array until cache refresh completes. Client sees "no data" briefly.
 - **Command Execution Failure**: Returns 5xx with error message. Client must retry or investigate.
+- **Close Intent Failure**: Returns 5xx if the API cannot load the session or record `closing` before emitting the lifecycle event.
 - **WebSocket Connection Drop**: Client reconnects, resubscribes. Misses push updates during downtime.
 - **Stale Cache**: Client receives outdated data until TTL refresh. Acceptable for TUI; critical updates use events.
 - **API Server Crash**: All HTTP/WS clients disconnected. Daemon restart restores service. In-flight commands may be lost.

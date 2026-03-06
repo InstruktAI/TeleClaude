@@ -2401,7 +2401,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _ensure_output_polling(self, session: Session) -> None:
         if await polling_coordinator.is_polling(session.session_id):
             return
-        if not await self.maintenance_service.ensure_tmux_session(session):
+        if not session.tmux_session_name or not await tmux_bridge.session_exists(
+            session.tmux_session_name,
+            log_missing=False,
+        ):
             logger.warning("Tmux session missing for %s; polling skipped", session.session_id[:8])
             return
 

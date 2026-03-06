@@ -1,4 +1,4 @@
-# Quality Checklist: reflection-routing-ownership
+# Quality Checklist: adapter-reflection-cleanup
 
 This checklist is the execution projection of `definition-of-done.md` for this todo.
 
@@ -16,7 +16,7 @@ Ownership:
 - [ ] Lint passes (`make lint`)
 - [ ] No silent deferrals in implementation plan
 - [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate reflection-routing-ownership` exits 0, or exception noted)
+- [ ] Demo validated (`telec todo demo validate adapter-reflection-cleanup` exits 0, or exception noted)
 - [ ] Working tree clean
 - [ ] Comments/docstrings updated where behavior changed
 

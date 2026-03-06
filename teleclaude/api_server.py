@@ -800,14 +800,31 @@ class APIServer:
 
             await check_session_access(request, session_id, require_owner=True)
             try:
-                metadata = self._metadata()
-                cmd = CommandMapper.map_api_input(
-                    "end_session",
-                    {"session_id": session_id},
-                    metadata,
+                session = await db.get_session(session_id)
+                if not session:
+                    raise HTTPException(status_code=404, detail=f"Session {session_id[:8]} not found")
+
+                close_context = SessionLifecycleContext(session_id=session_id)
+                if session.closed_at or session.lifecycle_status == "closed":
+                    event_bus.emit(TeleClaudeEvents.SESSION_CLOSED, close_context)
+                    return {
+                        "status": "success",
+                        "message": f"Session {session_id[:8]} already closed",
+                    }
+
+                if session.lifecycle_status != "closing":
+                    await db.update_session(session_id, lifecycle_status="closing")
+
+                event_bus.emit(TeleClaudeEvents.SESSION_CLOSE_REQUESTED, close_context)
+                return JSONResponse(
+                    status_code=202,
+                    content={
+                        "status": "accepted",
+                        "message": f"Session {session_id[:8]} closing",
+                    },
                 )
-                result = await get_command_service().end_session(cmd)
-                return {"status": "success", "result": result}
+            except HTTPException as exc:
+                raise exc
             except Exception as e:
                 logger.error("Failed to end session %s: %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to end session: {e}") from e

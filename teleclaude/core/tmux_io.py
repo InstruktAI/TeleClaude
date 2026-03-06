@@ -51,7 +51,7 @@ async def _send_to_tmux(
     working_dir: str,
 ) -> bool:
     tmux_name = session.tmux_session_name
-    if tmux_name and await tmux_bridge.session_exists(tmux_name):
+    if tmux_name and await tmux_bridge.session_exists(tmux_name, log_missing=False):
         return await tmux_bridge.send_keys_existing_tmux(
             session_name=tmux_name,
             text=text,
@@ -59,14 +59,11 @@ async def _send_to_tmux(
             active_agent=active_agent,
         )
 
-    return await tmux_bridge.send_keys(
-        session.tmux_session_name,
-        text,
-        session_id=session.session_id,
-        working_dir=working_dir,
-        send_enter=send_enter,
-        active_agent=active_agent,
+    logger.warning(
+        "tmux session unavailable for session %s; explicit adoption/revive required",
+        session.session_id[:8],
     )
+    return False
 
 
 async def process_text(
