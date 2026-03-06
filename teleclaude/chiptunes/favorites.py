@@ -6,15 +6,28 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from instrukt_ai_logging import get_logger
+
+logger = get_logger(__name__)
+
 FAVORITES_PATH = Path("~/.teleclaude/chiptunes-favorites.json").expanduser()
 
 
 def load_favorites() -> list[dict[str, str]]:  # guard: loose-dict - favorites entry
-    """Load favorites from disk. Returns empty list if file is missing or malformed."""
+    """Load favorites from disk. Returns empty list if file is missing or corrupt."""
     try:
-        return json.loads(FAVORITES_PATH.read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
+        data = json.loads(FAVORITES_PATH.read_text())
+    except FileNotFoundError:
         return []
+    except json.JSONDecodeError:
+        logger.warning("Chiptunes favorites file is corrupted: %s", FAVORITES_PATH, exc_info=True)
+        return []
+
+    if not isinstance(data, list):
+        logger.warning("Chiptunes favorites file is malformed (expected list): %s", FAVORITES_PATH)
+        return []
+
+    return data
 
 
 def save_favorite(track_name: str, sid_path: str) -> None:
