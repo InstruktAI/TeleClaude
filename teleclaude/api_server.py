@@ -874,7 +874,10 @@ class APIServer:
                         if not target_for_delivery:
                             logger.info("Skipping direct delivery to missing session %s", target_id[:8])
                             continue
-                        if target_for_delivery.closed_at or target_for_delivery.lifecycle_status in {"closed", "closing"}:
+                        if target_for_delivery.closed_at or target_for_delivery.lifecycle_status in {
+                            "closed",
+                            "closing",
+                        }:
                             logger.info("Skipping direct delivery to closed session %s", target_id[:8])
                             continue
                         cmd = CommandMapper.map_api_input(
@@ -1752,6 +1755,50 @@ class APIServer:
                 )
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
+
+        @self.app.post("/api/chiptunes/next")
+        async def chiptunes_next() -> JSONResponse:  # pyright: ignore
+            """Skip to the next chiptunes track."""
+            if not self.runtime_settings:
+                raise HTTPException(503, "Runtime settings not available")
+            manager = self.runtime_settings._chiptunes_manager
+            if manager is None:
+                raise HTTPException(503, "Chiptunes manager not available")
+            manager.next_track()
+            return JSONResponse({"status": "ok"})
+
+        @self.app.post("/api/chiptunes/prev")
+        async def chiptunes_prev() -> JSONResponse:  # pyright: ignore
+            """Go back to the previous chiptunes track."""
+            if not self.runtime_settings:
+                raise HTTPException(503, "Runtime settings not available")
+            manager = self.runtime_settings._chiptunes_manager
+            if manager is None:
+                raise HTTPException(503, "Chiptunes manager not available")
+            manager.prev_track()
+            return JSONResponse({"status": "ok"})
+
+        @self.app.post("/api/chiptunes/pause")
+        async def chiptunes_pause() -> JSONResponse:  # pyright: ignore
+            """Pause chiptunes playback."""
+            if not self.runtime_settings:
+                raise HTTPException(503, "Runtime settings not available")
+            manager = self.runtime_settings._chiptunes_manager
+            if manager is None:
+                raise HTTPException(503, "Chiptunes manager not available")
+            manager.pause()
+            return JSONResponse({"status": "ok"})
+
+        @self.app.post("/api/chiptunes/resume")
+        async def chiptunes_resume() -> JSONResponse:  # pyright: ignore
+            """Resume chiptunes playback."""
+            if not self.runtime_settings:
+                raise HTTPException(503, "Runtime settings not available")
+            manager = self.runtime_settings._chiptunes_manager
+            if manager is None:
+                raise HTTPException(503, "Chiptunes manager not available")
+            manager.resume()
+            return JSONResponse({"status": "ok"})
 
         @self.app.get("/jobs")
         async def list_jobs() -> list[JobDTO]:  # pyright: ignore

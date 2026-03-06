@@ -581,6 +581,20 @@ class TelecApp(App[str | None]):
         elif isinstance(event, ErrorEvent):
             self.notify(event.data.message, severity="error")
 
+        elif event.event == "chiptunes_track":
+            from teleclaude.chiptunes.favorites import is_favorited
+            from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
+
+            track = getattr(event, "track", "")
+            sid_path = getattr(event, "sid_path", "")
+            footer = self.query_one("#telec-footer", TelecFooter)
+            footer.chiptunes_track = track
+            footer.chiptunes_sid_path = sid_path
+            footer.chiptunes_playing = True
+            footer.chiptunes_favorited = is_favorited(sid_path)
+            if track:
+                self.notify(f"♪ Now Playing: {track}", timeout=4)
+
         else:
             if event.event == "computer_updated":
                 self._reload_computers()
@@ -733,6 +747,14 @@ class TelecApp(App[str | None]):
             self._toggle_tts()
         elif key == "chiptunes_enabled":
             self._toggle_chiptunes()
+        elif key == "chiptunes_play_pause":
+            self._chiptunes_play_pause()
+        elif key == "chiptunes_next":
+            self._chiptunes_next()
+        elif key == "chiptunes_prev":
+            self._chiptunes_prev()
+        elif key == "chiptunes_favorite":
+            self._chiptunes_favorite()
         elif key == "animation_mode":
             self._cycle_animation(str(message.value))
         elif key == "agent_status":
@@ -935,6 +957,58 @@ class TelecApp(App[str | None]):
             status_bar.chiptunes_enabled = new_val
         except Exception as e:
             self.notify(f"Failed to toggle ChipTunes: {e}", severity="error")
+
+    # --- ChipTunes player controls ---
+
+    @work(exclusive=False, group="settings")
+    async def _chiptunes_play_pause(self) -> None:
+        """Play/pause toggle: enable chiptunes if off, else pause/resume."""
+        footer = self.query_one("#telec-footer", TelecFooter)
+        if not footer.chiptunes_enabled:
+            from teleclaude.cli.models import ChiptunesSettingsPatchInfo, SettingsPatchInfo
+
+            try:
+                await self.api.patch_settings(SettingsPatchInfo(chiptunes=ChiptunesSettingsPatchInfo(enabled=True)))
+                footer.chiptunes_enabled = True
+            except Exception as e:
+                self.notify(f"Failed to enable ChipTunes: {e}", severity="error")
+            return
+        try:
+            if footer.chiptunes_playing:
+                await self.api.chiptunes_pause()
+                footer.chiptunes_playing = False
+            else:
+                await self.api.chiptunes_resume()
+                footer.chiptunes_playing = True
+        except Exception as e:
+            self.notify(f"Failed to pause/resume: {e}", severity="error")
+
+    @work(exclusive=False, group="settings")
+    async def _chiptunes_next(self) -> None:
+        """Skip to the next chiptunes track."""
+        try:
+            await self.api.chiptunes_next()
+        except Exception as e:
+            self.notify(f"Failed to skip track: {e}", severity="error")
+
+    @work(exclusive=False, group="settings")
+    async def _chiptunes_prev(self) -> None:
+        """Go back to the previous chiptunes track."""
+        try:
+            await self.api.chiptunes_prev()
+        except Exception as e:
+            self.notify(f"Failed to go to previous track: {e}", severity="error")
+
+    def _chiptunes_favorite(self) -> None:
+        """Save the current track to favorites."""
+        footer = self.query_one("#telec-footer", TelecFooter)
+        if not footer.chiptunes_sid_path:
+            return
+        from teleclaude.chiptunes.favorites import is_favorited, save_favorite
+
+        save_favorite(footer.chiptunes_track, footer.chiptunes_sid_path)
+        footer.chiptunes_favorited = is_favorited(footer.chiptunes_sid_path)
+        self.notify("⭐ Added to favorites")
 
     # --- Banner compactness ---
 

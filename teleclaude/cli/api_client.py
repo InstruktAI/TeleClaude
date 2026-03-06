@@ -737,6 +737,22 @@ class TelecAPIClient:
         resp = await self._request("PATCH", "/settings", json_body=updates.model_dump(exclude_none=True))
         return TypeAdapter(SettingsInfo).validate_json(resp.text)
 
+    async def chiptunes_next(self) -> None:
+        """Skip to the next chiptunes track."""
+        await self._request("POST", "/api/chiptunes/next")
+
+    async def chiptunes_prev(self) -> None:
+        """Go back to the previous chiptunes track."""
+        await self._request("POST", "/api/chiptunes/prev")
+
+    async def chiptunes_pause(self) -> None:
+        """Pause chiptunes playback."""
+        await self._request("POST", "/api/chiptunes/pause")
+
+    async def chiptunes_resume(self) -> None:
+        """Resume chiptunes playback."""
+        await self._request("POST", "/api/chiptunes/resume")
+
     async def revive_session(self, session_id: str) -> CreateSessionResult:
         """Revive a session by TeleClaude session ID.
 

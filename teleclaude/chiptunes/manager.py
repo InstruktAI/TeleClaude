@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from teleclaude.chiptunes.player import ChiptunesPlayer
+from teleclaude.chiptunes.worker import _Worker
 
 logger = get_logger(__name__)
 
@@ -35,10 +35,22 @@ class ChiptunesManager:
     def __init__(self, music_dir: Path, volume: float = 0.5) -> None:
         self._music_dir = music_dir
         self._volume = volume
-        self._player: ChiptunesPlayer | None = None
         self._track_list: list[Path] | None = None  # lazy-cached on first use
         self._enabled = False
-        self.on_track_start: Callable[[str], None] | None = None
+        self.on_track_start: Callable[[str, str], None] | None = None
+        self._worker = _Worker(
+            pick_random_track=self._pick_random_track,
+            volume=volume,
+            on_track_start=self._on_track_start,
+        )
+
+    def _on_track_start(self, track_label: str, sid_path: str) -> None:
+        """Forward track_start to the outer callback."""
+        if self.on_track_start is not None:
+            try:
+                self.on_track_start(track_label, sid_path)
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger.debug("on_track_start callback error", exc_info=True)
 
     @property
     def enabled(self) -> bool:
@@ -48,54 +60,34 @@ class ChiptunesManager:
     def start(self) -> None:
         """Pick a random PSID track and start playback (non-blocking)."""
         self._enabled = True
-        threading.Thread(target=self._play_random, daemon=True, name="chiptunes-start").start()
+        self._worker._enabled = True
+        threading.Thread(target=self._worker._play_next, daemon=True, name="chiptunes-start").start()
 
     def stop(self) -> None:
         """Stop playback immediately."""
         self._enabled = False
-        if self._player is not None:
-            self._player.stop()
-            self._player = None
+        self._worker.disable()
 
     def pause(self) -> None:
         """Pause playback (e.g. while TTS speaks)."""
-        if self._player is not None:
-            self._player.pause()
+        self._worker.pause()
 
     def resume(self) -> None:
         """Resume playback after a pause."""
-        if self._player is not None:
-            self._player.resume()
+        self._worker.resume()
+
+    def next_track(self) -> None:
+        """Skip to the next track (advance history or pick new random)."""
+        self._worker.handle_cmd({"cmd": "next"})
+
+    def prev_track(self) -> None:
+        """Go back to the previous track in session history."""
+        self._worker.handle_cmd({"cmd": "prev"})
 
     @property
     def is_playing(self) -> bool:
         """Return True if a track is currently playing."""
-        return self._player is not None and self._player.is_playing
-
-    def _play_random(self) -> None:
-        """Pick and play a random PSID track."""
-        if not self._enabled:
-            return
-
-        track = self._pick_random_track()
-        if track is None:
-            logger.warning("No PSID tracks found in %s", self._music_dir)
-            return
-
-        if self._player is not None:
-            self._player.stop()
-
-        player = ChiptunesPlayer(volume=self._volume)
-        player.on_track_end = self._on_track_end
-        self._player = player
-        track_label = track.stem.replace("_", " ")
-        logger.info("ChipTunes: playing %s", track_label)
-        if self.on_track_start is not None:
-            try:
-                self.on_track_start(track_label)
-            except Exception:  # pylint: disable=broad-exception-caught
-                logger.debug("on_track_start callback error", exc_info=True)
-        player.play(track)
+        return self._worker.is_playing
 
     def _pick_random_track(self) -> Path | None:
         """Lazily discover and cache all PSID tracks, then pick one at random."""
@@ -120,9 +112,3 @@ class ChiptunesManager:
 
         logger.info("ChipTunes: discovered %d PSID tracks in %s", len(tracks), self._music_dir)
         return tracks
-
-    def _on_track_end(self) -> None:
-        """Auto-advance to the next random track."""
-        if self._enabled:
-            logger.debug("ChipTunes: track ended, advancing to next")
-            self._play_random()

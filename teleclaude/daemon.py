@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
 
 from teleclaude.channels.worker import run_subscription_worker
+from teleclaude.chiptunes.manager import ChiptunesManager
 from teleclaude.config import config, config_path  # config.py loads .env at import time
 from teleclaude.config.loader import load_project_config
 from teleclaude.config.runtime_settings import RuntimeSettings
@@ -78,7 +79,6 @@ from teleclaude.services.headless_snapshot_service import HeadlessSnapshotServic
 from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.services.monitoring_service import MonitoringService
 from teleclaude.transport.redis_transport import RedisTransport
-from teleclaude.chiptunes.manager import ChiptunesManager
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ResumeAgentCommand, StartAgentCommand
 from teleclaude_events import (
@@ -315,7 +315,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Initialize ChipTunes manager for SID background music
         chiptunes_cfg = config.chiptunes
-        chiptunes_music_dir = Path(chiptunes_cfg.music_dir) if chiptunes_cfg and chiptunes_cfg.music_dir else project_root / "assets" / "audio" / "C64Music"
+        chiptunes_music_dir = (
+            Path(chiptunes_cfg.music_dir)
+            if chiptunes_cfg and chiptunes_cfg.music_dir
+            else project_root / "assets" / "audio" / "C64Music"
+        )
         chiptunes_volume = chiptunes_cfg.volume if chiptunes_cfg else 0.5
         self.chiptunes_manager = ChiptunesManager(chiptunes_music_dir, volume=chiptunes_volume)
         self.chiptunes_manager.on_track_start = self._on_chiptunes_track_start
@@ -400,6 +404,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.webhook_delivery_task: asyncio.Task[object] | None = None
         self.channel_subscription_worker_task: asyncio.Task[object] | None = None
         self._ingest_scheduler_task: asyncio.Task[object] | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
         self.lifecycle = DaemonLifecycle(
             client=self.client,
@@ -1554,6 +1559,25 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Handle health check requested."""
         logger.info("Health check requested")
 
+    def _on_chiptunes_track_start(self, track_label: str, sid_path: str) -> None:
+        """Broadcast chiptunes_track WebSocket event when a new track starts.
+
+        Called from the chiptunes worker thread — bridges to the async event loop
+        using call_soon_threadsafe so the broadcast runs on the event loop thread.
+        """
+        from teleclaude.api_models import ChiptunesTrackEventDTO
+
+        api_server = getattr(self.lifecycle, "api_server", None)
+        if api_server is None:
+            return
+
+        payload = ChiptunesTrackEventDTO(track=track_label, sid_path=sid_path).model_dump()
+        loop = self._loop
+        if loop is not None and loop.is_running():
+            loop.call_soon_threadsafe(api_server._broadcast_payload, "chiptunes_track", payload)
+        else:
+            logger.debug("ChipTunes: no running event loop, skipping track broadcast")
+
     def _acquire_lock(self) -> None:
         """Acquire daemon lock using PID file with fcntl advisory locking.
 
@@ -2125,6 +2149,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Safety net: enforce single-instance lock even for direct start() callers.
         # main() already acquires this lock, so _acquire_lock() is idempotent.
         self._acquire_lock()
+        self._loop = asyncio.get_running_loop()
         logger.info("Starting TeleClaude daemon...")
         try:
             await self.lifecycle.startup()

@@ -32,6 +32,10 @@ class TelecFooter(Widget):
 
     tts_enabled = reactive(False)
     chiptunes_enabled = reactive(False)
+    chiptunes_playing = reactive(False)
+    chiptunes_track = reactive("")
+    chiptunes_sid_path = reactive("")
+    chiptunes_favorited = reactive(False)
     animation_mode = reactive("periodic")
     pane_theming_mode = reactive("off")
     persistence_key = "status_bar"
@@ -46,8 +50,15 @@ class TelecFooter(Widget):
         self._toggle_start_x: int = 0
         self._tts_start_x: int = 0
         self._tts_end_x: int = 0
-        self._chiptunes_start_x: int = 0
-        self._chiptunes_end_x: int = 0
+        # Player control regions: prev, play/pause, next, favorite
+        self._prev_start_x: int = 0
+        self._prev_end_x: int = 0
+        self._play_start_x: int = 0
+        self._play_end_x: int = 0
+        self._next_start_x: int = 0
+        self._next_end_x: int = 0
+        self._fav_start_x: int = 0
+        self._fav_end_x: int = 0
         self._anim_start_x: int = 0
         self._agent_regions: list[tuple[int, int, str]] = []
 
@@ -190,11 +201,34 @@ class TelecFooter(Widget):
         tts_end = toggles.cell_len
         toggles.append("  ")
 
-        # ChipTunes icon: 🔊 (enabled) / 🔇 (disabled)
-        chiptunes_start = toggles.cell_len
-        chiptunes_icon = "\U0001f50a" if self.chiptunes_enabled else "\U0001f507"
-        toggles.append(chiptunes_icon, style="bold" if self.chiptunes_enabled else "dim")
-        chiptunes_end = toggles.cell_len
+        # ChipTunes player control group: ⏮ ⏯/▶ ⏭ ⭐/✅
+        # All four icons dim when chiptunes is disabled.
+        dim_style = Style(dim=True)
+        active_style = Style(bold=True)
+
+        prev_start = toggles.cell_len
+        toggles.append("⏮", style=active_style if self.chiptunes_enabled else dim_style)
+        prev_end = toggles.cell_len
+        toggles.append(" ")
+
+        play_start = toggles.cell_len
+        if self.chiptunes_enabled and self.chiptunes_playing:
+            play_icon = "⏸"
+        else:
+            play_icon = "▶"
+        toggles.append(play_icon, style=active_style if self.chiptunes_enabled else dim_style)
+        play_end = toggles.cell_len
+        toggles.append(" ")
+
+        next_start = toggles.cell_len
+        toggles.append("⏭", style=active_style if self.chiptunes_enabled else dim_style)
+        next_end = toggles.cell_len
+        toggles.append(" ")
+
+        fav_start = toggles.cell_len
+        fav_icon = "✅" if (self.chiptunes_enabled and self.chiptunes_favorited) else "⭐"
+        toggles.append(fav_icon, style=active_style if self.chiptunes_enabled else dim_style)
+        fav_end = toggles.cell_len
         toggles.append("  ")
 
         anim_start = toggles.cell_len
@@ -212,8 +246,14 @@ class TelecFooter(Widget):
         self._toggle_start_x = offset
         self._tts_start_x = offset + tts_start
         self._tts_end_x = offset + tts_end
-        self._chiptunes_start_x = offset + chiptunes_start
-        self._chiptunes_end_x = offset + chiptunes_end
+        self._prev_start_x = offset + prev_start
+        self._prev_end_x = offset + prev_end
+        self._play_start_x = offset + play_start
+        self._play_end_x = offset + play_end
+        self._next_start_x = offset + next_start
+        self._next_end_x = offset + next_end
+        self._fav_start_x = offset + fav_start
+        self._fav_end_x = offset + fav_end
         self._anim_start_x = offset + anim_start
 
         line.append_text(toggles)
@@ -241,8 +281,14 @@ class TelecFooter(Widget):
             idx = cycle.index(self.animation_mode) if self.animation_mode in cycle else 0
             new_mode = cycle[(idx + 1) % len(cycle)]
             self.post_message(SettingsChanged("animation_mode", new_mode))
-        elif x >= self._chiptunes_start_x:
-            self.post_message(SettingsChanged("chiptunes_enabled", not self.chiptunes_enabled))
+        elif x >= self._fav_start_x:
+            self.post_message(SettingsChanged("chiptunes_favorite", None))
+        elif x >= self._next_start_x:
+            self.post_message(SettingsChanged("chiptunes_next", None))
+        elif x >= self._play_start_x:
+            self.post_message(SettingsChanged("chiptunes_play_pause", None))
+        elif x >= self._prev_start_x:
+            self.post_message(SettingsChanged("chiptunes_prev", None))
         elif x >= self._tts_start_x:
             self.post_message(SettingsChanged("tts_enabled", not self.tts_enabled))
         elif x >= self._toggle_start_x:
@@ -252,6 +298,12 @@ class TelecFooter(Widget):
         self.refresh()
 
     def watch_chiptunes_enabled(self, _value: bool) -> None:
+        self.refresh()
+
+    def watch_chiptunes_playing(self, _value: bool) -> None:
+        self.refresh()
+
+    def watch_chiptunes_favorited(self, _value: bool) -> None:
         self.refresh()
 
     def watch_animation_mode(self, _value: str) -> None:
