@@ -177,6 +177,8 @@ async def test_agent_coordinator_handle_agent_stop_strips_ansi(monkeypatch):
             )
         )
         mock_db.update_session = AsyncMock()
+        mock_db.get_notification_flag = AsyncMock(return_value=False)
+        mock_db.set_notification_flag = AsyncMock()
 
         payload = AgentStopPayload(source_computer="local", transcript_path="/tmp/log")
         context = AgentEventContext(session_id="sess_123", event_type=AgentHookEvents.AGENT_STOP, data=payload)

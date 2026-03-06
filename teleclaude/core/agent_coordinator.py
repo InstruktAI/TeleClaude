@@ -1454,11 +1454,21 @@ class AgentCoordinator:
         source_computer: str | None = None,
         title_override: str | None = None,
     ) -> None:
-        """Notify local listeners via tmux injection."""
+        """Notify local listeners via tmux injection (once per turn).
+
+        Turn-gated: the notification_sent flag prevents duplicate notifications
+        from heartbeat-induced agent_stop events within the same turn.
+        Cleared automatically by handle_user_prompt_submit on the next real prompt.
+        """
+        if await db.get_notification_flag(target_session_id):
+            logger.debug("Skipping duplicate stop notification for session %s (already notified this turn)", target_session_id[:8])
+            return
         target_session = await db.get_session(target_session_id)
         display_title = title_override or (target_session.title if target_session else "Unknown")
         computer = source_computer or LOCAL_COMPUTER
-        await notify_stop(target_session_id, computer, title=display_title)
+        notified = await notify_stop(target_session_id, computer, title=display_title)
+        if notified:
+            await db.set_notification_flag(target_session_id, True)
 
     async def _forward_stop_to_initiator(self, session_id: str, linked_output: str | None = None) -> None:
         """Forward stop event to remote initiator via Redis.
