@@ -10,7 +10,10 @@ if TYPE_CHECKING:
 
 def register_all(catalog: "EventCatalog") -> None:
     from teleclaude_events.schemas.content import register_content
+    from teleclaude_events.schemas.creative_production import register_creative_production
+    from teleclaude_events.schemas.customer_relations import register_customer_relations
     from teleclaude_events.schemas.deployment import register_deployment
+    from teleclaude_events.schemas.marketing import register_marketing
     from teleclaude_events.schemas.node import register_node
     from teleclaude_events.schemas.notification import register_notification
     from teleclaude_events.schemas.schema import register_schema
@@ -20,6 +23,9 @@ def register_all(catalog: "EventCatalog") -> None:
 
     register_system(catalog)
     register_software_development(catalog)
+    register_marketing(catalog)
+    register_creative_production(catalog)
+    register_customer_relations(catalog)
     register_node(catalog)
     register_deployment(catalog)
     register_content(catalog)

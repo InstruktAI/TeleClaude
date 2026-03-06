@@ -109,6 +109,88 @@ def register_software_development(catalog: "EventCatalog") -> None:
         )
     )
 
+    # --- Deploy events ---
+
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.deploy.triggered",
+            description="Deployment was triggered for a work item",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            idempotency_fields=["slug", "environment"],
+            lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug", "environment"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.deploy.succeeded",
+            description="Deployment completed successfully",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            idempotency_fields=["slug", "environment"],
+            lifecycle=NotificationLifecycle(resolves=True, group_key="slug"),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.deploy.failed",
+            description="Deployment failed and requires attention",
+            default_level=EventLevel.BUSINESS,
+            domain="software-development",
+            idempotency_fields=["slug", "environment"],
+            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["error"]),
+            actionable=True,
+        )
+    )
+
+    # --- Ops events ---
+
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.ops.alert_fired",
+            description="An operational alert was triggered",
+            default_level=EventLevel.BUSINESS,
+            domain="software-development",
+            idempotency_fields=["alert_id"],
+            lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["alert_id", "severity"]),
+            actionable=True,
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.ops.alert_resolved",
+            description="An operational alert was resolved",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            idempotency_fields=["alert_id"],
+            lifecycle=NotificationLifecycle(resolves=True, group_key="alert_id"),
+        )
+    )
+
+    # --- Maintenance events ---
+
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.maintenance.dependency_update",
+            description="A dependency was updated to a new version",
+            default_level=EventLevel.OPERATIONAL,
+            domain="software-development",
+            idempotency_fields=["package", "version"],
+            lifecycle=NotificationLifecycle(updates=True, group_key="package", meaningful_fields=["package", "version"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.software-development.maintenance.security_patch",
+            description="A security patch is required for a dependency",
+            default_level=EventLevel.BUSINESS,
+            domain="software-development",
+            idempotency_fields=["advisory_id"],
+            lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["advisory_id", "severity"]),
+            actionable=True,
+        )
+    )
+
     # --- Integration lifecycle events ---
 
     catalog.register(

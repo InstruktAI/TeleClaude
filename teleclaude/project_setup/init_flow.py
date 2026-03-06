@@ -35,6 +35,9 @@ def init_project(project_root: Path) -> None:
     update_gitattributes(project_root)
     install_precommit_hook(project_root)
     sync_project_artifacts(project_root)
+    from teleclaude.project_setup.domain_seeds import seed_event_domains
+
+    seed_event_domains(project_root)
     install_docs_watch(project_root)
 
     if is_macos():
