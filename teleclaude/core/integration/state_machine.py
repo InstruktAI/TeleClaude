@@ -698,6 +698,30 @@ def _step(
 # ---------------------------------------------------------------------------
 
 
+def _try_auto_enqueue(*, queue: IntegrationQueue, slug: str, cwd: str) -> bool:
+    """Auto-enqueue a candidate when called by slug but not yet in the queue.
+
+    Derives branch name from slug (convention: branch == slug) and resolves
+    the SHA from the local branch ref.  Used when the orchestrator calls
+    ``telec todo integrate <slug>`` directly without a prior queue population
+    step (e.g. deployment.started event path not taken).
+    """
+    branch = slug  # branch == slug by project convention
+    rc, stdout, _ = _run_git(["rev-parse", branch], cwd=cwd)
+    if rc != 0 or not stdout.strip():
+        logger.warning("Auto-enqueue: could not resolve SHA for branch %s", branch)
+        return False
+    sha = stdout.strip()
+    ready_at = _now_iso()
+    try:
+        queue.enqueue(key=CandidateKey(slug=slug, branch=branch, sha=sha), ready_at=ready_at)
+        logger.info("Auto-enqueued candidate %s (branch=%s sha=%s)", slug, branch, sha[:8])
+        return True
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.warning("Auto-enqueue failed for %s: %s", slug, exc)
+        return False
+
+
 def _step_idle(
     *,
     checkpoint: IntegrationCheckpoint,
@@ -711,6 +735,15 @@ def _step_idle(
 ) -> tuple[bool, str]:
     """IDLE: check queue, acquire lease, pop candidate, check clearance, do merge."""
     queued_items = [item for item in queue.items() if item.status == "queued"]
+    if not queued_items:
+        # When a specific slug is requested, auto-enqueue from the local branch
+        # (branch == slug by convention). This handles the direct-integrate path
+        # where the orchestrator calls ``telec todo integrate <slug>`` without a
+        # prior deployment.started event enqueuing the candidate.
+        if slug is not None:
+            _try_auto_enqueue(queue=queue, slug=slug, cwd=cwd)
+            queued_items = [item for item in queue.items() if item.status == "queued"]
+
     if not queued_items:
         elapsed_ms = int((perf_counter() - started) * 1000)
         # Release any stale lease we might hold

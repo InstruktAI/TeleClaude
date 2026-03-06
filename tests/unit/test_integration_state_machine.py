@@ -197,6 +197,53 @@ def test_dispatch_returns_complete_when_queue_empty(tmp_path: Path) -> None:
     assert "Queue empty" in result
 
 
+@patch("teleclaude.core.integration.state_machine._run_git", return_value=(1, "", "not a branch"))
+def test_dispatch_returns_complete_when_slug_auto_enqueue_fails(mock_git: MagicMock, tmp_path: Path) -> None:
+    """When slug is given but branch resolution fails, queue stays empty and returns complete."""
+    result = _run_dispatch(tmp_path, slug="missing-branch-slug")
+    assert "INTEGRATION COMPLETE" in result
+    assert "Queue empty" in result
+
+
+@patch("teleclaude.core.integration.state_machine._run_git")
+def test_dispatch_auto_enqueues_when_slug_given_and_queue_empty(mock_git: MagicMock, tmp_path: Path) -> None:
+    """When slug is given and queue is empty, auto-enqueue via git rev-parse then proceed to lease."""
+    sha = "abc123def456"
+    # rev-parse returns SHA; all subsequent git calls return failure to stop early
+    def _git_side_effect(args: list[str], *, cwd: str) -> tuple[int, str, str]:
+        if args[0] == "rev-parse":
+            return (0, sha + "\n", "")
+        return (1, "", "mocked error")
+
+    mock_git.side_effect = _git_side_effect
+
+    from teleclaude.core.integration.queue import IntegrationQueue
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(exist_ok=True)
+    real_queue = IntegrationQueue(state_path=state_dir / "queue.json")
+
+    lease_store = _make_lease_store(acquired=True)
+
+    with (
+        patch("teleclaude.core.integration.state_machine.IntegrationQueue", return_value=real_queue),
+        patch("teleclaude.core.integration.state_machine.IntegrationLeaseStore", return_value=lease_store),
+    ):
+        result = _dispatch_sync(
+            session_id="test-session",
+            slug="my-feature",
+            cwd=str(tmp_path),
+            state_dir=state_dir,
+            started=0.0,
+            loop=None,
+        )
+
+    # Should have been auto-enqueued and then tried to merge (failed on fetch)
+    assert "INTEGRATION ERROR" in result or "GIT_FETCH_FAILED" in result
+    items = real_queue.items()
+    assert any(item.key.slug == "my-feature" for item in items)
+
+
 def test_dispatch_returns_lease_busy_when_lease_held(tmp_path: Path) -> None:
     queue = MagicMock()
     # Return one queued item so we don't short-circuit on empty queue
