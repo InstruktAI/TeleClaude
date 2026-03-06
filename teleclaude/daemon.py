@@ -317,10 +317,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         chiptunes_cfg = config.chiptunes
         chiptunes_music_dir = Path(chiptunes_cfg.music_dir) if chiptunes_cfg and chiptunes_cfg.music_dir else project_root / "assets" / "audio" / "C64Music"
         chiptunes_volume = chiptunes_cfg.volume if chiptunes_cfg else 0.5
+        chiptunes_was_enabled = chiptunes_cfg.enabled if chiptunes_cfg else False
         self.chiptunes_manager = ChiptunesManager(chiptunes_music_dir, volume=chiptunes_volume)
         self.chiptunes_manager.on_track_start = self._on_chiptunes_track_start
         self.tts_manager.set_chiptunes_manager(self.chiptunes_manager)
-        logger.info("ChiptunesManager initialized (music_dir=%s)", chiptunes_music_dir)
+        if chiptunes_was_enabled:
+            self.chiptunes_manager.start()
+            logger.info("ChiptunesManager initialized and started (music_dir=%s)", chiptunes_music_dir)
+        else:
+            logger.info("ChiptunesManager initialized (music_dir=%s)", chiptunes_music_dir)
 
         # Mutable runtime settings with debounced YAML persistence
         self.runtime_settings = RuntimeSettings(config_path, self.tts_manager, self.chiptunes_manager)
@@ -423,6 +428,19 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             launchd_watch_interval_s=LAUNCHD_WATCH_INTERVAL_S,
             db_path=db.db_path,
         )
+
+    def _on_chiptunes_track_start(self, track_label: str) -> None:
+        """Broadcast a WS event when a new chiptunes track starts playing.
+
+        Called from the chiptunes socket-reader thread, so we schedule
+        the async broadcast on the daemon's event loop.
+        """
+        api_server = getattr(self.lifecycle, "api_server", None)
+        loop = getattr(self, "_event_loop", None)
+        if api_server is None or loop is None:
+            return
+        payload = {"event": "chiptunes_track", "track": track_label}
+        loop.call_soon_threadsafe(api_server._broadcast_payload, "chiptunes_track", payload)
 
     def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]:
         """Return a done-callback that logs unexpected background task failures."""
@@ -2125,6 +2143,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Safety net: enforce single-instance lock even for direct start() callers.
         # main() already acquires this lock, so _acquire_lock() is idempotent.
         self._acquire_lock()
+        self._event_loop = asyncio.get_running_loop()
         logger.info("Starting TeleClaude daemon...")
         try:
             await self.lifecycle.startup()
@@ -2324,6 +2343,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             await self._event_db.close()
             self._event_db = None
             logger.info("EventDB closed")
+
+        # Disconnect from chiptunes worker (let it keep playing)
+        if hasattr(self, "chiptunes_manager"):
+            self.chiptunes_manager.shutdown()
+            logger.info("ChipTunes manager disconnected (worker keeps playing)")
 
         # Shutdown task registry (cancel all tracked background tasks)
         if hasattr(self, "task_registry"):

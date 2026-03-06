@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define the security configuration for the Codex CLI (`gpt-5.3-codex`). This tool uses a "profile" system to manage the balance between autonomy (approvals) and safety (sandboxing).
+Define the security configuration for the Codex CLI (`gpt-5.4`). This tool uses a "profile" system to manage the balance between autonomy (approvals) and safety (sandboxing).
 
 ## Configuration File
 

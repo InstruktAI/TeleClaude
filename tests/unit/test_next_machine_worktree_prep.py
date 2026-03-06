@@ -5,8 +5,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from git.exc import GitCommandError
 
-from teleclaude.core.next_machine import _prepare_worktree, ensure_worktree, ensure_worktree_with_policy
+from teleclaude.core.next_machine import _prepare_worktree, ensure_worktree_with_policy
 from teleclaude.core.next_machine.core import (
     WorktreePrepDecision,
     _compute_prep_inputs_digest,
@@ -35,9 +36,11 @@ class TestEnsureWorktreePrepPolicy:
             inputs_digest="abc",
         )
 
-        result = ensure_worktree(str(tmp_path), "test-slug")
+        result = ensure_worktree_with_policy(str(tmp_path), "test-slug")
 
-        assert result is False
+        assert result.created is False
+        assert result.prepared is False
+        assert result.prep_reason == "unchanged_known_good"
         mock_prepare.assert_not_called()
 
     @patch("teleclaude.core.next_machine.core._write_worktree_prep_state")
@@ -112,6 +115,37 @@ class TestEnsureWorktreePrepPolicy:
         saved_state = _read_worktree_prep_state(str(tmp_path), slug)
         assert saved_state is not None
         assert saved_state["inputs_digest"] == _compute_prep_inputs_digest(str(tmp_path), slug)
+
+    @patch("teleclaude.core.next_machine.core._write_worktree_prep_state")
+    @patch("teleclaude.core.next_machine.core._prepare_worktree")
+    @patch("teleclaude.core.next_machine.core.Repo")
+    def test_reuses_existing_branch_when_worktree_is_missing(
+        self,
+        mock_repo_cls: Mock,
+        mock_prepare: Mock,
+        mock_write_state: Mock,
+        tmp_path: Path,
+    ) -> None:
+        """Missing worktree should attach the existing slug branch instead of failing."""
+        repo = MagicMock()
+        repo.heads = [type("Head", (), {"name": "test-slug"})()]
+        repo.git.worktree.side_effect = [
+            GitCommandError("worktree", 255, stderr="fatal: a branch named 'test-slug' already exists"),
+            None,
+        ]
+        mock_repo_cls.return_value = repo
+
+        result = ensure_worktree_with_policy(str(tmp_path), "test-slug")
+
+        assert result.created is True
+        assert result.prepared is True
+        assert result.prep_reason == "worktree_created"
+        assert repo.git.worktree.call_args_list == [
+            (("add", str(tmp_path / "trees" / "test-slug"), "-b", "test-slug"), {}),
+            (("add", str(tmp_path / "trees" / "test-slug"), "test-slug"), {}),
+        ]
+        assert mock_prepare.call_args == ((str(tmp_path), "test-slug"), {})
+        assert mock_write_state.call_args is not None
 
 
 class TestPrepareWorktreeConventions:

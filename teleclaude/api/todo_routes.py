@@ -22,6 +22,7 @@ from teleclaude.api.auth import (
     CallerIdentity,
 )
 from teleclaude.config import config
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.db import db
 from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.next_machine import next_prepare, next_work
@@ -130,7 +131,7 @@ async def todo_mark_phase(  # pyright: ignore
             detail=f"invalid status '{status}': must be one of {', '.join(valid_statuses)}",
         )
 
-    worktree_cwd = str(Path(cwd) / "trees" / slug)
+    worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
     if not Path(worktree_cwd).exists():
         raise HTTPException(status_code=404, detail=f"worktree not found at {worktree_cwd}")
 
@@ -139,7 +140,7 @@ async def todo_mark_phase(  # pyright: ignore
         if has_uncommitted_changes(cwd, slug):
             raise HTTPException(
                 status_code=409,
-                detail=(f"worktree trees/{slug} has uncommitted changes — commit them before marking phase complete"),
+                detail=(f"worktree {WORKTREE_DIR}/{slug} has uncommitted changes — commit them before marking phase complete"),
             )
         stash_entries = get_stash_entries(cwd)
         if stash_entries:

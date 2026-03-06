@@ -46,6 +46,7 @@ from teleclaude.constants import (  # noqa: E402
     MAIN_MODULE,
     ROLE_ORCHESTRATOR,
     ROLE_WORKER,
+    WORKTREE_DIR,
 )
 from teleclaude.content_scaffold import (  # noqa: E402
     _emit_content_dumped,
@@ -3132,8 +3133,6 @@ def _handle_bugs_create(args: list[str]) -> None:
 
 def _handle_bugs_report(args: list[str]) -> None:
     """Handle telec bugs report <description> [--slug <slug>]."""
-    import shutil
-
     if not args:
         print(_usage("bugs", "report"))
         return
@@ -3184,53 +3183,7 @@ def _handle_bugs_report(args: list[str]) -> None:
 
     slug = todo_dir.name
 
-    # Create git branch from main
-    try:
-        subprocess.run(
-            ["git", "branch", slug, "main"],
-            check=True,
-            capture_output=True,
-            text=True,
-            cwd=str(project_root),
-        )
-    except subprocess.CalledProcessError as exc:
-        print(f"Error creating branch: {exc.stderr}")
-        print(f"Bug scaffold created at {todo_dir}, but branch creation failed.")
-        print(f"Create branch manually: git branch {slug} main")
-        raise SystemExit(1) from exc
-
-    # Create worktree
-    worktree_path = project_root / "trees" / slug
-    try:
-        subprocess.run(
-            ["git", "worktree", "add", str(worktree_path), slug],
-            check=True,
-            capture_output=True,
-            text=True,
-            cwd=str(project_root),
-        )
-    except subprocess.CalledProcessError as exc:
-        print(f"Error creating worktree: {exc.stderr}")
-        print(f"Bug scaffold created at {todo_dir}, branch created, but worktree failed.")
-        print(f"Create worktree manually: git worktree add trees/{slug} {slug}")
-        # Clean up branch
-        subprocess.run(["git", "branch", "-D", slug], check=False, cwd=str(project_root))
-        raise SystemExit(1) from exc
-
-    # Copy bug.md and state.yaml to worktree
-    worktree_todo_dir = worktree_path / "todos" / slug
-    worktree_todo_dir.mkdir(parents=True, exist_ok=True)
-
-    try:
-        shutil.copy2(todo_dir / "bug.md", worktree_todo_dir / "bug.md")
-        shutil.copy2(todo_dir / "state.yaml", worktree_todo_dir / "state.yaml")
-    except Exception as exc:
-        print(f"Error copying files to worktree: {exc}")
-        print("Bug scaffold created, branch and worktree created, but file copy failed.")
-        print(f"Copy files manually to {worktree_todo_dir}")
-        raise SystemExit(1) from exc
-
-    # Dispatch orchestrator
+    # Dispatch orchestrator on mainline — the state machine handles branches/worktrees
     async def _dispatch_bug_fix() -> "CreateSessionResult":
         api = TelecAPIClient()
         await api.connect()
@@ -3238,7 +3191,6 @@ def _handle_bugs_report(args: list[str]) -> None:
             return await api.create_session(
                 computer="local",
                 project_path=str(project_root),
-                subdir=f"trees/{slug}",
                 agent="claude",
                 thinking_mode="slow",
                 title=f"Bug fix: {slug}",
@@ -3252,15 +3204,11 @@ def _handle_bugs_report(args: list[str]) -> None:
         result = asyncio.run(_dispatch_bug_fix())
         print(f"Created bug todo: {todo_dir}")
         print(f"Bug slug: {slug}")
-        print(f"Branch: {slug}")
-        print(f"Worktree: {worktree_path}")
         print(f"Orchestrator session: {result.session_id}")
     except Exception as exc:
         print(f"Error dispatching orchestrator: {exc}")
-        print("Bug scaffold, branch, and worktree created successfully.")
-        print("Start orchestrator manually from worktree directory:")
-        print(f"  cd {worktree_path}")
-        print(f"  telec claude 'Run telec todo work {slug} and follow output verbatim until done.'")
+        print(f"Bug scaffold created at {todo_dir}.")
+        print(f"Start orchestrator manually: telec todo work {slug}")
 
 
 def _handle_bugs_list(args: list[str]) -> None:
@@ -3293,7 +3241,7 @@ def _handle_bugs_list(args: list[str]) -> None:
 
         bug_md = todo_dir / "bug.md"
         state_yaml = todo_dir / "state.yaml"
-        worktree_state = project_root / "trees" / todo_dir.name / "todos" / todo_dir.name / "state.yaml"
+        worktree_state = project_root / WORKTREE_DIR / todo_dir.name / "todos" / todo_dir.name / "state.yaml"
         state_path = worktree_state if worktree_state.exists() else state_yaml
 
         if not bug_md.exists():

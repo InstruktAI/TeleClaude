@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: event-platform
+  date: '2026-03-06'
+  title: Container vision delivered — 5/7 phases shipped, remaining children are independent
+    roadmap entries
+  description: 'Event processing platform: cartridges, domain pipelines, signal processing,
+    mesh distribution (container for phases 2-7)'
 - slug: event-domain-pillars
   date: '2026-03-06'
   title: 'Out-of-box domain configs: software-dev, marketing, creative, customer-relations'

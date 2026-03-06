@@ -9,6 +9,8 @@ Replace the single chiptunes toggle icon in the TUI footer with a four-button pl
 ### In scope
 
 - Footer player control group: prev, play/pause, next, favorite
+- Play/pause shows distinct state icons: ▶️ when paused/stopped, ⏸️ when playing
+- TTS icon reassignment: replace ugly 🗣️ (speaking head) with 🔊/🔇 speaker pair (freed up by chiptunes control group)
 - Worker-side track history for prev/next navigation
 - New worker commands: `next`, `prev`
 - Manager proxy methods for `next()` and `prev()`
@@ -28,9 +30,10 @@ Replace the single chiptunes toggle icon in the TUI footer with a four-button pl
 
 ## Success Criteria
 
-- [ ] Footer shows ⏮️⏯️⏭️⭐ when chiptunes is enabled (dim when disabled)
-- [ ] ⏯️ starts playback when chiptunes is off, toggles pause/resume when on
-- [ ] ⏯️ visually reflects state: ⏸️ when playing, ▶️ when paused
+- [ ] Footer shows ⏮ ▶/⏸ ⏭ ⭐ when chiptunes is enabled (dim when disabled)
+- [ ] Play/pause starts playback when chiptunes is off, toggles pause/resume when on
+- [ ] Play/pause shows ⏸ when playing, ▶ when paused/stopped
+- [ ] TTS icon changed from 🗣️ to 🔊/🔇 (speaker pair, bold when enabled, dim when disabled)
 - [ ] ⏭️ advances to next track (new random if at end of history)
 - [ ] ⏮️ goes back to previous track in history
 - [ ] ⭐ saves current track to `~/.teleclaude/chiptunes-favorites.json`

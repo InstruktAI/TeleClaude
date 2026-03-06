@@ -3,14 +3,12 @@
 - slug: history-search-upgrade
 - slug: mesh-trust-model
   after:
-  - event-envelope-schema
   - mesh-architecture
   description: Per-event trust evaluation, immune system model, trust rings, sovereignty
     handles
 - slug: community-governance
   after:
   - mesh-architecture
-  - event-envelope-schema
   description: 'PR-based governance: two-round attention, time-boxed voting, AI+human
     democracy'
 - slug: community-manager-agent
@@ -20,15 +18,11 @@
 - slug: service-publication
   after:
   - mesh-architecture
-  - event-envelope-schema
   - mesh-trust-model
   description: 'Services as events: local contracts, mesh publish, transactional capabilities'
 - slug: telec-init-enrichment
   description: 'Rich project bootstrapping: deep analysis, doc scaffolding, intelligence
     seeding'
-- slug: event-platform
-  description: 'Event processing platform: cartridges, domain pipelines, signal processing,
-    mesh distribution (container for phases 2-7)'
 - slug: event-alpha-container
   group: event-platform
   description: Docker sidecar sandbox for experimental/alpha cartridges
@@ -60,3 +54,11 @@
 - slug: async-operation-receipts
   description: Durable receipt-and-poll contract for long-running commands, starting
     with `telec todo work`
+- slug: chiptunes-playlist-controls
+- slug: clickable-sprites
+- slug: next-machine-old-code-cleanup
+  after:
+  - integration-event-chain-phase2
+  description: 'Strip old manual integration path: finalize locks, caller_session_id,
+    inline telec todo integrate'
+- slug: proficiency-to-expertise

@@ -19,10 +19,10 @@ TeleClaude collapses these distances. At its heart is the **Telec TUI** — a ri
 
 - **The Cockpit:** The Telec TUI is the primary interface — a rich, themed terminal application for launching sessions, monitoring agents, managing your roadmap, and orchestrating work across computers. Everything starts here.
 
-![TUI Sessions View](./assets/tui-sessions.png)
+![TUI Sessions View](./assets/screenshots/tui/dark/tui-sessions-dark-0.1.1.png)
 _AI Sessions — live session cards with agent type, thinking mode, timestamps, and output summaries. Agent availability at the bottom._
 
-![TUI Work Preparation View](./assets/tui-work-preparation.png)
+![TUI Work Preparation View](./assets/screenshots/tui/dark/tui-work-preparation-dark-0.1.png)
 _Work Preparation — multi-project roadmap with DOR scores, build/review status, dependency trees, and one-key scaffolding._
 
 - **Continue on Any Client:** Sessions started from the cockpit are live on every connected client. Pick up your phone and continue the conversation directly on Discord, Telegram, or WhatsApp — talk to your agents, send voice commands, monitor progress. The Discord experience is superb: full thread-based session management, help desk monitoring, and direct agent interaction from your pocket.

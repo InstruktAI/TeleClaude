@@ -17,6 +17,7 @@ from textual.widgets import TabbedContent, TabPane
 
 from teleclaude.cli.models import (
     AgentActivityEvent,
+    ChiptunesTrackEvent,
     ComputerInfo,
     ErrorEvent,
     ProjectInfo,
@@ -580,6 +581,9 @@ class TelecApp(App[str | None]):
 
         elif isinstance(event, ErrorEvent):
             self.notify(event.data.message, severity="error")
+
+        elif isinstance(event, ChiptunesTrackEvent):
+            self.notify(event.track, title="\U0001f3b5 Now Playing", timeout=30)
 
         else:
             if event.event == "computer_updated":
@@ -1171,24 +1175,7 @@ class TelecApp(App[str | None]):
     # --- Lifecycle ---
 
     def _show_animation_toast(self, target: str, animation: Animation) -> None:
-        """Show a toast notification when an animation starts."""
-        import time
-
-        now = time.time()
-        name = animation.__class__.__name__
-
-        # Debounce: avoid duplicate toasts for the same animation within 2s
-        last_name, last_time = getattr(self, "_last_anim_toast", (None, 0.0))
-        if last_name == name and (now - last_time) < 2.0:
-            return
-        self._last_anim_toast = (name, now)
-
-        self.notify(
-            f"Animation: {name}",
-            title="Atmosphere Change",
-            severity="information",
-            timeout=3.0,
-        )
+        """No-op — animation toasts disabled."""
 
     async def action_quit(self) -> None:
         self._stop_animation()

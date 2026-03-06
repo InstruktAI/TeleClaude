@@ -74,7 +74,7 @@ _AGENT_MODEL_FLAGS: dict[str, dict[str, str]] = {
     },
     "codex": {
         "fast": (
-            "-m gpt-5.3-codex"
+            "-m gpt-5.4"
             " --config model_reasoning_effort='medium'"
             " --config model_reasoning_summary='detailed'"
             " --config model_supports_reasoning_summaries=true"
@@ -82,7 +82,7 @@ _AGENT_MODEL_FLAGS: dict[str, dict[str, str]] = {
             " --config hide_agent_reasoning=false"
         ),
         "med": (
-            "-m gpt-5.3-codex"
+            "-m gpt-5.4"
             " --config model_reasoning_effort='high'"
             " --config model_reasoning_summary='detailed'"
             " --config model_supports_reasoning_summaries=true"
@@ -90,7 +90,7 @@ _AGENT_MODEL_FLAGS: dict[str, dict[str, str]] = {
             " --config hide_agent_reasoning=false"
         ),
         "slow": (
-            "-m gpt-5.3-codex"
+            "-m gpt-5.4"
             " --config model_reasoning_effort='xhigh'"
             " --config model_reasoning_summary='detailed'"
             " --config model_supports_reasoning_summaries=true"

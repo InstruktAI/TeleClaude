@@ -10,6 +10,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.cli.models import SessionInfo
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import (
     CONNECTOR_COLOR,
@@ -168,7 +169,7 @@ class SessionRow(TelecMixin, Widget):
         # Subdir (slug only) — respects selection/preview state for contrast
         subdir = getattr(self.session, "subdir", None)
         if subdir:
-            slug = subdir.removeprefix("trees/")
+            slug = subdir.removeprefix(WORKTREE_DIR + "/")
             # When selected or previewed, use row style for inverted contrast
             # Otherwise, use agent color without bold/italic
             slug_style = style if (selected or previewed) else resolve_style(self.agent, self._tier("normal"))

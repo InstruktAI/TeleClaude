@@ -477,7 +477,7 @@ async def test_next_work_explicit_bug_slug_allows_pending_items():
         (Path(tmpdir) / "trees" / slug).mkdir(parents=True, exist_ok=True)
 
         with (
-            patch("teleclaude.core.next_machine.core.ensure_worktree_async", new=AsyncMock(return_value=False)),
+            patch("teleclaude.core.next_machine.core.ensure_worktree_with_policy_async", new=AsyncMock(return_value=MagicMock(created=False, prepared=False, prep_reason="mocked"))),
             patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
             patch(
                 "teleclaude.core.next_machine.core.compose_agent_guidance",
@@ -534,7 +534,7 @@ async def test_next_work_explicit_bug_slug_with_worktree_cwd_skips_dor_gate():
         (todo_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": null}')
 
         with (
-            patch("teleclaude.core.next_machine.core.ensure_worktree_async", new=AsyncMock(return_value=False)),
+            patch("teleclaude.core.next_machine.core.ensure_worktree_with_policy_async", new=AsyncMock(return_value=MagicMock(created=False, prepared=False, prep_reason="mocked"))),
             patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
             patch(
                 "teleclaude.core.next_machine.core.compose_agent_guidance",
@@ -654,7 +654,7 @@ async def test_next_work_does_not_block_review_when_main_ahead():
 
         with (
             patch("teleclaude.core.next_machine.core.Repo"),
-            patch("teleclaude.core.next_machine.core.ensure_worktree", return_value=False),
+            patch("teleclaude.core.next_machine.core.ensure_worktree_with_policy_async", new=AsyncMock(return_value=MagicMock(created=False, prepared=False, prep_reason="mocked"))),
             patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
 
             patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),

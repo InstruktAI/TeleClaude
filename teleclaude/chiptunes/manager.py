@@ -1,128 +1,199 @@
-"""ChiptunesManager — manages random SID playback lifecycle."""
+"""ChiptunesManager — manages a subprocess worker for SID playback.
+
+The worker runs as an independent process with its own GIL, communicating
+via a Unix domain socket. Music continues playing through daemon restarts.
+"""
 
 from __future__ import annotations
 
-import random
+import json
+import os
+import signal
+import socket
+import subprocess
+import sys
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+SOCKET_PATH = "/tmp/teleclaude-chiptunes.sock"
+PID_PATH = "/tmp/teleclaude-chiptunes.pid"
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from teleclaude.chiptunes.player import ChiptunesPlayer
-
 logger = get_logger(__name__)
-
-_RSID_MAGIC = b"RSID"
-
-
-def _is_rsid(path: Path) -> bool:
-    """Return True if path is an RSID file (interrupt-driven, skip in v1)."""
-    try:
-        with path.open("rb") as f:
-            magic = f.read(4)
-        return magic == _RSID_MAGIC
-    except OSError:
-        return False
 
 
 class ChiptunesManager:
-    """Manages random SID track selection, playback lifecycle, and auto-advance."""
+    """Manages chiptunes playback via a subprocess worker."""
 
     def __init__(self, music_dir: Path, volume: float = 0.5) -> None:
         self._music_dir = music_dir
         self._volume = volume
-        self._player: ChiptunesPlayer | None = None
-        self._track_list: list[Path] | None = None  # lazy-cached on first use
         self._enabled = False
+        self._sock: socket.socket | None = None
+        self._reader_thread: threading.Thread | None = None
+        self._lock = threading.Lock()
         self.on_track_start: Callable[[str], None] | None = None
 
     @property
     def enabled(self) -> bool:
-        """Return True if chiptunes playback is enabled."""
         return self._enabled
 
     def start(self) -> None:
-        """Pick a random PSID track and start playback (non-blocking)."""
+        """Start playback (launches worker if needed, connects, sends start)."""
         self._enabled = True
-        threading.Thread(target=self._play_random, daemon=True, name="chiptunes-start").start()
+        threading.Thread(target=self._start_playback, daemon=True, name="chiptunes-start").start()
 
     def stop(self) -> None:
-        """Stop playback immediately."""
+        """Stop playback and terminate the worker."""
         self._enabled = False
-        if self._player is not None:
-            self._player.stop()
-            self._player = None
+        self._send_cmd({"cmd": "stop"})
+        self._disconnect()
+        self._kill_worker()
 
     def pause(self) -> None:
-        """Pause playback (e.g. while TTS speaks)."""
-        if self._player is not None:
-            self._player.pause()
+        self._send_cmd({"cmd": "pause"})
 
     def resume(self) -> None:
-        """Resume playback after a pause."""
-        if self._player is not None:
-            self._player.resume()
+        self._send_cmd({"cmd": "resume"})
 
     @property
     def is_playing(self) -> bool:
-        """Return True if a track is currently playing."""
-        return self._player is not None and self._player.is_playing
+        return self._enabled and self._worker_alive()
 
-    def _play_random(self) -> None:
-        """Pick and play a random PSID track."""
+    def shutdown(self) -> None:
+        """Disconnect from worker without killing it (daemon restart)."""
+        self._disconnect()
+
+    def _start_playback(self) -> None:
         if not self._enabled:
             return
+        self._ensure_worker()
+        self._connect()
+        self._send_cmd({"cmd": "start"})
 
-        track = self._pick_random_track()
-        if track is None:
-            logger.warning("No PSID tracks found in %s", self._music_dir)
+    def _ensure_worker(self) -> None:
+        """Launch the worker subprocess if not already running."""
+        if self._worker_alive():
             return
-
-        if self._player is not None:
-            self._player.stop()
-
-        player = ChiptunesPlayer(volume=self._volume)
-        player.on_track_end = self._on_track_end
-        self._player = player
-        track_label = track.stem.replace("_", " ")
-        logger.info("ChipTunes: playing %s", track_label)
-        if self.on_track_start is not None:
+        # Clean up stale socket/pid
+        for path in (SOCKET_PATH, PID_PATH):
             try:
-                self.on_track_start(track_label)
-            except Exception:  # pylint: disable=broad-exception-caught
-                logger.debug("on_track_start callback error", exc_info=True)
-        player.play(track)
+                os.unlink(path)
+            except OSError:
+                pass
+        subprocess.Popen(
+            [
+                sys.executable, "-m", "teleclaude.chiptunes.worker",
+                "--music-dir", str(self._music_dir),
+                "--volume", str(self._volume),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,  # detach from daemon process group
+        )
+        # Wait for socket to appear
+        for _ in range(50):  # 5 seconds max
+            if os.path.exists(SOCKET_PATH):
+                return
+            threading.Event().wait(0.1)
+        logger.warning("ChipTunes worker did not start in time")
 
-    def _pick_random_track(self) -> Path | None:
-        """Lazily discover and cache all PSID tracks, then pick one at random."""
-        if self._track_list is None:
-            self._track_list = self._discover_tracks()
+    def _connect(self) -> None:
+        """Connect to the worker's Unix socket."""
+        self._disconnect()
+        try:
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.connect(SOCKET_PATH)
+            with self._lock:
+                self._sock = sock
+            self._reader_thread = threading.Thread(
+                target=self._read_events, daemon=True, name="chiptunes-reader"
+            )
+            self._reader_thread.start()
+            logger.debug("Connected to ChipTunes worker")
+        except OSError as exc:
+            logger.warning("Failed to connect to ChipTunes worker: %s", exc)
 
-        if not self._track_list:
-            return None
+    def _disconnect(self) -> None:
+        """Close the socket connection to the worker."""
+        with self._lock:
+            sock = self._sock
+            self._sock = None
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
 
-        return random.choice(self._track_list)
+    def _send_cmd(self, cmd: dict[str, object]) -> None:
+        with self._lock:
+            sock = self._sock
+        if sock is None:
+            return
+        try:
+            payload = json.dumps(cmd) + "\n"
+            sock.sendall(payload.encode())
+        except (BrokenPipeError, OSError):
+            logger.debug("ChipTunes worker connection lost")
+            self._disconnect()
 
-    def _discover_tracks(self) -> list[Path]:
-        """Walk music_dir and collect all .sid files that are PSID format."""
-        if not self._music_dir.exists():
-            logger.warning("ChipTunes music_dir does not exist: %s", self._music_dir)
-            return []
+    def _read_events(self) -> None:
+        """Read JSON events from the worker socket."""
+        with self._lock:
+            sock = self._sock
+        if sock is None:
+            return
+        buf = b""
+        try:
+            while True:
+                data = sock.recv(4096)
+                if not data:
+                    break
+                buf += data
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    self._handle_event(line.decode())
+        except OSError:
+            pass
 
-        tracks: list[Path] = []
-        for sid_path in self._music_dir.rglob("*.sid"):
-            if not _is_rsid(sid_path):
-                tracks.append(sid_path)
+    def _handle_event(self, line: str) -> None:
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            return
+        event = msg.get("event")
+        if event == "track_start":
+            track = msg.get("track", "")
+            logger.info("ChipTunes: playing %s", track)
+            if self.on_track_start is not None:
+                try:
+                    self.on_track_start(track)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    logger.debug("on_track_start callback error", exc_info=True)
+        elif event == "track_end":
+            logger.debug("ChipTunes: track ended")
 
-        logger.info("ChipTunes: discovered %d PSID tracks in %s", len(tracks), self._music_dir)
-        return tracks
+    @staticmethod
+    def _worker_alive() -> bool:
+        """Check if the worker process is running."""
+        try:
+            pid = int(Path(PID_PATH).read_text().strip())
+            os.kill(pid, 0)  # signal 0 = check existence
+            return True
+        except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
+            return False
 
-    def _on_track_end(self) -> None:
-        """Auto-advance to the next random track."""
-        if self._enabled:
-            logger.debug("ChipTunes: track ended, advancing to next")
-            self._play_random()
+    @staticmethod
+    def _kill_worker() -> None:
+        """Terminate the worker process."""
+        try:
+            pid = int(Path(PID_PATH).read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+        except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
+            pass

@@ -1894,6 +1894,7 @@ async def test_deliver_inbound_updates_last_input_origin_before_broadcast():
     mock_session = MagicMock()
     mock_session.session_id = "sess-prov-order"
     mock_session.lifecycle_status = "active"
+    mock_session.closed_at = None
     mock_session.tmux_session_name = "tc_prov"
     mock_session.active_agent = None
     mock_session.project_path = "/tmp"
@@ -1973,6 +1974,7 @@ async def test_deliver_inbound_breaks_threaded_turn_before_broadcast():
     mock_session = MagicMock()
     mock_session.session_id = "sess-thread-boundary"
     mock_session.lifecycle_status = "active"
+    mock_session.closed_at = None
     mock_session.tmux_session_name = "tc_thread_boundary"
     mock_session.active_agent = "gemini"
     mock_session.project_path = "/tmp"
@@ -2234,6 +2236,7 @@ async def test_deliver_inbound_waits_through_initializing_then_dispatches():
         s = MagicMock()
         s.session_id = "sess-gate-ok"
         s.lifecycle_status = lifecycle
+        s.closed_at = None
         s.tmux_session_name = "tc_gate_ok"
         s.active_agent = None
         s.project_path = "/tmp"
@@ -2302,6 +2305,7 @@ async def test_deliver_inbound_timeout_raises_on_stuck_session():
     initializing_session = MagicMock()
     initializing_session.session_id = "sess-gate-timeout"
     initializing_session.lifecycle_status = "initializing"
+    initializing_session.closed_at = None
     initializing_session.tmux_session_name = "tc_gate_timeout"
     initializing_session.active_agent = None
     initializing_session.project_path = "/tmp"
@@ -2354,6 +2358,7 @@ async def test_deliver_inbound_active_session_skips_gate():
     mock_session = MagicMock()
     mock_session.session_id = "sess-no-gate"
     mock_session.lifecycle_status = "active"
+    mock_session.closed_at = None
     mock_session.tmux_session_name = "tc_no_gate"
     mock_session.active_agent = None
     mock_session.project_path = "/tmp"

@@ -53,7 +53,7 @@ async def test_next_work_explicit_bug_slug_with_worktree_cwd_skips_dor_gate(tmp_
     (todo_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": null}', encoding="utf-8")
 
     with (
-        patch("teleclaude.core.next_machine.core.ensure_worktree_async", new=AsyncMock(return_value=False)),
+        patch("teleclaude.core.next_machine.core.ensure_worktree_with_policy_async", new=AsyncMock(return_value=MagicMock(created=False, prepared=False, prep_reason="mocked"))),
         patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
         patch(
             "teleclaude.core.next_machine.core.compose_agent_guidance",

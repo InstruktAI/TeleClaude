@@ -29,6 +29,7 @@ from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config as app_config
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db
 from teleclaude.core.integration_bridge import emit_review_approved
@@ -376,7 +377,7 @@ DECISION REQUIRED: Continue preparation work, or start the build/review cycle wi
 
 def format_uncommitted_changes(slug: str) -> str:
     """Format instruction for orchestrator to resolve worktree uncommitted changes."""
-    return f"""UNCOMMITTED CHANGES in trees/{slug}
+    return f"""UNCOMMITTED CHANGES in {WORKTREE_DIR}/{slug}
 
 NEXT: Resolve these changes according to the commit policy, then call telec todo work {slug} to continue."""
 
@@ -2027,7 +2028,7 @@ def _file_contents_match(src: Path, dst: Path) -> bool:
 def sync_main_to_worktree(cwd: str, slug: str, extra_files: list[str] | None = None) -> int:
     """Copy orchestrator-owned planning files from main repo into a slug worktree."""
     main_root = Path(cwd)
-    worktree_root = Path(cwd) / "trees" / slug
+    worktree_root = Path(cwd) / WORKTREE_DIR / slug
     if not worktree_root.exists():
         return 0
     files = ["todos/roadmap.yaml"]
@@ -2042,7 +2043,7 @@ def sync_main_to_worktree(cwd: str, slug: str, extra_files: list[str] | None = N
 
 def sync_main_planning_to_all_worktrees(cwd: str) -> None:
     """Propagate main planning files to every existing worktree."""
-    trees_root = Path(cwd) / "trees"
+    trees_root = Path(cwd) / WORKTREE_DIR
     if not trees_root.exists():
         return
     for entry in trees_root.iterdir():
@@ -2092,7 +2093,7 @@ def has_uncommitted_changes(cwd: str, slug: str) -> bool:
     Returns:
         True if there are non-orchestrator uncommitted changes (staged or unstaged)
     """
-    worktree_path = Path(cwd) / "trees" / slug
+    worktree_path = Path(cwd) / WORKTREE_DIR / slug
     if not worktree_path.exists():
         return False
 
@@ -2252,13 +2253,13 @@ def get_finalize_lock_holder(cwd: str) -> dict[str, str] | None:
 
 def _worktree_prep_state_path(cwd: str, slug: str) -> Path:
     """Get prep-state marker path inside worktree."""
-    return Path(cwd) / "trees" / slug / _WORKTREE_PREP_STATE_REL
+    return Path(cwd) / WORKTREE_DIR / slug / _WORKTREE_PREP_STATE_REL
 
 
 def _compute_prep_inputs_digest(cwd: str, slug: str) -> str:
     """Compute hash of dependency-installation inputs that impact prep."""
     project_root = Path(cwd)
-    worktree_root = project_root / "trees" / slug
+    worktree_root = project_root / WORKTREE_DIR / slug
     digest = hashlib.sha256()
 
     candidates: list[tuple[str, Path]] = []
@@ -2325,22 +2326,26 @@ def _decide_worktree_prep(cwd: str, slug: str, created: bool) -> WorktreePrepDec
     return WorktreePrepDecision(should_prepare=False, reason="unchanged_known_good", inputs_digest=inputs_digest)
 
 
-def ensure_worktree_with_policy(cwd: str, slug: str) -> EnsureWorktreeResult:
-    """Ensure worktree exists and run prep only when policy says it's stale."""
-    worktree_path = Path(cwd) / "trees" / slug
-    created = False
-    if not worktree_path.exists():
-        try:
-            repo = Repo(cwd)
-        except InvalidGitRepositoryError:
-            logger.error("Cannot create worktree: %s is not a git repository", cwd)
-            raise
-        trees_dir = Path(cwd) / "trees"
-        trees_dir.mkdir(exist_ok=True)
-        try:
-            repo.git.worktree("add", str(worktree_path), "-b", slug)
-        except GitCommandError as exc:
-            branch_exists = any(head.name == slug for head in repo.heads)
+def _create_or_attach_worktree(cwd: str, slug: str) -> bool:
+    """Ensure the slug worktree path exists by creating or reattaching its branch."""
+    worktree_path = Path(cwd) / WORKTREE_DIR / slug
+    if worktree_path.exists():
+        return False
+
+    try:
+        repo = Repo(cwd)
+    except InvalidGitRepositoryError:
+        logger.error("Cannot create worktree: %s is not a git repository", cwd)
+        raise
+
+    trees_dir = Path(cwd) / WORKTREE_DIR
+    trees_dir.mkdir(exist_ok=True)
+
+    try:
+        repo.git.worktree("add", str(worktree_path), "-b", slug)
+    except GitCommandError as exc:
+        branch_exists = any(head.name == slug for head in repo.heads)
+        if not branch_exists:
             logger.error(
                 "Failed to create worktree for slug=%s cwd=%s worktree_path=%s branch_exists=%s: %s",
                 slug,
@@ -2351,9 +2356,27 @@ def ensure_worktree_with_policy(cwd: str, slug: str) -> EnsureWorktreeResult:
                 exc_info=True,
             )
             raise
-        logger.info("Created worktree at %s", worktree_path)
-        created = True
+        try:
+            repo.git.worktree("add", str(worktree_path), slug)
+        except GitCommandError as attach_exc:
+            logger.error(
+                "Failed to create worktree for slug=%s cwd=%s worktree_path=%s branch_exists=%s: %s",
+                slug,
+                cwd,
+                worktree_path,
+                branch_exists,
+                attach_exc,
+                exc_info=True,
+            )
+            raise
 
+    logger.info("Created worktree at %s", worktree_path)
+    return True
+
+
+def ensure_worktree_with_policy(cwd: str, slug: str) -> EnsureWorktreeResult:
+    """Ensure worktree exists and run prep only when policy says it's stale."""
+    created = _create_or_attach_worktree(cwd, slug)
     prep_decision = _decide_worktree_prep(cwd, slug, created=created)
     if prep_decision.should_prepare:
         _prepare_worktree(cwd, slug)
@@ -2362,20 +2385,9 @@ def ensure_worktree_with_policy(cwd: str, slug: str) -> EnsureWorktreeResult:
     return EnsureWorktreeResult(created=created, prepared=False, prep_reason=prep_decision.reason)
 
 
-def ensure_worktree(cwd: str, slug: str) -> bool:
-    """Compatibility wrapper returning whether a worktree was newly created."""
-    result = ensure_worktree_with_policy(cwd, slug)
-    return result.created
-
-
 async def ensure_worktree_with_policy_async(cwd: str, slug: str) -> EnsureWorktreeResult:
     """Async wrapper to ensure worktree with prep decision policy."""
     return await asyncio.to_thread(ensure_worktree_with_policy, cwd, slug)
-
-
-async def ensure_worktree_async(cwd: str, slug: str) -> bool:
-    """Async wrapper to ensure worktree without blocking the event loop."""
-    return await asyncio.to_thread(ensure_worktree, cwd, slug)
 
 
 def _prepare_worktree(cwd: str, slug: str) -> None:
@@ -2388,7 +2400,7 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
     - Else if package.json exists, run `pnpm install` if available, otherwise `npm install`.
     - If neither applies, do nothing.
     """
-    worktree_path = Path(cwd) / "trees" / slug
+    worktree_path = Path(cwd) / WORKTREE_DIR / slug
     worktree_prepare_script = Path(cwd) / "tools" / "worktree-prepare.sh"
     makefile = worktree_path / "Makefile"
     package_json = worktree_path / "package.json"
@@ -2702,7 +2714,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     # Prefer worktree-local planning state when explicit slug worktree exists.
     deps_cwd = cwd
     if slug:
-        maybe_worktree = Path(cwd) / "trees" / slug
+        maybe_worktree = Path(cwd) / WORKTREE_DIR / slug
         if (maybe_worktree / "todos" / "roadmap.yaml").exists():
             deps_cwd = str(maybe_worktree)
     deps = await asyncio.to_thread(load_roadmap_deps, deps_cwd)
@@ -2818,7 +2830,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     # 3. Validate preconditions
     # Bugs skip requirements.md and implementation-plan.md checks (they use bug.md instead)
     precondition_root = cwd
-    worktree_path = Path(cwd) / "trees" / resolved_slug
+    worktree_path = Path(cwd) / WORKTREE_DIR / resolved_slug
     if (
         worktree_path.exists()
         and (worktree_path / "todos" / resolved_slug / "requirements.md").exists()
@@ -2839,7 +2851,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             )
     _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "run", "validated")
 
-    worktree_cwd = str(Path(cwd) / "trees" / resolved_slug)
+    worktree_cwd = str(Path(cwd) / WORKTREE_DIR / resolved_slug)
     ensure_started = perf_counter()
     slug_lock = await _get_slug_single_flight_lock(cwd, resolved_slug)
     if slug_lock.locked():
@@ -2984,7 +2996,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             args=resolved_slug,
             project=cwd,
             guidance=guidance,
-            subfolder=f"trees/{resolved_slug}",
+            subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
             next_call=f"telec todo work {resolved_slug}",
             note=(
                 "PEER CONVERSATION NOTE: If you still have the reviewer session alive from the "
@@ -3020,7 +3032,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                     args=resolved_slug,
                     project=cwd,
                     guidance=guidance,
-                    subfolder=f"trees/{resolved_slug}",
+                    subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
                     next_call=f"telec todo work {resolved_slug}",
                     pre_dispatch=pre_dispatch,
                 )
@@ -3030,7 +3042,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
                 args=resolved_slug,
                 project=cwd,
                 guidance=guidance,
-                subfolder=f"trees/{resolved_slug}",
+                subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
                 next_call=f"telec todo work {resolved_slug}",
                 pre_dispatch=pre_dispatch,
             )
@@ -3098,7 +3110,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             args=resolved_slug,
             project=cwd,
             guidance=guidance,
-            subfolder=f"trees/{resolved_slug}",
+            subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
             next_call=f"telec todo work {resolved_slug}",
             note=f"{REVIEW_DIFF_NOTE}\n\n{_review_scope_note(worktree_cwd, resolved_slug)}",
         )
@@ -3116,7 +3128,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             args=resolved_slug,
             project=cwd,
             guidance=guidance,
-            subfolder=f"trees/{resolved_slug}",
+            subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
             next_call=f"telec todo work {resolved_slug}",
         )
 
@@ -3170,7 +3182,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         args=resolved_slug,
         project=cwd,
         guidance=guidance,
-        subfolder=f"trees/{resolved_slug}",
+        subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
         next_call="telec todo work",
         note=note,
     )

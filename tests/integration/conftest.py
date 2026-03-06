@@ -221,6 +221,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             "creds": MockCreds(),
             "terminal": MockTerminal(),
             "tts": None,
+            "chiptunes": None,
             "experiments": [],
             "default_agent": "claude",
             "agents": {

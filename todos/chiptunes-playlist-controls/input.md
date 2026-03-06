@@ -13,8 +13,14 @@ Replace the single chiptunes toggle icon (🔊/🔇) in the TUI footer with a pr
 5. **Stateful ⭐ button** — when the currently playing track is already in the favorites list, show ✅ instead of ⭐. Clicking ⭐ adds to favorites (with visual feedback). Clicking ✅ could either do nothing or remove from favorites (TBD — simpler to make it a no-op initially).
 6. **Now Playing toast** — keep the existing toast notification when a new track starts. The toast already works via ChiptunesTrackEvent -> notify(). No action buttons needed in the toast since the footer controls handle everything.
 
+### Icon reassignment
+- The current 🗣️ (speaking head) TTS icon is ugly. Replace it with the 🔊/🔇 speaker icon pair that chiptunes currently uses.
+- Chiptunes no longer needs a dedicated toggle icon — the ⏯️ play/pause button in the control group serves that purpose.
+- Play/pause shows distinct state icons: ▶️ when paused/stopped, ⏸️ when playing.
+
 ### Technical context
 - Current toggle: single 🔊/🔇 icon in `telec_footer.py`, click posts `SettingsChanged("chiptunes_enabled", ...)`.
+- Current TTS icon: 🗣️ (speaking head) — to be replaced with 🔊/🔇 speaker pair.
 - Manager has `pause()`/`resume()` but they're not exposed in the TUI.
 - Worker picks random tracks via `_play_random()` with no history — needs `next`/`prev` commands and a history list.
 - Manager needs new commands: `next`, `prev` forwarded to worker.

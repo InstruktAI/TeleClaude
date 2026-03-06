@@ -347,11 +347,69 @@ async def _create_tmux_session(
         except Exception as e:
             logger.warning("Failed to set destroy-unattached off for %s: %s", name, e)
 
+        await _apply_shell_guardrails(name, teleclaude_bin)
+
         return True
 
     except Exception as e:
         print(f"Error creating tmux session: {e}")
         return False
+
+
+async def _apply_shell_guardrails(session_name: str, teleclaude_bin: str) -> None:
+    """Send post-init shell guardrails via tmux send-keys.
+
+    macOS zsh login shell startup (/etc/zprofile → path_helper, ~/.zshenv, ~/.zprofile)
+    rewrites PATH after tmux's -e injection, pushing ~/.teleclaude/bin down. oh-my-zsh's
+    github plugin also sets `alias git=hub`, bypassing PATH entirely.
+
+    These keystrokes queue in the PTY input buffer and execute after shell init completes
+    but before any agent CLI command arrives (sequential async ordering in bootstrap_session).
+    """
+    try:
+        guardrail_cmd = (
+            f'export PATH="{teleclaude_bin}:$PATH"; unalias git 2>/dev/null; clear'
+        )
+        cmd_text = [
+            config.computer.tmux_binary,
+            "send-keys",
+            "-t",
+            session_name,
+            "-l",
+            "--",
+            guardrail_cmd,
+        ]
+        result = await asyncio.create_subprocess_exec(
+            *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        _, stderr = await communicate_with_timeout(
+            result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux guardrail text"
+        )
+        if result.returncode != 0:
+            logger.warning(
+                "Shell guardrail text failed for %s: %s",
+                session_name,
+                stderr.decode().strip() if stderr else "",
+            )
+            return
+
+        await asyncio.sleep(0.2)
+
+        cmd_enter = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
+        result = await asyncio.create_subprocess_exec(
+            *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        _, stderr = await communicate_with_timeout(
+            result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux guardrail enter"
+        )
+        if result.returncode != 0:
+            logger.warning(
+                "Shell guardrail enter failed for %s: %s",
+                session_name,
+                stderr.decode().strip() if stderr else "",
+            )
+    except Exception as e:
+        logger.warning("Shell guardrails failed for %s: %s", session_name, e)
 
 
 async def ensure_tmux_session(

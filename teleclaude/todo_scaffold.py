@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yaml
 
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.slug import ensure_unique_slug, validate_slug
 from teleclaude.types.todos import BreakdownState, DorState, TodoState
 
@@ -174,7 +175,7 @@ def remove_todo(project_root: Path, slug: str) -> None:
     slug = slug.strip()
 
     # Guard: check if worktree exists
-    worktree_path = project_root / "trees" / slug
+    worktree_path = project_root / WORKTREE_DIR / slug
     if worktree_path.exists():
         raise RuntimeError(
             f"Cannot remove {slug}: worktree exists at {worktree_path}. "

@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 from instrukt_ai_logging import get_logger
 
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.models import TodoInfo
 from teleclaude.core.next_machine.core import load_delivered, load_icebox, load_roadmap
 
@@ -98,7 +99,7 @@ def assemble_roadmap(
         project_root = Path(project_path)
 
         # Worktree state takes precedence over main (active work reflects live progress)
-        worktree_state = project_root / "trees" / slug / "todos" / slug / "state.yaml"
+        worktree_state = project_root / WORKTREE_DIR / slug / "todos" / slug / "state.yaml"
         state_path = worktree_state if worktree_state.exists() else todo_dir / "state.yaml"
         # Backward compat: fall back to state.json
         if not state_path.exists():

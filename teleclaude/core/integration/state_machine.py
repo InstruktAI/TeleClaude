@@ -26,6 +26,7 @@ from typing import Any, TypedDict
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.db import Db
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.queue import IntegrationQueue
@@ -1068,7 +1069,7 @@ def _do_cleanup(
     merge_commit = _get_head_sha(cwd) or "unknown"
 
     # Remove worktree
-    worktree_path = Path(cwd) / "trees" / key.slug
+    worktree_path = Path(cwd) / WORKTREE_DIR / key.slug
     if worktree_path.exists():
         rc, _, stderr = _run_git(["worktree", "remove", "--force", str(worktree_path)], cwd=cwd)
         if rc != 0:

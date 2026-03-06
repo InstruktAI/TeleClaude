@@ -1,10 +1,12 @@
 """Build project-centric tree from API data."""
 
+import os
 from dataclasses import dataclass, field
 from typing import TypeGuard
 
 from teleclaude.cli.models import ComputerInfo, ProjectInfo, SessionInfo
 from teleclaude.cli.tui.types import NodeType
+from teleclaude.constants import WORKTREE_DIR
 
 
 @dataclass(frozen=True)
@@ -147,7 +149,8 @@ def build_tree(
             if s.computer != comp_name or not s.project_path:
                 continue
             for p in comp_projects_sorted:
-                if s.project_path == p.path or s.project_path.startswith(p.path + "/"):
+                worktree_prefix = p.path + os.sep + WORKTREE_DIR + os.sep
+                if s.project_path == p.path or s.project_path.startswith(worktree_prefix):
                     project_sessions[p.path].append(s)
                     matched_session_ids.add(s.session_id)
                     break

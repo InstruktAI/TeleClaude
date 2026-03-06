@@ -249,6 +249,9 @@ CHECKPOINT_TEST_ERROR_COMMANDS = ["pytest", "make test"]
 CHECKPOINT_TEST_ERROR_MESSAGE = "Test failures remain — re-run tests after fixes"
 CHECKPOINT_GENERIC_ERROR_MESSAGE = "A command returned errors — verify the issue is resolved"
 
+# Worktree directory name (git worktrees live at {project}/trees/{slug})
+WORKTREE_DIR = "trees"
+
 # Misc markers / defaults
 RELATIVE_CURRENT = "."
 TC_WORKDIR = "TC WORKDIR"
@@ -370,7 +373,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         },
         "model_flags": {
             "fast": (
-                "-m gpt-5.3-codex"
+                "-m gpt-5.4"
                 " --config model_reasoning_effort='medium'"
                 " --config model_reasoning_summary='detailed'"
                 " --config model_supports_reasoning_summaries=true"
@@ -378,7 +381,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
                 " --config hide_agent_reasoning=false"
             ),
             "med": (
-                "-m gpt-5.3-codex"
+                "-m gpt-5.4"
                 " --config model_reasoning_effort='high'"
                 " --config model_reasoning_summary='detailed'"
                 " --config model_supports_reasoning_summaries=true"
@@ -386,7 +389,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
                 " --config hide_agent_reasoning=false"
             ),
             "slow": (
-                "-m gpt-5.3-codex"
+                "-m gpt-5.4"
                 " --config model_reasoning_effort='xhigh'"
                 " --config model_reasoning_summary='detailed'"
                 " --config model_supports_reasoning_summaries=true"

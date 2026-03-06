@@ -2,7 +2,7 @@
 
 ## Overview
 
-Four-layer change: worker gets track history and prev/next commands, manager gets proxy methods, daemon broadcasts enriched track events, TUI footer replaces the single toggle with a player control group + favorites persistence.
+Four-layer change: worker gets track history and prev/next commands, manager gets proxy methods, daemon broadcasts enriched track events, TUI footer replaces the single toggle with a player control group + favorites persistence. Also reassigns the 🔊/🔇 speaker icon from chiptunes to TTS (replacing the ugly 🗣️ head).
 
 ## Phase 1: Worker Track History & Navigation
 
@@ -73,15 +73,16 @@ Four-layer change: worker gets track history and prev/next commands, manager get
 - [ ] Add reactives: `chiptunes_playing = reactive(False)`, `chiptunes_track = reactive("")`, `chiptunes_sid_path = reactive("")`, `chiptunes_favorited = reactive(False)`
 - [ ] Add watchers that call `self.refresh()` on change
 
-### Task 4.2: Render player control group
+### Task 4.2: Render player control group and reassign TTS icon
 
 **File(s):** `teleclaude/cli/tui/widgets/telec_footer.py`
 
-- [ ] Replace the single chiptunes icon block with four icons: `⏮` `⏯`/`⏸` `⏭` `⭐`/`✅`
-- [ ] ⏯️ shows `⏸` when `chiptunes_playing` is True, `▶` when paused or disabled
+- [ ] Replace the single chiptunes icon block with four icons: `⏮` `▶`/`⏸` `⏭` `⭐`/`✅`
+- [ ] Play/pause shows `⏸` when `chiptunes_playing` is True, `▶` when paused or disabled
 - [ ] ⭐ shows `✅` when `chiptunes_favorited` is True
 - [ ] All four icons dim when `chiptunes_enabled` is False
 - [ ] Track x-coordinate regions for each icon: `_prev_start_x`, `_play_start_x`, `_next_start_x`, `_fav_start_x` (and corresponding end positions)
+- [ ] Replace TTS icon from 🗣️ (speaking head) to 🔊 (enabled) / 🔇 (disabled) — the speaker pair freed up by the chiptunes control group
 
 ### Task 4.3: Click handlers for player controls
 

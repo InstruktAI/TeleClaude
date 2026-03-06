@@ -15,6 +15,7 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from teleclaude.config import config
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.cache import DaemonCache
 
 logger = get_logger(__name__)
@@ -116,7 +117,7 @@ class TodoWatcher:
                 observer.schedule(handler, str(todos_dir), recursive=True)
                 watched += 1
                 logger.debug("TodoWatcher: watching %s", todos_dir)
-            trees_dir = Path(td.path) / "trees"
+            trees_dir = Path(td.path) / WORKTREE_DIR
             if trees_dir.is_dir():
                 observer.schedule(handler, str(trees_dir), recursive=True)
                 watched += 1
