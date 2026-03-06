@@ -366,6 +366,15 @@ class ErrorEventDTO(BaseModel):  # type: ignore[explicit-any]
     data: ErrorEventDataDTO
 
 
+class ChiptunesTrackEventDTO(BaseModel):  # type: ignore[explicit-any]
+    """WebSocket event when a new chiptunes track starts playing."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event: Literal["chiptunes_track"] = "chiptunes_track"
+    track: str
+
+
 class SessionLifecycleStatusEventDTO(BaseModel):  # type: ignore[explicit-any]
     """WebSocket event for canonical session lifecycle status transitions.
 

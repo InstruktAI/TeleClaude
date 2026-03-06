@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import threading
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -40,9 +41,9 @@ class ChiptunesManager:
         return self._enabled
 
     def start(self) -> None:
-        """Pick a random PSID track and start playback."""
+        """Pick a random PSID track and start playback (non-blocking)."""
         self._enabled = True
-        self._play_random()
+        threading.Thread(target=self._play_random, daemon=True, name="chiptunes-start").start()
 
     def stop(self) -> None:
         """Stop playback immediately."""

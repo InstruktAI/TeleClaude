@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ctypes
 import queue
 import threading
 import time
@@ -26,7 +25,7 @@ except ImportError:
 logger = get_logger(__name__)
 
 _PREBUFFER_SECONDS = 2.5  # seconds of audio pre-buffered before stream starts
-_QUEUE_MAX_CHUNKS = 200  # maximum queue depth (~200 frames at 50Hz ≈ 4s)
+_QUEUE_MAX_CHUNKS = 400  # maximum queue depth (~400 frames at 50Hz ≈ 8s)
 _SAMPLE_RATE = 48000
 
 
@@ -106,45 +105,38 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             _time: object,
             _status: object,
         ) -> None:
+            chunk_size = frames * 2  # int16 = 2 bytes per sample
+
             with self._pause_lock:
                 if self._paused:
-                    # Write silence when paused
-                    if hasattr(out, "write"):
-                        out.write(bytes(frames * 2))  # type: ignore[union-attr]
-                    else:
-                        ctypes.memmove(out, bytes(frames * 2), frames * 2)  # type: ignore[arg-type]
+                    out[:chunk_size] = bytes(chunk_size)  # type: ignore[index]
                     return
 
-            chunk_size = frames * 2
             buf = bytearray(chunk_size)
             pos = 0
             while pos < chunk_size:
-                needed = chunk_size - pos
                 try:
                     chunk = self._pcm_queue.get_nowait()
-                    use = min(needed, len(chunk))
+                    use = min(chunk_size - pos, len(chunk))
                     buf[pos : pos + use] = chunk[:use]
                     if use < len(chunk):
-                        # Put remainder back (best-effort: drop if full)
                         try:
                             self._pcm_queue.put_nowait(chunk[use:])
                         except queue.Full:
                             pass
                     pos += use
                 except queue.Empty:
-                    break  # Fill rest with silence
+                    break  # rest stays silence-filled
 
-            if hasattr(out, "write"):
-                out.write(bytes(buf))  # type: ignore[union-attr]
-            else:
-                ctypes.memmove(out, bytes(buf), chunk_size)  # type: ignore[arg-type]
+            out[:chunk_size] = bytes(buf)  # type: ignore[index]
 
         try:
             stream = sd.RawOutputStream(
                 samplerate=_SAMPLE_RATE,
                 channels=1,
                 dtype="int16",
-                blocksize=samples_per_frame,
+                blocksize=samples_per_frame * 4,
+                latency="high",
                 callback=_callback,
             )
             self._stream = stream
@@ -185,7 +177,6 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             if time.monotonic() - track_start >= self._max_track_duration:
                 logger.debug("ChipTunes: max track duration reached, advancing to next track")
                 break
-            frame_start = time.monotonic()
             try:
                 writes = driver.play_frame()
                 pcm = renderer.render_frame(writes, frame_duration)
@@ -204,8 +195,13 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning("Emulation error (skipping track): %s", exc)
                 break
-            # Pace the loop to approximately real-time frame rate
-            self._stop_event.wait(max(0.0, frame_duration - (time.monotonic() - frame_start)))
+            # Adaptive pacing: run flat-out when buffer is low, yield CPU when healthy.
+            # This prevents 100% CPU usage from starving the audio callback thread.
+            qsize = self._pcm_queue.qsize()
+            if qsize > _QUEUE_MAX_CHUNKS // 2:
+                self._stop_event.wait(frame_duration)
+            elif qsize > _QUEUE_MAX_CHUNKS // 4:
+                self._stop_event.wait(frame_duration * 0.5)
 
         self._playing = False
         if not self._stop_event.is_set():
