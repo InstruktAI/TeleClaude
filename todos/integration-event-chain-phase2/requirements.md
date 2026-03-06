@@ -18,8 +18,10 @@ After this work, the pipeline has one coherent ownership model:
 
 1. **Register `branch.pushed` event schema** in `teleclaude_events/schemas/software_development.py`
 2. **Create `emit_branch_pushed()` helper** in `teleclaude/core/integration_bridge.py`
-3. **Wire `emit_branch_pushed()` into the finalize worker's git push step** so the readiness
-   projection receives the `branch.pushed` signal
+3. **Wire `emit_branch_pushed()` into the canonical finalize handoff seam** so the readiness
+   projection receives the `branch.pushed` signal after the candidate branch push is known
+   to have succeeded. [inferred: in current code this is the recovered `POST_COMPLETION["next-finalize"]`
+   handoff path, not a resurrected direct integration path]
 4. **Modify `IntegrationTriggerCartridge`** to:
    - Accept an event ingestion callback (for feeding events to the IntegrationEventService)
    - Monitor `review.approved`, `branch.pushed`, and `deployment.started` events
@@ -56,7 +58,7 @@ After this work, the pipeline has one coherent ownership model:
 
 - [ ] `domain.software-development.branch.pushed` event schema registered in catalog
 - [ ] `emit_branch_pushed()` exists in `integration_bridge.py` and emits correct envelope
-- [ ] Finalize worker emits `branch.pushed` event after successful git push
+- [ ] Canonical finalize handoff emits `branch.pushed` event after successful candidate-branch push
 - [ ] IntegrationTriggerCartridge feeds `review.approved`, `branch.pushed`, and
       `deployment.started` events to the readiness projection via ingestion callback
 - [ ] Integrator spawn + enqueue ONLY happens when projection reports READY

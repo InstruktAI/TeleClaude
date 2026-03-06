@@ -32,14 +32,17 @@ No new orchestration model is introduced.
       `{branch, sha, remote, pushed_at, pusher}`
 - [ ] Source: `"finalizer/{TELECLAUDE_SESSION_ID}"`
 
-### Task 1.3: Wire `emit_branch_pushed()` into the finalize worker
+### Task 1.3: Wire `emit_branch_pushed()` into the canonical finalize handoff
 
-**File(s):** `teleclaude/core/next_machine/core.py` (POST_COMPLETION instructions for
-`next-finalize`)
+**File(s):** `teleclaude/core/next_machine/core.py` (recovered `POST_COMPLETION`
+instructions for `next-finalize`)
 
-- [ ] Add instruction step after git push success: call `emit_branch_pushed(branch, sha, remote)`
-- [ ] The finalize worker already knows branch and sha from its context; remote defaults
-      to `"origin"`
+- [ ] Add instruction step in the `next-finalize` handoff after candidate-branch push success:
+      call `emit_branch_pushed(branch, sha, remote)`
+- [ ] Use the same canonical branch/sha context already used for `deployment.started`;
+      remote defaults to `"origin"`
+- [ ] Do not reintroduce any direct orchestrator-owned `telec todo integrate` path while
+      adding the event emission
 
 ---
 
