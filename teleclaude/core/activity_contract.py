@@ -9,8 +9,7 @@ Canonical activity event types (outbound vocabulary):
   - agent_output_update — agent working (tool call initiated or completed)
   - agent_output_stop   — agent turn complete
 
-See docs/project/spec/event-vocabulary.md for the full vocabulary and
-hook-to-canonical mapping.
+See docs/project/spec/event-vocabulary.md for the full vocabulary and hook-to-canonical mapping.
 """
 
 from dataclasses import dataclass
@@ -28,7 +27,6 @@ CanonicalActivityEventType = Literal[
     "user_prompt_submit",
     "agent_output_update",
     "agent_output_stop",
-    "agent_notification",
 ]
 
 # Routing intent for all activity control events (CTRL scope, no UI content)
@@ -44,7 +42,6 @@ HOOK_TO_CANONICAL: dict[str, CanonicalActivityEventType] = {
     "tool_use": "agent_output_update",
     "tool_done": "agent_output_update",
     "agent_stop": "agent_output_stop",
-    "notification": "agent_notification",
 }
 
 # ---------------------------------------------------------------------------
@@ -80,7 +77,7 @@ class CanonicalActivityEvent:
 # ---------------------------------------------------------------------------
 
 _CANONICAL_TYPES: frozenset[str] = frozenset(
-    {"user_prompt_submit", "agent_output_update", "agent_output_stop", "agent_notification"}
+    {"user_prompt_submit", "agent_output_update", "agent_output_stop"}
 )
 _DELIVERY_SCOPES: frozenset[str] = frozenset({"ORIGIN_ONLY", "DUAL", "CTRL"})
 

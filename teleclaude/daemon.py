@@ -201,7 +201,6 @@ HOOK_EVENT_CLASS_CRITICAL: frozenset[str] = frozenset(
         AgentHookEvents.USER_PROMPT_SUBMIT,
         AgentHookEvents.AGENT_STOP,
         AgentHookEvents.AGENT_SESSION_END,
-        AgentHookEvents.AGENT_NOTIFICATION,
         AgentHookEvents.AGENT_ERROR,
     }
 )
@@ -1812,6 +1811,21 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 correlation_config=CorrelationConfig(),
                 producer=event_producer,
             )
+            # 5b. Domain pipeline runner (fan-out after system pipeline)
+            domain_runner = None
+            event_domains_cfg = getattr(config, "event_domains", None)
+            if event_domains_cfg is not None:
+                try:
+                    from teleclaude_events.startup import build_domain_pipeline_runner
+
+                    domain_runner = build_domain_pipeline_runner(event_domains_cfg)
+                    logger.info("Domain pipeline runner built successfully")
+                except Exception as _domain_err:
+                    logger.error(
+                        "Failed to build domain pipeline runner: %s — domain pipeline disabled",
+                        _domain_err,
+                    )
+
             pipeline = Pipeline(
                 [
                     TrustCartridge(),
@@ -1824,6 +1838,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     PrepareQualityCartridge(),
                 ],
                 context,
+                domain_runner=domain_runner,
             )
 
             # 6. Processor

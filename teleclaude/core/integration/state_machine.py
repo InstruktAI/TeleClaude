@@ -398,6 +398,27 @@ def _format_clearance_wait(blocking_session_ids: tuple[str, ...], dirty_paths: t
     return "\n".join(lines)
 
 
+def _format_housekeeping_commit(dirty_paths: tuple[str, ...]) -> str:
+    file_list = "\n".join(f"  - {p}" for p in dirty_paths)
+    add_args = " ".join(dirty_paths)
+    return f"""INTEGRATION DECISION: HOUSEKEEPING COMMIT REQUIRED
+
+Main has uncommitted tracked changes that must be committed before integration can proceed.
+
+## Dirty paths
+{file_list}
+
+## Your Task
+1. Review each dirty file briefly to understand what changed
+2. Compose a concise commit message describing the in-flight changes
+3. Run:
+   git add {add_args}
+   git commit -m '<your message>'
+4. Then call: telec todo integrate
+
+NEXT: Commit the dirty paths above, then call telec todo integrate"""
+
+
 def _format_push_rejected(rejection_reason: str, slug: str) -> str:
     return f"""INTEGRATION DECISION: PUSH REJECTION RECOVERY
 
@@ -744,10 +765,14 @@ def _step_idle(
     # Check clearance
     clearance_probe = _make_clearance_probe(cwd)
     clearance = clearance_probe.check(exclude_session_id=session_id)
-    if not clearance.cleared:
+    if clearance.blocking_session_ids:
         checkpoint.phase = IntegrationPhase.CLEARANCE_WAIT.value
         _write_checkpoint(checkpoint_path, checkpoint)
         return False, _format_clearance_wait(clearance.blocking_session_ids, clearance.dirty_tracked_paths)
+    if clearance.dirty_tracked_paths:
+        checkpoint.phase = IntegrationPhase.CLEARANCE_WAIT.value
+        _write_checkpoint(checkpoint_path, checkpoint)
+        return False, _format_housekeeping_commit(clearance.dirty_tracked_paths)
 
     # Do merge
     return _do_merge(
@@ -772,8 +797,10 @@ def _step_clearance_wait(
 
     clearance_probe = _make_clearance_probe(cwd)
     clearance = clearance_probe.check(exclude_session_id=session_id)
-    if not clearance.cleared:
+    if clearance.blocking_session_ids:
         return False, _format_clearance_wait(clearance.blocking_session_ids, clearance.dirty_tracked_paths)
+    if clearance.dirty_tracked_paths:
+        return False, _format_housekeeping_commit(clearance.dirty_tracked_paths)
 
     return _do_merge(
         checkpoint=checkpoint,

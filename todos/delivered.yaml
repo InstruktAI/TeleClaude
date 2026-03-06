@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: event-domain-infrastructure
+  date: '2026-03-06'
+  title: 'Domain pipeline: parallel per-domain processing, guardian AIs, folder hierarchy,
+    personal subscriptions, autonomy matrix'
+  description: 'Domain pipeline: parallel per-domain processing, guardian AIs, folder
+    hierarchy, personal subscriptions, autonomy matrix'
 - slug: event-system-cartridges
   date: '2026-03-05'
   title: 'System pipeline intelligence: trust evaluator, enrichment, correlation,

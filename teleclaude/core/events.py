@@ -30,7 +30,6 @@ AgentHookEventType = Literal[
     "tool_done",
     "agent_stop",
     "session_end",
-    "notification",
     "error",
     "before_agent",
     "before_model",
@@ -55,7 +54,6 @@ class AgentHookEvents:
     TOOL_DONE: AgentHookEventType = "tool_done"
     AGENT_STOP: AgentHookEventType = "agent_stop"
     AGENT_SESSION_END: AgentHookEventType = "session_end"
-    AGENT_NOTIFICATION: AgentHookEventType = "notification"
     AGENT_ERROR: AgentHookEventType = "error"
 
     # Additional hook events (captured for future-proofing, no active handlers yet)
@@ -79,7 +77,6 @@ class AgentHookEvents:
     # - TOOL_USE: Agent started a tool call (checkpoint timing, TUI activity)
     # - TOOL_DONE: Tool execution completed (activity/control-plane signal)
     # - AGENT_STOP: Trigger turn completion, poll transcript for final model response
-    # - AGENT_NOTIFICATION: Notify listeners (tmux) and initiators (remote)
     # Other events are enqueued but have no active logic in the daemon yet.
 
     # Mapping from agent-specific hook event names to TeleClaude internal event types
@@ -90,7 +87,6 @@ class AgentHookEvents:
                     "SessionStart": AGENT_SESSION_START,
                     "UserPromptSubmit": USER_PROMPT_SUBMIT,
                     "PreToolUse": TOOL_USE,
-                    "PermissionRequest": AGENT_NOTIFICATION,
                     "PostToolUse": TOOL_DONE,
                     "PostToolUseFailure": TOOL_DONE,
                     "SubagentStart": TOOL_DONE,
@@ -98,7 +94,6 @@ class AgentHookEvents:
                     "Stop": AGENT_STOP,
                     "PreCompact": PRE_COMPACT,
                     "SessionEnd": AGENT_SESSION_END,
-                    "Notification": AGENT_NOTIFICATION,
                 }
             ),
             "gemini": MappingProxyType(
@@ -112,7 +107,6 @@ class AgentHookEvents:
                     "BeforeTool": BEFORE_TOOL,
                     "AfterTool": TOOL_DONE,
                     "PreCompress": PRE_COMPRESS,
-                    "Notification": AGENT_NOTIFICATION,
                     "SessionEnd": AGENT_SESSION_END,
                 }
             ),
@@ -136,7 +130,6 @@ class AgentHookEvents:
             TOOL_DONE,
             TOOL_USE,
             AGENT_STOP,
-            AGENT_NOTIFICATION,
             AGENT_ERROR,
         }
     )
@@ -196,20 +189,6 @@ class AgentStopPayload:
 
 
 @dataclass(frozen=True)
-class AgentNotificationPayload:
-    """Internal payload for agent notification hook.
-
-    guard: loose-dict - Agent hook data varies by agent.
-    """
-
-    message: str = ""
-    raw: Mapping[str, object] = field(default_factory=dict)
-    session_id: str | None = None
-    transcript_path: str | None = None
-    source_computer: str | None = None
-
-
-@dataclass(frozen=True)
 class AgentSessionEndPayload:
     """Internal payload for agent session_end hook.
 
@@ -225,7 +204,6 @@ AgentEventPayload = Union[
     UserPromptSubmitPayload,
     AgentOutputPayload,
     AgentStopPayload,
-    AgentNotificationPayload,
     AgentSessionEndPayload,
 ]
 
@@ -237,7 +215,6 @@ SUPPORTED_PAYLOAD_TYPES: set[AgentHookEventType] = {
     AgentHookEvents.USER_PROMPT_SUBMIT,
     AgentHookEvents.TOOL_DONE,
     AgentHookEvents.AGENT_STOP,
-    AgentHookEvents.AGENT_NOTIFICATION,
     AgentHookEvents.AGENT_SESSION_END,
     AgentHookEvents.TOOL_USE,
 }
@@ -281,15 +258,6 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
             session_id=native_id,
             transcript_path=cast(str | None, data.get("transcript_path")),
             prompt=cast(str | None, data.get("prompt")),
-            source_computer=cast(str | None, data.get("source_computer")),
-            raw=frozen_raw,
-        )
-
-    if event_type == AgentHookEvents.AGENT_NOTIFICATION:
-        return AgentNotificationPayload(
-            message=cast(str, data.get("message", "")),
-            session_id=native_id,
-            transcript_path=cast(str | None, data.get("transcript_path")),
             source_computer=cast(str | None, data.get("source_computer")),
             raw=frozen_raw,
         )

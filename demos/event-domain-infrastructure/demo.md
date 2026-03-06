@@ -44,7 +44,7 @@ python -c "
 import asyncio
 from teleclaude_events.domain_pipeline import DomainPipelineRunner
 # Empty runner should complete without error
-runner = DomainPipelineRunner({})
+runner = DomainPipelineRunner()
 print('DomainPipelineRunner instantiation: OK')
 "
 ```

@@ -32,14 +32,12 @@ agent_hook_events:
   - tool_done
   - agent_stop
   - session_end
-  - notification
   - error
 
 canonical_outbound_activity_events:
   - user_prompt_submit
   - agent_output_update
   - agent_output_stop
-  - agent_notification
 ```
 
 ### Canonical Outbound Activity Vocabulary
@@ -56,7 +54,6 @@ Canonical activity events are the stable outbound vocabulary for all consumer ad
 | `tool_use`           | `agent_output_update` | Agent working: tool call initiated |
 | `tool_done`          | `agent_output_update` | Agent working: tool call completed |
 | `agent_stop`         | `agent_output_stop`   | Agent turn complete                |
-| `notification`       | `agent_notification`  | Agent notification (input request) |
 
 ### Canonical payload fields
 
@@ -78,7 +75,6 @@ Optional fields (event-specific):
 | `tool_name`    | str or null | `agent_output_update` with tool info |
 | `tool_preview` | str or null | `agent_output_update` with preview   |
 | `summary`      | str or null | `agent_output_stop` with summary     |
-| `message`      | str or null | `agent_notification` with message    |
 
 ### Routing metadata
 
