@@ -1898,6 +1898,7 @@ async def test_deliver_inbound_updates_last_input_origin_before_broadcast():
     mock_session.active_agent = None
     mock_session.project_path = "/tmp"
     mock_session.subdir = None
+    mock_session.closed_at = None
 
     mock_db = AsyncMock()
     mock_db.get_session = AsyncMock(return_value=mock_session)
@@ -1977,6 +1978,7 @@ async def test_deliver_inbound_breaks_threaded_turn_before_broadcast():
     mock_session.active_agent = "gemini"
     mock_session.project_path = "/tmp"
     mock_session.subdir = None
+    mock_session.closed_at = None
 
     mock_db = AsyncMock()
     mock_db.get_session = AsyncMock(return_value=mock_session)
@@ -2238,6 +2240,7 @@ async def test_deliver_inbound_waits_through_initializing_then_dispatches():
         s.active_agent = None
         s.project_path = "/tmp"
         s.subdir = None
+        s.closed_at = None
         return s
 
     async def get_session_side_effect(session_id: str) -> MagicMock:
@@ -2306,6 +2309,7 @@ async def test_deliver_inbound_timeout_raises_on_stuck_session():
     initializing_session.active_agent = None
     initializing_session.project_path = "/tmp"
     initializing_session.subdir = None
+    initializing_session.closed_at = None
     mock_db.get_session = AsyncMock(return_value=initializing_session)
 
     mock_client = AsyncMock()
@@ -2358,6 +2362,7 @@ async def test_deliver_inbound_active_session_skips_gate():
     mock_session.active_agent = None
     mock_session.project_path = "/tmp"
     mock_session.subdir = None
+    mock_session.closed_at = None
 
     mock_db = AsyncMock()
     mock_db.get_session = AsyncMock(return_value=mock_session)
