@@ -143,6 +143,6 @@ Four-layer change: worker gets track history and prev/next commands, manager get
 
 ## Phase 6: Review Readiness
 
-- [ ] Confirm requirements are reflected in code changes
-- [ ] Confirm implementation tasks are all marked `[x]`
-- [ ] SIGUSR2 reload and verify footer controls visually
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] SIGUSR2 reload and verify footer controls visually
