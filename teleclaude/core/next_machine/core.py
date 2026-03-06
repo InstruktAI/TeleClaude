@@ -2337,7 +2337,20 @@ def ensure_worktree_with_policy(cwd: str, slug: str) -> EnsureWorktreeResult:
             raise
         trees_dir = Path(cwd) / "trees"
         trees_dir.mkdir(exist_ok=True)
-        repo.git.worktree("add", str(worktree_path), "-b", slug)
+        try:
+            repo.git.worktree("add", str(worktree_path), "-b", slug)
+        except GitCommandError as exc:
+            branch_exists = any(head.name == slug for head in repo.heads)
+            logger.error(
+                "Failed to create worktree for slug=%s cwd=%s worktree_path=%s branch_exists=%s: %s",
+                slug,
+                cwd,
+                worktree_path,
+                branch_exists,
+                exc,
+                exc_info=True,
+            )
+            raise
         logger.info("Created worktree at %s", worktree_path)
         created = True
 
@@ -2839,6 +2852,12 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     # 4. Ensure worktree exists + conditional prep + conditional sync in single-flight window.
     try:
         async with slug_lock:
+            logger.info(
+                "next_work entering ensure/sync boundary slug=%s cwd=%s worktree_path=%s",
+                resolved_slug,
+                cwd,
+                worktree_cwd,
+            )
             ensure_result = await ensure_worktree_with_policy_async(cwd, resolved_slug)
             if ensure_result.created:
                 logger.info("Created new worktree for %s", resolved_slug)
@@ -2848,16 +2867,45 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             )
 
             sync_started = perf_counter()
+            logger.info(
+                "next_work entering sync boundary slug=%s cwd=%s worktree_path=%s",
+                resolved_slug,
+                cwd,
+                worktree_cwd,
+            )
             main_sync_copied = await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
             sync_decision = "run" if main_sync_copied > 0 else "skip"
             sync_reason = f"copied main={main_sync_copied}" if main_sync_copied > 0 else "unchanged_inputs"
             _log_next_work_phase(phase_slug, "sync", sync_started, sync_decision, sync_reason)
     except RuntimeError as exc:
+        logger.error(
+            "next_work worktree preparation failed for slug=%s cwd=%s worktree_path=%s: %s",
+            resolved_slug,
+            cwd,
+            worktree_cwd,
+            exc,
+            exc_info=True,
+        )
         _log_next_work_phase(phase_slug, "ensure_prepare", ensure_started, "error", "prep_failed")
         return format_error(
             "WORKTREE_PREP_FAILED",
             str(exc),
             next_call="Add tools/worktree-prepare.sh or fix its execution, then retry.",
+        )
+    except Exception as exc:
+        logger.error(
+            "next_work worktree setup failed for slug=%s cwd=%s worktree_path=%s: %s",
+            resolved_slug,
+            cwd,
+            worktree_cwd,
+            exc,
+            exc_info=True,
+        )
+        _log_next_work_phase(phase_slug, "ensure_prepare", ensure_started, "error", f"unexpected_{type(exc).__name__}")
+        return format_error(
+            "WORKTREE_SETUP_FAILED",
+            f"Unexpected error while ensuring worktree for {resolved_slug}: {type(exc).__name__}: {exc}",
+            next_call="Inspect daemon logs for worktree setup failure, fix the repository or branch state, then retry.",
         )
 
     dispatch_started = perf_counter()

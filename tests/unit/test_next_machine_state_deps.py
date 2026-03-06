@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
+from git.exc import GitCommandError
 
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import (
@@ -701,6 +702,38 @@ async def test_next_work_blocks_when_review_round_limit_reached():
 
         assert "ERROR:" in result
         assert "REVIEW_ROUND_LIMIT" in result
+
+
+@pytest.mark.asyncio
+async def test_next_work_returns_structured_error_when_worktree_setup_throws():
+    """Unexpected worktree setup exceptions should not escape as bare 500s."""
+    db = MagicMock(spec=Db)
+    slug = "worktree-setup-failure"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Requirements\n")
+        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
+
+        with patch(
+            "teleclaude.core.next_machine.core.ensure_worktree_with_policy_async",
+            new=AsyncMock(
+                side_effect=GitCommandError(
+                    "git worktree add trees/worktree-setup-failure -b worktree-setup-failure",
+                    255,
+                    stderr="fatal: a branch named 'worktree-setup-failure' already exists",
+                )
+            ),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+    assert "ERROR: WORKTREE_SETUP_FAILED" in result
+    assert "GitCommandError" in result
+    assert "branch named 'worktree-setup-failure' already exists" in result
 
 
 @pytest.mark.asyncio

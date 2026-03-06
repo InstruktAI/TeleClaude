@@ -154,6 +154,11 @@ Each entry includes:
 - `reason` (deterministic reason code)
 - `duration_ms` (phase duration)
 
+For the worktree setup boundary specifically:
+
+- `next_work()` emits context logs before entering the combined ensure/sync section so failures can be pinned to worktree setup vs later phases.
+- Unexpected exceptions in `ensure_prepare` are surfaced as `reason=unexpected_<ExceptionType>` instead of disappearing behind a generic API 500.
+
 ### Finalize Lock
 
 Multiple orchestrators may reach the finalize step concurrently for different slugs. A session-bound file lock (`todos/.finalize-lock`) serializes merges to main:
