@@ -17,6 +17,7 @@ from textual.widgets import TabbedContent, TabPane
 
 from teleclaude.cli.models import (
     AgentActivityEvent,
+    ChiptunesTrackEvent,
     ComputerInfo,
     ErrorEvent,
     ProjectInfo,
@@ -581,19 +582,16 @@ class TelecApp(App[str | None]):
         elif isinstance(event, ErrorEvent):
             self.notify(event.data.message, severity="error")
 
-        elif event.event == "chiptunes_track":
+        elif isinstance(event, ChiptunesTrackEvent):
             from teleclaude.chiptunes.favorites import is_favorited
-            from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 
-            track = getattr(event, "track", "")
-            sid_path = getattr(event, "sid_path", "")
             footer = self.query_one("#telec-footer", TelecFooter)
-            footer.chiptunes_track = track
-            footer.chiptunes_sid_path = sid_path
+            footer.chiptunes_track = event.track
+            footer.chiptunes_sid_path = event.sid_path
             footer.chiptunes_playing = True
-            footer.chiptunes_favorited = is_favorited(sid_path)
-            if track:
-                self.notify(f"♪ Now Playing: {track}", timeout=4)
+            footer.chiptunes_favorited = is_favorited(event.sid_path)
+            if event.track:
+                self.notify(f"♪ Now Playing: {event.track}", timeout=4)
 
         else:
             if event.event == "computer_updated":
@@ -999,15 +997,28 @@ class TelecApp(App[str | None]):
         except Exception as e:
             self.notify(f"Failed to go to previous track: {e}", severity="error")
 
-    def _chiptunes_favorite(self) -> None:
+    @work(exclusive=False, group="settings")
+    async def _chiptunes_favorite(self) -> None:
         """Save the current track to favorites."""
         footer = self.query_one("#telec-footer", TelecFooter)
         if not footer.chiptunes_sid_path:
             return
         from teleclaude.chiptunes.favorites import is_favorited, save_favorite
 
-        save_favorite(footer.chiptunes_track, footer.chiptunes_sid_path)
-        footer.chiptunes_favorited = is_favorited(footer.chiptunes_sid_path)
+        sid_path = footer.chiptunes_sid_path
+        track = footer.chiptunes_track
+
+        already_favorited = await asyncio.to_thread(is_favorited, sid_path)
+        if already_favorited:
+            return
+
+        try:
+            await asyncio.to_thread(save_favorite, track, sid_path)
+        except OSError as e:
+            self.notify(f"Failed to save favorite: {e}", severity="error")
+            return
+
+        footer.chiptunes_favorited = True
         self.notify("⭐ Added to favorites")
 
     # --- Banner compactness ---
