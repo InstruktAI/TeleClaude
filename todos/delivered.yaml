@@ -1,5 +1,10 @@
 # Delivered work items. Newest first.
 
+- slug: event-signal-pipeline
+  date: '2026-03-06'
+  title: 'Three-stage feed aggregation: ingest, cluster, synthesize utility cartridges'
+  description: 'Three-stage feed aggregation: ingest, cluster, synthesize utility
+    cartridges'
 - slug: event-domain-infrastructure
   date: '2026-03-06'
   title: 'Domain pipeline: parallel per-domain processing, guardian AIs, folder hierarchy,

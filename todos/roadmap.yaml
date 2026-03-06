@@ -29,12 +29,6 @@
 - slug: event-platform
   description: 'Event processing platform: cartridges, domain pipelines, signal processing,
     mesh distribution (container for phases 2-7)'
-- slug: event-signal-pipeline
-  group: event-platform
-  after:
-  - event-domain-infrastructure
-  description: 'Three-stage feed aggregation: ingest, cluster, synthesize utility
-    cartridges'
 - slug: event-alpha-container
   group: event-platform
   description: Docker sidecar sandbox for experimental/alpha cartridges
@@ -72,3 +66,4 @@
 - slug: integration-event-chain-phase2
   after:
   - event-system-cartridges
+- slug: async-operation-receipts
