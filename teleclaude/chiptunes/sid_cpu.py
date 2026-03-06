@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 try:
-    import py65emu  # type: ignore[import-untyped]
+    from py65emu.cpu import CPU as _CPU  # type: ignore[import-untyped]
     from py65emu.mmu import MMU  # type: ignore[import-untyped]
 
     _py65emu_available = True  # pylint: disable=invalid-name
 except ImportError:
     _py65emu_available = False  # pylint: disable=invalid-name
-    py65emu = None  # type: ignore[assignment]
+    _CPU = None  # type: ignore[assignment]
     MMU = object  # type: ignore[misc, assignment]
 
 if TYPE_CHECKING:
@@ -35,15 +35,15 @@ class SIDInterceptMMU(MMU):  # type: ignore[misc]
     """64KB address space that captures writes to SID registers $D400–$D418."""
 
     def __init__(self, ram: bytearray) -> None:
+        super().__init__()
         self._ram = ram
         self._sid_writes: list[tuple[int, int]] = []
 
-    # py65emu 0.1.0 (TXC fork) interface
-    def cpu_read(self, addr: int) -> int:
+    def read(self, addr: int) -> int:
         """Read a byte from the 64KB address space."""
         return self._ram[addr & 0xFFFF]
 
-    def cpu_write(self, addr: int, value: int) -> None:
+    def write(self, addr: int, value: int) -> None:
         """Write a byte; intercept SID register range $D400–$D418."""
         addr &= 0xFFFF
         if _SID_BASE <= addr <= _SID_END:
@@ -74,7 +74,7 @@ class SIDDriver:
             raise ValueError(f"SID payload exceeds 64KB address space: {end:#06x}")
         self._ram[header.load_address : end] = header.payload
 
-        self._cpu = py65emu.CPU(self._mmu)
+        self._cpu = _CPU(self._mmu)
 
     def init_tune(self, subtune: int = 0) -> None:
         """Execute the SID init routine for a subtune (0-based)."""
@@ -96,24 +96,16 @@ class SIDDriver:
         self._push_word(_SENTINEL_ADDR - 1)  # RTS pops addr+1
         self._cpu.r.pc = start_addr & 0xFFFF
 
-        cycles = 0
-        while cycles < _MAX_CYCLES_PER_FRAME:
+        self._cpu.cc = 0
+        while self._cpu.cc < _MAX_CYCLES_PER_FRAME:
             if self._cpu.r.pc == _SENTINEL_ADDR:
                 break
-            # py65emu 0.1.0 step() returns cycles consumed
             try:
-                cycles += self._cpu.step()
+                self._cpu.step()
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.debug("CPU exception during emulation: %s", exc)
-                break  # Treat CPU exceptions as end-of-routine
+                break
 
     def _push_word(self, word: int) -> None:
         """Push a 16-bit value onto the 6502 stack (big-endian, high byte first)."""
-        hi = (word >> 8) & 0xFF
-        lo = word & 0xFF
-        sp = self._cpu.r.sp
-        self._ram[0x0100 | sp] = hi
-        self._cpu.r.sp = (sp - 1) & 0xFF
-        sp = self._cpu.r.sp
-        self._ram[0x0100 | sp] = lo
-        self._cpu.r.sp = (sp - 1) & 0xFF
+        self._cpu.stackPushWord(word)

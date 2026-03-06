@@ -3,16 +3,23 @@
 from __future__ import annotations
 
 import array
+from datetime import timedelta
 
 try:
-    import pyresidfp  # type: ignore[import-untyped]
-    from pyresidfp import SoundInterfaceDevice  # type: ignore[import-untyped]
+    from pyresidfp import SoundInterfaceDevice, WritableRegister  # type: ignore[import-untyped]
+    from pyresidfp._pyresidfp import ChipModel, SamplingMethod  # type: ignore[import-untyped]
 
     _pyresidfp_available = True  # pylint: disable=invalid-name
+
+    # Map SID register offsets (0-24) to pyresidfp WritableRegister enum values
+    _REGISTER_MAP: list[WritableRegister] = list(WritableRegister)
 except ImportError:
     _pyresidfp_available = False  # pylint: disable=invalid-name
-    pyresidfp = None  # type: ignore[assignment]
     SoundInterfaceDevice = None  # type: ignore[assignment]
+    WritableRegister = None  # type: ignore[assignment]
+    ChipModel = None  # type: ignore[assignment]
+    SamplingMethod = None  # type: ignore[assignment]
+    _REGISTER_MAP = []  # type: ignore[assignment]
 
 # SID chip clock frequencies
 _PAL_CLOCK = 985248  # Hz
@@ -37,12 +44,12 @@ class SIDRenderer:
         self._clock_freq = _PAL_CLOCK if pal else _NTSC_CLOCK
         self._volume = max(0.0, min(1.0, volume))
 
-        model_enum = pyresidfp.ChipModel.MOS6581 if chip_model == "MOS6581" else pyresidfp.ChipModel.MOS8580
-        self._sid = SoundInterfaceDevice(model_enum)
-        self._sid.sampling_parameters(
-            self._clock_freq,
-            pyresidfp.SamplingMethod.SAMPLE_INTERPOLATE,
-            sample_rate,
+        model_enum = ChipModel.MOS6581 if chip_model == "MOS6581" else ChipModel.MOS8580
+        self._sid = SoundInterfaceDevice(
+            model=model_enum,
+            sampling_method=SamplingMethod.RESAMPLE,
+            clock_frequency=float(self._clock_freq),
+            sampling_frequency=float(sample_rate),
         )
 
     def render_frame(
@@ -59,13 +66,13 @@ class SIDRenderer:
         Returns:
             Raw int16 little-endian PCM bytes.
         """
-        # Apply register writes first
+        # Apply register writes (map integer offsets to WritableRegister enum)
         for reg, val in writes:
-            self._sid.write(reg, val)
+            if 0 <= reg < len(_REGISTER_MAP):
+                self._sid.write_register(_REGISTER_MAP[reg], val)
 
-        # Clock the SID for frame_duration_s worth of cycles
-        cycles = int(self._clock_freq * frame_duration_s)
-        samples: list[int] = self._sid.clock(cycles)
+        # Clock the SID for frame_duration_s
+        samples: list[int] = self._sid.clock(timedelta(seconds=frame_duration_s))
 
         if not samples:
             expected = int(self._sample_rate * frame_duration_s)

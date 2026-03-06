@@ -83,7 +83,7 @@ test = [
     "mypy>=1.8.0",
 ]
 dev = [
-    "TeleClaude[test,mlx]",
+    "TeleClaude[test,mlx,chiptunes]",
 ]
 
 [tool.setuptools.packages.find]

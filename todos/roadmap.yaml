@@ -64,3 +64,4 @@
   after:
   - event-system-cartridges
 - slug: async-operation-receipts
+  description: Durable receipt-and-poll contract for long-running commands, starting with `telec todo work`

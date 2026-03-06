@@ -78,6 +78,7 @@ from teleclaude.services.headless_snapshot_service import HeadlessSnapshotServic
 from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.services.monitoring_service import MonitoringService
 from teleclaude.transport.redis_transport import RedisTransport
+from teleclaude.chiptunes.manager import ChiptunesManager
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ResumeAgentCommand, StartAgentCommand
 from teleclaude_events import (
@@ -312,8 +313,16 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.tts_manager = TTSManager()
         logger.info("TTSManager initialized")
 
+        # Initialize ChipTunes manager for SID background music
+        chiptunes_cfg = config.chiptunes
+        chiptunes_music_dir = Path(chiptunes_cfg.music_dir) if chiptunes_cfg and chiptunes_cfg.music_dir else project_root / "assets" / "audio" / "C64Music"
+        chiptunes_volume = chiptunes_cfg.volume if chiptunes_cfg else 0.5
+        self.chiptunes_manager = ChiptunesManager(chiptunes_music_dir, volume=chiptunes_volume)
+        self.tts_manager.set_chiptunes_manager(self.chiptunes_manager)
+        logger.info("ChiptunesManager initialized (music_dir=%s)", chiptunes_music_dir)
+
         # Mutable runtime settings with debounced YAML persistence
-        self.runtime_settings = RuntimeSettings(config_path, self.tts_manager)
+        self.runtime_settings = RuntimeSettings(config_path, self.tts_manager, self.chiptunes_manager)
 
         # Summary + headless snapshot services
         self.headless_snapshot_service = HeadlessSnapshotService()

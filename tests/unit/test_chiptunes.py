@@ -158,9 +158,9 @@ class TestSIDInterceptMMU:
         ram = bytearray(65536)
         mmu = SIDInterceptMMU(ram)
 
-        mmu.cpu_write(0xD400, 0x7F)  # voice 1 freq lo
-        mmu.cpu_write(0xD401, 0x3A)  # voice 1 freq hi
-        mmu.cpu_write(0x0000, 0xFF)  # RAM write — should NOT be captured
+        mmu.write(0xD400, 0x7F)  # voice 1 freq lo
+        mmu.write(0xD401, 0x3A)  # voice 1 freq hi
+        mmu.write(0x0000, 0xFF)  # RAM write — should NOT be captured
 
         writes = mmu.flush_writes()
         assert len(writes) == 2
@@ -176,7 +176,7 @@ class TestSIDInterceptMMU:
         ram = bytearray(65536)
         mmu = SIDInterceptMMU(ram)
 
-        mmu.cpu_write(0xD400, 0x01)
+        mmu.write(0xD400, 0x01)
         mmu.flush_writes()
         assert mmu.flush_writes() == []
 
@@ -189,7 +189,7 @@ class TestSIDInterceptMMU:
         ram = bytearray(65536)
         mmu = SIDInterceptMMU(ram)
 
-        mmu.cpu_write(0xD419, 0x10)  # just outside SID range (0xD418 is last)
+        mmu.write(0xD419, 0x10)  # just outside SID range (0xD418 is last)
         assert mmu.flush_writes() == []
 
 

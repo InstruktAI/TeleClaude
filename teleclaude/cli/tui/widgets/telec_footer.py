@@ -183,10 +183,10 @@ class TelecFooter(Widget):
             toggles.append(cell_char, style=cell_style)
         toggles.append("  ")
 
-        # TTS icon: 🗣️ (enabled) / dim (disabled)
+        # TTS icon: 🗣️ bold (enabled) / dim+strike (disabled)
         tts_start = toggles.cell_len
-        tts_icon = "\U0001f5e3" if self.tts_enabled else "\U0001f5e3"
-        toggles.append(tts_icon, style="bold" if self.tts_enabled else "dim")
+        tts_icon = "\U0001f5e3"
+        toggles.append(tts_icon, style="bold" if self.tts_enabled else "dim strike")
         tts_end = toggles.cell_len
         toggles.append("  ")
 
