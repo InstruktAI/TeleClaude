@@ -51,6 +51,7 @@ def auth_client() -> TestClient:
         ("get", "/computers", None),
         ("get", "/projects", None),
         ("get", "/agents/availability", None),
+        ("get", "/operations/op-123", None),
         ("post", "/sessions/run", {"command": "/next-build", "project": "/tmp/project", "args": "slug-a"}),
         ("post", "/sessions/sess-1/unsubscribe", None),
         ("post", "/sessions/self/result", {"content": "done", "output_format": "markdown"}),

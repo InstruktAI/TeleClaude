@@ -28,6 +28,7 @@ WORKER_ALLOWED_TOOLS = {
     "telec agents availability",
     "telec computers list",
     "telec projects list",
+    "telec operations get",
 }
 
 # Member tool access policy.
@@ -49,6 +50,7 @@ UNAUTHORIZED_EXCLUDED_TOOLS = {
     "telec todo work",
     "telec todo mark-phase",
     "telec todo set-deps",
+    "telec operations get",
     "telec agents status",
     "telec sessions escalate",
 }

@@ -21,6 +21,7 @@ from teleclaude.api.auth import (
     CLEARANCE_TODOS_WORK,
     CallerIdentity,
 )
+from teleclaude.api_models import OperationStatusDTO
 from teleclaude.config import config
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.db import db
@@ -36,6 +37,7 @@ from teleclaude.core.next_machine.core import (
     save_roadmap,
     sync_main_planning_to_all_worktrees,
 )
+from teleclaude.core.operations import get_operations_service
 
 router = APIRouter(prefix="/todos", tags=["todos"])
 
@@ -64,23 +66,29 @@ async def todo_prepare(  # pyright: ignore
     return {"result": result}
 
 
-@router.post("/work")
+@router.post("/work", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)
 async def todo_work(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
+    client_request_id: Annotated[str | None, Body()] = None,
     identity: CallerIdentity = Depends(CLEARANCE_TODOS_WORK),
-) -> dict[str, str]:
+) -> dict[str, object]:
     """Run the Phase B (work) state machine.
 
-    Executes the build/review/fix cycle on prepared work items. Uses the
-    caller's session_id for tracking. Requires clearance to invoke the work
-    workflow (typically restricted to orchestrators — workers cannot dispatch
-    themselves).
+    Submits a durable receipt-backed operation for the build/review/fix cycle.
+    Uses the caller's session_id for tracking and preserves that identity
+    across the async boundary for finalize ownership. Requires clearance to
+    invoke the work workflow (typically restricted to orchestrators).
     """
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
-    result = await next_work(db, slug, cwd, identity.session_id)
-    return {"result": result}
+    operations = get_operations_service()
+    return await operations.submit_todo_work(
+        slug=slug,
+        cwd=cwd,
+        caller_session_id=identity.session_id,
+        client_request_id=client_request_id,
+    )
 
 
 @router.post("/integrate")

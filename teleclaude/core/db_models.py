@@ -264,6 +264,33 @@ class ConversationLinkRow(SQLModel, table=True):
     closed_at: Optional[str] = None
 
 
+class Operation(SQLModel, table=True):
+    """operations table."""
+
+    __tablename__ = "operations"
+    __table_args__ = {"extend_existing": True}
+
+    operation_id: str = Field(primary_key=True)
+    kind: str
+    caller_session_id: str
+    client_request_id: Optional[str] = None
+    cwd: str
+    slug: Optional[str] = None
+    payload_json: str
+    state: str
+    progress_phase: Optional[str] = None
+    progress_decision: Optional[str] = None
+    progress_reason: Optional[str] = None
+    result_text: Optional[str] = None
+    error_text: Optional[str] = None
+    created_at: str
+    updated_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    heartbeat_at: Optional[str] = None
+    attempt_count: int = 0
+
+
 class ConversationLinkMemberRow(SQLModel, table=True):
     """conversation_link_members table."""
 

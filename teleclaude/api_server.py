@@ -205,6 +205,10 @@ class APIServer:
 
         self.app.include_router(data_router)
 
+        from teleclaude.api.operations_routes import router as operations_router
+
+        self.app.include_router(operations_router)
+
         from teleclaude.api.todo_routes import router as todo_router
 
         self.app.include_router(todo_router)

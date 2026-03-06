@@ -11,6 +11,7 @@ from teleclaude.api_server import APIServer
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.models import SessionSnapshot
+from teleclaude.core.operations import OperationsService, set_operations_service
 
 if TYPE_CHECKING:  # pragma: no cover
     from teleclaude.config.runtime_settings import RuntimeSettings
@@ -64,6 +65,9 @@ class DaemonLifecycle:
         logger.info("Database initialized")
 
         db.set_client(self.client)
+        operations_service = OperationsService(db=db, task_registry=self.task_registry)
+        set_operations_service(operations_service)
+        await operations_service.start()
         await self._warm_local_sessions_cache()
         await self._warm_local_projects_cache()
 

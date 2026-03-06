@@ -210,6 +210,26 @@ class TodoDTO(BaseModel):  # type: ignore[explicit-any]
     delivered_at: str | None = None
 
 
+class OperationStatusDTO(BaseModel):  # type: ignore[explicit-any]
+    """DTO for long-running operation receipts and status payloads."""
+
+    model_config = ConfigDict(frozen=True)
+
+    operation_id: str
+    kind: str
+    state: Literal["queued", "running", "completed", "failed", "stale", "cancelled"]
+    poll_after_ms: int = 0
+    status_path: str
+    recovery_command: str
+    slug: str | None = None
+    progress_phase: str | None = None
+    progress_decision: str | None = None
+    progress_reason: str | None = None
+    result: str | None = None
+    error: str | None = None
+    client_request_id: str | None = None
+
+
 class ProjectWithTodosDTO(ProjectDTO):  # type: ignore[explicit-any]
     """DTO for project with its todos."""
 

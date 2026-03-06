@@ -21,6 +21,16 @@ from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.constants import API_SOCKET_PATH
 
 
+class ToolAPIError(Exception):
+    """Structured transport/API error for long-running wrapper workflows."""
+
+    def __init__(self, message: str, *, status_code: int | None = None, is_timeout: bool = False) -> None:
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+        self.is_timeout = is_timeout
+
+
 def _read_caller_session_id() -> str | None:
     """Read session_id from $TMPDIR/teleclaude_session_id."""
     tmpdir = os.environ.get("TMPDIR", "")
@@ -54,7 +64,7 @@ def _read_tmux_session_name() -> str | None:
     return None
 
 
-def tool_api_call(
+def tool_api_request(
     method: str,
     path: str,
     json_body: object = None,
@@ -79,7 +89,7 @@ def tool_api_call(
         Parsed JSON response as dict or list.
 
     Raises:
-        SystemExit(1): On any error (daemon unavailable, 4xx/5xx, network).
+        ToolAPIError: On daemon unavailability, timeout, or HTTP error response.
     """
     session_id = _read_caller_session_id()
     terminal_email = read_current_session_email()
@@ -108,35 +118,49 @@ def tool_api_call(
                 headers=headers,
             )
     except httpx.ConnectError:
-        print(
-            f"Error: daemon is not running (socket not found: {socket_path})",
-            file=sys.stderr,
-        )
-        raise SystemExit(1)
+        raise ToolAPIError(f"daemon is not running (socket not found: {socket_path})")
     except httpx.TimeoutException:
-        print("Error: request timed out", file=sys.stderr)
-        raise SystemExit(1)
+        raise ToolAPIError("request timed out", is_timeout=True)
     except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        raise ToolAPIError(str(exc))
 
     if resp.status_code == 401:
         detail = _extract_detail(resp)
-        print(f"Error: authentication required — {detail}", file=sys.stderr)
-        raise SystemExit(1)
+        raise ToolAPIError(f"authentication required — {detail}", status_code=401)
     if resp.status_code == 403:
         detail = _extract_detail(resp)
-        print(f"Error: permission denied — {detail}", file=sys.stderr)
-        raise SystemExit(1)
+        raise ToolAPIError(f"permission denied — {detail}", status_code=403)
     if resp.status_code >= 400:
         detail = _extract_detail(resp)
-        print(f"Error: {resp.status_code} — {detail}", file=sys.stderr)
-        raise SystemExit(1)
+        raise ToolAPIError(f"{resp.status_code} — {detail}", status_code=resp.status_code)
 
     try:
         return resp.json()
     except Exception:
         return resp.text
+
+
+def tool_api_call(
+    method: str,
+    path: str,
+    json_body: object = None,
+    params: dict[str, str] | None = None,
+    timeout: float = 30.0,
+    socket_path: str = API_SOCKET_PATH,
+) -> object:
+    """Make a synchronous API call and exit on failure."""
+    try:
+        return tool_api_request(
+            method,
+            path,
+            json_body=json_body,
+            params=params,
+            timeout=timeout,
+            socket_path=socket_path,
+        )
+    except ToolAPIError as exc:
+        print(f"Error: {exc.message}", file=sys.stderr)
+        raise SystemExit(1) from exc
 
 
 def _extract_detail(resp: httpx.Response) -> str:

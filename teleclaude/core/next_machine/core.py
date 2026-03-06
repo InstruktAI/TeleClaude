@@ -132,6 +132,12 @@ def _log_next_work_phase(slug: str, phase: str, started_at: float, decision: str
         reason,
         elapsed_ms,
     )
+    try:
+        from teleclaude.core.operations import emit_operation_progress
+
+        emit_operation_progress(phase, decision, reason)
+    except Exception:
+        logger.debug("Operation progress emission skipped", exc_info=True)
 
 
 # Post-completion instructions for each command (used in format_tool_call)
@@ -3022,6 +3028,13 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
     except RuntimeError as exc:
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
         return format_error("NO_AGENTS", str(exc))
+
+    if not caller_session_id:
+        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "caller_session_required")
+        return format_error(
+            "CALLER_SESSION_REQUIRED",
+            "Finalize dispatch requires caller session identity for lock ownership.",
+        )
 
     # Emit review.approved event (fire-and-forget — don't block finalize)
     review_round_val = state.get("review_round")

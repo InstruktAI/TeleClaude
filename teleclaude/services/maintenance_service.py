@@ -15,6 +15,7 @@ from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.models import Session
+from teleclaude.core.operations import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import get_output_file, resolve_working_dir
 from teleclaude.core.voice_assignment import get_voice_env_vars
@@ -58,6 +59,10 @@ class MaintenanceService:
                 await db.cleanup_stale_voice_assignments()
                 cutoff_iso = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
                 await db.cleanup_inbound(cutoff_iso)
+                try:
+                    await get_operations_service().expire_stale_operations()
+                except Exception:
+                    logger.debug("Operations service not available for stale sweep", exc_info=True)
                 await self._check_idle_compaction()
                 await self._cleanup_adapter_resources()
 

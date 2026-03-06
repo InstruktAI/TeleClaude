@@ -54,6 +54,17 @@ Two valid approaches:
 - Preferred now: Next.js route bridges daemon websocket to frontend (single browser-friendly channel).
 - Future: direct web adapter channel from daemon when stable.
 
+### 5) Content vs control-plane split
+
+The BFF must not treat raw transcript structure as automatically user-visible UI content.
+
+- Conversation content belongs in the assistant message stream: normal text plus any deliberately user-facing rich parts.
+- Operational activity belongs on the control plane: tool start/stop, previews, and turn lifecycle.
+- Internal tool transcripts (`Bash`, `Read`, `Edit`, etc.) should not be forwarded as assistant-ui tool parts by default.
+- User-facing tools are a narrow allowlist. Examples: widget rendering and explicit ask-user interactions.
+
+If the BFF replays transcript `tool_use` / `tool_result` blocks directly into the AI SDK stream, assistant-ui will correctly render them as tool UI. That behavior is useful for real user-facing tools, but it leaks internal tool execution into the chat experience when applied to generic agent tools. The translation layer must decide which tool parts are content-plane and demote the rest to control-plane activity.
+
 ## Migration plan (pragmatic)
 
 1. Scaffold a Next.js shell with assistant-ui (`init` on existing web app or starter template).
@@ -76,6 +87,8 @@ Two valid approaches:
 
 - Protocol mismatch (assistant-ui runtime expectations vs daemon payloads):
   - control: strict translation layer in BFF + contract tests.
+- Raw transcript tool blocks leaking into chat UI:
+  - control: separate content-plane stream translation from control-plane activity events; allowlist only intentionally user-visible tools.
 - Session drift:
   - control: treat daemon session state as authoritative.
 - Identity leakage:

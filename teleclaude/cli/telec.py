@@ -28,6 +28,7 @@ from teleclaude.cli.tool_commands import (  # noqa: E402
     handle_agents,
     handle_channels,
     handle_computers,
+    handle_operations,
     handle_projects,
     handle_sessions,
     handle_todo_integrate,
@@ -88,6 +89,7 @@ class TelecCommand(str, Enum):
     PROJECTS = "projects"
     AGENTS = "agents"
     CHANNELS = "channels"
+    OPERATIONS = "operations"
     INIT = "init"
     VERSION = "version"
     SYNC = "sync"
@@ -389,6 +391,17 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Publish a message to a channel",
                 args="<channel>",
                 flags=[_H, Flag("--data", desc="JSON payload to publish")],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
+            ),
+        },
+    ),
+    "operations": CommandDef(
+        desc="Inspect durable long-running operations",
+        subcommands={
+            "get": CommandDef(
+                desc="Fetch durable operation status by operation_id",
+                args="<operation_id>",
+                flags=[_H],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
             ),
         },
@@ -1583,6 +1596,8 @@ def _handle_cli_command(argv: list[str]) -> None:
         handle_agents(args)
     elif cmd_enum is TelecCommand.CHANNELS:
         handle_channels(args)
+    elif cmd_enum is TelecCommand.OPERATIONS:
+        handle_operations(args)
     elif cmd_enum is TelecCommand.INIT:
         init_project(Path.cwd())
     elif cmd_enum is TelecCommand.VERSION:
