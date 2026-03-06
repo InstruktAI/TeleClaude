@@ -1,5 +1,7 @@
 # Delivered work items. Newest first.
 
+- slug: chiptunes-playlist-controls
+  date: '2026-03-06'
 - slug: async-operation-receipts
   date: '2026-03-06'
   title: Durable receipt-and-poll contract for long-running commands, starting with

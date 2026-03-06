@@ -42,17 +42,18 @@
 - slug: a2ui-showcase-component
 - slug: web-frontend-test-bugs
 - slug: conversation-projection-unification
-  description: Unify the core output projection route across poller, threaded, web, and future search consumers without changing adapter implementations
+  description: Unify the core output projection route across poller, threaded, web,
+    and future search consumers without changing adapter implementations
 - slug: youtube-scrape-channels-job
 - slug: adapter-reflection-cleanup
-  description: 'Make reflection pipeline match architecture: core broadcasts, adapters own everything'
+  description: 'Make reflection pipeline match architecture: core broadcasts, adapters
+    own everything'
 - slug: telegram-callback-payload-migration
   description: Migrate Telegram explicit user-selection callback payloads to canonical
     agent identifiers (deferred from default-agent-resolution)
 - slug: integration-event-chain-phase2
   after:
   - event-system-cartridges
-- slug: chiptunes-playlist-controls
 - slug: clickable-sprites
 - slug: next-machine-old-code-cleanup
   after:
