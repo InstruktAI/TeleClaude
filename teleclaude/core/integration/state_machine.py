@@ -712,6 +712,10 @@ def _try_auto_enqueue(*, queue: IntegrationQueue, slug: str, cwd: str) -> bool:
         logger.warning("Auto-enqueue: could not resolve SHA for branch %s", branch)
         return False
     sha = stdout.strip()
+    # Validate SHA looks like a 40-char hex (guards against git printing non-SHA output)
+    if len(sha) != 40 or not all(c in "0123456789abcdefABCDEF" for c in sha):
+        logger.warning("Auto-enqueue: invalid SHA for branch %s: %r", branch, sha)
+        return False
     ready_at = _now_iso()
     try:
         queue.enqueue(key=CandidateKey(slug=slug, branch=branch, sha=sha), ready_at=ready_at)

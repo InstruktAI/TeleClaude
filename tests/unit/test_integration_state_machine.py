@@ -205,10 +205,18 @@ def test_dispatch_returns_complete_when_slug_auto_enqueue_fails(mock_git: MagicM
     assert "Queue empty" in result
 
 
+@patch("teleclaude.core.integration.state_machine._run_git", return_value=(0, "/not/a/valid/sha\n", ""))
+def test_dispatch_returns_complete_when_slug_auto_enqueue_invalid_sha(mock_git: MagicMock, tmp_path: Path) -> None:
+    """When git rev-parse returns non-hex output, auto-enqueue is skipped."""
+    result = _run_dispatch(tmp_path, slug="bad-sha-slug")
+    assert "INTEGRATION COMPLETE" in result
+    assert "Queue empty" in result
+
+
 @patch("teleclaude.core.integration.state_machine._run_git")
 def test_dispatch_auto_enqueues_when_slug_given_and_queue_empty(mock_git: MagicMock, tmp_path: Path) -> None:
     """When slug is given and queue is empty, auto-enqueue via git rev-parse then proceed to lease."""
-    sha = "abc123def456"
+    sha = "a" * 40  # valid 40-char hex SHA
     # rev-parse returns SHA; all subsequent git calls return failure to stop early
     def _git_side_effect(args: list[str], *, cwd: str) -> tuple[int, str, str]:
         if args[0] == "rev-parse":
