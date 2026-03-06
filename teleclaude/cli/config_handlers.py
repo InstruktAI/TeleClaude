@@ -263,7 +263,7 @@ def _atomic_yaml_write(path: Path, data: dict[str, Any]) -> None:  # guard: loos
 
 def _model_to_dict(model: BaseModel) -> dict[str, Any]:  # guard: loose-dict - Pydantic model_dump output
     """Convert a Pydantic model to a dict suitable for YAML serialization."""
-    return model.model_dump(mode="python", exclude_defaults=True)
+    return model.model_dump(mode="json", exclude_defaults=True)
 
 
 def save_global_config(config: GlobalConfig, path: Path | None = None) -> None:

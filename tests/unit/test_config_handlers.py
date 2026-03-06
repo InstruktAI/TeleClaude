@@ -4,6 +4,7 @@ import pytest
 
 from teleclaude.cli import config_handlers
 from teleclaude.config.schema import GlobalConfig, PersonConfig, PersonEntry
+from teleclaude_events.domain_config import AutonomyLevel, AutonomyMatrix, DomainConfig, DomainsConfig
 
 
 @pytest.fixture
@@ -149,3 +150,30 @@ def test_resolve_env_file_path_honors_override(monkeypatch, tmp_path):
         assert os.environ[key] == "override-value"
     finally:
         os.environ.pop(key, None)
+
+
+def test_save_global_config_with_autonomy_level_enum(mock_teleclaude_dir):
+    """Regression: save_global_config must not raise RepresenterError when
+    event_domains contains AutonomyLevel enum values (non-defaults)."""
+    config = GlobalConfig(
+        people=[PersonEntry(name="Maurice Faber", email="maurice@test.com", role="admin", proficiency="expert")],
+        event_domains=DomainsConfig(
+            domains={
+                "software": DomainConfig(
+                    name="software",
+                    autonomy=AutonomyMatrix(
+                        global_default=AutonomyLevel.auto_notify,
+                        by_domain={"software": AutonomyLevel.autonomous},
+                    ),
+                )
+            }
+        ),
+    )
+    # Must not raise ruamel.yaml RepresenterError
+    config_handlers.save_global_config(config)
+
+    loaded = config_handlers.get_global_config()
+    assert loaded.event_domains is not None
+    domain = loaded.event_domains.domains["software"]
+    assert domain.autonomy.global_default == AutonomyLevel.auto_notify
+    assert domain.autonomy.by_domain["software"] == AutonomyLevel.autonomous
