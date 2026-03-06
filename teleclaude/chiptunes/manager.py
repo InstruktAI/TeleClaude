@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import random
-import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -50,7 +49,7 @@ class ChiptunesManager:
             try:
                 self.on_track_start(track_label, sid_path)
             except Exception:  # pylint: disable=broad-exception-caught
-                logger.debug("on_track_start callback error", exc_info=True)
+                logger.warning("on_track_start callback error", exc_info=True)
 
     @property
     def enabled(self) -> bool:
@@ -60,8 +59,7 @@ class ChiptunesManager:
     def start(self) -> None:
         """Pick a random PSID track and start playback (non-blocking)."""
         self._enabled = True
-        self._worker._enabled = True
-        threading.Thread(target=self._worker._play_next, daemon=True, name="chiptunes-start").start()
+        self._worker.enable()
 
     def stop(self) -> None:
         """Stop playback immediately."""
