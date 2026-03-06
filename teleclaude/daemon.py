@@ -1709,9 +1709,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _start_event_platform(self) -> None:
         """Initialize and start the event processing platform."""
         try:
-            # 0. Activate integrator cutover — all agent sessions inherit this
-            os.environ["TELECLAUDE_INTEGRATOR_CUTOVER_ENABLED"] = "1"
-
             # 1. Storage
             self._event_db = EventDB()
             await self._event_db.init()
