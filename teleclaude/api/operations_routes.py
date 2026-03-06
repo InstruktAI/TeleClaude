@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from teleclaude.api.auth import CLEARANCE_OPERATIONS_GET, CallerIdentity
-from teleclaude.api_models import OperationStatusDTO
+from teleclaude.api_models import OperationStatusDTO, OperationStatusPayload
 from teleclaude.core.operations import get_operations_service
 
 router = APIRouter(prefix="/operations", tags=["operations"])
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/operations", tags=["operations"])
 async def get_operation(
     operation_id: str,
     identity: CallerIdentity = Depends(CLEARANCE_OPERATIONS_GET),
-) -> dict[str, object]:
+) -> OperationStatusPayload:
     """Fetch receipt-backed operation status for the caller."""
     operations = get_operations_service()
     return await operations.get_operation_for_caller(

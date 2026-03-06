@@ -71,6 +71,13 @@ subcommands:
         description: 'List active channels.'
       publish:
         description: 'Publish a message to a channel.'
+  operations:
+    description: 'Inspect durable long-running operations.'
+    subcommands:
+      get:
+        args:
+          - operation_id: 'UUID'
+        description: 'Fetch durable operation status by operation_id.'
   revive:
     description: 'Revive session by TeleClaude session ID.'
     args:

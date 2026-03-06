@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import IntegrityError
 
+from teleclaude.api_models import OperationStatusPayload
 from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
 from teleclaude.core.next_machine import next_work
@@ -96,7 +97,7 @@ class OperationsService:
         cwd: str,
         caller_session_id: str,
         client_request_id: str | None,
-    ) -> dict[str, object]:
+    ) -> OperationStatusPayload:
         """Create or reattach a receipt-backed todo-work operation."""
         lock = await self._get_submit_lock(
             kind=OPERATION_KIND_TODO_WORK,
@@ -166,7 +167,7 @@ class OperationsService:
         operation_id: str,
         caller_session_id: str,
         human_role: str | None,
-    ) -> dict[str, object]:
+    ) -> OperationStatusPayload:
         """Return operation status if owned by the caller or an admin."""
         operation = await self._db.get_operation(operation_id)
         if operation is None:
@@ -222,6 +223,7 @@ class OperationsService:
                 self._heartbeat_loop(operation_id, stop_heartbeat),
                 name=f"operation-heartbeat-{operation_id[:8]}",
             )
+
             def _capture_progress(phase: str, decision: str, reason: str) -> None:
                 nonlocal latest_progress
                 latest_progress = (phase, decision, reason)
@@ -290,8 +292,8 @@ class OperationsService:
             now_iso=datetime.now(timezone.utc).isoformat(),
         )
 
-    def _serialize_operation(self, operation: Operation) -> dict[str, object]:
-        payload: dict[str, object] = {
+    def _serialize_operation(self, operation: Operation) -> OperationStatusPayload:
+        payload: OperationStatusPayload = {
             "operation_id": operation.operation_id,
             "kind": operation.kind,
             "state": operation.state,

@@ -240,6 +240,33 @@ def test_sessions_send_help_contract_is_one_time_ignition() -> None:
     assert "create/reuse" not in doc
 
 
+def test_handle_operations_get_fetches_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    """operations get should fetch durable operation status by id."""
+    captured = RunCallCapture()
+
+    def fake_tool_api_call(
+        method: str,
+        path: str,
+        json_body: object = None,
+        *,
+        params: dict[str, str] | None = None,
+        timeout: float = 30.0,
+        socket_path: str = "",
+    ) -> object:
+        _ = (json_body, params, timeout, socket_path)
+        captured.method = method
+        captured.path = path
+        return {"operation_id": "op-123", "state": "running"}
+
+    monkeypatch.setattr(tool_commands, "tool_api_call", fake_tool_api_call)
+    monkeypatch.setattr(tool_commands, "print_json", lambda _data: None)
+
+    tool_commands.handle_operations(["get", "op-123"])
+
+    assert captured.method == "GET"
+    assert captured.path == "/operations/op-123"
+
+
 def test_handle_sessions_send_named_short_compatibility(monkeypatch: pytest.MonkeyPatch) -> None:
     """sessions send should accept short compatibility flags -s/-m."""
     captured = RunCallCapture()

@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing_extensions import NotRequired, TypedDict
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionSnapshot
@@ -228,6 +229,24 @@ class OperationStatusDTO(BaseModel):  # type: ignore[explicit-any]
     result: str | None = None
     error: str | None = None
     client_request_id: str | None = None
+
+
+class OperationStatusPayload(TypedDict):
+    """Typed dict form of the durable operation receipt payload."""
+
+    operation_id: str
+    kind: str
+    state: str
+    poll_after_ms: int
+    status_path: str
+    recovery_command: str
+    slug: NotRequired[str]
+    progress_phase: NotRequired[str]
+    progress_decision: NotRequired[str]
+    progress_reason: NotRequired[str]
+    result: NotRequired[str]
+    error: NotRequired[str]
+    client_request_id: NotRequired[str]
 
 
 class ProjectWithTodosDTO(ProjectDTO):  # type: ignore[explicit-any]

@@ -1,77 +1,96 @@
 ---
+description: 'Receipt-first contract for durable long-running todo work execution and polling.'
 id: 'project/design/architecture/operation-receipts'
-type: 'design'
 scope: 'project'
-description: 'Receipt-first contract for long-running telec todo work operations.'
+type: 'design'
 ---
 
 # Operation Receipts — Design
 
+## Required reads
+
+- @docs/project/design/architecture/next-machine.md
+- @docs/project/design/architecture/daemon.md
+
 ## Purpose
 
-`telec todo work` uses a receipt-first contract instead of holding the HTTP request open
-until `next_work()` finishes. The daemon persists an operation row, returns a durable
-`operation_id`, and runs `next_work()` in a tracked background task. The CLI keeps the
-old blocking ergonomics by polling `/operations/{operation_id}` until the operation
-reaches a terminal state.
+- Move `telec todo work` off the request path by persisting durable operation receipts before work begins.
+- Preserve the blocking CLI ergonomics by making the client poll the durable receipt instead of keeping one HTTP request open.
+- Keep `next_work()` semantics unchanged while making operation creation idempotent and observable.
+
+```mermaid
+sequenceDiagram
+    participant CLI
+    participant API as /todos/work
+    participant Ops as OperationsService
+    participant Worker
+    participant Status as /operations/{id}
+
+    CLI->>API: POST /todos/work
+    API->>Ops: submit_todo_work(...)
+    Ops->>Ops: Persist queued operation row
+    Ops-->>CLI: 202 receipt with operation_id
+    Ops->>Worker: Spawn background task
+    Worker->>Ops: Claim + heartbeat + progress
+    Worker->>Worker: Run next_work()
+    Worker->>Ops: Persist terminal result/error
+    CLI->>Status: GET /operations/{id}
+    Status-->>CLI: queued/running/completed + progress/result
+```
 
 ## Inputs/Outputs
 
 **Inputs:**
 
-- `POST /todos/work` request payload
-- Caller session identity
-- Optional `client_request_id` for dedupe and reattachment
+- `POST /todos/work` submissions with caller identity, `cwd`, `slug`, and optional `client_request_id`
+- `NEXT_WORK_PHASE` progress emissions from `next_work()`
+- Daemon lifecycle events, especially startup and maintenance sweeps
+- `GET /operations/{operation_id}` polling requests
 
 **Outputs:**
 
-- Immediate receipt containing `operation_id`
-- Durable operation row with queued/running/terminal status
-- Final `next_work()` result or terminal error retrievable via `GET /operations/{operation_id}`
+- Durable operation rows keyed by `operation_id`
+- Receipt payloads with `state`, `poll_after_ms`, `status_path`, and `recovery_command`
+- Terminal `next_work()` result text or terminal error text
+- Stale-state transitions for abandoned or expired operations
 
 ## Invariants
 
-- **Receipt First**: The operation row is persisted before execution begins.
-- **Durable Status**: `GET /operations/{operation_id}` is the source of truth for current state and final result.
-- **Caller Ownership**: Operation rows are keyed to the caller session that submitted them.
-- **Scoped Visibility**: Non-admin callers may inspect only their own operations; admins may inspect any operation.
-- **Safe Reattachment**: Re-running `telec todo work` with the same caller, slug, and cwd reattaches to a matching nonterminal operation instead of creating duplicate execution.
-- **No Blind Replay**: Queued or running operations left behind by a daemon restart are marked `stale` instead of being resumed automatically.
+- **Persist Before Execute**: The operation row exists before background execution begins.
+- **Receipt-First API**: `/todos/work` returns a durable receipt instead of awaiting `next_work()`.
+- **Caller Ownership**: Non-admin callers can inspect only their own operations; admins can inspect any receipt.
+- **Submit Idempotency Only**: `client_request_id` dedupes operation creation, not `next_work()` execution semantics.
+- **Reattachment by Caller Context**: Matching nonterminal operations for the same caller, slug, and cwd are reused instead of duplicated.
+- **Progress Mirrors Next Machine**: Durable progress fields reflect the latest `NEXT_WORK_PHASE` values without changing `next_work()` logic.
+- **No Blind Replay After Restart**: Queued or running operations from a dead daemon become `stale` instead of being resumed automatically.
 
 ## Primary flows
 
-```mermaid
-sequenceDiagram
-    participant CLI
-    participant API as API Server
-    participant Ops as Operations Service
-    participant Worker as Background Task
+### 1. Submission and Claim
 
-    CLI->>API: POST /todos/work
-    API->>Ops: submit operation
-    Ops->>Ops: persist operation row
-    Ops-->>CLI: return operation_id
-    Ops->>Worker: run next_work() in background
-    CLI->>API: GET /operations/{operation_id}
-    API->>Ops: load operation row
-    Ops-->>CLI: queued/running/terminal status + result
-```
+1. `/todos/work` validates the request and hands it to `OperationsService.submit_todo_work()`.
+2. The service first checks `client_request_id` dedupe for the caller, then caller-scoped reattachment for a matching nonterminal operation.
+3. If no match exists, it persists a `queued` operation row and spawns one background task for that `operation_id`.
+4. The worker claims the row atomically, transitions it to `running`, and starts heartbeating.
 
-1. **Submission**
-   - `POST /todos/work` validates input and submits an operation through the operations service.
-   - The service persists the row before execution and returns a receipt immediately.
-   - A background task claims the queued operation, heartbeats while running, and stores the terminal `next_work()` result or terminal error.
+### 2. Progress and Result Retrieval
 
-2. **Reattachment**
-   - Submit dedupe uses `client_request_id` scoped by operation kind and caller session.
-   - Re-running `telec todo work` with the same caller, slug, and cwd reattaches to a matching nonterminal operation instead of creating a second execution.
+1. `next_work()` emits stable `NEXT_WORK_PHASE` markers during execution.
+2. The operation runtime captures those values and persists `progress_phase`, `progress_decision`, and `progress_reason`.
+3. Polling callers fetch `/operations/{operation_id}` until the operation reaches a terminal state.
+4. Terminal payloads preserve the caller-facing `next_work()` result text while still surfacing durable receipt metadata.
 
-3. **Progress**
-   - `next_work()` emits `NEXT_WORK_PHASE` logs.
-   - The operation runtime mirrors the latest phase, decision, and reason into the durable operation row so polling callers can distinguish queued, running, and recent phase progress.
+### 3. Recovery and Restart Handling
+
+1. If the CLI wrapper is interrupted, it can resume observation with `telec operations get <operation_id>`.
+2. Re-running `telec todo work` for the same caller and matching in-flight request reattaches instead of starting duplicate work.
+3. On daemon startup, leftover queued or running rows are marked `stale`.
+4. The maintenance loop expires long-silent running operations whose heartbeat is older than the configured stale threshold.
 
 ## Failure modes
 
-- **Daemon restart during execution**: The operation is marked `stale` on startup instead of being resumed automatically.
-- **Caller disconnects while polling**: The receipt remains durable; the caller can later resume polling the same `operation_id`.
-- **Terminal `next_work()` failure**: The terminal error is stored on the operation row and returned via the status route.
+- **Lost Submit Response**: The durable row and caller-scoped dedupe allow the caller to recover without re-running `next_work()`.
+- **Wrapper Interruption**: The CLI may stop waiting, but the receipt remains queryable through `/operations/{operation_id}` and `telec operations get`.
+- **Worker Crash or Daemon Restart**: Nonterminal operations are marked `stale` so the receipt reflects abandonment instead of pretending work is still active.
+- **Hung Execution**: Heartbeat expiry converts silent `running` operations into `stale` operations for observable recovery.
+- **Unauthorized Inspection**: Operation lookup returns not found for callers who do not own the receipt and are not admins.

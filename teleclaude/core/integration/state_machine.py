@@ -257,8 +257,11 @@ def _read_file_safe(path: Path) -> str:
 
 def _make_clearance_probe(cwd: str) -> MainBranchClearanceProbe:
     """Create a MainBranchClearanceProbe backed by telec CLI calls and git status."""
+    git_dir_present = (Path(cwd) / ".git").exists()
 
     def _sessions_provider() -> tuple[SessionSnapshot, ...]:
+        if not git_dir_present:
+            return ()
         try:
             result = subprocess.run(
                 ["telec", "sessions", "list", "--json"],
@@ -266,6 +269,7 @@ def _make_clearance_probe(cwd: str) -> MainBranchClearanceProbe:
                 text=True,
                 timeout=10,
                 cwd=cwd,
+                check=False,
             )
             if result.returncode != 0:
                 return ()
@@ -283,6 +287,8 @@ def _make_clearance_probe(cwd: str) -> MainBranchClearanceProbe:
             return ()
 
     def _tail_provider(session_id: str) -> str:
+        if not git_dir_present:
+            return ""
         try:
             result = subprocess.run(
                 ["telec", "sessions", "tail", session_id],
@@ -290,12 +296,15 @@ def _make_clearance_probe(cwd: str) -> MainBranchClearanceProbe:
                 text=True,
                 timeout=10,
                 cwd=cwd,
+                check=False,
             )
             return result.stdout if result.returncode == 0 else ""
         except Exception:
             return ""
 
     def _dirty_paths_provider() -> tuple[str, ...]:
+        if not git_dir_present:
+            return ()
         try:
             rc, stdout, _ = _run_git(["status", "--short", "-uno"], cwd=cwd)
             if rc != 0:

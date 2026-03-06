@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import threading
 from pathlib import Path
 from typing import Callable
@@ -11,6 +12,16 @@ from instrukt_ai_logging import get_logger
 from teleclaude.chiptunes.player import ChiptunesPlayer
 
 logger = get_logger(__name__)
+_RSID_MAGIC = b"RSID"
+
+
+def _is_rsid(path: Path) -> bool:
+    """Return True if path is an RSID file (interrupt-driven, skip in v1)."""
+    try:
+        with path.open("rb") as handle:
+            return handle.read(4) == _RSID_MAGIC
+    except OSError:
+        return False
 
 
 class _Worker:  # pyright: ignore[reportUnusedClass]
@@ -24,11 +35,16 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
 
     def __init__(
         self,
-        pick_random_track: Callable[[], Path | None],
+        pick_random_track: Callable[[], Path | None] | Path,
         volume: float,
         on_track_start: Callable[[str, str], None] | None = None,
     ) -> None:
-        self._pick_random_track = pick_random_track
+        self._music_dir: Path | None = None
+        if isinstance(pick_random_track, Path):
+            self._music_dir = pick_random_track
+            self._pick_random_track = self._pick_random_track_from_dir
+        else:
+            self._pick_random_track = pick_random_track
         self._volume = volume
         self.on_track_start = on_track_start
 
@@ -128,6 +144,12 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
 
         self._play_track(track)
 
+    def _pick_random_track_from_dir(self) -> Path | None:
+        tracks = self._discover_tracks()
+        if not tracks:
+            return None
+        return random.choice(tracks)
+
     def _play_prev(self) -> None:
         """Go back to the previous track in history.
 
@@ -151,3 +173,17 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         if self._enabled:
             logger.debug("ChipTunes: track ended, advancing to next")
             threading.Thread(target=self._play_next, daemon=True, name="chiptunes-auto-next").start()
+
+    def _discover_tracks(self) -> list[Path]:
+        """Collect PSID tracks when worker is initialized with a music directory."""
+        if self._music_dir is None:
+            return []
+        if not self._music_dir.exists():
+            logger.warning("ChipTunes music_dir does not exist: %s", self._music_dir)
+            return []
+
+        tracks: list[Path] = []
+        for sid_path in self._music_dir.rglob("*.sid"):
+            if not _is_rsid(sid_path):
+                tracks.append(sid_path)
+        return tracks

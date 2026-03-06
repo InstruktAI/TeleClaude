@@ -1,5 +1,5 @@
-project_root: /Users/Morriz/.teleclaude
-snippets_root: /Users/Morriz/.teleclaude/docs
+project_root: ~/.teleclaude
+snippets_root: ~/.teleclaude/docs
 snippets:
 - id: general/concept/agent-characteristics
   description: Cognitive profiles and collaboration selection heuristics for AI agents.

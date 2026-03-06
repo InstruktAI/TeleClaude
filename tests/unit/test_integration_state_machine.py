@@ -276,6 +276,17 @@ def test_dispatch_returns_slug_not_next_error_when_slug_mismatch(tmp_path: Path)
     assert "SLUG_NOT_NEXT" in result
 
 
+@patch("teleclaude.core.integration.state_machine.subprocess.run")
+def test_clearance_probe_skips_cli_calls_outside_git_repo(mock_run: MagicMock, tmp_path: Path) -> None:
+    from teleclaude.core.integration.state_machine import _make_clearance_probe
+
+    clearance = _make_clearance_probe(str(tmp_path)).check(exclude_session_id="owner-session")
+
+    assert not clearance.blocking_session_ids
+    assert not clearance.dirty_tracked_paths
+    mock_run.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # AWAITING_COMMIT: commit detection
 # ---------------------------------------------------------------------------
