@@ -27,7 +27,7 @@ Ownership:
 - [x] Demo artifact reviewed (`demo.md` has real, domain-specific executable blocks — not stubs)
 - [x] Findings written in `review-findings.md`
 - [x] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
+- [x] Critical issues resolved or explicitly blocked
 - [x] Test coverage and regression risk assessed
 
 ## Finalize Gates (Finalizer)

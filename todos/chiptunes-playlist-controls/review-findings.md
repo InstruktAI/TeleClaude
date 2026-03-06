@@ -1,6 +1,26 @@
 # Review Findings: chiptunes-playlist-controls
 
-## Verdict: REQUEST CHANGES
+## Verdict: APPROVE
+
+**Review round:** 2
+
+---
+
+## Round 1 Findings — Resolution Verification
+
+All 6 Important findings and 3 Suggestions from round 1 have been verified as resolved:
+
+| # | Finding | Status | Evidence |
+|---|---------|--------|----------|
+| 1 | `start()` bypasses `worker.enable()` | **Resolved** | `manager.py:62` now calls `self._worker.enable()` |
+| 2 | No thread safety on `_Worker` shared state | **Resolved** | `worker.py:39` adds `RLock`; acquired in `_play_next` (L114), `_play_prev` (L136), `_play_track` (L92), `disable` (L52) |
+| 3 | Blocking file I/O in `_chiptunes_favorite` | **Resolved** | `app.py:1000` uses `@work`; `asyncio.to_thread` at L1011/L1016; `OSError` caught at L1017 |
+| 4 | `getattr` pattern instead of `isinstance` | **Resolved** | `app.py:585` uses `isinstance(event, ChiptunesTrackEvent)` with direct field access |
+| 5 | `load_favorites` swallows `JSONDecodeError` | **Resolved** | `favorites.py:22-24` logs warning with traceback; L26-28 adds `isinstance(data, list)` guard |
+| 6 | Callback errors at debug level; double-catch | **Resolved** | `manager.py:52` uses `logger.warning`; worker's `_play_track` no longer wraps callback in try/except |
+| S1 | Favorite toast always shows "Added" | **Resolved** | `app.py:1011-1013` checks `is_favorited()` before save, returns early |
+| S2 | Empty `TYPE_CHECKING` block | **Resolved** | Removed from `worker.py` |
+| S4 | Unknown commands silently ignored | **Resolved** | `worker.py:84` logs warning |
 
 ---
 
@@ -12,121 +32,90 @@ _(none)_
 
 ## Important
 
-### 1. Encapsulation violation: manager.start() bypasses worker.enable()
-
-**File:** `teleclaude/chiptunes/manager.py:60-64`
-
-`start()` directly sets `self._worker._enabled = True` and calls `self._worker._play_next()`, bypassing the worker's public `enable()` method which does exactly the same thing. This duplicates thread-spawn logic and means future changes to `_Worker.enable()` (e.g., adding a lock or guard) would not take effect through the `start()` path.
-
-**Fix:** Replace lines 63-64 with `self._worker.enable()`.
-
-### 2. Thread safety: no synchronization on shared mutable state in _Worker
-
-**File:** `teleclaude/chiptunes/worker.py:38-41, 74-83, 109-148`
-
-`_history`, `_history_index`, and `_player` are mutated from multiple daemon threads with no locking. `handle_cmd()` spawns a new thread per command (lines 81-83), `_on_track_end()` spawns another thread for auto-advance (line 148), and `disable()` mutates `_player` from the caller's thread. Two concurrent `_play_next()` calls (e.g., auto-advance + user click) can race on index/history state.
-
-**Fix:** Add a `threading.Lock` and acquire it in `_play_next`, `_play_prev`, `_play_track`, and `disable`.
-
-### 3. Blocking file I/O on TUI event loop thread
-
-**File:** `teleclaude/cli/tui/app.py:1002-1011`
-
-`_chiptunes_favorite()` is synchronous and calls `save_favorite()` + `is_favorited()`, both doing disk I/O. All other player control handlers (`_chiptunes_play_pause`, `_chiptunes_next`, `_chiptunes_prev`) use `@work` for async execution. This can cause UI jank and is inconsistent with the established pattern.
-
-Additionally, `save_favorite()` errors (`OSError` from disk full, permissions, etc.) are not caught — an unhandled exception would crash the widget.
-
-**Fix:** Either wrap with `@work` + `asyncio.to_thread()`, or at minimum wrap `save_favorite()` in try/except with `self.notify(..., severity="error")` on failure. The redundant `is_favorited()` call after `save_favorite()` can be replaced with `footer.chiptunes_favorited = True`.
-
-### 4. Paradigm violation: getattr with defaults instead of isinstance for chiptunes_track event
-
-**File:** `teleclaude/cli/tui/app.py:584-596`
-
-The `chiptunes_track` event handler uses string comparison on `event.event` and `getattr(event, "track", "")` / `getattr(event, "sid_path", "")`. All other event types in this handler use `isinstance` checks and typed field access. This diverges from the established pattern and silently falls through with empty strings if fields are renamed or the event type doesn't match.
-
-**Fix:** Use `isinstance(event, ChiptunesTrackEvent)` and direct field access (`event.track`, `event.sid_path`), following the pattern of adjacent event handlers.
-
-### 5. Silent data loss: load_favorites swallows JSONDecodeError without logging
-
-**File:** `teleclaude/chiptunes/favorites.py:14-17`
-
-`load_favorites()` catches both `FileNotFoundError` (justified — file may not exist yet) and `json.JSONDecodeError` (not justified — indicates data corruption). Returning `[]` on malformed JSON means the next `save_favorite()` call overwrites the corrupted file with a single entry, silently destroying all existing favorites.
-
-**Fix:** At minimum, log a warning on `JSONDecodeError`. Consider also: (a) adding a type check that the parsed result is a `list`, (b) writing to a temp file + `os.replace()` for atomic writes in `save_favorite()`.
-
-### 6. Callback errors logged at debug level — notification pipeline failures invisible in production
-
-**File:** `teleclaude/chiptunes/worker.py:104`, `teleclaude/chiptunes/manager.py:52`
-
-Both the worker and manager catch `Exception` on the `on_track_start` callback and log at `debug` level. This callback is the mechanism that drives "Now Playing" toasts and footer track info. If the callback pipeline breaks, track info stops updating with no observable indication in production logs (debug is typically filtered).
-
-The double-catch (manager catches, then worker catches) is also redundant — the worker's catch already protects playback.
-
-**Fix:** Change `logger.debug` to `logger.warning` in the layer that should catch (manager). Remove the redundant catch in the other layer (worker — let it propagate to manager).
+_(none)_
 
 ---
 
 ## Suggestions
 
-### S1. _chiptunes_favorite always shows "Added to favorites" toast
-
-**File:** `teleclaude/cli/tui/app.py:1009-1011`
-
-`save_favorite()` deduplicates silently, so clicking the star on an already-favorited track shows "Added to favorites" even though nothing was added.
-
-**Fix:** Check `is_favorited()` before calling `save_favorite()`, or have `save_favorite()` return a bool.
-
-### S2. Empty TYPE_CHECKING block is dead code
-
-**File:** `teleclaude/chiptunes/worker.py:13-14`
-
-`if TYPE_CHECKING: pass` does nothing. Remove it and remove `TYPE_CHECKING` from the typing import.
-
-### S3. API server accesses private _chiptunes_manager attribute
+### S3. API server accesses private `_chiptunes_manager` attribute (carried from round 1)
 
 **File:** `teleclaude/api_server.py:1764, 1775, 1786, 1797`
 
-Four endpoints access `self.runtime_settings._chiptunes_manager` (private attribute). `RuntimeSettings` should expose a public property for external access.
+Four endpoints access `self.runtime_settings._chiptunes_manager`. `RuntimeSettings` should expose a public property. Not blocking — deferred to follow-up.
 
-### S4. handle_cmd silently ignores unknown commands
+### S5. Synchronous `is_favorited()` in WebSocket event handler
 
-**File:** `teleclaude/chiptunes/worker.py:74-83`
+**File:** `teleclaude/cli/tui/app.py:592`
 
-Unknown command names are silently dropped with no logging. Add an `else: logger.warning(...)` branch.
+`is_favorited(event.sid_path)` performs synchronous file I/O in the WS event handler. The favorites file is small and track changes are infrequent, so impact is negligible. Consider wrapping in `run_in_executor` in a future pass for consistency with the favorite-save path.
+
+### S6. `pause()` and `resume()` access `_player` without lock
+
+**File:** `teleclaude/chiptunes/worker.py:58-66`
+
+These methods check and call `self._player` without acquiring `self._lock`. A concurrent `disable()` could set `_player = None` between the check and the call. Risk is minimal (worst case: AttributeError caught by caller), but could be guarded for completeness. Pre-existing pattern, not introduced by this delivery.
 
 ---
 
 ## Paradigm-Fit Assessment
 
-1. **Data flow:** Implementation follows established patterns — daemon -> manager -> player for playback, API -> daemon -> WS -> TUI for events, TUI -> API client -> daemon for controls. New endpoints follow existing REST patterns.
-2. **Component reuse:** Footer icon rendering follows the existing TTS/animation icon pattern. Click regions use the same x-coordinate tracking.
-3. **Pattern consistency:** Worker extraction from manager follows ChiptunesPlayer precedent. API endpoints match existing endpoint structure.
-4. **Deviation (Finding #4):** The `chiptunes_track` event handler uses `getattr` with defaults instead of the `isinstance` pattern used by all other event handlers in the same function.
+1. **Data flow:** Follows established daemon → manager → player → WS → TUI pipeline. New API endpoints match existing REST patterns.
+2. **Component reuse:** Footer icon rendering reuses existing TTS/animation icon pattern. Click regions use the same x-coordinate tracking approach.
+3. **Pattern consistency:** Worker extraction follows ChiptunesPlayer precedent. Event handling now uses `isinstance` like all adjacent handlers (fixed in round 1).
+4. **No paradigm violations detected.**
+
+## Principle Violation Hunt
+
+Systematic check against design-fundamentals principles:
+
+- **Fallback & silent degradation:** All fallbacks are now justified. `load_favorites` logs on corruption (round 1 fix). Callback errors surface at warning level (round 1 fix). No unjustified silent fallbacks remain.
+- **Fail fast:** Boundary validation present — `_play_next` returns early on `None` track with warning log. `ChiptunesTrackEventDTO` has typed fields with Pydantic validation.
+- **DIP:** Core worker/manager have no adapter imports. API server access to private attr noted as S3.
+- **Coupling / Demeter:** No deep chains. Standard Textual `query_one` pattern used.
+- **SRP:** Worker handles navigation, manager handles lifecycle, favorites handles persistence, footer handles rendering. Clean separation.
+- **YAGNI / KISS:** No premature abstractions. Direct implementation matching requirements.
+- **Encapsulation:** S3 is the only encapsulation gap (private attr access).
+- **Immutability:** Worker history is mutable but lock-protected. Favorites file is single-owner.
 
 ## Demo Artifact Review
 
-- Executable block 1 (favorites Python test): exercises real `favorites.py` functions.
-- Executable block 2 (curl to API endpoints): tests real endpoints that exist in the codebase.
-- Executable block 3 (make test): valid.
-- Guided presentation: describes real UI interactions exercising actual implemented features.
+- Executable block 1 (favorites Python test): exercises real `favorites.py` functions. ✓
+- Executable block 2 (curl to API endpoints): tests real endpoints. ✓
+- Executable block 3 (make test): valid. ✓
+- Guided presentation: describes real UI interactions. ✓
 - No fabricated commands or flags.
 
 ## Test Coverage Assessment
 
-Tests cover worker history navigation, prev/next boundaries, favorites CRUD, deduplication, malformed-JSON resilience, manager proxy delegation, and DTO enrichment. Gaps noted:
+Tests cover: worker history navigation, prev/next boundaries, favorites CRUD, deduplication, malformed-JSON resilience, manager proxy delegation, DTO enrichment, and pause/resume lifecycle.
+
+Non-blocking gaps carried from round 1 (follow-up):
 - No tests for `_on_track_end` auto-advance behavior.
 - No tests for the four new API endpoints.
 - `handle_cmd` tests use `time.sleep(0.05)` — fragile under CI load.
-- No test for `_play_next` when track source is exhausted mid-session.
-
-These gaps are not blocking but should be addressed in follow-up.
 
 ## Requirements Tracing
 
-All 10 success criteria from requirements.md are addressed in the implementation:
-- Footer player controls (implemented in telec_footer.py)
-- Play/pause/next/prev behavior (worker.py + app.py handlers)
-- Favorites persistence (favorites.py + app.py)
-- Track history (worker.py)
-- Now Playing toast (app.py chiptunes_track event handler)
-- Existing tests pass (verified: 3201 passed)
+All 10 success criteria from requirements.md verified in implementation:
+
+| Criterion | Evidence |
+|-----------|----------|
+| Footer shows ⏮⏯⏭⭐ when enabled | `telec_footer.py:204-232` |
+| ⏯ starts/toggles playback | `app.py:962-982` |
+| ⏯ reflects state (⏸/▶) | `telec_footer.py:215-218` |
+| ⏭ advances to next track | `worker.py:108-129`, `app.py:984-990` |
+| ⏮ goes back in history | `worker.py:131-147`, `app.py:992-998` |
+| ⭐ saves to favorites file | `favorites.py:33-48`, `app.py:1000-1022` |
+| ⭐ shows ✅ when favorited | `telec_footer.py:229`, `app.py:592` |
+| Track history in worker | `worker.py:35-36, 108-147` |
+| Now Playing toast works | `app.py:593-594` |
+| Existing tests pass | 3201 passed, 5 skipped |
+
+## Why No Important/Critical Issues
+
+1. **Paradigm-fit verified:** Data flow, component reuse, and pattern consistency all checked — no violations found.
+2. **Requirements met:** All 10 success criteria traced to specific code locations (table above).
+3. **Copy-paste duplication checked:** The four API endpoints in `api_server.py` share structure but each dispatches to a different manager method — this is not copy-paste duplication, it's four distinct thin endpoints. Footer icon rendering follows but does not duplicate the existing TTS icon pattern.
+4. **Principle violation hunt completed:** No unjustified fallbacks, no DIP violations at architectural boundaries, no SRP violations, no coupling issues beyond the pre-existing S3.
+5. **Round 1 fixes verified:** All 6 Important findings and 3 Suggestions confirmed resolved with correct implementations.
