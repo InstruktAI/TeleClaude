@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Literal
 
-
 SessionMessageRejectionReason = Literal["not_found", "closed"]
 
 
@@ -25,4 +24,3 @@ class SessionMessageRejectedError(RuntimeError):
         if self.reason == "not_found":
             return 404
         return 409
-

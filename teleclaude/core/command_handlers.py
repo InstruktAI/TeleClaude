@@ -35,8 +35,8 @@ from teleclaude.core.events import (
 from teleclaude.core.feature_flags import is_threaded_output_enabled
 from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.core.file_handler import handle_file as handle_file_upload
-from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.models import (
     AgentResumeArgs,
     AgentStartArgs,
