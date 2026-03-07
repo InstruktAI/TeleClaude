@@ -66,10 +66,10 @@ class ChiptunesManager:
         """Return True if chiptunes playback is enabled."""
         return self._enabled
 
-    def start(self) -> None:
+    def start(self, *, paused: bool = False) -> None:
         """Pick a random PSID track and start playback (non-blocking)."""
         self._enabled = True
-        self._worker.enable()
+        self._worker.enable(start_paused=paused)
 
     def stop(self) -> None:
         """Stop playback immediately."""

@@ -31,6 +31,7 @@ class ChiptunesSettings:
     """ChipTunes section of mutable settings."""
 
     enabled: bool = False
+    paused: bool = False
 
 
 @dataclass
@@ -77,6 +78,7 @@ class RuntimeSettings:
         self._chiptunes_manager = chiptunes_manager
         self._tts_enabled: bool = tts_manager.enabled
         self._chiptunes_enabled: bool = chiptunes_manager.enabled if chiptunes_manager is not None else False
+        self._chiptunes_paused: bool = chiptunes_manager.is_paused if chiptunes_manager is not None else False
         self._flush_task: asyncio.Task[None] | None = None
         self._yaml = YAML()
         self._yaml.preserve_quotes = True
@@ -85,7 +87,7 @@ class RuntimeSettings:
         """Return current mutable settings."""
         return SettingsState(
             tts=TTSSettings(enabled=self._tts_enabled),
-            chiptunes=ChiptunesSettings(enabled=self._chiptunes_enabled),
+            chiptunes=ChiptunesSettings(enabled=self._chiptunes_enabled, paused=self._chiptunes_paused),
         )
 
     def patch(self, updates: SettingsPatch) -> SettingsState:
@@ -111,15 +113,29 @@ class RuntimeSettings:
             self._chiptunes_enabled = val
             if self._chiptunes_manager is not None:
                 if val:
-                    self._chiptunes_manager.start()
+                    self._chiptunes_manager.start(paused=self._chiptunes_paused)
                 else:
+                    self._chiptunes_paused = False
                     self._chiptunes_manager.stop()
-            logger.info("Runtime chiptunes.enabled → %s", val)
+            logger.info("Runtime chiptunes.enabled → %s (paused=%s)", val, self._chiptunes_paused)
             applied = True
 
         if not applied:
             raise ValueError("No mutable settings in patch")
 
+        self._schedule_flush()
+        return self.get_state()
+
+    def set_chiptunes_paused(self, paused: bool) -> SettingsState:
+        """Persist user pause intent for chiptunes across daemon restarts."""
+        self._chiptunes_paused = paused
+        if self._chiptunes_manager is not None and self._chiptunes_enabled:
+            if paused:
+                self._tts_manager.on_chiptunes_user_pause()
+                self._chiptunes_manager.pause()
+            else:
+                self._chiptunes_manager.resume()
+        logger.info("Runtime chiptunes.paused → %s", paused)
         self._schedule_flush()
         return self.get_state()
 
@@ -207,8 +223,9 @@ class RuntimeSettings:
             chiptunes_section = doc.get("chiptunes")
             if isinstance(chiptunes_section, dict):
                 chiptunes_section["enabled"] = self._chiptunes_enabled
+                chiptunes_section["paused"] = self._chiptunes_paused
             else:
-                doc["chiptunes"] = {"enabled": self._chiptunes_enabled}
+                doc["chiptunes"] = {"enabled": self._chiptunes_enabled, "paused": self._chiptunes_paused}
 
             self._yaml.dump(doc, self._config_path)
             logger.info("Settings flushed to %s", self._config_path)

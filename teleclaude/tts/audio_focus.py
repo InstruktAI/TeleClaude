@@ -18,7 +18,7 @@ class AudioFocusCoordinator:
     def __init__(self) -> None:
         self._chiptunes_manager: ChiptunesManager | None = None
         self._foreground_claims = 0
-        self._background_paused = False
+        self._resume_after_foreground = False
 
     @property
     def active_claims(self) -> int:
@@ -40,7 +40,14 @@ class AudioFocusCoordinator:
         """Re-assert foreground ownership when background audio changes state."""
         if self._foreground_claims == 0:
             return
+        manager = self._chiptunes_manager
+        if manager is None or not manager.enabled or not manager.is_playing:
+            return
         self._pause_background()
+
+    def cancel_background_resume(self) -> None:
+        """Honor an explicit user pause by cancelling deferred auto-resume."""
+        self._resume_after_foreground = False
 
     def release_foreground(self) -> None:
         """Release a foreground speech claim and resume music when drained."""
@@ -60,14 +67,16 @@ class AudioFocusCoordinator:
         manager = self._chiptunes_manager
         if manager is None or not manager.enabled:
             return
+        if not manager.is_playing:
+            return
         manager.pause()
-        self._background_paused = True
+        self._resume_after_foreground = True
         logger.debug("Audio focus: paused background music", extra={"claims": self._foreground_claims})
 
     def _resume_background(self) -> None:
-        if not self._background_paused:
+        if not self._resume_after_foreground:
             return
         if self._chiptunes_manager is not None and self._chiptunes_manager.enabled:
             self._chiptunes_manager.resume()
             logger.debug("Audio focus: resumed background music")
-        self._background_paused = False
+        self._resume_after_foreground = False

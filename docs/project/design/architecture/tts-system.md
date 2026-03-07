@@ -52,7 +52,9 @@ type: 'design'
 4. Resume reopens the chiptunes stream only after foreground speech drains.
 5. Additional TTS jobs do not toggle chiptunes again; they share the same foreground-audio claim.
 6. Background music state changes re-assert foreground audio focus, so a newly started or resumed track is paused again while speech claims are active.
-7. Chiptunes resumes only after the last queued or active speech job completes or the TTS manager shuts down.
+7. A user-issued chiptunes pause cancels any pending TTS-driven auto-resume.
+8. Chiptunes resumes only after the last queued or active speech job completes or the TTS manager shuts down.
+9. User pause state is persisted in runtime config, so daemon restarts do not silently turn paused music back on.
 
 **Voice assignment:**
 
@@ -84,3 +86,4 @@ type: 'design'
 4. Lazy initialization — `TTSManager` is created on first use to avoid circular imports.
 5. Chiptunes audio focus is queue-scoped, not item-scoped — music resumes only after all queued speech has completed.
 6. Paused chiptunes does not keep a live audio stream open in the background.
+7. Chiptunes pause intent survives daemon restart — `enabled` and `paused` are restored together.

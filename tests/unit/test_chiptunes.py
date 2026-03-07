@@ -509,6 +509,7 @@ class TestRuntimeSettingsChiptunes:
     def chiptunes_manager(self) -> MagicMock:
         mgr = MagicMock()
         mgr.enabled = False
+        mgr.is_paused = False
         return mgr
 
     @pytest.fixture
@@ -544,6 +545,38 @@ class TestRuntimeSettingsChiptunes:
 
         chiptunes_manager.stop.assert_called_once()
 
+    def test_set_chiptunes_paused_persists_user_pause(
+        self,
+        config_yml: Path,
+        tts_manager: MagicMock,
+        chiptunes_manager: MagicMock,
+    ) -> None:
+        from teleclaude.config.runtime_settings import RuntimeSettings
+
+        chiptunes_manager.enabled = True
+        settings = RuntimeSettings(config_yml, tts_manager, chiptunes_manager)
+        result = settings.set_chiptunes_paused(True)
+
+        assert result.chiptunes.paused is True
+        tts_manager.on_chiptunes_user_pause.assert_called_once()
+        chiptunes_manager.pause.assert_called_once()
+
+    def test_patch_chiptunes_enabled_restores_paused_state(
+        self,
+        config_yml: Path,
+        tts_manager: MagicMock,
+        chiptunes_manager: MagicMock,
+    ) -> None:
+        from teleclaude.config.runtime_settings import ChiptunesSettingsPatch, RuntimeSettings, SettingsPatch
+
+        settings = RuntimeSettings(config_yml, tts_manager, chiptunes_manager)
+        settings.set_chiptunes_paused(True)
+        chiptunes_manager.pause.reset_mock()
+
+        settings.patch(SettingsPatch(chiptunes=ChiptunesSettingsPatch(enabled=True)))
+
+        chiptunes_manager.start.assert_called_once_with(paused=True)
+
     def test_parse_patch_chiptunes_valid(self) -> None:
         from teleclaude.config.runtime_settings import RuntimeSettings
 
@@ -578,9 +611,11 @@ class TestRuntimeSettingsChiptunes:
         from teleclaude.config.runtime_settings import RuntimeSettings
 
         chiptunes_manager.enabled = True
+        chiptunes_manager.is_paused = True
         settings = RuntimeSettings(config_yml, tts_manager, chiptunes_manager)
         state = settings.get_state()
         assert state.chiptunes.enabled is True
+        assert state.chiptunes.paused is True
 
 
 # --- Task 2.3: API patch validation for chiptunes key ---
@@ -681,6 +716,64 @@ class TestTTSChiptunesCoexistence:
         mgr.on_chiptunes_state_change()
 
         chiptunes.pause.assert_called_once()
+
+    def test_audio_focus_does_not_resume_user_paused_music(self) -> None:
+        from teleclaude.tts.audio_focus import AudioFocusCoordinator
+
+        chiptunes = MagicMock()
+        chiptunes.enabled = True
+        chiptunes.is_playing = False
+        chiptunes.is_paused = True
+
+        focus = AudioFocusCoordinator()
+        focus.set_chiptunes_manager(chiptunes)
+
+        focus.claim_foreground()
+        focus.release_foreground()
+
+        chiptunes.pause.assert_not_called()
+        chiptunes.resume.assert_not_called()
+
+    def test_chiptunes_state_change_ignores_already_paused_music(self) -> None:
+        from teleclaude.tts.audio_focus import AudioFocusCoordinator
+
+        chiptunes = MagicMock()
+        chiptunes.enabled = True
+        chiptunes.is_playing = True
+        chiptunes.is_paused = False
+
+        focus = AudioFocusCoordinator()
+        focus.set_chiptunes_manager(chiptunes)
+
+        focus.claim_foreground()
+        chiptunes.pause.assert_called_once()
+
+        chiptunes.pause.reset_mock()
+        chiptunes.is_playing = False
+        chiptunes.is_paused = True
+
+        focus.on_background_state_change()
+
+        chiptunes.pause.assert_not_called()
+
+    def test_audio_focus_user_pause_cancels_pending_resume(self) -> None:
+        from teleclaude.tts.audio_focus import AudioFocusCoordinator
+
+        chiptunes = MagicMock()
+        chiptunes.enabled = True
+        chiptunes.is_playing = True
+        chiptunes.is_paused = False
+
+        focus = AudioFocusCoordinator()
+        focus.set_chiptunes_manager(chiptunes)
+
+        focus.claim_foreground()
+        chiptunes.pause.assert_called_once()
+
+        focus.cancel_background_resume()
+        focus.release_foreground()
+
+        chiptunes.resume.assert_not_called()
 
 
 # --- Worker track history and navigation ---
@@ -795,8 +888,8 @@ class TestWorkerTrackHistory:
             def stop(self) -> None:
                 events.append("stop")
 
-            def play(self, track: Path) -> None:
-                events.append(f"play:{track.name}")
+            def play(self, track: Path, *, start_paused: bool = False) -> None:
+                events.append(f"play:{track.name}:{start_paused}")
 
             def pause(self) -> None:
                 self.is_paused = True
@@ -816,8 +909,29 @@ class TestWorkerTrackHistory:
 
         worker._play_track(track)
 
-        assert events == [f"play:{track.name}", "pause"]
+        assert events == [f"play:{track.name}:True"]
         assert worker.is_paused is True
+
+    def test_pause_is_idempotent(self) -> None:
+        from teleclaude.chiptunes.worker import _Worker
+
+        events: list[str] = []
+
+        class FakePlayer:
+            def __init__(self) -> None:
+                self.is_paused = False
+
+            def pause(self) -> None:
+                self.is_paused = True
+                events.append("pause")
+
+        worker = _Worker(pick_random_track=lambda: None, volume=0.0, on_state_change=lambda: events.append("state"))
+        worker._player = FakePlayer()
+
+        worker.pause()
+        worker.pause()
+
+        assert events == ["pause", "state"]
 
 
 # --- Manager next_track / prev_track proxy methods ---

@@ -58,7 +58,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         """Return True if playback is loaded but currently paused."""
         return self._paused and not self._stop_event.is_set()
 
-    def play(self, sid_path: Path) -> None:
+    def play(self, sid_path: Path, *, start_paused: bool = False) -> None:
         """Parse and start playing a SID file in the background."""
         if not _sounddevice_available:
             raise ImportError(
@@ -75,9 +75,16 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
 
         self._stop_event.clear()
         self._playing = True
-        self._paused = False
-        self._resume_event.set()
-        self._stream_blocksize = None
+        self._paused = start_paused
+        if start_paused:
+            self._resume_event.clear()
+        else:
+            self._resume_event.set()
+        pal = is_pal(header)
+        frame_rate = 50.0 if pal else 60.0
+        frame_duration = 1.0 / frame_rate
+        samples_per_frame = int(_SAMPLE_RATE * frame_duration)
+        self._stream_blocksize = samples_per_frame * 4
         self._pcm_queue = queue.Queue(maxsize=_QUEUE_MAX_CHUNKS)
 
         self._thread = threading.Thread(
@@ -88,6 +95,9 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         )
         self._thread.start()
 
+        if start_paused:
+            return
+
         # Wait until pre-buffer is filled before opening the audio stream
         self._start_stream_after_prebuffer(header)
 
@@ -96,8 +106,6 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         pal = is_pal(header)
         frame_rate = 50.0 if pal else 60.0
         frame_duration = 1.0 / frame_rate
-        samples_per_frame = int(_SAMPLE_RATE * frame_duration)
-        self._stream_blocksize = samples_per_frame * 4
         prebuffer_frames = int(_PREBUFFER_SECONDS * frame_rate)
 
         # Block until enough frames are buffered or stop is signalled

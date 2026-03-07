@@ -272,6 +272,7 @@ class ChiptunesConfig:
     """ChipTunes background music configuration."""
 
     enabled: bool = False
+    paused: bool = False
     music_dir: str | None = None  # default: assets/audio/C64Music
     volume: float = 0.5
 
@@ -649,6 +650,7 @@ def _parse_chiptunes_config(raw: dict[str, object] | None) -> ChiptunesConfig | 
         return None
     return ChiptunesConfig(
         enabled=bool(raw.get("enabled", False)),
+        paused=bool(raw.get("paused", False)),
         music_dir=str(raw["music_dir"]) if raw.get("music_dir") else None,
         volume=float(raw.get("volume", 0.5)),  # type: ignore[arg-type]
     )

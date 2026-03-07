@@ -322,13 +322,18 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         )
         chiptunes_volume = chiptunes_cfg.volume if chiptunes_cfg else 0.5
         chiptunes_was_enabled = chiptunes_cfg.enabled if chiptunes_cfg else False
+        chiptunes_was_paused = chiptunes_cfg.paused if chiptunes_cfg else False
         self.chiptunes_manager = ChiptunesManager(chiptunes_music_dir, volume=chiptunes_volume)
         self.chiptunes_manager.on_track_start = self._on_chiptunes_track_start
         self.chiptunes_manager.on_state_change = self._on_chiptunes_state_change
         self.tts_manager.set_chiptunes_manager(self.chiptunes_manager)
         if chiptunes_was_enabled:
-            self.chiptunes_manager.start()
-            logger.info("ChiptunesManager initialized and started (music_dir=%s)", chiptunes_music_dir)
+            self.chiptunes_manager.start(paused=chiptunes_was_paused)
+            logger.info(
+                "ChiptunesManager initialized and started (music_dir=%s paused=%s)",
+                chiptunes_music_dir,
+                chiptunes_was_paused,
+            )
         else:
             logger.info("ChiptunesManager initialized (music_dir=%s)", chiptunes_music_dir)
 

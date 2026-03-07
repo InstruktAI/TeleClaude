@@ -62,9 +62,10 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
     # Public control                                                        #
     # ------------------------------------------------------------------ #
 
-    def enable(self) -> None:
+    def enable(self, *, start_paused: bool = False) -> None:
         """Mark worker as enabled and start the first track."""
         self._enabled = True
+        self._paused_requested = start_paused
         self._notify_state_change()
         threading.Thread(target=self._play_next, daemon=True, name="chiptunes-start").start()
 
@@ -82,9 +83,12 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
     def pause(self) -> None:
         """Pause current playback."""
         with self._lock:
+            player = self._player
+            if self._paused_requested and (player is None or player.is_paused):
+                return
             self._paused_requested = True
-        if self._player is not None:
-            self._player.pause()
+        if player is not None:
+            player.pause()
         self._notify_state_change()
 
     def resume(self) -> None:
@@ -146,6 +150,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             player.on_track_end = self._on_track_end
             self._player = player
             self._current_track = track
+            start_paused = self._paused_requested
 
         track_label = track.stem.replace("_", " ")
         logger.info("ChipTunes: playing %s", track_label)
@@ -153,10 +158,10 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         if self.on_track_start is not None:
             self.on_track_start(track_label, str(track))
 
-        player.play(track)
+        player.play(track, start_paused=start_paused)
         with self._lock:
             paused_requested = self._paused_requested
-        if paused_requested:
+        if paused_requested and not start_paused:
             player.pause()
         self._notify_state_change()
 

@@ -76,6 +76,11 @@ class TTSManager:
         self._ensure_runtime_state()
         self._audio_focus.on_background_state_change()
 
+    def on_chiptunes_user_pause(self) -> None:
+        """Honor an explicit user pause even if TTS currently owns audio focus."""
+        self._ensure_runtime_state()
+        self._audio_focus.cancel_background_resume()
+
     def _load_tts_config(self) -> TTSConfig:
         """Load TTS config from config.yaml."""
         if not config.tts:

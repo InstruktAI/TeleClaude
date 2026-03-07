@@ -1886,10 +1886,9 @@ class APIServer:
             """Pause chiptunes playback."""
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
-            manager = self.runtime_settings._chiptunes_manager
-            if manager is None:
+            if self.runtime_settings._chiptunes_manager is None:
                 raise HTTPException(503, "Chiptunes manager not available")
-            manager.pause()
+            self.runtime_settings.set_chiptunes_paused(True)
             return JSONResponse({"status": "ok"})
 
         @self.app.post("/api/chiptunes/resume")
@@ -1897,10 +1896,9 @@ class APIServer:
             """Resume chiptunes playback."""
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
-            manager = self.runtime_settings._chiptunes_manager
-            if manager is None:
+            if self.runtime_settings._chiptunes_manager is None:
                 raise HTTPException(503, "Chiptunes manager not available")
-            manager.resume()
+            self.runtime_settings.set_chiptunes_paused(False)
             return JSONResponse({"status": "ok"})
 
         @self.app.get("/jobs")
