@@ -222,7 +222,7 @@ class TelecFooter(Widget):
         tts_end = toggles.cell_len
         toggles.append(" ")
 
-        # ChipTunes player control group: ⏮️ ▶️/⏸ ⏭️ ⭐/✅
+        # ChipTunes player control group: ⏮️ ▶️/⏸️ ⏭️ ⭐/✅
         # Module-level cell width patch keeps Rich/tmux cursor math aligned for
         # the FE0F emoji presentation icons used here.
         dim_style = Style(dim=True)
@@ -230,13 +230,13 @@ class TelecFooter(Widget):
 
         prev_start = toggles.cell_len
         toggles.append("⏮\uFE0F", style=active_style if self.chiptunes_enabled else dim_style)
-        toggles.append(" ")
+        toggles.append("  ")
         prev_end = toggles.cell_len
 
         play_start = toggles.cell_len
-        play_icon = "⏸" if (self.chiptunes_enabled and self.chiptunes_playing) else "▶\uFE0F"
+        play_icon = "⏸\uFE0F" if (self.chiptunes_enabled and self.chiptunes_playing) else "▶\uFE0F"
         toggles.append(play_icon, style=active_style if self.chiptunes_enabled else dim_style)
-        toggles.append(" ")
+        toggles.append("  ")
         play_end = toggles.cell_len
 
         next_start = toggles.cell_len
