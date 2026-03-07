@@ -29,6 +29,9 @@ class DataRefreshed(Message):
         jobs: list[JobInfo],
         tts_enabled: bool,
         chiptunes_enabled: bool = False,
+        chiptunes_playing: bool = False,
+        chiptunes_track: str = "",
+        chiptunes_sid_path: str = "",
     ) -> None:
         super().__init__()
         self.computers = computers
@@ -39,6 +42,9 @@ class DataRefreshed(Message):
         self.jobs = jobs
         self.tts_enabled = tts_enabled
         self.chiptunes_enabled = chiptunes_enabled
+        self.chiptunes_playing = chiptunes_playing
+        self.chiptunes_track = chiptunes_track
+        self.chiptunes_sid_path = chiptunes_sid_path
 
 
 # --- Session interaction messages ---
@@ -120,7 +126,12 @@ class ReviveSessionRequest(Message):
 
 
 class CreateSessionRequest(Message):
-    """Request to create a new session."""
+    """Request to create a new session.
+
+    When revive_session_id is set, the session is revived by TeleClaude session ID
+    (agent is resolved from the session record).
+    When native_session_id is set, agent_resume is used with the selected agent.
+    """
 
     def __init__(
         self,
@@ -130,6 +141,8 @@ class CreateSessionRequest(Message):
         thinking_mode: str | None = None,
         title: str | None = None,
         message: str | None = None,
+        revive_session_id: str | None = None,
+        native_session_id: str | None = None,
     ) -> None:
         super().__init__()
         self.computer = computer
@@ -138,6 +151,8 @@ class CreateSessionRequest(Message):
         self.thinking_mode = thinking_mode
         self.title = title
         self.message = message
+        self.revive_session_id = revive_session_id
+        self.native_session_id = native_session_id
 
 
 # --- WebSocket push messages ---

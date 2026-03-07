@@ -137,12 +137,16 @@ ConfigView:focus #config-content {
 #footer-area {
     dock: bottom;
     height: 3;
+    overflow: hidden hidden;
+    scrollbar-size: 0 0;
 }
 
 TelecFooter {
     height: 3;
     background: $panel;
     color: $foreground;
+    overflow: hidden hidden;
+    scrollbar-size: 0 0;
 }
 
 /* ── Session tree rows ─────────────────────────────────── */
@@ -382,7 +386,7 @@ NewProjectModal #modal-box {
 
 StartSessionModal #modal-box {
     width: 64;
-    max-height: 32;
+    max-height: 38;
 }
 
 StartSessionModal #modal-computer,
@@ -394,7 +398,8 @@ StartSessionModal #modal-project {
 #agent-group,
 #mode-group,
 #prompt-group,
-#title-group {
+#title-group,
+#session-id-group {
     border: round $input-border;
     border-title-color: $foreground;
     border-title-style: bold;
@@ -406,12 +411,13 @@ StartSessionModal #modal-project {
 #agent-group:focus-within,
 #mode-group:focus-within,
 #prompt-group:focus-within,
-#title-group:focus-within {
+#title-group:focus-within,
+#session-id-group:focus-within {
     border: round $connector;
 }
 
 /* Custom horizontal selectors */
-AgentSelector, ModeSelector {
+AgentSelector, ModeSelector, SessionIdTypeSelector {
     height: 1;
     width: 100%;
     background: transparent;

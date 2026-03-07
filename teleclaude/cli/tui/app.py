@@ -17,6 +17,7 @@ from textual.widgets import TabbedContent, TabPane
 
 from teleclaude.cli.models import (
     AgentActivityEvent,
+    ChiptunesStateEvent,
     ChiptunesTrackEvent,
     ComputerInfo,
     ErrorEvent,
@@ -370,13 +371,14 @@ class TelecApp(App[str | None]):
         _r0 = _t.monotonic()
         logger.trace("[PERF] _refresh_data START t=%.3f", _r0)
         try:
-            computers, projects_with_todos, sessions, availability, jobs, settings = await asyncio.gather(
+            computers, projects_with_todos, sessions, availability, jobs, settings, chiptunes_status = await asyncio.gather(
                 self.api.list_computers(),
                 self.api.list_projects_with_todos(),
                 self.api.list_sessions(),
                 self.api.get_agent_availability(),
                 self.api.list_jobs(),
                 self.api.get_settings(),
+                self.api.get_chiptunes_status(),
             )
             logger.trace("[PERF] _refresh_data gather done dt=%.3f", _t.monotonic() - _r0)
             self._computers = computers
@@ -412,6 +414,9 @@ class TelecApp(App[str | None]):
                     jobs=jobs,
                     tts_enabled=tts_enabled,
                     chiptunes_enabled=chiptunes_enabled,
+                    chiptunes_playing=chiptunes_status.playing,
+                    chiptunes_track=chiptunes_status.track,
+                    chiptunes_sid_path=chiptunes_status.sid_path,
                 )
             )
         except Exception:
@@ -436,7 +441,12 @@ class TelecApp(App[str | None]):
         jobs_view.update_data(message.jobs)
         status_bar.update_availability(message.availability)
         status_bar.tts_enabled = message.tts_enabled
-        status_bar.chiptunes_enabled = message.chiptunes_enabled
+        self._apply_chiptunes_footer_state(
+            enabled=message.chiptunes_enabled,
+            playing=message.chiptunes_playing,
+            track=message.chiptunes_track,
+            sid_path=message.chiptunes_sid_path,
+        )
 
         logger.trace("[PERF] on_data_refreshed views updated dt=%.3f", _t.monotonic() - _d0)
 
@@ -583,15 +593,22 @@ class TelecApp(App[str | None]):
             self.notify(event.data.message, severity="error")
 
         elif isinstance(event, ChiptunesTrackEvent):
-            from teleclaude.chiptunes.favorites import is_favorited
-
-            footer = self.query_one("#telec-footer", TelecFooter)
-            footer.chiptunes_track = event.track
-            footer.chiptunes_sid_path = event.sid_path
-            footer.chiptunes_playing = True
-            footer.chiptunes_favorited = is_favorited(event.sid_path)
+            self._apply_chiptunes_footer_state(
+                enabled=True,
+                playing=True,
+                track=event.track,
+                sid_path=event.sid_path,
+            )
             if event.track:
                 self.notify(f"♪ Now Playing: {event.track}", timeout=4)
+
+        elif isinstance(event, ChiptunesStateEvent):
+            self._apply_chiptunes_footer_state(
+                enabled=event.enabled,
+                playing=event.playing,
+                track=event.track,
+                sid_path=event.sid_path,
+            )
 
 
         else:
@@ -673,9 +690,39 @@ class TelecApp(App[str | None]):
 
     @work(exclusive=True, group="session-action")
     async def on_create_session_request(self, message: CreateSessionRequest) -> None:
+        # Revive by TeleClaude session ID
+        if message.revive_session_id:
+            try:
+                result = await self.api.revive_session(message.revive_session_id)
+                if result.status == "success":
+                    self.notify(f"Revived session {message.revive_session_id[:8]}...")
+                else:
+                    self.notify(result.error or "Revive failed", severity="error")
+            except Exception as e:
+                self.notify(f"Failed to revive session: {e}", severity="error")
+            return
+
         if not message.agent:
             self.notify("CreateSessionRequest has no agent", severity="error")
             return
+
+        # Resume by native session ID
+        if message.native_session_id:
+            auto_command = f"agent_resume {message.agent} {message.native_session_id}"
+            try:
+                await self.api.create_session(
+                    computer=message.computer,
+                    project_path=message.project_path,
+                    agent=message.agent,
+                    thinking_mode=message.thinking_mode or "slow",
+                    auto_command=auto_command,
+                )
+                self.notify("Resuming session...")
+            except Exception as e:
+                self.notify(f"Failed to resume session: {e}", severity="error")
+            return
+
+        # Normal new session
         try:
             await self.api.create_session(
                 computer=message.computer,
@@ -968,17 +1015,16 @@ class TelecApp(App[str | None]):
 
             try:
                 await self.api.patch_settings(SettingsPatchInfo(chiptunes=ChiptunesSettingsPatchInfo(enabled=True)))
-                footer.chiptunes_enabled = True
+                await self._sync_chiptunes_footer_state()
             except Exception as e:
                 self.notify(f"Failed to enable ChipTunes: {e}", severity="error")
             return
         try:
             if footer.chiptunes_playing:
                 await self.api.chiptunes_pause()
-                footer.chiptunes_playing = False
             else:
                 await self.api.chiptunes_resume()
-                footer.chiptunes_playing = True
+            await self._sync_chiptunes_footer_state()
         except Exception as e:
             self.notify(f"Failed to pause/resume: {e}", severity="error")
 
@@ -997,6 +1043,32 @@ class TelecApp(App[str | None]):
             await self.api.chiptunes_prev()
         except Exception as e:
             self.notify(f"Failed to go to previous track: {e}", severity="error")
+
+    def _apply_chiptunes_footer_state(
+        self,
+        *,
+        enabled: bool,
+        playing: bool,
+        track: str,
+        sid_path: str,
+    ) -> None:
+        from teleclaude.chiptunes.favorites import is_favorited
+
+        footer = self.query_one("#telec-footer", TelecFooter)
+        footer.chiptunes_enabled = enabled
+        footer.chiptunes_playing = enabled and playing
+        footer.chiptunes_track = track
+        footer.chiptunes_sid_path = sid_path
+        footer.chiptunes_favorited = is_favorited(sid_path) if sid_path else False
+
+    async def _sync_chiptunes_footer_state(self) -> None:
+        status = await self.api.get_chiptunes_status()
+        self._apply_chiptunes_footer_state(
+            enabled=status.enabled,
+            playing=status.playing,
+            track=status.track,
+            sid_path=status.sid_path,
+        )
 
     @work(exclusive=False, group="settings")
     async def _chiptunes_favorite(self) -> None:
