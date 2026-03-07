@@ -12,6 +12,7 @@ from textual.app import App, ComposeResult
 from teleclaude.cli.models import ChiptunesStateEvent, ComputerInfo, ProjectInfo, SessionInfo
 from teleclaude.cli.tui.app import TelecApp
 from teleclaude.cli.tui.persistence import Persistable
+from teleclaude.cli.tui.theme import get_neutral_color
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.tree import ComputerDisplayInfo
 from teleclaude.cli.tui.types import TodoStatus
@@ -278,6 +279,19 @@ async def test_telec_footer_transport_controls_use_real_buttons() -> None:
         assert play_button.icon == "▶"
         assert play_button.can_focus is False
         assert next_button.disabled is False
+
+
+@pytest.mark.unit
+def test_footer_action_button_enabled_icon_uses_neutral_highlight_color() -> None:
+    button = FooterActionButton("▶")
+
+    text = button._render_icon()
+
+    assert text.style is not None
+    assert text.style.color is not None
+    assert text.style.color.triplet is not None
+    assert text.style.color.triplet.hex == get_neutral_color("highlight")
+    assert text.style.bold is True
 
 
 @pytest.mark.unit
