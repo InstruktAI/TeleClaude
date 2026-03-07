@@ -358,6 +358,10 @@ def test_start_session_modal_path_mode_resolves_tilde(monkeypatch: pytest.Monkey
         path_error = MockLabel()
         title_input = MockInput("")
         message_input = MockInput("")
+        session_id_input = MockInput("")
+
+        class MockSessionIdTypeSelector:
+            is_teleclaude = True
 
         def _query_one(selector: str, cls: type | None = None) -> object:  # type: ignore[return]
             mapping = {
@@ -367,6 +371,8 @@ def test_start_session_modal_path_mode_resolves_tilde(monkeypatch: pytest.Monkey
                 "#mode-selector": MockModeSel(),
                 "#title-input": title_input,
                 "#message-input": message_input,
+                "#session-id-input": session_id_input,
+                "#session-id-type": MockSessionIdTypeSelector(),
             }
             return mapping.get(selector)
 

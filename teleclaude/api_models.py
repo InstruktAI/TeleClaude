@@ -1,6 +1,6 @@
 """API request/response models for API server."""
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Dict, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import NotRequired, TypedDict
@@ -159,7 +159,8 @@ class PersonDTO(BaseModel):  # type: ignore[explicit-any]
     name: str
     email: str | None = None
     role: Literal["admin", "member", "contributor", "newcomer"] = "member"
-    proficiency: Literal["novice", "intermediate", "advanced", "expert"] = "intermediate"
+    expertise: Dict[str, Union[str, Dict[str, str]]] | None = None
+    proficiency: Literal["novice", "intermediate", "advanced", "expert"] | None = None  # deprecated
 
 
 class ComputerDTO(BaseModel):  # type: ignore[explicit-any]

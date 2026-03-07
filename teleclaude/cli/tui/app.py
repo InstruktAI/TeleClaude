@@ -615,7 +615,6 @@ class TelecApp(App[str | None]):
                 sid_path=event.sid_path,
             )
 
-
         else:
             if event.event == "computer_updated":
                 self._reload_computers()

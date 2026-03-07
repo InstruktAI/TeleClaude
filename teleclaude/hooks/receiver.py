@@ -12,7 +12,10 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from teleclaude.config.schema import PersonEntry
 
 
 def _resolve_main_repo_root(start: Path) -> Path:
@@ -232,6 +235,35 @@ def _maybe_checkpoint_output(
     return checkpoint_reason
 
 
+def _render_person_header(person: PersonEntry) -> str:
+    """Render human-readable person header with expertise or proficiency."""
+    name = person.name
+    expertise = person.expertise
+    proficiency = person.proficiency
+
+    if not expertise:
+        if proficiency:
+            return f"Human in the loop: {name} ({proficiency})"
+        return f"Human in the loop: {name}"
+
+    lines = [f"Human in the loop: {name}", "Expertise:"]
+    for domain, value in expertise.items():
+        if isinstance(value, str):
+            lines.append(f"  {domain}: {value}")
+        elif isinstance(value, dict):
+            default = value.get("default")
+            sub_areas = {k: v for k, v in value.items() if k != "default"}
+            if default and sub_areas:
+                sub_str = ", ".join(f"{k}: {v}" for k, v in sub_areas.items())
+                lines.append(f"  {domain}: {default} ({sub_str})")
+            elif default:
+                lines.append(f"  {domain}: {default}")
+            elif sub_areas:
+                sub_str = ", ".join(f"{k}: {v}" for k, v in sub_areas.items())
+                lines.append(f"  {domain}: ({sub_str})")
+    return "\n".join(lines)
+
+
 def _print_memory_injection(cwd: str | None, adapter: object, session_id: str | None = None) -> None:
     """Print memory context to stdout for agent context injection via SessionStart hook."""
     project_name = Path(cwd).name if cwd else None
@@ -240,7 +272,7 @@ def _print_memory_injection(cwd: str | None, adapter: object, session_id: str | 
 
     # Resolve identity_key from session adapter metadata for identity-scoped memories
     identity_key: str | None = None
-    proficiency_line: str | None = None
+    person_header: str | None = None
     if session_id:
         try:
             from teleclaude.core.identity import derive_identity_key
@@ -260,17 +292,16 @@ def _print_memory_injection(cwd: str | None, adapter: object, session_id: str | 
                             None,
                         )
                         if person:
-                            person_proficiency = getattr(person, "proficiency", "intermediate")
-                            proficiency_line = f"Human in the loop: {person.name} ({person_proficiency})"
-        except Exception:  # noqa: BLE001 - fail-open: identity resolution is best-effort
-            logger.debug("Identity key derivation failed for session %s", (session_id or "")[:8])
+                            person_header = _render_person_header(person)
+        except Exception:  # noqa: BLE001 - fail-open: identity/person resolution is best-effort
+            logger.debug("Identity/person resolution failed for session %s", (session_id or "")[:8])
 
     context = _get_memory_context(project_name, identity_key=identity_key)
-    if not context and not proficiency_line:
+    if not context and not person_header:
         return
 
-    if proficiency_line:
-        context = f"{proficiency_line}\n{context}" if context else proficiency_line
+    if person_header:
+        context = f"{person_header}\n{context}" if context else person_header
 
     logger.debug("Memory context fetched", project=project_name, length=len(context), identity_key=identity_key or "")
     payload = adapter.format_memory_injection(context)  # type: ignore[union-attr]

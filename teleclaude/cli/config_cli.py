@@ -84,7 +84,8 @@ class PersonInfo:
     role: str
     email: str | None = None
     username: str | None = None
-    proficiency: str | None = None
+    expertise: dict[str, str | dict[str, str]] | None = None
+    proficiency: str | None = None  # deprecated — use expertise
     telegram: str | None = None
     telegram_id: int | None = None
     interests: list[str] = field(default_factory=list)
@@ -160,7 +161,8 @@ def _people_list(use_json: bool) -> None:
                 role=p.role,
                 email=p.email,
                 username=p.username,
-                proficiency=getattr(p, "proficiency", "intermediate"),
+                expertise=getattr(p, "expertise", None),
+                proficiency=getattr(p, "proficiency", None),
             )
             try:
                 pc = get_person_config(p.name)
@@ -207,12 +209,21 @@ def _people_add(args: list[str], use_json: bool) -> None:
         print("Error: --email required")
         raise SystemExit(1)
 
+    expertise_raw = opts.get("expertise")
+    expertise = None
+    if expertise_raw:
+        try:
+            expertise = json.loads(expertise_raw)
+        except json.JSONDecodeError as e:
+            print(f"Error: --expertise must be valid JSON: {e}")
+            raise SystemExit(1)
     entry = PersonEntry(
         name=name,
         email=email,
         username=opts.get("username"),
         role=opts.get("role", "member"),  # type: ignore[arg-type]
-        proficiency=opts.get("proficiency", "intermediate"),  # type: ignore[arg-type]
+        expertise=expertise,
+        proficiency=opts.get("proficiency") or None,  # type: ignore[arg-type]
     )
 
     try:
@@ -310,8 +321,8 @@ def _people_edit(args: list[str], use_json: bool) -> None:
 
     changed = False
 
-    # Edit global entry fields (role, email, username, proficiency)
-    if any(k in opts for k in ("role", "email", "username", "proficiency")):
+    # Edit global entry fields (role, email, username, expertise, proficiency)
+    if any(k in opts for k in ("role", "email", "username", "expertise", "proficiency")):
         from teleclaude.cli.config_handlers import get_global_config, save_global_config
 
         config = get_global_config()
@@ -323,6 +334,12 @@ def _people_edit(args: list[str], use_json: bool) -> None:
                     p.email = opts["email"]
                 if "username" in opts:
                     p.username = opts["username"]
+                if "expertise" in opts:
+                    try:
+                        p.expertise = json.loads(opts["expertise"])  # type: ignore[assignment]
+                    except json.JSONDecodeError as e:
+                        print(f"Error: --expertise must be valid JSON: {e}")
+                        raise SystemExit(1)
                 if "proficiency" in opts:
                     p.proficiency = opts["proficiency"]  # type: ignore[assignment]
                 changed = True
@@ -336,7 +353,7 @@ def _people_edit(args: list[str], use_json: bool) -> None:
         changed = True
 
     if not changed:
-        msg = "No changes specified. Use --role, --email, --username, --proficiency, --telegram-user, --telegram-id"
+        msg = "No changes specified. Use --role, --email, --username, --expertise, --proficiency, --telegram-user, --telegram-id"
         if use_json:
             print(json.dumps({"error": msg}))
         else:

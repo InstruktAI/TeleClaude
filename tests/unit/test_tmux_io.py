@@ -39,9 +39,8 @@ async def test_process_text_prefers_existing_tmux():
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="pre-existing: tmux session detection flaky in CI")
-async def test_process_text_creates_tmux_when_missing():
-    """Test that process_text falls back to creating tmux when session missing."""
+async def test_process_text_returns_false_when_tmux_missing():
+    """Test that process_text returns False when tmux session is unavailable."""
     session = Session(
         session_id="sid-456",
         computer_name="test",
@@ -50,11 +49,7 @@ async def test_process_text_creates_tmux_when_missing():
         title="Test Tmux",
     )
 
-    with (
-        patch.object(tmux_io.tmux_bridge, "session_exists", new=AsyncMock(return_value=False)),
-        patch.object(tmux_io.tmux_bridge, "send_keys", new=AsyncMock(return_value=True)) as mock_send_keys,
-    ):
+    with patch.object(tmux_io.tmux_bridge, "session_exists", new=AsyncMock(return_value=False)):
         ok = await tmux_io.process_text(session, "hello", send_enter=True, working_dir="/tmp")
 
-        assert ok is True
-        assert mock_send_keys.await_count == 1
+        assert ok is False

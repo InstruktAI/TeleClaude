@@ -97,9 +97,9 @@ def _make_session_row(human_email=None, adapter_metadata=None):
     return row
 
 
-def _make_config_with_person(name, email, proficiency="intermediate"):
+def _make_config_with_person(name, email, proficiency=None, expertise=None):
     """Create a mock config with one person."""
-    person = PersonEntry(name=name, email=email, proficiency=proficiency)
+    person = PersonEntry(name=name, email=email, proficiency=proficiency, expertise=expertise)
     cfg = MagicMock()
     cfg.people = [person]
     return cfg
@@ -168,3 +168,81 @@ def test_print_memory_injection_no_person_match_no_proficiency_line(capsys):
     context = output["hookSpecificOutput"]["additionalContext"]
     assert "Human in the loop" not in context
     assert context == "memory notes"
+
+
+# --- Expertise block injection tests ---
+
+
+def test_print_memory_injection_expertise_flat_domains(capsys):
+    """Expertise with flat domains renders as simple domain: level lines."""
+    adapter = ClaudeAdapter()
+    session_id = "test-session-id"
+    mock_row = _make_session_row(human_email="alice@example.com")
+    mock_config = _make_config_with_person(
+        "Alice",
+        "alice@example.com",
+        expertise={"teleclaude": "expert", "marketing": "novice"},
+    )
+
+    with (
+        patch("teleclaude.hooks.receiver._get_memory_context", return_value=""),
+        patch("teleclaude.hooks.receiver._create_sync_engine"),
+        patch("teleclaude.hooks.receiver.config", mock_config),
+        patch("sqlmodel.Session") as mock_sql_session,
+    ):
+        mock_sql_session.return_value.__enter__.return_value.get.return_value = mock_row
+        _print_memory_injection("/tmp/myproject", adapter, session_id=session_id)
+
+    output = json.loads(capsys.readouterr().out)
+    context = output["hookSpecificOutput"]["additionalContext"]
+    assert context.startswith("Human in the loop: Alice")
+    assert "Expertise:" in context
+    assert "teleclaude: expert" in context
+    assert "marketing: novice" in context
+
+
+def test_print_memory_injection_expertise_structured_domain(capsys):
+    """Expertise with structured domain renders default and sub-areas."""
+    adapter = ClaudeAdapter()
+    session_id = "test-session-id"
+    mock_row = _make_session_row(human_email="alice@example.com")
+    mock_config = _make_config_with_person(
+        "Alice",
+        "alice@example.com",
+        expertise={"software-development": {"default": "advanced", "frontend": "intermediate"}},
+    )
+
+    with (
+        patch("teleclaude.hooks.receiver._get_memory_context", return_value=""),
+        patch("teleclaude.hooks.receiver._create_sync_engine"),
+        patch("teleclaude.hooks.receiver.config", mock_config),
+        patch("sqlmodel.Session") as mock_sql_session,
+    ):
+        mock_sql_session.return_value.__enter__.return_value.get.return_value = mock_row
+        _print_memory_injection("/tmp/myproject", adapter, session_id=session_id)
+
+    output = json.loads(capsys.readouterr().out)
+    context = output["hookSpecificOutput"]["additionalContext"]
+    assert "software-development: advanced (frontend: intermediate)" in context
+
+
+def test_print_memory_injection_expertise_fallback_no_level(capsys):
+    """When neither expertise nor proficiency is set, header has no level suffix."""
+    adapter = ClaudeAdapter()
+    session_id = "test-session-id"
+    mock_row = _make_session_row(human_email="alice@example.com")
+    mock_config = _make_config_with_person("Alice", "alice@example.com")
+
+    with (
+        patch("teleclaude.hooks.receiver._get_memory_context", return_value="notes"),
+        patch("teleclaude.hooks.receiver._create_sync_engine"),
+        patch("teleclaude.hooks.receiver.config", mock_config),
+        patch("sqlmodel.Session") as mock_sql_session,
+    ):
+        mock_sql_session.return_value.__enter__.return_value.get.return_value = mock_row
+        _print_memory_injection("/tmp/myproject", adapter, session_id=session_id)
+
+    output = json.loads(capsys.readouterr().out)
+    context = output["hookSpecificOutput"]["additionalContext"]
+    assert context.startswith("Human in the loop: Alice\n")
+    assert "Expertise:" not in context

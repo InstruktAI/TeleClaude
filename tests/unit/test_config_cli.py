@@ -407,8 +407,82 @@ class TestProficiency:
         out = json.loads(capsys.readouterr().out)
         assert isinstance(out, list)
         assert len(out) == 1
+        # proficiency is now optional/deprecated; defaults to None when not set
         assert "proficiency" in out[0]
-        assert out[0]["proficiency"] == "intermediate"
+        assert out[0]["proficiency"] is None
+
+    def test_list_json_includes_expertise(self, tmp_path, capsys):
+        people = [{"name": "Alice", "email": "alice@example.com", "role": "admin"}]
+        p1, p2 = _setup_config(tmp_path, people=people)
+        with p1, p2:
+            from teleclaude.cli.config_cli import handle_config_cli, handle_config_cli as cli
+            from teleclaude.cli.config_handlers import get_global_config, save_global_config
+
+            config = get_global_config()
+            for p in config.people:
+                if p.name == "Alice":
+                    p.expertise = {"teleclaude": "expert", "software-development": {"default": "advanced"}}
+                    break
+            save_global_config(config)
+
+            cli(["people", "list", "--json"])
+
+        out = json.loads(capsys.readouterr().out)
+        assert len(out) == 1
+        assert out[0]["expertise"] == {
+            "teleclaude": "expert",
+            "software-development": {"default": "advanced"},
+        }
+
+    def test_add_person_with_expertise(self, tmp_path, capsys):
+        p1, p2 = _setup_config(tmp_path, people=[])
+        with p1, p2:
+            from teleclaude.cli.config_cli import handle_config_cli
+            from teleclaude.cli.config_handlers import get_global_config
+
+            handle_config_cli(
+                [
+                    "people",
+                    "add",
+                    "--name",
+                    "Expert",
+                    "--email",
+                    "expert@example.com",
+                    "--expertise",
+                    '{"teleclaude": "expert", "software-development": {"default": "advanced"}}',
+                    "--json",
+                ]
+            )
+
+            config = get_global_config()
+            person = next((p for p in config.people if p.name == "Expert"), None)
+            assert person is not None
+            assert person.expertise == {
+                "teleclaude": "expert",
+                "software-development": {"default": "advanced"},
+            }
+
+    def test_edit_expertise(self, tmp_path, capsys):
+        p1, p2 = _setup_config(tmp_path)
+        with p1, p2:
+            from teleclaude.cli.config_cli import handle_config_cli
+            from teleclaude.cli.config_handlers import get_global_config
+
+            handle_config_cli(
+                [
+                    "people",
+                    "edit",
+                    "Alice",
+                    "--expertise",
+                    '{"teleclaude": "novice"}',
+                    "--json",
+                ]
+            )
+
+            config = get_global_config()
+            person = next((p for p in config.people if p.name == "Alice"), None)
+            assert person is not None
+            assert person.expertise == {"teleclaude": "novice"}
 
 
 class TestRouting:

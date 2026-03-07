@@ -124,13 +124,17 @@ class IntegratorConfig(BaseModel):
     cutover: IntegratorCutoverConfig = IntegratorCutoverConfig()
 
 
+ProficiencyLevel = Literal["novice", "intermediate", "advanced", "expert"]
+
+
 class PersonEntry(BaseModel):
     model_config = ConfigDict(extra="allow")
     name: str
     email: str
     username: Optional[str] = None
     role: Literal["admin", "member", "contributor", "newcomer"] = "member"
-    proficiency: Literal["novice", "intermediate", "advanced", "expert"] = "intermediate"
+    expertise: Optional[Dict[str, Union[ProficiencyLevel, Dict[str, ProficiencyLevel]]]] = None
+    proficiency: Optional[ProficiencyLevel] = None  # deprecated — use expertise
 
 
 class TelegramCreds(BaseModel):

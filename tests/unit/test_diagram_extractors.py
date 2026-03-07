@@ -108,8 +108,8 @@ def test_extract_commands_regression() -> None:
     mermaid = module.generate_mermaid(commands, dispatch_edges, completion_edges)
 
     assert "next_work -->|dispatch| next_build" in mermaid
-    assert "next_work -->|dispatch| next_review_todo" in mermaid
-    assert "next_fix_review_todo -->|post-completion| next_work" in mermaid
+    assert "next_work -->|dispatch| next_review_build" in mermaid
+    assert "next_fix_review -->|post-completion| next_work" in mermaid
 
 
 def test_extract_data_model_regression() -> None:

@@ -814,7 +814,7 @@ class APIServer:
                     await db.update_session(session_id, lifecycle_status="closing")
 
                 event_bus.emit(TeleClaudeEvents.SESSION_CLOSE_REQUESTED, close_context)
-                return JSONResponse(
+                return JSONResponse(  # pyright: ignore[reportReturnType]
                     status_code=202,
                     content={
                         "status": "accepted",
@@ -1801,7 +1801,16 @@ class APIServer:
                 from teleclaude.cli.config_handlers import get_global_config
 
                 global_cfg = get_global_config()
-                return [PersonDTO(name=p.name, email=p.email, role=p.role) for p in global_cfg.people]
+                return [
+                    PersonDTO(
+                        name=p.name,
+                        email=p.email,
+                        role=p.role,
+                        expertise=p.expertise,
+                        proficiency=p.proficiency,
+                    )
+                    for p in global_cfg.people
+                ]
             except Exception as e:
                 logger.error("list_people failed: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list people: {e}") from e

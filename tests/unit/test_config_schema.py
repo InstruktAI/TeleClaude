@@ -402,12 +402,12 @@ def test_integrator_cutover_can_be_enabled_when_parity_accepted():
     assert cfg.parity_evidence_accepted is True
 
 
-# --- Task 1.1: PersonEntry proficiency field ---
+# --- PersonEntry proficiency field (deprecated, backward compat) ---
 
 
 def test_person_entry_proficiency_default():
     entry = PersonEntry(name="Alice", email="alice@example.com")
-    assert entry.proficiency == "intermediate"
+    assert entry.proficiency is None  # now optional; defaults to None
 
 
 def test_person_entry_proficiency_valid_values():
@@ -419,3 +419,69 @@ def test_person_entry_proficiency_valid_values():
 def test_person_entry_proficiency_invalid_value():
     with pytest.raises(ValidationError):
         PersonEntry(name="Alice", email="alice@example.com", proficiency="guru")
+
+
+# --- PersonEntry expertise field ---
+
+
+def test_person_entry_expertise_default_is_none():
+    entry = PersonEntry(name="Alice", email="alice@example.com")
+    assert entry.expertise is None
+
+
+def test_person_entry_expertise_flat_domain():
+    entry = PersonEntry(
+        name="Alice",
+        email="alice@example.com",
+        expertise={"teleclaude": "expert"},
+    )
+    assert entry.expertise == {"teleclaude": "expert"}
+
+
+def test_person_entry_expertise_structured_domain():
+    entry = PersonEntry(
+        name="Alice",
+        email="alice@example.com",
+        expertise={
+            "software-development": {
+                "default": "advanced",
+                "frontend": "intermediate",
+                "backend": "expert",
+            }
+        },
+    )
+    assert entry.expertise["software-development"]["default"] == "advanced"
+    assert entry.expertise["software-development"]["frontend"] == "intermediate"
+
+
+def test_person_entry_expertise_mixed_domains():
+    entry = PersonEntry(
+        name="Alice",
+        email="alice@example.com",
+        expertise={
+            "teleclaude": "novice",
+            "software-development": {"default": "expert", "frontend": "intermediate"},
+            "marketing": "novice",
+        },
+    )
+    assert entry.expertise["teleclaude"] == "novice"
+    assert entry.expertise["marketing"] == "novice"
+    assert entry.expertise["software-development"]["default"] == "expert"
+
+
+def test_person_entry_expertise_invalid_flat_level():
+    with pytest.raises(ValidationError):
+        PersonEntry(
+            name="Alice",
+            email="alice@example.com",
+            expertise={"teleclaude": "guru"},
+        )
+
+
+def test_person_entry_expertise_invalid_structured_level():
+    with pytest.raises(ValidationError):
+        PersonEntry(
+            name="Alice",
+            email="alice@example.com",
+            expertise={"software-development": {"default": "wizard"}},
+        )
