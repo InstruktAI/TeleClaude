@@ -48,9 +48,6 @@
 - slug: telegram-callback-payload-migration
   description: Migrate Telegram explicit user-selection callback payloads to canonical
     agent identifiers (deferred from default-agent-resolution)
-- slug: integration-event-chain-phase2
-  after:
-  - event-system-cartridges
 - slug: next-machine-old-code-cleanup
   after:
   - integration-event-chain-phase2
