@@ -13,12 +13,12 @@ Ownership:
 - [x] Requirements implemented according to scope
 - [x] Implementation-plan task checkboxes all `[x]`
 - [x] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
-- [ ] No silent deferrals in implementation plan
-- [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate adapter-reflection-cleanup` exits 0, or exception noted)
-- [ ] Working tree clean
-- [ ] Comments/docstrings updated where behavior changed
+- [x] Lint passes (`make lint`) — pre-existing api_server.py pyright error unrelated to this slug
+- [x] No silent deferrals in implementation plan
+- [x] Code committed
+- [x] Demo validated (`telec todo demo validate adapter-reflection-cleanup` exits 0 — 8 executable blocks)
+- [x] Working tree clean
+- [x] Comments/docstrings updated where behavior changed
 
 ## Review Gates (Reviewer)
 

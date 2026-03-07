@@ -427,7 +427,7 @@ class AdapterClient:
 
     async def move_badge_to_bottom(self, session: "Session") -> None:
         """Atomic-like move of the Session Badge to the absolute bottom on all UI adapters."""
-        await self._broadcast_to_ui_adapters(session, "move_badge", lambda adapter, s: adapter._move_badge_to_bottom(s))
+        await self._broadcast_to_ui_adapters(session, "move_badge", lambda adapter, s: adapter.move_badge_to_bottom(s))
 
     async def break_threaded_turn(self, session: "Session") -> None:
         """Force a break in the threaded output stream on all UI adapters.
@@ -438,25 +438,19 @@ class AdapterClient:
         Also drops pending QoS payloads to prevent stale output from being
         dispatched after the user's new input.
         """
-        # Drop pending QoS payloads before clearing adapter state to prevent
-        # stale output from racing past the turn break.
-        for adapter in self.adapters.values():
-            scheduler = getattr(adapter, "_qos_scheduler", None)
-            if scheduler is not None:
-                dropped = scheduler.drop_pending(session.session_id)
+        # Drop pending QoS payloads then clear adapter state.
+        for adapter_type, adapter in self.adapters.items():
+            if isinstance(adapter, UiAdapter):
+                dropped = adapter.drop_pending_output(session.session_id)
                 if dropped:
                     logger.debug(
                         "Dropped %d pending QoS payload(s) on turn break: session=%s adapter=%s",
                         dropped,
                         session.session_id[:8],
-                        getattr(adapter, "ADAPTER_KEY", "unknown"),
+                        adapter_type,
                     )
 
-        async def _reset_adapter_state(adapter: UiAdapter, s: "Session") -> None:
-            await adapter._clear_output_message_id(s)
-            await adapter._set_char_offset(s, 0)
-
-        await self._broadcast_to_ui_adapters(session, "break_turn", _reset_adapter_state)
+        await self._broadcast_to_ui_adapters(session, "break_turn", lambda adapter, s: adapter.clear_turn_state(s))
 
     async def send_threaded_output(
         self,
@@ -617,9 +611,10 @@ class AdapterClient:
         actor_name: str | None = None,
         actor_avatar_url: str | None = None,
     ) -> None:
-        """Reflect user input to all UI adapters except the source adapter.
+        """Reflect user input to all UI adapters.
 
-        This keeps direct user experience local while fanning out for admin visibility.
+        Core sends raw text + metadata to every adapter. Each adapter owns
+        suppression (own-user echo) and presentation (headers, formatting).
         """
         default_actor = (
             "TUI" if source.lower() in {InputOrigin.API.value, InputOrigin.TERMINAL.value} else source.upper()
@@ -627,51 +622,30 @@ class AdapterClient:
         normalized_actor_name = (actor_name or "").strip() or (actor_id or "").strip() or default_actor
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session
-        final_text = text
 
-        source_adapter = source.strip().lower()
-        display_origin_label = (
-            "TERMINAL"
-            if source_adapter == InputOrigin.TERMINAL.value
-            else (source_adapter.upper() if source_adapter else "UNKNOWN")
-        )
-        explicit_actor_name = (actor_name or "").strip()
-        is_terminal_actor_reflection = source_adapter == InputOrigin.TERMINAL.value and bool(explicit_actor_name)
-        reflection_header = f"{explicit_actor_name} @ {display_origin_label}:\n\n"
+        reflection_origin = source.strip().lower()
         reflection_metadata = MessageMetadata(
             parse_mode=None,
             reflection_actor_id=(actor_id or "").strip() or None,
             reflection_actor_name=normalized_actor_name,
             reflection_actor_avatar_url=(actor_avatar_url or "").strip() or None,
+            reflection_origin=reflection_origin,
         )
 
-        def render_reflection_text(adapter: UiAdapter, base_text: str) -> str:
-            if not is_terminal_actor_reflection:
-                return base_text
-
-            with_header = base_text if base_text.startswith(reflection_header) else f"{reflection_header}{base_text}"
-            if adapter.ADAPTER_KEY == InputOrigin.TELEGRAM.value:
-                if with_header.endswith("---\n"):
-                    return with_header
-                return f"{with_header}\n\n---\n"
-            return with_header
-
         def make_task(adapter: UiAdapter, lane_session: "Session") -> Awaitable[object]:
-            adapter_text = render_reflection_text(adapter, final_text)
             return cast(
                 Awaitable[object],
                 adapter.send_message(
                     lane_session,
-                    adapter_text,
+                    text,
                     metadata=reflection_metadata,
                 ),
             )
 
-        await self._fanout_excluding(
+        await self._broadcast_to_ui_adapters(
             session_to_use,
             "send_user_input_reflection",
             make_task,
-            exclude=source_adapter,
         )
 
     async def _run_ui_lane(

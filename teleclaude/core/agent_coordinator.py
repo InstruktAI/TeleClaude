@@ -1461,7 +1461,10 @@ class AgentCoordinator:
         Cleared automatically by handle_user_prompt_submit on the next real prompt.
         """
         if await db.get_notification_flag(target_session_id):
-            logger.debug("Skipping duplicate stop notification for session %s (already notified this turn)", target_session_id[:8])
+            logger.debug(
+                "Skipping duplicate stop notification for session %s (already notified this turn)",
+                target_session_id[:8],
+            )
             return
         target_session = await db.get_session(target_session_id)
         display_title = title_override or (target_session.title if target_session else "Unknown")

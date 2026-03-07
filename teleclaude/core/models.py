@@ -438,6 +438,7 @@ class MessageMetadata:
     reflection_actor_id: Optional[str] = None
     reflection_actor_name: Optional[str] = None
     reflection_actor_avatar_url: Optional[str] = None
+    reflection_origin: Optional[str] = None
 
 
 @dataclass

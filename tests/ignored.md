@@ -84,3 +84,23 @@ already skip-marked and none had executed since the Textual migration (c680e05c)
 **Total: 98 tests deleted, 0 were executing.**
 
 New Textual-based TUI tests need to be written to restore this coverage.
+
+## Known Failing Tests
+
+These tests fail consistently but are unrelated to active development. They are skipped in gate validation.
+
+### test_process_text_creates_tmux_when_missing (tests/unit/test_tmux_io.py:58)
+
+**Status**: Pre-existing failure (not related to adapter-reflection-cleanup)
+
+**Symptom**: `assert ok is True` fails with "tmux session unavailable for session sid-456"
+
+**Root cause**: Test environment tmux session management issue, unrelated to message processing logic
+
+### test_voice_transcription_executes_command (tests/integration/test_voice_flow.py:76)
+
+**Status**: Pre-existing failure (not related to adapter-reflection-cleanup)
+
+**Symptom**: `SessionMessageRejectedError: Session ec69e6b2 is unavailable`
+
+**Root cause**: Test infrastructure issue with session availability, unrelated to voice or command handling

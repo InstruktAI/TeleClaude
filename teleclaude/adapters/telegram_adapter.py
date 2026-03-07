@@ -1377,3 +1377,7 @@ class TelegramAdapter(
         yield ""  # pylint: disable=unreachable
 
     # UiAdapter methods inherited from base class (can override for Telegram-specific UX)
+
+    def drop_pending_output(self, session_id: str) -> int:
+        """Drop pending QoS payloads for a session to prevent stale output after turn break."""
+        return self._qos_scheduler.drop_pending(session_id)

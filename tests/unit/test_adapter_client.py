@@ -926,8 +926,8 @@ async def test_send_threaded_output_broadcasts_to_observers():
 
 
 @pytest.mark.asyncio
-async def test_broadcast_user_input_reflects_other_adapters_only():
-    """User input is mirrored to all adapters except the source adapter."""
+async def test_broadcast_user_input_sends_to_all_adapters():
+    """Core broadcasts to ALL adapters — suppression is adapter-local, not core's job."""
     client = AdapterClient()
 
     telegram = DummyTelegramAdapter(client, send_message_return="tg-broadcast")
@@ -948,9 +948,14 @@ async def test_broadcast_user_input_reflects_other_adapters_only():
     with patch("teleclaude.core.adapter_client.db", mock_db):
         await client.broadcast_user_input(session, "Hello from user", InputOrigin.TELEGRAM.value)
 
-    assert telegram.sent_messages == []
+    # Core sends to ALL adapters — both telegram (source) and slack (observer) receive it.
+    assert len(telegram.sent_messages) == 1
+    assert "Hello from user" in telegram.sent_messages[0]
     assert len(slack.sent_messages) == 1
     assert "Hello from user" in slack.sent_messages[0]
+    # Metadata must carry reflection_origin so adapters can decide locally.
+    assert telegram.sent_metadatas[0].reflection_origin == "telegram"
+    assert slack.sent_metadatas[0].reflection_origin == "telegram"
 
 
 @pytest.mark.asyncio
@@ -1029,8 +1034,8 @@ async def test_broadcast_user_input_reflects_redis_input():
 
 
 @pytest.mark.asyncio
-async def test_broadcast_user_input_hook_actor_header_and_telegram_suffix():
-    """Hook reflections prepend actor @ TERMINAL when actor_name is explicit."""
+async def test_broadcast_user_input_sends_raw_text_with_reflection_origin():
+    """Core sends raw text to all adapters — header formatting is adapter-local."""
     client = AdapterClient()
 
     telegram = DummyTelegramAdapter(client, send_message_return="tg-msg")
@@ -1058,8 +1063,15 @@ async def test_broadcast_user_input_hook_actor_header_and_telegram_suffix():
 
     assert len(telegram.sent_messages) == 1
     assert len(slack.sent_messages) == 1
-    assert telegram.sent_messages[0] == "Morriz @ TERMINAL:\n\nhello from operator\n\n---\n"
-    assert slack.sent_messages[0] == "Morriz @ TERMINAL:\n\nhello from operator"
+    # Core sends raw text — no per-adapter header formatting here.
+    assert telegram.sent_messages[0] == "hello from operator"
+    assert slack.sent_messages[0] == "hello from operator"
+    # reflection_origin must be set so adapters can construct their own headers.
+    tg_meta = telegram.sent_metadatas[0]
+    slack_meta = slack.sent_metadatas[0]
+    assert tg_meta.reflection_origin == "terminal"
+    assert slack_meta.reflection_origin == "terminal"
+    assert tg_meta.reflection_actor_name == "Morriz"
 
 
 # --- R3: Single provisioning funnel tests ---

@@ -1969,9 +1969,9 @@ async def test_deliver_inbound_updates_last_input_origin_before_broadcast():
 
 
 @pytest.mark.asyncio
-async def test_deliver_inbound_breaks_threaded_turn_before_broadcast():
-    """Threaded sessions should sever the active output block before reflecting input."""
-    call_order: list[str] = []
+async def test_deliver_inbound_breaks_threaded_turn_concurrent_with_broadcast():
+    """Threaded sessions sever the output block concurrently with broadcast and tmux inject."""
+    called: set[str] = set()
 
     mock_session = MagicMock()
     mock_session.session_id = "sess-thread-boundary"
@@ -1991,10 +1991,10 @@ async def test_deliver_inbound_breaks_threaded_turn_before_broadcast():
     mock_client = AsyncMock()
 
     async def record_break(*_args, **_kwargs):
-        call_order.append("break_threaded_turn")
+        called.add("break_threaded_turn")
 
     async def record_broadcast(*_args, **_kwargs):
-        call_order.append("broadcast_user_input")
+        called.add("broadcast_user_input")
 
     mock_client.break_threaded_turn = AsyncMock(side_effect=record_break)
     mock_client.broadcast_user_input = AsyncMock(side_effect=record_broadcast)
@@ -2034,7 +2034,8 @@ async def test_deliver_inbound_breaks_threaded_turn_before_broadcast():
 
         await command_handlers.deliver_inbound(row, mock_client, AsyncMock())
 
-    assert call_order == ["break_threaded_turn", "broadcast_user_input"]
+    assert "break_threaded_turn" in called
+    assert "broadcast_user_input" in called
 
 
 @pytest.mark.asyncio

@@ -137,6 +137,21 @@ class MessageOperationsMixin:
         self._ensure_started()
         metadata = metadata or MessageMetadata()
 
+        # Reflection suppression: drop own-user reflections; format cross-source ones.
+        if metadata.reflection_origin is not None:
+            if metadata.reflection_origin == "telegram":
+                logger.debug("send_message: suppressing own-user reflection for session %s", session.session_id[:8])
+                return "0"
+            # Cross-source reflection: prepend attribution header and separator.
+            actor_name = (metadata.reflection_actor_name or "").strip()
+            origin_label = metadata.reflection_origin.upper() or "UNKNOWN"
+            if actor_name:
+                header = f"{actor_name} @ {origin_label}:\n\n"
+                if not text.startswith(header):
+                    text = f"{header}{text}"
+                if not text.endswith("---\n"):
+                    text = f"{text}\n\n---\n"
+
         # Gracefully skip if channel not ready yet (fire-and-forget channel creation)
         telegram_meta = session.get_metadata().get_ui().get_telegram()
         topic_id = telegram_meta.topic_id

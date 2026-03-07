@@ -387,6 +387,27 @@ async def test_discord_send_message_truncates_over_limit() -> None:
 
 
 @pytest.mark.asyncio
+async def test_discord_send_message_suppresses_own_origin_reflection() -> None:
+    """send_message returns early without sending when reflection_origin matches ADAPTER_KEY."""
+    adapter = _make_adapter()
+    session = _build_session()
+    discord_meta = session.get_metadata().get_ui().get_discord()
+    discord_meta.channel_id = 444999
+    discord_meta.thread_id = 555111
+
+    fake_client = FakeDiscordClient(intents=FakeDiscordIntents.default())
+    thread = FakeThread(thread_id=555111, parent_id=444999)
+    fake_client.channels[555111] = thread
+    adapter._client = fake_client
+
+    metadata = MessageMetadata(reflection_origin="discord")
+    result = await adapter.send_message(session, "should be suppressed", metadata=metadata)
+
+    assert result == "0"
+    assert thread.sent_texts == [], "No message should be sent for own-origin reflections"
+
+
+@pytest.mark.asyncio
 async def test_discord_reflection_webhook_truncates_over_limit() -> None:
     """Reflection webhook path should clamp content to Discord's hard message length."""
     adapter = _make_adapter()

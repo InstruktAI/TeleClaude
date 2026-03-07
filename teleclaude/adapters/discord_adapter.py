@@ -1428,6 +1428,10 @@ class DiscordAdapter(UiAdapter):
             text = text[split_at:].lstrip("\n")
         return chunks
 
+    def drop_pending_output(self, session_id: str) -> int:
+        """Drop pending QoS payloads for a session to prevent stale output after turn break."""
+        return self._qos_scheduler.drop_pending(session_id)
+
     async def send_message(
         self,
         session: "Session",
@@ -1436,6 +1440,11 @@ class DiscordAdapter(UiAdapter):
         metadata: "MessageMetadata | None" = None,
         multi_message: bool = False,
     ) -> str:
+        # Reflection suppression: drop own-user reflections silently.
+        if metadata is not None and metadata.reflection_origin == self.ADAPTER_KEY:
+            logger.debug("send_message: suppressing own-user reflection for session %s", session.session_id[:8])
+            return "0"
+
         destination = await self._resolve_destination_channel(session, metadata=metadata)
 
         if multi_message and len(text) > self.max_message_size:

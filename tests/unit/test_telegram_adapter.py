@@ -476,6 +476,69 @@ class TestMessaging:
             await telegram_adapter.send_file(session, "/tmp/foo.txt")
 
 
+class TestReflection:
+    """Tests for adapter-local reflection handling."""
+
+    @pytest.mark.asyncio
+    async def test_send_message_suppresses_own_origin_reflection(self, telegram_adapter):
+        """send_message returns early without sending when reflection_origin matches ADAPTER_KEY."""
+        telegram_adapter._ensure_started = MagicMock()
+        session = Session(
+            session_id="session-reflect-suppress",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123)),
+        )
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+        calls = []
+        telegram_adapter.app.bot.send_message = AsyncMock(side_effect=lambda **kw: calls.append(kw))
+
+        metadata = MessageMetadata(reflection_origin="telegram")
+        result = await telegram_adapter.send_message(session, "should be suppressed", metadata=metadata)
+
+        assert result == "0"
+        assert calls == [], "Bot send_message must not be called for own-origin reflections"
+
+    @pytest.mark.asyncio
+    async def test_send_message_adds_attribution_header_for_cross_source_reflection(self, telegram_adapter):
+        """send_message prepends actor attribution header for reflections from other adapters."""
+        telegram_adapter._ensure_started = MagicMock()
+        telegram_adapter._wait_for_topic_ready = AsyncMock()  # type: ignore[method-assign]
+        session = Session(
+            session_id="session-reflect-header",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123)),
+        )
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+        sent_kwargs: list[dict] = []
+
+        async def record(**kwargs):
+            sent_kwargs.append(kwargs)
+            msg = MagicMock()
+            msg.message_id = 999
+            return msg
+
+        telegram_adapter.app.bot.send_message = record
+
+        metadata = MessageMetadata(
+            reflection_actor_name="Morriz",
+            reflection_origin="terminal",
+        )
+        await telegram_adapter.send_message(session, "hello from operator", metadata=metadata)
+
+        assert len(sent_kwargs) == 1
+        sent_text = sent_kwargs[0]["text"]
+        assert sent_text.startswith("Morriz @ TERMINAL:\n\nhello from operator")
+        assert sent_text.endswith("---\n")
+
+
 class TestRecovery:
     """Tests for error recovery."""
 

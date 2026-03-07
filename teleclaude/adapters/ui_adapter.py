@@ -247,10 +247,22 @@ class UiAdapter(BaseAdapter):
         finally:
             await self._clear_footer_message_id(session)
 
-    async def _move_badge_to_bottom(self, session: "Session") -> None:
+    def drop_pending_output(self, session_id: str) -> int:
+        """Drop pending QoS output for a session. Override in subclasses with a QoS scheduler.
+
+        Returns the number of dropped items (0 by default).
+        """
+        return 0
+
+    async def move_badge_to_bottom(self, session: "Session") -> None:
         """Move the session badge to the absolute bottom of the thread."""
         await self._cleanup_footer_if_present(session)
         await self._send_footer(session)
+
+    async def clear_turn_state(self, session: "Session") -> None:
+        """Reset per-turn output state (output_message_id and char_offset)."""
+        await self._clear_output_message_id(session)
+        await self._set_char_offset(session, 0)
 
     async def _clear_output_message_id(self, session: "Session") -> None:
         """Clear output_message_id in dedicated DB column.

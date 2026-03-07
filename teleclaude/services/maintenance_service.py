@@ -14,7 +14,6 @@ from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
-from teleclaude.core.models import Session
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import get_output_file

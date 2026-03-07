@@ -825,13 +825,15 @@ async def test_ensure_channel_called_per_adapter_on_output(tmp_path):
 
 
 @pytest.mark.integration
-async def test_broadcast_user_input_source_adapter_not_echoed(tmp_path):
-    """Source adapter is excluded from broadcast_user_input reflection (R2).
+async def test_broadcast_user_input_sends_to_all_with_origin_metadata(tmp_path):
+    """broadcast_user_input sends to ALL adapters with reflection_origin in metadata.
 
-    When a Telegram user sends a message, the reflection must NOT be sent
-    back to Telegram. Only other UI adapters receive the echo.
+    Core is a dumb broadcast pipe — it sends to every adapter. Each adapter
+    owns its own suppression logic (suppressing own-user echoes) and presentation
+    (formatting attribution headers). The reflection_origin field in MessageMetadata
+    is the contract that adapters use for their local decisions.
     """
-    db_path = str(tmp_path / "test_broadcast_no_echo.db")
+    db_path = str(tmp_path / "test_broadcast_all.db")
 
     test_db = Db(db_path)
     await test_db.initialize()
@@ -863,10 +865,17 @@ async def test_broadcast_user_input_source_adapter_not_echoed(tmp_path):
                     InputOrigin.TELEGRAM.value,
                 )
 
-                # Telegram (source) must NOT receive its own reflection
-                assert len(telegram.send_message_calls) == 0
-                # Discord (observer) must receive it
+                # Core broadcasts to ALL adapters — suppression is adapter-local
+                assert len(telegram.send_message_calls) == 1
                 assert len(discord.send_message_calls) == 1
+
+                # Both receive reflection_origin so each adapter can decide on its own
+                tg_meta = telegram.send_message_calls[0][2]
+                dc_meta = discord.send_message_calls[0][2]
+                assert tg_meta is not None
+                assert tg_meta.reflection_origin == "telegram"
+                assert dc_meta is not None
+                assert dc_meta.reflection_origin == "telegram"
 
     finally:
         await test_db.close()

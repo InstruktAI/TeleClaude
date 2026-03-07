@@ -10,7 +10,6 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.cli.models import SessionInfo
-from teleclaude.constants import WORKTREE_DIR
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import (
     CONNECTOR_COLOR,
@@ -20,6 +19,7 @@ from teleclaude.cli.tui.theme import (
     resolve_style,
 )
 from teleclaude.cli.tui.utils.formatters import format_time, truncate_text
+from teleclaude.constants import WORKTREE_DIR
 
 _DETAIL_PREFIX_OVERHEAD = 18  # │ + space + [HH:MM:SS] + label (" in: " / "out: ")
 

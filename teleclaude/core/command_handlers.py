@@ -1018,10 +1018,7 @@ async def deliver_inbound(
     elif not await _session_message_delivery_available(session):
         raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
 
-    # Treat every user message as an explicit turn boundary in threaded mode.
-    if is_threaded_output_enabled(session.active_agent):
-        await client.break_threaded_turn(session)
-
+    # DB update must precede broadcast so echo guard reads the persisted state.
     await db.update_session(
         session_id,
         last_message_sent=message_text[:200],
@@ -1029,41 +1026,58 @@ async def deliver_inbound(
         last_input_origin=row["origin"],
     )
 
-    # Broadcast user input to other adapters (e.g. TUI input -> Telegram)
-    if row["origin"]:
-        await client.broadcast_user_input(
-            session,
-            message_text,
-            row["origin"],
-            actor_id=row["actor_id"],
-            actor_name=row["actor_name"],
-            actor_avatar_url=row["actor_avatar_url"],
-        )
-
     linked_output_prefix = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "
     direct_conversation_prefix = f"{TELECLAUDE_SYSTEM_PREFIX} Direct Conversation]"
-
-    # Most system messages are observability-only. Linked peer output and the
-    # direct-conversation ignition packet must both reach the agent.
-    if message_text.startswith(TELECLAUDE_SYSTEM_PREFIX) and not (
+    is_system_message = message_text.startswith(TELECLAUDE_SYSTEM_PREFIX) and not (
         message_text.startswith(linked_output_prefix) or message_text.startswith(direct_conversation_prefix)
-    ):
-        logger.debug("Skipping tmux injection for system message: session=%s", session_id[:8])
-        return
-
-    active_agent = session.active_agent
-    sanitized_text = tmux_io.wrap_bracketed_paste(message_text, active_agent=active_agent)
-
-    working_dir = resolve_working_dir(session.project_path, session.subdir)
-    success = await tmux_io.process_text(
-        session,
-        sanitized_text,
-        working_dir=working_dir,
-        active_agent=active_agent,
     )
 
-    if not success:
+    active_agent = session.active_agent
+
+    async def _broadcast() -> None:
+        if not row["origin"]:
+            return
+        try:
+            await client.broadcast_user_input(
+                session,
+                message_text,
+                row["origin"],
+                actor_id=row["actor_id"],
+                actor_name=row["actor_name"],
+                actor_avatar_url=row["actor_avatar_url"],
+            )
+        except Exception as exc:
+            logger.warning("broadcast_user_input failed (non-fatal): session=%s error=%s", session_id[:8], exc)
+
+    async def _break_turn() -> None:
+        if not is_threaded_output_enabled(active_agent):
+            return
+        try:
+            await client.break_threaded_turn(session)
+        except Exception as exc:
+            logger.warning("break_threaded_turn failed (non-fatal): session=%s error=%s", session_id[:8], exc)
+
+    async def _tmux_inject() -> bool:
+        if is_system_message:
+            logger.debug("Skipping tmux injection for system message: session=%s", session_id[:8])
+            return True
+        sanitized_text = tmux_io.wrap_bracketed_paste(message_text, active_agent=active_agent)
+        working_dir = resolve_working_dir(session.project_path, session.subdir)
+        return await tmux_io.process_text(
+            session,
+            sanitized_text,
+            working_dir=working_dir,
+            active_agent=active_agent,
+        )
+
+    results = await asyncio.gather(_tmux_inject(), _broadcast(), _break_turn(), return_exceptions=True)
+    tmux_result = results[0]
+    if isinstance(tmux_result, Exception):
+        raise tmux_result
+    if tmux_result is False:
         raise RuntimeError(f"tmux delivery failed for session {session_id[:8]}")
+    if is_system_message:
+        return
 
     if (active_agent or "").lower() == "codex":
         polling_coordinator.seed_codex_prompt_from_message(session_id, message_text)

@@ -367,9 +367,7 @@ async def _apply_shell_guardrails(session_name: str, teleclaude_bin: str) -> Non
     but before any agent CLI command arrives (sequential async ordering in bootstrap_session).
     """
     try:
-        guardrail_cmd = (
-            f'export PATH="{teleclaude_bin}:$PATH"; unalias git 2>/dev/null; clear'
-        )
+        guardrail_cmd = f'export PATH="{teleclaude_bin}:$PATH"; unalias git 2>/dev/null; clear'
         cmd_text = [
             config.computer.tmux_binary,
             "send-keys",
@@ -382,9 +380,7 @@ async def _apply_shell_guardrails(session_name: str, teleclaude_bin: str) -> Non
         result = await asyncio.create_subprocess_exec(
             *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        _, stderr = await communicate_with_timeout(
-            result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux guardrail text"
-        )
+        _, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux guardrail text")
         if result.returncode != 0:
             logger.warning(
                 "Shell guardrail text failed for %s: %s",
@@ -399,9 +395,7 @@ async def _apply_shell_guardrails(session_name: str, teleclaude_bin: str) -> Non
         result = await asyncio.create_subprocess_exec(
             *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        _, stderr = await communicate_with_timeout(
-            result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux guardrail enter"
-        )
+        _, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux guardrail enter")
         if result.returncode != 0:
             logger.warning(
                 "Shell guardrail enter failed for %s: %s",
