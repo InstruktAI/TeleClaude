@@ -2,51 +2,28 @@
 
 ## Assessment
 
-**Splitting required.** The work spans 15+ files across 5 distinct subsystems (schema,
-hooks, CLI, TUI, and doc artifacts). Each subsystem has its own test suite and can be
-delivered independently once the schema foundation exists.
+**Splitting not needed.** This is one behavior — replace a flat proficiency field
+with a structured expertise model — flowing through its consumers. The input.md
+lists 15+ touchpoints, but most are 2-5 line edits (field renames, format string
+changes, test updates). Total estimated change: ~300 lines of production code + tests.
 
-Delivering as a single todo would exhaust session context — the touchpoint matrix alone
-covers schema validation, API DTOs, config serialization, hook injection, CLI flags,
-TUI editing patterns, guided wizard steps, and behavioral template refactoring.
+The detail in the input (exact file paths, line numbers, before/after code) means
+the approach is fully known. What remains is mechanical execution.
 
-The natural dependency seam is clear: everything depends on the Pydantic schema model.
-Once that lands, injection, CLI, and TUI can proceed in parallel.
+Splitting model from consumers would create a half-working codebase and inter-todo
+coordination overhead that exceeds the work itself.
 
-## Sub-todos
-
-| Slug | Scope | Depends on |
-|------|-------|------------|
-| `proficiency-to-expertise-schema` | Pydantic expertise model, API DTO, config handler serialization, migration/backward compat, schema tests | — |
-| `proficiency-to-expertise-injection` | Hook receiver rendering, behavioral templates, injection tests, AGENTS.md refactoring | schema |
-| `proficiency-to-expertise-cli` | CLI add/edit/list expertise flags, PersonInfo dataclass, CLI tests | schema |
-| `proficiency-to-expertise-tui` | TUI wizard, display, editing, guidance for expertise fields | schema |
-
-## Dependency graph
-
-```
-proficiency-to-expertise-schema
-  ├── proficiency-to-expertise-injection
-  ├── proficiency-to-expertise-cli
-  └── proficiency-to-expertise-tui
-```
-
-After schema lands, injection/CLI/TUI can run in parallel — no inter-dependencies
-between them.
-
-## DOR Gate Assessment (parent)
+## DOR Gate Assessment
 
 | Gate | Status | Evidence |
 |------|--------|----------|
-| 1. Intent & success | Pass | Clear problem statement with concrete schema, injection, and UI changes |
-| 2. Scope & size | Fail → split | 15+ files, 5 subsystems — too large for one session |
-| 3. Verification | Pass (per child) | Tests identified per subsystem |
-| 4. Approach known | Pass | Input.md has exact file paths, line numbers, and implementation approach |
+| 1. Intent & success | Pass | Clear problem statement with concrete schema, injection, and config surface changes |
+| 2. Scope & size | Pass | One coherent behavior, ~300 lines total, detailed approach known |
+| 3. Verification | Pass | Tests identified per component in input.md |
+| 4. Approach known | Pass | Exact file paths, line numbers, before/after code in input.md |
 | 5. Research complete | Auto-pass | No new third-party dependencies |
-| 6. Dependencies | Pass | No external blockers; ruamel serialization bug is not tracked and may be resolved |
-| 7. Integration safety | Pass | Schema first, then parallel consumers — each child is independently mergeable |
-| 8. Tooling impact | Pass | Config wizard updates explicitly scoped to TUI child |
+| 6. Dependencies | Pass | No roadmap blockers |
+| 7. Integration safety | Pass | Backward-compatible migration — old proficiency field still accepted |
+| 8. Tooling impact | Pass | Config wizard updates explicitly scoped in input.md |
 
-**Score: 8 / 10** — Status: **pass** (after splitting)
-
-The parent todo is now a tracking container. Work proceeds through the four children.
+**Score: 8 / 10** — Status: **pass**

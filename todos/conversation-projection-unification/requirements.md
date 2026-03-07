@@ -2,82 +2,114 @@
 
 ## Goal
 
-Introduce one canonical core output projection route and move every current output producer/consumer onto it, so the system has one reusable projection layer instead of separate paths to the same truth.
+Replace the current mix of lossy extraction, raw entry replay, and consumer-specific transcript interpretation with one narrow assembled event stream defined in [schema.md](./schema.md).
 
 ## Scope
 
 ### In scope
 
-- A canonical core output projection route in core.
-- A canonical `conversation` projection for transcript chains.
-- A canonical `terminal_live` projection for poller-driven output snapshots.
-- Shared normalization into reusable projection models rather than consumer-specific logic.
-- Shared visibility policy for:
+- One transcript-derived public assembly schema:
+  - `UnifiedEventStream`
+  - `UnifiedMessage`
+  - `UnifiedPart`
+- Full transcript normalization for Claude, Codex, and Gemini sufficient to assemble:
   - `text`
   - `thinking`
-  - explicitly user-visible tools/widgets
-  - suppression of internal tool transcript blocks by default
-- Wiring the existing poller-driven standard output producer through the shared projection route without changing adapter implementations.
-- Wiring the existing transcript-driven threaded output producer through the shared projection route without changing adapter implementations.
-- Web history cutover to the shared conversation projector.
-- Web live SSE cutover to the shared conversation projector.
-- Mirror/search consumers prepared to use the same conversation projection route.
-- Preserving existing adapter-facing `send_output_update()` / `send_threaded_output()` contracts while making them consumers of shared projected output.
-- Tests proving web history and web live now share the same semantics.
-- Regression tests proving current threaded-mode behavior remains unchanged.
-- API/documentation updates needed to describe the new web projection contract.
+  - `tool_call`
+  - `tool_result`
+- Input sanitization rules applied before public assembly.
+- Replacing the current history/live/threaded transcript consumers with serializers/readers over the same assembled stream.
+- Explicit documentation of:
+  - what is assembled
+  - what is stripped
+  - what is intentionally dropped
+- Regression coverage for history/live parity and TeleClaude-input stripping.
 
 ### Out of scope
 
-- Changes to Telegram adapter behavior or code paths.
-- Changes to Discord adapter behavior or code paths.
-- Changes to TUI adapter behavior or code paths.
-- Changes to threaded-output presentation semantics.
-- Reflection routing / adapter boundary ownership changes.
-- Telegram tmux-live output unification.
-- Adapter routing/presentation cleanup work.
+- Exposing parser provenance fields in the public event stream.
+- Exposing compaction/system transcript entries in the public event stream.
+- Tmux polling mechanics.
+- Control-plane activity event schema.
+- Adapter transport mechanics.
+- Generic raw transcript dump endpoints.
 
 ## Success Criteria
 
-- [ ] Poller-driven standard output, threaded transcript output, web history, and web live stream all flow through one core projection route instead of each producer inventing its own semantics.
-- [ ] Web history and web live stream are backed by the same core conversation projector.
-- [ ] Internal transcript `tool_use` / `tool_result` blocks no longer surface in web chat unless the tool is explicitly allowlisted as user-visible.
-- [ ] Web history and live output preserve parity for visible text/thinking content from the same transcript chain.
-- [ ] No adapter implementation files under `teleclaude/adapters/` need behavioral changes for this todo.
-- [ ] Existing threaded-mode behavior remains unchanged and is covered by regression tests.
-- [ ] The current raw `convert_entry()` web-only semantic path is removed or reduced to a serializer over the shared projector output, not an independent classifier.
-- [ ] Existing adapter-facing delivery methods continue receiving stable payloads; the refactor happens in core producers/projection code.
-- [ ] Future mirror/search consumers have a shared projection contract to adopt instead of creating a new transcript classifier.
-- [ ] The web bug bucket references this todo as the architectural owner of the visible symptom.
+- [ ] One canonical transcript assembly path produces the schema in [schema.md](./schema.md) for Claude, Codex, and Gemini transcripts.
+- [ ] The public stream contains only:
+  - user `text`
+  - assistant `text`
+  - assistant `thinking`
+  - assistant `tool_call`
+  - assistant `tool_result`
+- [ ] User transcript payloads starting with `TELECLAUDE_SYSTEM_PREFIX` are stripped before public assembly.
+- [ ] Known internal wrapper payloads are stripped before public assembly:
+  - `<task-notification> ... </task-notification>`
+  - pure `<system-reminder> ... </system-reminder>`
+- [ ] User messages emptied by sanitization are dropped from the public stream.
+- [ ] Claude user-role `tool_result` transcript messages assemble as assistant `tool_result` output.
+- [ ] Codex `reasoning`, `function_call`, `function_call_output`, and `custom_tool_call` transcript payloads assemble correctly into the public schema.
+- [ ] Gemini `thoughts[]` and `toolCalls[]` assemble correctly into the public schema.
+- [ ] Web history and web live are backed by the same assembled stream and therefore expose the same semantics.
+- [ ] Threaded transcript consumers serialize from the same assembled stream rather than reparsing raw transcript content.
+- [ ] No transcript-derived caller semantically reads transcript source files outside the unified entry point.
+- [ ] Existing transcript helper entry points become wrappers over the unified entry point or are deleted:
+  - `extract_structured_messages()`
+  - `extract_messages_from_chain()`
+  - `collect_transcript_messages()`
+  - `extract_tool_calls_current_turn()`
+  - `render_agent_output()`
+  - `render_clean_agent_output()`
+  - `convert_entry()`
+- [ ] The code contains a rich module-level contract doc explaining:
+  - included parts
+  - stripped user-input rules
+  - intentionally dropped data
+- [ ] Architecture docs contain a matching unified-event-stream contract with the same drop list.
 
-## Constraints
+## Public Assembly Constraints
 
-- Adapter-facing delivery methods and session metadata contracts must remain stable.
-- This todo may refactor core projection code, core producers, and web API endpoints, but it must not require Telegram/Discord/TUI adapter rewrites.
-- Existing working adapter paths are protected by non-regression tests during phased cutover.
-- The shared conversation projector must operate on transcript chains, not a web-only copy of transcript logic.
-- The shared terminal-live projector must sit beneath the existing poller-driven adapter push path, not inside adapter implementations.
+- Public assembly must remain narrow.
+- Public assembly must not expose:
+  - transcript paths
+  - file indices
+  - entry indices
+  - raw entry/payload types
+  - provider ids
+  - provider call ids
+  - model names
+  - token usage
+  - compaction markers
+  - unknown/raw block payloads
+  - system-role transcript entries
+- Public assembly must always provide a stable `call_id` for tool calls/results.
+- Public assembly must not flatten tool calls/results into display strings.
+- Public assembly must not rely on frontend-specific filtering to hide TeleClaude system input.
+- Transcript source files must have one semantic reader path only.
 
-## Current Visibility Divergence (Codebase Evidence)
+## Current Confirmed Gaps
 
-The following table captures the confirmed divergence across the four output paths as of the current codebase. The canonical projector must collapse these into a single policy.
+1. [transcript.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/utils/transcript.py#L2065) currently collapses transcript data into `StructuredMessage(role, type, text, ...)`, which is too lossy for the desired public stream.
+2. [api_server.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/api_server.py#L1182) still exposes history through that lossy model.
+3. [streaming.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/api/streaming.py#L146) and [transcript_converter.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/api/transcript_converter.py#L159) still serialize raw transcript entries directly.
+4. [MyRuntimeProvider.tsx](/Users/Morriz/Workspace/InstruktAI/TeleClaude/frontend/components/assistant/MyRuntimeProvider.tsx#L34) only rebuilds history from `text` and `thinking`, ignoring tool parts.
+5. TeleClaude checkpoint/control input is known in code via [constants.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/constants.py#L100), but the transcript public assembly path does not own stripping it.
 
-| Block type     | Web history (`extract_messages_from_chain`) | Web live SSE (`convert_entry`) | Threaded clean (`render_clean_agent_output`) | Threaded full (`render_agent_output`) |
-|----------------|---------------------------------------------|-------------------------------|----------------------------------------------|---------------------------------------|
-| text           | visible                                     | visible                       | visible                                      | visible                               |
-| thinking       | hidden (default)                            | **visible**                   | visible (italicized)                         | visible (italicized)                  |
-| tool_use       | hidden (default)                            | **visible**                   | hidden                                       | hidden (default)                      |
-| tool_result    | hidden (default)                            | **visible**                   | **hidden (hardcoded)**                       | visible (default)                     |
+## Affected Consumers
 
-The web SSE path (`convert_entry()` at `transcript_converter.py:159`) has **no visibility filtering** — it emits all assistant blocks unconditionally. This is the root cause of internal tool blocks leaking into web chat.
+These consumers must be updated to read the unified assembled stream:
 
-The web history path (`extract_messages_from_chain()` at `transcript.py:2224`) filters tools and thinking via boolean flags, defaulting to hidden.
-
-The threaded clean path (`render_clean_agent_output()` at `transcript.py:491`) hardcodes tool result suppression with no configurability.
+- `GET /sessions/{session_id}/messages`
+- `/api/chat/stream`
+- frontend history loader
+- frontend live thread rendering
+- threaded transcript output generation
+- transcript-backed mirror/search extraction
+- transcript-backed summarizer/text-collector helpers
 
 ## Risks
 
-- The existing threaded transcript renderers may embed assumptions that are not yet encoded in a reusable projector. Specifically, `render_clean_agent_output()` hardcodes tool result suppression while `render_agent_output()` makes it configurable — the projector must reconcile this. Mitigation: add parity fixtures before cutover.
-- AI SDK SSE serialization may tempt reintroducing web-only rules. Mitigation: serializer must accept canonical projected blocks, not raw transcript entries.
-- Tool/widget classification may drift if the allowlist is implicit. Mitigation: make user-visible tool allowance explicit and test it.
-- The existing normalization entry point (`normalize_transcript_entry_message()` at `transcript.py:170`) handles Claude, Codex, and Gemini formats. The projector must reuse this rather than inventing new normalization.
+- Threaded output currently formats from transcript helpers with bespoke behavior. Mitigation: move formatting onto the assembled stream, keep formatting as a consumer concern.
+- Different agents encode tool activity very differently. Mitigation: normalize privately, assemble narrowly.
+- Overexposing parser internals would recreate the current problem. Mitigation: keep the drop list explicit in code and docs.

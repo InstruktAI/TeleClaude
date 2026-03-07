@@ -257,7 +257,7 @@ addopts = [
   "--strict-markers",
   "--strict-config",
   "--tb=short",
-  "-n", "auto",
+  "-n", "4",
 ]
 markers = [
   "unit: Unit tests (fast, isolated, mocked)",

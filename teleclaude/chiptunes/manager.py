@@ -37,10 +37,12 @@ class ChiptunesManager:
         self._track_list: list[Path] | None = None  # lazy-cached on first use
         self._enabled = False
         self.on_track_start: Callable[[str, str], None] | None = None
+        self.on_state_change: Callable[[], None] | None = None
         self._worker = _Worker(
             pick_random_track=self._pick_random_track,
             volume=volume,
             on_track_start=self._on_track_start,
+            on_state_change=self._on_state_change,
         )
 
     def _on_track_start(self, track_label: str, sid_path: str) -> None:
@@ -50,6 +52,14 @@ class ChiptunesManager:
                 self.on_track_start(track_label, sid_path)
             except Exception:  # pylint: disable=broad-exception-caught
                 logger.warning("on_track_start callback error", exc_info=True)
+
+    def _on_state_change(self) -> None:
+        """Forward chiptunes state changes to the outer callback."""
+        if self.on_state_change is not None:
+            try:
+                self.on_state_change()
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger.warning("on_state_change callback error", exc_info=True)
 
     @property
     def enabled(self) -> bool:
@@ -86,6 +96,22 @@ class ChiptunesManager:
     def is_playing(self) -> bool:
         """Return True if a track is currently playing."""
         return self._worker.is_playing
+
+    @property
+    def is_paused(self) -> bool:
+        """Return True if a track is loaded but currently paused."""
+        return self._worker.is_paused
+
+    @property
+    def current_track(self) -> str:
+        """Return the current track label, if any."""
+        return self._worker.current_track_label
+
+    @property
+    def current_sid_path(self) -> str:
+        """Return the current SID path, if any."""
+        track = self._worker.current_track
+        return str(track) if track is not None else ""
 
     def _pick_random_track(self) -> Path | None:
         """Lazily discover and cache all PSID tracks, then pick one at random."""

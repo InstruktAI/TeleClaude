@@ -1,110 +1,101 @@
 # Input: conversation-projection-unification
 
-Unify the core output projection route so every output producer and consumer derives from the same session truth instead of inventing separate semantics.
+Unify transcript-derived output behind one narrow assembled event stream for clients.
 
 ## Problem
 
-Today the system has multiple producers and consumers of session output, but no single core projection route that all of them share:
+The codebase currently has multiple inconsistent transcript consumers:
 
-1. Poller-driven standard output pushes tmux snapshots through `AdapterClient.send_output_update()`
-2. `GET /sessions/{id}/messages` uses `extract_messages_from_chain(... include_tools=False, include_thinking=...)`
-3. `/api/chat/stream` replays raw transcript entries through `convert_entry()`
-4. threaded transcript rendering uses `render_agent_output()` / `render_clean_agent_output()`
-5. mirrors/search are designed around the same "conversation-only" truth but do not yet share a canonical projector
+1. web history uses lossy `StructuredMessage` rows
+2. web live replays raw transcript entries through `convert_entry()`
+3. threaded transcript output reparses transcript content with custom rules
+4. frontend history assembly only understands `text` and `thinking`
+5. internal TeleClaude-injected user messages still leak through some transcript consumers
 
-The result is semantic drift and duplicated logic:
+This produces two classes of bugs:
 
-- standard poller output has one path
-- web history hides internal tool transcript blocks
-- web live SSE surfaces those same internal tool blocks as generic tool UI
-- threaded transcript output has its own rendering rules again
-- future mirror/search work is aiming at the same truth from yet another entry point
+- different consumers see different interpretations of the same transcript truth
+- internal TeleClaude input artifacts surface in user-visible history/live output
 
-These are different projections of the same underlying session truth. That is the architectural bug.
+## Required Outcome
 
-## Required outcome
+Build one transcript parser + assembly path that outputs the public schema in [schema.md](./schema.md).
 
-Create one canonical **core output projection route** that every producer/consumer uses.
+That public stream is intentionally narrow:
 
-That route must expose at least these projection families:
+- user text
+- assistant text
+- assistant thinking
+- assistant tool calls
+- assistant tool results
 
-- `terminal_live`
-  - source: tmux poller snapshots/diffs
-  - consumers: existing adapter push path such as Telegram's edited-message UX
-- `conversation`
-  - source: transcript chain
-  - consumers: web history, web live SSE, threaded transcript output, mirror/search
+Everything else is internal implementation detail and is not a caller-facing contract.
 
-That route must own:
+## Key Requirement
 
-- normalization
-- visibility policy
-- traversal/cursor logic
-- incremental/delta behavior for live consumers
-- serializer inputs for API/web and existing adapter push calls
-- the canonical handoff point between output producers and transports
+This is not only a shape-construction task.
 
-## Rollout priority
+The assembly step must also sanitize user transcript input and strip TeleClaude-injected artifacts before they become part of the public event stream.
 
-The web lane is the clearest visible regression, but it is not the architecture owner.
+The canonical stripping anchor is the shared prefix from code:
 
-Recommended rollout:
+- `TELECLAUDE_SYSTEM_PREFIX = "[TeleClaude"`
 
-1. define the shared core projection route
-2. cut standard poller-driven output production over to it
-3. cut transcript-driven threaded output production over to it
-4. cut web history and web live SSE over to it
-5. cut mirror/search consumers over to it
+## Scope Boundary
 
-Adapters themselves stay unchanged. Core producers stop bypassing each other.
+This todo is about transcript-derived client output unification.
 
-## Hard constraints
+It is not:
 
-1. Do **not** change Telegram, Discord, or TUI adapter implementations in this todo.
-2. Do **not** change threaded mode behavior in this todo. It is already working and is the regression bar.
-3. Adapter-facing delivery APIs stay stable. Unification happens underneath them in core projection code.
-4. Telegram's tmux-live edited-message UX remains intact; only the core projection route beneath it is in scope.
-5. Internal tool transcript blocks must not leak into web chat content unless they are explicitly classified as user-visible widgets/tools.
+- a tmux polling redesign
+- a control-plane activity redesign
+- an adapter transport rewrite
+- a generic “show everything” transcript dump
 
-## Scope boundary
+Clients should receive one clean assembled stream and decide how to present it.
 
-This todo is about **projection unification**, not adapter routing or presentation ownership.
+## Single Entry Point Requirement
 
-It does **not** absorb:
+This todo must end with exactly one transcript-derived semantic entry point.
 
-- `adapter-boundary-cleanup`
-- `reflection-routing-ownership`
-- Telegram output QoS / footer / topic behavior
-- Discord threaded pagination behavior
+No caller is allowed to semantically read transcript source files except through that unified entry point.
 
-It **does** establish the reusable core projection route that all current and future consumers must use without changing adapter code.
+That means the current independent transcript interpreters must stop being architecture owners.
 
-## Concrete divergence to remove
+## Concrete Code Paths To Replace
 
-### Web history path
+### Backend transcript assembly
 
-- `teleclaude/api_server.py:get_session_messages`
-- filtered structured messages from transcript chain
+- [transcript.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/utils/transcript.py#L170)
+- [transcript.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/utils/transcript.py#L947)
+- [transcript.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/utils/transcript.py#L2024)
+- [transcript.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/utils/transcript.py#L2065)
+- [transcript.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/utils/transcript.py#L2224)
 
-### Web live path
+### Web history/live
 
-- `teleclaude/api/streaming.py:_stream_sse`
-- raw transcript entry replay via `teleclaude/api/transcript_converter.py:convert_entry`
+- [api_server.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/api_server.py#L1182)
+- [streaming.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/api/streaming.py#L146)
+- [transcript_converter.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/api/transcript_converter.py#L1)
+- [MyRuntimeProvider.tsx](/Users/Morriz/Workspace/InstruktAI/TeleClaude/frontend/components/assistant/MyRuntimeProvider.tsx#L30)
+- [types.ts](/Users/Morriz/Workspace/InstruktAI/TeleClaude/frontend/lib/api/types.ts#L159)
 
-### Existing threaded transcript path
+### Threaded transcript consumer
 
-- `teleclaude/core/agent_coordinator.py:trigger_incremental_output`
-- custom renderers `render_agent_output` / `render_clean_agent_output`
+- [agent_coordinator.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/core/agent_coordinator.py#L1234)
+- [transcript.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/utils/transcript.py#L491)
+- [transcript.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/utils/transcript.py#L1069)
 
-### Existing standard adapter push path
+### Related downstream consumers
 
-- `teleclaude/core/polling_coordinator.py` → `AdapterClient.send_output_update()`
-- tmux snapshot payload delivered directly to adapters
+- [transcript.py](/Users/Morriz/Workspace/InstruktAI/TeleClaude/teleclaude/utils/transcript.py#L1519)
+- mirror/search consumers that currently depend on their own extraction assumptions
 
-These should no longer be independently deciding how session output is projected before transport. They should all consume the same core route.
+## Non-Negotiable Invariants
 
-## Relationship to existing roadmap items
-
-- `web-frontend-test-bugs` tracks the symptom and should reference this todo as evidence, not as the owner.
-- `history-search-upgrade` should reuse the shared conversation projection route once it exists.
-- `adapter-boundary-cleanup` and `reflection-routing-ownership` stay separate; they solve routing/presentation ownership, not transcript projection drift.
+1. One assembled client stream schema for transcript-derived content.
+2. TeleClaude-injected user input is stripped before public assembly.
+3. Clients get thinking and tool calls/results, not only final text.
+4. Public assembly stays narrow on purpose.
+5. Dropped fields/data are documented explicitly in code and architecture docs.
+6. No transcript-derived caller bypasses the unified entry point.

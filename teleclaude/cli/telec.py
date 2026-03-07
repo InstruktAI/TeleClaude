@@ -49,11 +49,7 @@ from teleclaude.constants import (  # noqa: E402
     ROLE_WORKER,
     WORKTREE_DIR,
 )
-from teleclaude.content_scaffold import (  # noqa: E402
-    _emit_content_dumped,
-    _resolve_author,
-    create_content_inbox_entry,
-)
+from teleclaude.content_scaffold import _emit_content_dumped, _resolve_author, create_content_inbox_entry  # noqa: E402
 from teleclaude.logging_config import setup_logging  # noqa: E402
 from teleclaude.project_setup import init_project  # noqa: E402
 from teleclaude.slug import normalize_slug  # noqa: E402
@@ -267,7 +263,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "Creates a fresh session and runs the slash command as the first agent message.",
-                    "Worker lifecycle commands: /next-build, /next-review, /next-fix-review, /next-finalize.",
+                    "Worker lifecycle commands: /next-build, /next-review-build, /next-fix-review, /next-finalize.",
                     "Example: telec sessions run --command /next-build --args my-slug --project /repo/path",
                     "Use --detach for fire-and-forget dispatch: child inherits identity but caller receives no notifications.",
                 ],

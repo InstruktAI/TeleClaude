@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import struct
 import threading
+import asyncio
+import queue
+import time
+from types import SimpleNamespace
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -294,10 +298,159 @@ class TestChiptunesPlayerLifecycle:
         from teleclaude.chiptunes.player import ChiptunesPlayer
 
         player = ChiptunesPlayer()
+        player._playing = True
+        assert player.is_playing is True
         player.pause()
         assert player._paused is True
+        assert player.is_playing is False
+        assert player.is_paused is True
         player.resume()
         assert player._paused is False
+        assert player.is_playing is True
+        assert player.is_paused is False
+
+    def test_pause_blocks_emulation_until_resume(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import teleclaude.chiptunes.player as player_module
+        from teleclaude.chiptunes.player import ChiptunesPlayer
+
+        play_frame_started = threading.Event()
+        play_frame_calls = 0
+
+        class FakeDriver:
+            def __init__(self, _header: object) -> None:
+                pass
+
+            def init_tune(self, _subtune: int) -> None:
+                pass
+
+            def play_frame(self) -> list[tuple[int, int]]:
+                nonlocal play_frame_calls
+                play_frame_calls += 1
+                play_frame_started.set()
+                return []
+
+        class FakeRenderer:
+            def __init__(self, **_kwargs: object) -> None:
+                pass
+
+            def render_frame(self, _writes: list[tuple[int, int]], _frame_duration_s: float) -> bytes:
+                return b"\x00\x00"
+
+        monkeypatch.setattr(player_module, "SIDDriver", FakeDriver)
+        monkeypatch.setattr(player_module, "SIDRenderer", FakeRenderer)
+        monkeypatch.setattr(player_module, "is_pal", lambda _header: True)
+        monkeypatch.setattr(player_module, "speed_for_subtune", lambda _header, _subtune: "VBI")
+
+        player = ChiptunesPlayer()
+        player._playing = True
+        player.pause()
+
+        worker = threading.Thread(
+            target=player._emulation_loop,
+            args=(SimpleNamespace(start_song=1),),
+            daemon=True,
+        )
+        worker.start()
+
+        assert not play_frame_started.wait(timeout=0.2), "emulation advanced while paused"
+
+        player.resume()
+        assert play_frame_started.wait(timeout=1.0), "emulation did not resume after pause"
+
+        player.stop()
+        worker.join(timeout=1.0)
+
+    def test_pause_closes_stream_and_resume_reopens_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import teleclaude.chiptunes.player as player_module
+        from teleclaude.chiptunes.player import ChiptunesPlayer
+
+        streams: list[object] = []
+
+        class FakeStream:
+            def __init__(self, **_kwargs: object) -> None:
+                self.started = False
+                self.stopped = False
+                self.closed = False
+                streams.append(self)
+
+            def start(self) -> None:
+                self.started = True
+
+            def stop(self) -> None:
+                self.stopped = True
+
+            def close(self) -> None:
+                self.closed = True
+
+        monkeypatch.setattr(player_module, "sd", SimpleNamespace(RawOutputStream=lambda **kwargs: FakeStream(**kwargs)))
+
+        player = ChiptunesPlayer()
+        player._playing = True
+        player._stream_blocksize = 256
+
+        assert player._open_stream() is True
+        first_stream = streams[-1]
+        assert getattr(first_stream, "started") is True
+
+        player.pause()
+        assert player.is_paused is True
+        assert player._stream is None
+        assert getattr(first_stream, "stopped") is True
+        assert getattr(first_stream, "closed") is True
+
+        player.resume()
+        assert player.is_paused is False
+        assert len(streams) == 2
+        assert getattr(streams[-1], "started") is True
+
+    def test_prebuffer_does_not_open_stream_while_paused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import teleclaude.chiptunes.player as player_module
+        from teleclaude.chiptunes.player import ChiptunesPlayer
+
+        opened = False
+
+        class FakeStream:
+            def __init__(self, **_kwargs: object) -> None:
+                nonlocal opened
+                opened = True
+
+            def start(self) -> None:
+                pass
+
+            def stop(self) -> None:
+                pass
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(player_module, "sd", SimpleNamespace(RawOutputStream=lambda **kwargs: FakeStream(**kwargs)))
+        monkeypatch.setattr(player_module, "is_pal", lambda _header: True)
+
+        player = ChiptunesPlayer()
+        player._playing = True
+        player.pause()
+
+        prebuffer_frames = 125
+        player._pcm_queue = queue.Queue(maxsize=400)
+        for _ in range(prebuffer_frames):
+            player._pcm_queue.put_nowait(b"\x00\x00")
+
+        player._start_stream_after_prebuffer(SimpleNamespace())
+
+        assert opened is False
+        assert player._stream is None
+
+    def test_enqueue_pcm_does_not_block_for_one_second_when_queue_is_full(self) -> None:
+        from teleclaude.chiptunes.player import ChiptunesPlayer
+
+        player = ChiptunesPlayer()
+        player._pcm_queue = queue.Queue(maxsize=1)
+        player._pcm_queue.put_nowait(b"\x00\x00")
+        player.pause()
+
+        started = time.monotonic()
+        assert player._enqueue_pcm(b"\x01\x02", frame_duration=0.02) is False
+        assert time.monotonic() - started < 0.2
 
 
 class TestChiptunesManagerLifecycle:
@@ -453,8 +606,10 @@ class TestAPIChiptunesPatch:
 # --- Task 4.1: TTS + chiptunes coexistence (pause/resume) ---
 
 class TestTTSChiptunesCoexistence:
-    def test_trigger_event_pauses_chiptunes(self) -> None:
+    @pytest.mark.asyncio
+    async def test_tts_queue_holds_music_pause_until_queue_drains(self) -> None:
         from teleclaude.tts.manager import TTSManager
+        from teleclaude.core.voice_assignment import VoiceConfig
 
         mgr = TTSManager.__new__(TTSManager)
         mgr.enabled = True
@@ -462,14 +617,45 @@ class TestTTSChiptunesCoexistence:
         mgr.tts_config.enabled = True
 
         chiptunes = MagicMock()
+        chiptunes.enabled = True
         chiptunes.is_playing = True
-        mgr._chiptunes_manager = chiptunes
+        mgr.set_chiptunes_manager(chiptunes)
 
-        # Simulate the pause call that happens before TTS queuing
-        if mgr._chiptunes_manager is not None and mgr._chiptunes_manager.is_playing:
-            mgr._chiptunes_manager.pause()
+        voice = VoiceConfig(service_name="kokoro", voice="bm_lewis")
+        first_started = asyncio.Event()
+        release_first = asyncio.Event()
+
+        async def fake_run(
+            text: str,
+            service_chain: list[tuple[str, str | None]],
+            session_id: str,
+        ) -> tuple[bool, str | None, str | None]:
+            assert service_chain == [("kokoro", "bm_lewis")]
+            if text == "first":
+                first_started.set()
+                await release_first.wait()
+            return True, "kokoro", "bm_lewis"
+
+        with (
+            patch("teleclaude.tts.manager.db") as mock_db,
+            patch.object(mgr, "_get_or_assign_voice", AsyncMock(return_value=voice)),
+            patch("teleclaude.tts.manager.run_tts_with_lock_async", side_effect=fake_run),
+        ):
+            mock_db.get_session = AsyncMock(return_value=MagicMock(last_input_origin="terminal"))
+
+            assert await mgr.speak("first", session_id="sess-1") is True
+            await first_started.wait()
+            assert await mgr.speak("second", session_id="sess-1") is True
+
+            chiptunes.pause.assert_called_once()
+            chiptunes.resume.assert_not_called()
+
+            release_first.set()
+            assert mgr._speech_queue is not None
+            await mgr._speech_queue.join()
 
         chiptunes.pause.assert_called_once()
+        chiptunes.resume.assert_called_once()
 
     def test_set_chiptunes_manager(self) -> None:
         from teleclaude.tts.manager import TTSManager
@@ -479,6 +665,22 @@ class TestTTSChiptunesCoexistence:
         chiptunes = MagicMock()
         mgr.set_chiptunes_manager(chiptunes)
         assert mgr._chiptunes_manager is chiptunes
+
+    def test_chiptunes_state_change_reasserts_audio_focus(self) -> None:
+        from teleclaude.tts.manager import TTSManager
+
+        mgr = TTSManager.__new__(TTSManager)
+        chiptunes = MagicMock()
+        chiptunes.enabled = True
+        chiptunes.is_playing = True
+        mgr.set_chiptunes_manager(chiptunes)
+
+        mgr._audio_focus.claim_foreground()
+        chiptunes.pause.reset_mock()
+
+        mgr.on_chiptunes_state_change()
+
+        chiptunes.pause.assert_called_once()
 
 
 # --- Worker track history and navigation ---
@@ -577,6 +779,45 @@ class TestWorkerTrackHistory:
         worker = self._make_worker(tracks)
 
         worker.handle_cmd({"cmd": "shuffle"})  # unknown — no-op
+
+    def test_pause_request_is_reapplied_to_new_track(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        import teleclaude.chiptunes.worker as worker_module
+
+        events: list[str] = []
+
+        class FakePlayer:
+            def __init__(self, volume: float) -> None:
+                self.volume = volume
+                self.on_track_end = None
+                self.is_playing = True
+                self.is_paused = False
+
+            def stop(self) -> None:
+                events.append("stop")
+
+            def play(self, track: Path) -> None:
+                events.append(f"play:{track.name}")
+
+            def pause(self) -> None:
+                self.is_paused = True
+                events.append("pause")
+
+            def resume(self) -> None:
+                self.is_paused = False
+                events.append("resume")
+
+        monkeypatch.setattr(worker_module, "ChiptunesPlayer", FakePlayer)
+
+        track = tmp_path / "demo.sid"
+        track.write_bytes(_build_psid())
+        worker = worker_module._Worker(pick_random_track=lambda: track, volume=0.2)
+        worker._enabled = True
+        worker.pause()
+
+        worker._play_track(track)
+
+        assert events == [f"play:{track.name}", "pause"]
+        assert worker.is_paused is True
 
 
 # --- Manager next_track / prev_track proxy methods ---

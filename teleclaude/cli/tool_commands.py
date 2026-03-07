@@ -356,7 +356,7 @@ def handle_sessions_run(args: list[str]) -> None:
 
     Examples:
       telec sessions run --command /next-build --args my-slug --project /path/to/project
-      telec sessions run --command /next-review --args my-slug --project /p --agent gemini
+      telec sessions run --command /next-review-build --args my-slug --project /p --agent gemini
     """
     if "--help" in args or "-h" in args:
         print(handle_sessions_run.__doc__ or "")

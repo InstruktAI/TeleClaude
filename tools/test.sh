@@ -23,12 +23,12 @@ export TELECLAUDE_ENV_PATH="${TELECLAUDE_ENV_PATH:-tests/integration/.env}"
 TEST_TIMEOUT="${TELECLAUDE_TEST_TIMEOUT:-20m}"
 if [ "${1:-}" = "--cov" ]; then
     echo "Running tests with coverage..."
-    timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -n auto -m "not expensive" --cov=teleclaude --cov-report=html --cov-report=term-missing
+    timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -m "not expensive" --cov=teleclaude --cov-report=html --cov-report=term-missing
 
     # Generate absolute path for clickable link
     REPORT_PATH="$(pwd)/coverage/html/index.html"
     echo ""
     echo "✓ Coverage report generated: file://$REPORT_PATH"
 else
-    timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -n auto -m "not expensive" -q
+    timeout "${TEST_TIMEOUT}" pytest tests/unit tests/integration -m "not expensive" -q
 fi

@@ -29,8 +29,9 @@ async def test_next_prepare_hitl_input_md_unassessed_breakdown():
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert f"Preparing: {slug}" in result
-        assert "Read todos/test-slug/input.md and assess Definition of Ready" in result
-        assert "split into smaller todos" in result
+        assert "Read todos/test-slug/input.md" in result
+        assert "splitting heuristics" in result
+        assert "do not split" in result
         assert "update state.yaml and create breakdown.md" in result
 
 
@@ -130,7 +131,8 @@ async def test_next_prepare_autonomous_input_md_unassessed_breakdown():
         assert "telec sessions run" in result
         assert '--command "/next-prepare-draft"' in result
         assert f'--args "{slug}"' in result
-        assert "Assess todos/test-slug/input.md for complexity" in result
+        assert "Assess todos/test-slug/input.md" in result
+        assert "do not split" in result
 
 
 def test_read_breakdown_state_returns_defaults_when_no_file():

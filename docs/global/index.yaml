@@ -1,5 +1,5 @@
-project_root: ~/.teleclaude
-snippets_root: ~/.teleclaude/docs
+project_root: /Users/Morriz/.teleclaude
+snippets_root: /Users/Morriz/.teleclaude/docs
 snippets:
 - id: general/concept/agent-characteristics
   description: Cognitive profiles and collaboration selection heuristics for AI agents.
@@ -838,6 +838,24 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/lifecycle/review.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/review-plan
+  description: Plan review phase. Validate implementation-plan.md against policies,
+    DoD gates, and review lane expectations.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/review-plan.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/lifecycle/review-requirements
+  description: Requirements review phase. Validate requirements.md against quality
+    standard and write verdict to state.yaml.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/lifecycle/review-requirements.md
   role: member
   visibility: internal
   source_project: TeleClaude

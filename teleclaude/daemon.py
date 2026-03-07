@@ -324,6 +324,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         chiptunes_was_enabled = chiptunes_cfg.enabled if chiptunes_cfg else False
         self.chiptunes_manager = ChiptunesManager(chiptunes_music_dir, volume=chiptunes_volume)
         self.chiptunes_manager.on_track_start = self._on_chiptunes_track_start
+        self.chiptunes_manager.on_state_change = self._on_chiptunes_state_change
         self.tts_manager.set_chiptunes_manager(self.chiptunes_manager)
         if chiptunes_was_enabled:
             self.chiptunes_manager.start()
@@ -1577,11 +1578,40 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return
 
         payload = ChiptunesTrackEventDTO(track=track_label, sid_path=sid_path).model_dump()
-        loop = self._loop
+        loop = getattr(self, "_loop", None)
         if loop is not None and loop.is_running():
             loop.call_soon_threadsafe(api_server._broadcast_payload, "chiptunes_track", payload)
+            loop.call_soon_threadsafe(self._broadcast_chiptunes_state)
         else:
             logger.debug("ChipTunes: no running event loop, skipping track broadcast")
+
+    def _on_chiptunes_state_change(self) -> None:
+        """Broadcast chiptunes_state WebSocket events from worker thread callbacks."""
+        if hasattr(self, "tts_manager"):
+            self.tts_manager.on_chiptunes_state_change()
+        loop = getattr(self, "_loop", None)
+        if loop is not None and loop.is_running():
+            loop.call_soon_threadsafe(self._broadcast_chiptunes_state)
+        else:
+            logger.debug("ChipTunes: no running event loop, skipping state broadcast")
+
+    def _broadcast_chiptunes_state(self) -> None:
+        """Broadcast the current chiptunes playback state."""
+        from teleclaude.api_models import ChiptunesStateEventDTO
+
+        api_server = getattr(self.lifecycle, "api_server", None)
+        manager = getattr(self, "chiptunes_manager", None)
+        if api_server is None or manager is None:
+            return
+
+        payload = ChiptunesStateEventDTO(
+            enabled=manager.enabled,
+            playing=manager.is_playing,
+            paused=manager.is_paused,
+            track=manager.current_track,
+            sid_path=manager.current_sid_path,
+        ).model_dump()
+        api_server._broadcast_payload("chiptunes_state", payload)
 
     def _acquire_lock(self) -> None:
         """Acquire daemon lock using PID file with fcntl advisory locking.
@@ -2351,6 +2381,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             await self._event_db.close()
             self._event_db = None
             logger.info("EventDB closed")
+
+        if hasattr(self, "tts_manager"):
+            await self.tts_manager.shutdown()
+            logger.info("TTS manager stopped")
 
         # Disconnect from chiptunes worker (let it keep playing)
         if hasattr(self, "chiptunes_manager"):

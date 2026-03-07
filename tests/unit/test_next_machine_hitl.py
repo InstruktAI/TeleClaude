@@ -467,14 +467,14 @@ def test_format_tool_call_claude_no_prefix():
 def test_format_tool_call_gemini_no_prefix():
     """format_tool_call does not add prefix for gemini agent."""
     result = format_tool_call(
-        command="next-review",
+        command="next-review-build",
         args="test-slug",
         project="/tmp/project",
         guidance="Mock guidance",
         subfolder="trees/test-slug",
         next_call="telec todo work",
     )
-    assert '--command "/next-review"' in result
+    assert '--command "/next-review-build"' in result
     assert "/prompts:" not in result
 
 
@@ -499,11 +499,7 @@ def test_format_tool_call_next_call_with_args():
 from unittest.mock import AsyncMock
 
 from teleclaude.core.next_machine import next_work
-from teleclaude.core.next_machine.core import (
-    POST_COMPLETION,
-    _get_slug_single_flight_lock,
-    format_build_gate_failure,
-)
+from teleclaude.core.next_machine.core import POST_COMPLETION, _get_slug_single_flight_lock, format_build_gate_failure
 
 
 def _write_roadmap_yaml(tmpdir: str, slugs: list[str]) -> None:
@@ -548,7 +544,7 @@ async def test_next_work_runs_gates_when_build_complete():
         ):
             result = await next_work(db, slug=slug, cwd=tmpdir)
 
-        assert "next-review" in result
+        assert "next-review-build" in result
 
 
 @pytest.mark.asyncio

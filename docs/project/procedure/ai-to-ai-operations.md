@@ -21,7 +21,7 @@ Delegate work to remote AI sessions safely and predictably.
 - Target computer is online and listed in trusted dirs.
 - You have a clear task and title for the delegated session.
 - Know which dispatch mechanism to use:
-  - **`telec sessions run`** — Dispatch worker lifecycle commands. Canonical way to start orchestrated work (build, review, fix cycles). Uses slash commands: `/next-build`, `/next-review`, `/next-fix-review`, `/next-finalize`. Example: `telec sessions run --command /next-build --args my-slug --project /repo/path`
+  - **`telec sessions run`** — Dispatch worker lifecycle commands. Canonical way to start orchestrated work (build, review, fix cycles). Uses slash commands: `/next-build`, `/next-review-build`, `/next-fix-review`, `/next-finalize`. Example: `telec sessions run --command /next-build --args my-slug --project /repo/path`
   - **`telec sessions start`** — Start a general-purpose session with a freeform message. Use for ad-hoc tasks, peer discussions, and non-lifecycle work.
 
 ## Steps

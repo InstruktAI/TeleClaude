@@ -20,6 +20,7 @@ from websockets.sync.client import ClientConnection, unix_connect
 
 from teleclaude.cli.models import (
     AgentAvailabilityInfo,
+    ChiptunesStatusInfo,
     ComputerInfo,
     CreateSessionResult,
     JobInfo,
@@ -752,6 +753,11 @@ class TelecAPIClient:
     async def chiptunes_resume(self) -> None:
         """Resume chiptunes playback."""
         await self._request("POST", "/api/chiptunes/resume")
+
+    async def get_chiptunes_status(self) -> ChiptunesStatusInfo:
+        """Fetch current chiptunes playback state."""
+        resp = await self._request("GET", "/api/chiptunes/status")
+        return TypeAdapter(ChiptunesStatusInfo).validate_json(resp.text)
 
     async def revive_session(self, session_id: str) -> CreateSessionResult:
         """Revive a session by TeleClaude session ID.

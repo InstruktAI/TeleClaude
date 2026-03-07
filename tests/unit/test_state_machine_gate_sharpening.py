@@ -11,9 +11,9 @@ Covers:
 """
 
 import asyncio
-from contextlib import ExitStack
 import os
 import subprocess
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -22,12 +22,7 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import next_work
-from teleclaude.core.next_machine.core import (
-    _count_test_failures,
-    _has_meaningful_diff,
-    run_build_gates,
-)
-
+from teleclaude.core.next_machine.core import _count_test_failures, _has_meaningful_diff, run_build_gates
 
 # ---------------------------------------------------------------------------
 # _count_test_failures
@@ -226,9 +221,7 @@ async def test_next_work_review_approved_infra_only_diff_holds() -> None:
         stack.enter_context(
             patch("teleclaude.core.next_machine.core.compose_agent_guidance", new=AsyncMock(return_value="GUIDANCE"))
         )
-        stack.enter_context(
-            patch("teleclaude.core.next_machine.core.emit_review_approved", new=AsyncMock())
-        )
+        stack.enter_context(patch("teleclaude.core.next_machine.core.emit_review_approved", new=AsyncMock()))
         result = await next_work(db, slug=slug, cwd=cwd, caller_session_id="sess-123")
 
     mock_mark = mocks["mark_phase"]
@@ -272,7 +265,7 @@ async def test_next_work_review_approved_real_diff_invalidates() -> None:
     mock_mark = mocks["mark_phase"]
     reset_calls = [c for c in mock_mark.call_args_list if "pending" in str(c)]
     assert reset_calls, "Review should have been invalidated (reset to pending)"
-    assert "next-review" in result
+    assert "next-review-build" in result
 
 
 # ---------------------------------------------------------------------------

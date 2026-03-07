@@ -415,6 +415,31 @@ class ChiptunesTrackEventDTO(BaseModel):  # type: ignore[explicit-any]
     sid_path: str = ""
 
 
+class ChiptunesStatusDTO(BaseModel):  # type: ignore[explicit-any]
+    """Current chiptunes playback state."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = False
+    playing: bool = False
+    paused: bool = False
+    track: str = ""
+    sid_path: str = ""
+
+
+class ChiptunesStateEventDTO(BaseModel):  # type: ignore[explicit-any]
+    """WebSocket event for chiptunes playback state transitions."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event: Literal["chiptunes_state"] = "chiptunes_state"
+    enabled: bool = False
+    playing: bool = False
+    paused: bool = False
+    track: str = ""
+    sid_path: str = ""
+
+
 class SessionLifecycleStatusEventDTO(BaseModel):  # type: ignore[explicit-any]
     """WebSocket event for canonical session lifecycle status transitions.
 

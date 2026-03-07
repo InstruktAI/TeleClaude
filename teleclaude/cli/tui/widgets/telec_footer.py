@@ -2,38 +2,51 @@
 
 from __future__ import annotations
 
+from textual.app import ComposeResult
+from textual.containers import Horizontal
 from rich.style import Style
 from rich.text import Text
 from textual.binding import Binding
 from textual.events import Click
 from textual.reactive import reactive
 from textual.widget import Widget
+from textual.widgets import Button, Static
 
 from teleclaude.cli.models import AgentAvailabilityInfo
 from teleclaude.cli.tui.messages import SettingsChanged, StateChanged
 from teleclaude.cli.tui.theme import get_agent_color, get_agent_style, get_neutral_color
 from teleclaude.cli.tui.utils.formatters import format_countdown
 
-# --- tmux cell-width compatibility patch ---
-# Transport control emoji (⏮⏯⏭⏸▶) have system wcwidth=1 but Rich treats
-# them as 2-cell with FE0F. Patch Rich's cell_len to match tmux cursor positioning.
-import rich.cells as _rich_cells
 
-_orig_cell_len_impl = _rich_cells._cell_len
-_TMUX_NARROW_FE0F = frozenset("\u23ED\u23EE\u23EF\u23F8\u25B6")
+class FooterActionButton(Button, can_focus=False):
+    """Compact footer button with stable single-line layout."""
 
+    DEFAULT_CSS = """
+    FooterActionButton {
+        min-width: 0;
+        width: auto;
+        height: 1;
+        padding: 0 1;
+        margin: 0 1 0 0;
+        border: none !important;
+        background: transparent;
+        color: $text;
+        text-style: bold;
+    }
 
-def _cell_len_tmux_compat(text: str, unicode_version: str = "auto") -> int:
-    result = _orig_cell_len_impl(text, unicode_version)
-    if "\ufe0f" in text:
-        for i, ch in enumerate(text):
-            if ch == "\ufe0f" and i > 0 and text[i - 1] in _TMUX_NARROW_FE0F:
-                result -= 1
-    return result
+    FooterActionButton:hover {
+        background: $surface;
+    }
 
+    FooterActionButton:disabled {
+        color: auto 50%;
+        background: transparent;
+        text-style: dim;
+    }
+    """
 
-_rich_cells._cell_len = _cell_len_tmux_compat
-_rich_cells.cached_cell_len.cache_clear()
+    def __init__(self, label: str, **kwargs: object) -> None:
+        super().__init__(label, compact=True, **kwargs)
 
 
 class TelecFooter(Widget):
@@ -48,6 +61,68 @@ class TelecFooter(Widget):
     TelecFooter {
         width: 100%;
         height: 3;
+    }
+
+    #footer-context-row,
+    #footer-global-row {
+        height: 1;
+        width: 100%;
+        content-align: left middle;
+    }
+
+    #footer-controls-row {
+        height: 1;
+        width: 100%;
+    }
+
+    #footer-agents,
+    #footer-actions {
+        height: 1;
+        width: auto;
+    }
+
+    #footer-controls-spacer {
+        width: 1fr;
+        height: 1;
+    }
+
+    .footer-token {
+        width: auto;
+        min-width: 0;
+        height: 1;
+        margin: 0 1 0 0;
+        background: transparent;
+    }
+
+    .footer-token:hover {
+        background: transparent;
+    }
+
+    .footer-agent-token {
+        margin: 0 2 0 0;
+    }
+
+    .footer-agent-token.-last-agent,
+    .footer-token.-last-token {
+        margin: 0;
+    }
+
+    .footer-action-button {
+        margin: 0 1 0 0;
+    }
+
+    .footer-action-button.-last-action {
+        margin: 0;
+    }
+
+    #footer-prev,
+    #footer-next {
+        width: 8;
+    }
+
+    #footer-play,
+    #footer-fav {
+        width: 9;
     }
     """
 
@@ -68,34 +143,42 @@ class TelecFooter(Widget):
     ) -> None:
         super().__init__(**kwargs)
         self._agent_availability: dict[str, AgentAvailabilityInfo] = agent_availability or {}
-        self._toggle_start_x: int = 0
-        self._tts_start_x: int = 0
-        self._tts_end_x: int = 0
-        # Player control regions: prev, play/pause, next, favorite
-        self._prev_start_x: int = 0
-        self._prev_end_x: int = 0
-        self._play_start_x: int = 0
-        self._play_end_x: int = 0
-        self._next_start_x: int = 0
-        self._next_end_x: int = 0
-        self._fav_start_x: int = 0
-        self._fav_end_x: int = 0
-        self._anim_start_x: int = 0
-        self._agent_regions: list[tuple[int, int, str]] = []
+
+    def compose(self) -> ComposeResult:
+        yield Static(id="footer-context-row")
+        yield Static(id="footer-global-row")
+        with Horizontal(id="footer-controls-row"):
+            with Horizontal(id="footer-agents"):
+                for idx, agent in enumerate(("claude", "gemini", "codex")):
+                    classes = "footer-token footer-agent-token"
+                    if idx == 2:
+                        classes += " -last-agent"
+                    yield Static("", id=f"footer-agent-{agent}", classes=classes)
+            yield Static("", id="footer-controls-spacer")
+            with Horizontal(id="footer-actions"):
+                yield Static("", id="footer-pane-toggle", classes="footer-token")
+                yield Static("", id="footer-tts-toggle", classes="footer-token")
+                yield FooterActionButton("Prev", id="footer-prev", classes="footer-action-button")
+                yield FooterActionButton("Play", id="footer-play", classes="footer-action-button")
+                yield FooterActionButton("Next", id="footer-next", classes="footer-action-button")
+                yield FooterActionButton("Fav", id="footer-fav", classes="footer-action-button -last-action")
+                yield Static("", id="footer-anim-toggle", classes="footer-token -last-token")
 
     def on_mount(self) -> None:
         self.screen.bindings_updated_signal.subscribe(self, self._on_bindings_changed)
+        self._refresh_hint_rows()
+        self._refresh_controls()
 
     def on_unmount(self) -> None:
         self.screen.bindings_updated_signal.unsubscribe(self)
 
     def _on_bindings_changed(self, _screen: object) -> None:
         if self.app.app_focus:
-            self.refresh()
+            self._refresh_hint_rows()
 
     def update_availability(self, availability: dict[str, AgentAvailabilityInfo]) -> None:
         self._agent_availability = availability
-        self.refresh()
+        self._refresh_controls()
 
     def _collect_rows(self) -> tuple[list[tuple[Binding, bool, str]], list[tuple[Binding, bool, str]]]:
         active_bindings = self.screen.active_bindings
@@ -198,143 +281,132 @@ class TelecFooter(Widget):
                 cells.append(("\u25fb", outline_style))
         return cells
 
-    def _render_controls_line(self) -> Text:
-        line = Text()
-        self._agent_regions = []
-
-        for i, agent in enumerate(("claude", "gemini", "codex")):
-            if i > 0:
-                line.append("  ")
-            start_x = line.cell_len
-            line.append_text(self._build_agent_pill(agent))
-            end_x = line.cell_len
-            self._agent_regions.append((start_x, end_x, agent))
-
-        toggles = Text()
-        for cell_char, cell_style in self._build_pane_theming_cells():
-            toggles.append(cell_char, style=cell_style)
-        toggles.append(" ")
-
-        # TTS icon: 🔊 bold (enabled) / 🔇 dim (disabled)
-        tts_start = toggles.cell_len
-        tts_icon = "\U0001f50a" if self.tts_enabled else "\U0001f507"
-        toggles.append(tts_icon, style="bold" if self.tts_enabled else "dim")
-        tts_end = toggles.cell_len
-        toggles.append(" ")
-
-        # ChipTunes player control group: ⏮️ ▶️/⏸️ ⏭️ ⭐/✅
-        # Module-level cell width patch keeps Rich/tmux cursor math aligned for
-        # the FE0F emoji presentation icons used here.
-        dim_style = Style(dim=True)
-        active_style = Style(bold=True)
-
-        prev_start = toggles.cell_len
-        toggles.append("⏮\uFE0F", style=active_style if self.chiptunes_enabled else dim_style)
-        toggles.append("  ")
-        prev_end = toggles.cell_len
-
-        play_start = toggles.cell_len
-        play_icon = "⏸\uFE0F" if (self.chiptunes_enabled and self.chiptunes_playing) else "▶\uFE0F"
-        toggles.append(play_icon, style=active_style if self.chiptunes_enabled else dim_style)
-        toggles.append("  ")
-        play_end = toggles.cell_len
-
-        next_start = toggles.cell_len
-        toggles.append("⏭\uFE0F", style=active_style if self.chiptunes_enabled else dim_style)
-        toggles.append("  ")
-        next_end = toggles.cell_len
-
-        fav_start = toggles.cell_len
-        fav_icon = "✅" if (self.chiptunes_enabled and self.chiptunes_favorited) else "⭐"
-        toggles.append(fav_icon, style=active_style if self.chiptunes_enabled else dim_style)
-        fav_end = toggles.cell_len
-        toggles.append(" ")
-
-        anim_start = toggles.cell_len
-        anim_icons = {"off": "\U0001f6ab", "periodic": "\u2728", "party": "\U0001f389"}
-        anim_icon = anim_icons.get(self.animation_mode, "\u2728")
-        toggles.append(anim_icon, style="" if self.animation_mode != "off" else "dim")
-
-        left_len = line.cell_len
-        right_len = toggles.cell_len
-        gap = max(2, self.size.width - left_len - right_len - 7)
-        line.append(" " * gap)
-
-        offset = left_len + gap
-        self._toggle_start_x = offset
-        self._tts_start_x = offset + tts_start
-        self._tts_end_x = offset + tts_end
-        self._prev_start_x = offset + prev_start
-        self._prev_end_x = offset + prev_end
-        self._play_start_x = offset + play_start
-        self._play_end_x = offset + play_end
-        self._next_start_x = offset + next_start
-        self._next_end_x = offset + next_end
-        self._fav_start_x = offset + fav_start
-        self._fav_end_x = offset + fav_end
-        self._anim_start_x = offset + anim_start
-
-        line.append_text(toggles)
-        return line
-
-    def render(self) -> Text:
+    def _refresh_hint_rows(self) -> None:
+        if not self.is_mounted:
+            return
         context_row, global_row = self._collect_rows()
-        line1 = self._render_hints_line(context_row, empty_label="No context actions")
-        line2 = self._render_hints_line(global_row, empty_label="No global actions")
-        line3 = self._render_controls_line()
-        return Text.assemble(line1, "\n", line2, "\n", line3)
+        self.query_one("#footer-context-row", Static).update(
+            self._render_hints_line(context_row, empty_label="No context actions")
+        )
+        self.query_one("#footer-global-row", Static).update(
+            self._render_hints_line(global_row, empty_label="No global actions")
+        )
 
-    @staticmethod
-    def _contains_x(x: int, start_x: int, end_x: int) -> bool:
-        return start_x <= x < end_x
+    def _set_token(self, selector: str, label: Text | str) -> None:
+        self.query_one(selector, Static).update(label)
 
-    def on_click(self, event: Click) -> None:
-        if event.y != 2:
+    def _refresh_controls(self) -> None:
+        if not self.is_mounted:
             return
 
-        x = event.x
-        for start_x, end_x, agent in self._agent_regions:
-            if start_x <= x < end_x:
-                self.post_message(SettingsChanged("agent_status", {"agent": agent}))
-                return
+        for agent in ("claude", "gemini", "codex"):
+            self._set_token(f"#footer-agent-{agent}", self._build_agent_pill(agent))
 
-        if x >= self._anim_start_x:
+        pane_toggle = Text()
+        for cell_char, cell_style in self._build_pane_theming_cells():
+            pane_toggle.append(cell_char, style=cell_style)
+        self._set_token("#footer-pane-toggle", pane_toggle)
+
+        tts_icon = Text("\U0001f50a" if self.tts_enabled else "\U0001f507", style="bold" if self.tts_enabled else "dim")
+        self._set_token("#footer-tts-toggle", tts_icon)
+
+        self._refresh_transport_buttons()
+
+        anim_icons = {"off": "\U0001f6ab", "periodic": "\u2728", "party": "\U0001f389"}
+        anim_icon = Text(
+            anim_icons.get(self.animation_mode, "\u2728"),
+            style="" if self.animation_mode != "off" else "dim",
+        )
+        self._set_token("#footer-anim-toggle", anim_icon)
+
+    def _refresh_transport_buttons(self) -> None:
+        prev_button = self.query_one("#footer-prev", FooterActionButton)
+        play_button = self.query_one("#footer-play", FooterActionButton)
+        next_button = self.query_one("#footer-next", FooterActionButton)
+        fav_button = self.query_one("#footer-fav", FooterActionButton)
+
+        prev_button.label = "Prev"
+        play_button.label = "Pause" if (self.chiptunes_enabled and self.chiptunes_playing) else "Play"
+        next_button.label = "Next"
+        fav_button.label = "Saved" if (self.chiptunes_enabled and self.chiptunes_favorited) else "Fav"
+
+        prev_button.disabled = not self.chiptunes_enabled
+        next_button.disabled = not self.chiptunes_enabled
+        fav_button.disabled = not self.chiptunes_enabled
+        # Play can enable chiptunes from the stopped state.
+        play_button.disabled = False
+
+    def on_click(self, event: Click) -> None:
+        widget = event.widget
+        if widget is None or widget is self:
+            return
+        if isinstance(widget, Button):
+            return
+        widget_id = widget.id
+        if widget_id is None:
+            return
+        if widget_id.startswith("footer-agent-"):
+            self.post_message(SettingsChanged("agent_status", {"agent": widget_id.removeprefix("footer-agent-")}))
+            return
+        if widget_id == "footer-pane-toggle":
+            self.post_message(SettingsChanged("pane_theming_mode", "cycle"))
+            return
+        if widget_id == "footer-tts-toggle":
+            self.post_message(SettingsChanged("tts_enabled", not self.tts_enabled))
+            return
+        if not self.chiptunes_enabled and widget_id in {"footer-prev", "footer-play", "footer-next", "footer-fav"}:
+            return
+        if widget_id == "footer-prev":
+            self.post_message(SettingsChanged("chiptunes_prev", None))
+            return
+        if widget_id == "footer-play":
+            self.post_message(SettingsChanged("chiptunes_play_pause", None))
+            return
+        if widget_id == "footer-next":
+            self.post_message(SettingsChanged("chiptunes_next", None))
+            return
+        if widget_id == "footer-fav":
+            self.post_message(SettingsChanged("chiptunes_favorite", None))
+            return
+        if widget_id == "footer-anim-toggle":
             cycle = ["off", "periodic", "party"]
             idx = cycle.index(self.animation_mode) if self.animation_mode in cycle else 0
             new_mode = cycle[(idx + 1) % len(cycle)]
             self.post_message(SettingsChanged("animation_mode", new_mode))
-        elif self._contains_x(x, self._fav_start_x, self._fav_end_x):
-            self.post_message(SettingsChanged("chiptunes_favorite", None))
-        elif self._contains_x(x, self._next_start_x, self._next_end_x):
-            self.post_message(SettingsChanged("chiptunes_next", None))
-        elif self._contains_x(x, self._play_start_x, self._play_end_x):
-            self.post_message(SettingsChanged("chiptunes_play_pause", None))
-        elif self._contains_x(x, self._prev_start_x, self._prev_end_x):
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id
+        if button_id == "footer-prev":
             self.post_message(SettingsChanged("chiptunes_prev", None))
-        elif self._contains_x(x, self._tts_start_x, self._tts_end_x):
-            self.post_message(SettingsChanged("tts_enabled", not self.tts_enabled))
-        elif self._toggle_start_x <= x < self._tts_start_x:
-            self.post_message(SettingsChanged("pane_theming_mode", "cycle"))
+            return
+        if button_id == "footer-play":
+            self.post_message(SettingsChanged("chiptunes_play_pause", None))
+            return
+        if button_id == "footer-next":
+            self.post_message(SettingsChanged("chiptunes_next", None))
+            return
+        if button_id == "footer-fav":
+            self.post_message(SettingsChanged("chiptunes_favorite", None))
 
     def watch_tts_enabled(self, _value: bool) -> None:
-        self.refresh()
+        self._refresh_controls()
 
     def watch_chiptunes_enabled(self, _value: bool) -> None:
-        self.refresh()
+        self._refresh_controls()
 
     def watch_chiptunes_playing(self, _value: bool) -> None:
-        self.refresh()
+        self._refresh_controls()
 
     def watch_chiptunes_favorited(self, _value: bool) -> None:
-        self.refresh()
+        self._refresh_controls()
 
     def watch_animation_mode(self, _value: str) -> None:
-        self.refresh()
+        self._refresh_controls()
         if self.is_mounted:
             self.post_message(StateChanged())
 
     def watch_pane_theming_mode(self, _value: str) -> None:
-        self.refresh()
+        self._refresh_controls()
         if self.is_mounted:
             self.post_message(StateChanged())
 

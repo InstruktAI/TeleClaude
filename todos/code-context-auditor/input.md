@@ -80,7 +80,7 @@ The auditor could analyze each annotation in isolation (cheap, fast) or analyze 
 
 Option A: **Maintenance command** — `next-maintain` step, runs periodically.
 Option B: **Standalone skill** — `/audit-code-context`, triggered on demand.
-Option C: **Review phase integration** — part of `next-review`, checks annotations alongside code quality.
+Option C: **Review phase integration** — part of `next-review-build`, checks annotations alongside code quality.
 
 I think **Option B (standalone skill) first, Option C later**. The audit is a focused task that an agent can do in a single session. Making it a skill means any agent can invoke it anytime. Later, integrating it into the review phase makes it automatic.
 

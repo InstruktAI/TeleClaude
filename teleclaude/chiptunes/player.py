@@ -36,8 +36,12 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         self._volume = max(0.0, min(1.0, volume))
         self._max_track_duration = max_track_duration
         self._stop_event = threading.Event()
+        self._resume_event = threading.Event()
+        self._resume_event.set()
         self._thread: threading.Thread | None = None
         self._stream: object | None = None  # sounddevice.RawOutputStream
+        self._stream_blocksize: int | None = None
+        self._stream_lock = threading.RLock()
         self._pcm_queue: queue.Queue[bytes] = queue.Queue(maxsize=_QUEUE_MAX_CHUNKS)
         self._playing = False
         self._paused = False
@@ -46,8 +50,13 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
 
     @property
     def is_playing(self) -> bool:
-        """Return True if playback is active and not stopped."""
-        return self._playing and not self._stop_event.is_set()
+        """Return True if playback is actively advancing and audible."""
+        return self._playing and not self._stop_event.is_set() and not self._paused
+
+    @property
+    def is_paused(self) -> bool:
+        """Return True if playback is loaded but currently paused."""
+        return self._paused and not self._stop_event.is_set()
 
     def play(self, sid_path: Path) -> None:
         """Parse and start playing a SID file in the background."""
@@ -67,6 +76,8 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         self._stop_event.clear()
         self._playing = True
         self._paused = False
+        self._resume_event.set()
+        self._stream_blocksize = None
         self._pcm_queue = queue.Queue(maxsize=_QUEUE_MAX_CHUNKS)
 
         self._thread = threading.Thread(
@@ -86,66 +97,112 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         frame_rate = 50.0 if pal else 60.0
         frame_duration = 1.0 / frame_rate
         samples_per_frame = int(_SAMPLE_RATE * frame_duration)
+        self._stream_blocksize = samples_per_frame * 4
         prebuffer_frames = int(_PREBUFFER_SECONDS * frame_rate)
 
         # Block until enough frames are buffered or stop is signalled
-        waited = 0
-        while waited < prebuffer_frames and not self._stop_event.is_set():
+        deadline = time.monotonic() + _PREBUFFER_SECONDS
+        while time.monotonic() < deadline and not self._stop_event.is_set():
             if self._pcm_queue.qsize() >= prebuffer_frames:
                 break
             self._stop_event.wait(0.05)
-            waited += 1
 
         if self._stop_event.is_set():
             return
-
-        def _callback(
-            out: object,
-            frames: int,
-            _time: object,
-            _status: object,
-        ) -> None:
-            chunk_size = frames * 2  # int16 = 2 bytes per sample
-
-            with self._pause_lock:
-                if self._paused:
-                    out[:chunk_size] = bytes(chunk_size)  # type: ignore[index]
-                    return
-
-            buf = bytearray(chunk_size)
-            pos = 0
-            while pos < chunk_size:
-                try:
-                    chunk = self._pcm_queue.get_nowait()
-                    use = min(chunk_size - pos, len(chunk))
-                    buf[pos : pos + use] = chunk[:use]
-                    if use < len(chunk):
-                        try:
-                            self._pcm_queue.put_nowait(chunk[use:])
-                        except queue.Full:
-                            pass
-                    pos += use
-                except queue.Empty:
-                    break  # rest stays silence-filled
-
-            out[:chunk_size] = bytes(buf)  # type: ignore[index]
-
-        try:
-            stream = sd.RawOutputStream(
-                samplerate=_SAMPLE_RATE,
-                channels=1,
-                dtype="int16",
-                blocksize=samples_per_frame * 4,
-                latency="high",
-                callback=_callback,
-            )
-            self._stream = stream
-            stream.start()
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.error("Failed to open audio stream: %s", exc)
+        with self._pause_lock:
+            paused = self._paused
+        if paused:
+            return
+        if not self._open_stream():
             self._stop_event.set()
             self._playing = False
             self._notify_track_end()
+
+    def _stream_callback(
+        self,
+        out: object,
+        frames: int,
+        _time: object,
+        _status: object,
+    ) -> None:
+        chunk_size = frames * 2  # int16 = 2 bytes per sample
+
+        with self._pause_lock:
+            if self._paused:
+                out[:chunk_size] = bytes(chunk_size)  # type: ignore[index]
+                return
+
+        buf = bytearray(chunk_size)
+        pos = 0
+        while pos < chunk_size:
+            try:
+                chunk = self._pcm_queue.get_nowait()
+                use = min(chunk_size - pos, len(chunk))
+                buf[pos : pos + use] = chunk[:use]
+                if use < len(chunk):
+                    try:
+                        self._pcm_queue.put_nowait(chunk[use:])
+                    except queue.Full:
+                        pass
+                pos += use
+            except queue.Empty:
+                break  # rest stays silence-filled
+
+        out[:chunk_size] = bytes(buf)  # type: ignore[index]
+
+    def _open_stream(self) -> bool:
+        """Open the output stream for the current track if it is not already active."""
+        if self._stop_event.is_set():
+            return False
+        blocksize = self._stream_blocksize
+        if blocksize is None:
+            return False
+
+        with self._stream_lock:
+            if self._stream is not None:
+                return True
+            try:
+                stream = sd.RawOutputStream(
+                    samplerate=_SAMPLE_RATE,
+                    channels=1,
+                    dtype="int16",
+                    blocksize=blocksize,
+                    latency="high",
+                    callback=self._stream_callback,
+                )
+                self._stream = stream
+                stream.start()
+                return True
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.error("Failed to open audio stream: %s", exc)
+                self._stream = None
+                return False
+
+    def _close_stream(self) -> None:
+        """Stop and release the active output stream."""
+        with self._stream_lock:
+            if self._stream is None:
+                return
+            stream = self._stream
+            self._stream = None
+        try:
+            stream.stop()  # type: ignore[union-attr]
+            stream.close()  # type: ignore[union-attr]
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.debug("Stream cleanup error: %s", exc)
+
+    def _enqueue_pcm(self, pcm: bytes, frame_duration: float) -> bool:
+        """Push one rendered frame without long blocking in the daemon process."""
+        wait_s = min(frame_duration * 0.5, 0.05)
+        while not self._stop_event.is_set():
+            if not self._resume_event.is_set():
+                return False
+            try:
+                self._pcm_queue.put_nowait(pcm)
+                return True
+            except queue.Full:
+                self._stop_event.wait(wait_s)
+        return False
 
     def _emulation_loop(self, header: SIDHeader) -> None:
         """Background thread: emulate CPU + SID and push PCM chunks to the queue."""
@@ -172,26 +229,21 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             self._notify_track_end()
             return
 
-        track_start = time.monotonic()
+        playback_elapsed = 0.0
         while not self._stop_event.is_set():
-            if time.monotonic() - track_start >= self._max_track_duration:
+            if not self._resume_event.wait(timeout=0.1):
+                continue
+            if self._stop_event.is_set():
+                break
+            if playback_elapsed >= self._max_track_duration:
                 logger.debug("ChipTunes: max track duration reached, advancing to next track")
                 break
             try:
                 writes = driver.play_frame()
                 pcm = renderer.render_frame(writes, frame_duration)
-                try:
-                    self._pcm_queue.put(pcm, timeout=1.0)
-                except queue.Full:
-                    # Drain one old frame to make room
-                    try:
-                        self._pcm_queue.get_nowait()
-                    except queue.Empty:
-                        pass
-                    try:
-                        self._pcm_queue.put_nowait(pcm)
-                    except queue.Full:
-                        pass
+                playback_elapsed += frame_duration
+                if not self._enqueue_pcm(pcm, frame_duration):
+                    continue
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning("Emulation error (skipping track): %s", exc)
                 break
@@ -210,16 +262,12 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
     def stop(self) -> None:
         """Stop playback and clean up resources."""
         self._stop_event.set()
+        self._resume_event.set()
         self._playing = False
+        self._paused = False
+        self._stream_blocksize = None
 
-        if self._stream is not None:
-            try:
-                stream = self._stream
-                self._stream = None
-                stream.stop()  # type: ignore[union-attr]
-                stream.close()  # type: ignore[union-attr]
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.debug("Stream cleanup error: %s", exc)
+        self._close_stream()
 
         if self._thread is not None and self._thread is not threading.current_thread():
             self._thread.join(timeout=2.0)
@@ -233,14 +281,31 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                 break
 
     def pause(self) -> None:
-        """Pause audio output (write silence to stream)."""
+        """Pause playback without advancing emulation time."""
         with self._pause_lock:
+            if self._paused:
+                return
             self._paused = True
+            self._resume_event.clear()
+        self._close_stream()
 
     def resume(self) -> None:
-        """Resume audio output after a pause."""
+        """Resume playback after a pause."""
         with self._pause_lock:
+            if not self._paused:
+                return
             self._paused = False
+        should_reopen = (
+            self._playing
+            and not self._stop_event.is_set()
+            and self._stream is None
+            and self._stream_blocksize is not None
+        )
+        if should_reopen and not self._open_stream():
+            with self._pause_lock:
+                self._paused = True
+            return
+        self._resume_event.set()
 
     def _notify_track_end(self) -> None:
         if self.on_track_end is not None:

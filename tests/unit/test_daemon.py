@@ -26,11 +26,7 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     UserPromptSubmitPayload,
 )
-from teleclaude.core.models import (
-    Session,
-    SessionAdapterMetadata,
-    TelegramAdapterMetadata,
-)
+from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
 from teleclaude.daemon import HookOutboxRow, TeleClaudeDaemon
 from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.types.commands import CreateSessionCommand, GetSessionDataCommand
@@ -818,7 +814,7 @@ async def test_new_session_auto_command_agent_then_message():
         create_cmd = CreateSessionCommand(
             project_path="/tmp",
             origin=InputOrigin.API.value,
-            auto_command="agent_then_message codex slow /next-review next-machine",
+            auto_command="agent_then_message codex slow /next-review-build next-machine",
         )
 
         result = await daemon.command_service.create_session(create_cmd)

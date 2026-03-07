@@ -22,6 +22,24 @@ Gates (all required):
    - The work is atomic and fits a single AI session without context exhaustion.
    - Cross-cutting changes are called out explicitly and justified.
    - If it requires multiple phases, it is split into dependent todos.
+
+   **Splitting heuristics — read the code before deciding:**
+
+   - **Ground first.** Open the actual source files listed in the input before
+     deciding to split. Estimate lines of change, not files touched. A 3-line
+     edit across 15 files is one session. Never split based on the input
+     description alone.
+   - **Coherence test.** One behavior = one todo. A model change flowing through
+     its consumers (DTOs, renderers, CLI flags, tests) is one behavior, not four.
+     Only split when the pieces are independently shippable AND independently
+     valuable. If splitting creates a half-working codebase, don't split.
+   - **Detail inverts complexity.** A detailed input with exact file paths, line
+     numbers, and before/after code means the approach is fully known. Treat
+     detail as reducing the case for splitting — the discovery is done, what
+     remains is mechanical execution.
+   - **Coordination cost.** Splitting creates inter-todo dependencies, state
+     management, review overhead, and sequencing complexity. If the coordination
+     cost exceeds the session-size benefit, don't split.
 3. **Verification**
    - There is a clear way to verify completion (tests, logs, or observable behavior).
    - Edge cases and error paths are identified or explicitly deferred.

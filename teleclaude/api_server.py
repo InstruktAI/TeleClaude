@@ -51,6 +51,7 @@ from teleclaude.api_models import (
     AgentAvailabilityDTO,
     AgentStatusRequest,
     ChiptunesSettingsDTO,
+    ChiptunesStatusDTO,
     ComputerDTO,
     CreateSessionRequest,
     CreateSessionResponseDTO,
@@ -135,7 +136,7 @@ API_WATCH_INTERVAL_S = float(os.getenv("API_WATCH_INTERVAL_S", "5"))
 API_WATCH_LAG_THRESHOLD_MS = float(os.getenv("API_WATCH_LAG_THRESHOLD_MS", "250"))
 API_WATCH_INFLIGHT_THRESHOLD_S = float(os.getenv("API_WATCH_INFLIGHT_THRESHOLD_S", "1"))
 API_WATCH_DUMP_COOLDOWN_S = float(os.getenv("API_WATCH_DUMP_COOLDOWN_S", "30"))
-WORKER_LIFECYCLE_COMMANDS = {"next-build", "next-review", "next-fix-review", "next-finalize"}
+WORKER_LIFECYCLE_COMMANDS = {"next-build", "next-review-build", "next-fix-review", "next-finalize"}
 
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 PatchBodyScalar = str | int | float | bool | None
@@ -740,10 +741,7 @@ class APIServer:
                     )
 
                 if request.direct and identity.session_id:
-                    from teleclaude.core.session_listeners import (
-                        create_or_reuse_direct_link,
-                        unregister_listener,
-                    )
+                    from teleclaude.core.session_listeners import create_or_reuse_direct_link, unregister_listener
 
                     await unregister_listener(
                         target_session_id=str(session_id),
@@ -1840,6 +1838,22 @@ class APIServer:
                 raise HTTPException(503, "Chiptunes manager not available")
             manager.next_track()
             return JSONResponse({"status": "ok"})
+
+        @self.app.get("/api/chiptunes/status")
+        async def chiptunes_status() -> ChiptunesStatusDTO:  # pyright: ignore
+            """Return current chiptunes playback state."""
+            if not self.runtime_settings:
+                raise HTTPException(503, "Runtime settings not available")
+            manager = self.runtime_settings._chiptunes_manager
+            if manager is None:
+                raise HTTPException(503, "Chiptunes manager not available")
+            return ChiptunesStatusDTO(
+                enabled=manager.enabled,
+                playing=manager.is_playing,
+                paused=manager.is_paused,
+                track=manager.current_track,
+                sid_path=manager.current_sid_path,
+            )
 
         @self.app.post("/api/chiptunes/prev")
         async def chiptunes_prev() -> JSONResponse:  # pyright: ignore

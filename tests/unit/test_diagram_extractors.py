@@ -90,7 +90,7 @@ def test_extract_state_machines_regression() -> None:
     # directly before reporting done. So this transition is no longer inferred from
     # POST_COMPLETION by the diagram extractor.
     assert "p_PENDING --> p_COMPLETE: next-build" not in mermaid
-    assert "p_PENDING --> p_APPROVED: next-review" in mermaid
+    assert "p_PENDING --> p_APPROVED: next-review-build" in mermaid
     assert "p_APPROVED --> p_PENDING: next-fix-review" in mermaid
 
 
@@ -108,8 +108,8 @@ def test_extract_commands_regression() -> None:
     mermaid = module.generate_mermaid(commands, dispatch_edges, completion_edges)
 
     assert "next_work -->|dispatch| next_build" in mermaid
-    assert "next_work -->|dispatch| next_review" in mermaid
-    assert "next_fix_review -->|post-completion| next_work" in mermaid
+    assert "next_work -->|dispatch| next_review_todo" in mermaid
+    assert "next_fix_review_todo -->|post-completion| next_work" in mermaid
 
 
 def test_extract_data_model_regression() -> None:

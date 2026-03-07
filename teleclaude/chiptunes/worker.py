@@ -38,6 +38,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         pick_random_track: Callable[[], Path | None] | Path,
         volume: float,
         on_track_start: Callable[[str, str], None] | None = None,
+        on_state_change: Callable[[], None] | None = None,
     ) -> None:
         self._music_dir: Path | None = None
         if isinstance(pick_random_track, Path):
@@ -47,11 +48,14 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             self._pick_random_track = pick_random_track
         self._volume = volume
         self.on_track_start = on_track_start
+        self.on_state_change = on_state_change
 
         self._history: list[Path] = []
         self._history_index: int = -1
         self._player: ChiptunesPlayer | None = None
         self._enabled: bool = False
+        self._current_track: Path | None = None
+        self._paused_requested: bool = False
         self._lock = threading.RLock()
 
     # ------------------------------------------------------------------ #
@@ -61,30 +65,59 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
     def enable(self) -> None:
         """Mark worker as enabled and start the first track."""
         self._enabled = True
+        self._notify_state_change()
         threading.Thread(target=self._play_next, daemon=True, name="chiptunes-start").start()
 
     def disable(self) -> None:
         """Mark worker as disabled and stop playback."""
         with self._lock:
             self._enabled = False
+            self._paused_requested = False
             if self._player is not None:
                 self._player.stop()
                 self._player = None
+            self._current_track = None
+        self._notify_state_change()
 
     def pause(self) -> None:
         """Pause current playback."""
+        with self._lock:
+            self._paused_requested = True
         if self._player is not None:
             self._player.pause()
+        self._notify_state_change()
 
     def resume(self) -> None:
         """Resume paused playback."""
+        with self._lock:
+            self._paused_requested = False
         if self._player is not None:
             self._player.resume()
+        self._notify_state_change()
 
     @property
     def is_playing(self) -> bool:
         """Return True if a track is currently active."""
         return self._player is not None and self._player.is_playing
+
+    @property
+    def is_paused(self) -> bool:
+        """Return True if a track is loaded but currently paused."""
+        if self._player is not None and self._player.is_paused:
+            return True
+        return self._enabled and self._paused_requested
+
+    @property
+    def current_track(self) -> Path | None:
+        """Return the currently selected track path, if any."""
+        return self._current_track
+
+    @property
+    def current_track_label(self) -> str:
+        """Return the current track label, if any."""
+        if self._current_track is None:
+            return ""
+        return self._current_track.stem.replace("_", " ")
 
     def handle_cmd(self, cmd: dict[str, object]) -> None:  # guard: loose-dict - cmd payload
         """Dispatch a command dict to the appropriate navigation method.
@@ -112,6 +145,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             player = ChiptunesPlayer(volume=self._volume)
             player.on_track_end = self._on_track_end
             self._player = player
+            self._current_track = track
 
         track_label = track.stem.replace("_", " ")
         logger.info("ChipTunes: playing %s", track_label)
@@ -120,6 +154,11 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             self.on_track_start(track_label, str(track))
 
         player.play(track)
+        with self._lock:
+            paused_requested = self._paused_requested
+        if paused_requested:
+            player.pause()
+        self._notify_state_change()
 
     def _play_next(self) -> None:
         """Advance to the next track.
@@ -173,6 +212,8 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         if self._enabled:
             logger.debug("ChipTunes: track ended, advancing to next")
             threading.Thread(target=self._play_next, daemon=True, name="chiptunes-auto-next").start()
+        else:
+            self._notify_state_change()
 
     def _discover_tracks(self) -> list[Path]:
         """Collect PSID tracks when worker is initialized with a music directory."""
@@ -187,3 +228,11 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             if not _is_rsid(sid_path):
                 tracks.append(sid_path)
         return tracks
+
+    def _notify_state_change(self) -> None:
+        if self.on_state_change is None:
+            return
+        try:
+            self.on_state_change()
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.warning("on_state_change callback error", exc_info=True)

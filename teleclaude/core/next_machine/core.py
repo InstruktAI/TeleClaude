@@ -177,7 +177,7 @@ POST_COMPLETION: dict[str, str] = {
    - Report the error status and session ID to the user for manual intervention
 5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
-    "next-review": """WHEN WORKER COMPLETES:
+    "next-review-build": """WHEN WORKER COMPLETES:
 1. Read worker output via get_session_data to extract verdict
 2. If verdict is APPROVE:
    a. telec sessions end <session_id>
@@ -2489,9 +2489,10 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             # Breakdown assessment needed
             if hitl:
                 return format_hitl_guidance(
-                    f"Preparing: {resolved_slug}. Read todos/{resolved_slug}/input.md and assess "
-                    "Definition of Ready. If complex, split into smaller todos. Then update state.yaml "
-                    "and create breakdown.md."
+                    f"Preparing: {resolved_slug}. Read todos/{resolved_slug}/input.md and the "
+                    "actual source files it references. Assess scope using DOR gate 2 splitting "
+                    "heuristics — ground in code, test coherence, weigh coordination cost. "
+                    "Default is: do not split. Then update state.yaml and create breakdown.md."
                 )
             # Non-HITL: dispatch architect to assess
             guidance = await compose_agent_guidance(db)
@@ -2501,7 +2502,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 project=cwd,
                 guidance=guidance,
                 subfolder="",
-                note=f"Assess todos/{resolved_slug}/input.md for complexity. Split if needed.",
+                note=f"Assess todos/{resolved_slug}/input.md. Read actual source files before sizing. Default: do not split.",
                 next_call="telec todo prepare",
             )
 
@@ -2898,7 +2899,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             note=(
                 "PEER CONVERSATION NOTE: If you still have the reviewer session alive from the "
                 "previous review dispatch, prefer the direct conversation pattern from "
-                "POST_COMPLETION[next-review] instead of a fresh fix-review dispatch: "
+                "POST_COMPLETION[next-review-build] instead of a fresh fix-review dispatch: "
                 "send fixer and reviewer session IDs to each other with --direct to let them "
                 "iterate without context-destroying churn. This fallback path is for when the "
                 "reviewer session has already ended."
@@ -3003,7 +3004,7 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
             return format_error("NO_AGENTS", str(exc))
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_review")
         return format_tool_call(
-            command="next-review",
+            command="next-review-build",
             args=resolved_slug,
             project=cwd,
             guidance=guidance,

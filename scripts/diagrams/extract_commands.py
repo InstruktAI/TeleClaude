@@ -18,7 +18,7 @@ COMMAND_ROLES: dict[str, str] = {
     "next-prepare-gate": "worker",
     "next-work": "orchestrator",
     "next-build": "worker",
-    "next-review": "worker",
+    "next-review-build": "worker",
     "next-fix-review": "worker",
     "next-defer": "orchestrator",
     "next-finalize": "worker",

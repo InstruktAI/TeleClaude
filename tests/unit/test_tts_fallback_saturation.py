@@ -80,28 +80,27 @@ async def _trigger(
     assigned_voice: VoiceConfig,
     voices_in_use: set[tuple[str, str]],
 ) -> list[tuple[str, str | None]]:
-    """Call trigger_event and capture the service_chain passed to the TTS runner."""
-    captured_chains: list[list[tuple[str, str | None]]] = []
+    """Call trigger_event and capture the queued service_chain."""
+    captured_chain: list[tuple[str, str | None]] | None = None
 
-    async def _capture_tts(text, chain, sid):
-        captured_chains.append(chain)
-        return (True, chain[0][0], chain[0][1])
-
-    mock_task = MagicMock()
-    mock_task.result.return_value = (True, assigned_voice.service_name, assigned_voice.voice)
+    async def _capture_enqueue(
+        text: str,
+        chain: list[tuple[str, str | None]],
+        sid: str,
+        primary_service: str,
+    ) -> None:
+        nonlocal captured_chain
+        captured_chain = list(chain)
+        assert sid == session_id
+        assert primary_service == assigned_voice.service_name
 
     with (
         patch("teleclaude.tts.manager.db") as mock_db,
-        patch("teleclaude.tts.manager.run_tts_with_lock_async", side_effect=_capture_tts) as mock_run,
-        patch("teleclaude.tts.manager.asyncio") as mock_asyncio,
+        patch.object(manager, "_enqueue_speech", side_effect=_capture_enqueue) as mock_enqueue,
     ):
         mock_db.get_session = AsyncMock(return_value=_mock_session())
         mock_db.get_voice = AsyncMock(return_value=assigned_voice)
         mock_db.get_voices_in_use = AsyncMock(return_value=voices_in_use)
-
-        # Make create_task return a mock that captures the done callback
-        task_mock = MagicMock()
-        mock_asyncio.create_task = MagicMock(side_effect=lambda coro: (task_mock, coro.close())[0])
 
         result = await manager.trigger_event(
             AgentHookEvents.AGENT_SESSION_START,
@@ -110,10 +109,9 @@ async def _trigger(
         )
 
     assert result is True, "trigger_event should return True"
-    # The chain is passed to run_tts_with_lock_async
-    assert mock_run.call_count == 1
-    _, call_args, _ = mock_run.mock_calls[0]
-    return call_args[1]  # service_chain argument
+    assert mock_enqueue.call_count == 1
+    assert captured_chain is not None
+    return captured_chain
 
 
 # ── tests ─────────────────────────────────────────────────────────────────

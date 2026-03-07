@@ -2,6 +2,7 @@
 
 import asyncio
 import random
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 from instrukt_ai_logging import get_logger
@@ -11,6 +12,7 @@ from teleclaude.core.db import db
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.voice_assignment import VoiceConfig
+from teleclaude.tts.audio_focus import AudioFocusCoordinator
 from teleclaude.tts.queue_runner import run_tts_with_lock_async
 
 if TYPE_CHECKING:
@@ -42,6 +44,14 @@ SESSION_START_MESSAGES = [
 logger = get_logger(__name__)
 
 
+@dataclass(slots=True)
+class _SpeechJob:
+    text: str
+    service_chain: list[tuple[str, Optional[str]]]
+    session_id: str
+    primary_service: str
+
+
 class TTSManager:
     """Manages TTS configuration and event triggering."""
 
@@ -50,10 +60,21 @@ class TTSManager:
         self.tts_config = self._load_tts_config()
         self.enabled = self.tts_config.enabled
         self._chiptunes_manager: "ChiptunesManager | None" = None
+        self._audio_focus = AudioFocusCoordinator()
+        self._speech_queue: asyncio.Queue[_SpeechJob] | None = None
+        self._worker_task: asyncio.Task[None] | None = None
+        self._runtime_lock: asyncio.Lock | None = None
 
     def set_chiptunes_manager(self, manager: "ChiptunesManager") -> None:
         """Inject ChiptunesManager reference for pause/resume during TTS."""
+        self._ensure_runtime_state()
         self._chiptunes_manager = manager
+        self._audio_focus.set_chiptunes_manager(manager)
+
+    def on_chiptunes_state_change(self) -> None:
+        """Re-assert foreground speech ownership after background audio changes."""
+        self._ensure_runtime_state()
+        self._audio_focus.on_background_state_change()
 
     def _load_tts_config(self) -> TTSConfig:
         """Load TTS config from config.yaml."""
@@ -251,15 +272,7 @@ class TTSManager:
             extra={"session_id": session_id[:8]},
         )
 
-        # Pause chiptunes while TTS speaks
-        if self._chiptunes_manager is not None and self._chiptunes_manager.is_playing:
-            self._chiptunes_manager.pause()
-
-        # Queue TTS (non-blocking)
-        task = asyncio.create_task(run_tts_with_lock_async(text_to_speak, service_chain, session_id))
-        task.add_done_callback(
-            lambda t: asyncio.create_task(self._handle_tts_result(t, session_id, voice.service_name))
-        )
+        await self._enqueue_speech(text_to_speak, service_chain, session_id, voice.service_name)
         return True
 
     async def speak(self, text: str, session_id: str) -> bool:
@@ -289,14 +302,7 @@ class TTSManager:
         service_chain: list[tuple[str, Optional[str]]] = [(voice.service_name, voice.voice)]
         logger.debug("TTS speak queued (voice %s): %s...", voice.voice, text[:50])
 
-        # Pause chiptunes while TTS speaks
-        if self._chiptunes_manager is not None and self._chiptunes_manager.is_playing:
-            self._chiptunes_manager.pause()
-
-        task = asyncio.create_task(run_tts_with_lock_async(text, service_chain, session_id))
-        task.add_done_callback(
-            lambda t: asyncio.create_task(self._handle_tts_result(t, session_id, voice.service_name))
-        )
+        await self._enqueue_speech(text, service_chain, session_id, voice.service_name)
         return True
 
     def _normalize_event_name(self, event_name: str | AgentHookEventType) -> str | None:
@@ -305,35 +311,113 @@ class TTSManager:
             return "session_start"
         return None
 
-    async def _handle_tts_result(
+    def _ensure_runtime_state(self) -> None:
+        """Backfill async runtime state for tests that bypass __init__."""
+        if not hasattr(self, "_chiptunes_manager"):
+            self._chiptunes_manager = None
+        if not hasattr(self, "_audio_focus") or self._audio_focus is None:
+            self._audio_focus = AudioFocusCoordinator()
+            if self._chiptunes_manager is not None:
+                self._audio_focus.set_chiptunes_manager(self._chiptunes_manager)
+        if not hasattr(self, "_speech_queue"):
+            self._speech_queue = None
+        if not hasattr(self, "_worker_task"):
+            self._worker_task = None
+        if not hasattr(self, "_runtime_lock"):
+            self._runtime_lock = None
+
+    async def _ensure_playback_runtime(self) -> None:
+        self._ensure_runtime_state()
+        if self._runtime_lock is None:
+            self._runtime_lock = asyncio.Lock()
+        async with self._runtime_lock:
+            if self._speech_queue is None:
+                self._speech_queue = asyncio.Queue()
+            if self._worker_task is None or self._worker_task.done():
+                self._worker_task = asyncio.create_task(self._speech_worker(), name="tts-playback-worker")
+                self._worker_task.add_done_callback(self._log_worker_failure)
+
+    async def _enqueue_speech(
         self,
-        task: asyncio.Task[tuple[bool, str | None, str | None]],
+        text: str,
+        service_chain: list[tuple[str, Optional[str]]],
         session_id: str,
         primary_service: str,
     ) -> None:
-        """Persist fallback voice when a non-primary service succeeds.
+        await self._ensure_playback_runtime()
+        assert self._runtime_lock is not None
+        assert self._speech_queue is not None
+        async with self._runtime_lock:
+            self._audio_focus.claim_foreground()
+            self._speech_queue.put_nowait(
+                _SpeechJob(
+                    text=text,
+                    service_chain=service_chain,
+                    session_id=session_id,
+                    primary_service=primary_service,
+                )
+            )
+            logger.debug(
+                "TTS queued: pending=%d queue=%d",
+                self._audio_focus.active_claims,
+                self._speech_queue.qsize(),
+                extra={"session_id": session_id[:8]},
+            )
 
-        Also resumes chiptunes after TTS playback completes.
-        """
-        # Resume chiptunes after TTS (only if chiptunes are enabled)
-        if self._chiptunes_manager is not None and self._chiptunes_manager.enabled:
-            self._chiptunes_manager.resume()
+    async def _speech_worker(self) -> None:
+        assert self._speech_queue is not None
+        while True:
+            job = await self._speech_queue.get()
+            try:
+                await self._run_speech_job(job)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - background worker should not crash the daemon
+                logger.error("TTS worker failed: %s", exc, extra={"session_id": job.session_id[:8]})
+            finally:
+                self._speech_queue.task_done()
+                self._audio_focus.release_foreground()
 
-        try:
-            success, used_service, used_voice = task.result()
-        except Exception as exc:  # noqa: BLE001 - background task failure should not crash
-            logger.error("TTS task failed: %s", exc, extra={"session_id": session_id[:8]})
-            return
-
+    async def _run_speech_job(self, job: _SpeechJob) -> None:
+        """Speak one queued request and persist fallback voice promotions."""
+        success, used_service, used_voice = await run_tts_with_lock_async(
+            job.text,
+            job.service_chain,
+            job.session_id,
+        )
         if not success or not used_service:
             return
-        if used_service == primary_service:
+        if used_service == job.primary_service:
             return
 
-        await db.assign_voice(session_id, VoiceConfig(service_name=used_service, voice=used_voice or ""))
+        await db.assign_voice(job.session_id, VoiceConfig(service_name=used_service, voice=used_voice or ""))
         logger.info(
             "Promoted fallback voice %s from %s for session %s",
             used_voice or "default",
             used_service,
-            session_id[:8],
+            job.session_id[:8],
         )
+
+    def _log_worker_failure(self, task: asyncio.Task[None]) -> None:
+        """Log unexpected worker exits."""
+        try:
+            exc = task.exception()
+        except asyncio.CancelledError:
+            return
+        if exc is None:
+            return
+        logger.error("TTS worker crashed: %s", exc, exc_info=exc)
+
+    async def shutdown(self) -> None:
+        """Stop the background worker and restore background audio state."""
+        self._ensure_runtime_state()
+        worker = self._worker_task
+        self._worker_task = None
+        if worker is not None:
+            worker.cancel()
+            try:
+                await worker
+            except asyncio.CancelledError:
+                pass
+        self._speech_queue = None
+        self._audio_focus.reset()

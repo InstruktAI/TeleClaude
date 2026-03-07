@@ -371,14 +371,13 @@ class TelecApp(App[str | None]):
         _r0 = _t.monotonic()
         logger.trace("[PERF] _refresh_data START t=%.3f", _r0)
         try:
-            computers, projects_with_todos, sessions, availability, jobs, settings, chiptunes_status = await asyncio.gather(
+            computers, projects_with_todos, sessions, availability, jobs, settings = await asyncio.gather(
                 self.api.list_computers(),
                 self.api.list_projects_with_todos(),
                 self.api.list_sessions(),
                 self.api.get_agent_availability(),
                 self.api.list_jobs(),
                 self.api.get_settings(),
-                self.api.get_chiptunes_status(),
             )
             logger.trace("[PERF] _refresh_data gather done dt=%.3f", _t.monotonic() - _r0)
             self._computers = computers
@@ -404,6 +403,12 @@ class TelecApp(App[str | None]):
             except Exception:
                 chiptunes_enabled = False
 
+            try:
+                chiptunes_status = await self.api.get_chiptunes_status()
+            except Exception:
+                logger.debug("ChipTunes status refresh failed", exc_info=True)
+                chiptunes_status = None
+
             self.post_message(
                 DataRefreshed(
                     computers=computers,
@@ -414,9 +419,9 @@ class TelecApp(App[str | None]):
                     jobs=jobs,
                     tts_enabled=tts_enabled,
                     chiptunes_enabled=chiptunes_enabled,
-                    chiptunes_playing=chiptunes_status.playing,
-                    chiptunes_track=chiptunes_status.track,
-                    chiptunes_sid_path=chiptunes_status.sid_path,
+                    chiptunes_playing=chiptunes_status.playing if chiptunes_status else False,
+                    chiptunes_track=chiptunes_status.track if chiptunes_status else "",
+                    chiptunes_sid_path=chiptunes_status.sid_path if chiptunes_status else "",
                 )
             )
         except Exception:

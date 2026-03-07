@@ -11,6 +11,12 @@ from teleclaude.api_models import (
     AgentAvailabilityDTO as AgentAvailabilityInfo,
 )
 from teleclaude.api_models import (
+    ChiptunesStateEventDTO as ChiptunesStateEvent,
+)
+from teleclaude.api_models import (
+    ChiptunesStatusDTO as ChiptunesStatusInfo,
+)
+from teleclaude.api_models import (
     ChiptunesSettingsPatchDTO as ChiptunesSettingsPatchInfo,
 )
 from teleclaude.api_models import (
@@ -105,7 +111,9 @@ __all__ = [
     "SessionStartedEvent",
     "SessionUpdatedEvent",
     "SettingsInfo",
+    "ChiptunesStatusInfo",
     "ChiptunesSettingsPatchInfo",
+    "ChiptunesStateEvent",
     "ChiptunesTrackEvent",
     "SettingsPatchInfo",
     "TTSSettingsPatchInfo",
@@ -133,6 +141,7 @@ WsEvent: TypeAlias = Union[
     RefreshEvent,
     ErrorEvent,
     AgentActivityEvent,
+    ChiptunesStateEvent,
     ChiptunesTrackEvent,
 ]
 

@@ -1,5 +1,5 @@
-project_root: ~/Workspace/InstruktAI/TeleClaude/trees/async-operation-receipts
-snippets_root: ~/Workspace/InstruktAI/TeleClaude/trees/async-operation-receipts/docs/project
+project_root: ~/Workspace/InstruktAI/TeleClaude
+snippets_root: ~/Workspace/InstruktAI/TeleClaude/docs/project
 snippets:
 - id: project/concept/ai-worker
   description: The role of an AI agent session in the TeleClaude network.
@@ -175,7 +175,8 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/operation-receipts
-  description: Receipt-first contract for long-running telec todo work operations.
+  description: Receipt-first contract for durable long-running todo work execution
+    and polling.
   type: design
   scope: project
   path: docs/project/design/architecture/operation-receipts.md
@@ -280,7 +281,7 @@ snippets:
   source_project: TeleClaude
 - id: project/design/architecture/tts-system
   description: Text-to-speech system with multi-backend fallback, per-session voice
-    assignment, and file-locked sequential playback.
+    assignment, queued playback, and chiptunes audio focus coordination.
   type: design
   scope: project
   path: docs/project/design/architecture/tts-system.md
