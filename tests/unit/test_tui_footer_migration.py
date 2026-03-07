@@ -222,7 +222,7 @@ async def test_telec_footer_transport_controls_use_real_buttons() -> None:
         play_button = footer.query_one("#footer-play", FooterActionButton)
         next_button = footer.query_one("#footer-next", FooterActionButton)
 
-        assert play_button.icon == "▶️"
+        assert play_button.icon == "▶"
         assert play_button.can_focus is False
         assert next_button.disabled is False
 

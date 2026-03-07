@@ -32,7 +32,7 @@ class FooterActionButton(Static, can_focus=False):
     DEFAULT_CSS = """
     FooterActionButton {
         min-width: 0;
-        width: 4;
+        width: 1;
         height: 1;
         margin: 0 1 0 0;
         background: transparent;
@@ -141,14 +141,17 @@ class TelecFooter(Widget):
     }
 
     .footer-action-button.-last-action {
-        margin: 0;
+        margin: 0 1 0 0;
     }
 
     #footer-prev,
     #footer-play,
-    #footer-next,
+    #footer-next {
+        width: 1;
+    }
+
     #footer-fav {
-        width: 4;
+        width: 2;
     }
     """
 
@@ -184,9 +187,9 @@ class TelecFooter(Widget):
             with Horizontal(id="footer-actions"):
                 yield Static("", id="footer-pane-toggle", classes="footer-token")
                 yield Static("", id="footer-tts-toggle", classes="footer-token")
-                yield FooterActionButton("\u23ee\ufe0f", id="footer-prev", classes="footer-action-button")
-                yield FooterActionButton("\u25b6\ufe0f", id="footer-play", classes="footer-action-button")
-                yield FooterActionButton("\u23ed\ufe0f", id="footer-next", classes="footer-action-button")
+                yield FooterActionButton("\u23ee", id="footer-prev", classes="footer-action-button")
+                yield FooterActionButton("\u25b6", id="footer-play", classes="footer-action-button")
+                yield FooterActionButton("\u23ed", id="footer-next", classes="footer-action-button")
                 yield FooterActionButton("\u2b50", id="footer-fav", classes="footer-action-button -last-action")
                 yield Static("", id="footer-anim-toggle", classes="footer-token -last-token")
 
@@ -351,9 +354,9 @@ class TelecFooter(Widget):
         next_button = self.query_one("#footer-next", FooterActionButton)
         fav_button = self.query_one("#footer-fav", FooterActionButton)
 
-        prev_button.icon = "\u23ee\ufe0f"
-        play_button.icon = "\u23f8\ufe0f" if (self.chiptunes_enabled and self.chiptunes_playing) else "\u25b6\ufe0f"
-        next_button.icon = "\u23ed\ufe0f"
+        prev_button.icon = "\u23ee"
+        play_button.icon = "\u23f8" if (self.chiptunes_enabled and self.chiptunes_playing) else "\u25b6"
+        next_button.icon = "\u23ed"
         fav_button.icon = "\u2705" if (self.chiptunes_enabled and self.chiptunes_favorited) else "\u2b50"
 
         prev_button.disabled = not self.chiptunes_enabled
