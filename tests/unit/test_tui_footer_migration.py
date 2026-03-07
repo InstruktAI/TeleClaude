@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from textual.app import App, ComposeResult
-from textual.widgets import Button
 
 from teleclaude.cli.models import ChiptunesStateEvent, ComputerInfo, ProjectInfo, SessionInfo
 from teleclaude.cli.tui.app import TelecApp
@@ -20,7 +19,7 @@ from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.session_row import SessionRow
-from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
+from teleclaude.cli.tui.widgets.telec_footer import FooterActionButton, TelecFooter
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD
@@ -172,7 +171,7 @@ def test_telec_footer_play_click_routes_to_play_pause() -> None:
     seen: list[tuple[str, object]] = []
     footer.post_message = lambda message: seen.append((message.key, message.value))  # type: ignore[method-assign]
 
-    footer.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="footer-play")))
+    footer.on_footer_action_button_pressed(SimpleNamespace(button=SimpleNamespace(id="footer-play")))
 
     assert seen == [("chiptunes_play_pause", None)]
 
@@ -185,7 +184,7 @@ def test_telec_footer_next_click_routes_to_next() -> None:
     footer.post_message = lambda message: seen.append((message.key, message.value))  # type: ignore[method-assign]
 
     footer.chiptunes_enabled = True
-    footer.on_button_pressed(SimpleNamespace(button=SimpleNamespace(id="footer-next")))
+    footer.on_footer_action_button_pressed(SimpleNamespace(button=SimpleNamespace(id="footer-next")))
 
     assert seen == [("chiptunes_next", None)]
 
@@ -200,7 +199,7 @@ async def test_telec_footer_play_button_width_is_stable() -> None:
         footer.chiptunes_enabled = True
         await pilot.pause(0.05)
 
-        play_button = footer.query_one("#footer-play", Button)
+        play_button = footer.query_one("#footer-play", FooterActionButton)
         play_width = play_button.size.width
 
         footer.chiptunes_playing = True
@@ -220,10 +219,10 @@ async def test_telec_footer_transport_controls_use_real_buttons() -> None:
         footer.chiptunes_enabled = True
         await pilot.pause(0.05)
 
-        play_button = footer.query_one("#footer-play", Button)
-        next_button = footer.query_one("#footer-next", Button)
+        play_button = footer.query_one("#footer-play", FooterActionButton)
+        next_button = footer.query_one("#footer-next", FooterActionButton)
 
-        assert play_button.label.plain == "Play"
+        assert play_button.icon == "▶️"
         assert play_button.can_focus is False
         assert next_button.disabled is False
 

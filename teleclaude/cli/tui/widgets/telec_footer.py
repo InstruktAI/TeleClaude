@@ -8,9 +8,10 @@ from rich.style import Style
 from rich.text import Text
 from textual.binding import Binding
 from textual.events import Click
+from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
-from textual.widgets import Button, Static
+from textual.widgets import Static
 
 from teleclaude.cli.models import AgentAvailabilityInfo
 from teleclaude.cli.tui.messages import SettingsChanged, StateChanged
@@ -18,20 +19,26 @@ from teleclaude.cli.tui.theme import get_agent_color, get_agent_style, get_neutr
 from teleclaude.cli.tui.utils.formatters import format_countdown
 
 
-class FooterActionButton(Button, can_focus=False):
-    """Compact footer button with stable single-line layout."""
+class FooterActionButton(Static, can_focus=False):
+    """Single-line icon button for the packed footer layout."""
+
+    icon = reactive("")
+
+    class Pressed(Message):
+        def __init__(self, button: FooterActionButton) -> None:
+            self.button = button
+            super().__init__()
 
     DEFAULT_CSS = """
     FooterActionButton {
         min-width: 0;
-        width: auto;
+        width: 4;
         height: 1;
-        padding: 0 1;
         margin: 0 1 0 0;
-        border: none !important;
         background: transparent;
         color: $text;
-        text-style: bold;
+        content-align: center middle;
+        pointer: pointer;
     }
 
     FooterActionButton:hover {
@@ -45,8 +52,30 @@ class FooterActionButton(Button, can_focus=False):
     }
     """
 
-    def __init__(self, label: str, **kwargs: object) -> None:
-        super().__init__(label, compact=True, **kwargs)
+    def __init__(self, icon: str, **kwargs: object) -> None:
+        super().__init__("", markup=False, **kwargs)
+        self.icon = icon
+
+    def on_mount(self) -> None:
+        self.update(self._render_icon())
+
+    def watch_icon(self, _value: str) -> None:
+        if self.is_mounted:
+            self.update(self._render_icon())
+
+    def watch_disabled(self, disabled: bool) -> None:
+        self.set_class(disabled, "-disabled")
+        if self.is_mounted:
+            self.update(self._render_icon())
+
+    def _render_icon(self) -> Text:
+        return Text(self.icon, style=Style(bold=not self.disabled, dim=self.disabled))
+
+    def on_click(self, event: Click) -> None:
+        if self.disabled:
+            return
+        event.stop()
+        self.post_message(self.Pressed(self))
 
 
 class TelecFooter(Widget):
@@ -116,13 +145,10 @@ class TelecFooter(Widget):
     }
 
     #footer-prev,
-    #footer-next {
-        width: 8;
-    }
-
     #footer-play,
+    #footer-next,
     #footer-fav {
-        width: 9;
+        width: 4;
     }
     """
 
@@ -158,10 +184,10 @@ class TelecFooter(Widget):
             with Horizontal(id="footer-actions"):
                 yield Static("", id="footer-pane-toggle", classes="footer-token")
                 yield Static("", id="footer-tts-toggle", classes="footer-token")
-                yield FooterActionButton("Prev", id="footer-prev", classes="footer-action-button")
-                yield FooterActionButton("Play", id="footer-play", classes="footer-action-button")
-                yield FooterActionButton("Next", id="footer-next", classes="footer-action-button")
-                yield FooterActionButton("Fav", id="footer-fav", classes="footer-action-button -last-action")
+                yield FooterActionButton("\u23ee\ufe0f", id="footer-prev", classes="footer-action-button")
+                yield FooterActionButton("\u25b6\ufe0f", id="footer-play", classes="footer-action-button")
+                yield FooterActionButton("\u23ed\ufe0f", id="footer-next", classes="footer-action-button")
+                yield FooterActionButton("\u2b50", id="footer-fav", classes="footer-action-button -last-action")
                 yield Static("", id="footer-anim-toggle", classes="footer-token -last-token")
 
     def on_mount(self) -> None:
@@ -325,10 +351,10 @@ class TelecFooter(Widget):
         next_button = self.query_one("#footer-next", FooterActionButton)
         fav_button = self.query_one("#footer-fav", FooterActionButton)
 
-        prev_button.label = "Prev"
-        play_button.label = "Pause" if (self.chiptunes_enabled and self.chiptunes_playing) else "Play"
-        next_button.label = "Next"
-        fav_button.label = "Saved" if (self.chiptunes_enabled and self.chiptunes_favorited) else "Fav"
+        prev_button.icon = "\u23ee\ufe0f"
+        play_button.icon = "\u23f8\ufe0f" if (self.chiptunes_enabled and self.chiptunes_playing) else "\u25b6\ufe0f"
+        next_button.icon = "\u23ed\ufe0f"
+        fav_button.icon = "\u2705" if (self.chiptunes_enabled and self.chiptunes_favorited) else "\u2b50"
 
         prev_button.disabled = not self.chiptunes_enabled
         next_button.disabled = not self.chiptunes_enabled
@@ -340,7 +366,7 @@ class TelecFooter(Widget):
         widget = event.widget
         if widget is None or widget is self:
             return
-        if isinstance(widget, Button):
+        if isinstance(widget, FooterActionButton):
             return
         widget_id = widget.id
         if widget_id is None:
@@ -374,7 +400,7 @@ class TelecFooter(Widget):
             new_mode = cycle[(idx + 1) % len(cycle)]
             self.post_message(SettingsChanged("animation_mode", new_mode))
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
+    def on_footer_action_button_pressed(self, event: FooterActionButton.Pressed) -> None:
         button_id = event.button.id
         if button_id == "footer-prev":
             self.post_message(SettingsChanged("chiptunes_prev", None))
