@@ -842,6 +842,7 @@ class APIServer:
                 create_or_reuse_direct_link,
                 get_peer_members,
                 resolve_link_for_sender_target,
+                unregister_listener,
             )
 
             await check_session_access(http_request, session_id)
@@ -915,6 +916,11 @@ class APIServer:
                                 "Your turn-complete output is automatically shared — just talk."
                             ),
                         }
+
+                    await unregister_listener(
+                        target_session_id=session_id,
+                        caller_session_id=identity.session_id,
+                    )
 
                     link, _ = await create_or_reuse_direct_link(
                         caller_session_id=identity.session_id,

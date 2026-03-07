@@ -1,9 +1,13 @@
 """Unit tests for db.py."""
 
+import importlib.util
 import os
 import tempfile
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import patch
+
+import aiosqlite
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
@@ -15,6 +19,15 @@ from teleclaude.core.origins import InputOrigin
 from teleclaude.core.voice_assignment import VoiceConfig
 
 FIXED_NOW = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+
+def _load_migration_module(filename: str):
+    migration_path = Path("teleclaude/core/migrations") / filename
+    spec = importlib.util.spec_from_file_location(filename.replace(".py", ""), migration_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.fixture
@@ -54,7 +67,7 @@ class TestCreateSession:
         assert session.title == "[TestPC] Untitled"  # Default title logic
         assert session.created_at is not None
         assert session.last_activity is not None
-        assert session.user_role == "admin"
+        assert session.human_role == "admin"
 
     @pytest.mark.asyncio
     async def test_create_session_with_all_fields(self, test_db):
@@ -107,6 +120,35 @@ class TestDbSettings:
             row = (await session.exec(text("PRAGMA busy_timeout"))).first()  # raw-sql
             assert row is not None
             assert int(row[0]) >= 5000
+
+
+@pytest.mark.asyncio
+async def test_backfill_human_role_from_legacy_user_role(tmp_path):
+    """Backfill should copy legacy user_role into human_role only when missing."""
+    migration = _load_migration_module("023_backfill_human_role_from_user_role.py")
+    db_path = tmp_path / "backfill.db"
+
+    async with aiosqlite.connect(db_path) as conn:
+        await conn.execute("""
+            CREATE TABLE sessions (
+                session_id TEXT PRIMARY KEY,
+                human_role TEXT,
+                user_role TEXT
+            )
+        """)
+        await conn.execute("INSERT INTO sessions (session_id, human_role, user_role) VALUES (?, ?, ?)", ("a", None, "member"))
+        await conn.execute(
+            "INSERT INTO sessions (session_id, human_role, user_role) VALUES (?, ?, ?)",
+            ("b", "customer", "admin"),
+        )
+        await conn.commit()
+
+        await migration.up(conn)
+
+        cursor = await conn.execute("SELECT session_id, human_role FROM sessions ORDER BY session_id")
+        rows = await cursor.fetchall()
+
+    assert rows == [("a", "member"), ("b", "customer")]
 
 
 class TestGetSession:

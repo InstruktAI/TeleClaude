@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, cast
 
-from teleclaude.constants import FIELD_ADAPTER_METADATA
+from teleclaude.constants import FIELD_ADAPTER_METADATA, HUMAN_ROLE_ADMIN
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
 from teleclaude.core.feedback import get_last_output_summary
 from teleclaude.types import SystemStats
@@ -551,8 +551,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
     last_checkpoint_at: Optional[datetime] = None
     working_slug: Optional[str] = None
     human_email: Optional[str] = None
-    human_role: Optional[str] = None
-    user_role: Optional[str] = "admin"
+    human_role: Optional[str] = HUMAN_ROLE_ADMIN
     lifecycle_status: str = "active"
     last_memory_extraction_at: Optional[datetime] = None
     help_desk_processed_at: Optional[datetime] = None
@@ -711,8 +710,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
             last_output_digest=_get_optional_str("last_output_digest"),
             working_slug=_get_optional_str("working_slug"),
             human_email=_get_optional_str("human_email"),
-            human_role=_get_optional_str("human_role"),
-            user_role=_get_optional_str("user_role") or "admin",
+            human_role=_get_optional_str("human_role") or HUMAN_ROLE_ADMIN,
             lifecycle_status=str(data.get("lifecycle_status") or "active"),
             last_memory_extraction_at=parse_iso_datetime(data.get("last_memory_extraction_at"))
             if isinstance(data.get("last_memory_extraction_at"), str)
@@ -843,7 +841,6 @@ class SessionSnapshot:
     computer: Optional[str] = None
     human_email: Optional[str] = None
     human_role: Optional[str] = None
-    user_role: Optional[str] = "admin"
     visibility: Optional[str] = "private"
     session_metadata: Optional[Dict[str, object]] = None
 
@@ -871,7 +868,6 @@ class SessionSnapshot:
             "computer": self.computer,
             "human_email": self.human_email,
             "human_role": self.human_role,
-            "user_role": self.user_role,
             "visibility": self.visibility,
             "session_metadata": self.session_metadata,
         }
@@ -901,7 +897,6 @@ class SessionSnapshot:
             computer=computer,
             human_email=session.human_email,
             human_role=session.human_role,
-            user_role=session.user_role or "admin",
             visibility=getattr(session, "visibility", None) or "private",
             session_metadata=session.session_metadata,
         )
@@ -939,7 +934,6 @@ class SessionSnapshot:
             computer=str(data.get("computer")) if data.get("computer") else None,
             human_email=str(data.get("human_email")) if data.get("human_email") else None,
             human_role=str(data.get("human_role")) if data.get("human_role") else None,
-            user_role=str(data.get("user_role")) if data.get("user_role") else "admin",
             visibility=str(data.get("visibility")) if data.get("visibility") else "private",
             session_metadata=cast(Optional[Dict[str, object]], data.get("session_metadata")),
         )

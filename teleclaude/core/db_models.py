@@ -56,7 +56,6 @@ class Session(SQLModel, table=True):
     lifecycle_status: Optional[str] = "active"
     human_email: Optional[str] = None
     human_role: Optional[str] = None
-    user_role: Optional[str] = "admin"
     last_memory_extraction_at: Optional[str] = None
     help_desk_processed_at: Optional[str] = None
     relay_status: Optional[str] = None

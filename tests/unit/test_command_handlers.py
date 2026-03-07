@@ -298,7 +298,7 @@ async def test_create_session_skips_listener_registration_when_flag_set(mock_ini
 
 
 @pytest.mark.asyncio
-async def test_create_session_stores_resolved_user_role(mock_initialized_db):
+async def test_create_session_stores_resolved_human_role(mock_initialized_db):
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
     mock_client.send_message = AsyncMock()
@@ -328,11 +328,11 @@ async def test_create_session_stores_resolved_user_role(mock_initialized_db):
 
     stored = await mock_initialized_db.get_session(result["session_id"])
     assert stored is not None
-    assert stored.user_role == "member"
+    assert stored.human_role == "member"
 
 
 @pytest.mark.asyncio
-async def test_create_session_inherits_parent_user_role(mock_initialized_db):
+async def test_create_session_inherits_parent_human_role(mock_initialized_db):
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
     mock_client.send_message = AsyncMock()
@@ -356,7 +356,7 @@ async def test_create_session_inherits_parent_user_role(mock_initialized_db):
                 tmux_session_name="tmux-parent",
                 last_input_origin=InputOrigin.TELEGRAM.value,
                 title="Parent Session",
-                user_role="member",
+                human_role="member",
             )
 
             cmd = CreateSessionCommand(
@@ -369,7 +369,35 @@ async def test_create_session_inherits_parent_user_role(mock_initialized_db):
 
     stored = await mock_initialized_db.get_session(result["session_id"])
     assert stored is not None
-    assert stored.user_role == "member"
+    assert stored.human_role == "member"
+
+
+@pytest.mark.asyncio
+async def test_create_session_defaults_human_role_to_admin_when_identity_missing(mock_initialized_db):
+    mock_client = MagicMock()
+    mock_client.create_channel = AsyncMock()
+    mock_client.send_message = AsyncMock()
+
+    resolver = MagicMock()
+    resolver.resolve.return_value = None
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with (
+            patch.object(command_handlers, "config") as mock_config,
+            patch.object(command_handlers, "db") as mock_db,
+            patch.object(command_handlers, "get_identity_resolver", return_value=resolver),
+        ):
+            mock_config.computer.name = "TestComputer"
+            mock_config.computer.default_working_dir = tmpdir
+            mock_db.create_session = mock_initialized_db.create_session
+            mock_db.get_session = mock_initialized_db.get_session
+
+            cmd = CreateSessionCommand(project_path=tmpdir, title="Role Session", origin=InputOrigin.TELEGRAM.value)
+            result = await command_handlers.create_session(cmd, mock_client)
+
+    stored = await mock_initialized_db.get_session(result["session_id"])
+    assert stored is not None
+    assert stored.human_role == "admin"
 
 
 @pytest.mark.asyncio

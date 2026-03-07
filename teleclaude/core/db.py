@@ -15,7 +15,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 from typing_extensions import TypedDict
 
 from teleclaude.config import config
-from teleclaude.constants import DB_IN_MEMORY
+from teleclaude.constants import DB_IN_MEMORY, HUMAN_ROLE_ADMIN
 from teleclaude.core.event_bus import event_bus
 
 from . import db_models
@@ -167,7 +167,6 @@ class Db:
             working_slug=row.working_slug,
             human_email=row.human_email,
             human_role=row.human_role,
-            user_role=row.user_role or "admin",
             lifecycle_status=row.lifecycle_status or "active",
             last_memory_extraction_at=Db._coerce_datetime(row.last_memory_extraction_at),
             help_desk_processed_at=Db._coerce_datetime(row.help_desk_processed_at),
@@ -346,8 +345,7 @@ class Db:
         working_slug: Optional[str] = None,
         initiator_session_id: Optional[str] = None,
         human_email: Optional[str] = None,
-        human_role: Optional[str] = None,
-        user_role: Optional[str] = "admin",
+        human_role: Optional[str] = HUMAN_ROLE_ADMIN,
         lifecycle_status: str = "active",
         active_agent: Optional[str] = None,
         thinking_mode: Optional[str] = None,
@@ -373,7 +371,6 @@ class Db:
             initiator_session_id: Session ID of the AI that created this session (for AI-to-AI nesting)
             human_email: Optional email of the human user
             human_role: Optional role of the human user
-            user_role: Optional caller role for visibility filtering
             active_agent: Agent name (claude, gemini, codex)
             thinking_mode: Thinking mode (fast, med, slow)
             emit_session_started: If False, caller is responsible for emitting SESSION_STARTED.
@@ -400,8 +397,7 @@ class Db:
             working_slug=working_slug,
             initiator_session_id=initiator_session_id,
             human_email=human_email,
-            human_role=human_role,
-            user_role=user_role or "admin",
+            human_role=human_role or HUMAN_ROLE_ADMIN,
             lifecycle_status=lifecycle_status,
             active_agent=active_agent,
             thinking_mode=thinking_mode,
@@ -424,7 +420,6 @@ class Db:
             initiator_session_id=session.initiator_session_id,
             human_email=session.human_email,
             human_role=session.human_role,
-            user_role=session.user_role or "admin",
             lifecycle_status=session.lifecycle_status,
             active_agent=session.active_agent,
             thinking_mode=session.thinking_mode,
@@ -472,7 +467,7 @@ class Db:
             description=None,
             working_slug=None,
             initiator_session_id=None,
-            user_role="admin",
+            human_role=HUMAN_ROLE_ADMIN,
             lifecycle_status="headless",
             active_agent=active_agent,
             native_session_id=native_session_id,
@@ -493,7 +488,7 @@ class Db:
             description=session.description,
             working_slug=session.working_slug,
             initiator_session_id=session.initiator_session_id,
-            user_role=session.user_role or "admin",
+            human_role=session.human_role,
             lifecycle_status=session.lifecycle_status,
             active_agent=session.active_agent,
             native_session_id=session.native_session_id,

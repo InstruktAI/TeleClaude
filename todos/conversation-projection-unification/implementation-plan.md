@@ -4,14 +4,14 @@
 
 Implement one transcript normalization + assembly path that produces the narrow public stream in [schema.md](./schema.md), then move every transcript-derived consumer onto it.
 
-This plan has three layers:
+This plan has three implementation steps inside that one path:
 
-1. internal normalization
-2. public assembly
-3. consumer serializers/renderers
+1. normalize raw transcript shapes
+2. assemble the unified public stream
+3. make every consumer serialize/render from that assembled stream
 
-The internal normalization layer may keep enough detail to normalize all agent formats correctly.
-The public layer must stay narrow.
+Normalization detail may exist transiently inside the unified entry point only.
+The caller-facing stream stays narrow.
 
 ## Phase 1: Normalization And Assembly Core
 
