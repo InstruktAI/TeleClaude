@@ -914,6 +914,43 @@ def _get_head_commit(cwd: str) -> str:
     return result.stdout.strip()
 
 
+def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> str:
+    """Fetch and merge origin/main into the worktree branch.
+
+    Returns empty string on success (including when fetch is unavailable),
+    or an error message only when merge conflicts occur.
+    """
+    fetch_result = subprocess.run(
+        ["git", "-C", worktree_cwd, "fetch", "origin", "main"],
+        capture_output=True,
+        text=True,
+    )
+    if fetch_result.returncode != 0:
+        # Fetch failure is non-fatal (no remote, offline, test env)
+        logger.info("Skipping origin/main merge for %s — fetch failed: %s", slug, fetch_result.stderr.strip())
+        return ""
+
+    merge_result = subprocess.run(
+        ["git", "-C", worktree_cwd, "merge", "origin/main", "--no-edit"],
+        capture_output=True,
+        text=True,
+    )
+    if merge_result.returncode != 0:
+        # Abort the failed merge so the worktree stays clean
+        subprocess.run(
+            ["git", "-C", worktree_cwd, "merge", "--abort"],
+            capture_output=True,
+            text=True,
+        )
+        return (
+            f"Merge origin/main into worktree {slug} failed with conflicts. "
+            f"The merge was aborted. Resolve manually or rebase.\n{merge_result.stderr.strip()}"
+        )
+
+    logger.info("Merged origin/main into worktree %s", slug)
+    return ""
+
+
 def _has_meaningful_diff(cwd: str, baseline: str, head: str) -> bool:
     """Return True if non-infrastructure commits exist between baseline and head.
 
@@ -2898,6 +2935,17 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         # mark_phase(build, started) is deferred to the orchestrator via pre_dispatch
         # to avoid orphaned "build: started" when the orchestrator decides not to dispatch.
         if build_status != PhaseStatus.COMPLETE.value:
+            # Merge origin/main into the worktree before build dispatch so the
+            # builder starts on a current branch and inherits any test fixes from main.
+            merge_main_result = await asyncio.to_thread(
+                _merge_origin_main_into_worktree, worktree_cwd, resolved_slug
+            )
+            if merge_main_result:
+                _log_next_work_phase(
+                    phase_slug, "merge_main", dispatch_started, "error", "merge_main_failed"
+                )
+                return format_error("MERGE_MAIN_FAILED", merge_main_result)
+
             try:
                 guidance = await compose_agent_guidance(db)
             except RuntimeError as exc:

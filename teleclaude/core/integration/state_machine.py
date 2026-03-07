@@ -885,6 +885,23 @@ def _do_merge(
     pre_merge_head = _get_head_sha(cwd)
     checkpoint.pre_merge_head = pre_merge_head
 
+    # Guard: skip candidates already merged to main (stale re-queue after restart)
+    ancestor_rc, _, _ = _run_git(["merge-base", "--is-ancestor", key.sha, "HEAD"], cwd=cwd)
+    if ancestor_rc == 0:
+        logger.info(
+            "%s slug=%s sha=%s already ancestor of main — skipping as already integrated",
+            _NEXT_INTEGRATE_PHASE_LOG,
+            key.slug,
+            key.sha[:8],
+        )
+        _emit_lifecycle_event(
+            "integration.candidate.already_merged",
+            {"slug": key.slug, "branch": key.branch, "sha": key.sha},
+        )
+        checkpoint.phase = IntegrationPhase.CANDIDATE_DELIVERED.value
+        _write_checkpoint(checkpoint_path, checkpoint)
+        return True, ""
+
     rc, _, stderr = _run_git(["merge", "--squash", key.branch], cwd=cwd)
     if rc == 0:
         # Clean merge
