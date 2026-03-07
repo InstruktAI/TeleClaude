@@ -54,10 +54,22 @@
 - slug: integration-event-chain-phase2
   after:
   - event-system-cartridges
-- slug: clickable-sprites
 - slug: next-machine-old-code-cleanup
   after:
   - integration-event-chain-phase2
   description: 'Strip old manual integration path: finalize locks, caller_session_id,
     inline telec todo integrate'
 - slug: proficiency-to-expertise
+- slug: prepare-state-machine
+- slug: proficiency-to-expertise-injection
+  after:
+  - proficiency-to-expertise-schema
+- slug: proficiency-to-expertise-cli
+  after:
+  - proficiency-to-expertise-schema
+- slug: proficiency-to-expertise-tui
+  after:
+  - proficiency-to-expertise-schema
+- slug: proficiency-to-expertise-schema
+  description: Expertise schema model, API DTO, config handler, migration, and schema
+    tests
