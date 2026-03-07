@@ -14,6 +14,27 @@ from teleclaude.cli.tui.messages import SettingsChanged, StateChanged
 from teleclaude.cli.tui.theme import get_agent_color, get_agent_style, get_neutral_color
 from teleclaude.cli.tui.utils.formatters import format_countdown
 
+# --- tmux cell-width compatibility patch ---
+# Transport control emoji (⏮⏯⏭⏸▶) have system wcwidth=1 but Rich treats
+# them as 2-cell with FE0F. Patch Rich's cell_len to match tmux cursor positioning.
+import rich.cells as _rich_cells
+
+_orig_cell_len_impl = _rich_cells._cell_len
+_TMUX_NARROW_FE0F = frozenset("\u23ED\u23EE\u23EF\u23F8\u25B6")
+
+
+def _cell_len_tmux_compat(text: str, unicode_version: str = "auto") -> int:
+    result = _orig_cell_len_impl(text, unicode_version)
+    if "\ufe0f" in text:
+        for i, ch in enumerate(text):
+            if ch == "\ufe0f" and i > 0 and text[i - 1] in _TMUX_NARROW_FE0F:
+                result -= 1
+    return result
+
+
+_rich_cells._cell_len = _cell_len_tmux_compat
+_rich_cells.cached_cell_len.cache_clear()
+
 
 class TelecFooter(Widget):
     """Bottom footer with three rows:
@@ -192,54 +213,51 @@ class TelecFooter(Widget):
         toggles = Text()
         for cell_char, cell_style in self._build_pane_theming_cells():
             toggles.append(cell_char, style=cell_style)
-        toggles.append("  ")
+        toggles.append(" ")
 
-        # TTS icon: 🗣️ bold (enabled) / dim+strike (disabled)
+        # TTS icon: 🔊 bold (enabled) / 🔇 dim (disabled)
         tts_start = toggles.cell_len
-        tts_icon = "\U0001f5e3"
-        toggles.append(tts_icon, style="bold" if self.tts_enabled else "dim strike")
+        tts_icon = "\U0001f50a" if self.tts_enabled else "\U0001f507"
+        toggles.append(tts_icon, style="bold" if self.tts_enabled else "dim")
         tts_end = toggles.cell_len
-        toggles.append("  ")
+        toggles.append(" ")
 
-        # ChipTunes player control group: ⏮ ⏯/▶ ⏭ ⭐/✅
-        # All four icons dim when chiptunes is disabled.
+        # ChipTunes player control group: ⏮️ ▶️/⏸ ⏭️ ⭐/✅
+        # Module-level cell width patch keeps Rich/tmux cursor math aligned for
+        # the FE0F emoji presentation icons used here.
         dim_style = Style(dim=True)
         active_style = Style(bold=True)
 
         prev_start = toggles.cell_len
-        toggles.append("⏮", style=active_style if self.chiptunes_enabled else dim_style)
-        prev_end = toggles.cell_len
+        toggles.append("⏮\uFE0F", style=active_style if self.chiptunes_enabled else dim_style)
         toggles.append(" ")
+        prev_end = toggles.cell_len
 
         play_start = toggles.cell_len
-        if self.chiptunes_enabled and self.chiptunes_playing:
-            play_icon = "⏸"
-        else:
-            play_icon = "▶"
+        play_icon = "⏸" if (self.chiptunes_enabled and self.chiptunes_playing) else "▶\uFE0F"
         toggles.append(play_icon, style=active_style if self.chiptunes_enabled else dim_style)
-        play_end = toggles.cell_len
         toggles.append(" ")
+        play_end = toggles.cell_len
 
         next_start = toggles.cell_len
-        toggles.append("⏭", style=active_style if self.chiptunes_enabled else dim_style)
+        toggles.append("⏭\uFE0F", style=active_style if self.chiptunes_enabled else dim_style)
+        toggles.append("  ")
         next_end = toggles.cell_len
-        toggles.append(" ")
 
         fav_start = toggles.cell_len
         fav_icon = "✅" if (self.chiptunes_enabled and self.chiptunes_favorited) else "⭐"
         toggles.append(fav_icon, style=active_style if self.chiptunes_enabled else dim_style)
         fav_end = toggles.cell_len
-        toggles.append("  ")
+        toggles.append(" ")
 
         anim_start = toggles.cell_len
         anim_icons = {"off": "\U0001f6ab", "periodic": "\u2728", "party": "\U0001f389"}
         anim_icon = anim_icons.get(self.animation_mode, "\u2728")
         toggles.append(anim_icon, style="" if self.animation_mode != "off" else "dim")
-        toggles.append(" ")
 
         left_len = line.cell_len
         right_len = toggles.cell_len
-        gap = max(2, self.size.width - left_len - right_len)
+        gap = max(2, self.size.width - left_len - right_len - 7)
         line.append(" " * gap)
 
         offset = left_len + gap
@@ -266,6 +284,10 @@ class TelecFooter(Widget):
         line3 = self._render_controls_line()
         return Text.assemble(line1, "\n", line2, "\n", line3)
 
+    @staticmethod
+    def _contains_x(x: int, start_x: int, end_x: int) -> bool:
+        return start_x <= x < end_x
+
     def on_click(self, event: Click) -> None:
         if event.y != 2:
             return
@@ -281,17 +303,17 @@ class TelecFooter(Widget):
             idx = cycle.index(self.animation_mode) if self.animation_mode in cycle else 0
             new_mode = cycle[(idx + 1) % len(cycle)]
             self.post_message(SettingsChanged("animation_mode", new_mode))
-        elif x >= self._fav_start_x:
+        elif self._contains_x(x, self._fav_start_x, self._fav_end_x):
             self.post_message(SettingsChanged("chiptunes_favorite", None))
-        elif x >= self._next_start_x:
+        elif self._contains_x(x, self._next_start_x, self._next_end_x):
             self.post_message(SettingsChanged("chiptunes_next", None))
-        elif x >= self._play_start_x:
+        elif self._contains_x(x, self._play_start_x, self._play_end_x):
             self.post_message(SettingsChanged("chiptunes_play_pause", None))
-        elif x >= self._prev_start_x:
+        elif self._contains_x(x, self._prev_start_x, self._prev_end_x):
             self.post_message(SettingsChanged("chiptunes_prev", None))
-        elif x >= self._tts_start_x:
+        elif self._contains_x(x, self._tts_start_x, self._tts_end_x):
             self.post_message(SettingsChanged("tts_enabled", not self.tts_enabled))
-        elif x >= self._toggle_start_x:
+        elif self._toggle_start_x <= x < self._tts_start_x:
             self.post_message(SettingsChanged("pane_theming_mode", "cycle"))
 
     def watch_tts_enabled(self, _value: bool) -> None:

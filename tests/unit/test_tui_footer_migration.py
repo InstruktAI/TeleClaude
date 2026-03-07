@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from teleclaude.cli.models import ComputerInfo, ProjectInfo, SessionInfo
+from teleclaude.cli.models import ChiptunesStateEvent, ComputerInfo, ProjectInfo, SessionInfo
 from teleclaude.cli.tui.app import TelecApp
 from teleclaude.cli.tui.persistence import Persistable
 from teleclaude.cli.tui.todos import TodoItem
@@ -35,7 +35,21 @@ async def test_telec_app_uses_compact_textual_footer() -> None:
         list_sessions=AsyncMock(return_value=[]),
         get_agent_availability=AsyncMock(return_value={}),
         list_jobs=AsyncMock(return_value=[]),
-        get_settings=AsyncMock(return_value=SimpleNamespace(tts=SimpleNamespace(enabled=False))),
+        get_settings=AsyncMock(
+            return_value=SimpleNamespace(
+                tts=SimpleNamespace(enabled=False),
+                chiptunes=SimpleNamespace(enabled=False),
+            )
+        ),
+        get_chiptunes_status=AsyncMock(
+            return_value=SimpleNamespace(
+                enabled=False,
+                playing=False,
+                paused=False,
+                track="",
+                sid_path="",
+            )
+        ),
     )
     app = TelecApp(api)  # type: ignore[arg-type]
 
@@ -43,6 +57,91 @@ async def test_telec_app_uses_compact_textual_footer() -> None:
         footer = app.query_one(TelecFooter)
         assert footer is not None
         assert not app.query("#action-bar")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_telec_app_initializes_chiptunes_footer_from_status() -> None:
+    api = SimpleNamespace(
+        connect=AsyncMock(),
+        start_websocket=MagicMock(),
+        list_computers=AsyncMock(return_value=[]),
+        list_projects_with_todos=AsyncMock(return_value=[]),
+        list_sessions=AsyncMock(return_value=[]),
+        get_agent_availability=AsyncMock(return_value={}),
+        list_jobs=AsyncMock(return_value=[]),
+        get_settings=AsyncMock(
+            return_value=SimpleNamespace(
+                tts=SimpleNamespace(enabled=False),
+                chiptunes=SimpleNamespace(enabled=True),
+            )
+        ),
+        get_chiptunes_status=AsyncMock(
+            return_value=SimpleNamespace(
+                enabled=True,
+                playing=True,
+                paused=False,
+                track="Demo Tune",
+                sid_path="/music/demo.sid",
+            )
+        ),
+    )
+    app = TelecApp(api)  # type: ignore[arg-type]
+
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)
+        footer = app.query_one(TelecFooter)
+        assert footer.chiptunes_enabled is True
+        assert footer.chiptunes_playing is True
+        assert footer.chiptunes_track == "Demo Tune"
+        assert footer.chiptunes_sid_path == "/music/demo.sid"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_telec_app_applies_chiptunes_state_events() -> None:
+    api = SimpleNamespace(
+        connect=AsyncMock(),
+        start_websocket=MagicMock(),
+        list_computers=AsyncMock(return_value=[]),
+        list_projects_with_todos=AsyncMock(return_value=[]),
+        list_sessions=AsyncMock(return_value=[]),
+        get_agent_availability=AsyncMock(return_value={}),
+        list_jobs=AsyncMock(return_value=[]),
+        get_settings=AsyncMock(
+            return_value=SimpleNamespace(
+                tts=SimpleNamespace(enabled=False),
+                chiptunes=SimpleNamespace(enabled=False),
+            )
+        ),
+        get_chiptunes_status=AsyncMock(
+            return_value=SimpleNamespace(
+                enabled=False,
+                playing=False,
+                paused=False,
+                track="",
+                sid_path="",
+            )
+        ),
+    )
+    app = TelecApp(api)  # type: ignore[arg-type]
+
+    async with app.run_test():
+        footer = app.query_one(TelecFooter)
+        app._handle_ws_event(
+            ChiptunesStateEvent(
+                enabled=True,
+                playing=False,
+                paused=True,
+                track="Paused Tune",
+                sid_path="/music/paused.sid",
+            )
+        )
+
+        assert footer.chiptunes_enabled is True
+        assert footer.chiptunes_playing is False
+        assert footer.chiptunes_track == "Paused Tune"
+        assert footer.chiptunes_sid_path == "/music/paused.sid"
 
 
 @pytest.mark.unit
@@ -56,6 +155,54 @@ def test_telec_footer_implements_persistable_protocol() -> None:
         "animation_mode": "party",
         "pane_theming_mode": "agent_plus",
     }
+
+
+@pytest.mark.unit
+def test_telec_footer_play_click_routes_to_play_pause() -> None:
+    footer = TelecFooter()
+    footer._toggle_start_x = 0
+    footer._tts_start_x = 2
+    footer._tts_end_x = 4
+    footer._prev_start_x = 4
+    footer._prev_end_x = 6
+    footer._play_start_x = 6
+    footer._play_end_x = 8
+    footer._next_start_x = 8
+    footer._next_end_x = 11
+    footer._fav_start_x = 11
+    footer._fav_end_x = 13
+    footer._anim_start_x = 13
+
+    seen: list[tuple[str, object]] = []
+    footer.post_message = lambda message: seen.append((message.key, message.value))  # type: ignore[method-assign]
+
+    footer.on_click(SimpleNamespace(x=6, y=2))
+
+    assert seen == [("chiptunes_play_pause", None)]
+
+
+@pytest.mark.unit
+def test_telec_footer_next_click_routes_to_next() -> None:
+    footer = TelecFooter()
+    footer._toggle_start_x = 0
+    footer._tts_start_x = 2
+    footer._tts_end_x = 4
+    footer._prev_start_x = 4
+    footer._prev_end_x = 6
+    footer._play_start_x = 6
+    footer._play_end_x = 8
+    footer._next_start_x = 8
+    footer._next_end_x = 11
+    footer._fav_start_x = 11
+    footer._fav_end_x = 13
+    footer._anim_start_x = 13
+
+    seen: list[tuple[str, object]] = []
+    footer.post_message = lambda message: seen.append((message.key, message.value))  # type: ignore[method-assign]
+
+    footer.on_click(SimpleNamespace(x=8, y=2))
+
+    assert seen == [("chiptunes_next", None)]
 
 
 @pytest.mark.unit
