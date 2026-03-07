@@ -13,9 +13,7 @@ import os
 import sys
 import time
 import uuid
-from typing import cast
 
-from teleclaude.api_models import OperationStatusPayload
 from teleclaude.cli.tool_client import _read_caller_session_id, print_json, tool_api_call
 
 _TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
@@ -819,24 +817,24 @@ def handle_todo_work(args: list[str]) -> None:
         print_json(receipt)
         return
 
-    status = cast(OperationStatusPayload, receipt)
-    operation_id = status["operation_id"]
-    if not operation_id:
+    status = receipt
+    operation_id = status.get("operation_id")
+    if not isinstance(operation_id, str) or not operation_id:
         print_json(status)
         return
 
     try:
         while status.get("state") not in _TERMINAL_OPERATION_STATES:
-            poll_after_ms = status["poll_after_ms"]
+            poll_after_ms = status.get("poll_after_ms")
             delay_s = 0.25
-            if poll_after_ms > 0:
+            if isinstance(poll_after_ms, int) and poll_after_ms > 0:
                 delay_s = poll_after_ms / 1000.0
             time.sleep(delay_s)
             polled = tool_api_call("GET", f"/operations/{operation_id}")
             if not isinstance(polled, dict):
                 print_json(polled)
                 return
-            status = cast(OperationStatusPayload, polled)
+            status = polled
     except KeyboardInterrupt:
         _print_operation_recovery(status)
         raise SystemExit(130)
@@ -938,13 +936,13 @@ def handle_operations_get(args: list[str]) -> None:
     print_json(data)
 
 
-def _print_operation_recovery(status: OperationStatusPayload) -> None:
-    operation_id = status["operation_id"]
-    recovery_command = status["recovery_command"]
-    if recovery_command:
+def _print_operation_recovery(status: dict[str, object]) -> None:  # guard: loose-dict - JSON-deserialized API response
+    operation_id = status.get("operation_id")
+    recovery_command = status.get("recovery_command")
+    if isinstance(recovery_command, str) and recovery_command:
         print(f"Recovery: {recovery_command}", file=sys.stderr)
         return
-    if operation_id:
+    if isinstance(operation_id, str) and operation_id:
         print(f"Recovery: telec operations get {operation_id}", file=sys.stderr)
 
 

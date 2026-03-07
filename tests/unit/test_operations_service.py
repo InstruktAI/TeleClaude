@@ -36,8 +36,8 @@ async def operations_service(tmp_path, monkeypatch):
 async def test_submit_dedupes_by_client_request_id(operations_service, monkeypatch):
     service, test_db, _registry = operations_service
 
-    async def fake_next_work(_db, slug, cwd, caller_session_id):
-        _ = (slug, cwd, caller_session_id)
+    async def fake_next_work(_db, slug, cwd):
+        _ = (slug, cwd)
         return "NEXT_WORK COMPLETE"
 
     monkeypatch.setattr("teleclaude.core.operations.service.next_work", fake_next_work)
@@ -69,8 +69,8 @@ async def test_submit_reattaches_matching_nonterminal_operation(operations_servi
     service, test_db, _registry = operations_service
     release = asyncio.Event()
 
-    async def fake_next_work(_db, slug, cwd, caller_session_id):
-        _ = (slug, cwd, caller_session_id)
+    async def fake_next_work(_db, slug, cwd):
+        _ = (slug, cwd)
         await release.wait()
         return "NEXT_WORK COMPLETE"
 
@@ -132,8 +132,8 @@ async def test_service_start_marks_abandoned_nonterminal_operations_stale(tmp_pa
 async def test_terminal_operation_keeps_latest_progress(operations_service, monkeypatch):
     service, test_db, _registry = operations_service
 
-    async def fake_next_work(_db, slug, cwd, caller_session_id):
-        _ = (slug, cwd, caller_session_id)
+    async def fake_next_work(_db, slug, cwd):
+        _ = (slug, cwd)
         emit_operation_progress("dispatch_decision", "error", "uncommitted_changes")
         return "UNCOMMITTED CHANGES"
 

@@ -221,8 +221,10 @@ async def test_next_work_review_approved_infra_only_diff_holds() -> None:
         stack.enter_context(
             patch("teleclaude.core.next_machine.core.compose_agent_guidance", new=AsyncMock(return_value="GUIDANCE"))
         )
-        stack.enter_context(patch("teleclaude.core.next_machine.core.emit_review_approved", new=AsyncMock()))
-        result = await next_work(db, slug=slug, cwd=cwd, caller_session_id="sess-123")
+        stack.enter_context(
+            patch("teleclaude.core.next_machine.core.emit_review_approved", new=AsyncMock())
+        )
+        result = await next_work(db, slug=slug, cwd=cwd)
 
     mock_mark = mocks["mark_phase"]
     reset_calls = [c for c in mock_mark.call_args_list if "review" in str(c) and "pending" in str(c)]

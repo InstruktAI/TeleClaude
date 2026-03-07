@@ -56,4 +56,5 @@
   - integration-event-chain-phase2
   description: 'Strip old manual integration path: finalize locks, caller_session_id,
     inline telec todo integrate'
+- slug: proficiency-to-expertise
 - slug: prepare-state-machine

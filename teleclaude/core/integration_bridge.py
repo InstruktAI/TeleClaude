@@ -48,6 +48,33 @@ async def emit_review_approved(
     )
 
 
+async def emit_branch_pushed(
+    branch: str,
+    sha: str,
+    remote: str,
+    *,
+    pushed_at: str | None = None,
+    pusher: str = "",
+) -> str:
+    """Emit branch.pushed when a worktree branch is pushed to origin before integration."""
+    ts = pushed_at or datetime.now(timezone.utc).isoformat()
+    return await emit_event(
+        event="domain.software-development.branch.pushed",
+        source=f"finalizer/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+        level=EventLevel.WORKFLOW,
+        domain="software-development",
+        description=f"Branch pushed: {remote}/{branch}@{sha[:8]}",
+        entity=branch,
+        payload={
+            "branch": branch,
+            "sha": sha,
+            "remote": remote,
+            "pushed_at": ts,
+            "pusher": pusher or f"orchestrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+        },
+    )
+
+
 async def emit_deployment_started(
     slug: str,
     branch: str,

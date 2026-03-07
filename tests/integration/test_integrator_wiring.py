@@ -26,6 +26,7 @@ def test_integration_event_schemas_registered_in_catalog() -> None:
     catalog = build_default_catalog()
     for event_type in [
         "domain.software-development.review.approved",
+        "domain.software-development.branch.pushed",
         "domain.software-development.deployment.started",
         "domain.software-development.deployment.completed",
         "domain.software-development.deployment.failed",
@@ -90,6 +91,31 @@ async def test_emit_review_approved() -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_emit_branch_pushed() -> None:
+    with patch("teleclaude.core.integration_bridge.emit_event", new_callable=AsyncMock) as mock_emit:
+        mock_emit.return_value = "1234-bp"
+        from teleclaude.core.integration_bridge import emit_branch_pushed
+
+        result = await emit_branch_pushed(
+            branch="my-feature",
+            sha="abc123def456",
+            remote="origin",
+            pushed_at="2026-03-01T12:30:00+00:00",
+        )
+        assert result == "1234-bp"
+        mock_emit.assert_called_once()
+        call_kwargs = mock_emit.call_args
+        assert call_kwargs.kwargs["event"] == "domain.software-development.branch.pushed"
+        payload = call_kwargs.kwargs["payload"]
+        assert payload["branch"] == "my-feature"
+        assert payload["sha"] == "abc123def456"
+        assert payload["remote"] == "origin"
+        assert payload["pushed_at"] == "2026-03-01T12:30:00+00:00"
+        assert "pusher" in payload
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_emit_deployment_started() -> None:
     with patch("teleclaude.core.integration_bridge.emit_event", new_callable=AsyncMock) as mock_emit:
         mock_emit.return_value = "1234-1"
@@ -149,6 +175,9 @@ async def test_emit_deployment_failed() -> None:
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_integration_trigger_fires_on_deployment_started() -> None:
+    """Cartridge spawns integrator when ingest_callback reports READY candidate."""
+    from typing import Mapping, Sequence
+
     from teleclaude_events.cartridges.integration_trigger import IntegrationTriggerCartridge
     from teleclaude_events.envelope import EventEnvelope, EventLevel
     from teleclaude_events.pipeline import PipelineContext
@@ -158,7 +187,13 @@ async def test_integration_trigger_fires_on_deployment_started() -> None:
     async def mock_spawn(slug: str, branch: str, sha: str) -> None:
         spawn_calls.append((slug, branch, sha))
 
-    cartridge = IntegrationTriggerCartridge(spawn_callback=mock_spawn)
+    def mock_ingest(canonical_type: str, payload: Mapping[str, object]) -> Sequence[tuple[str, str, str]]:
+        # Simulate projection reporting READY after finalize_ready event
+        if canonical_type == "finalize_ready":
+            return [("feat-x", "feat-x", "abc123")]
+        return []
+
+    cartridge = IntegrationTriggerCartridge(spawn_callback=mock_spawn, ingest_callback=mock_ingest)
 
     event = EventEnvelope(
         event="domain.software-development.deployment.started",
@@ -172,6 +207,44 @@ async def test_integration_trigger_fires_on_deployment_started() -> None:
     result = await cartridge.process(event, context)
     assert result is not None
     assert spawn_calls == [("feat-x", "feat-x", "abc123")]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_integration_trigger_no_spawn_when_not_ready() -> None:
+    """Cartridge does NOT spawn when ingest_callback returns empty (projection not READY)."""
+    from typing import Mapping, Sequence
+
+    from teleclaude_events.cartridges.integration_trigger import IntegrationTriggerCartridge
+    from teleclaude_events.envelope import EventEnvelope, EventLevel
+    from teleclaude_events.pipeline import PipelineContext
+
+    spawn_calls: list[tuple[str, str, str]] = []
+
+    async def mock_spawn(slug: str, branch: str, sha: str) -> None:
+        spawn_calls.append((slug, branch, sha))
+
+    def mock_ingest(_canonical_type: str, _payload: Mapping[str, object]) -> Sequence[tuple[str, str, str]]:
+        return []  # Not yet READY
+
+    cartridge = IntegrationTriggerCartridge(spawn_callback=mock_spawn, ingest_callback=mock_ingest)
+
+    for event_type in [
+        "domain.software-development.review.approved",
+        "domain.software-development.branch.pushed",
+    ]:
+        event = EventEnvelope(
+            event=event_type,
+            source="test",
+            level=EventLevel.WORKFLOW,
+            domain="software-development",
+            payload={"slug": "feat-x", "branch": "feat-x", "sha": "abc123"},
+        )
+        context = PipelineContext(catalog=AsyncMock(), db=AsyncMock())
+        result = await cartridge.process(event, context)
+        assert result is not None  # Events pass through
+
+    assert spawn_calls == []  # No spawn until READY
 
 
 @pytest.mark.integration
@@ -459,10 +532,9 @@ def test_post_completion_no_longer_merges_main() -> None:
     from teleclaude.core.next_machine.core import POST_COMPLETION
 
     finalize_instructions = POST_COMPLETION["next-finalize"]
-    # Should not contain the old merge/push sequence
+    # Should not contain the old merge/push sequence or telec todo integrate
     assert "git merge --squash" not in finalize_instructions
     assert "git push origin main" not in finalize_instructions
-    # Should contain the event-driven handoff
-    assert "deployment.started" in finalize_instructions
-    assert "emit_deployment_started" in finalize_instructions
-    assert "Integrator will process" in finalize_instructions
+    assert "telec todo integrate" not in finalize_instructions
+    # Should describe the new event-chain handoff
+    assert "integration event chain" in finalize_instructions

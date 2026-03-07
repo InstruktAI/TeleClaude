@@ -46,7 +46,10 @@ def test_todo_work_returns_operation_receipt_without_waiting_for_next_work() -> 
         }
     )
 
-    with patch("teleclaude.api.todo_routes.get_operations_service", return_value=service):
+    with (
+        patch("teleclaude.api.todo_routes.get_operations_service", return_value=service),
+        patch("teleclaude.core.operations.service.next_work", new_callable=AsyncMock) as next_work,
+    ):
         response = client.post(
             "/todos/work",
             json={
@@ -71,6 +74,7 @@ def test_todo_work_returns_operation_receipt_without_waiting_for_next_work() -> 
         caller_session_id="owner-session",
         client_request_id="req-123",
     )
+    next_work.assert_not_awaited()
 
 
 def test_get_operation_returns_status_payload() -> None:

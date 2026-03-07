@@ -478,7 +478,7 @@ class TestChiptunesManagerLifecycle:
         manager.resume()
 
     def test_discover_filters_rsid(self, tmp_path: Path) -> None:
-        from teleclaude.chiptunes.worker import _Worker
+        from teleclaude.chiptunes.manager import ChiptunesManager
 
         music_dir = tmp_path / "music"
         music_dir.mkdir()
@@ -489,8 +489,8 @@ class TestChiptunesManagerLifecycle:
         rsid_file = music_dir / "rsid_tune.sid"
         rsid_file.write_bytes(b"RSID" + _build_psid()[4:])
 
-        worker = _Worker(music_dir, volume=0.5)
-        tracks = worker._discover_tracks()
+        manager = ChiptunesManager(music_dir, volume=0.5)
+        tracks = manager._discover_tracks()
 
         assert psid_file in tracks
         assert rsid_file not in tracks

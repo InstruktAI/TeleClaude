@@ -21,7 +21,7 @@ from teleclaude.api.auth import (
     CLEARANCE_TODOS_WORK,
     CallerIdentity,
 )
-from teleclaude.api_models import OperationStatusDTO, OperationStatusPayload
+from teleclaude.api_models import OperationStatusDTO
 from teleclaude.config import config
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.db import db
@@ -38,6 +38,7 @@ from teleclaude.core.next_machine.core import (
     sync_main_planning_to_all_worktrees,
 )
 from teleclaude.core.operations import get_operations_service
+from teleclaude.core.operations.service import SerializedOperation
 
 router = APIRouter(prefix="/todos", tags=["todos"])
 
@@ -53,7 +54,7 @@ async def todo_prepare(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
     hitl: Annotated[bool, Body()] = True,
-    _identity: CallerIdentity = Depends(CLEARANCE_TODOS_PREPARE),
+    identity: CallerIdentity = Depends(CLEARANCE_TODOS_PREPARE),  # noqa: ARG001
 ) -> dict[str, str]:
     """Run the Phase A (prepare) state machine.
 
@@ -72,7 +73,7 @@ async def todo_work(  # pyright: ignore
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
     identity: CallerIdentity = Depends(CLEARANCE_TODOS_WORK),
-) -> OperationStatusPayload:
+) -> SerializedOperation:
     """Run the Phase B (work) state machine.
 
     Submits a durable receipt-backed operation for the build/review/fix cycle.
@@ -120,7 +121,7 @@ async def todo_mark_phase(  # pyright: ignore
     phase: Annotated[str, Body()],
     status: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
-    _identity: CallerIdentity = Depends(CLEARANCE_TODOS_MARK_PHASE),
+    identity: CallerIdentity = Depends(CLEARANCE_TODOS_MARK_PHASE),  # noqa: ARG001
 ) -> dict[str, str]:
     """Mark a work phase as complete/approved in state.yaml.
 
@@ -148,7 +149,9 @@ async def todo_mark_phase(  # pyright: ignore
         if has_uncommitted_changes(cwd, slug):
             raise HTTPException(
                 status_code=409,
-                detail=f"worktree {WORKTREE_DIR}/{slug} has uncommitted changes — commit them before marking phase complete",
+                detail=(
+                    f"worktree {WORKTREE_DIR}/{slug} has uncommitted changes — commit them before marking phase complete"
+                ),
             )
         stash_entries = get_stash_entries(cwd)
         if stash_entries:
@@ -170,7 +173,7 @@ async def todo_set_deps(  # pyright: ignore
     slug: Annotated[str, Body()],
     after: Annotated[list[str], Body()],
     cwd: Annotated[str | None, Body()] = None,
-    _identity: CallerIdentity = Depends(CLEARANCE_TODOS_SET_DEPS),
+    identity: CallerIdentity = Depends(CLEARANCE_TODOS_SET_DEPS),  # noqa: ARG001
 ) -> dict[str, str]:
     """Set dependencies for a work item in the roadmap.
 

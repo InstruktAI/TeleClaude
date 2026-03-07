@@ -282,6 +282,13 @@ subcommands:
     subcommands:
       status:
         description: 'Show signal pipeline counts and last ingest time.'
+  operations:
+    description: 'Inspect durable long-running operations.'
+    subcommands:
+      get:
+        description: 'Fetch durable operation status by operation_id.'
+        args:
+          - operation_id: 'string'
 ```
 
 ## Known caveats

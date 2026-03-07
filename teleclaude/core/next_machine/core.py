@@ -32,7 +32,7 @@ from teleclaude.config import config as app_config
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db
-from teleclaude.core.integration_bridge import emit_review_approved
+from teleclaude.core.integration_bridge import emit_branch_pushed, emit_deployment_started, emit_review_approved
 
 logger = get_logger(__name__)
 
@@ -237,24 +237,12 @@ WHEN WORKER COMPLETES:
 3. Confirm worker reported exactly `FINALIZE_READY: {args}` in session `<session_id>` transcript.
    If missing: send worker feedback to report FINALIZE_READY and stop (do NOT apply).
 4. telec sessions end <session_id>
-5. EMIT DEPLOYMENT EVENT (hand off to the singleton integrator):
-   a. Get branch name and HEAD sha from the worktree:
-      BRANCH="{args}"
-      SHA="$(git -C trees/{args} rev-parse HEAD)"
-   b. Emit deployment.started:
-      python -c "
-      import asyncio
-      from teleclaude.core.integration_bridge import emit_deployment_started
-      asyncio.run(emit_deployment_started(
-          slug='{args}', branch='$BRANCH', sha='$SHA',
-      ))
-      " || echo "WARNING: deployment.started emission failed (non-blocking)"
-6. Report: "Candidate {args} queued for integration. Integrator will process."
-7. Call {next_call}
-8. Non-recoverable errors (FATAL/BLOCKER reported by worker):
+5. Report: "Candidate {args} handed off to the integration event chain. The integrator will spawn automatically when the projection reports READY."
+6. Call {next_call}
+7. Non-recoverable errors (FATAL/BLOCKER reported by worker):
    - Do NOT end the session — keep it alive as a signal for human investigation
    - Report the error status and session ID to the user for manual intervention
-9. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
+8. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
 """,
 }
 
@@ -2580,7 +2568,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
         raise
 
 
-async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str | None = None) -> str:
+async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     """Phase B state machine for deterministic builder work.
 
     Executes the build/review/fix/finalize cycle on prepared work items.
@@ -2590,7 +2578,6 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         db: Database instance
         slug: Optional explicit slug (resolved from roadmap if not provided)
         cwd: Current working directory (project root)
-        caller_session_id: Session ID of the calling orchestrator (used for review.approved event)
 
     Returns:
         Plain text instructions for the orchestrator to execute
@@ -3040,24 +3027,38 @@ async def next_work(db: Db, slug: str | None, cwd: str, caller_session_id: str |
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
         return format_error("NO_AGENTS", str(exc))
 
-    if not caller_session_id:
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "caller_session_required")
-        return format_error(
-            "CALLER_SESSION_REQUIRED",
-            "Finalize dispatch requires caller session identity for lock ownership.",
-        )
-
     # Emit review.approved event (fire-and-forget — don't block finalize)
     review_round_val = state.get("review_round")
     review_round = review_round_val if isinstance(review_round_val, int) else 1
+    session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
     try:
         await emit_review_approved(
             slug=resolved_slug,
-            reviewer_session_id=caller_session_id or "",
+            reviewer_session_id=session_id,
             review_round=review_round,
         )
     except Exception:
         logger.warning("Failed to emit review.approved event for %s", resolved_slug, exc_info=True)
+
+    # Emit branch.pushed and deployment.started events to seed the integration event chain.
+    # These are emitted at dispatch time so the projection can track candidates.
+    # The integrator spawns automatically when the projection reports all 3 preconditions met.
+    worktree_sha = await asyncio.to_thread(_get_head_commit, worktree_cwd)
+    if worktree_sha:
+        try:
+            await emit_branch_pushed(branch=resolved_slug, sha=worktree_sha, remote="origin")
+        except Exception:
+            logger.warning("Failed to emit branch.pushed event for %s", resolved_slug, exc_info=True)
+        try:
+            await emit_deployment_started(
+                slug=resolved_slug,
+                branch=resolved_slug,
+                sha=worktree_sha,
+                worker_session_id=session_id,
+                orchestrator_session_id=session_id,
+            )
+        except Exception:
+            logger.warning("Failed to emit deployment.started event for %s", resolved_slug, exc_info=True)
 
     # Bugs skip delivered.yaml bookkeeping and are removed from todos entirely
     # Check main repo's todos/ (bug.md lives there, not synced to worktree)

@@ -771,15 +771,14 @@ async def test_next_work_finalize_next_call_without_slug():
                 new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
             ),
         ):
-            result = await next_work(db, slug=slug, cwd=tmpdir, caller_session_id="orchestrator-session")
+            result = await next_work(db, slug=slug, cwd=tmpdir)
 
     assert '--command "/next-finalize"' in result
     assert "Call telec todo work" in result
     assert "Call telec todo work(slug=" not in result
     assert "FINALIZE_READY: final-item" in result
-    assert "deployment.started" in result
-    assert "emit_deployment_started" in result
-    assert "Integrator will process" in result
+    assert "integration event chain" in result
+    assert "telec todo integrate" not in result
 
 
 @pytest.mark.asyncio
@@ -813,7 +812,7 @@ async def test_next_work_approved_review_repairs_build_drift_and_dispatches_fina
                 new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
             ),
         ):
-            result = await next_work(db, slug=slug, cwd=tmpdir, caller_session_id="orchestrator-session")
+            result = await next_work(db, slug=slug, cwd=tmpdir)
 
         repaired_state = yaml.safe_load((state_dir / "state.yaml").read_text())
         assert repaired_state["build"] == "complete"
@@ -862,40 +861,6 @@ async def test_next_work_stale_review_approval_routes_back_to_review():
         assert "next-review-build" in result
         assert "next-finalize" not in result
         assert "next-build" not in result
-
-
-@pytest.mark.asyncio
-async def test_next_work_finalize_requires_caller_session_id():
-    """Finalize dispatch must require caller session identity for lock ownership."""
-    db = MagicMock(spec=Db)
-    slug = "final-item-no-caller"
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        _write_roadmap_yaml(tmpdir, [slug])
-
-        item_dir = Path(tmpdir) / "todos" / slug
-        item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Requirements\n")
-        (item_dir / "implementation-plan.md").write_text("# Plan\n")
-        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
-
-        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
-        state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "approved"}')
-
-        with (
-            patch("teleclaude.core.next_machine.core.Repo"),
-            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
-            patch("teleclaude.core.next_machine.core._prepare_worktree"),
-            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
-            patch(
-                "teleclaude.core.next_machine.core.compose_agent_guidance",
-                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
-            ),
-        ):
-            result = await next_work(db, slug=slug, cwd=tmpdir, caller_session_id=None)
-
-    assert "ERROR: CALLER_SESSION_REQUIRED" in result
 
 
 # =============================================================================
@@ -981,3 +946,184 @@ def test_resolve_slug_ready_only_skips_in_progress():
 
         # Should skip in-progress and match ready (build pending + dor.score >= 8)
         assert slug == "ready-item"
+
+
+# =============================================================================
+# Integration Event Emission Tests (I3)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_finalize_dispatch_emits_all_three_integration_events():
+    """Finalize dispatch must emit review_approved, branch_pushed, and deployment_started."""
+    db = MagicMock(spec=Db)
+    slug = "emit-all-events-item"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Requirements\n")
+        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "approved"}')
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
+            ),
+            patch(
+                "teleclaude.core.next_machine.core._get_head_commit",
+                return_value="abc1234def567890",
+            ),
+            patch(
+                "teleclaude.core.next_machine.core.emit_review_approved",
+                new_callable=AsyncMock,
+            ) as mock_review_approved,
+            patch(
+                "teleclaude.core.next_machine.core.emit_branch_pushed",
+                new_callable=AsyncMock,
+            ) as mock_branch_pushed,
+            patch(
+                "teleclaude.core.next_machine.core.emit_deployment_started",
+                new_callable=AsyncMock,
+            ) as mock_deployment_started,
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+    assert '--command "/next-finalize"' in result
+
+    mock_review_approved.assert_called_once()
+    call_kwargs = mock_review_approved.call_args
+    assert call_kwargs.kwargs["slug"] == slug
+    assert call_kwargs.kwargs["reviewer_session_id"]  # must be non-empty
+    assert isinstance(call_kwargs.kwargs["review_round"], int)
+
+    mock_branch_pushed.assert_called_once()
+    bp_kwargs = mock_branch_pushed.call_args.kwargs
+    assert bp_kwargs["branch"] == slug
+    assert bp_kwargs["sha"] == "abc1234def567890"
+    assert bp_kwargs["remote"] == "origin"
+
+    mock_deployment_started.assert_called_once()
+    ds_kwargs = mock_deployment_started.call_args.kwargs
+    assert ds_kwargs["slug"] == slug
+    assert ds_kwargs["worker_session_id"]  # must be non-empty
+    assert ds_kwargs["orchestrator_session_id"]  # must be non-empty
+
+
+@pytest.mark.asyncio
+async def test_finalize_dispatch_skips_branch_events_when_no_sha():
+    """branch.pushed and deployment.started are not emitted when HEAD commit is unavailable."""
+    db = MagicMock(spec=Db)
+    slug = "no-sha-item"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Requirements\n")
+        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "approved"}')
+
+        with (
+            patch("teleclaude.core.next_machine.core.Repo"),
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._prepare_worktree"),
+            patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
+            patch(
+                "teleclaude.core.next_machine.core.compose_agent_guidance",
+                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
+            ),
+            patch(
+                "teleclaude.core.next_machine.core._get_head_commit",
+                return_value=None,
+            ),
+            patch(
+                "teleclaude.core.next_machine.core.emit_review_approved",
+                new_callable=AsyncMock,
+            ) as mock_review_approved,
+            patch(
+                "teleclaude.core.next_machine.core.emit_branch_pushed",
+                new_callable=AsyncMock,
+            ) as mock_branch_pushed,
+            patch(
+                "teleclaude.core.next_machine.core.emit_deployment_started",
+                new_callable=AsyncMock,
+            ) as mock_deployment_started,
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+    assert '--command "/next-finalize"' in result
+    mock_review_approved.assert_called_once()
+    mock_branch_pushed.assert_not_called()
+    mock_deployment_started.assert_not_called()
+
+
+# =============================================================================
+# End-to-End Integration Event Chain Test (I4)
+# =============================================================================
+
+
+def test_cartridge_ingest_callback_chains_to_ready_projection():
+    """Wires cartridge + IntegrationEventService: 3 valid events → READY → spawn."""
+    from datetime import UTC, datetime
+
+    from teleclaude.core.integration import IntegrationEventService
+
+    service = IntegrationEventService.create(
+        reachability_checker=lambda _b, _s, _r: True,
+        integrated_checker=lambda _s, _r: False,
+    )
+
+    ts = datetime.now(UTC).isoformat()
+    slug = "chain-test-slug"
+    branch = "chain-test-slug"
+    sha = "feedc0ffee1234567890abcdef012345"
+    session_id = "test-session"
+
+    # Inject all 3 events directly into the service (bypass emit/pipeline)
+    result1 = service.ingest_raw(
+        "review_approved",
+        {"slug": slug, "approved_at": ts, "review_round": 1, "reviewer_session_id": session_id},
+    )
+    assert result1.status == "APPENDED", f"review_approved rejected: {result1}"
+
+    result2 = service.ingest_raw(
+        "branch_pushed",
+        {"branch": branch, "sha": sha, "remote": "origin", "pushed_at": ts, "pusher": session_id},
+    )
+    assert result2.status == "APPENDED", f"branch_pushed rejected: {result2}"
+
+    result3 = service.ingest_raw(
+        "finalize_ready",
+        {
+            "slug": slug,
+            "branch": branch,
+            "sha": sha,
+            "worker_session_id": session_id,
+            "orchestrator_session_id": session_id,
+            "ready_at": ts,
+        },
+    )
+    assert result3.status == "APPENDED", f"finalize_ready rejected: {result3}"
+    assert len(result3.transitioned_to_ready) == 1, "Expected candidate to reach READY after 3rd event"
+
+    ready = result3.transitioned_to_ready[0]
+    assert ready.key.slug == slug
+    assert ready.key.branch == branch
+    assert ready.key.sha == sha

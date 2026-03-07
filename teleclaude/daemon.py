@@ -1864,9 +1864,34 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     logger.warning("Could not load people config for WhatsApp delivery adapter")
 
             # 5. Pipeline (trust → dedup → enrichment → correlation → classification → integration trigger → notification projector → prepare quality)
+            from teleclaude.core.integration.queue import IntegrationQueue
+            from teleclaude.core.integration.service import IntegrationEventService
             from teleclaude.core.integration_bridge import spawn_integrator_session
 
-            integration_trigger = IntegrationTriggerCartridge(spawn_callback=spawn_integrator_session)
+            _integration_service = IntegrationEventService.create(
+                reachability_checker=lambda _b, _s, _r: True,
+                integrated_checker=lambda _s, _r: False,
+            )
+            _integration_queue = IntegrationQueue(
+                state_path=config_path.parent / "integration-queue.json",
+            )
+
+            def _ingest_callback(canonical_type: str, payload: object) -> list[tuple[str, str, str]]:
+                from typing import Mapping
+
+                if not isinstance(payload, Mapping):
+                    return []
+                result = _integration_service.ingest_raw(canonical_type, payload)
+                ready: list[tuple[str, str, str]] = []
+                for candidate in result.transitioned_to_ready:
+                    _integration_queue.enqueue(key=candidate.key, ready_at=candidate.ready_at)
+                    ready.append((candidate.key.slug, candidate.key.branch, candidate.key.sha))
+                return ready
+
+            integration_trigger = IntegrationTriggerCartridge(
+                spawn_callback=spawn_integrator_session,
+                ingest_callback=_ingest_callback,
+            )
             trust_config = TrustConfig(
                 known_sources=frozenset({"daemon", "prepare-worker", "review-worker", "correlation"})
             )

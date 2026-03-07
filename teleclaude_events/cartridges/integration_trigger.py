@@ -1,15 +1,17 @@
 """Integration trigger cartridge — feeds integration events to readiness projection.
 
-Watches for review.approved, deployment.started, and deployment.failed events
-in the pipeline. When a candidate transitions to READY via the readiness
-projection, triggers the singleton integrator session via a daemon callback.
+Watches for review.approved, branch.pushed, and deployment.started events in the
+pipeline.  Each event is translated to its canonical integration event type and
+forwarded to the readiness projection via an injected ingest callback.  When a
+candidate transitions to READY, the singleton integrator session is spawned via
+the spawn callback.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable, Coroutine, Mapping, Sequence
 
 from teleclaude_events.envelope import EventEnvelope
 from teleclaude_events.pipeline import PipelineContext
@@ -19,21 +21,31 @@ logger = logging.getLogger(__name__)
 INTEGRATION_EVENT_TYPES = frozenset(
     {
         "domain.software-development.review.approved",
+        "domain.software-development.branch.pushed",
         "domain.software-development.deployment.started",
         "domain.software-development.deployment.completed",
         "domain.software-development.deployment.failed",
     }
 )
 
+# Maps platform event type → canonical integration event type
+_PLATFORM_TO_CANONICAL: dict[str, str] = {
+    "domain.software-development.review.approved": "review_approved",
+    "domain.software-development.branch.pushed": "branch_pushed",
+    "domain.software-development.deployment.started": "finalize_ready",
+}
+
 IntegratorSpawnCallback = Callable[[str, str, str], Coroutine[Any, Any, Any] | None]
+# Ingest callback: takes (canonical_event_type, payload) → returns list of (slug, branch, sha) ready candidates
+IngestionCallback = Callable[[str, Mapping[str, Any]], Sequence[tuple[str, str, str]]]
 
 
 class IntegrationTriggerCartridge:
     """Pipeline cartridge that bridges event-platform events to the integration module.
 
-    For matching integration events: extracts (slug, branch, sha) and feeds
-    to the readiness projection.  When a candidate goes READY, invokes the
-    spawn callback to start or wake the singleton integrator session.
+    For matching integration events: translates to canonical type and calls the
+    ingest callback to feed the readiness projection.  When a candidate goes READY,
+    invokes the spawn callback to start or wake the singleton integrator session.
 
     Non-matching events pass through unchanged.
     """
@@ -44,8 +56,10 @@ class IntegrationTriggerCartridge:
         self,
         *,
         spawn_callback: IntegratorSpawnCallback | None = None,
+        ingest_callback: IngestionCallback | None = None,
     ) -> None:
         self._spawn_callback = spawn_callback
+        self._ingest_callback = ingest_callback
 
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         if event.event not in INTEGRATION_EVENT_TYPES:
@@ -64,18 +78,25 @@ class IntegrationTriggerCartridge:
             sha[:8] if sha else "",
         )
 
-        if (
-            event.event == "domain.software-development.deployment.started"
-            and slug
-            and branch
-            and sha
-            and self._spawn_callback is not None
-        ):
+        canonical_type = _PLATFORM_TO_CANONICAL.get(event.event)
+        if canonical_type and self._ingest_callback is not None:
             try:
-                result = self._spawn_callback(slug, branch, sha)
-                if asyncio.iscoroutine(result):
-                    await result
+                ready_candidates = self._ingest_callback(canonical_type, payload)
+                if ready_candidates:
+                    first = ready_candidates[0]
+                    first_slug, first_branch, first_sha = first
+                    if self._spawn_callback is not None:
+                        try:
+                            result = self._spawn_callback(first_slug, first_branch, first_sha)
+                            if asyncio.iscoroutine(result):
+                                await result
+                        except Exception:
+                            logger.exception(
+                                "Integration trigger spawn callback failed for %s", first_slug
+                            )
             except Exception:
-                logger.exception("Integration trigger spawn callback failed for %s", slug)
+                logger.exception(
+                    "Integration trigger ingest callback failed for %s event", event.event
+                )
 
         return event

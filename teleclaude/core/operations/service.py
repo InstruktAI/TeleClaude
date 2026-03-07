@@ -12,14 +12,31 @@ from typing import Callable
 from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import IntegrityError
+from typing_extensions import TypedDict
 
-from teleclaude.api_models import OperationStatusPayload
 from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
 from teleclaude.core.next_machine import next_work
 from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
+
+
+class SerializedOperation(TypedDict, total=False):
+    operation_id: str
+    kind: str
+    state: str
+    poll_after_ms: int
+    status_path: str
+    recovery_command: str
+    slug: str
+    progress_phase: str
+    progress_decision: str
+    progress_reason: str
+    result: str
+    error: str
+    client_request_id: str
+
 
 OPERATION_KIND_TODO_WORK = "todo_work"
 TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
@@ -97,7 +114,7 @@ class OperationsService:
         cwd: str,
         caller_session_id: str,
         client_request_id: str | None,
-    ) -> OperationStatusPayload:
+    ) -> SerializedOperation:
         """Create or reattach a receipt-backed todo-work operation."""
         lock = await self._get_submit_lock(
             kind=OPERATION_KIND_TODO_WORK,
@@ -167,7 +184,7 @@ class OperationsService:
         operation_id: str,
         caller_session_id: str,
         human_role: str | None,
-    ) -> OperationStatusPayload:
+    ) -> SerializedOperation:
         """Return operation status if owned by the caller or an admin."""
         operation = await self._db.get_operation(operation_id)
         if operation is None:
@@ -236,7 +253,6 @@ class OperationsService:
                 self._db,
                 operation.slug,
                 operation.cwd,
-                operation.caller_session_id,
             )
             if latest_progress is not None:
                 phase, decision, reason = latest_progress
@@ -292,8 +308,8 @@ class OperationsService:
             now_iso=datetime.now(timezone.utc).isoformat(),
         )
 
-    def _serialize_operation(self, operation: Operation) -> OperationStatusPayload:
-        payload: OperationStatusPayload = {
+    def _serialize_operation(self, operation: Operation) -> SerializedOperation:
+        payload: SerializedOperation = {
             "operation_id": operation.operation_id,
             "kind": operation.kind,
             "state": operation.state,

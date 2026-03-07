@@ -313,6 +313,16 @@ def register_software_development(catalog: "EventCatalog") -> None:
     )
     catalog.register(
         EventSchema(
+            event_type="domain.software-development.branch.pushed",
+            description="Worktree branch pushed to remote, candidate ready for integration",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            idempotency_fields=["branch", "sha", "remote"],
+            lifecycle=NotificationLifecycle(creates=True, group_key="branch", meaningful_fields=["pushed_at"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
             event_type="domain.software-development.deployment.started",
             description="Finalize ready, candidate queued for integration",
             default_level=EventLevel.WORKFLOW,

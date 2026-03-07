@@ -214,8 +214,20 @@ def test_dispatch_returns_complete_when_slug_auto_enqueue_invalid_sha(mock_git: 
 
 
 @patch("teleclaude.core.integration.state_machine._run_git")
-def test_dispatch_auto_enqueues_when_slug_given_and_queue_empty(mock_git: MagicMock, tmp_path: Path) -> None:
+@patch("teleclaude.core.integration.state_machine._make_clearance_probe")
+def test_dispatch_auto_enqueues_when_slug_given_and_queue_empty(
+    mock_clearance: MagicMock, mock_git: MagicMock, tmp_path: Path
+) -> None:
     """When slug is given and queue is empty, auto-enqueue via git rev-parse then proceed to lease."""
+    from teleclaude.core.integration.runtime import MainBranchClearanceCheck
+
+    # Clearance probe returns no blockers so the state machine proceeds to merge
+    mock_probe = MagicMock()
+    mock_probe.check.return_value = MainBranchClearanceCheck(
+        standalone_session_ids=(), blocking_session_ids=(), dirty_tracked_paths=()
+    )
+    mock_clearance.return_value = mock_probe
+
     sha = "a" * 40  # valid 40-char hex SHA
     # rev-parse returns SHA; all subsequent git calls return failure to stop early
     def _git_side_effect(args: list[str], *, cwd: str) -> tuple[int, str, str]:
