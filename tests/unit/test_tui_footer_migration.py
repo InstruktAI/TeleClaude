@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -148,6 +149,58 @@ async def test_telec_app_applies_chiptunes_state_events() -> None:
         assert footer.chiptunes_playing is False
         assert footer.chiptunes_track == "Paused Tune"
         assert footer.chiptunes_sid_path == "/music/paused.sid"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_telec_app_chiptunes_favorite_toggles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from teleclaude.chiptunes import favorites as fav_mod
+
+    fav_path = tmp_path / "chiptunes-favorites.json"
+    monkeypatch.setattr(fav_mod, "FAVORITES_PATH", fav_path)
+
+    api = SimpleNamespace(
+        connect=AsyncMock(),
+        start_websocket=MagicMock(),
+        list_computers=AsyncMock(return_value=[]),
+        list_projects_with_todos=AsyncMock(return_value=[]),
+        list_sessions=AsyncMock(return_value=[]),
+        get_agent_availability=AsyncMock(return_value={}),
+        list_jobs=AsyncMock(return_value=[]),
+        get_settings=AsyncMock(
+            return_value=SimpleNamespace(
+                tts=SimpleNamespace(enabled=False),
+                chiptunes=SimpleNamespace(enabled=True),
+            )
+        ),
+        get_chiptunes_status=AsyncMock(
+            return_value=SimpleNamespace(
+                enabled=True,
+                playing=True,
+                paused=False,
+                track="Demo Tune",
+                sid_path="/music/demo.sid",
+            )
+        ),
+    )
+    app = TelecApp(api)  # type: ignore[arg-type]
+
+    notices: list[str] = []
+
+    async with app.run_test() as pilot:
+        await pilot.pause(0.05)
+        footer = app.query_one(TelecFooter)
+        app.notify = lambda message, **kwargs: notices.append(str(message))  # type: ignore[method-assign]
+
+        await TelecApp._chiptunes_favorite.__wrapped__(app)
+        assert footer.chiptunes_favorited is True
+        assert fav_mod.is_favorited("/music/demo.sid") is True
+
+        await TelecApp._chiptunes_favorite.__wrapped__(app)
+        assert footer.chiptunes_favorited is False
+        assert fav_mod.is_favorited("/music/demo.sid") is False
+
+    assert notices == ["⭐ Added to favorites", "Removed from favorites"]
 
 
 @pytest.mark.unit

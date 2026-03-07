@@ -1076,17 +1076,26 @@ class TelecApp(App[str | None]):
 
     @work(exclusive=False, group="settings")
     async def _chiptunes_favorite(self) -> None:
-        """Save the current track to favorites."""
+        """Toggle the current track in favorites."""
         footer = self.query_one("#telec-footer", TelecFooter)
         if not footer.chiptunes_sid_path:
             return
-        from teleclaude.chiptunes.favorites import is_favorited, save_favorite
+        from teleclaude.chiptunes.favorites import is_favorited, remove_favorite, save_favorite
 
         sid_path = footer.chiptunes_sid_path
         track = footer.chiptunes_track
 
         already_favorited = await asyncio.to_thread(is_favorited, sid_path)
         if already_favorited:
+            try:
+                removed = await asyncio.to_thread(remove_favorite, sid_path)
+            except OSError as e:
+                self.notify(f"Failed to remove favorite: {e}", severity="error")
+                return
+
+            if removed:
+                footer.chiptunes_favorited = False
+                self.notify("Removed from favorites")
             return
 
         try:

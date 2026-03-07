@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.paths import CHIPTUNES_FAVORITES_PATH
+
 logger = get_logger(__name__)
 
-FAVORITES_PATH = Path("~/.teleclaude/chiptunes-favorites.json").expanduser()
+FAVORITES_PATH = CHIPTUNES_FAVORITES_PATH
 
 
 def load_favorites() -> list[dict[str, str]]:  # guard: loose-dict - favorites entry
@@ -46,6 +47,18 @@ def save_favorite(track_name: str, sid_path: str) -> None:
 
     FAVORITES_PATH.parent.mkdir(parents=True, exist_ok=True)
     FAVORITES_PATH.write_text(json.dumps(favs, indent=2))
+
+
+def remove_favorite(sid_path: str) -> bool:
+    """Remove a favorite entry by sid_path. Returns True when an entry was removed."""
+    favs = load_favorites()
+    kept = [fav for fav in favs if fav.get("sid_path") != sid_path]
+    if len(kept) == len(favs):
+        return False
+
+    FAVORITES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    FAVORITES_PATH.write_text(json.dumps(kept, indent=2))
+    return True
 
 
 def is_favorited(sid_path: str) -> bool:

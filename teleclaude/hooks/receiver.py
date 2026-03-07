@@ -68,6 +68,7 @@ from teleclaude.core import db_models  # noqa: E402
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType  # noqa: E402
 from teleclaude.hooks.adapters import get_adapter  # noqa: E402
 from teleclaude.constants import MAIN_MODULE, UI_MESSAGE_MAX_CHARS  # noqa: E402
+from teleclaude.paths import SESSION_MAP_PATH  # noqa: E402
 from teleclaude.hooks.checkpoint_flags import (  # noqa: E402
     CHECKPOINT_RECHECK_FLAG,
     consume_checkpoint_flag,
@@ -454,7 +455,7 @@ def _update_session_native_fields(
 
 
 def _get_session_map_path() -> Path:
-    return Path(os.path.expanduser("~/.teleclaude/session_map.json"))
+    return SESSION_MAP_PATH
 
 
 def _session_map_key(agent: str, native_session_id: str) -> str:
@@ -478,6 +479,7 @@ def _load_session_map(path: Path) -> dict[str, str]:
 
 
 def _write_session_map_atomic(path: Path, data: dict[str, str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(".tmp")
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, sort_keys=True)

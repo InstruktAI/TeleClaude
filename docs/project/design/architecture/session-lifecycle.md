@@ -52,7 +52,7 @@ description: 'Complete lifecycle of a terminal session from creation to cleanup.
   - **Headless path (standalone hook process)**:
     - The receiver does not assume a tmux marker exists.
     - It extracts native identity from hook payloads (`native_session_id`, transcript path).
-    - It resolves an existing TeleClaude session via native mapping (`~/.teleclaude/session_map.json`) and DB lookup by native ID.
+    - It resolves an existing TeleClaude session via native mapping (`~/.teleclaude/state/session_map.json`) and DB lookup by native ID.
     - If no reusable session exists, it mints a new TeleClaude session ID and the daemon creates a new headless session row.
   - **Backward compatibility note**:
     - Receiver still supports legacy TMPDIR marker reads in TeleClaude-managed temp dirs.

@@ -122,7 +122,7 @@ def _jsonify(value: object) -> object:
 
 
 def load_state() -> dict[str, dict[str, object]]:  # guard: loose-dict - namespaced state payload
-    """Load persisted TUI state from ~/.teleclaude/tui_state.json."""
+    """Load persisted TUI state from ~/.teleclaude/state/tui_state.json."""
     if not TUI_STATE_PATH.exists():
         logger.debug("No TUI state file found, starting fresh")
         return _empty_state()
@@ -146,7 +146,7 @@ def load_state() -> dict[str, dict[str, object]]:  # guard: loose-dict - namespa
 
 
 def save_state(state: dict[str, object]) -> None:  # guard: loose-dict - namespaced state payload
-    """Save namespaced TUI state to ~/.teleclaude/tui_state.json."""
+    """Save namespaced TUI state to ~/.teleclaude/state/tui_state.json."""
     payload: dict[str, object] = {}  # guard: loose-dict - namespaced state payload
     for key, value in state.items():
         if isinstance(value, dict):

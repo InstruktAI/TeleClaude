@@ -889,6 +889,19 @@ class TestFavorites:
 
         assert len(fav_mod.load_favorites()) == 1
 
+    def test_remove_favorite(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from teleclaude.chiptunes import favorites as fav_mod
+
+        fav_path = tmp_path / "chiptunes-favorites.json"
+        monkeypatch.setattr(fav_mod, "FAVORITES_PATH", fav_path)
+
+        fav_mod.save_favorite("Track A", "/music/a.sid")
+        removed = fav_mod.remove_favorite("/music/a.sid")
+
+        assert removed is True
+        assert fav_mod.load_favorites() == []
+        assert fav_mod.is_favorited("/music/a.sid") is False
+
     def test_load_returns_empty_on_missing_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         from teleclaude.chiptunes import favorites as fav_mod
 

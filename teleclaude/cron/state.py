@@ -9,6 +9,8 @@ from pathlib import Path
 
 from typing_extensions import TypedDict
 
+from teleclaude.paths import CRON_STATE_PATH
+
 
 class JobStateDict(TypedDict, total=False):
     """Serialized job state."""
@@ -77,7 +79,7 @@ class CronState:
     def load(cls, path: Path | None = None) -> CronState:
         """Load state from disk or create new."""
         if path is None:
-            path = Path.home() / ".teleclaude" / "cron_state.json"
+            path = CRON_STATE_PATH
         state = cls(path=path)
         if path.exists():
             try:
