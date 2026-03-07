@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: adapter-reflection-cleanup
+  date: '2026-03-07'
+  title: 'Make reflection pipeline match architecture: core broadcasts, adapters own
+    everything'
+  description: 'Make reflection pipeline match architecture: core broadcasts, adapters
+    own everything'
 - slug: chiptunes-playlist-controls
   date: '2026-03-06'
 - slug: async-operation-receipts
