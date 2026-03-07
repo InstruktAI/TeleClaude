@@ -1,5 +1,7 @@
 # Delivered work items. Newest first.
 
+- slug: proficiency-to-expertise
+  date: '2026-03-07'
 - slug: adapter-reflection-cleanup
   date: '2026-03-07'
   title: 'Make reflection pipeline match architecture: core broadcasts, adapters own
