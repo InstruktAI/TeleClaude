@@ -1,9 +1,48 @@
+phase: pending
 build: pending
 review: pending
 deferrals_processed: false
+finalize:
+  status: pending
 breakdown:
   assessed: false
   todos: []
+review_round: 0
+max_review_rounds: 3
+review_baseline_commit: ''
+unresolved_findings: []
+resolved_findings: []
+prepare_phase: plan_review
+grounding:
+  valid: true
+  base_sha: bbfa8eaabd8a25b160708153cc24a6efce7648de
+  input_digest: 553a53a2d56016330c5419c77df1060d
+  referenced_paths:
+  - teleclaude/core/next_machine/core.py
+  - teleclaude/core/roadmap.py
+  - teleclaude/todo_scaffold.py
+  - teleclaude/cli/telec.py
+  - teleclaude_events/cartridges/prepare_quality.py
+  - tests/unit/core/test_roadmap.py
+  - tests/unit/core/test_roadmap_api_parity.py
+  - tests/unit/test_todo_scaffold.py
+  - tests/unit/test_telec_cli.py
+  - tests/unit/test_teleclaude_events/test_prepare_quality.py
+  - todos/icebox-physical-folder/demo.md
+  last_grounded_at: '2026-03-08T23:08:00Z'
+  invalidated_at: null
+  invalidation_reason: null
+  changed_paths: []
+requirements_review:
+  verdict: approve
+  reviewed_at: '2026-03-08T21:48:26Z'
+  findings_count: 0
+  rounds: 1
+plan_review:
+  verdict: approve
+  reviewed_at: '2026-03-09T12:00:00Z'
+  findings_count: 0
+  rounds: 2
 dor:
   last_assessed_at: '2026-03-08T22:02:44Z'
   score: 8
@@ -13,37 +52,4 @@ dor:
   actions_taken:
     requirements_updated: false
     implementation_plan_updated: true
-grounding:
-  valid: true
-  base_sha: '9768e1f0d10195309729d74021ae4aee83317552'
-  input_digest: '553a53a2d56016330c5419c77df1060d'
-  last_grounded_at: '2026-03-08T21:30:00Z'
-  invalidation_reason: null
-  referenced_paths:
-    - teleclaude/core/next_machine/core.py
-    - teleclaude/core/roadmap.py
-    - teleclaude/todo_scaffold.py
-    - teleclaude/cli/telec.py
-    - teleclaude_events/cartridges/prepare_quality.py
-    - tests/unit/core/test_roadmap.py
-    - tests/unit/core/test_roadmap_api_parity.py
-    - tests/unit/test_todo_scaffold.py
-    - tests/unit/test_telec_cli.py
-    - tests/unit/test_teleclaude_events/test_prepare_quality.py
-    - todos/icebox-physical-folder/demo.md
-requirements_review:
-  verdict: approve
-  reviewed_at: '2026-03-08T21:48:26Z'
-  findings_count: 0
-  rounds: 1
-plan_review:
-  verdict: approve
-  reviewed_at: '2026-03-08T21:58:28Z'
-  findings_count: 0
-  rounds: 1
-review_round: 0
-max_review_rounds: 3
-review_baseline_commit: ''
-unresolved_findings: []
-resolved_findings: []
 schema_version: 1
