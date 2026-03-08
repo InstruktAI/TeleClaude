@@ -15,7 +15,7 @@ resolved_findings: []
 prepare_phase: plan_review
 grounding:
   valid: true
-  base_sha: edb150ffd136c8e096f30ae65a1fbe91368ae396
+  base_sha: cc8dad72f306f67d9609e6693654d85822ae3d01
   input_digest: 553a53a2d56016330c5419c77df1060d
   referenced_paths:
   - teleclaude/core/next_machine/core.py
@@ -29,7 +29,7 @@ grounding:
   - tests/unit/test_telec_cli.py
   - tests/unit/test_teleclaude_events/test_prepare_quality.py
   - todos/icebox-physical-folder/demo.md
-  last_grounded_at: '2026-03-09T13:00:00Z'
+  last_grounded_at: '2026-03-09T16:00:00Z'
   invalidated_at: ''
   invalidation_reason: ''
   changed_paths: []
@@ -39,7 +39,7 @@ requirements_review:
   findings_count: 0
   rounds: 1
 plan_review:
-  verdict: approve
+  verdict: ''
   reviewed_at: '2026-03-09T15:30:00Z'
   findings_count: 0
   rounds: 3
