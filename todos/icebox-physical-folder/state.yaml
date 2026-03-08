@@ -13,6 +13,7 @@ dor:
   actions_taken:
     requirements_updated: true
     implementation_plan_updated: true
+    demo_updated: true
 grounding:
   valid: true
   base_sha: '9768e1f0d10195309729d74021ae4aee83317552'
@@ -24,11 +25,21 @@ grounding:
     - teleclaude/core/roadmap.py
     - teleclaude/todo_scaffold.py
     - teleclaude/cli/telec.py
+    - teleclaude_events/cartridges/prepare_quality.py
     - tests/unit/core/test_roadmap.py
+    - tests/unit/core/test_roadmap_api_parity.py
     - tests/unit/test_todo_scaffold.py
+    - tests/unit/test_telec_cli.py
+    - tests/unit/test_teleclaude_events/test_prepare_quality.py
+    - todos/icebox-physical-folder/demo.md
 requirements_review:
   verdict: approve
   reviewed_at: '2026-03-08T21:48:26Z'
+  findings_count: 0
+  rounds: 1
+plan_review:
+  verdict: approve
+  reviewed_at: '2026-03-08T21:58:28Z'
   findings_count: 0
   rounds: 1
 review_round: 0
