@@ -41,7 +41,4 @@
 - slug: a2ui-showcase-component
 - slug: web-frontend-test-bugs
 - slug: youtube-scrape-channels-job
-- slug: telegram-callback-payload-migration
-  description: Migrate Telegram explicit user-selection callback payloads to canonical
-    agent identifiers (deferred from default-agent-resolution)
 - slug: prepare-state-machine

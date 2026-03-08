@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: telegram-callback-payload-migration
+  date: '2026-03-08'
+  title: Migrate Telegram explicit user-selection callback payloads to canonical agent
+    identifiers (deferred from default-agent-resolution)
+  description: Migrate Telegram explicit user-selection callback payloads to canonical
+    agent identifiers (deferred from default-agent-resolution)
 - slug: conversation-projection-unification
   date: '2026-03-08'
   title: Unify the core output projection route across poller, threaded, web, and
