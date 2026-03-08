@@ -3002,7 +3002,7 @@ def _prepare_step_grounding_check(
         return True, ""  # loop to RE_GROUNDING
 
     # Check for staleness
-    sha_changed = current_sha and current_sha != base_sha
+    sha_changed = bool(current_sha and current_sha != base_sha)
     digest_changed = current_input_digest and current_input_digest != stored_input_digest
 
     # Check if referenced paths changed between base_sha and HEAD
@@ -3013,7 +3013,14 @@ def _prepare_step_grounding_check(
             changed_files = {line.strip() for line in diff_output.splitlines() if line.strip()}
             changed_paths = [p for p in referenced_paths if p in changed_files]
 
-    is_stale = sha_changed or digest_changed or bool(changed_paths)
+    # Grounding staleness semantics:
+    # - Always stale when input digest changed.
+    # - If referenced paths are known, only stale when those paths changed.
+    # - Fall back to sha-level staleness only when referenced paths are unavailable.
+    references_known = bool(referenced_paths)
+    paths_stale = bool(changed_paths)
+    sha_fallback_stale = sha_changed and not references_known
+    is_stale = bool(digest_changed) or paths_stale or sha_fallback_stale
 
     if is_stale:
         reason = "input_updated" if digest_changed else "files_changed"

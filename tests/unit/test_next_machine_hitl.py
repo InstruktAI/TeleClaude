@@ -466,6 +466,45 @@ async def test_prepare_grounding_check_stale_transitions_to_regrounding():
 
 
 @pytest.mark.asyncio
+async def test_prepare_grounding_check_sha_only_change_with_references_stays_prepared():
+    """GROUNDING_CHECK ignores unrelated HEAD changes when referenced paths are unchanged."""
+    db = MagicMock(spec=Db)
+    slug = "test-slug"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        state = {
+            "prepare_phase": PreparePhase.GROUNDING_CHECK.value,
+            "grounding": {
+                "valid": True,
+                "base_sha": "old_sha",
+                "input_digest": "",
+                "referenced_paths": ["src/foo.py"],
+                "last_grounded_at": "",
+                "invalidated_at": "",
+                "invalidation_reason": "",
+            },
+        }
+
+        def mock_run_git_prepare(args: list[str], cwd: str) -> tuple[int, str, str]:
+            if args[:2] == ["rev-parse", "HEAD"]:
+                return (0, "new_sha", "")
+            if args[:2] == ["diff", "--name-only"]:
+                return (0, "docs/unrelated.md\n", "")
+            return (1, "", "")
+
+        with (
+            patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+            patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+            patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
+            patch("teleclaude.core.next_machine.core.write_phase_state"),
+            patch("teleclaude.core.next_machine.core._run_git_prepare", side_effect=mock_run_git_prepare),
+            patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+        ):
+            result = await next_prepare(db, slug=slug, cwd=tmpdir)
+            assert "PREPARED" in result
+
+
+@pytest.mark.asyncio
 async def test_prepare_regrounding_dispatches_draft_with_changes():
     """RE_GROUNDING phase dispatches next-prepare-draft with changed paths note."""
     db = MagicMock(spec=Db)
