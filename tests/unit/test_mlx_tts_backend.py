@@ -40,41 +40,8 @@ def test_resolve_cli_bin_returns_none_when_missing(monkeypatch, tmp_path: Path) 
     assert backend._resolve_cli_bin() is None
 
 
-def test_ensure_model_prefers_in_process_backend_even_when_cli_exists() -> None:
-    """When mlx_audio imports cleanly, keep TTS in-process instead of spawning CLI helpers."""
-    backend = MLXTTSBackend.__new__(MLXTTSBackend)
-    backend._service_name = "kokoro"
-    backend._cli_bin = "/tmp/mlx_audio.tts.generate"
-    backend._model = None
-    backend._model_ref = "mlx-community/Kokoro-82M-bf16"
-    backend._params = {}
-
-    class _FakeModule:
-        def __init__(self, **attrs) -> None:
-            self.__dict__.update(attrs)
-
-    fake_model = object()
-
-    with (
-        patch.object(
-            mlx_tts,
-            "import_module",
-            side_effect=[
-                _FakeModule(generate_audio=lambda **_kwargs: None),
-                _FakeModule(load_model=lambda _model_ref: fake_model),
-            ],
-        ),
-        patch.object(mlx_tts, "_mlx_audio_import_attempted", False),
-        patch.object(mlx_tts, "generate_audio", None),
-        patch.object(mlx_tts, "load_model", None),
-        patch.object(mlx_tts, "mlx_audio_import_error", None),
-    ):
-        assert backend._ensure_model() is True
-        assert backend._model is fake_model
-
-
-def test_ensure_model_falls_back_to_cli_when_import_fails() -> None:
-    """CLI fallback remains available when mlx_audio cannot be imported."""
+def test_ensure_model_prefers_cli_backend_when_cli_exists() -> None:
+    """When a CLI exists, keep MLX generation out of the daemon process."""
     backend = MLXTTSBackend.__new__(MLXTTSBackend)
     backend._service_name = "kokoro"
     backend._cli_bin = "/tmp/mlx_audio.tts.generate"
@@ -83,7 +50,7 @@ def test_ensure_model_falls_back_to_cli_when_import_fails() -> None:
     backend._params = {}
 
     with (
-        patch.object(mlx_tts, "import_module", side_effect=ImportError("mlx missing")),
+        patch.object(mlx_tts, "import_module") as import_module,
         patch.object(mlx_tts, "_mlx_audio_import_attempted", False),
         patch.object(mlx_tts, "generate_audio", None),
         patch.object(mlx_tts, "load_model", None),
@@ -91,10 +58,32 @@ def test_ensure_model_falls_back_to_cli_when_import_fails() -> None:
     ):
         assert backend._ensure_model() is True
         assert backend._model is None
+        import_module.assert_not_called()
 
 
-def test_build_cli_command_uses_python_entrypoint_directly(tmp_path: Path) -> None:
-    """Installed python entrypoints should execute directly without uv wrapping."""
+def test_ensure_model_ignores_import_failures_when_cli_exists() -> None:
+    """CLI mode should not touch mlx_audio imports at all."""
+    backend = MLXTTSBackend.__new__(MLXTTSBackend)
+    backend._service_name = "kokoro"
+    backend._cli_bin = "/tmp/mlx_audio.tts.generate"
+    backend._model = None
+    backend._model_ref = "mlx-community/Kokoro-82M-bf16"
+    backend._params = {}
+
+    with (
+        patch.object(mlx_tts, "import_module", side_effect=ImportError("mlx missing")) as import_module,
+        patch.object(mlx_tts, "_mlx_audio_import_attempted", False),
+        patch.object(mlx_tts, "generate_audio", None),
+        patch.object(mlx_tts, "load_model", None),
+        patch.object(mlx_tts, "mlx_audio_import_error", None),
+    ):
+        assert backend._ensure_model() is True
+        assert backend._model is None
+        import_module.assert_not_called()
+
+
+def test_build_cli_command_uses_repo_uv_run_for_python_entrypoint(tmp_path: Path) -> None:
+    """Python-script entrypoints should run through the repo mlx environment."""
     script = tmp_path / "mlx_audio.tts.generate"
     script.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
     script.chmod(0o755)
@@ -107,8 +96,9 @@ def test_build_cli_command_uses_python_entrypoint_directly(tmp_path: Path) -> No
 
     cmd = backend._build_cli_command(text="hi", voice="nova", file_prefix="/tmp/tts")
 
-    assert cmd[0] == str(script)
-    assert cmd[1:3] == ["--model", "mlx-community/Kokoro-82M-bf16"]
+    assert cmd[:6] == ["uv", "run", "--quiet", "--project", str(mlx_tts._REPO_ROOT), "--extra"]
+    assert cmd[6:12] == ["mlx", "--with", "pip", "python", "-m", "mlx_audio.tts.generate"]
+    assert cmd[12:14] == ["--model", "mlx-community/Kokoro-82M-bf16"]
 
 
 def test_build_cli_command_uses_binary_directly_for_non_script(monkeypatch, tmp_path: Path) -> None:

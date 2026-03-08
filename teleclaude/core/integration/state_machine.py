@@ -29,7 +29,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.db import Db
 from teleclaude.core.integration.lease import IntegrationLeaseStore
-from teleclaude.core.integration.queue import IntegrationQueue
+from teleclaude.core.integration.queue import IntegrationQueue, default_integration_state_dir
 from teleclaude.core.integration.readiness_projection import CandidateKey
 from teleclaude.core.integration.runtime import MainBranchClearanceProbe, SessionSnapshot
 
@@ -190,7 +190,7 @@ def _write_checkpoint(path: Path, checkpoint: IntegrationCheckpoint) -> None:
 
 
 def _default_state_dir() -> Path:
-    return Path.home() / ".teleclaude" / "integration"
+    return default_integration_state_dir()
 
 
 # ---------------------------------------------------------------------------

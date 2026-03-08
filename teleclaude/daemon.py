@@ -45,6 +45,7 @@ from teleclaude.core.events import (
     build_agent_payload,
     parse_command_string,
 )
+from teleclaude.core.integration.queue import default_integration_queue_path
 from teleclaude.core.lifecycle import DaemonLifecycle
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
@@ -1868,7 +1869,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 except Exception:
                     logger.warning("Could not load people config for WhatsApp delivery adapter")
 
-            # 5. Pipeline (trust → dedup → enrichment → correlation → classification → integration trigger → notification projector → prepare quality)
+            # 5. Pipeline (trust → integration trigger → dedup → enrichment → correlation → classification → notification projector → prepare quality)
             from teleclaude.core.integration.queue import IntegrationQueue
             from teleclaude.core.integration.service import IntegrationEventService
             from teleclaude.core.integration_bridge import spawn_integrator_session
@@ -1878,7 +1879,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 integrated_checker=lambda _s, _r: False,
             )
             _integration_queue = IntegrationQueue(
-                state_path=config_path.parent / "integration-queue.json",
+                state_path=default_integration_queue_path(),
             )
 
             def _ingest_callback(canonical_type: str, payload: object) -> list[tuple[str, str, str]]:
@@ -1926,11 +1927,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             pipeline = Pipeline(
                 [
                     TrustCartridge(),
+                    integration_trigger,
                     DeduplicationCartridge(),
                     EnrichmentCartridge(),
                     CorrelationCartridge(),
                     ClassificationCartridge(),
-                    integration_trigger,
                     NotificationProjectorCartridge(),
                     PrepareQualityCartridge(),
                 ],

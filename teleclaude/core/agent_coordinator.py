@@ -25,6 +25,7 @@ from teleclaude.constants import (
     CHECKPOINT_MESSAGE,
     CHECKPOINT_PREFIX,
     LOCAL_COMPUTER,
+    TELECLAUDE_SYSTEM_PREFIX,
     format_system_message,
 )
 from teleclaude.core.activity_contract import serialize_activity_event
@@ -1029,8 +1030,23 @@ class AgentCoordinator:
         # Clear turn-specific cursor at turn completion
         await db.update_session(session_id, last_tool_done_at=None)
 
-        # 3. Fan out distilled stop output across active direct/gathering links
-        if link_output and link_output.strip():
+        # 3. Fan out distilled stop output across active direct/gathering links.
+        # Suppress fan-out for turns triggered by linked output to prevent echo
+        # loops: A fans to B, B acknowledges, B's acknowledgment fans back to A,
+        # A acknowledges, repeat forever.  Linked output is observational
+        # (one-way push); the recipient's response should not bounce back.
+        _linked_prefix = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "
+        _is_linked_echo = (
+            session is not None
+            and (session.last_input_origin or "").strip().lower() == InputOrigin.REDIS.value
+            and (session.last_message_sent or "").startswith(_linked_prefix)
+        )
+        if _is_linked_echo:
+            logger.debug(
+                "Suppressing linked fan-out for session %s (turn triggered by linked output)",
+                session_id[:8],
+            )
+        if link_output and link_output.strip() and not _is_linked_echo:
             await self._fanout_linked_stop_output(session_id, link_output, source_computer=source_computer)
 
         # 4. Notify local listeners (worker orchestration mode)

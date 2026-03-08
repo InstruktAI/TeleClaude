@@ -121,6 +121,8 @@ class SessionsView(Widget, can_focus=True):
         self._pending_select_session_id: str | None = None
         # Position cursor at preview session on first tree build only
         self._initial_cursor_positioned = False
+        # Track highlighted session by identity so cursor survives tree rebuilds
+        self._highlighted_session_id: str | None = None
 
     def compose(self) -> ComposeResult:
         scroll = VerticalScroll(id="sessions-scroll")
@@ -216,6 +218,10 @@ class SessionsView(Widget, can_focus=True):
             if isinstance(preview_id, str) and preview_id:
                 self.preview_session_id = preview_id
 
+        highlighted = data.get("highlighted_session_id")
+        if isinstance(highlighted, str) and highlighted:
+            self._highlighted_session_id = highlighted
+
     def request_select_session(self, session_id: str) -> None:
         """Request auto-selection of a session once it appears in the tree.
 
@@ -258,6 +264,15 @@ class SessionsView(Widget, can_focus=True):
         """Rebuild the tree display from current data."""
         _rt0 = time.monotonic()
         self._logger.trace("[PERF] SessionsView._rebuild_tree START t=%.3f", _rt0)
+
+        # Capture cursor identity before clearing the tree
+        old_cursor_index = self.cursor_index
+        old_highlighted_id = self._highlighted_session_id
+        if not old_highlighted_id and self._nav_items and 0 <= old_cursor_index < len(self._nav_items):
+            item = self._nav_items[old_cursor_index]
+            if isinstance(item, SessionRow):
+                old_highlighted_id = item.session_id
+
         container = self.query_one("#sessions-scroll", VerticalScroll)
         container.remove_children()
         self._nav_items.clear()
@@ -293,15 +308,28 @@ class SessionsView(Widget, can_focus=True):
                 row.is_last_child = session_rows[i + 1].depth < row.depth
             # Last session in group is handled by skip_bottom_connector
 
-        # Restore cursor position
-        if self._nav_items and self.cursor_index >= len(self._nav_items):
-            self.cursor_index = max(0, len(self._nav_items) - 1)
+        # Restore cursor to the same session by identity
+        restored = False
+        if old_highlighted_id and self._nav_items:
+            for i, widget in enumerate(self._nav_items):
+                if isinstance(widget, SessionRow) and widget.session_id == old_highlighted_id:
+                    self.cursor_index = i
+                    self._highlighted_session_id = old_highlighted_id
+                    restored = True
+                    break
+
+        if not restored and self._nav_items:
+            # Session was removed — clamp to nearest valid position
+            self.cursor_index = min(old_cursor_index, len(self._nav_items) - 1)
+            item = self._nav_items[self.cursor_index]
+            self._highlighted_session_id = item.session_id if isinstance(item, SessionRow) else None
 
         # On first build, position cursor at the preview session row
         if not self._initial_cursor_positioned and self.preview_session_id:
             for i, widget in enumerate(self._nav_items):
                 if isinstance(widget, SessionRow) and widget.session_id == self.preview_session_id:
                     self.cursor_index = i
+                    self._highlighted_session_id = self.preview_session_id
                     break
             self._initial_cursor_positioned = True
 
@@ -1017,7 +1045,10 @@ class SessionsView(Widget, can_focus=True):
             key_widget.set_class(getattr(key_widget, "action", None) == default_action, "default-action")
 
     def watch_cursor_index(self, _index: int) -> None:
-        """Refresh key bindings when node context changes."""
+        """Refresh key bindings and track highlighted session identity."""
+        if self._nav_items and 0 <= _index < len(self._nav_items):
+            item = self._nav_items[_index]
+            self._highlighted_session_id = item.session_id if isinstance(item, SessionRow) else None
         if self.is_attached:
             self.app.refresh_bindings()
             self.call_after_refresh(self._sync_default_footer_action)
@@ -1148,4 +1179,5 @@ class SessionsView(Widget, can_focus=True):
             },
             "collapsed_sessions": sorted(self._collapsed_sessions),
             "preview": {"session_id": self.preview_session_id} if self.preview_session_id else None,
+            "highlighted_session_id": self._highlighted_session_id,
         }

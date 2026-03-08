@@ -22,7 +22,7 @@ from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionLifecycleContext, SessionStatusContext, SessionUpdatedContext
+from teleclaude.core.events import SessionLifecycleContext, SessionStatusContext, SessionUpdatedContext, TeleClaudeEvents
 from teleclaude.core.models import SessionAdapterMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
@@ -1743,9 +1743,13 @@ class DiscordAdapter(UiAdapter):
         async def on_raw_thread_delete(payload: object) -> None:
             await self._handle_thread_delete(payload)
 
+        async def on_raw_thread_update(payload: object) -> None:
+            await self._handle_thread_update(payload)
+
         self._client.event(on_ready)
         self._client.event(on_message)
         self._client.event(on_raw_thread_delete)
+        self._client.event(on_raw_thread_update)
 
     async def _handle_on_ready(self) -> None:
         if self._client is None:
@@ -2057,45 +2061,92 @@ class DiscordAdapter(UiAdapter):
             lambda: get_command_service().process_message(cmd),
         )
 
-    async def _handle_thread_delete(self, payload: object) -> None:
-        """Handle a Discord thread being deleted externally.
+    async def _emit_close_for_thread(self, thread_id: int, *, trigger: str) -> None:
+        """Look up session by thread_id and emit SESSION_CLOSE_REQUESTED.
 
-        When a user deletes a thread from Discord, look up the session
-        that owns it and emit session_closed so the daemon terminates it.
+        Shared by both thread-delete and thread-archive handlers.
         """
-        thread_id = self._parse_optional_int(getattr(payload, "thread_id", None))
-        if thread_id is None:
-            return
-
-        # Guild check
-        if self._guild_id is not None:
-            payload_guild_id = self._parse_optional_int(getattr(payload, "guild_id", None))
-            if payload_guild_id is not None and payload_guild_id != self._guild_id:
-                return
-
+        # Guild filtering already done by callers.
         sessions = await db.get_sessions_by_adapter_metadata("discord", "thread_id", thread_id, include_closed=True)
         if not sessions:
-            logger.debug("No session found for deleted Discord thread %s", thread_id)
+            logger.debug("No session found for Discord thread %s (%s)", thread_id, trigger)
             return
 
         session = sessions[0]
         if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
             logger.debug(
-                "Thread %s deleted for already-closed session %s",
+                "Thread %s %s for already-closed session %s",
                 thread_id,
+                trigger,
                 session.session_id[:8],
             )
             return
 
+        # Grace period: ignore events for sessions still initialising.
+        if session.created_at:
+            from datetime import datetime, timezone
+
+            from teleclaude.core.dates import ensure_utc
+
+            created_at = ensure_utc(session.created_at)
+            age = (datetime.now(timezone.utc) - created_at).total_seconds()
+            if age < 10.0:
+                logger.warning(
+                    "Ignoring thread %s for new session %s (age=%.1fs)",
+                    trigger,
+                    session.session_id[:8],
+                    age,
+                )
+                return
+
         logger.info(
-            "Discord thread %s deleted by user, terminating session %s",
+            "Discord thread %s %s by user, terminating session %s",
             thread_id,
+            trigger,
             session.session_id[:8],
         )
         event_bus.emit(
-            "session_closed",
+            TeleClaudeEvents.SESSION_CLOSE_REQUESTED,
             SessionLifecycleContext(session_id=session.session_id),
         )
+
+    async def _handle_thread_delete(self, payload: object) -> None:
+        """Handle a Discord thread being deleted externally."""
+        thread_id = self._parse_optional_int(getattr(payload, "thread_id", None))
+        if thread_id is None:
+            return
+
+        if self._guild_id is not None:
+            payload_guild_id = self._parse_optional_int(getattr(payload, "guild_id", None))
+            if payload_guild_id is not None and payload_guild_id != self._guild_id:
+                return
+
+        await self._emit_close_for_thread(thread_id, trigger="deleted")
+
+    async def _handle_thread_update(self, payload: object) -> None:
+        """Handle a Discord thread being archived (closed) externally."""
+        # Check archived status from cached Thread object or raw gateway data.
+        thread = getattr(payload, "thread", None)
+        if thread is not None:
+            archived = getattr(thread, "archived", False)
+        else:
+            data = getattr(payload, "data", None) or {}
+            thread_meta = data.get("thread_metadata", {}) if isinstance(data, dict) else {}
+            archived = thread_meta.get("archived", False)
+
+        if not archived:
+            return
+
+        thread_id = self._parse_optional_int(getattr(payload, "thread_id", None))
+        if thread_id is None:
+            return
+
+        if self._guild_id is not None:
+            payload_guild_id = self._parse_optional_int(getattr(payload, "guild_id", None))
+            if payload_guild_id is not None and payload_guild_id != self._guild_id:
+                return
+
+        await self._emit_close_for_thread(thread_id, trigger="archived")
 
     def _is_bot_message(self, message: object) -> bool:
         author = getattr(message, "author", None)

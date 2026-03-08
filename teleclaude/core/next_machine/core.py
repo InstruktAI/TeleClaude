@@ -390,13 +390,27 @@ def format_uncommitted_changes(slug: str) -> str:
 NEXT: Resolve these changes according to the commit policy, then call telec todo work {slug} to continue."""
 
 
-def format_finalize_handoff_complete(slug: str, next_call: str) -> str:
+def format_finalize_handoff_complete(slug: str, next_call: str, child_session_ids: list[str] | None = None) -> str:
     """Format the slug-scoped handoff step after finalize readiness is recorded."""
+    steps: list[str] = []
+    steps.append(
+        f'1. Report: "Candidate {slug} handed off to the integration event chain. '
+        f'The integrator will spawn automatically when the projection reports READY."'
+    )
+
+    step = 2
+    if child_session_ids:
+        end_cmds = "\n   ".join(f"telec sessions end {sid}" for sid in child_session_ids)
+        steps.append(f"{step}. End child sessions:\n   {end_cmds}")
+        step += 1
+
+    steps.append(f"{step}. Call {next_call}")
+
+    instructions = "\n".join(steps)
     return f"""FINALIZE HANDOFF COMPLETE: {slug}
 
 INSTRUCTIONS FOR ORCHESTRATOR:
-1. Report: "Candidate {slug} handed off to the integration event chain. The integrator will spawn automatically when the projection reports READY."
-2. Call {next_call}"""
+{instructions}"""
 
 
 def format_stash_debt(slug: str, count: int) -> str:
@@ -3105,7 +3119,17 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 next_call=f"telec todo work {resolved_slug}",
             )
         _log_next_work_phase(phase_slug, "dispatch_decision", handoff_started, "run", "finalize_handoff_emitted")
-        return format_finalize_handoff_complete(resolved_slug, "telec todo work")
+
+        # Collect active child sessions spawned by this orchestrator for cleanup
+        child_session_ids: list[str] = []
+        if session_id != "unknown":
+            try:
+                child_sessions = await db.list_sessions(initiator_session_id=session_id)
+                child_session_ids = [s.session_id for s in child_sessions]
+            except Exception:
+                logger.warning("Failed to query child sessions for cleanup", session_id=session_id)
+
+        return format_finalize_handoff_complete(resolved_slug, "telec todo work", child_session_ids)
 
     # If review requested changes, continue fix loop regardless of build-state drift.
     if review_status == PhaseStatus.CHANGES_REQUESTED.value:

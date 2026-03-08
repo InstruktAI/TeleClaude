@@ -69,11 +69,7 @@ class FooterActionButton(Static, can_focus=False):
             self.update(self._render_icon())
 
     def _render_icon(self) -> Text:
-        style = (
-            Style(dim=True)
-            if self.disabled
-            else Style(color=get_neutral_color("highlight"), bold=True)
-        )
+        style = Style(dim=True) if self.disabled else Style(color=get_neutral_color("highlight"), bold=True)
         return Text(self.icon, style=style)
 
     def on_click(self, event: Click) -> None:

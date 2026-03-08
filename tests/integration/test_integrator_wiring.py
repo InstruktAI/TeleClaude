@@ -536,5 +536,6 @@ def test_post_completion_no_longer_merges_main() -> None:
     assert "git merge --squash" not in finalize_instructions
     assert "git push origin main" not in finalize_instructions
     assert "telec todo integrate" not in finalize_instructions
-    # Should describe the new event-chain handoff
-    assert "integration event chain" in finalize_instructions
+    # Should describe the finalize-ready handoff contract
+    assert "telec todo mark-finalize-ready {args} --worker-session-id <session_id>" in finalize_instructions
+    assert "Call {next_call}" in finalize_instructions

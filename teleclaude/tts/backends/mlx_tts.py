@@ -19,6 +19,22 @@ _mlx_audio_import_attempted = False
 logger = get_logger(__name__)
 
 DEFAULT_VOICE_DESIGN_INSTRUCT = "A clear, natural conversational voice."
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _looks_like_python_script(path: str) -> bool:
+    """Detect direct python script executables that should run via the repo env."""
+    candidate = Path(path)
+    if not candidate.is_file():
+        return False
+    if candidate.suffix == ".py":
+        return True
+    try:
+        with candidate.open(encoding="utf-8", errors="ignore") as handle:
+            first_line = handle.readline()
+    except OSError:
+        return False
+    return first_line.startswith("#!") and ("python" in first_line)
 
 
 class MLXTTSBackend:
@@ -81,9 +97,14 @@ class MLXTTSBackend:
         """Lazy-load the model on first use."""
         global generate_audio, load_model, mlx_audio_import_error, _mlx_audio_import_attempted
 
-        # Prefer the in-process backend when mlx_audio is importable. Falling back
-        # to the CLI only when import/model load fails avoids spawning a fresh
-        # Python helper process for every utterance.
+        # CLI-only mode: keep MLX generation out of the daemon process when a
+        # runnable CLI exists. This was the stable path before the March 7
+        # in-process preference change.
+        if self._cli_bin:
+            logger.debug("MLX TTS [%s] using CLI backend only: %s", self._service_name, self._cli_bin)
+            return True
+
+        # Local model path: lazy-import mlx_audio only when CLI is unavailable.
         if not _mlx_audio_import_attempted:
             _mlx_audio_import_attempted = True
             try:
@@ -97,44 +118,23 @@ class MLXTTSBackend:
             except Exception as import_error:  # noqa: BLE001 - keep backend available via CLI fallback
                 mlx_audio_import_error = import_error
 
-        if load_model is not None:
-            if self._model is not None:
-                return True
-            try:
-                self._model = load_model(self._model_ref)
-                logger.info("MLX TTS [%s] model loaded: %s", self._service_name, self._model_ref)
-                return True
-            except Exception as exc:
-                if self._cli_bin:
-                    logger.warning(
-                        "MLX TTS [%s] model load failed, falling back to CLI %s: %s",
-                        self._service_name,
-                        self._cli_bin,
-                        exc,
-                    )
-                    return True
-                logger.error(
-                    "Failed to load MLX TTS model [%s] (%s): %s",
-                    self._service_name,
-                    self._model_ref,
-                    exc,
-                )
-                return False
-
-        if self._cli_bin:
-            logger.debug(
-                "MLX TTS [%s] using CLI fallback because mlx_audio import failed: %s",
+        if load_model is None:
+            logger.error(
+                "MLX TTS [%s] unavailable: mlx_audio import failed and no CLI fallback (%s)",
                 self._service_name,
                 mlx_audio_import_error,
             )
-            return True
+            return False
 
-        logger.error(
-            "MLX TTS [%s] unavailable: mlx_audio import failed and no CLI fallback (%s)",
-            self._service_name,
-            mlx_audio_import_error,
-        )
-        return False
+        if self._model is not None:
+            return True
+        try:
+            self._model = load_model(self._model_ref)
+            logger.info("MLX TTS [%s] model loaded: %s", self._service_name, self._model_ref)
+            return True
+        except Exception as e:
+            logger.error("Failed to load MLX TTS model [%s] (%s): %s", self._service_name, self._model_ref, e)
+            return False
 
     def speak(self, text: str, voice_name: str | None = None) -> bool:
         """Speak text using the loaded MLX TTS model.
@@ -232,6 +232,23 @@ class MLXTTSBackend:
             "--audio_format",
             "wav",
         ]
+
+        if self._cli_bin and _looks_like_python_script(self._cli_bin):
+            return [
+                "uv",
+                "run",
+                "--quiet",
+                "--project",
+                str(_REPO_ROOT),
+                "--extra",
+                "mlx",
+                "--with",
+                "pip",
+                "python",
+                "-m",
+                "mlx_audio.tts.generate",
+                *cli_args,
+            ]
 
         assert self._cli_bin is not None
         return [self._cli_bin, *cli_args]

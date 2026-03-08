@@ -568,6 +568,7 @@ class Db:
         include_closed: bool = False,
         include_initializing: bool = False,
         include_headless: bool = False,
+        initiator_session_id: Optional[str] = None,
     ) -> list[Session]:
         """List sessions with optional filters.
 
@@ -576,6 +577,7 @@ class Db:
             last_input_origin: Filter by last input origin (InputOrigin.*.value)
             include_closed: Include closed sessions when True
             include_headless: Include headless sessions (standalone, no tmux) when True
+            initiator_session_id: Filter to sessions spawned by this session
 
         Returns:
             List of Session objects
@@ -601,6 +603,8 @@ class Db:
             stmt = stmt.where(db_models.Session.computer_name == computer_name)
         if last_input_origin:
             stmt = stmt.where(db_models.Session.last_input_origin == last_input_origin)
+        if initiator_session_id:
+            stmt = stmt.where(db_models.Session.initiator_session_id == initiator_session_id)
         stmt = stmt.order_by(db_models.Session.last_activity.desc())
 
         async with self._session() as db_session:

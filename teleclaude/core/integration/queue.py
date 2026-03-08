@@ -26,6 +26,16 @@ class IntegrationQueueError(RuntimeError):
     """Raised when queue state cannot be loaded or persisted."""
 
 
+def default_integration_state_dir() -> Path:
+    """Return the canonical state directory shared by the trigger and integrator."""
+    return Path.home() / ".teleclaude" / "integration"
+
+
+def default_integration_queue_path() -> Path:
+    """Return the durable queue file used for integration handoff."""
+    return default_integration_state_dir() / "queue.json"
+
+
 @dataclass(frozen=True)
 class QueueItem:
     """Current queue state for one candidate."""

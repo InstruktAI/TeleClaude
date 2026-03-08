@@ -40,6 +40,18 @@ IntegratorSpawnCallback = Callable[[str, str, str], Coroutine[Any, Any, Any] | N
 IngestionCallback = Callable[[str, Mapping[str, Any]], Sequence[tuple[str, str, str]]]
 
 
+def _strip_pipeline_metadata(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Remove pipeline-private fields before canonical integration validation.
+
+    Trust and later cartridges annotate payloads with underscore-prefixed keys
+    such as ``_trust_flags``. Those fields are internal transport metadata, not
+    part of the integration lifecycle contract, so they must not leak into the
+    canonical validator.
+    """
+
+    return {key: value for key, value in payload.items() if not key.startswith("_")}
+
+
 class IntegrationTriggerCartridge:
     """Pipeline cartridge that bridges event-platform events to the integration module.
 
@@ -66,6 +78,7 @@ class IntegrationTriggerCartridge:
             return event
 
         payload = event.payload
+        canonical_payload = _strip_pipeline_metadata(payload)
         slug = str(payload.get("slug", ""))
         branch = str(payload.get("branch", ""))
         sha = str(payload.get("sha", ""))
@@ -81,7 +94,7 @@ class IntegrationTriggerCartridge:
         canonical_type = _PLATFORM_TO_CANONICAL.get(event.event)
         if canonical_type and self._ingest_callback is not None:
             try:
-                ready_candidates = self._ingest_callback(canonical_type, payload)
+                ready_candidates = self._ingest_callback(canonical_type, canonical_payload)
                 if ready_candidates:
                     first = ready_candidates[0]
                     first_slug, first_branch, first_sha = first

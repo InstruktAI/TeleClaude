@@ -13,12 +13,14 @@ from teleclaude_events.cartridges import (
     CorrelationCartridge,
     DeduplicationCartridge,
     EnrichmentCartridge,
+    IntegrationTriggerCartridge,
     NotificationProjectorCartridge,
     TrustCartridge,
 )
 from teleclaude_events.cartridges.correlation import CorrelationConfig
 from teleclaude_events.cartridges.trust import TrustConfig
-from teleclaude_events.catalog import EventCatalog, EventSchema, NotificationLifecycle
+from teleclaude_events.catalog import EventCatalog, EventSchema, NotificationLifecycle, build_default_catalog
+from teleclaude.core.integration.service import IntegrationEventService
 from teleclaude_events.db import EventDB
 from teleclaude_events.envelope import EventEnvelope, EventLevel
 from teleclaude_events.pipeline import Pipeline, PipelineContext
@@ -129,6 +131,154 @@ async def test_pipeline_order_dedup_drops_before_enrichment(db: EventDB) -> None
     result2 = await pipeline.execute(event2)
     assert result2 is None
     push_cb.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_duplicate_integration_events_reach_trigger_before_dedup(db: EventDB) -> None:
+    """Repeated lifecycle events must re-seed integration readiness before notification dedup drops them."""
+    catalog = build_default_catalog()
+    push_cb = AsyncMock()
+    ingest_calls: list[str] = []
+
+    def mock_ingest(canonical_type: str, _payload: dict[str, object]) -> list[tuple[str, str, str]]:
+        ingest_calls.append(canonical_type)
+        return []
+
+    ctx = PipelineContext(
+        catalog=catalog,
+        db=db,
+        push_callbacks=[push_cb],
+        trust_config=TrustConfig(known_sources=frozenset({"daemon", "correlation"})),
+        correlation_config=CorrelationConfig(burst_threshold=100),
+    )
+    pipeline = Pipeline(
+        [
+            TrustCartridge(),
+            IntegrationTriggerCartridge(ingest_callback=mock_ingest),
+            DeduplicationCartridge(),
+            EnrichmentCartridge(),
+            CorrelationCartridge(),
+            ClassificationCartridge(),
+            NotificationProjectorCartridge(),
+        ],
+        ctx,
+    )
+
+    event = EventEnvelope(
+        event="domain.software-development.review.approved",
+        source="daemon",
+        level=EventLevel.WORKFLOW,
+        domain="software-development",
+        payload={
+            "slug": "dup-task",
+            "review_round": 1,
+            "reviewer_session_id": "sess-1",
+            "approved_at": "2026-03-08T10:00:00+00:00",
+        },
+    )
+
+    result1 = await pipeline.execute(event)
+    assert result1 is not None
+    push_cb.assert_awaited_once()
+
+    result2 = await pipeline.execute(event)
+    assert result2 is None
+    assert ingest_calls == ["review_approved", "review_approved"]
+    push_cb.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_unknown_source_flags_do_not_break_integration_ingest(db: EventDB) -> None:
+    """Trust metadata must not leak into canonical integration validation."""
+    catalog = build_default_catalog()
+    service = IntegrationEventService.create(
+        reachability_checker=lambda _branch, _sha, _remote: True,
+        integrated_checker=lambda _sha, _ref: False,
+    )
+    statuses: list[tuple[str, str, tuple[str, ...], dict[str, object]]] = []
+
+    def ingest_with_real_service(
+        canonical_type: str, payload: dict[str, object]
+    ) -> list[tuple[str, str, str]]:
+        result = service.ingest_raw(canonical_type, payload)
+        statuses.append((canonical_type, result.status, result.diagnostics, payload))
+        return [
+            (candidate.key.slug, candidate.key.branch, candidate.key.sha)
+            for candidate in result.transitioned_to_ready
+        ]
+
+    ctx = PipelineContext(
+        catalog=catalog,
+        db=db,
+        trust_config=TrustConfig(known_sources=frozenset({"daemon", "correlation"})),
+        correlation_config=CorrelationConfig(burst_threshold=100),
+    )
+    pipeline = Pipeline(
+        [
+            TrustCartridge(),
+            IntegrationTriggerCartridge(ingest_callback=ingest_with_real_service),
+            DeduplicationCartridge(),
+            EnrichmentCartridge(),
+            CorrelationCartridge(),
+            ClassificationCartridge(),
+            NotificationProjectorCartridge(),
+        ],
+        ctx,
+    )
+
+    review_event = EventEnvelope(
+        event="domain.software-development.review.approved",
+        source="orchestrator/unknown",
+        level=EventLevel.WORKFLOW,
+        domain="software-development",
+        payload={
+            "slug": "history-search-upgrade",
+            "review_round": 2,
+            "reviewer_session_id": "unknown",
+            "approved_at": "2026-03-08T10:00:57.170898+00:00",
+        },
+    )
+    branch_event = EventEnvelope(
+        event="domain.software-development.branch.pushed",
+        source="finalizer/unknown",
+        level=EventLevel.WORKFLOW,
+        domain="software-development",
+        payload={
+            "branch": "history-search-upgrade",
+            "sha": "10af253e08abe4533b7718d714c39c692c6c108d",
+            "remote": "origin",
+            "pushed_at": "2026-03-08T10:02:23.851094+00:00",
+            "pusher": "finalizer/e9e69ee7-eb59-4837-933d-d623dbce8ffd",
+        },
+    )
+    finalize_event = EventEnvelope(
+        event="domain.software-development.deployment.started",
+        source="orchestrator/unknown",
+        level=EventLevel.WORKFLOW,
+        domain="software-development",
+        payload={
+            "slug": "history-search-upgrade",
+            "branch": "history-search-upgrade",
+            "sha": "10af253e08abe4533b7718d714c39c692c6c108d",
+            "worker_session_id": "e9e69ee7-eb59-4837-933d-d623dbce8ffd",
+            "orchestrator_session_id": "unknown",
+            "ready_at": "2026-03-08T10:02:10.284693+00:00",
+        },
+    )
+
+    await pipeline.execute(review_event)
+    await pipeline.execute(branch_event)
+    await pipeline.execute(finalize_event)
+
+    assert [status for _typ, status, _diag, _payload in statuses] == ["APPENDED", "APPENDED", "APPENDED"]
+    assert all("_trust_flags" not in payload for _typ, _status, _diag, payload in statuses)
+    ready_candidate = service.get_candidate(
+        slug="history-search-upgrade",
+        branch="history-search-upgrade",
+        sha="10af253e08abe4533b7718d714c39c692c6c108d",
+    )
+    assert ready_candidate is not None
+    assert ready_candidate.status == "READY"
 
 
 @pytest.mark.asyncio

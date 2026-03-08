@@ -509,8 +509,8 @@ snippets:
   visibility: public
   source_project: TeleClaude
 - id: software-development/concept/finalizer
-  description: Post-review delivery role. Merge, clean up, and log delivery after
-    approval.
+  description: Post-review prepare role. Merge origin/main into the worktree branch,
+    push it, and report FINALIZE_READY.
   type: concept
   scope: domain
   path: docs/software-development/concept/finalizer.md

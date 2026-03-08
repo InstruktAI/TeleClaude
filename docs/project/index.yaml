@@ -175,7 +175,7 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: project/design/architecture/operation-receipts
-  description: Receipt-first contract for durable long-running todo work execution
+  description: Receipt-first contract for telec todo work with durable operation tracking
     and polling.
   type: design
   scope: project
