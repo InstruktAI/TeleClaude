@@ -295,7 +295,9 @@ tests to catch regressions indirectly.
 
 **Verification:** Run the smallest proving set:
 `pytest tests/unit/core/test_roadmap.py tests/unit/core/test_roadmap_api_parity.py tests/unit/test_todo_scaffold.py tests/unit/test_telec_cli.py tests/unit/test_teleclaude_events/test_prepare_quality.py`
-and `telec todo demo validate icebox-physical-folder`.
+and `telec todo demo validate icebox-physical-folder`. Before commit, run the
+repository pre-commit hooks as the primary final gate so lint/type/test checks
+also pass beyond the targeted proving set used during development.
 
 ---
 
