@@ -1,0 +1,39 @@
+build: pending
+review: pending
+deferrals_processed: false
+breakdown:
+  assessed: false
+  todos: []
+dor:
+  last_assessed_at: null
+  score: 0
+  status: needs_work
+  schema_version: 1
+  blockers: []
+  actions_taken:
+    requirements_updated: true
+    implementation_plan_updated: true
+grounding:
+  valid: true
+  base_sha: '9768e1f0d10195309729d74021ae4aee83317552'
+  input_digest: '553a53a2d56016330c5419c77df1060d'
+  last_grounded_at: '2026-03-08T21:30:00Z'
+  invalidation_reason: null
+  referenced_paths:
+    - teleclaude/core/next_machine/core.py
+    - teleclaude/core/roadmap.py
+    - teleclaude/todo_scaffold.py
+    - teleclaude/cli/telec.py
+    - tests/unit/core/test_roadmap.py
+    - tests/unit/test_todo_scaffold.py
+requirements_review:
+  verdict: approve
+  reviewed_at: '2026-03-08T21:48:26Z'
+  findings_count: 0
+  rounds: 1
+review_round: 0
+max_review_rounds: 3
+review_baseline_commit: ''
+unresolved_findings: []
+resolved_findings: []
+schema_version: 1
