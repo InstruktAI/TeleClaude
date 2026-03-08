@@ -1,5 +1,7 @@
 # Delivered work items. Newest first.
 
+- slug: prepare-state-machine
+  date: '2026-03-08'
 - slug: telegram-callback-payload-migration
   date: '2026-03-08'
   title: Migrate Telegram explicit user-selection callback payloads to canonical agent
