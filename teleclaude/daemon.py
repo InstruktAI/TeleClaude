@@ -2450,10 +2450,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             await self.tts_manager.shutdown()
             logger.info("TTS manager stopped")
 
-        # Disconnect from chiptunes worker (let it keep playing)
+        # Stop chiptunes playback
         if hasattr(self, "chiptunes_manager"):
             self.chiptunes_manager.stop()
-            logger.info("ChipTunes manager disconnected (worker keeps playing)")
+            logger.info("ChipTunes manager stopped")
 
         # Shutdown task registry (cancel all tracked background tasks)
         if hasattr(self, "task_registry"):

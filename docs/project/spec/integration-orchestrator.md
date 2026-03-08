@@ -249,6 +249,156 @@ For each queued candidate:
 | Integrator                      | Yes              | Queue empty, no in-progress candidate, lease released, checkpoint emitted. |
 | Non-governed utility session    | Yes              | No pending governed handoff obligations.                                   |
 
+### State Machine Internals
+
+The integration state machine (`state_machine.py`) implements the workflow contract above
+as a deterministic phase-driven loop. Each call to `telec todo integrate` reads a durable
+checkpoint, executes one phase step, and either loops internally or returns an instruction
+block to the agent.
+
+#### Phase Enum
+
+```
+IDLE → CANDIDATE_DEQUEUED → CLEARANCE_WAIT → MERGE_CLEAN / MERGE_CONFLICTED
+     → AWAITING_COMMIT → COMMITTED → DELIVERY_BOOKKEEPING
+     → PUSH_SUCCEEDED / PUSH_REJECTED → CLEANUP → CANDIDATE_DELIVERED → (loop to IDLE)
+     → COMPLETED (terminal)
+```
+
+| Phase                  | Description                                                    | Agent action required |
+| ---------------------- | -------------------------------------------------------------- | --------------------- |
+| `IDLE`                 | No candidate in progress. Pop next from queue or complete.     | No                    |
+| `CANDIDATE_DEQUEUED`   | Candidate popped. Check clearance before merge.                | No                    |
+| `CLEARANCE_WAIT`       | Main branch blocked by active sessions or dirty paths.         | Yes — wait or commit  |
+| `MERGE_CLEAN`          | Squash merge succeeded. Staged changes await commit.           | Yes — compose commit  |
+| `MERGE_CONFLICTED`     | Squash merge produced conflicts.                               | Yes — resolve + commit|
+| `AWAITING_COMMIT`      | Re-entry after agent action; checking if HEAD advanced.        | Yes — commit if not   |
+| `COMMITTED`            | Agent committed. Run delivery bookkeeping.                     | No                    |
+| `DELIVERY_BOOKKEEPING` | Bookkeeping done. Push to origin.                              | No                    |
+| `PUSH_SUCCEEDED`       | Push landed. Proceed to cleanup.                               | No                    |
+| `PUSH_REJECTED`        | Push rejected (non-fast-forward). Agent must recover.          | Yes — rebase + push   |
+| `CLEANUP`              | Remove worktree, branch, todo dir. Restart daemon.             | No                    |
+| `CANDIDATE_DELIVERED`  | Candidate fully integrated. Mark integrated, reset to IDLE.    | No                    |
+| `COMPLETED`            | Queue empty. Terminal state.                                   | Yes — self-end        |
+
+#### State Transition Diagram
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+
+    IDLE --> CANDIDATE_DEQUEUED: pop from queue
+    IDLE --> COMPLETED: queue empty
+
+    CANDIDATE_DEQUEUED --> CLEARANCE_WAIT: blocked
+    CANDIDATE_DEQUEUED --> MERGE_CLEAN: clear + clean merge
+    CANDIDATE_DEQUEUED --> MERGE_CONFLICTED: clear + conflicted merge
+    CANDIDATE_DEQUEUED --> CANDIDATE_DELIVERED: already integrated (ancestry or empty merge)
+
+    CLEARANCE_WAIT --> MERGE_CLEAN: cleared + clean merge
+    CLEARANCE_WAIT --> MERGE_CONFLICTED: cleared + conflicted merge
+    CLEARANCE_WAIT --> CLEARANCE_WAIT: still blocked
+    CLEARANCE_WAIT --> CANDIDATE_DELIVERED: already integrated
+
+    MERGE_CLEAN --> COMMITTED: HEAD advanced (commit detected)
+    MERGE_CLEAN --> MERGE_CLEAN: no commit yet (re-prompt)
+    MERGE_CONFLICTED --> COMMITTED: HEAD advanced
+    MERGE_CONFLICTED --> MERGE_CONFLICTED: no commit yet (re-prompt)
+
+    COMMITTED --> DELIVERY_BOOKKEEPING: bookkeeping
+    DELIVERY_BOOKKEEPING --> PUSH_SUCCEEDED: push OK
+    DELIVERY_BOOKKEEPING --> PUSH_REJECTED: push rejected
+
+    PUSH_SUCCEEDED --> CLEANUP: proceed
+    PUSH_REJECTED --> PUSH_SUCCEEDED: agent recovered (heads match)
+    PUSH_REJECTED --> PUSH_REJECTED: still diverged (re-prompt)
+
+    CLEANUP --> CANDIDATE_DELIVERED: cleanup done
+    CANDIDATE_DELIVERED --> IDLE: reset for next candidate
+```
+
+#### Checkpoint
+
+The checkpoint is a JSON file at `{state_dir}/integrate-state.json`. It persists across
+process restarts and enables crash recovery. Structure:
+
+```json
+{
+  "version": 1,
+  "phase": "clearance_wait",
+  "candidate_slug": "my-feature",
+  "candidate_branch": "my-feature",
+  "candidate_sha": "abc123...",
+  "lease_token": "tok-xyz",
+  "items_processed": 2,
+  "items_blocked": 0,
+  "started_at": "2026-03-08T10:00:00+00:00",
+  "last_updated_at": "2026-03-08T10:05:00+00:00",
+  "error_context": { "merge_type": "clean" },
+  "pre_merge_head": "deadbeef..."
+}
+```
+
+- Written atomically (temp file + `os.replace`).
+- Read on every `_dispatch_sync` iteration; corrupt or missing files reset to `IDLE`.
+- `pre_merge_head` tracks HEAD before merge to detect agent commits (HEAD advancement).
+- `error_context` carries phase-specific metadata (merge type, conflicted files, rejection reason).
+
+#### Crash Recovery
+
+Every phase is recoverable. If the process dies at any point, re-calling `telec todo integrate`
+reads the checkpoint and resumes from the persisted phase:
+
+| Crash point                    | Checkpoint phase       | Recovery behavior                                                     |
+| ------------------------------ | ---------------------- | --------------------------------------------------------------------- |
+| After dequeue, before merge    | `CANDIDATE_DEQUEUED`   | Routes to clearance check, then merge. No work is lost.               |
+| During clearance wait          | `CLEARANCE_WAIT`       | Re-checks clearance. Proceeds when clear.                             |
+| After merge, before commit     | `MERGE_CLEAN/CONFLICTED`| Re-prompts agent for commit. Staged changes persist in git index.    |
+| After commit, before push      | `COMMITTED`            | Re-runs delivery bookkeeping (idempotent). Then pushes.               |
+| After push rejection           | `PUSH_REJECTED`        | Re-checks if heads match (agent may have recovered). Re-prompts if not.|
+| During cleanup                 | `CLEANUP`              | Re-runs cleanup (idempotent). Missing worktrees/branches are no-ops.  |
+| After candidate delivered      | `CANDIDATE_DELIVERED`  | Marks integrated, resets to IDLE, loops for next candidate.           |
+
+#### Already-Integrated Detection
+
+Two guards prevent re-integrating content already on main:
+
+1. **Ancestry check** (fast path): `git merge-base --is-ancestor <sha> HEAD`. Works for
+   regular merges where git maintains ancestry links. Skips directly to `CANDIDATE_DELIVERED`.
+
+2. **Empty-merge guard** (squash-merge path): After `git merge --squash`, checks
+   `git diff --cached --quiet`. If no staged changes and no conflicted files, the candidate's
+   content is already on main (squash commits don't create ancestry links, so guard #1 misses
+   this). Cleans up `SQUASH_MSG` and skips to `CANDIDATE_DELIVERED`.
+
+Both guards emit `integration.candidate.already_merged` lifecycle events.
+
+#### Lifecycle Events
+
+The state machine emits fire-and-forget events at each transition via the integration bridge:
+
+| Event                                    | Emitted when                                        |
+| ---------------------------------------- | --------------------------------------------------- |
+| `integration.started`                    | First candidate dequeued in a session                |
+| `integration.candidate.dequeued`         | Candidate popped from queue                          |
+| `integration.candidate.already_merged`   | Candidate skipped (ancestry or empty merge)          |
+| `integration.merge.succeeded`            | Clean squash merge completed                         |
+| `integration.merge.conflicted`           | Squash merge produced conflicts                      |
+| `integration.candidate.committed`        | Agent commit detected (HEAD advanced)                |
+| `integration.push.succeeded`             | Push to origin succeeded                             |
+| `integration.push.rejected`              | Push to origin rejected                              |
+| `integration.candidate.delivered`        | Candidate fully integrated, cleaned up               |
+| `integration.candidate.blocked`          | Candidate blocked (via queue mark)                   |
+
+#### Internal Loop
+
+`_dispatch_sync` runs a loop (capped at 50 iterations) that reads the checkpoint, dispatches
+to the appropriate phase handler, and either continues looping (for autonomous transitions)
+or returns an instruction string (for agent decision points). The loop enables multi-phase
+advancement in a single `telec todo integrate` call — e.g., COMMITTED → DELIVERY_BOOKKEEPING
+→ PUSH_SUCCEEDED → CLEANUP → CANDIDATE_DELIVERED → IDLE → next candidate, all without
+agent re-entry.
+
 ## Known caveats
 
 - Only integrator may push canonical `main`.

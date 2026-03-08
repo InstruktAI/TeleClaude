@@ -58,7 +58,6 @@ class IntegrationPhase(str, Enum):
     """All valid integration lifecycle phases."""
 
     IDLE = "idle"
-    LEASE_ACQUIRED = "lease_acquired"
     CANDIDATE_DEQUEUED = "candidate_dequeued"
     CLEARANCE_WAIT = "clearance_wait"
     MERGE_CLEAN = "merge_clean"
@@ -625,7 +624,7 @@ def _step(
             started=started,
         )
 
-    if phase == IntegrationPhase.CLEARANCE_WAIT:
+    if phase in (IntegrationPhase.CANDIDATE_DEQUEUED, IntegrationPhase.CLEARANCE_WAIT):
         return _step_clearance_wait(
             checkpoint=checkpoint,
             checkpoint_path=checkpoint_path,
@@ -903,6 +902,31 @@ def _do_merge(
         return True, ""
 
     rc, _, stderr = _run_git(["merge", "--squash", key.branch], cwd=cwd)
+
+    # Guard: squash merge produced no content changes — candidate already integrated.
+    # Catches squash merges where ancestry check (above) doesn't fire because
+    # squash commits don't create ancestry links.
+    empty_rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=cwd)
+    if empty_rc == 0:
+        conflicted = _get_conflicted_files(cwd) if rc != 0 else []
+        if not conflicted:
+            logger.info(
+                "%s slug=%s already integrated (empty squash merge) — skipping",
+                _NEXT_INTEGRATE_PHASE_LOG,
+                key.slug,
+            )
+            _emit_lifecycle_event(
+                "integration.candidate.already_merged",
+                {"slug": key.slug, "branch": key.branch, "sha": key.sha},
+            )
+            # Clean up SQUASH_MSG left by git
+            squash_msg = Path(cwd) / ".git" / "SQUASH_MSG"
+            if squash_msg.exists():
+                squash_msg.unlink()
+            checkpoint.phase = IntegrationPhase.CANDIDATE_DELIVERED.value
+            _write_checkpoint(checkpoint_path, checkpoint)
+            return True, ""
+
     if rc == 0:
         # Clean merge
         diff_stats = _get_diff_stats(cwd)

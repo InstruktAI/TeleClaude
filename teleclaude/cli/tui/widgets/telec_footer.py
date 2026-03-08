@@ -406,11 +406,13 @@ class TelecFooter(Widget):
 
     def on_footer_action_button_pressed(self, event: FooterActionButton.Pressed) -> None:
         button_id = event.button.id
-        if button_id == "footer-prev":
-            self.post_message(SettingsChanged("chiptunes_prev", None))
-            return
         if button_id == "footer-play":
             self.post_message(SettingsChanged("chiptunes_play_pause", None))
+            return
+        if not self.chiptunes_enabled:
+            return
+        if button_id == "footer-prev":
+            self.post_message(SettingsChanged("chiptunes_prev", None))
             return
         if button_id == "footer-next":
             self.post_message(SettingsChanged("chiptunes_next", None))

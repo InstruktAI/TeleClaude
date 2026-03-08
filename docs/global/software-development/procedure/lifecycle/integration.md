@@ -69,6 +69,27 @@ Wait for blockers to clear, then call `telec todo integrate`.
 Another integrator session already holds the lease. Exit immediately.
 Do not attempt to break the lease.
 
+### ALREADY INTEGRATED (silent skip)
+
+The state machine detected that the candidate's content is already on main —
+either via git ancestry (regular merge) or via empty squash diff (squash merge
+that produced no staged changes). The candidate is silently advanced to
+`CANDIDATE_DELIVERED` and the next candidate is processed. No agent action needed.
+
+This happens when a candidate is re-dequeued after a daemon restart or stale
+re-queue. The agent sees no instruction for this candidate; the state machine
+logs `integration.candidate.already_merged` and moves on.
+
+### HOUSEKEEPING COMMIT REQUIRED
+
+Main has uncommitted tracked changes that must be committed before integration
+can proceed. The instruction lists the dirty paths.
+
+1. Review each dirty file briefly.
+2. Compose a concise commit message.
+3. Run `git add <paths> && git commit -m '<message>'`.
+4. Call `telec todo integrate`.
+
 ### INTEGRATION COMPLETE
 
 All candidates have been processed. Self-end: `telec sessions end self`.
@@ -82,7 +103,26 @@ All candidates have been processed. Self-end: `telec sessions end self`.
 
 ## Recovery
 
-- If a squash commit fails, read the error and retry.
-- If conflicts cannot be resolved, call `telec todo integrate` to let the state machine
-  handle the unresolved state.
-- If push is repeatedly rejected, check for concurrent integrators.
+The state machine checkpoint is crash-safe. If the integrator process dies at any
+point, re-calling `telec todo integrate` reads the durable checkpoint and resumes
+from the last persisted phase. No manual checkpoint editing is required.
+
+### Agent-actionable recovery
+
+- **Squash commit fails:** Read the error and retry the commit.
+- **Conflicts unresolvable:** Call `telec todo integrate` without committing — the state
+  machine detects no HEAD advancement and re-prompts.
+- **Push repeatedly rejected:** Fetch, rebase, resolve, push, then call `telec todo integrate`.
+  If the problem persists, check for concurrent integrators.
+
+### Automatic crash recovery
+
+| Crash point                          | What happens on re-entry                                              |
+| ------------------------------------ | --------------------------------------------------------------------- |
+| After dequeue, before merge          | Resumes at clearance check, then merge. No work lost.                 |
+| During clearance wait                | Re-checks clearance. Proceeds when clear.                             |
+| After merge, before agent commits    | Re-prompts for commit. Git index (staged changes) persists on disk.   |
+| After commit, before push            | Re-runs delivery bookkeeping (idempotent), then pushes.               |
+| After push rejection                 | Re-checks if local/remote heads match (agent may have recovered).     |
+| During cleanup                       | Re-runs cleanup (idempotent). Missing worktrees/branches are no-ops.  |
+| After candidate delivered            | Marks integrated, resets to IDLE, loops for next candidate.           |
