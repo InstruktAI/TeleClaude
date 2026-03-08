@@ -41,9 +41,9 @@ grounding:
   invalidation_reason: ''
 requirements_review:
   verdict: needs_work
-  reviewed_at: '2026-03-08T18:42:10Z'
+  reviewed_at: '2026-03-08T18:56:40Z'
   findings_count: 4
-  rounds: 2
+  rounds: 3
 plan_review:
   verdict: ''
   reviewed_at: ''
