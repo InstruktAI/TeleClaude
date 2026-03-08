@@ -259,10 +259,11 @@ async def spawn_integrator_session(
 ) -> _SpawnResult | None:
     """Spawn or wake the singleton integrator session.
 
-    Checks if an integrator session is already running.  If not, spawns one
-    via ``telec sessions start`` with the integrator system role.  If one is
-    already running, the candidate is already queued and the running
-    integrator will drain it.
+    Checks if an integrator session is already running. If not, spawns one
+    via ``telec sessions start`` with the integrator system role. The
+    integrator drains the durable queue itself, so the wake-up command stays
+    generic and does not target a specific slug. If one is already running,
+    the candidate is already queued and the running integrator will drain it.
 
     Returns session info dict on spawn, or None if integrator already active.
     """
@@ -294,7 +295,7 @@ def _spawn_integrator_sync(slug: str, branch: str, sha: str) -> _SpawnResult | N
     except (subprocess.TimeoutExpired, FileNotFoundError):
         logger.warning("Could not check for running integrator sessions")
 
-    # Spawn a new integrator session with parity evidence for main push authorization
+    # Spawn a new queue-draining integrator session with parity evidence for main push authorization.
     project_path = os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
     spawn_env = os.environ.copy()
     spawn_env["TELECLAUDE_INTEGRATOR_PARITY_EVIDENCE"] = "accepted"
@@ -307,9 +308,9 @@ def _spawn_integrator_sync(slug: str, branch: str, sha: str) -> _SpawnResult | N
                 "--project",
                 project_path,
                 "--message",
-                f"/next-integrate {slug} --branch {branch} --sha {sha}",
+                "/next-integrate",
                 "--title",
-                f"integrator: {slug}",
+                "integrator",
                 "--detach",
             ],
             env=spawn_env,

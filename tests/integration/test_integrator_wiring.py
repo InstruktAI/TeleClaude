@@ -248,6 +248,32 @@ async def test_integration_trigger_no_spawn_when_not_ready() -> None:
 
 
 @pytest.mark.integration
+def test_spawn_integrator_session_uses_generic_queue_drain_command() -> None:
+    import subprocess
+
+    from teleclaude.core.integration_bridge import _spawn_integrator_sync
+
+    def _completed(*, returncode: int, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            _completed(returncode=0, stdout="[]"),
+            _completed(returncode=0, stdout="spawned"),
+        ]
+
+        result = _spawn_integrator_sync("history-search-upgrade", "history-search-upgrade", "10af253e")
+
+    assert result == {"status": "spawned", "slug": "history-search-upgrade"}
+    start_call = mock_run.call_args_list[1]
+    command = start_call.args[0]
+    assert "--message" in command
+    assert command[command.index("--message") + 1] == "/next-integrate"
+    assert "--title" in command
+    assert command[command.index("--title") + 1] == "integrator"
+
+
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_integration_trigger_passes_non_matching_events() -> None:
     from teleclaude_events.cartridges.integration_trigger import IntegrationTriggerCartridge
