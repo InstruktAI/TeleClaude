@@ -47,10 +47,11 @@ async def test_create_session_unidentified_preserves_project(mock_db, mock_resol
     ):
         await create_session(cmd, AsyncMock())
 
-    # Verify missing role defaults to unrestricted project path
+    # Verify missing role defaults to admin (unidentified sessions default to admin
+    # to avoid fail-closed auth regressions)
     args, kwargs = mock_db.create_session.call_args
     assert kwargs["project_path"] == "/tmp/foo"
-    assert kwargs["human_role"] is None
+    assert kwargs["human_role"] == "admin"
 
 
 @pytest.mark.asyncio
@@ -86,8 +87,8 @@ async def test_create_session_authorized(mock_db, mock_resolver):
 
 
 @pytest.mark.asyncio
-async def test_create_session_api_without_identity_is_unrestricted(mock_db, mock_resolver):
-    """API sessions without injected role remain unrestricted."""
+async def test_create_session_api_without_identity_defaults_to_admin(mock_db, mock_resolver):
+    """API sessions without injected role default to admin to match daemon-side fallback."""
     mock_resolver.return_value.resolve.return_value = None
 
     cmd = CreateSessionCommand(
@@ -112,7 +113,7 @@ async def test_create_session_api_without_identity_is_unrestricted(mock_db, mock
 
     _, kwargs = mock_db.create_session.call_args
     assert kwargs["project_path"] == "/tmp/from-api"
-    assert kwargs["human_role"] is None
+    assert kwargs["human_role"] == "admin"
 
 
 @pytest.mark.asyncio

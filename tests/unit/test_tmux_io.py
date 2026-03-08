@@ -39,8 +39,8 @@ async def test_process_text_prefers_existing_tmux():
 
 
 @pytest.mark.asyncio
-async def test_process_text_returns_false_when_tmux_missing():
-    """Test that process_text returns False when tmux session is unavailable."""
+async def test_process_text_rejects_missing_tmux_for_active_session():
+    """Active sessions should fail fast when their tmux session is missing."""
     session = Session(
         session_id="sid-456",
         computer_name="test",
@@ -49,7 +49,11 @@ async def test_process_text_returns_false_when_tmux_missing():
         title="Test Tmux",
     )
 
-    with patch.object(tmux_io.tmux_bridge, "session_exists", new=AsyncMock(return_value=False)):
+    with (
+        patch.object(tmux_io.tmux_bridge, "session_exists", new=AsyncMock(return_value=False)),
+        patch.object(tmux_io.tmux_bridge, "send_keys", new=AsyncMock(return_value=True)) as mock_send_keys,
+    ):
         ok = await tmux_io.process_text(session, "hello", send_enter=True, working_dir="/tmp")
 
         assert ok is False
+        assert mock_send_keys.await_count == 0

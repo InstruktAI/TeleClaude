@@ -2,8 +2,6 @@
 
 Tests UC-M1: Telegram User with Redis Observer
 """
-
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -145,7 +143,7 @@ class MockRedisTransport(BaseAdapter):
 
 
 @pytest.mark.integration
-async def test_last_input_origin_receives_output():
+async def test_last_input_origin_receives_output(tmp_path):
     """Test output sent to origin adapter (CRITICAL).
 
     Use Case: UC-M1
@@ -157,8 +155,7 @@ async def test_last_input_origin_receives_output():
     5. Verify message_id returned
     """
     # Setup test database
-    db_path = "/tmp/test_last_input_origin.db"
-    Path(db_path).unlink(missing_ok=True)
+    db_path = str(tmp_path / "test_last_input_origin.db")
 
     test_db = Db(db_path)
     await test_db.initialize()
@@ -196,11 +193,10 @@ async def test_last_input_origin_receives_output():
 
     finally:
         await test_db.close()
-        Path(db_path).unlink(missing_ok=True)
 
 
 @pytest.mark.integration
-async def test_redis_observer_skipped_no_ui():
+async def test_redis_observer_skipped_no_ui(tmp_path):
     """Test RedisTransport (has_ui=False) skipped for broadcasts.
 
     Use Case: UC-M1
@@ -212,8 +208,7 @@ async def test_redis_observer_skipped_no_ui():
     5. Verify Redis send_message() NOT called (has_ui=False)
     """
     # Setup test database
-    db_path = "/tmp/test_redis_observer.db"
-    Path(db_path).unlink(missing_ok=True)
+    db_path = str(tmp_path / "test_redis_observer.db")
 
     test_db = Db(db_path)
     await test_db.initialize()
@@ -256,11 +251,10 @@ async def test_redis_observer_skipped_no_ui():
 
     finally:
         await test_db.close()
-        Path(db_path).unlink(missing_ok=True)
 
 
 @pytest.mark.integration
-async def test_ui_observer_receives_broadcasts():
+async def test_ui_observer_receives_broadcasts(tmp_path):
     """Test UI observer (has_ui=True) receives broadcasts (future Slack/WhatsApp).
 
     Use Case: UC-M2 (future)
@@ -340,8 +334,7 @@ async def test_ui_observer_receives_broadcasts():
             return
 
     # Setup test database
-    db_path = "/tmp/test_ui_observer.db"
-    Path(db_path).unlink(missing_ok=True)
+    db_path = str(tmp_path / "test_ui_observer.db")
 
     test_db = Db(db_path)
     await test_db.initialize()
@@ -384,11 +377,10 @@ async def test_ui_observer_receives_broadcasts():
 
     finally:
         await test_db.close()
-        Path(db_path).unlink(missing_ok=True)
 
 
 @pytest.mark.integration
-async def test_observer_failure_does_not_affect_origin():
+async def test_observer_failure_does_not_affect_origin(tmp_path):
     """Test observer failure logged but origin message succeeds.
 
     Use Case: UC-M1 (error handling)
@@ -468,8 +460,7 @@ async def test_observer_failure_does_not_affect_origin():
             return
 
     # Setup test database
-    db_path = "/tmp/test_observer_failure.db"
-    Path(db_path).unlink(missing_ok=True)
+    db_path = str(tmp_path / "test_observer_failure.db")
 
     test_db = Db(db_path)
     await test_db.initialize()
@@ -514,11 +505,10 @@ async def test_observer_failure_does_not_affect_origin():
 
     finally:
         await test_db.close()
-        Path(db_path).unlink(missing_ok=True)
 
 
 @pytest.mark.integration
-async def test_origin_failure_raises_exception():
+async def test_origin_failure_raises_exception(tmp_path):
     """Test origin adapter failure raises exception (CRITICAL).
 
     Use Case: UC-M1 (error handling)
@@ -592,8 +582,7 @@ async def test_origin_failure_raises_exception():
             return
 
     # Setup test database
-    db_path = "/tmp/test_origin_failure.db"
-    Path(db_path).unlink(missing_ok=True)
+    db_path = str(tmp_path / "test_origin_failure.db")
 
     test_db = Db(db_path)
     await test_db.initialize()
@@ -624,11 +613,10 @@ async def test_origin_failure_raises_exception():
 
     finally:
         await test_db.close()
-        Path(db_path).unlink(missing_ok=True)
 
 
 @pytest.mark.integration
-async def test_discover_peers_respects_redis_enabled_flag():
+async def test_discover_peers_respects_redis_enabled_flag(tmp_path):
     """Test discover_peers() respects redis_enabled config flag.
 
     When Redis is disabled, discover_peers() should return empty list
@@ -718,8 +706,7 @@ async def test_discover_peers_respects_redis_enabled_flag():
             return
 
     # Setup test database
-    db_path = "/tmp/test_redis_enabled_flag.db"
-    Path(db_path).unlink(missing_ok=True)
+    db_path = str(tmp_path / "test_redis_enabled_flag.db")
 
     test_db = Db(db_path)
     await test_db.initialize()
@@ -758,7 +745,6 @@ async def test_discover_peers_respects_redis_enabled_flag():
 
     finally:
         await test_db.close()
-        Path(db_path).unlink(missing_ok=True)
 
 
 @pytest.mark.integration

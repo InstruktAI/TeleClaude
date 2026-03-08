@@ -879,12 +879,18 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                     except Exception as e:
                         logger.error("[CODEX] Error in input detection: %s", e, exc_info=True)
 
+                # Route through shared terminal_live projection before adapter push.
+                # The projection is a thin wrapper; adapter contract is unchanged.
+                from teleclaude.output_projection.terminal_live_projector import project_terminal_live
+
+                terminal_projection = project_terminal_live(clean_output)
+
                 # Unified output handling - ALL sessions use send_output_update
                 start_time = time.time()
                 logger.debug("[COORDINATOR %s] Calling send_output_update...", session_id[:8])
                 await adapter_client.send_output_update(
                     session,
-                    clean_output,
+                    terminal_projection.output,
                     event.started_at,
                     event.last_changed_at,
                 )

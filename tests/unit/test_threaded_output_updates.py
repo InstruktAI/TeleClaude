@@ -720,3 +720,102 @@ def test_handler_unknown_canonical_falls_through_silently() -> None:
     mock_sv.set_active_tool.assert_not_called()
     mock_sv.set_input_highlight.assert_not_called()
     mock_sv.set_output_highlight.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Task 3.2: Threaded-mode non-regression — adapter-facing contract preserved
+# ---------------------------------------------------------------------------
+
+
+def test_render_clean_agent_output_returns_string_for_adapter() -> None:
+    """render_clean_agent_output returns a plain markdown string (not raw block data).
+
+    After the projection cutover, the adapter-facing contract is unchanged:
+    send_threaded_output() always receives a (str, timestamp) tuple.
+    """
+    from teleclaude.core.agents import AgentName
+    from teleclaude.utils.transcript import render_clean_agent_output
+
+    text_entry = {
+        "type": "assistant",
+        "timestamp": "2025-01-01T12:00:00Z",
+        "message": {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "Agent reply"}],
+        },
+    }
+    user_boundary = {
+        "type": "user",
+        "timestamp": "2025-01-01T11:00:00Z",
+        "message": {"role": "user", "content": "User question"},
+    }
+
+    with patch("teleclaude.utils.transcript._get_entries_for_agent", return_value=[user_boundary, text_entry]):
+        result, _ = render_clean_agent_output("/fake/path.jsonl", AgentName.CLAUDE)
+
+    assert isinstance(result, str), "Adapter must receive a string, not raw block data"
+    assert "Agent reply" in result
+
+
+def test_render_clean_agent_output_tool_use_formatted_as_markdown_not_raw_json() -> None:
+    """Tool invocations are formatted as markdown in threaded output, not raw JSON.
+
+    The adapter receives a human-readable string like '**`Read`**', not a dict.
+    This confirms the cutover through project_entries(THREADED_CLEAN_POLICY) does
+    not change the adapter-visible presentation of tool calls.
+    """
+    from teleclaude.core.agents import AgentName
+    from teleclaude.utils.transcript import render_clean_agent_output
+
+    user_boundary = {
+        "type": "user",
+        "timestamp": "2025-01-01T11:00:00Z",
+        "message": {"role": "user", "content": "User question"},
+    }
+    tool_entry = {
+        "type": "assistant",
+        "timestamp": "2025-01-01T12:00:00Z",
+        "message": {
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": "call_1", "name": "Read", "input": {"file_path": "/tmp/file.py"}}
+            ],
+        },
+    }
+
+    with patch("teleclaude.utils.transcript._get_entries_for_agent", return_value=[user_boundary, tool_entry]):
+        result, _ = render_clean_agent_output("/fake/path.jsonl", AgentName.CLAUDE)
+
+    assert isinstance(result, str), "Adapter must receive a string"
+    # Tool name must appear as formatted markdown, not raw JSON
+    assert "Read" in result
+    assert "{" not in result or '"type": "tool_use"' not in result, "Raw tool JSON must not reach adapter"
+
+
+def test_render_clean_agent_output_tool_result_suppressed_from_adapter() -> None:
+    """Tool results are never sent to the threaded adapter (THREADED_CLEAN_POLICY)."""
+    from teleclaude.core.agents import AgentName
+    from teleclaude.utils.transcript import render_clean_agent_output
+
+    user_boundary = {
+        "type": "user",
+        "timestamp": "2025-01-01T11:00:00Z",
+        "message": {"role": "user", "content": "User question"},
+    }
+    # Claude tool_result comes as a user message with tool_result content
+    tool_result_entry = {
+        "type": "user",
+        "timestamp": "2025-01-01T12:01:00Z",
+        "message": {
+            "role": "user",
+            "content": [
+                {"type": "tool_result", "tool_use_id": "call_1", "content": "file contents here"}
+            ],
+        },
+    }
+
+    with patch("teleclaude.utils.transcript._get_entries_for_agent", return_value=[user_boundary, tool_result_entry]):
+        result, _ = render_clean_agent_output("/fake/path.jsonl", AgentName.CLAUDE)
+
+    # No output — tool results are suppressed in threaded clean mode
+    assert result is None or "file contents here" not in (result or "")

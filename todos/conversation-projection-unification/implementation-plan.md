@@ -2,262 +2,199 @@
 
 ## Overview
 
-Implement one transcript normalization + assembly path that produces the narrow public stream in [schema.md](./schema.md), then move every transcript-derived consumer onto it.
+Build a reusable core output projection route, wire every current producer/consumer through it in phases, and lock current adapter-visible behavior in place with regression tests. This todo does not modify adapter implementations.
 
-This plan has three implementation steps inside that one path:
+## Phase 1: Canonical Output Projection Route
 
-1. normalize raw transcript shapes
-2. assemble the unified public stream
-3. make every consumer serialize/render from that assembled stream
-
-Normalization detail may exist transiently inside the unified entry point only.
-The caller-facing stream stays narrow.
-
-## Phase 1: Normalization And Assembly Core
-
-### Task 1.1: Add the unified transcript entry point
+### Task 1.1: Define canonical projection models and route
 
 **File(s):**
+- `teleclaude/output_projection/` (new package)
+- `teleclaude/utils/transcript.py` (existing shared utilities)
 
-- `teleclaude/utils/transcript.py`
-- `teleclaude/output_stream/` or equivalent new package
+**Existing foundation to reuse:**
+- `StructuredMessage` dataclass (`transcript.py:2024`) — role, type, text, timestamp, entry_index, file_index
+- `normalize_transcript_entry_message()` (`transcript.py:170`) — single normalization entry point for Claude/Codex/Gemini
+- `iter_assistant_blocks()` (`transcript.py:207`) — yields (block, entry_timestamp) for assistant blocks
+- `MessageDTO` (`api_models.py:498`) — current API output model
 
-- [ ] Add one canonical function/module that is the only semantic entry point for transcript-derived output.
-- [ ] Make all transcript-derived callers consume that entry point instead of raw transcript files.
-- [ ] Keep any helper normalization internal to that entry point.
-- [ ] Preserve enough internal detail inside that entry point to normalize:
-  - Claude user-role tool results
-  - Codex standalone `reasoning` / `function_call` / `function_call_output` / `custom_tool_call`
-  - Gemini `thoughts[]` / `toolCalls[]`
+- [x] Define canonical projection models for:
+  - `terminal_live` — wraps poller tmux snapshot output
+  - `conversation` — extends or composes `StructuredMessage` with visibility annotations
+- [x] Define one core route/service interface for requesting projected output from producers/consumers
+- [x] Encode visibility policy centrally instead of per-consumer (replacing the scattered `include_tools`/`include_thinking` boolean flags)
+- [x] Make user-visible tool/widget allowance explicit rather than inferred by the web serializer
+- [x] Support transcript-chain traversal and incremental projection from a cursor/since marker (reusing `_parse_timestamp()` at `transcript.py:670` and `_should_skip_entry()` at `transcript.py:235`)
 
-### Task 1.2: Add public assembly models
-
-**File(s):**
-
-- `teleclaude/api_models.py`
-- `frontend/lib/api/types.ts`
-
-- [ ] Add DTO/type models for the narrow public stream:
-  - `UnifiedEventStream`
-  - `UnifiedMessage`
-  - `UnifiedPart`
-- [ ] Remove `type + text` as the architecture-owner representation for transcript-derived web history.
-- [ ] Keep `call_id` stable in both backend and frontend types.
-
-### Task 1.3: Add assembly-time sanitization
+### Task 1.2: Add serializers/adapters on top of the canonical route
 
 **File(s):**
+- `teleclaude/output_projection/serializers.py` (new)
+- `teleclaude/api/transcript_converter.py` (refactor from classifier to serializer)
 
-- `teleclaude/utils/transcript.py`
-- `teleclaude/constants.py`
+**Current state of `convert_entry()` (`transcript_converter.py:159`):** dispatches on block_type to `convert_text_block`, `convert_thinking_block`, `convert_tool_use_block`, `convert_tool_result_block` — all without visibility filtering. These converters produce AI SDK v5 UIMessage Stream SSE events. After this task, they accept already-projected blocks instead of raw transcript entries.
 
-- [ ] Add a dedicated user-input sanitization step before public assembly.
-- [ ] Strip user text that starts with `TELECLAUDE_SYSTEM_PREFIX`.
-- [ ] Strip user wrapper payloads:
-  - `<task-notification> ... </task-notification>`
-  - pure `<system-reminder> ... </system-reminder>`
-- [ ] Drop user messages that become empty after sanitization.
-- [ ] Add a rich module-level docstring explaining:
-  - included parts
-  - stripped input rules
-  - intentionally dropped fields/data
+- [x] Add serializer for structured message API output (replacing direct `StructuredMessage.to_dict()` → `MessageDTO` conversion in `api_server.py:1228-1238`)
+- [x] Add serializer for AI SDK / web SSE output (refactoring `convert_entry()` to accept projected blocks)
+- [x] Add serializer/adapter for existing standard `send_output_update()` payload production (thin — poller output is already a string)
+- [x] Add serializer/adapter for existing threaded `send_threaded_output()` payload production (replacing `render_agent_output`/`render_clean_agent_output` markdown formatting)
+- [x] Define a stable consumer contract so future mirror/search adoption reuses the same route (currently `history/search.py:collect_transcript_messages()` has its own extraction)
+- [x] Ensure `transcript_converter.py` becomes a serializer over projected parts, not a raw transcript classifier
 
-## Phase 2: Agent-Specific Mapping
+---
 
-### Task 2.1: Claude assembly
+## Phase 2: Producer Cutover
 
-**File(s):**
-
-- `teleclaude/utils/transcript.py`
-
-- [ ] Assemble Claude user string content as user `text`.
-- [ ] Assemble Claude assistant `text`, `thinking`, and `tool_use`.
-- [ ] Assemble Claude user-role `tool_result`-only messages as assistant `tool_result`.
-- [ ] Ensure TeleClaude-prefixed injected user content is stripped before assembly.
-- [ ] Do not emit compaction/system entries into the public stream.
-
-### Task 2.2: Codex assembly
+### Task 2.1: Cut over poller-driven standard output producer
 
 **File(s):**
+- `teleclaude/core/polling_coordinator.py` (`poll_and_send_output()` at line 800)
+- `teleclaude/output_projection/`
 
-- `teleclaude/utils/transcript.py`
+**Current flow:** `poll_and_send_output()` strips ANSI codes from tmux snapshot → calls `adapter_client.send_output_update(session, clean_output, started_at, last_changed_at)` directly.
 
-- [ ] Assemble `response_item.payload.type == "message"` user `input_text` and assistant `output_text`.
-- [ ] Assemble `payload.type == "reasoning"` as assistant `thinking`.
-- [ ] Assemble `payload.type == "function_call"` as assistant `tool_call`.
-- [ ] Assemble `payload.type == "function_call_output"` as assistant `tool_result`.
-- [ ] Assemble `payload.type == "custom_tool_call"` as assistant `tool_call` plus `tool_result` when output/error exists.
-- [ ] Ensure TeleClaude-prefixed injected user content is stripped before assembly.
+- [x] Route poller output through the shared `terminal_live` projection
+- [x] Preserve existing `AdapterClient.send_output_update()` call shape (signature at `adapter_client.py:545`)
+- [x] Keep adapter behavior unchanged; only the core-produced payload path changes
 
-### Task 2.3: Gemini assembly
-
-**File(s):**
-
-- `teleclaude/utils/transcript.py`
-
-- [ ] Assemble Gemini user `content` as user `text`.
-- [ ] Assemble Gemini assistant `content` as assistant `text`.
-- [ ] Assemble each `thoughts[]` item as assistant `thinking`.
-- [ ] Assemble each `toolCalls[]` item as assistant `tool_call`.
-- [ ] Assemble each nested tool result item as assistant `tool_result`.
-- [ ] Ensure multiple Gemini tool results are not collapsed into one display string.
-
-## Phase 3: Consumer Cutover
-
-### Task 3.1: Session history API
+### Task 2.2: Cut over transcript-driven threaded producer
 
 **File(s):**
+- `teleclaude/core/agent_coordinator.py` (`trigger_incremental_output()` at line 1307)
+- `teleclaude/output_projection/`
 
-- `teleclaude/api_server.py`
-- `teleclaude/api_models.py`
-- `frontend/app/api/sessions/[id]/messages/route.ts`
-- `frontend/lib/api/client.ts`
-- `frontend/lib/api/types.ts`
+**Current flow:** `trigger_incremental_output()` calls `render_clean_agent_output()` (hardcoded: no tool results, tools hidden) or `render_agent_output()` (configurable flags) → passes markdown string to `send_threaded_output(session, text)`.
 
-- [ ] Replace `MessageDTO`/`SessionMessagesDTO` history output with the unified assembled stream DTOs.
-- [ ] Stop exposing history as flattened `role/type/text` rows.
-- [ ] Keep endpoint path stable if possible; change payload shape to the new contract.
+- [x] Route incremental threaded rendering through the shared `conversation` projection
+- [x] Preserve existing `send_threaded_output()` behavior and adapter-facing contract (signature at `adapter_client.py:461`)
+- [x] Do not change threaded pagination/presentation semantics in this todo
 
-### Task 3.2: Live web stream
+### Task 2.3: Cut over session history API
 
 **File(s):**
+- `teleclaude/api_server.py` (`get_session_messages()` at line 1182)
 
-- `teleclaude/api/streaming.py`
-- `teleclaude/api/transcript_converter.py`
-- `frontend/app/api/chat/route.ts`
+**Current flow:** `get_session_messages()` calls `extract_messages_from_chain(file_paths, agent_name, since=..., include_tools=False, include_thinking=...)` → wraps results in `MessageDTO` → returns `SessionMessagesDTO`. Fallback at line 1242 uses `get_command_service().get_session_data()` for sessions without transcript content.
 
-- [ ] Stop calling `convert_entry(entry)` on raw transcript entries.
-- [ ] Serialize live events from assembled messages/parts.
-- [ ] Keep transport framing stable, but make the payload semantics come from assembly.
-- [ ] Ensure the live stream applies the same input-sanitization/assembly rules as history.
+- [x] Replace `extract_messages_from_chain()` call with the shared conversation projector → serializer chain
+- [x] Preserve current external API shape for `/sessions/{id}/messages` (`SessionMessagesDTO`/`MessageDTO` at `api_models.py:498-518`)
+- [x] Keep the existing tmux/session-data fallback behavior unchanged for sessions without transcript content
 
-### Task 3.3: Frontend history loader
+### Task 2.4: Cut over live SSE stream
 
 **File(s):**
+- `teleclaude/api/streaming.py` (`_stream_sse()` at line 146)
+- `teleclaude/api/transcript_converter.py` (`convert_entry()` at line 159)
 
-- `frontend/components/assistant/MyRuntimeProvider.tsx`
-- `frontend/lib/api/types.ts`
+**Current flow:** `_stream_sse()` iterates transcript JSONL files via `_iter_entries_for_file()`, calls `convert_entry(entry)` for each entry (no visibility filtering), yields SSE events. Live tail at line 211 parses new JSONL lines incrementally and also calls `convert_entry()` unfiltered. **This is the confirmed leak point.**
 
-- [ ] Replace the current `toUIMessages()` logic that only understands `text` and `thinking`.
-- [ ] Map assembled `tool_call` and `tool_result` parts into assistant-ui message parts.
-- [ ] Remove client-side assumptions that history is a flattened row list.
+- [x] Replace raw `convert_entry(entry)` replay with projection → SSE serializer chain
+- [x] Use the same visibility policy as the history API (tools/thinking hidden by default)
+- [x] Ensure live transcript tailing emits only projected web-visible conversation parts
+- [x] Keep the existing request/response transport contract unchanged for the Next.js proxy
 
-### Task 3.4: Frontend thread rendering
-
-**File(s):**
-
-- `frontend/components/assistant/ThreadView.tsx`
-
-- [ ] Verify the thread renderer consumes the unified part set from both history and live.
-- [ ] Keep client-side presentation choices in the frontend, not in the parser.
-- [ ] Ensure tool calls and thinking remain visible to the web client.
-
-### Task 3.5: Threaded transcript output consumer
+### Task 2.5: Protect explicitly user-visible tools/widgets
 
 **File(s):**
+- `teleclaude/output_projection/`
+- web serialization tests
 
-- `teleclaude/core/agent_coordinator.py`
-- `teleclaude/utils/transcript.py`
-- `teleclaude/core/adapter_client.py`
+- [x] Define an explicit allowlist/mechanism for tools that are intentionally rendered in web chat
+- [x] Suppress internal tools by default
+- [x] Add tests covering both allowlisted and suppressed tool cases
 
-- [ ] Replace threaded transcript rendering’s custom raw-transcript interpretation with rendering from the assembled stream.
-- [ ] Preserve current delivery mechanics.
-- [ ] Keep formatting decisions in the threaded consumer layer.
-
-### Task 3.6: Transcript-backed search/mirror consumers
+### Task 2.6: Prepare mirror/search adoption
 
 **File(s):**
+- `teleclaude/history/search.py` (`collect_transcript_messages()` — has its own extraction via `normalize_transcript_entry_message()` + `_extract_text_from_content()`)
 
-- `teleclaude/utils/transcript.py`
-- `teleclaude/history/`
-- `teleclaude/history/search.py`
-- summarizer/transcript-text consumers using `collect_transcript_messages()`
-- `todos/history-search-upgrade/`
+- [x] Define the handoff point for mirror/search consumers to use the shared conversation projection route
+- [x] Do not implement full mirror/search cutover here unless it is cheap and low risk
 
-- [ ] Identify every transcript-backed search/mirror extractor that still uses raw/lossy parsing.
-- [ ] Move them to the same shared assembly path used by web history/live.
-- [ ] Keep any extra internal-only transcript heuristics out of this caller contract and out of the public stream.
+---
 
-### Task 3.7: Internal transcript helper cutover
+## Phase 3: Regression Bar
+
+### Task 3.1: Web parity tests
 
 **File(s):**
-
-- `teleclaude/utils/transcript.py`
-- `teleclaude/api/transcript_converter.py`
-- `teleclaude/hooks/checkpoint.py`
-
-- [ ] Convert the current transcript helper entry points into wrappers over the unified entry point or remove them.
-- [ ] Explicitly eliminate independent semantic transcript parsing from:
-  - `extract_structured_messages()`
-  - `extract_messages_from_chain()`
-  - `collect_transcript_messages()`
-  - `extract_tool_calls_current_turn()`
-  - `render_agent_output()`
-  - `render_clean_agent_output()`
-  - `convert_entry()`
-- [ ] Confirm no transcript-derived caller keeps its own under-the-hood path to raw source files.
-
-## Phase 4: Documentation
-
-### Task 4.1: Code-level contract doc
-
-**File(s):**
-
-- assembly/parser module chosen in implementation
-
-- [ ] Add a rich module-level documentation block that explains:
-  - what is assembled
-  - what is stripped
-  - what is dropped
-  - why the public stream is intentionally narrower than internal normalization
-
-### Task 4.2: Architecture docs
-
-**File(s):**
-
-- `docs/project/spec/messaging.md`
-- `docs/project/design/architecture/web-interface.md`
-- `docs/project/design/architecture/checkpoint-system.md`
-- `docs/project/design/architecture/unified-event-stream.md` (new, recommended)
-
-- [ ] Add/update architecture docs so they match the code contract.
-- [ ] Document the TeleClaude input-stripping rules explicitly.
-- [ ] Document the drop list explicitly.
-- [ ] Document the affected consumers and their relationship to the assembled stream.
-
-## Phase 5: Verification
-
-### Task 5.1: Backend tests
-
-**File(s):**
-
-- `tests/unit/test_structured_messages.py`
-- `tests/unit/test_transcript.py`
 - `tests/unit/test_transcript_converter.py`
-- `tests/unit/test_api_server.py`
-- new assembly tests
+- new projection tests under `tests/unit/`
 
-- [ ] Add tests for public assembly shape.
-- [ ] Add tests for TeleClaude-prefix stripping.
-- [ ] Add tests for wrapper stripping:
-  - `<task-notification>`
-  - `<system-reminder>`
-- [ ] Add tests for Claude user-role tool-result correction.
-- [ ] Add tests for Codex standalone tool payload assembly.
-- [ ] Add tests for Gemini nested thought/tool assembly.
-- [ ] Add history/live parity tests from the same transcript source.
+- [x] Add fixture-based tests showing that the same transcript yields matching visible content for:
+  - history API projection
+  - web live SSE projection
+- [x] Add regression test for the current leak: internal tools must not surface in web chat
 
-### Task 5.2: Frontend tests
+### Task 3.2: Threaded-mode protection tests
 
 **File(s):**
+- `tests/unit/test_threaded_output_updates.py`
+- `tests/unit/test_agent_coordinator.py`
 
-- frontend test files covering `MyRuntimeProvider` / thread rendering
+- [x] Add explicit non-regression coverage for current threaded-mode behavior
+- [x] Confirm this todo does not change threaded-mode adapter-facing behavior
+- [x] Confirm threaded-mode producer cutover preserves current visible behavior
 
-- [ ] Add tests proving history and live consume the same part model.
-- [ ] Add tests proving tool calls/results and thinking render from history as well as live.
+### Task 3.3: Standard adapter push protection tests
 
-### Task 5.3: Non-regression checks
+**File(s):**
+- `tests/unit/test_polling_coordinator.py`
+- `tests/unit/test_adapter_client.py`
 
-- [ ] Run targeted parser/stream/history/threaded tests
-- [ ] Run `make test`
-- [ ] Run `make lint`
+- [x] Add non-regression coverage for poller-driven `send_output_update()` payload production
+- [x] Confirm core-route cutover does not change existing adapter-visible standard output behavior
+
+---
+
+## Phase 4: Roadmap and Docs Alignment
+
+### Task 4.1: Update owning todo/bug references
+
+**File(s):**
+- `todos/web-frontend-test-bugs/bug.md`
+- roadmap artifacts as needed
+
+- [x] Record the web symptom and root cause under the web bug bucket
+- [x] Reference this todo as the architectural owner for the visible web stream/history mismatch
+
+### Task 4.2: Update architecture docs
+
+**File(s):**
+- `docs/project/design/architecture/web-interface.md`
+- `docs/project/design/architecture/web-api-facade.md`
+- any projection-specific design note added during implementation
+
+- [x] Document that web history and live stream share the same conversation projection contract
+- [x] Remove stale language that implies web live streaming is already "cleaned" if the implementation still diverges
+
+---
+
+## Phase 5: Validation
+
+### Task 5.1: Tests
+
+- [x] Run focused unit tests for projection, streaming, and threaded regressions
+- [x] Run `make test`
+
+### Task 5.2: Quality Checks
+
+- [x] Run `make lint`
+- [x] Verify no unchecked implementation tasks remain
+
+### Builder Notes
+
+- 2026-03-07: `pytest -n 0 tests/unit/test_output_projection.py tests/unit/test_transcript_converter.py tests/unit/test_threaded_output_updates.py tests/unit/test_polling_coordinator.py tests/unit/test_api_server.py -q` passed (`215 passed`).
+- 2026-03-07: Hardened `read_phase_state()` to treat empty/non-mapping YAML as empty state after `test_next_work_concurrent_same_slug_single_flight_prep` exposed a concurrent prep read of `None`.
+- 2026-03-07: Updated `tests/integration/test_multi_adapter_broadcasting.py` to use per-test `tmp_path` SQLite files after repeated/parallel `make test` runs hit stale `/tmp/*.db-wal`/`-shm` state.
+- 2026-03-07: `make test` passed on current HEAD (`3252 passed, 5 skipped`).
+- 2026-03-07: `telec todo demo validate conversation-projection-unification` passed on current HEAD.
+- 2026-03-07: `make lint` cleared guardrails, markdown/resource validation, ruff, and pyright on current HEAD, then failed at repository-wide `pylint teleclaude` findings outside this todo's scope.
+
+---
+
+## Phase 6: Review Readiness
+
+- [x] Confirm requirements are reflected in code changes
+- [x] Confirm implementation tasks are all marked `[x]`
+- [x] Document any deferrals explicitly in `deferrals.md` (if applicable)

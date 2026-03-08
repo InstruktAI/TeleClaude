@@ -18,12 +18,14 @@ from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ConfigDict, Field
 
 from teleclaude.api.transcript_converter import (
-    convert_entry,
+    convert_projected_block,
     convert_session_status,
     message_finish,
     message_start,
     stream_done,
 )
+from teleclaude.output_projection.conversation_projector import project_entries
+from teleclaude.output_projection.models import WEB_POLICY
 from teleclaude.core.agents import AgentName, resolve_parser_agent
 from teleclaude.core.db import db
 from teleclaude.core.db_models import Session
@@ -31,7 +33,6 @@ from teleclaude.utils.transcript import (
     _iter_claude_entries,
     _iter_codex_entries,
     _iter_gemini_entries,
-    _parse_timestamp,
 )
 
 logger = get_logger(__name__)
@@ -195,17 +196,13 @@ async def _stream_sse(
             yield convert_session_status("error", session_id)
 
     # --- History replay ---
-    since_dt = _parse_timestamp(since_timestamp) if since_timestamp else None
+    # Apply WEB_POLICY: tools and thinking hidden by default, matching the
+    # visibility contract of the history API. The since_timestamp filter is
+    # applied inside project_entries() to avoid a second timestamp parse pass.
     for file_path in chain:
         entries = _iter_entries_for_file(file_path, agent_name)
-        for entry in entries:
-            if since_dt:
-                entry_ts = entry.get("timestamp")
-                if isinstance(entry_ts, str):
-                    entry_dt = _parse_timestamp(entry_ts)
-                    if entry_dt and entry_dt <= since_dt:
-                        continue
-            for sse_event in convert_entry(entry):
+        for projected in project_entries(entries, WEB_POLICY, since=since_timestamp):
+            for sse_event in convert_projected_block(projected):
                 yield sse_event
 
     # --- Live tail ---
@@ -269,8 +266,10 @@ async def _stream_sse(
                     continue
                 if isinstance(entry_value, dict):
                     entry: dict[str, object] = entry_value  # guard: loose-dict - JSONL parse
-                    for sse_event in convert_entry(entry):
-                        yield sse_event
+                    # Apply WEB_POLICY for live tail: same visibility as history replay.
+                    for projected in project_entries([entry], WEB_POLICY):
+                        for sse_event in convert_projected_block(projected):
+                            yield sse_event
         except OSError as exc:
             logger.warning(
                 "Web lane error reading live transcript",

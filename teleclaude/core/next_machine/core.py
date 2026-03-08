@@ -855,7 +855,14 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
         return copy.deepcopy(DEFAULT_STATE)
 
     content = read_text_sync(state_path)
-    state: dict[str, StateValue] = yaml.safe_load(content)
+    raw_state = yaml.safe_load(content)
+    if raw_state is None:
+        state: dict[str, StateValue] = {}
+    elif isinstance(raw_state, dict):
+        state = raw_state
+    else:
+        logger.warning("Ignoring non-mapping phase state for %s/%s", cwd, slug)
+        state = {}
     # Merge with defaults for any missing keys
     merged = copy.deepcopy(DEFAULT_STATE)
     merged.update(state)

@@ -1212,3 +1212,74 @@ class TestCodexTurnActivationFromPromptSubmit:
             assert state.turn_active is True
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
+
+
+# ---------------------------------------------------------------------------
+# Task 3.3: Standard adapter push non-regression tests
+# ---------------------------------------------------------------------------
+
+
+class TestTerminalLiveProjectionAdapterContract:
+    """Confirm that the projection cutover does not change adapter-visible output."""
+
+    def test_project_terminal_live_output_equals_input(self) -> None:
+        """terminal_live projection is a passthrough: adapter receives the original string."""
+        from teleclaude.output_projection.terminal_live_projector import project_terminal_live
+
+        clean_output = "session active\n> cursor blinks"
+        projection = project_terminal_live(clean_output)
+        assert projection.output == clean_output
+
+    def test_project_terminal_live_does_not_transform_content(self) -> None:
+        """The projection route must not alter ANSI-stripped terminal output."""
+        from teleclaude.output_projection.terminal_live_projector import project_terminal_live
+
+        # Simulate typical poller output after ANSI stripping
+        output = "Running tests...\n[OK] test_one\n[FAIL] test_two"
+        assert project_terminal_live(output).output == output
+
+    @pytest.mark.asyncio
+    async def test_poll_and_send_output_passes_clean_output_to_adapter_unchanged(self) -> None:
+        """Adapter receives the exact clean_output string; projection route must not modify it."""
+        mock_session = Session(
+            session_id="test-proj-123",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            last_input_origin=InputOrigin.TELEGRAM.value,
+            title="Projection Test",
+        )
+        expected_output = "clean terminal snapshot"
+
+        async def mock_poll(session_id, tmux_session_name, output_file):
+            yield OutputChanged(
+                session_id="test-proj-123",
+                output=expected_output,
+                started_at=1000.0,
+                last_changed_at=1001.0,
+            )
+
+        output_poller = Mock()
+        output_poller.poll = mock_poll
+
+        adapter_client = Mock()
+        adapter_client.send_output_update = AsyncMock()
+
+        get_output_file = Mock(return_value=Path("/tmp/output.txt"))
+
+        with patch("teleclaude.core.polling_coordinator.db.get_session", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_session
+            await polling_coordinator.poll_and_send_output(
+                session_id="test-proj-123",
+                tmux_session_name="test-tmux",
+                output_poller=output_poller,
+                adapter_client=adapter_client,
+                get_output_file=get_output_file,
+                _skip_register=True,
+            )
+
+        # The adapter must receive exactly the same clean_output — no transformation
+        adapter_client.send_output_update.assert_called_once()
+        call_args, _ = adapter_client.send_output_update.call_args
+        assert call_args[1] == expected_output, (
+            f"Adapter received '{call_args[1]}' instead of '{expected_output}'"
+        )

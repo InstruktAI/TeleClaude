@@ -61,6 +61,7 @@ async def test_voice_transcription_executes_command(session_manager: Db) -> None
         with (
             patch("teleclaude.core.command_handlers.db", session_manager),
             patch("teleclaude.core.inbound_queue.db", session_manager),
+            patch("teleclaude.core.command_handlers.tmux_bridge.session_exists", new=AsyncMock(return_value=True)),
             patch(
                 "teleclaude.core.command_handlers.voice_message_handler.handle_voice",
                 new=AsyncMock(return_value="say hi"),

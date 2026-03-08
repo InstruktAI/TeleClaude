@@ -31,7 +31,12 @@ Provide a real-time chat experience, session management, and dashboard for inter
 
 ### 1. Real-time Message Streaming
 
-User sends a message via the `AssistantChatTransport`. The request is transformed and proxied to the Daemon's `/api/chat/stream`. The resulting SSE stream is cleaned (suppressing internal checkpoints and technical command bodies) before being rendered.
+User sends a message via the `AssistantChatTransport`. The request is transformed and proxied to the Daemon's `/api/chat/stream`. The resulting SSE stream applies `WEB_POLICY` projection (suppressing internal tool invocations, tool results, and thinking blocks) before being rendered.
+
+Both the live SSE stream and the history API (`GET /sessions/{id}/messages`) share the same
+canonical `WEB_POLICY` from `teleclaude/output_projection/models.py`. This guarantees that web
+history and live streaming expose identical visible content — internal tool blocks never surface
+in either path regardless of replay or live-tail mode.
 
 ### 2. WebSocket Bridging
 

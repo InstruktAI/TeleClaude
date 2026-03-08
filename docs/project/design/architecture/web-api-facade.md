@@ -69,6 +69,11 @@ The stable public surface is the Next.js API namespace (`/api/*` in frontend app
 - Request path: browser -> Next.js `POST /api/chat` -> daemon stream endpoint.
 - Next.js forwards request body and streams response through (no full buffering).
 - This keeps assistant-ui integration stable while backend internals evolve.
+- The daemon applies `WEB_POLICY` projection before emitting SSE events. Internal tool invocations,
+  tool results, and thinking blocks are suppressed by the projection layer — not by the Next.js proxy.
+- The history endpoint (`GET /api/sessions/:id/messages`) uses the same `WEB_POLICY` projection,
+  ensuring web history and live streaming expose identical visible content. See
+  `teleclaude/output_projection/` for the canonical route.
 
 ### State snapshots
 

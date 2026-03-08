@@ -538,17 +538,30 @@ def render_clean_agent_output(
     if not assistant_entries:
         return None, None
 
+    # Route through canonical conversation projection with THREADED_CLEAN_POLICY.
+    # Policy: thinking visible, tool invocations visible, tool results hidden.
+    # Behavior is identical to the previous iter_assistant_blocks() iteration;
+    # the projection layer now owns the visibility decision.
+    from teleclaude.output_projection.conversation_projector import project_entries
+    from teleclaude.output_projection.models import THREADED_CLEAN_POLICY
+
     lines: list[str] = []
     emitted = False
     last_entry_dt: Optional[datetime] = None
 
-    for block, entry_dt in iter_assistant_blocks(assistant_entries):
-        if entry_dt:
-            last_entry_dt = entry_dt
+    for pb in project_entries(assistant_entries, THREADED_CLEAN_POLICY):
+        if pb.role != "assistant":
+            continue  # only format assistant content blocks
 
-        block_type = block.get("type")
+        if pb.timestamp:
+            entry_dt = _parse_timestamp(pb.timestamp)
+            if entry_dt:
+                last_entry_dt = entry_dt
 
-        if block_type in ("text", "output_text"):
+        block = pb.block
+        block_type = pb.block_type
+
+        if block_type == "text":
             text = block.get("text", "")
             if text:
                 if lines:
@@ -589,7 +602,7 @@ def render_clean_agent_output(
                 lines.append("")
             lines.append(block_content)
             emitted = True
-        # Tool results are completely omitted in this "clean" renderer
+        # tool_result: suppressed by THREADED_CLEAN_POLICY (include_tool_results=False)
 
     if not emitted:
         return None, last_entry_dt
@@ -1134,21 +1147,39 @@ def render_agent_output(
     if not assistant_entries:
         return None, None
 
+    # Route through canonical conversation projection with a policy derived
+    # from the caller's include_tools / include_tool_results flags.
+    # Visibility decision is now owned by the projection layer.
+    from teleclaude.output_projection.conversation_projector import project_entries
+    from teleclaude.output_projection.models import VisibilityPolicy
+
+    render_policy = VisibilityPolicy(
+        include_tools=include_tools,
+        include_tool_results=include_tool_results,
+        include_thinking=True,  # always visible in render_agent_output
+    )
+
     lines: list[str] = []
     emitted = False
     last_entry_dt: Optional[datetime] = None
 
-    for block, entry_dt in iter_assistant_blocks(assistant_entries):
-        if entry_dt:
-            last_entry_dt = entry_dt
+    for pb in project_entries(assistant_entries, render_policy):
+        if pb.role != "assistant":
+            continue  # only format assistant content blocks
+
+        if pb.timestamp:
+            entry_dt = _parse_timestamp(pb.timestamp)
+            if entry_dt:
+                last_entry_dt = entry_dt
 
         time_prefix = ""
         if include_timestamps and last_entry_dt:
             time_prefix = f"[{last_entry_dt.strftime('%H:%M:%S')}] "
 
-        block_type = block.get("type")
+        block = pb.block
+        block_type = pb.block_type
 
-        if block_type in ("text", "output_text"):
+        if block_type == "text":
             text = block.get("text", "")
             if text:
                 if lines:
@@ -1164,21 +1195,19 @@ def render_agent_output(
                 lines.append(f"{time_prefix}{formatted}")
                 emitted = True
         elif block_type == "tool_use":
-            if include_tools:
-                lines.append("")
-                _process_tool_use_block(block, time_prefix, lines)
-                emitted = True
+            lines.append("")
+            _process_tool_use_block(block, time_prefix, lines)
+            emitted = True
         elif block_type == "tool_result":
-            if include_tool_results:
-                lines.append("")
-                _process_tool_result_block(
-                    block,
-                    time_prefix,
-                    lines,
-                    collapse_tool_results=False,
-                    max_chars=2000,
-                )
-                emitted = True
+            lines.append("")
+            _process_tool_result_block(
+                block,
+                time_prefix,
+                lines,
+                collapse_tool_results=False,
+                max_chars=2000,
+            )
+            emitted = True
 
     if not emitted:
         return None, last_entry_dt
@@ -2230,6 +2259,11 @@ def extract_messages_from_chain(
     include_thinking: bool = False,
 ) -> list[dict[str, object]]:  # guard: loose-dict - API response messages
     """Extract structured messages from a chain of transcript files.
+
+    .. deprecated::
+        Use ``project_conversation_chain()`` from
+        ``teleclaude.output_projection.conversation_projector`` instead.
+        This function operates independently with its own extraction logic.
 
     Reads files in order (oldest first) and concatenates messages with file_index.
 

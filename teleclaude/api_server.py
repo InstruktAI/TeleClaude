@@ -1201,7 +1201,9 @@ class APIServer:
 
             await check_session_access(request, session_id)
             from teleclaude.core.agents import resolve_parser_agent
-            from teleclaude.utils.transcript import extract_messages_from_chain
+            from teleclaude.output_projection.conversation_projector import project_conversation_chain
+            from teleclaude.output_projection.models import VisibilityPolicy
+            from teleclaude.output_projection.serializers import to_structured_message
 
             try:
                 session = await db.get_session(session_id)
@@ -1225,24 +1227,30 @@ class APIServer:
                     # Determine agent for parser selection
                     agent_name = resolve_parser_agent(session.active_agent)
 
-                    raw_messages = extract_messages_from_chain(
+                    # Build visibility policy from query params; same semantics as
+                    # the previous extract_messages_from_chain() boolean flags.
+                    policy = VisibilityPolicy(
+                        include_tools=include_tools,
+                        include_tool_results=include_tools,  # tools flag controls both
+                        include_thinking=include_thinking,
+                    )
+                    projected_blocks = project_conversation_chain(
                         chain,
                         agent_name,
+                        policy,
                         since=since,
-                        include_tools=include_tools,
-                        include_thinking=include_thinking,
                     )
 
                     messages = [
                         MessageDTO(
-                            role=str(m.get("role", "assistant")),
-                            type=str(m.get("type", "text")),
-                            text=str(m.get("text", "")),
-                            timestamp=str(m["timestamp"]) if m.get("timestamp") else None,
-                            entry_index=int(m.get("entry_index", 0)),
-                            file_index=int(m.get("file_index", 0)),
+                            role=sm.role,
+                            type=sm.type,
+                            text=sm.text,
+                            timestamp=sm.timestamp,
+                            entry_index=sm.entry_index,
+                            file_index=sm.file_index,
                         )
-                        for m in raw_messages
+                        for sm in (to_structured_message(pb) for pb in projected_blocks)
                     ]
 
                 # Fallback path: when transcript files are not yet available or parsing

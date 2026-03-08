@@ -46,6 +46,17 @@ Still open in this bug bucket.
 
 ## Fix Applied
 
-<!-- Fix worker fills this after committing the fix -->
+**Stream-semantics bug fixed** by `conversation-projection-unification`.
 
-No fix applied yet. The architectural fix is tracked under `conversation-projection-unification`.
+Both the web history API (`GET /sessions/{id}/messages`) and the live SSE stream (`POST /api/chat/stream`)
+now route through the same canonical `project_entries(WEB_POLICY)` projection. The `WEB_POLICY`
+suppresses tool_use, tool_result, and thinking blocks by default, so internal transcript structure
+no longer leaks into web chat regardless of path.
+
+Key commits:
+- `fix(conversation-projection-unification): cut over web live SSE to shared conversation projector`
+- `feat(conversation-projection-unification): cut over history API to shared conversation projector`
+
+Architecture owner: `output_projection/` package (`teleclaude/output_projection/`).
+
+**Loading-latency investigation:** Still open in this bug bucket.
