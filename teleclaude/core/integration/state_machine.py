@@ -713,6 +713,9 @@ def _try_auto_enqueue(*, queue: IntegrationQueue, slug: str, cwd: str) -> bool:
     the SHA from the local branch ref. Used for legacy/manual direct-integrate
     entry when a caller invokes ``telec todo integrate <slug>`` without a
     prior queue population step.
+
+    Skips enqueue if the candidate SHA is already an ancestor of main
+    (already integrated) to prevent infinite re-enqueue loops.
     """
     branch = slug  # branch == slug by project convention
     rc, stdout, _ = _run_git(["rev-parse", branch], cwd=cwd)
@@ -723,6 +726,15 @@ def _try_auto_enqueue(*, queue: IntegrationQueue, slug: str, cwd: str) -> bool:
     # Validate SHA looks like a 40-char hex (guards against git printing non-SHA output)
     if len(sha) != 40 or not all(c in "0123456789abcdefABCDEF" for c in sha):
         logger.warning("Auto-enqueue: invalid SHA for branch %s: %r", branch, sha)
+        return False
+    # Skip if already integrated (ancestry check or queue status)
+    existing = queue.get(key=CandidateKey(slug=slug, branch=branch, sha=sha))
+    if existing and existing.status == "integrated":
+        logger.info("Auto-enqueue: %s already marked integrated in queue — skipping", slug)
+        return False
+    ancestor_rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)
+    if ancestor_rc == 0:
+        logger.info("Auto-enqueue: %s (sha=%s) already ancestor of main — skipping", slug, sha[:8])
         return False
     ready_at = _now_iso()
     try:
