@@ -6,7 +6,7 @@
 #     "python-dotenv",
 #     "pydantic",
 #     "pyyaml",
-#     "aiohttp",
+#     "httpx",
 #     "dateparser",
 #     "munch",
 # ]
@@ -33,7 +33,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Search native agent session transcripts.")
     parser.add_argument("--agent", required=True, help="Agent name(s) (claude,codex,gemini) or 'all'.")
     parser.add_argument("--show", metavar="SESSION_ID", help="Show full parsed transcript for a session.")
+    parser.add_argument("--raw", action="store_true", help="Show raw transcript content instead of mirror text.")
     parser.add_argument("--thinking", action="store_true", help="Include thinking blocks in --show output.")
+    parser.add_argument("--computer", nargs="+", help="Query one or more remote computers via daemon API.")
     parser.add_argument(
         "--tail", type=int, default=0, help="Limit output to last N chars (0=unlimited, default for --show)."
     )
@@ -43,7 +45,14 @@ def main() -> None:
     selected_agents = parse_agents(args.agent)
 
     if args.show:
-        show_transcript(selected_agents, args.show, tail_chars=args.tail, include_thinking=args.thinking)
+        show_transcript(
+            selected_agents,
+            args.show,
+            tail_chars=args.tail,
+            include_thinking=args.thinking,
+            raw=args.raw,
+            computers=args.computer,
+        )
         return
 
     search_term = " ".join(args.terms).strip()
@@ -51,7 +60,7 @@ def main() -> None:
         print("Search terms are required. Example: history.py --agent all <terms>")
         sys.exit(1)
 
-    display_combined_history(selected_agents, search_term)
+    display_combined_history(selected_agents, search_term, computers=args.computer)
 
 
 if __name__ == "__main__":

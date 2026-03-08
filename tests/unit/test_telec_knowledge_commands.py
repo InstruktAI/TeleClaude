@@ -41,10 +41,11 @@ def test_handle_history_search_no_terms_exits(capsys: pytest.CaptureFixture[str]
 def test_handle_history_search_calls_display_combined_history(capsys: pytest.CaptureFixture[str]) -> None:
     captured: dict[str, Any] = {}  # guard: loose-dict - test capture dict
 
-    def fake_display(agents, search_term="", limit=20):
+    def fake_display(agents, search_term="", limit=20, computers=None):
         captured["agents"] = agents
         captured["term"] = search_term
         captured["limit"] = limit
+        captured["computers"] = computers
 
     with (
         patch("teleclaude.history.search.parse_agents") as fake_parse,
@@ -57,13 +58,15 @@ def test_handle_history_search_calls_display_combined_history(capsys: pytest.Cap
 
     assert captured["term"] == "config wizard"
     assert captured["limit"] == 20
+    assert captured["computers"] is None
 
 
 def test_handle_history_search_custom_limit(capsys: pytest.CaptureFixture[str]) -> None:
     captured: dict[str, Any] = {}  # guard: loose-dict - test capture dict
 
-    def fake_display(agents, search_term="", limit=20):
+    def fake_display(agents, search_term="", limit=20, computers=None):
         captured["limit"] = limit
+        captured["computers"] = computers
 
     with (
         patch("teleclaude.history.search.parse_agents") as fake_parse,
@@ -75,6 +78,7 @@ def test_handle_history_search_custom_limit(capsys: pytest.CaptureFixture[str]) 
         telec._handle_history_search(["--limit", "5", "foo"])
 
     assert captured["limit"] == 5
+    assert captured["computers"] is None
 
 
 def test_handle_history_show_no_session_id_exits() -> None:
@@ -85,10 +89,12 @@ def test_handle_history_show_no_session_id_exits() -> None:
 def test_handle_history_show_calls_show_transcript() -> None:
     captured: dict[str, Any] = {}  # guard: loose-dict - test capture dict
 
-    def fake_show(agents, session_id, tail_chars=0, include_thinking=False):
+    def fake_show(agents, session_id, tail_chars=0, include_thinking=False, raw=False, computers=None):
         captured["session_id"] = session_id
         captured["tail"] = tail_chars
         captured["thinking"] = include_thinking
+        captured["raw"] = raw
+        captured["computers"] = computers
 
     with (
         patch("teleclaude.history.search.parse_agents") as fake_parse,
@@ -102,6 +108,8 @@ def test_handle_history_show_calls_show_transcript() -> None:
     assert captured["session_id"] == "abc123"
     assert captured["thinking"] is True
     assert captured["tail"] == 2000
+    assert captured["raw"] is False
+    assert captured["computers"] == []
 
 
 # ---------------------------------------------------------------------------

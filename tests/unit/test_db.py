@@ -67,7 +67,7 @@ class TestCreateSession:
         assert session.title == "[TestPC] Untitled"  # Default title logic
         assert session.created_at is not None
         assert session.last_activity is not None
-        assert session.human_role == "admin"
+        assert session.human_role is None
 
     @pytest.mark.asyncio
     async def test_create_session_with_all_fields(self, test_db):

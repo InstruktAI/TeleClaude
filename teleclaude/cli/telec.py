@@ -819,6 +819,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     _H,
                     Flag("--agent", "-a", "Agent name(s) or 'all' (default: all)"),
+                    Flag("--computer", desc="Query one or more remote computers via daemon API"),
                     Flag("--limit", "-l", "Max results to show (default: 20)"),
                 ],
                 examples=[
@@ -834,7 +835,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     _H,
                     Flag("--agent", "-a", "Agent name or 'all' (default: all)"),
+                    Flag("--computer", desc="Fetch from a remote computer"),
                     Flag("--thinking", desc="Include thinking blocks"),
+                    Flag("--raw", desc="Show raw transcript instead of mirror text"),
                     Flag("--tail", desc="Limit output to last N chars (0=unlimited)"),
                 ],
                 examples=[
@@ -3677,6 +3680,7 @@ def _handle_history_search(args: list[str]) -> None:
 
     agent_arg = "all"
     limit = 20
+    computers: list[str] = []
     terms: list[str] = []
 
     i = 0
@@ -3703,6 +3707,15 @@ def _handle_history_search(args: list[str]) -> None:
             print("Missing value for --limit.")
             print(_usage("history", "search"))
             raise SystemExit(1)
+        elif arg == "--computer":
+            i += 1
+            while i < len(args) and not args[i].startswith("-"):
+                computers.append(args[i])
+                i += 1
+            if not computers:
+                print("Missing value for --computer.")
+                print(_usage("history", "search"))
+                raise SystemExit(1)
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("history", "search"))
@@ -3717,7 +3730,7 @@ def _handle_history_search(args: list[str]) -> None:
         raise SystemExit(1)
 
     agents = parse_agents(agent_arg)
-    display_combined_history(agents, search_term=" ".join(terms), limit=limit)
+    display_combined_history(agents, search_term=" ".join(terms), limit=limit, computers=computers or None)
 
 
 def _handle_history_show(args: list[str]) -> None:
@@ -3726,7 +3739,9 @@ def _handle_history_show(args: list[str]) -> None:
 
     agent_arg = "all"
     thinking = False
+    raw = False
     tail = 0
+    computers: list[str] = []
     session_id: str | None = None
 
     i = 0
@@ -3745,6 +3760,9 @@ def _handle_history_show(args: list[str]) -> None:
         elif arg == "--thinking":
             thinking = True
             i += 1
+        elif arg == "--raw":
+            raw = True
+            i += 1
         elif arg == "--tail" and i + 1 < len(args):
             try:
                 tail = int(args[i + 1])
@@ -3756,6 +3774,15 @@ def _handle_history_show(args: list[str]) -> None:
             print("Missing value for --tail.")
             print(_usage("history", "show"))
             raise SystemExit(1)
+        elif arg == "--computer":
+            i += 1
+            while i < len(args) and not args[i].startswith("-"):
+                computers.append(args[i])
+                i += 1
+            if not computers:
+                print("Missing value for --computer.")
+                print(_usage("history", "show"))
+                raise SystemExit(1)
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("history", "show"))
@@ -3775,7 +3802,7 @@ def _handle_history_show(args: list[str]) -> None:
         raise SystemExit(1)
 
     agents = parse_agents(agent_arg)
-    show_transcript(agents, session_id, tail_chars=tail, include_thinking=thinking)
+    show_transcript(agents, session_id, tail_chars=tail, include_thinking=thinking, raw=raw, computers=computers)
 
 
 def _handle_memories(args: list[str]) -> None:

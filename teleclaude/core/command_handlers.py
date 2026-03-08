@@ -330,12 +330,12 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
             human_email = parent_session.human_email
         if not human_role and parent_session.human_role:
             human_role = parent_session.human_role
-    if not human_role:
+    if not human_role and origin not in {"api", "web"}:
         human_role = HUMAN_ROLE_ADMIN
 
-    # Unidentified local/TUI/API session creation defaults to admin, which matches
-    # the daemon-side unidentified terminal fallback and avoids fail-closed auth
-    # regressions from persisting role-less sessions.
+    # API/web callers may intentionally create role-less sessions and rely on
+    # boundary-injected identity. Other unidentified origins keep the legacy
+    # admin fallback until their callers are migrated to pass an explicit role.
     raw_help_desk_path = getattr(config.computer, "help_desk_dir", None)
     configured_help_desk_path = (
         raw_help_desk_path

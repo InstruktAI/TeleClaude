@@ -320,7 +320,7 @@ class TTSManager:
         """Backfill async runtime state for tests that bypass __init__."""
         if not hasattr(self, "_chiptunes_manager"):
             self._chiptunes_manager = None
-        if not hasattr(self, "_audio_focus") or self._audio_focus is None:
+        if not hasattr(self, "_audio_focus"):
             self._audio_focus = AudioFocusCoordinator()
             if self._chiptunes_manager is not None:
                 self._audio_focus.set_chiptunes_manager(self._chiptunes_manager)

@@ -1,9 +1,16 @@
-build: pending
-review: pending
-deferrals_processed: false
+phase: in_progress
+build: complete
+review: approved
+deferrals_processed: true
+deferrals_hash: ccc713dde03ab7ac3d1e37af7dd2a3a9c7d294faf775d909aa4957a3eff5e9d7
 breakdown:
   assessed: false
   todos: []
+review_round: 2
+max_review_rounds: 3
+review_baseline_commit: 314e34fc8f6a596fe2aaae52c658bd14fb3bc060
+unresolved_findings: []
+resolved_findings: []
 dor:
   last_assessed_at: '2026-02-28T18:00:00Z'
   score: 8
@@ -13,9 +20,4 @@ dor:
   actions_taken:
     requirements_updated: false
     implementation_plan_updated: false
-review_round: 0
-max_review_rounds: 3
-review_baseline_commit: ''
-unresolved_findings: []
-resolved_findings: []
 schema_version: 1

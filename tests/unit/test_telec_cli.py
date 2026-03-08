@@ -234,6 +234,14 @@ def test_help_includes_notes_and_examples_for_top_level_leaf_commands() -> None:
         assert "\nExamples:\n" in output
 
 
+def test_history_command_definitions_document_remote_and_raw_flags() -> None:
+    search_flags = {flag.long for flag in telec.CLI_SURFACE["history"].subcommands["search"].flags}
+    show_flags = {flag.long for flag in telec.CLI_SURFACE["history"].subcommands["show"].flags}
+
+    assert "--computer" in search_flags
+    assert {"--computer", "--raw"}.issubset(show_flags)
+
+
 def test_version_command_prints_version_channel_and_commit(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -76,6 +76,10 @@ from teleclaude.hooks.registry import ContractRegistry
 from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
 from teleclaude.logging_config import setup_logging
+from teleclaude.mirrors.event_handlers import handle_agent_stop as handle_mirror_agent_stop
+from teleclaude.mirrors.event_handlers import handle_session_closed as handle_mirror_session_closed
+from teleclaude.mirrors.processors import register_default_processors
+from teleclaude.mirrors.worker import MirrorWorker
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.services.monitoring_service import MonitoringService
@@ -356,11 +360,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.tts_manager,
             self.headless_snapshot_service,
         )
+        register_default_processors()
 
         # Wire direct agent event handler — replaces event bus for AGENT_EVENT.
         # polling_coordinator and redis_transport call this directly instead of
         # fire-and-forget through event_bus.emit().
-        self.client.agent_event_handler = self.agent_coordinator.handle_event
+        self.client.agent_event_handler = self._handle_agent_event_direct
         self.client.agent_coordinator = self.agent_coordinator
 
         # Auto-discover and register event handlers (SESSION_*, ERROR only —
@@ -410,6 +415,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._shutdown_reason: str | None = None
         self.hook_outbox_task: asyncio.Task[object] | None = None
         self._event_db: EventDB | None = None
+        self.mirror_worker_task: asyncio.Task[object] | None = None
         self._event_processor_task: asyncio.Task[object] | None = None
         self.todo_watcher_task: asyncio.Task[object] | None = None
         self.codex_transcript_watch_task: asyncio.Task[object] | None = None
@@ -1116,6 +1122,16 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         task = asyncio.create_task(coro)
         self._track_background_task(task, label)
 
+    async def _handle_agent_event_direct(self, context: AgentEventContext) -> None:
+        """Run coordinator logic first, then mirror fan-out for agent stop."""
+        await self.agent_coordinator.handle_event(context)
+        if context.event_type != AgentHookEvents.AGENT_STOP:
+            return
+        try:
+            await handle_mirror_agent_stop(context)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.error("Mirror AGENT_STOP handler failed: %s", exc, exc_info=True)
+
     async def _handle_session_closed(self, _event: str, context: SessionLifecycleContext) -> None:
         """Observer-only handler for session_closed events.
 
@@ -1141,6 +1157,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
         polling_coordinator._cleanup_codex_input_state(ctx.session_id)
+        try:
+            await handle_mirror_session_closed(ctx)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.error("Mirror SESSION_CLOSED handler failed: %s", exc, exc_info=True)
 
     async def _handle_session_close_requested(self, _event: str, context: SessionLifecycleContext) -> None:
         """Handler for session_close_requested events — performs termination exactly once.
@@ -2231,6 +2251,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
             logger.info("Hook outbox worker started")
 
+            mirror_worker = MirrorWorker(config.database.path)
+            self.mirror_worker_task = asyncio.create_task(mirror_worker.run())
+            self._track_background_task(self.mirror_worker_task, "mirror-worker")
+            logger.info("Mirror worker started")
+
             if CODEX_TRANSCRIPT_WATCH_INTERVAL_S > 0:
                 self.codex_transcript_watch_task = asyncio.create_task(
                     self.maintenance_service.codex_transcript_watch_loop()
@@ -2315,6 +2340,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("Hook outbox worker stopped")
+
+        if self.mirror_worker_task:
+            self.mirror_worker_task.cancel()
+            try:
+                await self.mirror_worker_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Mirror worker stopped")
 
         if self.codex_transcript_watch_task:
             self.codex_transcript_watch_task.cancel()

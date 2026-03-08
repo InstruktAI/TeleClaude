@@ -219,6 +219,10 @@ class APIServer:
 
         self.app.include_router(memory_router)
 
+        from teleclaude.mirrors.api_routes import router as mirrors_router
+
+        self.app.include_router(mirrors_router)
+
         from teleclaude.hooks.api_routes import router as hooks_router
 
         self.app.include_router(hooks_router)
