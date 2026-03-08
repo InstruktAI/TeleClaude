@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: conversation-projection-unification
+  date: '2026-03-08'
+  title: Unify the core output projection route across poller, threaded, web, and
+    future search consumers without changing adapter implementations
+  description: Unify the core output projection route across poller, threaded, web,
+    and future search consumers without changing adapter implementations
 - slug: history-search-upgrade
   date: '2026-03-08'
 - slug: integration-event-chain-phase2

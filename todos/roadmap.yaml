@@ -40,9 +40,6 @@
 - slug: ucap-slo-hardening
 - slug: a2ui-showcase-component
 - slug: web-frontend-test-bugs
-- slug: conversation-projection-unification
-  description: Unify the core output projection route across poller, threaded, web,
-    and future search consumers without changing adapter implementations
 - slug: youtube-scrape-channels-job
 - slug: telegram-callback-payload-migration
   description: Migrate Telegram explicit user-selection callback payloads to canonical
