@@ -188,10 +188,14 @@ deleted, icebox entry removed.
 
 ### T8 — Update frozen-slug detection to the relocated manifest
 
-**What:** In `teleclaude_events/cartridges/prepare_quality.py`, replace the hardcoded
-`project_root / "todos" / "icebox.yaml"` read inside `_is_slug_delivered_or_frozen()`
-with helper-based loading that follows T1 (prefer `load_icebox(str(project_root))`
-instead of another ad hoc path). Keep the legacy `icebox.md` fallback.
+**What:** In `teleclaude_events/cartridges/prepare_quality.py`, update the hardcoded
+`project_root / "todos" / "icebox.yaml"` path inside `_is_slug_delivered_or_frozen()`
+to `project_root / "todos" / "_icebox" / "icebox.yaml"`. Keep the legacy `icebox.md`
+fallback unchanged.
+
+Do **not** import `load_icebox` from `teleclaude.core.next_machine.core` — no
+cartridge currently imports from `teleclaude.core.*` and introducing that
+cross-package dependency is unnecessary for a one-line path change.
 
 **Why:** Prepare-quality uses frozen-state detection to prevent work from being
 prepared against parked items. If it keeps reading the old path after migration,
