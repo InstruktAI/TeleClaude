@@ -1,6 +1,7 @@
 """Tests for next_prepare() state machine — replaces hitl-based tests."""
 
 import asyncio
+import hashlib
 import os
 import tempfile
 from pathlib import Path
@@ -502,6 +503,44 @@ async def test_prepare_grounding_check_sha_only_change_with_references_stays_pre
         ):
             result = await next_prepare(db, slug=slug, cwd=tmpdir)
             assert "PREPARED" in result
+
+
+@pytest.mark.asyncio
+async def test_prepare_grounding_check_empty_stored_digest_backfills_without_regrounding():
+    """GROUNDING_CHECK should backfill missing input_digest instead of forcing re-grounding."""
+    db = MagicMock(spec=Db)
+    slug = "test-slug"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        todo_dir = Path(tmpdir) / "todos" / slug
+        todo_dir.mkdir(parents=True)
+        input_text = "hello grounding\n"
+        (todo_dir / "input.md").write_text(input_text, encoding="utf-8")
+
+        state = {
+            "prepare_phase": PreparePhase.GROUNDING_CHECK.value,
+            "grounding": {
+                "valid": True,
+                "base_sha": "same_sha",
+                "input_digest": "",
+                "referenced_paths": ["src/foo.py"],
+                "last_grounded_at": "",
+                "invalidated_at": "",
+                "invalidation_reason": "",
+            },
+        }
+
+        with (
+            patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+            patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+            patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
+            patch("teleclaude.core.next_machine.core.write_phase_state"),
+            patch("teleclaude.core.next_machine.core._run_git_prepare", return_value=(0, "same_sha", "")),
+            patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+        ):
+            result = await next_prepare(db, slug=slug, cwd=tmpdir)
+            assert "PREPARED" in result
+            assert state["grounding"]["input_digest"] == hashlib.sha256(input_text.encode("utf-8")).hexdigest()
 
 
 @pytest.mark.asyncio

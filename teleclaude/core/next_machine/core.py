@@ -3003,7 +3003,12 @@ def _prepare_step_grounding_check(
 
     # Check for staleness
     sha_changed = bool(current_sha and current_sha != base_sha)
-    digest_changed = current_input_digest and current_input_digest != stored_input_digest
+    # Backward compatibility: empty stored digest means "not yet recorded", not "changed".
+    digest_changed = bool(
+        stored_input_digest
+        and current_input_digest
+        and current_input_digest != stored_input_digest
+    )
 
     # Check if referenced paths changed between base_sha and HEAD
     changed_paths: list[str] = []
@@ -3039,6 +3044,7 @@ def _prepare_step_grounding_check(
 
     # Fresh — transition to PREPARED
     grounding_dict["base_sha"] = current_sha
+    grounding_dict["input_digest"] = current_input_digest
     grounding_dict["last_grounded_at"] = now
     grounding_dict["valid"] = True
     state["grounding"] = grounding_dict  # type: ignore[assignment]
