@@ -39,38 +39,39 @@ class CallbackAction(str, Enum):
 
     DOWNLOAD_FULL = "download_full"
     SESSION_SELECT = "ssel"
-    CLAUDE_SELECT = "csel"
-    CLAUDE_RESUME_SELECT = "crsel"
-    GEMINI_SELECT = "gsel"
-    GEMINI_RESUME_SELECT = "grsel"
-    CODEX_SELECT = "cxsel"
-    CODEX_RESUME_SELECT = "cxrsel"
+    AGENT_SELECT = "asel"
+    AGENT_RESUME_SELECT = "arsel"
     CANCEL = "ccancel"
     SESSION_START = "s"
-    CLAUDE_START = "c"
-    CLAUDE_RESUME_START = "cr"
-    GEMINI_START = "g"
-    GEMINI_RESUME_START = "gr"
-    CODEX_START = "cx"
-    CODEX_RESUME_START = "cxr"
+    AGENT_START = "as"
+    AGENT_RESUME_START = "ars"
 
 
 AGENT_SELECT_ACTIONS: set[CallbackAction] = {
-    CallbackAction.CLAUDE_SELECT,
-    CallbackAction.CLAUDE_RESUME_SELECT,
-    CallbackAction.GEMINI_SELECT,
-    CallbackAction.GEMINI_RESUME_SELECT,
-    CallbackAction.CODEX_SELECT,
-    CallbackAction.CODEX_RESUME_SELECT,
+    CallbackAction.AGENT_SELECT,
+    CallbackAction.AGENT_RESUME_SELECT,
 }
 
 AGENT_START_ACTIONS: set[CallbackAction] = {
-    CallbackAction.CLAUDE_START,
-    CallbackAction.CLAUDE_RESUME_START,
-    CallbackAction.GEMINI_START,
-    CallbackAction.GEMINI_RESUME_START,
-    CallbackAction.CODEX_START,
-    CallbackAction.CODEX_RESUME_START,
+    CallbackAction.AGENT_START,
+    CallbackAction.AGENT_RESUME_START,
+}
+
+# Maps legacy per-agent callback prefixes to (canonical_action, agent_name).
+# Allows old buttons already in user chats to continue working during deprecation.
+LEGACY_ACTION_MAP: dict[str, tuple[str, str]] = {
+    "csel": ("asel", "claude"),
+    "crsel": ("arsel", "claude"),
+    "gsel": ("asel", "gemini"),
+    "grsel": ("arsel", "gemini"),
+    "cxsel": ("asel", "codex"),
+    "cxrsel": ("arsel", "codex"),
+    "c": ("as", "claude"),
+    "cr": ("ars", "claude"),
+    "g": ("as", "gemini"),
+    "gr": ("ars", "gemini"),
+    "cx": ("as", "codex"),
+    "cxr": ("ars", "codex"),
 }
 
 
@@ -141,27 +142,54 @@ class CallbackHandlersMixin:
         if not data or CALLBACK_SEPARATOR not in data:
             return
 
-        action_raw, *args = data.split(CALLBACK_SEPARATOR, 1)
+        # Split into at most 3 parts to support both 2-part and 3-part formats.
+        # New canonical format: action:agent_name:arg (3 parts).
+        # Non-agent and legacy formats: action:arg (2 parts).
+        parts = data.split(CALLBACK_SEPARATOR, 2)
+        action_raw = parts[0]
+        rest = parts[1:]
+
+        # Rewrite legacy per-agent payloads to canonical format before dispatch.
+        if action_raw in LEGACY_ACTION_MAP:
+            canonical_action, legacy_agent = LEGACY_ACTION_MAP[action_raw]
+            action_raw = canonical_action
+            rest = [legacy_agent] + rest
+
         try:
             action = CallbackAction(action_raw)
         except ValueError:
             logger.debug("Unknown callback action: %s", action_raw)
             return
 
-        logger.debug("Callback: action=%s args=%s", action.value, args)
+        logger.debug("Callback: action=%s rest=%s", action.value, rest)
 
         if action is CallbackAction.DOWNLOAD_FULL:
-            await self._handle_download_full(query, args)
+            await self._handle_download_full(query, rest)
         elif action is CallbackAction.SESSION_SELECT:
             await self._handle_session_select(query)
         elif action in AGENT_SELECT_ACTIONS:
-            await self._handle_agent_select(query, action.value)
+            if not rest:
+                logger.debug("AGENT_SELECT missing agent_name")
+                return
+            await self._handle_agent_select(
+                query,
+                rest[0],
+                is_resume=(action is CallbackAction.AGENT_RESUME_SELECT),
+            )
         elif action is CallbackAction.CANCEL:
-            await self._handle_cancel(query, args)
+            await self._handle_cancel(query, rest)
         elif action is CallbackAction.SESSION_START:
-            await self._handle_session_start(query, args)
+            await self._handle_session_start(query, rest)
         elif action in AGENT_START_ACTIONS:
-            await self._handle_agent_start(query, action.value, args)
+            if not rest:
+                logger.debug("AGENT_START missing agent_name")
+                return
+            await self._handle_agent_start(
+                query,
+                rest[0],
+                is_resume=(action is CallbackAction.AGENT_RESUME_START),
+                args=rest[1:],
+            )
 
     async def _edit_callback_message(
         self,
@@ -324,8 +352,8 @@ class CallbackHandlersMixin:
             parse_mode="Markdown",
         )
 
-    async def _handle_agent_select(self, query: object, action: str) -> None:
-        """Handle agent selection callbacks (csel, crsel, gsel, grsel, cxsel, cxrsel)."""
+    async def _handle_agent_select(self, query: object, agent_name: str, *, is_resume: bool) -> None:
+        """Handle agent selection callbacks."""
         from telegram import CallbackQuery
 
         if not isinstance(query, CallbackQuery):
@@ -339,17 +367,16 @@ class CallbackHandlersMixin:
             await query.answer("❌ Not authorized", show_alert=True)
             return
 
-        # Determine mode and prefix
-        mode_map = {
-            "csel": ("c", "Claude"),
-            "crsel": ("cr", "Claude Resume"),
-            "gsel": ("g", "Gemini"),
-            "grsel": ("gr", "Gemini Resume"),
-            "cxsel": ("cx", "Codex"),
-            "cxrsel": ("cxr", "Codex Resume"),
-        }
+        # Validate agent name
+        try:
+            AgentName.from_str(agent_name)
+        except ValueError:
+            logger.warning("Unknown agent in AGENT_SELECT payload: %s", agent_name)
+            return
 
-        callback_prefix, mode_label = mode_map[action]
+        start_action = CallbackAction.AGENT_RESUME_START if is_resume else CallbackAction.AGENT_START
+        callback_prefix = f"{start_action.value}:{agent_name}"
+        mode_label = f"{agent_name.title()}{' Resume' if is_resume else ''}"
 
         # Build keyboard with trusted directories using helper
         reply_markup = self._build_project_keyboard(callback_prefix)
@@ -434,8 +461,8 @@ class CallbackHandlersMixin:
         )
         await get_command_service().create_session(cmd)
 
-    async def _handle_agent_start(self, query: object, action: str, args: list[str]) -> None:
-        """Handle agent start callbacks (c, cr, g, gr, cx, cxr)."""
+    async def _handle_agent_start(self, query: object, agent_name: str, *, is_resume: bool, args: list[str]) -> None:
+        """Handle agent start callbacks."""
         from telegram import CallbackQuery
 
         if not isinstance(query, CallbackQuery):
@@ -449,6 +476,13 @@ class CallbackHandlersMixin:
             await query.answer("❌ Not authorized", show_alert=True)
             return
 
+        # Validate agent name
+        try:
+            AgentName.from_str(agent_name)
+        except ValueError:
+            logger.warning("Unknown agent in AGENT_START payload: %s", agent_name)
+            return
+
         # Get project by index
         try:
             project_idx = int(args[0]) if args else -1
@@ -460,18 +494,7 @@ class CallbackHandlersMixin:
             await query.answer("❌ Invalid project selection", show_alert=True)
             return
 
-        # Determine event type and label
-        event_map = {
-            "c": ("agent claude", "Claude"),
-            "cr": ("agent_resume claude", "Claude Resume"),
-            "g": ("agent gemini", "Gemini"),
-            "gr": ("agent_resume gemini", "Gemini Resume"),
-            "cx": ("agent codex", "Codex"),
-            "cxr": ("agent_resume codex", "Codex Resume"),
-        }
-
-        # Trust that action is in map (guaranteed by if condition)
-        auto_command, _mode_label = event_map[action]
+        auto_command = f"agent_resume {agent_name}" if is_resume else f"agent {agent_name}"
 
         # Restore menu immediately (optimistic UX)
         await self._restore_heartbeat_menu(query)

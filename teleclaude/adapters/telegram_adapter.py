@@ -1105,7 +1105,7 @@ class TelegramAdapter(
         Uses index-based callbacks to stay under Telegram's 64-byte limit.
 
         Args:
-            callback_prefix: Prefix for callback_data (e.g., "c", "cr")
+            callback_prefix: Prefix for callback_data (e.g., "s", "as:claude", "ars:gemini")
 
         Returns:
             InlineKeyboardMarkup with buttons for each trusted directory
@@ -1118,44 +1118,29 @@ class TelegramAdapter(
 
     def _build_heartbeat_keyboard(self, bot_username: str) -> InlineKeyboardMarkup:
         """Build the heartbeat keyboard with session and agent launch actions."""
-        keyboard = [
+        from teleclaude.core.agents import get_enabled_agents
+
+        keyboard: list[list[InlineKeyboardButton]] = [
             [
                 InlineKeyboardButton(
                     text="🚀 Tmux Session",
                     callback_data=f"{CallbackAction.SESSION_SELECT.value}:{bot_username}",
                 )
             ],
-            [
-                InlineKeyboardButton(
-                    text="🤖 New Claude",
-                    callback_data=f"{CallbackAction.CLAUDE_SELECT.value}:{bot_username}",
-                ),
-                InlineKeyboardButton(
-                    text="🔄 Resume Claude",
-                    callback_data=f"{CallbackAction.CLAUDE_RESUME_SELECT.value}:{bot_username}",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="✨ New Gemini",
-                    callback_data=f"{CallbackAction.GEMINI_SELECT.value}:{bot_username}",
-                ),
-                InlineKeyboardButton(
-                    text="🔄 Resume Gemini",
-                    callback_data=f"{CallbackAction.GEMINI_RESUME_SELECT.value}:{bot_username}",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="💻 New Codex",
-                    callback_data=f"{CallbackAction.CODEX_SELECT.value}:{bot_username}",
-                ),
-                InlineKeyboardButton(
-                    text="🔄 Resume Codex",
-                    callback_data=f"{CallbackAction.CODEX_RESUME_SELECT.value}:{bot_username}",
-                ),
-            ],
         ]
+        for agent in get_enabled_agents():
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"🤖 New {agent.title()}",
+                        callback_data=f"{CallbackAction.AGENT_SELECT.value}:{agent}:{bot_username}",
+                    ),
+                    InlineKeyboardButton(
+                        text=f"🔄 Resume {agent.title()}",
+                        callback_data=f"{CallbackAction.AGENT_RESUME_SELECT.value}:{agent}:{bot_username}",
+                    ),
+                ]
+            )
         return InlineKeyboardMarkup(keyboard)
 
     async def _send_or_update_menu_message(self) -> None:
