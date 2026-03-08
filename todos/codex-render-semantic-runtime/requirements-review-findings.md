@@ -2,103 +2,67 @@
 
 ## Critical
 
-### 1. Scope exceeds single-session capacity — splitting required
+### 1. Scope still combines multiple independently shippable work streams
 
-The requirements define 10 distinct in-scope deliverables spanning: new runtime actor
-architecture, polling system rewrite, wake-signal infrastructure, control-lane
-infrastructure, replay-fixture corpus, and documentation overhaul. This cannot fit a
-single AI session without context exhaustion.
+Grounded against the live code, the requirements currently bundle at least four
+distinct streams of change:
 
-Several items are independently shippable and independently valuable:
+- the core render-runtime refactor across `teleclaude/core/output_poller.py` and
+  `teleclaude/core/polling_coordinator.py`
+- low-risk fixes such as temp-dir teardown and capture-budget correction
+- replay-corpus and instrumentation groundwork across tests/fixtures/docs
+- the ephemeral control lane spanning delayed injection paths and the current key-only
+  control surfaces in `teleclaude/core/command_handlers.py` and `teleclaude/api_server.py`
 
-- **Capture budget correction** (Req 6) — isolated constant split, no architectural
-  dependency on the runtime refactor.
-- **Teardown enrichment** (Req 7) — a one-function extension to `cleanup_session_resources`
-  in `session_cleanup.py` to also remove `~/.teleclaude/tmp/sessions/{safe_id}/`.
-- **Documentation realignment** (Req 10) — can ship before or after runtime changes.
-- **Replay fixture corpus** (part of Req 9) — prerequisite infrastructure that enables
-  safe refactoring of later items.
+That is not one session-sized, atomic builder todo. Several pieces are independently
+valuable and independently shippable, especially the teardown fix, capture-budget fix,
+prerequisite replay/instrumentation work, and control-lane work. The current
+requirements therefore fail the readiness size/coherence gate.
 
-The core runtime refactor (Reqs 1–5) is one coherent behavior and should stay together,
-but it is itself large enough to warrant its own focused todo.
+**Remediation:** Split the low-risk fixes, prerequisite evidence work, core
+render-runtime refactor, and control-lane work into dependent todos. Keep the
+render-runtime refactor as one coherent behavior, but do not bundle the prerequisite
+and ancillary work into the same build todo.
 
-The ephemeral control lane (Req 8) is architecturally independent of the render runtime
-and should be a separate todo.
+### 2. Explicit pre-implementation unknowns are still not resolved, deferred, or dependency-tracked
 
-**Remediation:** Split into 4–5 dependent todos. The capture-budget fix and teardown
-enrichment can be immediate low-risk deliverables. The replay corpus is a prerequisite
-for the core runtime refactor. The control lane is independent.
+`input.md` ends with five explicit unknowns: reconnect/startup authority boundaries,
+real Codex replay corpus coverage, wake fidelity under lifecycle churn, control-lane
+boundary identification, and tmux-call performance baseline. The requirements do not
+say whether those unknowns are already resolved, have become prerequisite research, or
+are being deferred.
 
-### 2. Unresolved pre-implementation unknowns not dispositioned
+That fails the "approach known" and completeness gates. The document currently assumes
+builder-ready certainty while still depending on unanswered discovery work.
 
-`input.md` lines 125–139 list five explicit "What I still want to know before
-implementation" items:
-
-1. Reconnect/startup/headless-bootstrap authority table
-2. Real-world replay corpus of Codex pane snapshots
-3. Wake fidelity under lifecycle churn
-4. Control-lane boundary identification
-5. Per-session tmux subprocess performance baseline
-
-The requirements do not address whether these are resolved, deferred, or require a
-research spike. The DOR gate "Approach known — unknowns are small; if not, a research/
-spike todo exists first" is not satisfied while these remain undispositioned.
-
-**Remediation:** For each unknown, either (a) document the resolution in the requirements,
-(b) create a research spike todo as a dependency, or (c) explicitly defer with
-justification. Items 2 and 5 are natural prerequisites that become the replay-corpus
-and instrumentation todos if splitting is adopted.
+**Remediation:** For each unknown, either document the resolution, create a dependency/
+spike todo, or defer it with justification. If replay corpus and performance baseline
+remain open, they should be prerequisites rather than implicit builder discovery.
 
 ## Important
 
-### 3. Missing config-surface awareness
+### 3. Requirement 9 is derived from open gaps, but it is not marked `[inferred]` or framed as prerequisite work
 
-Adaptive cadence (Req 4) will likely introduce new configuration keys (e.g., idle
-cadence floor, active cadence ceiling, audit interval). Per the DoD checklist: "If new
-configuration surface introduced (config keys, env vars, YAML sections): config wizard
-updated, config.sample.yml updated, teleclaude-config spec updated."
+The requirements turn replay fixtures and performance instrumentation into an in-scope
+deliverable. In `input.md`, those items appear as evidence gaps still needed before the
+runtime refactor is safe, not as already-agreed product behavior. That blurs
+human-stated intent with architect-inferred remediation.
 
-The requirements do not mention config surface changes. A reviewer will flag this gap
-at code review if not addressed now.
+This fails the inference-transparency rule and leaves a builder unclear on whether the
+corpus/instrumentation work is feature scope, prerequisite evidence, or a separate
+research track.
 
-**Remediation:** Add a requirement or constraint acknowledging that new cadence
-configuration, if introduced, must include config wizard exposure and sample config
-updates.
-
-### 4. No `[inferred]` markers on derived requirements
-
-Several requirements expand beyond what `input.md` explicitly states:
-
-- Req 2 formalizes the three-lane model with specific lane names and responsibilities
-  beyond the input's bullet list.
-- Req 9 frames the replay corpus as a deliverable requirement; the input frames it as
-  a gap/desire.
-- Req 10 frames documentation as a deliverable; the input frames it as a problem
-  observation.
-
-These inferences are reasonable and well-grounded, but per the quality standard:
-"Anything inferred from codebase or documentation rather than explicitly stated in
-`input.md` is marked `[inferred]`." Without markers, the human cannot distinguish
-what they said from what the system assumed.
-
-**Remediation:** Add `[inferred]` markers to expanded or derived items.
+**Remediation:** Mark the derived requirement(s) `[inferred]` or move them into
+prerequisite/dependency todos created from the unresolved unknowns.
 
 ## Suggestion
 
-### 5. Performance success criterion lacks threshold
+### 4. The performance success criterion is still too weak to act as a pass/fail gate
 
-Success criterion: "Performance instrumentation can show a before/after reduction in
-tmux subprocess churn or capture frequency for idle sessions."
+"Performance instrumentation can show a before/after reduction in tmux subprocess
+churn or capture frequency for idle sessions" is directionally useful, but any tiny
+reduction would satisfy it. That leaves too much room for a large refactor to pass
+without materially changing idle behavior.
 
-"A reduction" is not testable — any reduction, including 1%, satisfies it. Consider
-specifying a meaningful threshold (e.g., "idle sessions capture at most once per
-audit interval, not once per second") or framing it as an observable behavioral
-change rather than a numeric comparison.
-
-### 6. Implementation-adjacent language in constraints
-
-Req 3 ("pipe-pane may be used as the wake signal") and Req 8 ("queued, non-durable
-per-session control lane") prescribe specific mechanisms. These trace to agreed
-architecture in `input.md` and function as solution-space constraints, so they are
-acceptable — but a future reader might mistake them for implementation directives.
-Consider prefixing with "Constraint:" or moving to the Constraints section.
+**Remediation:** Replace it with a concrete observable contract, such as an idle
+capture ceiling, an audit-only cadence floor, or a session-level tmux-call budget.
