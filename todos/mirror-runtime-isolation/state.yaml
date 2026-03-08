@@ -51,10 +51,10 @@ requirements_review:
   findings_count: 1
   rounds: 2
 plan_review:
-  verdict: ''
-  reviewed_at: ''
-  findings_count: 0
-  rounds: 0
+  verdict: approve
+  reviewed_at: '2026-03-08T23:55:00Z'
+  findings_count: 2
+  rounds: 1
 dor:
   last_assessed_at: null
   score: 0
