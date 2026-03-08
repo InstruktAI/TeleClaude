@@ -41,6 +41,7 @@ grounding:
   - tests/unit/test_mirror_processors.py
   - tests/unit/test_history_mirror_search.py
   - tests/unit/test_mirror_api_routes.py
+  - tests/unit/test_mirror_store.py
   - tests/unit/test_daemon.py
   - todos/roadmap.yaml
   last_grounded_at: '2026-03-08T22:00:00Z'

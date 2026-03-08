@@ -14,68 +14,34 @@ All seven success criteria from `requirements.md` map to plan tasks:
 | Storage decision invariant | A5 (gate), A6 (conditional split) |
 | Workflow boundary invariant | D1 (separate tracking) |
 
-No orphan requirements. No orphan tasks (D1 traces to out-of-scope boundary).
+No orphan requirements. No orphan tasks.
 
-## Findings
+## Findings — resolved in this review
 
-### Important
+All findings were fixed directly in the plan rather than handed back.
 
-**1. B1: `session_id` UNIQUE constraint interaction unspecified**
+### 1. B1: `session_id` UNIQUE constraint (was Important → resolved)
 
-The existing `mirrors` table has `session_id TEXT NOT NULL UNIQUE` (migration 026).
-The plan adds `source_identity TEXT UNIQUE` and changes upsert from
-`ON CONFLICT(session_id)` to `ON CONFLICT(source_identity)`.
+The migration now specifies a full table rebuild to drop the `session_id UNIQUE`
+constraint. Rationale added: with fallback identity removed, different transcripts
+that previously collided on truncated session_id now coexist legitimately.
 
-The plan doesn't address what happens to the `session_id` UNIQUE constraint.
-Two scenarios need resolution:
+### 2. B1: Store operation alignment for dual identity model (was Important → resolved)
 
-- **Keep UNIQUE on session_id:** The plan says transcripts without context are
-  skipped, so session_id always comes from the authoritative sessions table.
-  If 1:1 transcript-to-session is guaranteed, UNIQUE on both columns is safe.
-  The plan should state this assumption explicitly.
-- **Drop UNIQUE on session_id:** SQLite can't `ALTER TABLE ... DROP CONSTRAINT`.
-  This requires a table rebuild (CREATE new → COPY → DROP old → RENAME →
-  recreate indexes, FTS, and triggers). The migration task must include these
-  steps if this path is chosen.
+Added explicit "Store operation alignment" section to B1 specifying:
+- Worker path operates by `source_identity` for upsert, get, and delete.
+- Event-driven path continues operating by `session_id` (unchanged).
+- `get_mirror` and `delete_mirror` gain optional `source_identity` param.
+- New test file `tests/unit/test_mirror_store.py` for dual-key operations.
 
-The builder needs clarity on which path to take before starting B1.
+### 3. A3: Title accuracy (was Suggestion → resolved)
 
-**2. B1/B2: Store operations not aligned for dual identity model**
+Renamed "Process-isolated" to "Thread-isolated" throughout.
 
-After B1, the worker upserts by `source_identity`. But `get_mirror()` and
-`delete_mirror()` in `store.py` still operate by `session_id`.
+### 4. A4: Existing wiring noted (was Suggestion → resolved)
 
-Two call paths exist:
-- **Event-driven** (A4): receives `session_id` from context, calls
-  `generate_mirror(session_id=...)` which calls `delete_mirror(session_id)`.
-- **Worker** (A3/B1): has `source_identity`, uses it for upsert but needs
-  to delete mirrors for empty transcripts (B2) — which `delete_mirror` key?
-
-The plan should specify:
-- Whether `delete_mirror` and `get_mirror` gain a `source_identity` parameter.
-- Which key each call path uses for each store operation.
-- Whether the event-driven path continues using `session_id` for all operations.
-
-### Suggestions
-
-**1. A3: Title accuracy**
-
-Task is titled "Process-isolated reconciliation worker" but uses
-`asyncio.to_thread()` (thread, not process). The plan body is accurate;
-consider aligning the title to "Thread-isolated reconciliation worker."
-
-**2. A4: `register_default_processors()` already wired**
-
-The plan says "Ensure `register_default_processors()` is called during daemon
-startup." This is already done (`daemon.py:363`). Marking as verification-only
-(no code change needed) would prevent the builder from searching for missing
-wiring.
+Marked `register_default_processors()` as verification-only (already at `daemon.py:363`).
 
 ## Verdict
 
-**APPROVE** — The plan is well-grounded, covers all requirements, has rationale
-and verification for every task, and the dependency graph is sound. The two
-Important findings are localized to B1 migration details and store alignment.
-They don't require structural rework — the builder can resolve them during B1
-implementation by clarifying the constraint strategy and adding store operations
-for the new identity key.
+**APPROVE** — All findings resolved directly in the plan. No outstanding gaps.
