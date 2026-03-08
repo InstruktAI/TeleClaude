@@ -69,6 +69,23 @@ class ItemPhase(str, Enum):
     DONE = "done"
 
 
+class PreparePhase(str, Enum):
+    """All valid prepare lifecycle phases for the state machine."""
+
+    INPUT_ASSESSMENT = "input_assessment"
+    TRIANGULATION = "triangulation"
+    REQUIREMENTS_REVIEW = "requirements_review"
+    PLAN_DRAFTING = "plan_drafting"
+    PLAN_REVIEW = "plan_review"
+    GATE = "gate"
+    GROUNDING_CHECK = "grounding_check"
+    RE_GROUNDING = "re_grounding"
+    PREPARED = "prepared"
+    BLOCKED = "blocked"
+
+
+_PREPARE_LOOP_LIMIT = 20
+
 DOR_READY_THRESHOLD = 8
 
 
@@ -769,14 +786,6 @@ def verify_artifacts(worktree_cwd: str, slug: str, phase: str) -> tuple[bool, st
     return all_passed, report
 
 
-def format_hitl_guidance(context: str) -> str:
-    """Format guidance for the calling AI to work interactively with the user.
-
-    Used when HITL=True.
-    """
-    return context
-
-
 def _find_next_prepare_slug(cwd: str) -> str | None:
     """Find the next active slug that still needs preparation work.
 
@@ -830,6 +839,28 @@ DEFAULT_STATE: dict[str, StateValue] = {
     "review_baseline_commit": "",
     "unresolved_findings": [],
     "resolved_findings": [],
+    "prepare_phase": "",
+    "grounding": {
+        "valid": False,
+        "base_sha": "",
+        "input_digest": "",
+        "referenced_paths": [],
+        "last_grounded_at": "",
+        "invalidated_at": "",
+        "invalidation_reason": "",
+    },
+    "requirements_review": {
+        "verdict": "",
+        "reviewed_at": "",
+        "findings_count": 0,
+        "rounds": 0,
+    },
+    "plan_review": {
+        "verdict": "",
+        "reviewed_at": "",
+        "findings_count": 0,
+        "rounds": 0,
+    },
 }
 
 
@@ -1201,7 +1232,7 @@ def read_breakdown_state(cwd: str, slug: str) -> dict[str, bool | list[str]] | N
     if breakdown is None or not isinstance(breakdown, dict):
         return None
     # At this point breakdown is dict with bool/list values from json
-    return dict(breakdown)
+    return dict(breakdown)  # type: ignore[return-value]
 
 
 def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str]) -> None:
@@ -2592,37 +2623,600 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
 # =============================================================================
 
 
-async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) -> str:
+# =============================================================================
+# Prepare State Machine — event emission
+# =============================================================================
+
+
+def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) -> None:
+    """Fire-and-forget lifecycle event emission for prepare state machine."""
+    from teleclaude_events.envelope import EventLevel  # noqa: PLC0415
+    from teleclaude_events.producer import emit_event  # noqa: PLC0415
+
+    async def _emit() -> None:
+        try:
+            slug = str(payload.get("slug", ""))
+            description = f"prepare.{event_type.split('.')[-1]}: {slug}"
+            await emit_event(
+                event=event_type,
+                source=f"orchestrator/{os.environ.get('TELECLAUDE_SESSION_ID', 'unknown')}",
+                level=EventLevel.WORKFLOW,
+                domain="software-development",
+                description=description,
+                entity=slug,
+                payload=dict(payload),
+            )
+        except Exception:
+            pass  # Never block prepare on event emission failure
+
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(_emit())
+    except RuntimeError:
+        # No running loop (thread or sync CLI context) — fire-and-forget via new event loop
+        try:
+            asyncio.run(_emit())
+        except Exception:
+            pass  # Never block prepare on event emission failure
+
+
+# =============================================================================
+# Prepare State Machine — phase derivation
+# =============================================================================
+
+
+def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> PreparePhase:
+    """Derive the initial prepare phase from artifact existence when no durable phase is set."""
+    has_input = check_file_exists(cwd, f"todos/{slug}/input.md")
+    breakdown = state.get("breakdown", {})
+    breakdown_assessed = isinstance(breakdown, dict) and bool(breakdown.get("assessed"))
+
+    if has_input and not breakdown_assessed:
+        return PreparePhase.INPUT_ASSESSMENT
+
+    has_requirements = check_file_exists(cwd, f"todos/{slug}/requirements.md")
+    if not has_requirements:
+        return PreparePhase.TRIANGULATION
+
+    req_review = state.get("requirements_review", {})
+    req_verdict = (isinstance(req_review, dict) and req_review.get("verdict")) or ""
+    if not req_verdict or req_verdict == "needs_work":
+        return PreparePhase.REQUIREMENTS_REVIEW
+
+    has_plan = check_file_exists(cwd, f"todos/{slug}/implementation-plan.md")
+    if not has_plan:
+        return PreparePhase.PLAN_DRAFTING
+
+    plan_review = state.get("plan_review", {})
+    plan_verdict = (isinstance(plan_review, dict) and plan_review.get("verdict")) or ""
+    if not plan_verdict or plan_verdict == "needs_work":
+        return PreparePhase.PLAN_REVIEW
+
+    dor = state.get("dor", {})
+    dor_score = dor.get("score") if isinstance(dor, dict) else None
+    if not (isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD):
+        return PreparePhase.GATE
+
+    return PreparePhase.GROUNDING_CHECK
+
+
+# =============================================================================
+# Prepare State Machine — phase handlers
+# =============================================================================
+
+
+async def _prepare_step_input_assessment(
+    db: Db,
+    slug: str,
+    cwd: str,
+    state: dict[str, StateValue],
+) -> tuple[bool, str]:
+    """INPUT_ASSESSMENT: breakdown hasn't been assessed yet."""
+    breakdown = state.get("breakdown", {})
+    if isinstance(breakdown, dict) and breakdown.get("assessed"):
+        # Transition to TRIANGULATION
+        state["prepare_phase"] = PreparePhase.TRIANGULATION.value
+        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        return True, ""  # loop
+
+    guidance = await compose_agent_guidance(db)
+    return False, format_tool_call(
+        command="next-prepare-draft",
+        args=slug,
+        project=cwd,
+        guidance=guidance,
+        subfolder="",
+        note=f"Assess todos/{slug}/input.md for complexity. Split if needed.",
+        next_call=f"telec todo prepare {slug}",
+    )
+
+
+async def _prepare_step_triangulation(
+    db: Db,
+    slug: str,
+    cwd: str,
+    state: dict[str, StateValue],
+) -> tuple[bool, str]:
+    """TRIANGULATION: requirements.md needed."""
+    if check_file_exists(cwd, f"todos/{slug}/requirements.md"):
+        # Transition to REQUIREMENTS_REVIEW
+        state["prepare_phase"] = PreparePhase.REQUIREMENTS_REVIEW.value
+        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        _emit_prepare_event("domain.software-development.prepare.requirements_drafted", {"slug": slug})
+        return True, ""  # loop
+
+    _emit_prepare_event("domain.software-development.prepare.triangulation_started", {"slug": slug})
+    guidance = await compose_agent_guidance(db)
+    return False, format_tool_call(
+        command="next-prepare-draft",
+        args=slug,
+        project=cwd,
+        guidance=guidance,
+        subfolder="",
+        note=f"Discuss until you have enough input. Write todos/{slug}/requirements.md yourself.",
+        next_call=f"telec todo prepare {slug}",
+    )
+
+
+async def _prepare_step_requirements_review(
+    db: Db,
+    slug: str,
+    cwd: str,
+    state: dict[str, StateValue],
+) -> tuple[bool, str]:
+    """REQUIREMENTS_REVIEW: awaiting review verdict."""
+    req_review = state.get("requirements_review", {})
+    verdict = (isinstance(req_review, dict) and req_review.get("verdict")) or ""
+
+    if verdict == "approve":
+        state["prepare_phase"] = PreparePhase.PLAN_DRAFTING.value
+        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        _emit_prepare_event("domain.software-development.prepare.requirements_approved", {"slug": slug})
+        return True, ""  # loop
+
+    if verdict == "needs_work":
+        if isinstance(req_review, dict):
+            rounds = int(req_review.get("rounds", 0)) + 1
+            req_review["rounds"] = rounds
+            req_review["verdict"] = ""
+        else:
+            rounds = 1
+        # I3: block after exceeding max review rounds to prevent infinite cycles
+        if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
+            state["requirements_review"] = req_review  # type: ignore[assignment]
+            state["prepare_phase"] = PreparePhase.BLOCKED.value
+            await asyncio.to_thread(write_phase_state, cwd, slug, state)
+            return False, (
+                f"BLOCKED: {slug} requirements review exceeded {DEFAULT_MAX_REVIEW_ROUNDS} rounds. "
+                f"Inspect todos/{slug}/requirements.md and resolve manually, then reset "
+                f"state.yaml requirements_review.rounds to 0."
+            )
+        # Loop back to TRIANGULATION with findings
+        state["prepare_phase"] = PreparePhase.TRIANGULATION.value
+        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        # Attach findings if present
+        findings_path = Path(cwd) / "todos" / slug / "requirements-review-findings.md"
+        findings_note = ""
+        if findings_path.exists():
+            findings_note = f"\n\nReview findings:\n{read_text_sync(findings_path)}"
+        guidance = await compose_agent_guidance(db)
+        return False, format_tool_call(
+            command="next-prepare-draft",
+            args=slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder="",
+            note=f"Requirements need revision based on review feedback.{findings_note}",
+            next_call=f"telec todo prepare {slug}",
+        )
+
+    # No verdict yet — dispatch reviewer
+    guidance = await compose_agent_guidance(db)
+    return False, format_tool_call(
+        command="next-review-requirements",
+        args=slug,
+        project=cwd,
+        guidance=guidance,
+        subfolder="",
+        note=f"Review todos/{slug}/requirements.md and write verdict to state.yaml requirements_review.verdict.",
+        next_call=f"telec todo prepare {slug}",
+    )
+
+
+async def _prepare_step_plan_drafting(
+    db: Db,
+    slug: str,
+    cwd: str,
+    state: dict[str, StateValue],
+) -> tuple[bool, str]:
+    """PLAN_DRAFTING: implementation-plan.md needed."""
+    if check_file_exists(cwd, f"todos/{slug}/implementation-plan.md"):
+        state["prepare_phase"] = PreparePhase.PLAN_REVIEW.value
+        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        _emit_prepare_event("domain.software-development.prepare.plan_drafted", {"slug": slug})
+        return True, ""  # loop
+
+    guidance = await compose_agent_guidance(db)
+    return False, format_tool_call(
+        command="next-prepare-draft",
+        args=slug,
+        project=cwd,
+        guidance=guidance,
+        subfolder="",
+        note=f"Discuss until you have enough input. Write todos/{slug}/implementation-plan.md yourself.",
+        next_call=f"telec todo prepare {slug}",
+    )
+
+
+async def _prepare_step_plan_review(
+    db: Db,
+    slug: str,
+    cwd: str,
+    state: dict[str, StateValue],
+) -> tuple[bool, str]:
+    """PLAN_REVIEW: awaiting plan review verdict."""
+    plan_review = state.get("plan_review", {})
+    verdict = (isinstance(plan_review, dict) and plan_review.get("verdict")) or ""
+
+    if verdict == "approve":
+        state["prepare_phase"] = PreparePhase.GATE.value
+        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        _emit_prepare_event("domain.software-development.prepare.plan_approved", {"slug": slug})
+        return True, ""  # loop
+
+    if verdict == "needs_work":
+        if isinstance(plan_review, dict):
+            rounds = int(plan_review.get("rounds", 0)) + 1
+            plan_review["rounds"] = rounds
+            plan_review["verdict"] = ""
+        else:
+            rounds = 1
+        # I3: block after exceeding max review rounds to prevent infinite cycles
+        if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
+            state["plan_review"] = plan_review  # type: ignore[assignment]
+            state["prepare_phase"] = PreparePhase.BLOCKED.value
+            await asyncio.to_thread(write_phase_state, cwd, slug, state)
+            return False, (
+                f"BLOCKED: {slug} plan review exceeded {DEFAULT_MAX_REVIEW_ROUNDS} rounds. "
+                f"Inspect todos/{slug}/implementation-plan.md and resolve manually, then reset "
+                f"state.yaml plan_review.rounds to 0."
+            )
+        # Loop back to PLAN_DRAFTING with findings
+        state["prepare_phase"] = PreparePhase.PLAN_DRAFTING.value
+        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        findings_path = Path(cwd) / "todos" / slug / "plan-review-findings.md"
+        findings_note = ""
+        if findings_path.exists():
+            findings_note = f"\n\nReview findings:\n{read_text_sync(findings_path)}"
+        guidance = await compose_agent_guidance(db)
+        return False, format_tool_call(
+            command="next-prepare-draft",
+            args=slug,
+            project=cwd,
+            guidance=guidance,
+            subfolder="",
+            note=f"Implementation plan needs revision based on review feedback.{findings_note}",
+            next_call=f"telec todo prepare {slug}",
+        )
+
+    # No verdict yet — dispatch reviewer
+    guidance = await compose_agent_guidance(db)
+    return False, format_tool_call(
+        command="next-review-plan",
+        args=slug,
+        project=cwd,
+        guidance=guidance,
+        subfolder="",
+        note=f"Review todos/{slug}/implementation-plan.md and write verdict to state.yaml plan_review.verdict.",
+        next_call=f"telec todo prepare {slug}",
+    )
+
+
+async def _prepare_step_gate(
+    db: Db,
+    slug: str,
+    cwd: str,
+    state: dict[str, StateValue],
+) -> tuple[bool, str]:
+    """GATE: DOR formal validation."""
+    dor = state.get("dor", {})
+    dor_score = dor.get("score") if isinstance(dor, dict) else None
+
+    if isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD:
+        # I4: sync before writing phase — sync failure won't leave state pointing at unsynced worktree
+        await asyncio.to_thread(sync_main_to_worktree, cwd, slug)
+        state["prepare_phase"] = PreparePhase.GROUNDING_CHECK.value
+        await asyncio.to_thread(write_phase_state, cwd, slug, state)
+        return True, ""  # loop
+
+    # Dispatch gate worker to run DOR assessment
+    guidance = await compose_agent_guidance(db)
+    return False, format_tool_call(
+        command="next-prepare-gate",
+        args=slug,
+        project=cwd,
+        guidance=guidance,
+        subfolder="",
+        note=(
+            f"Requirements/plan exist for {slug}, but DOR score is below threshold. "
+            f"Complete DOR assessment and set state.yaml.dor.score >= {DOR_READY_THRESHOLD}."
+        ),
+        next_call=f"telec todo prepare {slug}",
+    )
+
+
+def _prepare_step_grounding_check(
+    slug: str,
+    cwd: str,
+    state: dict[str, StateValue],
+) -> tuple[bool, str]:
+    """GROUNDING_CHECK: mechanical freshness check (no agent dispatch)."""
+    grounding = state.get("grounding", {})
+    grounding_dict = {**DEFAULT_STATE["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore[arg-type]
+
+    base_sha = str(grounding_dict.get("base_sha", ""))
+    stored_input_digest = str(grounding_dict.get("input_digest", ""))
+    referenced_paths = grounding_dict.get("referenced_paths", [])
+    if not isinstance(referenced_paths, list):
+        referenced_paths = []
+
+    # Get current HEAD
+    rc, current_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
+    current_sha = current_sha.strip() if rc == 0 else ""
+
+    # Get current input digest
+    input_path = Path(cwd) / "todos" / slug / "input.md"
+    current_input_digest = ""
+    if input_path.exists():
+        current_input_digest = hashlib.sha256(input_path.read_bytes()).hexdigest()
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    # First grounding: capture state and transition to PREPARED
+    if not base_sha:
+        grounding_dict["base_sha"] = current_sha
+        grounding_dict["input_digest"] = current_input_digest
+        grounding_dict["last_grounded_at"] = now
+        grounding_dict["valid"] = True
+        state["grounding"] = grounding_dict  # type: ignore[assignment]
+        state["prepare_phase"] = PreparePhase.PREPARED.value
+        write_phase_state(cwd, slug, state)
+        _emit_prepare_event("domain.software-development.prepare.completed", {"slug": slug})
+        return True, ""  # loop to PREPARED terminal
+
+    # I2: git failure is fail-closed — treat missing sha as stale if we have a stored base
+    if not current_sha and base_sha:
+        logger.warning("GROUNDING_CHECK: git rev-parse HEAD failed for %s, treating as stale", slug)
+        reason = "files_changed"
+        grounding_dict["valid"] = False
+        grounding_dict["invalidated_at"] = now
+        grounding_dict["invalidation_reason"] = reason
+        grounding_dict["changed_paths"] = []
+        state["grounding"] = grounding_dict  # type: ignore[assignment]
+        state["prepare_phase"] = PreparePhase.RE_GROUNDING.value
+        write_phase_state(cwd, slug, state)
+        _emit_prepare_event(
+            "domain.software-development.prepare.grounding_invalidated",
+            {"slug": slug, "reason": reason, "changed_paths": []},
+        )
+        return True, ""  # loop to RE_GROUNDING
+
+    # Check for staleness
+    sha_changed = current_sha and current_sha != base_sha
+    digest_changed = current_input_digest and current_input_digest != stored_input_digest
+
+    # Check if referenced paths changed between base_sha and HEAD
+    changed_paths: list[str] = []
+    if sha_changed and referenced_paths and base_sha and current_sha:
+        rc2, diff_output, _ = _run_git_prepare(["diff", "--name-only", f"{base_sha}..{current_sha}"], cwd=cwd)
+        if rc2 == 0:
+            changed_files = {line.strip() for line in diff_output.splitlines() if line.strip()}
+            changed_paths = [p for p in referenced_paths if p in changed_files]
+
+    is_stale = sha_changed or digest_changed or bool(changed_paths)
+
+    if is_stale:
+        reason = "input_updated" if digest_changed else "files_changed"
+        grounding_dict["valid"] = False
+        grounding_dict["invalidated_at"] = now
+        grounding_dict["invalidation_reason"] = reason
+        grounding_dict["changed_paths"] = changed_paths  # I1: persist actual changed paths
+        state["grounding"] = grounding_dict  # type: ignore[assignment]
+        state["prepare_phase"] = PreparePhase.RE_GROUNDING.value
+        write_phase_state(cwd, slug, state)
+        _emit_prepare_event(
+            "domain.software-development.prepare.grounding_invalidated",
+            {"slug": slug, "reason": reason, "changed_paths": changed_paths},
+        )
+        return True, ""  # loop to RE_GROUNDING
+
+    # Fresh — transition to PREPARED
+    grounding_dict["base_sha"] = current_sha
+    grounding_dict["last_grounded_at"] = now
+    grounding_dict["valid"] = True
+    state["grounding"] = grounding_dict  # type: ignore[assignment]
+    state["prepare_phase"] = PreparePhase.PREPARED.value
+    write_phase_state(cwd, slug, state)
+    _emit_prepare_event("domain.software-development.prepare.completed", {"slug": slug})
+    return True, ""  # loop to PREPARED terminal
+
+
+async def _prepare_step_re_grounding(
+    db: Db,
+    slug: str,
+    cwd: str,
+    state: dict[str, StateValue],
+) -> tuple[bool, str]:
+    """RE_GROUNDING: dispatch plan update against changed files."""
+    grounding = state.get("grounding", {})
+    grounding_dict = {**DEFAULT_STATE["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore[arg-type]
+    changed_paths = grounding_dict.get("changed_paths", [])  # I1: actual changed paths, not all referenced
+    if not isinstance(changed_paths, list):
+        changed_paths = []
+
+    # Set next phase to PLAN_REVIEW so re-grounded plan gets reviewed
+    state["prepare_phase"] = PreparePhase.PLAN_REVIEW.value
+    # Reset plan review verdict so fresh review runs
+    plan_review = state.get("plan_review", {})
+    if isinstance(plan_review, dict):
+        plan_review["verdict"] = ""
+    state["plan_review"] = plan_review  # type: ignore[assignment]
+    await asyncio.to_thread(write_phase_state, cwd, slug, state)
+
+    changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."
+    guidance = await compose_agent_guidance(db)
+    result = format_tool_call(
+        command="next-prepare-draft",
+        args=slug,
+        project=cwd,
+        guidance=guidance,
+        subfolder="",
+        note=f"Update todos/{slug}/implementation-plan.md against current codebase. {changed_note}",
+        next_call=f"telec todo prepare {slug}",
+    )
+    _emit_prepare_event("domain.software-development.prepare.regrounded", {"slug": slug})
+    return False, result
+
+
+def _prepare_step_prepared(slug: str) -> tuple[bool, str]:
+    """PREPARED: terminal success state."""
+    return False, format_prepared(slug)
+
+
+def _prepare_step_blocked(slug: str, state: dict[str, StateValue]) -> tuple[bool, str]:
+    """BLOCKED: terminal failure state."""
+    grounding = state.get("grounding", {})
+    blocker = str(grounding.get("invalidation_reason", "unknown")) if isinstance(grounding, dict) else "unknown"
+    _emit_prepare_event(
+        "domain.software-development.prepare.blocked",
+        {"slug": slug, "blocker": blocker},
+    )
+    return False, (
+        f"BLOCKED: {slug} requires human decision. "
+        f"Reason: {blocker}. "
+        f"Inspect todos/{slug}/state.yaml and resolve the blocker manually."
+    )
+
+
+# =============================================================================
+# Prepare State Machine — step dispatcher
+# =============================================================================
+
+
+async def _prepare_dispatch(
+    *,
+    db: Db,
+    slug: str,
+    cwd: str,
+    phase: PreparePhase,
+    state: dict[str, StateValue],
+) -> tuple[bool, str]:
+    """Dispatch to the appropriate phase handler. Returns (continue_loop, instruction)."""
+    if phase == PreparePhase.INPUT_ASSESSMENT:
+        return await _prepare_step_input_assessment(db, slug, cwd, state)
+    if phase == PreparePhase.TRIANGULATION:
+        return await _prepare_step_triangulation(db, slug, cwd, state)
+    if phase == PreparePhase.REQUIREMENTS_REVIEW:
+        return await _prepare_step_requirements_review(db, slug, cwd, state)
+    if phase == PreparePhase.PLAN_DRAFTING:
+        return await _prepare_step_plan_drafting(db, slug, cwd, state)
+    if phase == PreparePhase.PLAN_REVIEW:
+        return await _prepare_step_plan_review(db, slug, cwd, state)
+    if phase == PreparePhase.GATE:
+        return await _prepare_step_gate(db, slug, cwd, state)
+    if phase == PreparePhase.GROUNDING_CHECK:
+        return await asyncio.to_thread(_prepare_step_grounding_check, slug, cwd, state)
+    if phase == PreparePhase.RE_GROUNDING:
+        return await _prepare_step_re_grounding(db, slug, cwd, state)
+    if phase == PreparePhase.PREPARED:
+        return _prepare_step_prepared(slug)
+    if phase == PreparePhase.BLOCKED:
+        return _prepare_step_blocked(slug, state)
+    return False, f"UNHANDLED_PHASE: No handler for prepare phase: {phase.value}"
+
+
+def _run_git_prepare(args: list[str], cwd: str) -> tuple[int, str, str]:
+    """Run a git command and return (returncode, stdout, stderr)."""
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode, result.stdout, result.stderr
+
+
+# =============================================================================
+# Prepare State Machine — CLI invalidation check
+# =============================================================================
+
+
+def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[str, list[str]]:
+    """Scan all active todos and invalidate those with overlapping referenced paths.
+
+    Designed for post-commit hooks or CI to invalidate stale preparations.
+    Returns {"invalidated": ["slug-a", ...]} for each invalidated slug.
+    """
+    invalidated: list[str] = []
+    now = datetime.now(timezone.utc).isoformat()
+    changed_set = set(changed_paths)
+
+    for slug in load_roadmap_slugs(cwd):
+        state = read_phase_state(cwd, slug)
+        grounding = state.get("grounding", {})
+        if not isinstance(grounding, dict):
+            continue
+        referenced = grounding.get("referenced_paths", [])
+        if not isinstance(referenced, list):
+            continue
+        overlap = [p for p in referenced if p in changed_set]
+        if overlap:
+            grounding_dict: dict[str, bool | str | list[str] | int] = {
+                **DEFAULT_STATE["grounding"],  # type: ignore[arg-type]
+                **grounding,
+            }
+            grounding_dict["valid"] = False
+            grounding_dict["invalidated_at"] = now
+            grounding_dict["invalidation_reason"] = "files_changed"
+            state["grounding"] = grounding_dict  # type: ignore[assignment]
+            state["prepare_phase"] = PreparePhase.GROUNDING_CHECK.value
+            write_phase_state(cwd, slug, state)
+            _emit_prepare_event(
+                "domain.software-development.prepare.grounding_invalidated",
+                {"slug": slug, "reason": "files_changed", "changed_paths": overlap},
+            )
+            invalidated.append(slug)
+
+    return {"invalidated": invalidated}
+
+
+# =============================================================================
+# Main Functions
+# =============================================================================
+
+
+async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
     """Phase A state machine for collaborative architect work.
 
-    Checks what's missing (requirements.md, implementation-plan.md) and
-    returns instructions to dispatch the appropriate architect session.
+    Reads durable state from state.yaml, determines the current prepare phase,
+    executes the next step, and returns structured tool-call instructions for
+    the orchestrator.
 
     Args:
         db: Database instance
-        slug: Optional explicit slug (resolved from roadmap if HITL=False)
+        slug: Optional explicit slug (resolved from roadmap if not provided)
         cwd: Current working directory (project root)
-        hitl: Human-In-The-Loop mode. If True (default), returns guidance
-              for calling AI. If False, dispatches to another AI.
 
     Returns:
         Plain text instructions for the orchestrator to execute
     """
     try:
-        # 1. Resolve slug
+        # Pre-dispatch preconditions: slug resolution, roadmap validation, container detection
         resolved_slug = slug
         if not resolved_slug:
             resolved_slug = await asyncio.to_thread(_find_next_prepare_slug, cwd)
 
         if not resolved_slug:
-            if hitl:
-                return format_hitl_guidance(
-                    "No active preparation work found. "
-                    "All active slugs already have requirements.md and implementation-plan.md "
-                    "with breakdown assessed where needed."
-                )
-
-            # Dispatch next-prepare-draft (no slug) when hitl=False
             guidance = await compose_agent_guidance(db)
             return format_tool_call(
                 command="next-prepare-draft",
@@ -2638,7 +3232,6 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
         if holder_children:
             return f"CONTAINER: {resolved_slug} was split into: {', '.join(holder_children)}. Work on those first."
 
-        # 1.5. Ensure slug exists in roadmap before preparing
         if not await asyncio.to_thread(slug_in_roadmap, cwd, resolved_slug):
             has_requirements = check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md")
             has_impl_plan = check_file_exists(cwd, f"todos/{resolved_slug}/implementation-plan.md")
@@ -2656,9 +3249,6 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 f"then add it to the roadmap{docs_clause}"
             )
             note = f"Preparing: {resolved_slug}. This slug is not in todos/roadmap.yaml. {next_step}"
-            if hitl:
-                return format_hitl_guidance(note)
-
             guidance = await compose_agent_guidance(db)
             return format_tool_call(
                 command="next-prepare-draft",
@@ -2667,104 +3257,38 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
                 guidance=guidance,
                 subfolder="",
                 note=note,
-                next_call="telec todo prepare",
+                next_call=f"telec todo prepare {resolved_slug}",
             )
 
-        # 1.6. Check for breakdown assessment
-        has_input = check_file_exists(cwd, f"todos/{resolved_slug}/input.md")
-        breakdown_state = await asyncio.to_thread(read_breakdown_state, cwd, resolved_slug)
+        # Dispatch loop
+        for _iter in range(_PREPARE_LOOP_LIMIT):
+            state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
+            # Resolve current phase
+            raw_phase = str(state.get("prepare_phase", "")).strip()
+            try:
+                phase = PreparePhase(raw_phase)
+            except ValueError:
+                # Derive phase from artifact existence for legacy todos
+                phase = await asyncio.to_thread(_derive_prepare_phase, resolved_slug, cwd, state)
 
-        if has_input and (breakdown_state is None or not breakdown_state.get("assessed")):
-            # Breakdown assessment needed
-            if hitl:
-                return format_hitl_guidance(
-                    f"Preparing: {resolved_slug}. Read todos/{resolved_slug}/input.md and the "
-                    "actual source files it references. Assess scope using DOR gate 2 splitting "
-                    "heuristics — ground in code, test coherence, weigh coordination cost. "
-                    "Default is: do not split. Then update state.yaml and create breakdown.md."
-                )
-            # Non-HITL: dispatch architect to assess
-            guidance = await compose_agent_guidance(db)
-            return format_tool_call(
-                command="next-prepare-draft",
-                args=resolved_slug,
-                project=cwd,
-                guidance=guidance,
-                subfolder="",
-                note=f"Assess todos/{resolved_slug}/input.md. Read actual source files before sizing. Default: do not split.",
-                next_call="telec todo prepare",
+            logger.info(
+                "NEXT_PREPARE_PHASE slug=%s phase=%s iter=%d",
+                resolved_slug,
+                phase.value,
+                _iter,
             )
 
-        # 2. Check requirements
-        if not check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md"):
-            if hitl:
-                return format_hitl_guidance(
-                    f"Preparing: {resolved_slug}. Write todos/{resolved_slug}/requirements.md "
-                    f"and todos/{resolved_slug}/implementation-plan.md yourself."
-                )
-
-            guidance = await compose_agent_guidance(db)
-            return format_tool_call(
-                command="next-prepare-draft",
-                args=resolved_slug,
-                project=cwd,
-                guidance=guidance,
-                subfolder="",
-                note=f"Discuss until you have enough input. Write todos/{resolved_slug}/requirements.md yourself.",
-                next_call="telec todo prepare",
+            keep_going, instruction = await _prepare_dispatch(
+                db=db, slug=resolved_slug, cwd=cwd, phase=phase, state=state
             )
+            if not keep_going:
+                return instruction
 
-        # 3. Check implementation plan
-        if not check_file_exists(cwd, f"todos/{resolved_slug}/implementation-plan.md"):
-            if hitl:
-                return format_hitl_guidance(
-                    f"Preparing: {resolved_slug}. Write todos/{resolved_slug}/implementation-plan.md yourself."
-                )
-
-            guidance = await compose_agent_guidance(db)
-            return format_tool_call(
-                command="next-prepare-draft",
-                args=resolved_slug,
-                project=cwd,
-                guidance=guidance,
-                subfolder="",
-                note=f"Discuss until you have enough input. Write todos/{resolved_slug}/implementation-plan.md yourself.",
-                next_call="telec todo prepare",
-            )
-
-        # 4. Both exist - check DOR readiness (no phase mutation; readiness is derived)
-        current_phase = await asyncio.to_thread(get_item_phase, cwd, resolved_slug)
-        if current_phase == ItemPhase.PENDING.value:
-            phase_state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
-            dor = phase_state.get("dor")
-            dor_score = dor.get("score") if isinstance(dor, dict) else None
-            if isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD:
-                await asyncio.to_thread(sync_main_to_worktree, cwd, resolved_slug)
-            else:
-                if hitl:
-                    return format_hitl_guidance(
-                        f"Preparing: {resolved_slug}. Requirements and implementation plan exist, "
-                        f"but DOR score is below threshold ({DOR_READY_THRESHOLD}). Complete DOR assessment, update "
-                        f"todos/{resolved_slug}/dor-report.md and todos/{resolved_slug}/state.yaml.dor "
-                        f"with score >= {DOR_READY_THRESHOLD}. Then run /next-prepare-gate {resolved_slug} (separate worker) "
-                        f"and call telec todo prepare {resolved_slug} again."
-                    )
-
-                guidance = await compose_agent_guidance(db)
-                return format_tool_call(
-                    command="next-prepare-gate",
-                    args=resolved_slug,
-                    project=cwd,
-                    guidance=guidance,
-                    subfolder="",
-                    note=(
-                        f"Requirements/plan exist for {resolved_slug}, but DOR score is below threshold. "
-                        f"Complete DOR assessment and set state.yaml.dor.score >= {DOR_READY_THRESHOLD}."
-                    ),
-                    next_call="telec todo prepare",
-                )
-        # else: already in_progress or done - no state change needed
-        return format_prepared(resolved_slug)
+        return (
+            f"LOOP_LIMIT: prepare state machine for {resolved_slug} exceeded "
+            f"{_PREPARE_LOOP_LIMIT} internal transitions. "
+            f"Inspect todos/{resolved_slug}/state.yaml prepare_phase for stuck state."
+        )
     except RuntimeError:
         raise
 
@@ -2936,6 +3460,29 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 next_call=f"Call telec todo prepare {resolved_slug} to complete preparation.",
             )
     _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "run", "validated")
+
+    # 3b. Pre-build freshness gate: verify preparation is still valid
+    if not is_bug:
+        prep_state = await asyncio.to_thread(read_phase_state, cwd, resolved_slug)
+        prepare_phase_val = str(prep_state.get("prepare_phase", "")).strip()
+        grounding = prep_state.get("grounding", {})
+        grounding_valid = isinstance(grounding, dict) and grounding.get("valid") is True
+        # Only block if prepare_phase is explicitly set and not "prepared",
+        # or grounding is explicitly invalidated. Legacy todos (no prepare_phase) pass through.
+        if prepare_phase_val and prepare_phase_val != PreparePhase.PREPARED.value:
+            _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "stale_preparation")
+            return format_error(
+                "STALE",
+                f"{resolved_slug} preparation is not complete (phase: {prepare_phase_val}).",
+                next_call=f"Run telec todo prepare {resolved_slug} to re-ground.",
+            )
+        if prepare_phase_val == PreparePhase.PREPARED.value and not grounding_valid:
+            _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "stale_grounding")
+            return format_error(
+                "STALE",
+                f"{resolved_slug} preparation is invalidated (grounding.valid=false).",
+                next_call=f"Run telec todo prepare {resolved_slug} to re-ground.",
+            )
 
     worktree_cwd = str(Path(cwd) / WORKTREE_DIR / resolved_slug)
     ensure_started = perf_counter()

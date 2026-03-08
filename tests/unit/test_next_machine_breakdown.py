@@ -1,4 +1,4 @@
-"""Tests for breakdown assessment in next_prepare."""
+"""Tests for breakdown assessment in next_prepare state machine."""
 
 import tempfile
 from pathlib import Path
@@ -9,51 +9,59 @@ import yaml
 
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import next_prepare, read_breakdown_state, write_breakdown_state
+from teleclaude.core.next_machine.core import PreparePhase
 
 
 @pytest.mark.asyncio
-async def test_next_prepare_hitl_input_md_unassessed_breakdown():
-    """next_prepare detects input.md with unassessed breakdown and returns guidance."""
+async def test_next_prepare_input_md_unassessed_breakdown_dispatches_draft():
+    """next_prepare with unassessed breakdown dispatches next-prepare-draft."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
 
-    # Mock: slug in roadmap, input.md exists, no breakdown state yet
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    # State: no prepare_phase set — triggers phase derivation
+    # Derivation: input.md exists, breakdown not assessed → INPUT_ASSESSMENT
+    # INPUT_ASSESSMENT handler: breakdown not assessed → dispatches draft
+    state = {
+        "prepare_phase": "",
+        "breakdown": {"assessed": False, "todos": []},
+    }
+
     def mock_check_file_exists(_path_cwd: str, relative_path: str) -> bool:
         return "input.md" in relative_path
 
     with (
         patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
         patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
-        patch("teleclaude.core.next_machine.core.read_breakdown_state", return_value=None),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
-        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
-        assert f"Preparing: {slug}" in result
-        assert "Read todos/test-slug/input.md" in result
-        assert "splitting heuristics" in result
-        assert "do not split" in result
-        assert "update state.yaml and create breakdown.md" in result
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+        assert "telec sessions run" in result
+        assert '--command "/next-prepare-draft"' in result
+        assert f'--args "{slug}"' in result
+        assert "Assess todos/test-slug/input.md" in result
 
 
 @pytest.mark.asyncio
-async def test_next_prepare_hitl_assessed_breakdown_with_todos_container():
-    """next_prepare detects assessed breakdown with split todos and returns CONTAINER message."""
+async def test_next_prepare_assessed_breakdown_with_todos_container():
+    """next_prepare returns CONTAINER when holder has split children."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-parent"
 
-    # Mock: breakdown assessed with dependent todos
-    breakdown_state = {"assessed": True, "todos": ["test-parent-1", "test-parent-2"]}
-
-    def mock_check_file_exists(_path_cwd: str, relative_path: str) -> bool:
-        return "input.md" in relative_path
-
     with (
         patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
-        patch("teleclaude.core.next_machine.core.read_breakdown_state", return_value=breakdown_state),
+        patch(
+            "teleclaude.core.next_machine.core.resolve_holder_children",
+            return_value=["test-parent-1", "test-parent-2"],
+        ),
     ):
-        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
+        result = await next_prepare(db, slug=slug, cwd=cwd)
         assert "CONTAINER:" in result
         assert slug in result
         assert "test-parent-1" in result
@@ -63,7 +71,7 @@ async def test_next_prepare_hitl_assessed_breakdown_with_todos_container():
 
 @pytest.mark.asyncio
 async def test_next_prepare_non_roadmap_holder_with_group_children_returns_container():
-    """next_prepare should treat non-roadmap holder slugs as containers when children are discoverable."""
+    """next_prepare treats non-roadmap holder slugs as containers when children discoverable."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "holder-item"
@@ -72,7 +80,7 @@ async def test_next_prepare_non_roadmap_holder_with_group_children_returns_conta
         patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=["child-1", "child-2"]),
         patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=False),
     ):
-        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
+        result = await next_prepare(db, slug=slug, cwd=cwd)
 
     assert "CONTAINER:" in result
     assert slug in result
@@ -82,36 +90,48 @@ async def test_next_prepare_non_roadmap_holder_with_group_children_returns_conta
 
 
 @pytest.mark.asyncio
-async def test_next_prepare_hitl_assessed_breakdown_empty_todos_proceeds():
-    """next_prepare with assessed breakdown and empty todos proceeds to requirements."""
+async def test_next_prepare_assessed_breakdown_empty_todos_proceeds_to_triangulation():
+    """next_prepare with assessed breakdown and empty todos proceeds to TRIANGULATION."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-simple"
 
-    # Mock: breakdown assessed, no split (empty todos list)
-    breakdown_state = {"assessed": True, "todos": []}
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    # input.md exists, breakdown assessed with empty todos → INPUT_ASSESSMENT transitions to TRIANGULATION
+    # TRIANGULATION: requirements.md absent → dispatches draft
+    state = {
+        "prepare_phase": "",
+        "breakdown": {"assessed": True, "todos": []},
+    }
 
     def mock_check_file_exists(_path_cwd: str, relative_path: str) -> bool:
-        # input.md exists, requirements.md does not
-        if "input.md" in relative_path:
-            return True
-        return False
+        return "input.md" in relative_path
+
+    # After INPUT_ASSESSMENT writes TRIANGULATION, second read_phase_state
+    state2 = {**state, "prepare_phase": PreparePhase.TRIANGULATION.value}
 
     with (
         patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch(
+            "teleclaude.core.next_machine.core.read_phase_state",
+            side_effect=[state, state2],
+        ),
+        patch("teleclaude.core.next_machine.core.write_phase_state"),
         patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
-        patch("teleclaude.core.next_machine.core.read_breakdown_state", return_value=breakdown_state),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
-        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
-        # Should skip breakdown and proceed to requirements creation
-        assert f"Preparing: {slug}" in result
-        assert "Write todos/test-simple/requirements.md" in result
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+        assert "next-prepare-draft" in result
+        assert "requirements.md" in result
         assert "CONTAINER" not in result
 
 
 @pytest.mark.asyncio
-async def test_next_prepare_autonomous_input_md_unassessed_breakdown():
-    """next_prepare in autonomous mode dispatches architect for breakdown assessment."""
+async def test_next_prepare_input_md_unassessed_breakdown_dispatches_draft_autonomous():
+    """next_prepare dispatches architect for breakdown assessment in autonomous mode."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
@@ -119,27 +139,28 @@ async def test_next_prepare_autonomous_input_md_unassessed_breakdown():
     db.clear_expired_agent_availability.return_value = None
     db.get_agent_availability.return_value = {"available": True}
 
-    def mock_check_file_exists(_path_cwd: str, relative_path: str) -> bool:
-        return "input.md" in relative_path
+    state = {
+        "prepare_phase": PreparePhase.INPUT_ASSESSMENT.value,
+        "breakdown": {"assessed": False, "todos": []},
+    }
 
     with (
         patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
-        patch("teleclaude.core.next_machine.core.read_breakdown_state", return_value=None),
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
-        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=False)
+        result = await next_prepare(db, slug=slug, cwd=cwd)
         assert "telec sessions run" in result
         assert '--command "/next-prepare-draft"' in result
         assert f'--args "{slug}"' in result
         assert "Assess todos/test-slug/input.md" in result
-        assert "do not split" in result
 
 
 def test_read_breakdown_state_returns_defaults_when_no_file():
     """read_breakdown_state returns default breakdown state when state.yaml doesn't exist."""
     with tempfile.TemporaryDirectory() as tmpdir:
         state = read_breakdown_state(tmpdir, "test-slug")
-        # Returns defaults from DEFAULT_STATE (via read_phase_state)
         assert state == {"assessed": False, "todos": []}
 
 
@@ -168,7 +189,6 @@ def test_read_breakdown_state_returns_defaults_when_breakdown_missing():
         state_file.write_text(yaml.dump({"build": "pending"}))
 
         state = read_breakdown_state(tmpdir, slug)
-        # Returns defaults merged from DEFAULT_STATE
         assert state == {"assessed": False, "todos": []}
 
 

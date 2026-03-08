@@ -1,10 +1,10 @@
+"""Tests for next_prepare() state machine — replaces hitl-based tests."""
+
 import asyncio
 import os
-import subprocess
 import tempfile
-import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
@@ -26,157 +26,563 @@ from teleclaude.core.next_machine import (
     sync_main_to_worktree,
     write_phase_state,
 )
-
-
-@pytest.mark.asyncio
-async def test_next_prepare_hitl_no_slug():
-    """Test that HITL next_prepare prompts roadmap guidance when no slug resolves."""
-    db = MagicMock(spec=Db)
-    cwd = "/tmp/test"
-
-    with patch("teleclaude.core.next_machine.core._find_next_prepare_slug", return_value=None):
-        result = await next_prepare(db, slug=None, cwd=cwd, hitl=True)
-        assert "No active preparation work found." in result
-
-
-@pytest.mark.asyncio
-async def test_next_prepare_hitl_missing_requirements():
-    """Test that HITL next_prepare requests requirements when slug exists but file missing."""
-    db = MagicMock(spec=Db)
-    cwd = "/tmp/test"
-    slug = "test-slug"
-
-    with (
-        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
-    ):
-        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
-        assert f"Preparing: {slug}" in result
-        assert "Write todos/test-slug/requirements.md" in result
-
-
-@pytest.mark.asyncio
-async def test_next_prepare_hitl_missing_impl_plan():
-    """Test that HITL next_prepare requests implementation plan when requirements exist."""
-    db = MagicMock(spec=Db)
-    cwd = "/tmp/test"
-    slug = "test-slug"
-
-    def mock_check_file_exists(path_cwd, relative_path):
-        if "requirements.md" in relative_path:
-            return True
-        return False
-
-    with (
-        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
-    ):
-        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
-        assert f"Preparing: {slug}" in result
-        assert "Write todos/test-slug/implementation-plan.md" in result
-
-
-@pytest.mark.asyncio
-async def test_next_prepare_hitl_both_exist():
-    """Test that HITL next_prepare reports PREPARED when docs are present."""
-    db = MagicMock(spec=Db)
-    cwd = "/tmp/test"
-    slug = "test-slug"
-
-    # Mock check_file_exists to return True for requirements/impl-plan, False for input.md
-    def mock_check_file_exists(path: str, file: str) -> bool:
-        if "input.md" in file:
-            return False
-        return True  # requirements.md and implementation-plan.md exist
-
-    with (
-        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
-        patch("teleclaude.core.next_machine.core.read_breakdown_state", return_value=None),
-        patch(
-            "teleclaude.core.next_machine.core.read_phase_state", return_value={"build": "pending", "dor": {"score": 8}}
-        ),
-        patch("teleclaude.core.next_machine.core.sync_main_to_worktree"),
-    ):
-        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
-        assert f"PREPARED: todos/{slug} is ready for work." in result
-
-
-@pytest.mark.asyncio
-async def test_next_prepare_autonomous_dispatch():
-    """Test that autonomous next_prepare emits run-agent command when docs missing."""
-    db = MagicMock(spec=Db)
-    cwd = "/tmp/test"
-    slug = "test-slug"
-
-    # Mock agent availability
-    db.clear_expired_agent_availability.return_value = None
-    db.get_agent_availability.return_value = {"available": True}
-
-    with (
-        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
-    ):
-        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=False)
-        assert "telec sessions run" in result
-        assert f'--args "{slug}"' in result
-        assert '--command "/next-prepare-draft"' in result
-
-
-@pytest.mark.asyncio
-async def test_next_prepare_hitl_slug_missing_from_roadmap():
-    """Test that HITL next_prepare explains missing roadmap entry for slug."""
-    db = MagicMock(spec=Db)
-    cwd = "/tmp/test"
-    slug = "test-slug"
-
-    with (
-        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=False),
-        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
-    ):
-        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
-        assert "not in todos/roadmap.yaml" in result
-        assert "add it to the roadmap" in result
-
-
-@pytest.mark.asyncio
-async def test_next_prepare_autonomous_slug_missing_from_roadmap():
-    """Test that autonomous next_prepare still dispatches but warns about roadmap."""
-    db = MagicMock(spec=Db)
-    cwd = "/tmp/test"
-    slug = "test-slug"
-
-    db.clear_expired_agent_availability.return_value = None
-    db.get_agent_availability.return_value = {"available": True}
-
-    with (
-        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=False),
-        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
-    ):
-        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=False)
-        assert "telec sessions run" in result
-        assert f'--args "{slug}"' in result
-        assert "not in todos/roadmap.yaml" in result
-
-
-@pytest.mark.asyncio
-async def test_next_prepare_hitl_slug_missing_from_roadmap_when_docs_exist():
-    """Test that HITL next_prepare flags roadmap omission even when docs exist."""
-    db = MagicMock(spec=Db)
-    cwd = "/tmp/test"
-    slug = "test-slug"
-
-    with (
-        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=False),
-        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=True),
-    ):
-        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
-        assert "not in todos/roadmap.yaml" in result
-        assert "add it to the roadmap" in result
+from teleclaude.core.next_machine.core import PreparePhase
 
 
 # =============================================================================
-# State Management Tests
+# Precondition tests (pre-dispatch)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_prepare_no_slug_returns_tool_call():
+    """next_prepare with no resolvable slug dispatches next-prepare-draft."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    with patch("teleclaude.core.next_machine.core._find_next_prepare_slug", return_value=None):
+        result = await next_prepare(db, slug=None, cwd=cwd)
+        assert "next-prepare-draft" in result
+        assert "No active preparation work found" in result
+
+
+@pytest.mark.asyncio
+async def test_prepare_slug_missing_from_roadmap():
+    """next_prepare dispatches next-prepare-draft when slug not in roadmap."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    with (
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=False),
+        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+        assert "not in todos/roadmap.yaml" in result
+        assert "next-prepare-draft" in result
+
+
+# =============================================================================
+# Phase handler tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_prepare_missing_requirements_dispatches_draft():
+    """TRIANGULATION phase dispatches next-prepare-draft when requirements.md missing."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    state = {
+        "prepare_phase": PreparePhase.TRIANGULATION.value,
+        "breakdown": {"assessed": True, "todos": []},
+    }
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
+        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+        assert "next-prepare-draft" in result
+        assert f'--args "{slug}"' in result
+
+
+@pytest.mark.asyncio
+async def test_prepare_missing_plan_dispatches_draft():
+    """PLAN_DRAFTING phase dispatches next-prepare-draft when implementation-plan.md missing."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    state = {
+        "prepare_phase": PreparePhase.PLAN_DRAFTING.value,
+    }
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
+        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+        assert "next-prepare-draft" in result
+        assert "implementation-plan.md" in result
+
+
+@pytest.mark.asyncio
+async def test_prepare_both_exist_dispatches_gate():
+    """GATE phase dispatches next-prepare-gate when DOR score is below threshold."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    state = {
+        "prepare_phase": PreparePhase.GATE.value,
+        "dor": {"score": 5},
+    }
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+        assert "next-prepare-gate" in result
+
+
+@pytest.mark.asyncio
+async def test_prepare_requirements_review_approve_transitions_to_plan():
+    """REQUIREMENTS_REVIEW with approve verdict transitions to PLAN_DRAFTING."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    # First call state: REQUIREMENTS_REVIEW approved → transitions to PLAN_DRAFTING
+    # PLAN_DRAFTING with no plan → dispatches next-prepare-draft
+    states = [
+        {
+            "prepare_phase": PreparePhase.REQUIREMENTS_REVIEW.value,
+            "requirements_review": {"verdict": "approve", "reviewed_at": "", "findings_count": 0},
+        },
+        {
+            "prepare_phase": PreparePhase.PLAN_DRAFTING.value,
+            "requirements_review": {"verdict": "approve", "reviewed_at": "", "findings_count": 0},
+        },
+    ]
+    state_iter = iter(states)
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.read_phase_state", side_effect=lambda *_: next(state_iter)),
+        patch("teleclaude.core.next_machine.core.write_phase_state"),
+        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+        assert "next-prepare-draft" in result
+        assert "implementation-plan.md" in result
+
+
+@pytest.mark.asyncio
+async def test_prepare_requirements_review_needs_work_loops_back():
+    """REQUIREMENTS_REVIEW with needs_work loops back to TRIANGULATION."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    state = {
+        "prepare_phase": PreparePhase.REQUIREMENTS_REVIEW.value,
+        "requirements_review": {"verdict": "needs_work", "reviewed_at": "", "findings_count": 1},
+    }
+
+    # After loop-back to TRIANGULATION, requirements.md still absent → dispatches draft
+    written_state = {}
+
+    def fake_write(w_cwd, w_slug, s):
+        written_state.update(s)
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch(
+            "teleclaude.core.next_machine.core.read_phase_state",
+            side_effect=[state, {**state, "prepare_phase": PreparePhase.TRIANGULATION.value}],
+        ),
+        patch("teleclaude.core.next_machine.core.write_phase_state", side_effect=fake_write),
+        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+        assert "next-prepare-draft" in result
+        assert written_state.get("prepare_phase") == PreparePhase.TRIANGULATION.value
+
+
+@pytest.mark.asyncio
+async def test_prepare_plan_review_approve_transitions_to_gate():
+    """PLAN_REVIEW with approve verdict transitions to GATE."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    states = [
+        {
+            "prepare_phase": PreparePhase.PLAN_REVIEW.value,
+            "plan_review": {"verdict": "approve", "reviewed_at": "", "findings_count": 0},
+        },
+        {
+            "prepare_phase": PreparePhase.GATE.value,
+            "dor": {"score": 5},
+        },
+    ]
+    state_iter = iter(states)
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.read_phase_state", side_effect=lambda *_: next(state_iter)),
+        patch("teleclaude.core.next_machine.core.write_phase_state"),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+        assert "next-prepare-gate" in result
+
+
+@pytest.mark.asyncio
+async def test_prepare_plan_review_needs_work_loops_back():
+    """PLAN_REVIEW with needs_work loops back to PLAN_DRAFTING."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    state = {
+        "prepare_phase": PreparePhase.PLAN_REVIEW.value,
+        "plan_review": {"verdict": "needs_work", "reviewed_at": "", "findings_count": 2},
+    }
+
+    written_state = {}
+
+    def fake_write(w_cwd, w_slug, s):
+        written_state.update(s)
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch(
+            "teleclaude.core.next_machine.core.read_phase_state",
+            side_effect=[state, {**state, "prepare_phase": PreparePhase.PLAN_DRAFTING.value}],
+        ),
+        patch("teleclaude.core.next_machine.core.write_phase_state", side_effect=fake_write),
+        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+        assert "next-prepare-draft" in result
+        assert written_state.get("prepare_phase") == PreparePhase.PLAN_DRAFTING.value
+
+
+@pytest.mark.asyncio
+async def test_prepare_gate_pass_transitions_to_grounding():
+    """GATE with DOR score >= 8 transitions to GROUNDING_CHECK."""
+    db = MagicMock(spec=Db)
+    slug = "test-slug"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Grounding check will look for input.md
+        todo_dir = Path(tmpdir) / "todos" / slug
+        todo_dir.mkdir(parents=True)
+
+        grounding_state = {
+            "valid": False,
+            "base_sha": "",  # empty triggers first-grounding path → PREPARED
+            "input_digest": "",
+            "referenced_paths": [],
+            "last_grounded_at": "",
+            "invalidated_at": "",
+            "invalidation_reason": "",
+        }
+
+        # We need 3 states: GATE → write GROUNDING_CHECK → read GROUNDING_CHECK → write PREPARED → read PREPARED
+        # Use a cycling state so StopIteration never occurs
+        phase_states = [
+            {
+                "prepare_phase": PreparePhase.GATE.value,
+                "dor": {"score": 9},
+                "grounding": dict(grounding_state),
+            },
+            {
+                "prepare_phase": PreparePhase.GROUNDING_CHECK.value,
+                "grounding": dict(grounding_state),
+            },
+            {
+                "prepare_phase": PreparePhase.PREPARED.value,
+                "grounding": {**grounding_state, "valid": True, "base_sha": "cur"},
+            },
+        ]
+        call_count = 0
+
+        def cycling_state(*_args):
+            nonlocal call_count
+            idx = min(call_count, len(phase_states) - 1)
+            call_count += 1
+            return phase_states[idx]
+
+        with (
+            patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+            patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+            patch("teleclaude.core.next_machine.core.read_phase_state", side_effect=cycling_state),
+            patch("teleclaude.core.next_machine.core.write_phase_state"),
+            patch("teleclaude.core.next_machine.core.sync_main_to_worktree"),
+            patch(
+                "teleclaude.core.next_machine.core._run_git_prepare",
+                return_value=(0, "cur_sha", ""),
+            ),
+            patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+        ):
+            result = await next_prepare(db, slug=slug, cwd=tmpdir)
+            # Should reach PREPARED
+            assert "PREPARED" in result
+
+
+@pytest.mark.asyncio
+async def test_prepare_gate_fail_transitions_to_blocked_via_gate_dispatch():
+    """GATE with DOR score < 8 dispatches gate worker."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    state = {
+        "prepare_phase": PreparePhase.GATE.value,
+        "dor": {"score": 4},
+    }
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+        assert "next-prepare-gate" in result
+
+
+@pytest.mark.asyncio
+async def test_prepare_grounding_check_fresh_transitions_to_prepared():
+    """GROUNDING_CHECK with matching digests transitions to PREPARED."""
+    db = MagicMock(spec=Db)
+    slug = "test-slug"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        todo_dir = Path(tmpdir) / "todos" / slug
+        todo_dir.mkdir(parents=True)
+
+        state = {
+            "prepare_phase": PreparePhase.GROUNDING_CHECK.value,
+            "grounding": {
+                "valid": False,
+                "base_sha": "abc123",
+                "input_digest": "",
+                "referenced_paths": [],
+                "last_grounded_at": "",
+                "invalidated_at": "",
+                "invalidation_reason": "",
+            },
+        }
+
+        with (
+            patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+            patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+            patch("teleclaude.core.next_machine.core.read_phase_state", side_effect=[state, state]),
+            patch("teleclaude.core.next_machine.core.write_phase_state"),
+            patch(
+                "teleclaude.core.next_machine.core._run_git_prepare",
+                return_value=(0, "abc123", ""),
+            ),
+            patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+        ):
+            result = await next_prepare(db, slug=slug, cwd=tmpdir)
+            assert "PREPARED" in result
+
+
+@pytest.mark.asyncio
+async def test_prepare_grounding_check_stale_transitions_to_regrounding():
+    """GROUNDING_CHECK with differing SHA transitions to RE_GROUNDING."""
+    db = MagicMock(spec=Db)
+    slug = "test-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        state = {
+            "prepare_phase": PreparePhase.GROUNDING_CHECK.value,
+            "grounding": {
+                "valid": True,
+                "base_sha": "old_sha",
+                "input_digest": "",
+                "referenced_paths": [],
+                "last_grounded_at": "",
+                "invalidated_at": "",
+                "invalidation_reason": "",
+            },
+        }
+
+        # After RE_GROUNDING transition, provide PLAN_REVIEW state for dispatch
+        re_ground_state = {
+            "prepare_phase": PreparePhase.RE_GROUNDING.value,
+            "grounding": {
+                "valid": False,
+                "base_sha": "old_sha",
+                "input_digest": "",
+                "referenced_paths": [],
+                "last_grounded_at": "",
+                "invalidated_at": "2026-01-01T00:00:00+00:00",
+                "invalidation_reason": "files_changed",
+            },
+        }
+
+        states = [state, re_ground_state]
+        state_iter = iter(states)
+
+        with (
+            patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+            patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+            patch("teleclaude.core.next_machine.core.read_phase_state", side_effect=lambda *_: next(state_iter)),
+            patch("teleclaude.core.next_machine.core.write_phase_state"),
+            patch(
+                "teleclaude.core.next_machine.core._run_git_prepare",
+                return_value=(0, "new_sha", ""),
+            ),
+            patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+        ):
+            result = await next_prepare(db, slug=slug, cwd=tmpdir)
+            assert "next-prepare-draft" in result
+
+
+@pytest.mark.asyncio
+async def test_prepare_regrounding_dispatches_draft_with_changes():
+    """RE_GROUNDING phase dispatches next-prepare-draft with changed paths note."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    state = {
+        "prepare_phase": PreparePhase.RE_GROUNDING.value,
+        "grounding": {
+            "valid": False,
+            "base_sha": "old",
+            "input_digest": "",
+            "referenced_paths": ["src/foo.py"],
+            "last_grounded_at": "",
+            "invalidated_at": "2026-01-01T00:00:00+00:00",
+            "invalidation_reason": "files_changed",
+        },
+        "plan_review": {"verdict": "", "reviewed_at": "", "findings_count": 0},
+    }
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
+        patch("teleclaude.core.next_machine.core.write_phase_state"),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+        assert "next-prepare-draft" in result
+        assert "implementation-plan.md" in result
+
+
+@pytest.mark.asyncio
+async def test_prepare_event_emission_at_transitions():
+    """Event emission is called at phase transitions."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    state = {
+        "prepare_phase": PreparePhase.REQUIREMENTS_REVIEW.value,
+        "requirements_review": {"verdict": "approve", "reviewed_at": "", "findings_count": 0},
+    }
+    # After approve, transition to PLAN_DRAFTING, then dispatch draft
+    states = [
+        state,
+        {
+            "prepare_phase": PreparePhase.PLAN_DRAFTING.value,
+            "requirements_review": {"verdict": "approve"},
+        },
+    ]
+    state_iter = iter(states)
+    emitted_events: list[str] = []
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.read_phase_state", side_effect=lambda *_: next(state_iter)),
+        patch("teleclaude.core.next_machine.core.write_phase_state"),
+        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch(
+            "teleclaude.core.next_machine.core._emit_prepare_event",
+            side_effect=lambda et, _: emitted_events.append(et),
+        ),
+    ):
+        await next_prepare(db, slug=slug, cwd=cwd)
+        assert "domain.software-development.prepare.requirements_approved" in emitted_events
+
+
+@pytest.mark.asyncio
+async def test_prepare_loop_limit_returns_error():
+    """State machine returns LOOP_LIMIT error if it cycles too many times."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+
+    # State that always loops (invalid phase string that triggers re-derivation,
+    # but derivation returns INPUT_ASSESSMENT which dispatches, so use a handler
+    # that always returns loop=True by giving a state that cycles).
+    # Simplest: provide GROUNDING_CHECK state that always reports stale but
+    # RE_GROUNDING always writes GROUNDING_CHECK back — impossible with patching.
+    # Instead: exhaust loop with PreparePhase.GROUNDING_CHECK that returns (True,"")
+    # by patching _prepare_step_grounding_check.
+    from teleclaude.core.next_machine import core as cm
+
+    original_loop_limit = cm._PREPARE_LOOP_LIMIT
+    cm._PREPARE_LOOP_LIMIT = 3
+
+    try:
+        state = {
+            "prepare_phase": PreparePhase.GROUNDING_CHECK.value,
+            "grounding": {"base_sha": "x", "input_digest": "", "referenced_paths": [], "valid": False},
+        }
+
+        with (
+            patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+            patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+            patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
+            patch("teleclaude.core.next_machine.core.write_phase_state"),
+            patch(
+                "teleclaude.core.next_machine.core._prepare_step_grounding_check",
+                return_value=(True, ""),
+            ),
+            patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+        ):
+            result = await next_prepare(db, slug=slug, cwd=cwd)
+            assert "LOOP_LIMIT" in result
+    finally:
+        cm._PREPARE_LOOP_LIMIT = original_loop_limit
+
+
+# =============================================================================
+# State Management Tests (preserved from original)
 # =============================================================================
 
 
@@ -193,6 +599,11 @@ def test_read_phase_state_returns_default_when_no_file():
         assert state["review_baseline_commit"] == ""
         assert state["unresolved_findings"] == []
         assert state["resolved_findings"] == []
+        # New state machine keys
+        assert state["prepare_phase"] == ""
+        assert isinstance(state["grounding"], dict)
+        assert isinstance(state["requirements_review"], dict)
+        assert isinstance(state["plan_review"], dict)
 
 
 def test_read_phase_state_reads_existing_file():
@@ -205,7 +616,6 @@ def test_read_phase_state_reads_existing_file():
         state_file.write_text(yaml.dump({"build": "complete", "review": "pending"}))
 
         state = read_phase_state(tmpdir, slug)
-        # Should merge with defaults for missing keys
         assert state["build"] == "complete"
         assert state["review"] == "pending"
         assert state["deferrals_processed"] is False
@@ -246,7 +656,6 @@ def test_mark_phase_updates_state():
         assert result["build"] == "complete"
         assert result["review"] == "pending"
 
-        # Verify file was written
         state_file = Path(tmpdir) / "todos" / slug / "state.yaml"
         content = yaml.safe_load(state_file.read_text())
         assert content["build"] == "complete"
@@ -428,7 +837,7 @@ def test_is_review_changes_requested_true():
 
 
 # =============================================================================
-# format_tool_call Tests
+# format_tool_call Tests (preserved from original)
 # =============================================================================
 
 
@@ -493,8 +902,11 @@ def test_format_tool_call_next_call_with_args():
 
 
 # =============================================================================
-# Build Gate Tests
+# Build Gate Tests (preserved from original)
 # =============================================================================
+
+import subprocess
+import time
 
 from unittest.mock import AsyncMock
 
@@ -576,12 +988,10 @@ async def test_next_work_gate_failure_resets_build():
         ):
             result = await next_work(db, slug=slug, cwd=tmpdir)
 
-        # Verify gate failure response
         assert "BUILD GATES FAILED" in result
         assert "GATE FAILED" in result
         assert "Test output" in result
 
-        # Verify build was reset to started
         state = yaml.safe_load((state_dir / "state.yaml").read_text())
         assert state["build"] == "started"
 
@@ -617,7 +1027,7 @@ async def test_next_work_gate_failure_includes_output():
 
         assert "demo validate" in result
         assert "no executable bash blocks" in result
-        assert "Send" in result  # instructs orchestrator to send to builder
+        assert "Send" in result
 
 
 @pytest.mark.asyncio
@@ -650,14 +1060,11 @@ async def test_next_work_lazy_marking_no_state_mutation():
         ):
             result = await next_work(db, slug=slug, cwd=tmpdir)
 
-        # Should dispatch build
         assert "next-build" in result
 
-        # Build state should NOT have been mutated to "started"
         state = yaml.safe_load((state_dir / "state.yaml").read_text())
         assert state["build"] == "pending"
 
-        # Output should contain marking instructions
         assert "mark-phase" in result
         assert "BEFORE DISPATCHING" in result
 
@@ -700,7 +1107,7 @@ async def test_next_work_concurrent_same_slug_single_flight_prep():
 
         prep_calls = 0
 
-        def _slow_prepare(*_args, **_kwargs):
+        def _slow_prepare(*_args: object, **_kwargs: object) -> None:
             nonlocal prep_calls
             prep_calls += 1
             time.sleep(0.1)
@@ -775,7 +1182,7 @@ async def test_next_work_concurrent_same_slug_different_repos_do_not_serialize_p
 
         prep_calls = 0
 
-        def _slow_prepare(*_args, **_kwargs):
+        def _slow_prepare(*_args: object, **_kwargs: object) -> None:
             nonlocal prep_calls
             prep_calls += 1
             time.sleep(0.1)
@@ -849,7 +1256,6 @@ def test_post_completion_finalize_hands_off_to_integrator():
     # Lock mechanism is gone — integrator handles serialization via its own lease
     assert "todos/.finalize-lock" not in instructions
     assert "TELECLAUDE_SESSION_ID" not in instructions
-    # Old merge/push flow is gone
     assert "make restart" not in instructions
     assert "FINALIZE APPLY SAFETY RE-CHECK" not in instructions
     assert "git push origin main" not in instructions
@@ -863,3 +1269,189 @@ def test_format_build_gate_failure_structure():
     assert "Send" in result
     assert "Do NOT end" in result
     assert "mark-phase" in result
+
+
+# =============================================================================
+# Freshness Gate Tests (R9) — next_work
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_next_work_freshness_gate_blocks_non_prepared_phase():
+    """next_work returns STALE when prepare_phase is set to a non-'prepared' value."""
+    db = MagicMock(spec=Db)
+    slug = "stale-feature"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Req")
+        (item_dir / "implementation-plan.md").write_text("# Plan")
+        # prepare_phase is "triangulation" — preparation not yet complete
+        (item_dir / "state.yaml").write_text(
+            yaml.dump({"phase": "in_progress", "dor": {"score": 9}, "prepare_phase": "triangulation"})
+        )
+
+        with (
+            patch("teleclaude.core.next_machine.core.resolve_canonical_project_root", return_value=tmpdir),
+            patch("teleclaude.core.next_machine.core.sweep_completed_groups"),
+            patch("teleclaude.core.next_machine.core.load_roadmap_deps", return_value={}),
+            patch("teleclaude.core.next_machine.core.is_bug_todo", return_value=False),
+            patch("teleclaude.core.next_machine.core.get_item_phase", return_value="in_progress"),
+            patch("teleclaude.core.next_machine.core.check_dependencies_satisfied", return_value=True),
+            patch("teleclaude.core.next_machine.core.get_stash_entries", return_value=[]),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+    assert "STALE" in result
+    assert "triangulation" in result
+
+
+@pytest.mark.asyncio
+async def test_next_work_freshness_gate_blocks_invalidated_grounding():
+    """next_work returns STALE when prepare_phase is 'prepared' but grounding.valid is false."""
+    db = MagicMock(spec=Db)
+    slug = "stale-grounding"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _write_roadmap_yaml(tmpdir, [slug])
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Req")
+        (item_dir / "implementation-plan.md").write_text("# Plan")
+        # prepare_phase is "prepared" but grounding was invalidated
+        (item_dir / "state.yaml").write_text(
+            yaml.dump(
+                {
+                    "phase": "in_progress",
+                    "dor": {"score": 9},
+                    "prepare_phase": "prepared",
+                    "grounding": {
+                        "valid": False,
+                        "base_sha": "abc123",
+                        "input_digest": "old",
+                        "referenced_paths": ["src/foo.py"],
+                        "last_grounded_at": "2026-01-01T00:00:00+00:00",
+                        "invalidated_at": "2026-02-01T00:00:00+00:00",
+                        "invalidation_reason": "files_changed",
+                    },
+                }
+            )
+        )
+
+        with (
+            patch("teleclaude.core.next_machine.core.resolve_canonical_project_root", return_value=tmpdir),
+            patch("teleclaude.core.next_machine.core.sweep_completed_groups"),
+            patch("teleclaude.core.next_machine.core.load_roadmap_deps", return_value={}),
+            patch("teleclaude.core.next_machine.core.is_bug_todo", return_value=False),
+            patch("teleclaude.core.next_machine.core.get_item_phase", return_value="in_progress"),
+            patch("teleclaude.core.next_machine.core.check_dependencies_satisfied", return_value=True),
+            patch("teleclaude.core.next_machine.core.get_stash_entries", return_value=[]),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+    assert "STALE" in result
+    assert "grounding.valid=false" in result
+
+
+# =============================================================================
+# BLOCKED Terminal State Tests (I3) — next_prepare
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_prepare_blocked_terminal_emits_event_and_returns_message():
+    """BLOCKED phase returns terminal BLOCKED message and emits prepare.blocked event."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+
+    state = {
+        "prepare_phase": PreparePhase.BLOCKED.value,
+        "grounding": {
+            "valid": False,
+            "base_sha": "abc",
+            "input_digest": "",
+            "referenced_paths": [],
+            "last_grounded_at": "",
+            "invalidated_at": "2026-01-01T00:00:00+00:00",
+            "invalidation_reason": "max_review_rounds_exceeded",
+        },
+    }
+
+    emitted: list[str] = []
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
+        patch(
+            "teleclaude.core.next_machine.core._emit_prepare_event",
+            side_effect=lambda et, _: emitted.append(et),
+        ),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+
+    assert "BLOCKED" in result
+    assert slug in result
+    assert "domain.software-development.prepare.blocked" in emitted
+
+
+# =============================================================================
+# No-Verdict Dispatch Tests (I4) — next_prepare
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_prepare_requirements_review_empty_verdict_dispatches_reviewer():
+    """REQUIREMENTS_REVIEW with empty verdict dispatches next-review-requirements."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    state = {
+        "prepare_phase": PreparePhase.REQUIREMENTS_REVIEW.value,
+        "requirements_review": {"verdict": "", "reviewed_at": "", "findings_count": 0},
+    }
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+
+    assert "next-review-requirements" in result
+    assert slug in result
+
+
+@pytest.mark.asyncio
+async def test_prepare_plan_review_empty_verdict_dispatches_reviewer():
+    """PLAN_REVIEW with empty verdict dispatches next-review-plan."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    state = {
+        "prepare_phase": PreparePhase.PLAN_REVIEW.value,
+        "plan_review": {"verdict": "", "reviewed_at": "", "findings_count": 0},
+    }
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+
+    assert "next-review-plan" in result
+    assert slug in result

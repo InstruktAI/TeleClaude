@@ -54,8 +54,7 @@ def _default_cwd() -> str:
 async def todo_prepare(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
-    hitl: Annotated[bool, Body()] = True,
-    identity: CallerIdentity = Depends(CLEARANCE_TODOS_PREPARE),  # noqa: ARG001
+    _identity: CallerIdentity = Depends(CLEARANCE_TODOS_PREPARE),
 ) -> dict[str, str]:
     """Run the Phase A (prepare) state machine.
 
@@ -64,7 +63,7 @@ async def todo_prepare(  # pyright: ignore
     invoke the prepare workflow.
     """
     effective_cwd = cwd or _default_cwd()
-    result = await next_prepare(db, slug, effective_cwd, hitl)
+    result = await next_prepare(db, slug, effective_cwd)
     return {"result": result}
 
 

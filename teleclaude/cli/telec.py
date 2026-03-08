@@ -513,7 +513,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="[<slug>]",
                 flags=[
                     _H,
-                    Flag("--no-hitl", desc="Disable human-in-the-loop gate"),
+                    Flag("--invalidate-check", desc="Scan all active todos and invalidate stale preparations"),
+                    Flag("--changed-paths", desc="Comma-separated file paths for invalidation check"),
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
@@ -1098,7 +1099,7 @@ def _sample_flag_value(flag: Flag) -> str | None:
         "--third-party",
         "--validate-only",
         "--warn-only",
-        "--no-hitl",
+        "--invalidate-check",
     }:
         return None
 

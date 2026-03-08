@@ -734,7 +734,7 @@ def handle_sessions_escalate(args: list[str]) -> None:
 def handle_todo_prepare(args: list[str]) -> None:
     """Run the Phase A (prepare) state machine.
 
-    Usage: telec todo prepare [<slug>] [--no-hitl]
+    Usage: telec todo prepare [<slug>] [--invalidate-check [--changed-paths PATHS]]
 
     Checks preparation state for the given slug and returns instructions for
     the next action: draft artifacts (if not started), gate review (if draft
@@ -744,25 +744,38 @@ def handle_todo_prepare(args: list[str]) -> None:
     roadmap. Requires orchestrator clearance (not available to workers).
 
     Options:
-      <slug>       Work item slug (optional; auto-selects if omitted)
-      --no-hitl    Disable human-in-the-loop gate prompts
+      <slug>                Work item slug (optional; auto-selects if omitted)
+      --invalidate-check    Scan all active todos and invalidate stale preparations
+      --changed-paths PATHS Comma-separated file paths for invalidation check
 
     Examples:
       telec todo prepare
       telec todo prepare my-feature
+      telec todo prepare --invalidate-check --changed-paths src/foo.py,src/bar.py
     """
     if "--help" in args or "-h" in args:
         print(handle_todo_prepare.__doc__ or "")
         return
 
-    body: dict[str, object] = {"hitl": True, "cwd": os.getcwd()}  # guard: loose-dict - JSON request body
+    cwd = os.getcwd()
+
+    # Handle --invalidate-check as a pure local mechanical operation (no API call)
+    if "--invalidate-check" in args:
+        from teleclaude.core.next_machine.core import invalidate_stale_preparations  # noqa: PLC0415
+
+        changed_paths: list[str] = []
+        for idx, arg in enumerate(args):
+            if arg == "--changed-paths" and idx + 1 < len(args):
+                changed_paths = [p.strip() for p in args[idx + 1].split(",") if p.strip()]
+        result = invalidate_stale_preparations(cwd, changed_paths)
+        print_json(result)
+        return
+
+    body: dict[str, object] = {"cwd": cwd}  # guard: loose-dict - JSON request body
 
     i = 0
     while i < len(args):
-        if args[i] == "--no-hitl":
-            body["hitl"] = False
-            i += 1
-        elif not args[i].startswith("-"):
+        if not args[i].startswith("-"):
             body["slug"] = args[i]
             i += 1
         else:
