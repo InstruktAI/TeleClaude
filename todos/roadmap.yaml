@@ -1,6 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: history-search-upgrade
 - slug: mesh-trust-model
   after:
   - mesh-architecture
