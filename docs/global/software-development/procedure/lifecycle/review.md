@@ -180,6 +180,24 @@ For deliveries with user-facing changes (UI, CLI output, interactive behavior), 
 
 If manual verification is not possible, note the gap as a finding.
 
+#### Reviewer auto-remediation
+
+Default behavior is to act in place. If a finding is localized, high-confidence,
+and can be validated within the same review pass, the reviewer should fix it
+directly instead of handing it off.
+
+Auto-remediation is appropriate when all of the following are true:
+
+1. The fix does not change requirement intent or approved scope.
+2. The fix does not introduce a new architectural decision.
+3. The fix is localized (for example: tests, typing, docs/help text, plan/demo
+   consistency, straightforward bug fix in touched area).
+4. The reviewer can re-run the relevant checks and validate correctness.
+
+Do not auto-remediate when uncertainty is high, product decisions are unresolved,
+or changes require broad refactoring. Keep those findings unresolved and request
+changes.
+
 #### Bug fix review
 
 When `todos/{slug}/bug.md` exists, use it as the requirement source instead of `requirements.md`. Verify:
@@ -193,7 +211,19 @@ All other review lanes still apply.
 
 ### 6. Write and commit findings
 
-Write findings to `todos/{slug}/review-findings.md`. Commit review findings. Do not edit `state.yaml` in the reviewer session. Report summary and verdict to the caller.
+Write unresolved findings to `todos/{slug}/review-findings.md`.
+
+Verdict rules:
+
+- `APPROVE` only when unresolved Critical and unresolved Important findings are both zero.
+- `REQUEST CHANGES` when any unresolved Critical or Important finding remains.
+- Suggestion findings may remain unresolved under `APPROVE`.
+
+If all findings were remediated inline, record a short "Resolved During Review"
+section so the caller can trace what changed.
+
+Commit review findings. Do not edit `state.yaml` in the reviewer session. Report
+summary and verdict to the caller.
 
 ## Report format
 

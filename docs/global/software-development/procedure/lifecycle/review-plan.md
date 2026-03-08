@@ -94,7 +94,23 @@ Verify that `state.yaml.grounding.referenced_paths` lists all file paths
 from the plan. These paths enable automated staleness detection. If missing
 or incomplete, flag as Important.
 
-### 8. Write verdict
+### 8. Auto-remediate localized findings
+
+Default behavior is to act in place. If a finding is localized, high-confidence,
+and does not change intent, the reviewer should fix the plan directly in this
+same pass instead of handing it back.
+
+Localized means all of the following are true:
+
+- No requirement intent changes.
+- No new architectural decision is introduced.
+- Scope stays within the reviewed plan/demo artifacts and related grounding metadata.
+- The reviewer can fully validate the fix from current context.
+
+If these conditions do not hold, keep the finding unresolved and route via
+`needs_work`.
+
+### 9. Write verdict
 
 Update `todos/{slug}/state.yaml`:
 
@@ -105,11 +121,19 @@ plan_review:
   findings_count: <n>
 ```
 
-If findings exist, write them to `todos/{slug}/plan-review-findings.md`
-with severity levels (Critical, Important, Suggestion) following the same
-format as code review findings.
+Verdict rules:
 
-### 9. Commit and report
+- `approve` only when unresolved Critical and unresolved Important findings are both zero.
+- `needs_work` when any unresolved Critical or Important finding remains.
+- Suggestion findings may remain unresolved under `approve`.
+
+If unresolved findings exist, write them to `todos/{slug}/plan-review-findings.md`
+with severity levels (Critical, Important, Suggestion) following the same format
+as code review findings.
+
+If no unresolved findings remain, remove stale `plan-review-findings.md` if present.
+
+### 10. Commit and report
 
 Commit the verdict and any findings. Report:
 
@@ -128,7 +152,8 @@ Findings: {count}
 
 ## Recovery
 
-- If the plan has Critical findings, mark `needs_work`. The state machine will
-  dispatch the plan drafter again with the findings.
+- If unresolved Critical or Important findings remain after auto-remediation,
+  mark `needs_work`. The state machine will dispatch the plan drafter again
+  with the findings.
 - If requirements themselves are the problem (plan is correct but requirements
   are wrong), flag as blocker — requirements must be re-reviewed first.

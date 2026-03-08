@@ -78,7 +78,23 @@ Anything inferred from codebase or documentation rather than explicitly stated
 in `input.md` is marked `[inferred]`. If inferences are unmarked, the human
 cannot distinguish what they said from what the system assumed.
 
-### 3. Write verdict
+### 3. Auto-remediate localized findings
+
+Default behavior is to act in place. If a finding is localized, high-confidence,
+and does not alter human intent, the reviewer should fix `requirements.md`
+directly in this same pass instead of handing it back.
+
+Typical in-place fixes include:
+
+- Adding missing `[inferred]` markers.
+- Tightening vague verification wording.
+- Filling explicit review-awareness omissions (tests/docs/config mentions).
+
+Do not auto-remediate when the change would invent new intent, settle unresolved
+product decisions, or introduce an architectural choice that was not grounded.
+Leave those findings unresolved and route via `needs_work`.
+
+### 4. Write verdict
 
 Update `todos/{slug}/state.yaml`:
 
@@ -89,11 +105,20 @@ requirements_review:
   findings_count: <n>
 ```
 
-If findings exist, write them to `todos/{slug}/requirements-review-findings.md`
-with severity levels (Critical, Important, Suggestion) following the same format
-as code review findings.
+Verdict rules:
 
-### 4. Commit and report
+- `approve` only when unresolved Critical and unresolved Important findings are both zero.
+- `needs_work` when any unresolved Critical or Important finding remains.
+- Suggestion findings may remain unresolved under `approve`.
+
+If unresolved findings exist, write them to
+`todos/{slug}/requirements-review-findings.md` with severity levels
+(Critical, Important, Suggestion) following the same format as code review findings.
+
+If no unresolved findings remain, remove stale `requirements-review-findings.md`
+if present.
+
+### 5. Commit and report
 
 Commit the verdict and any findings. Report:
 
@@ -112,5 +137,7 @@ Findings: {count}
 
 ## Recovery
 
-- If requirements are missing critical context, mark `needs_work` with specific
-  gaps listed. Do not attempt to fill the gaps — that is the triangulation team's job.
+- If unresolved Critical or Important findings remain after auto-remediation,
+  mark `needs_work` with specific gaps listed.
+- If requirements are missing critical context or intent is ambiguous, do not
+  invent intent; mark `needs_work`.
