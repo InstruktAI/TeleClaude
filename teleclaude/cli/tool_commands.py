@@ -994,6 +994,40 @@ def handle_todo_mark_phase(args: list[str]) -> None:
     print_json(data)
 
 
+def handle_todo_mark_finalize_ready(args: list[str]) -> None:
+    """Record durable finalize readiness in worktree state.yaml.
+
+    Usage: telec todo mark-finalize-ready <slug> [--worker-session-id <session_id>]
+
+    Called by the orchestrator after a finalizer worker reports FINALIZE_READY.
+    Verifies the finalized branch is pushed to origin/<slug>, then records the
+    durable handoff marker consumed by the next slug-specific `telec todo work`.
+    """
+    if "--help" in args or "-h" in args:
+        print(handle_todo_mark_finalize_ready.__doc__ or "")
+        return
+
+    body: dict[str, object] = {"cwd": os.getcwd()}  # guard: loose-dict - JSON request body
+
+    i = 0
+    while i < len(args):
+        if args[i] == "--worker-session-id" and i + 1 < len(args):
+            body["worker_session_id"] = args[i + 1]
+            i += 2
+        elif not args[i].startswith("-"):
+            body["slug"] = args[i]
+            i += 1
+        else:
+            i += 1
+
+    if not body.get("slug"):
+        print("Error: slug is required", file=sys.stderr)
+        raise SystemExit(1)
+
+    data = tool_api_call("POST", "/todos/mark-finalize-ready", json_body=body)
+    print_json(data)
+
+
 def handle_todo_set_deps(args: list[str]) -> None:
     """Set dependencies for a work item in the roadmap.
 

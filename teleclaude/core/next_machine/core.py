@@ -9,6 +9,7 @@ for the orchestrator AI to execute literally.
 """
 
 import asyncio
+import copy
 import hashlib
 import json
 import os
@@ -36,7 +37,17 @@ from teleclaude.core.integration_bridge import emit_branch_pushed, emit_deployme
 
 logger = get_logger(__name__)
 
-StateValue = str | bool | int | list[str] | dict[str, bool | list[str]]
+StateValue = str | bool | int | None | list[str] | dict[str, object]
+
+
+class FinalizeState(TypedDict, total=False):
+    status: str
+    branch: str
+    sha: str
+    ready_at: str
+    worker_session_id: str
+    handed_off_at: str
+    handoff_session_id: str
 
 
 class PhaseName(str, Enum):
@@ -236,8 +247,8 @@ WHEN WORKER COMPLETES:
    Ignore notifications from any other session.
 3. Confirm worker reported exactly `FINALIZE_READY: {args}` in session `<session_id>` transcript.
    If missing: send worker feedback to report FINALIZE_READY and stop (do NOT apply).
-4. telec sessions end <session_id>
-5. Report: "Candidate {args} handed off to the integration event chain. The integrator will spawn automatically when the projection reports READY."
+4. telec todo mark-finalize-ready {args} --worker-session-id <session_id>
+5. telec sessions end <session_id>
 6. Call {next_call}
 7. Non-recoverable errors (FATAL/BLOCKER reported by worker):
    - Do NOT end the session — keep it alive as a signal for human investigation
@@ -377,6 +388,15 @@ def format_uncommitted_changes(slug: str) -> str:
     return f"""UNCOMMITTED CHANGES in {WORKTREE_DIR}/{slug}
 
 NEXT: Resolve these changes according to the commit policy, then call telec todo work {slug} to continue."""
+
+
+def format_finalize_handoff_complete(slug: str, next_call: str) -> str:
+    """Format the slug-scoped handoff step after finalize readiness is recorded."""
+    return f"""FINALIZE HANDOFF COMPLETE: {slug}
+
+INSTRUCTIONS FOR ORCHESTRATOR:
+1. Report: "Candidate {slug} handed off to the integration event chain. The integrator will spawn automatically when the projection reports READY."
+2. Call {next_call}"""
 
 
 def format_stash_debt(slug: str, count: int) -> str:
@@ -789,6 +809,7 @@ DEFAULT_STATE: dict[str, StateValue] = {
     PhaseName.BUILD.value: PhaseStatus.PENDING.value,
     PhaseName.REVIEW.value: PhaseStatus.PENDING.value,
     "deferrals_processed": False,
+    "finalize": {"status": "pending"},
     "breakdown": {"assessed": False, "todos": []},
     "review_round": 0,
     "max_review_rounds": DEFAULT_MAX_REVIEW_ROUNDS,
@@ -817,12 +838,14 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
             state_path = legacy_path
 
     if not state_path.exists():
-        return DEFAULT_STATE.copy()
+        return copy.deepcopy(DEFAULT_STATE)
 
     content = read_text_sync(state_path)
     state: dict[str, StateValue] = yaml.safe_load(content)
     # Merge with defaults for any missing keys
-    merged = {**DEFAULT_STATE, **state}
+    merged = copy.deepcopy(DEFAULT_STATE)
+    merged.update(state)
+    merged["finalize"] = _normalize_finalize_state(state.get("finalize"))
 
     # Migration: derive phase from existing fields when missing from persisted state
     if "phase" not in state:
@@ -836,6 +859,26 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
         merged["phase"] = ItemPhase.PENDING.value
 
     return merged
+
+
+def _normalize_finalize_state(raw: object) -> FinalizeState:
+    finalize: FinalizeState = {"status": "pending"}
+    if not isinstance(raw, dict):
+        return finalize
+
+    status = raw.get("status")
+    if isinstance(status, str) and status in {"pending", "ready", "handed_off"}:
+        finalize["status"] = status
+
+    for key in ("branch", "sha", "ready_at", "worker_session_id", "handed_off_at", "handoff_session_id"):
+        value = raw.get(key)
+        if isinstance(value, str) and value.strip():
+            finalize[key] = value.strip()
+    return finalize
+
+
+def _get_finalize_state(state: dict[str, StateValue]) -> FinalizeState:
+    return _normalize_finalize_state(state.get("finalize"))
 
 
 def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
@@ -887,6 +930,77 @@ def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, StateV
     return state
 
 
+def mark_finalize_ready(cwd: str, slug: str, worker_session_id: str = "") -> dict[str, StateValue]:
+    """Record durable finalize readiness after finalizer prepare succeeds.
+
+    The orchestrator owns this write after verifying the worker reported
+    FINALIZE_READY. The record becomes the single source of truth consumed by
+    the subsequent slug-specific `telec todo work {slug}` handoff step.
+    """
+    worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
+    if not Path(worktree_cwd).exists():
+        raise ValueError(f"worktree not found at {worktree_cwd}")
+    if has_uncommitted_changes(cwd, slug):
+        raise ValueError(f"worktree {WORKTREE_DIR}/{slug} has uncommitted changes")
+
+    worktree_head = _get_head_commit(worktree_cwd)
+    branch_head = _get_ref_commit(cwd, slug)
+    if not worktree_head or not branch_head:
+        raise ValueError(f"unable to resolve finalized branch head for {slug}")
+    if worktree_head != branch_head:
+        raise ValueError(
+            f"branch {slug} does not match worktree HEAD after finalize prepare "
+            f"(branch={branch_head or '<missing>'}, worktree={worktree_head or '<missing>'})"
+        )
+
+    remote_head = _get_remote_branch_head(cwd, slug)
+    if not remote_head:
+        raise ValueError(f"origin/{slug} is missing — push the finalized branch before marking ready")
+    if remote_head != branch_head:
+        raise ValueError(
+            f"origin/{slug} is at {remote_head}, expected finalized head {branch_head}; "
+            "push the latest branch head before marking ready"
+        )
+
+    state = read_phase_state(worktree_cwd, slug)
+    finalize = _get_finalize_state(state)
+    if finalize.get("status") == "handed_off" and finalize.get("sha") == branch_head:
+        return state
+    if finalize.get("status") == "ready" and finalize.get("sha") == branch_head:
+        return state
+
+    state["finalize"] = {
+        "status": "ready",
+        "branch": slug,
+        "sha": branch_head,
+        "ready_at": datetime.now(timezone.utc).isoformat(),
+        "worker_session_id": worker_session_id.strip(),
+    }
+    write_phase_state(worktree_cwd, slug, state)
+    return state
+
+
+def _mark_finalize_handed_off(
+    worktree_cwd: str,
+    slug: str,
+    *,
+    handoff_session_id: str,
+) -> dict[str, StateValue]:
+    state = read_phase_state(worktree_cwd, slug)
+    finalize = _get_finalize_state(state)
+    if finalize.get("status") != "ready":
+        raise ValueError(f"finalize state for {slug} is not ready")
+
+    state["finalize"] = {
+        **finalize,
+        "status": "handed_off",
+        "handoff_session_id": handoff_session_id,
+        "handed_off_at": datetime.now(timezone.utc).isoformat(),
+    }
+    write_phase_state(worktree_cwd, slug, state)
+    return state
+
+
 def _extract_finding_ids(cwd: str, slug: str) -> list[str]:
     """Extract stable finding IDs (e.g. R1-F1) from review-findings.md."""
     review_path = Path(cwd) / "todos" / slug / "review-findings.md"
@@ -912,6 +1026,35 @@ def _get_head_commit(cwd: str) -> str:
     except (subprocess.CalledProcessError, OSError):
         return ""
     return result.stdout.strip()
+
+
+def _get_ref_commit(cwd: str, ref: str) -> str:
+    """Return commit hash for a git ref in cwd, or empty string when unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", ref],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        return ""
+    return result.stdout.strip()
+
+
+def _get_remote_branch_head(cwd: str, branch: str) -> str:
+    """Return origin/<branch> HEAD commit, or empty string when unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "ls-remote", "origin", f"refs/heads/{branch}"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        return ""
+    parts = result.stdout.strip().split()
+    return parts[0] if parts else ""
 
 
 def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> str:
@@ -2905,6 +3048,65 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 "review_approval_stale_baseline",
             )
 
+    finalize_state = _get_finalize_state(state)
+
+    # Finalize handoff is a slug-scoped follow-up step after FINALIZE_READY.
+    # Once ready is recorded, the next `telec todo work {slug}` must consume
+    # that durable state and emit integration events exactly once before the
+    # queue is allowed to advance.
+    if review_status == PhaseStatus.APPROVED.value and finalize_state.get("status") == "handed_off":
+        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "skip", "finalize_already_handed_off")
+        return format_error(
+            "FINALIZE_ALREADY_HANDED_OFF",
+            f"{resolved_slug} has already been handed off to integration. Continue the queue without a slug.",
+            next_call="telec todo work",
+        )
+
+    if review_status == PhaseStatus.APPROVED.value and finalize_state.get("status") == "ready":
+        branch = finalize_state.get("branch", "").strip()
+        sha = finalize_state.get("sha", "").strip()
+        worker_session_id = finalize_state.get("worker_session_id", "").strip()
+        if not branch or not sha:
+            _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "finalize_state_invalid")
+            return format_error(
+                "FINALIZE_STATE_INVALID",
+                f"{resolved_slug} finalize state is missing branch or sha; re-run finalize prepare.",
+                next_call=f"telec todo work {resolved_slug}",
+            )
+
+        session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+        handoff_started = perf_counter()
+        try:
+            await emit_branch_pushed(
+                branch=branch,
+                sha=sha,
+                remote="origin",
+                pusher=f"finalizer/{worker_session_id}" if worker_session_id else "",
+            )
+            await emit_deployment_started(
+                slug=resolved_slug,
+                branch=branch,
+                sha=sha,
+                worker_session_id=worker_session_id,
+                orchestrator_session_id=session_id,
+                ready_at=finalize_state.get("ready_at"),
+            )
+            await asyncio.to_thread(
+                _mark_finalize_handed_off,
+                worktree_cwd,
+                resolved_slug,
+                handoff_session_id=session_id,
+            )
+        except Exception as exc:
+            _log_next_work_phase(phase_slug, "dispatch_decision", handoff_started, "error", "finalize_handoff_failed")
+            return format_error(
+                "FINALIZE_HANDOFF_FAILED",
+                f"Failed to emit finalize handoff for {resolved_slug}: {type(exc).__name__}: {exc}",
+                next_call=f"telec todo work {resolved_slug}",
+            )
+        _log_next_work_phase(phase_slug, "dispatch_decision", handoff_started, "run", "finalize_handoff_emitted")
+        return format_finalize_handoff_complete(resolved_slug, "telec todo work")
+
     # If review requested changes, continue fix loop regardless of build-state drift.
     if review_status == PhaseStatus.CHANGES_REQUESTED.value:
         try:
@@ -2937,13 +3139,9 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         if build_status != PhaseStatus.COMPLETE.value:
             # Merge origin/main into the worktree before build dispatch so the
             # builder starts on a current branch and inherits any test fixes from main.
-            merge_main_result = await asyncio.to_thread(
-                _merge_origin_main_into_worktree, worktree_cwd, resolved_slug
-            )
+            merge_main_result = await asyncio.to_thread(_merge_origin_main_into_worktree, worktree_cwd, resolved_slug)
             if merge_main_result:
-                _log_next_work_phase(
-                    phase_slug, "merge_main", dispatch_started, "error", "merge_main_failed"
-                )
+                _log_next_work_phase(phase_slug, "merge_main", dispatch_started, "error", "merge_main_failed")
                 return format_error("MERGE_MAIN_FAILED", merge_main_result)
 
             try:
@@ -3075,7 +3273,9 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
         return format_error("NO_AGENTS", str(exc))
 
-    # Emit review.approved event (fire-and-forget — don't block finalize)
+    # Emit review.approved event once finalize dispatch begins. The later
+    # slug-specific handoff step emits branch/deployment events after the
+    # finalizer has actually reported FINALIZE_READY.
     review_round_val = state.get("review_round")
     review_round = review_round_val if isinstance(review_round_val, int) else 1
     session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
@@ -3088,26 +3288,6 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     except Exception:
         logger.warning("Failed to emit review.approved event for %s", resolved_slug, exc_info=True)
 
-    # Emit branch.pushed and deployment.started events to seed the integration event chain.
-    # These are emitted at dispatch time so the projection can track candidates.
-    # The integrator spawns automatically when the projection reports all 3 preconditions met.
-    worktree_sha = await asyncio.to_thread(_get_head_commit, worktree_cwd)
-    if worktree_sha:
-        try:
-            await emit_branch_pushed(branch=resolved_slug, sha=worktree_sha, remote="origin")
-        except Exception:
-            logger.warning("Failed to emit branch.pushed event for %s", resolved_slug, exc_info=True)
-        try:
-            await emit_deployment_started(
-                slug=resolved_slug,
-                branch=resolved_slug,
-                sha=worktree_sha,
-                worker_session_id=session_id,
-                orchestrator_session_id=session_id,
-            )
-        except Exception:
-            logger.warning("Failed to emit deployment.started event for %s", resolved_slug, exc_info=True)
-
     # Bugs skip delivered.yaml bookkeeping and are removed from todos entirely
     # Check main repo's todos/ (bug.md lives there, not synced to worktree)
     is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
@@ -3119,6 +3299,6 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         project=cwd,
         guidance=guidance,
         subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-        next_call="telec todo work",
+        next_call=f"telec todo work {resolved_slug}",
         note=note,
     )

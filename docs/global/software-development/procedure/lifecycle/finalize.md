@@ -31,6 +31,7 @@ Advance `origin/main` only through canonical-root orchestrator apply after a wor
    ```bash
    git fetch origin main
    git merge origin/main --no-edit
+   git push origin HEAD:{slug}
    ```
 
 3. Resolve conflicts in the worktree where code context is available.
@@ -40,30 +41,25 @@ Advance `origin/main` only through canonical-root orchestrator apply after a wor
    FINALIZE_READY: {slug}
    ```
 
-5. Stop. Do **not** merge into canonical `main`, push, or modify delivery bookkeeping.
+5. Stop. Do **not** merge into canonical `main`, push `main`, or modify delivery bookkeeping.
+   The orchestrator records durable finalize-ready state after verifying the report.
 
-### Stage B — Orchestrator: finalize-apply (canonical root)
+### Stage B — Orchestrator: finalize handoff
 
 1. Verify worker output contains `FINALIZE_READY: {slug}`.
-2. From canonical repository root on branch `main`, run apply:
+2. Record durable finalize-ready state for the slug.
+3. Re-run the work state machine for the same slug:
 
    ```bash
-   git fetch origin main
-   git switch main
-   git pull --ff-only origin main
-   git merge {slug} --no-edit
+   telec todo work {slug}
    ```
 
-3. Apply delivery bookkeeping:
-   - non-bug todos: append to `todos/delivered.yaml` and remove from `todos/roadmap.yaml`
-   - bug todos: skip delivery bookkeeping
-4. Push canonical `main`:
+4. The slug-specific rerun emits the integration handoff facts from durable state.
+5. Continue the orchestration loop without a slug:
 
    ```bash
-   git push origin main
+   telec todo work
    ```
-
-5. Continue orchestrator-owned snapshot/cleanup workflow.
 
 Worker report format:
 
@@ -77,9 +73,10 @@ Apply ownership: orchestrator
 ## Outputs
 
 - Worktree branch rebased/merged with latest `origin/main`.
-- Orchestrator receives `FINALIZE_READY` and can safely apply from canonical root.
+- Worktree branch pushed to `origin/{slug}`.
+- Orchestrator receives `FINALIZE_READY`, records durable finalize-ready state, and then triggers the integration handoff via `telec todo work {slug}`.
 
 ## Recovery
 
 - If conflicts cannot be resolved in worker prepare, report blocker and stop.
-- If apply fails (dirty canonical main, merge conflict, push rejection), resolve in orchestrator apply and retry.
+- If the branch is not pushed or the finalize-ready marker cannot be recorded, fix the branch publication issue and rerun the slug-scoped handoff step.

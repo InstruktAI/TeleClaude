@@ -33,6 +33,7 @@ from teleclaude.core.next_machine.core import (
     has_uncommitted_changes,
     load_roadmap,
     load_roadmap_deps,
+    mark_finalize_ready,
     mark_phase,
     save_roadmap,
     sync_main_planning_to_all_worktrees,
@@ -166,6 +167,35 @@ async def todo_mark_phase(  # pyright: ignore
 
     updated_state = mark_phase(worktree_cwd, slug, phase, status)
     return {"result": f"OK: {slug} state updated - {phase}: {status}", "state": str(updated_state)}
+
+
+@router.post("/mark-finalize-ready")
+async def todo_mark_finalize_ready(  # pyright: ignore
+    slug: Annotated[str, Body()],
+    cwd: Annotated[str | None, Body()] = None,
+    worker_session_id: Annotated[str, Body()] = "",
+    identity: CallerIdentity = Depends(CLEARANCE_TODOS_MARK_PHASE),  # noqa: ARG001
+) -> dict[str, str]:
+    """Record durable finalize readiness in worktree state.yaml.
+
+    Called by the orchestrator after verifying a finalizer worker emitted
+    FINALIZE_READY. This locks in the post-merge, pushed branch SHA so the
+    next slug-specific `telec todo work {slug}` call can emit integration
+    handoff events exactly once.
+    """
+    if not cwd:
+        raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
+
+    worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
+    if not Path(worktree_cwd).exists():
+        raise HTTPException(status_code=404, detail=f"worktree not found at {worktree_cwd}")
+
+    try:
+        updated_state = mark_finalize_ready(cwd, slug, worker_session_id=worker_session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return {"result": f"OK: {slug} finalize readiness recorded", "state": str(updated_state)}
 
 
 @router.post("/set-deps")

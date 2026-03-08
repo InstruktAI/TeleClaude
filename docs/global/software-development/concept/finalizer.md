@@ -1,5 +1,5 @@
 ---
-description: 'Post-review delivery role. Merge, clean up, and log delivery after approval.'
+description: 'Post-review prepare role. Merge origin/main into the worktree branch, push it, and report FINALIZE_READY.'
 id: 'software-development/concept/finalizer'
 scope: 'domain'
 type: 'concept'
@@ -13,14 +13,14 @@ type: 'concept'
 
 ## What
 
-Post-review delivery role. Run finalize prepare in the worktree, then orchestrator apply from canonical main.
+Post-review prepare role. Run finalize prepare in the worktree, publish the candidate branch, and hand off durable readiness to the orchestrator.
 
 1. **Verify approval** - Only finalize after explicit APPROVE verdict.
-2. **Finalize prepare** - Integrate `origin/main` in the worktree and report `FINALIZE_READY`.
-3. **Finalize apply (orchestrator)** - Merge/push from canonical root only.
-4. **Log delivery** - Update `todos/delivered.yaml` and `todos/roadmap.yaml`.
-5. **Cleanup** - Remove worktrees and delivery artifacts after apply.
+2. **Finalize prepare** - Integrate `origin/main` in the worktree branch.
+3. **Publish candidate** - Push the finalized feature/worktree branch to `origin/<slug>`.
+4. **Report readiness** - Emit `FINALIZE_READY`; the orchestrator records durable finalize state.
+5. **Handoff only** - Integration, delivery bookkeeping, and cleanup are handled downstream by the integration event chain.
 
 ## Why
 
-Finalizes only approved work, keeps local main safe, and preserves existing changes while completing delivery.
+This keeps the finalizer narrowly scoped to branch preparation, leaves canonical `main` ownership with the integrator, and makes the handoff durable before cleanup begins.

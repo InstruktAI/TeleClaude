@@ -26,6 +26,7 @@ from teleclaude.core.next_machine import (
     detect_circular_dependency,
     is_ready_for_work,
     load_roadmap_deps,
+    mark_finalize_ready,
     mark_phase,
     next_work,
     read_phase_state,
@@ -744,7 +745,7 @@ async def test_next_work_returns_structured_error_when_worktree_setup_throws():
 
 @pytest.mark.asyncio
 async def test_next_work_finalize_next_call_without_slug():
-    """Finalize dispatch should call next_work without slug."""
+    """Finalize dispatch should rerun the same slug so handoff is consumed before the queue advances."""
     db = MagicMock(spec=Db)
     slug = "final-item"
 
@@ -774,10 +775,8 @@ async def test_next_work_finalize_next_call_without_slug():
             result = await next_work(db, slug=slug, cwd=tmpdir)
 
     assert '--command "/next-finalize"' in result
-    assert "Call telec todo work" in result
-    assert "Call telec todo work(slug=" not in result
+    assert f"Call telec todo work {slug}" in result
     assert "FINALIZE_READY: final-item" in result
-    assert "integration event chain" in result
     assert "telec todo integrate" not in result
 
 
@@ -954,8 +953,8 @@ def test_resolve_slug_ready_only_skips_in_progress():
 
 
 @pytest.mark.asyncio
-async def test_finalize_dispatch_emits_all_three_integration_events():
-    """Finalize dispatch must emit review_approved, branch_pushed, and deployment_started."""
+async def test_finalize_dispatch_emits_only_review_approved():
+    """Finalize dispatch records review approval but defers handoff events until FINALIZE_READY is consumed."""
     db = MagicMock(spec=Db)
     slug = "emit-all-events-item"
 
@@ -982,10 +981,6 @@ async def test_finalize_dispatch_emits_all_three_integration_events():
                 new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
             ),
             patch(
-                "teleclaude.core.next_machine.core._get_head_commit",
-                return_value="abc1234def567890",
-            ),
-            patch(
                 "teleclaude.core.next_machine.core.emit_review_approved",
                 new_callable=AsyncMock,
             ) as mock_review_approved,
@@ -1008,24 +1003,16 @@ async def test_finalize_dispatch_emits_all_three_integration_events():
     assert call_kwargs.kwargs["reviewer_session_id"]  # must be non-empty
     assert isinstance(call_kwargs.kwargs["review_round"], int)
 
-    mock_branch_pushed.assert_called_once()
-    bp_kwargs = mock_branch_pushed.call_args.kwargs
-    assert bp_kwargs["branch"] == slug
-    assert bp_kwargs["sha"] == "abc1234def567890"
-    assert bp_kwargs["remote"] == "origin"
-
-    mock_deployment_started.assert_called_once()
-    ds_kwargs = mock_deployment_started.call_args.kwargs
-    assert ds_kwargs["slug"] == slug
-    assert ds_kwargs["worker_session_id"]  # must be non-empty
-    assert ds_kwargs["orchestrator_session_id"]  # must be non-empty
+    mock_branch_pushed.assert_not_called()
+    mock_deployment_started.assert_not_called()
+    assert f"telec todo work {slug}" in result
 
 
 @pytest.mark.asyncio
-async def test_finalize_dispatch_skips_branch_events_when_no_sha():
-    """branch.pushed and deployment.started are not emitted when HEAD commit is unavailable."""
+async def test_finalize_ready_slug_rerun_emits_handoff_events():
+    """A slug-specific rerun after FINALIZE_READY consumes state and emits handoff events exactly once."""
     db = MagicMock(spec=Db)
-    slug = "no-sha-item"
+    slug = "handoff-item"
 
     with tempfile.TemporaryDirectory() as tmpdir:
         _write_roadmap_yaml(tmpdir, [slug])
@@ -1038,21 +1025,17 @@ async def test_finalize_dispatch_skips_branch_events_when_no_sha():
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
         state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "approved"}')
+        (state_dir / "state.yaml").write_text(
+            '{"build": "complete", "review": "approved", "finalize": '
+            '{"status": "ready", "branch": "handoff-item", "sha": "abc1234def567890", '
+            '"ready_at": "2026-03-08T08:00:00+00:00", "worker_session_id": "worker-123"}}'
+        )
 
         with (
             patch("teleclaude.core.next_machine.core.Repo"),
             patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
             patch("teleclaude.core.next_machine.core._prepare_worktree"),
             patch("teleclaude.core.next_machine.core.run_build_gates", return_value=(True, "mocked")),
-            patch(
-                "teleclaude.core.next_machine.core.compose_agent_guidance",
-                new=AsyncMock(return_value="AGENT SELECTION GUIDANCE:\n- CLAUDE: ..."),
-            ),
-            patch(
-                "teleclaude.core.next_machine.core._get_head_commit",
-                return_value=None,
-            ),
             patch(
                 "teleclaude.core.next_machine.core.emit_review_approved",
                 new_callable=AsyncMock,
@@ -1068,10 +1051,41 @@ async def test_finalize_dispatch_skips_branch_events_when_no_sha():
         ):
             result = await next_work(db, slug=slug, cwd=tmpdir)
 
-    assert '--command "/next-finalize"' in result
-    mock_review_approved.assert_called_once()
-    mock_branch_pushed.assert_not_called()
-    mock_deployment_started.assert_not_called()
+        assert result.startswith(f"FINALIZE HANDOFF COMPLETE: {slug}")
+        assert "Call telec todo work" in result
+        mock_review_approved.assert_not_called()
+        mock_branch_pushed.assert_called_once()
+        mock_deployment_started.assert_called_once()
+        ds_kwargs = mock_deployment_started.call_args.kwargs
+        assert ds_kwargs["slug"] == slug
+        assert ds_kwargs["worker_session_id"] == "worker-123"
+        updated = yaml.safe_load((state_dir / "state.yaml").read_text())
+        assert updated["finalize"]["status"] == "handed_off"
+
+
+def test_mark_finalize_ready_requires_pushed_branch_and_records_state():
+    """Finalize readiness is only durable once the finalized branch head is published to origin."""
+    slug = "ready-item"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.yaml").write_text('{"build": "complete", "review": "approved"}')
+
+        with (
+            patch("teleclaude.core.next_machine.core.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.core._get_head_commit", return_value="abc123"),
+            patch("teleclaude.core.next_machine.core._get_ref_commit", return_value="abc123"),
+            patch("teleclaude.core.next_machine.core._get_remote_branch_head", return_value="abc123"),
+        ):
+            state = mark_finalize_ready(tmpdir, slug, worker_session_id="worker-42")
+
+    finalize = state["finalize"]
+    assert isinstance(finalize, dict)
+    assert finalize["status"] == "ready"
+    assert finalize["branch"] == slug
+    assert finalize["sha"] == "abc123"
+    assert finalize["worker_session_id"] == "worker-42"
 
 
 # =============================================================================

@@ -25,6 +25,7 @@ Prepare a reviewed branch for orchestrator-owned finalize apply.
 ## Outputs
 
 - Branch rebased/merged with latest `origin/main` in the worktree
+- Feature/worktree branch pushed to `origin/$ARGUMENTS`
 - Report format:
 
   ```
@@ -40,6 +41,9 @@ Prepare a reviewed branch for orchestrator-owned finalize apply.
 - Run finalize prepare inside this worktree only:
   - `git fetch origin main`
   - `git merge origin/main --no-edit`
+- Publish the finalized branch head:
+  - `git push origin HEAD:$ARGUMENTS`
 - Resolve merge conflicts here in the worktree where you have code context. Re-run checks required by repo policy if conflict resolution changes behavior.
-- Do NOT run canonical main merge, push, or delivery bookkeeping from this worker session.
+- Do NOT run canonical main merge, push `main`, or delivery bookkeeping from this worker session.
+- Do NOT edit `state.yaml` for the finalize handoff. The orchestrator records durable finalize readiness after verifying your report.
 - Stop after reporting `FINALIZE_READY: {slug}`.

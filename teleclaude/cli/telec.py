@@ -32,6 +32,7 @@ from teleclaude.cli.tool_commands import (  # noqa: E402
     handle_projects,
     handle_sessions,
     handle_todo_integrate,
+    handle_todo_mark_finalize_ready,
     handle_todo_mark_phase,
     handle_todo_prepare,
     handle_todo_set_deps,
@@ -535,6 +536,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _H,
                     Flag("--phase", desc="Phase: build or review"),
                     Flag("--status", desc="Status: pending, started, complete, approved, changes_requested"),
+                ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
+            "mark-finalize-ready": CommandDef(
+                desc="Record finalize readiness in worktree state.yaml",
+                args="<slug>",
+                flags=[
+                    _H,
+                    Flag("--worker-session-id", desc="Finalizer worker session that reported FINALIZE_READY"),
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
@@ -2022,6 +2032,8 @@ def _handle_todo(args: list[str]) -> None:
         handle_todo_integrate(args[1:])
     elif subcommand == "mark-phase":
         handle_todo_mark_phase(args[1:])
+    elif subcommand == "mark-finalize-ready":
+        handle_todo_mark_finalize_ready(args[1:])
     elif subcommand == "set-deps":
         handle_todo_set_deps(args[1:])
     elif subcommand == "verify-artifacts":
