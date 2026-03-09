@@ -38,6 +38,7 @@ async def test_next_prepare_input_md_unassessed_breakdown_dispatches_discovery()
         patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
         patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
         patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
+        patch("teleclaude.core.next_machine.core.check_file_has_content", return_value=False),
         patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
@@ -113,6 +114,7 @@ async def test_next_prepare_assessed_breakdown_empty_todos_still_dispatches_disc
         patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
         patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
         patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
+        patch("teleclaude.core.next_machine.core.check_file_has_content", return_value=False),
         patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
@@ -132,7 +134,7 @@ async def test_next_prepare_input_md_unassessed_breakdown_dispatches_discovery_a
     db.get_agent_availability.return_value = {"available": True}
 
     state = {
-        "prepare_phase": PreparePhase.DISCOVERY.value,
+        "prepare_phase": PreparePhase.INPUT_ASSESSMENT.value,
         "breakdown": {"assessed": False, "todos": []},
     }
 

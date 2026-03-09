@@ -108,10 +108,10 @@ async def test_next_work_dependency_blocking():
             d.mkdir(parents=True, exist_ok=True)
             (d / "state.yaml").write_text(state)
 
-        # Create required files for independent-feature
+        # Create required files for independent-feature (content must be >50 chars)
         item_dir = Path(tmpdir) / "todos" / "independent-feature"
-        (item_dir / "requirements.md").write_text("# Requirements\n")
-        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "requirements.md").write_text("# Requirements\n\n## Goal\n\nImplement the independent feature with full integration.\n")
+        (item_dir / "implementation-plan.md").write_text("# Implementation Plan\n\n## Overview\n\nRefactor the module to support the new feature.\n")
         (item_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 8}}')
 
         # Step 1: next_work should select independent-feature (no dependencies)
@@ -132,10 +132,10 @@ async def test_next_work_dependency_blocking():
         # Step 3: Complete foundation item via review approval
         mark_phase(tmpdir, "foundation", PhaseName.REVIEW.value, PhaseStatus.APPROVED.value)
 
-        # Step 4: Create required files for blocked-feature
+        # Step 4: Create required files for blocked-feature (content must be >50 chars)
         blocked_dir = Path(tmpdir) / "todos" / "blocked-feature"
-        (blocked_dir / "requirements.md").write_text("# Requirements\n")
-        (blocked_dir / "implementation-plan.md").write_text("# Plan\n")
+        (blocked_dir / "requirements.md").write_text("# Requirements\n\n## Goal\n\nImplement the blocked feature with full integration.\n")
+        (blocked_dir / "implementation-plan.md").write_text("# Implementation Plan\n\n## Overview\n\nRefactor the module to support the blocked feature.\n")
         (blocked_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 8}}')
 
         # Step 5: Now next_work can select blocked-feature (dependency satisfied)
@@ -160,11 +160,11 @@ async def test_removed_dependency_satisfaction():
         deps = {"new-feature": ["former-foundation"]}
         _write_roadmap_yaml(tmpdir, ["new-feature"], deps)
 
-        # Create required files for new-feature
+        # Create required files for new-feature (content must be >50 chars)
         item_dir = Path(tmpdir) / "todos" / "new-feature"
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Requirements\n")
-        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "requirements.md").write_text("# Requirements\n\n## Goal\n\nImplement the new feature with complete coverage.\n")
+        (item_dir / "implementation-plan.md").write_text("# Implementation Plan\n\n## Overview\n\nRefactor the module to support the new feature.\n")
         (item_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 8}}')
 
         # Should be able to work on new-feature (missing dependency is satisfied)

@@ -105,7 +105,6 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         """Wait for pre-buffer, then open the sounddevice stream."""
         pal = is_pal(header)
         frame_rate = 50.0 if pal else 60.0
-        frame_duration = 1.0 / frame_rate
         prebuffer_frames = int(_PREBUFFER_SECONDS * frame_rate)
 
         # Block until enough frames are buffered or stop is signalled
@@ -279,6 +278,8 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
 
         if self._thread is not None and self._thread is not threading.current_thread():
             self._thread.join(timeout=2.0)
+            if self._thread.is_alive():
+                logger.warning("Emulation thread did not exit within 2s — orphaned")
             self._thread = None
 
         # Drain queue
@@ -310,8 +311,8 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             and self._stream_blocksize is not None
         )
         if should_reopen and not self._open_stream():
-            with self._pause_lock:
-                self._paused = True
+            logger.warning("Failed to reopen audio stream on resume — stopping track")
+            self.stop()
             return
         self._resume_event.set()
 

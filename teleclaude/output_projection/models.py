@@ -59,7 +59,9 @@ class ProjectedBlock:
     """
 
     block_type: str  # "text", "thinking", "tool_use", "tool_result", "compaction"
-    block: dict[str, object]  # original block data (for SSE/markdown serialization)
+    block: dict[
+        str, object
+    ]  # original block data (for SSE/markdown serialization)  # guard: loose-dict - SSE block payload is schema-free
     role: str  # "assistant", "user", "system"
     timestamp: Optional[str]  # ISO 8601 entry timestamp
     entry_index: int  # position in source entry list

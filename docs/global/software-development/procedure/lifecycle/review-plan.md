@@ -44,7 +44,20 @@ task in the plan. Every task must trace back to a requirement. Findings:
 - Orphan task (no requirement) → Important (gold-plating risk).
 - Task contradicts requirement → Critical.
 
-### 3. Rationale presence
+### 3. Scope & size
+
+Validate DOR Gate 2 (Scope & size). The plan must fit one builder session.
+Apply the splitting heuristics from the Definition of Ready policy against
+the plan's actual task list, not just the requirements prose.
+
+- Plan spans multiple independently shippable workstreams → Critical.
+- Plan requires multiple phases that could be delivered separately without
+  creating a half-working codebase → Critical.
+
+This is not auto-remediable — scope splits require the drafter, not the
+reviewer. If scope fails, mark `needs_work`.
+
+### 4. Rationale presence
 
 Every task must explain *why* this approach was chosen. The rationale prevents
 the builder from taking shortcuts. Findings:
@@ -52,7 +65,7 @@ the builder from taking shortcuts. Findings:
 - Task with no rationale → Important.
 - Rationale that contradicts codebase patterns → Critical.
 
-### 4. Verification completeness
+### 5. Verification completeness
 
 Every task must have a verification step: a test to write, behavior to observe,
 or check to run. The builder needs to know when each task is done. Findings:
@@ -60,7 +73,7 @@ or check to run. The builder needs to know when each task is done. Findings:
 - Task with no verification → Important.
 - Verification that doesn't actually prove the task is done → Important.
 
-### 5. Review lane anticipation
+### 6. Review lane anticipation
 
 Check whether the plan would survive each code review lane without findings:
 
@@ -76,7 +89,7 @@ Check whether the plan would survive each code review lane without findings:
 Missing lane coverage is an Important finding. The plan should pre-satisfy
 what the reviewer will check.
 
-### 6. Policy compliance
+### 7. Policy compliance
 
 Check the plan against:
 
@@ -88,13 +101,13 @@ Check the plan against:
 
 Policy violations are Critical findings.
 
-### 7. Referenced paths
+### 8. Referenced paths
 
 Verify that `state.yaml.grounding.referenced_paths` lists all file paths
 from the plan. These paths enable automated staleness detection. If missing
 or incomplete, flag as Important.
 
-### 8. Auto-remediate localized findings
+### 9. Auto-remediate localized findings
 
 Default behavior is to act in place. If a finding is localized, high-confidence,
 and does not change intent, the reviewer should fix the plan directly in this
@@ -110,7 +123,7 @@ Localized means all of the following are true:
 If these conditions do not hold, keep the finding unresolved and route via
 `needs_work`.
 
-### 9. Write verdict
+### 10. Write verdict
 
 Update `todos/{slug}/state.yaml`:
 
@@ -133,7 +146,7 @@ as code review findings.
 
 If no unresolved findings remain, remove stale `plan-review-findings.md` if present.
 
-### 10. Commit and report
+### 11. Commit and report
 
 Commit the verdict and any findings. Report:
 

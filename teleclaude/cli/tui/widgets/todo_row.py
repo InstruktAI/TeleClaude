@@ -9,6 +9,7 @@ from textual.message import Message
 from textual.widget import Widget
 
 from teleclaude.cli.tui.base import TelecMixin
+from teleclaude.cli.tui.phase_labels import integration_phase_label, prepare_phase_label
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD
@@ -94,10 +95,16 @@ class TodoRow(TelecMixin, Widget):
     def compute_col_widths(todos: list[TodoItem]) -> dict[str, int]:
         """Compute column widths from actual data: max rendered length + gap.
 
-        Column order: DOR | B | R | F | D
+        Column order: P | I | DOR | B | R | F | D
         """
-        maxes: dict[str, int] = {"DOR": 0, "B": 0, "R": 0, "F": 0, "D": 0}
+        maxes: dict[str, int] = {"P": 0, "I": 0, "DOR": 0, "B": 0, "R": 0, "F": 0, "D": 0}
         for t in todos:
+            p_result = prepare_phase_label(t.prepare_phase)
+            if p_result is not None:
+                maxes["P"] = max(maxes["P"], len(p_result[0]))
+            i_result = integration_phase_label(t.integration_phase, t.finalize_status)
+            if i_result is not None:
+                maxes["I"] = max(maxes["I"], len(i_result[0]))
             if t.dor_score is not None:
                 maxes["DOR"] = max(maxes["DOR"], len(f"DOR:{t.dor_score}"))
             bs = t.build_status
@@ -127,46 +134,70 @@ class TodoRow(TelecMixin, Widget):
         """Render a fixed-width column. Empty value -> blank padding for alignment."""
         col = Text()
         if value:
-            col.append(f"{label}:", style=Style())
+            if label:
+                col.append(f"{label}:", style=Style())
             col.append(value, style=value_style)
         return _pad(col, width)
 
     def _build_columns(self) -> Text:
-        """Build aligned property columns. Order: DOR | B | R | F | D."""
+        """Build aligned property columns. Phase-aware: P | I take priority over B/R/F/D."""
         result = Text()
         ok = _ok_color()
         gold = _gold_color()
         w = self._col_widths
 
-        # DOR (first)
+        # DOR column (shown alongside P; also shown in work phase)
         dor = self.todo.dor_score
         dor_color = ok if dor is not None and dor >= DOR_READY_THRESHOLD else gold
-        result.append_text(
-            self._build_col("DOR", str(dor) if dor is not None else "", w.get("DOR", 0), Style(color=dor_color))
-        )
+        dor_text = self._build_col("DOR", str(dor) if dor is not None else "", w.get("DOR", 0), Style(color=dor_color))
 
-        # B
+        # Phase detection: top-to-bottom, first match wins.
+
+        # 1. Active prepare phase
+        p_result = prepare_phase_label(self.todo.prepare_phase)
+        if p_result is not None:
+            p_label, p_color = p_result
+            result.append_text(dor_text)
+            result.append_text(
+                self._build_col("", p_label, w.get("P", 0), Style(color=p_color, bold=True))
+            )
+            return result
+
+        # 2. Active or queued integration phase
+        i_result = integration_phase_label(self.todo.integration_phase, self.todo.finalize_status)
+        if i_result is not None:
+            i_label, i_color = i_result
+            result.append_text(
+                self._build_col("", i_label, w.get("I", 0), Style(color=i_color, bold=True))
+            )
+            return result
+
+        # 3. Work phase (build != pending) — existing B/R/F/D path
         bs = self.todo.build_status
-        b_val = bs if bs and bs != "pending" else ""
-        result.append_text(
-            self._build_col("B", b_val, w.get("B", 0), Style(color=ok if bs == "complete" else gold, bold=True))
-        )
+        if bs is not None and bs != "pending":
+            result.append_text(dor_text)
 
-        # R
-        rs = self.todo.review_status
-        r_val = rs if rs and rs != "pending" else ""
-        result.append_text(
-            self._build_col("R", r_val, w.get("R", 0), Style(color=ok if rs == "approved" else gold, bold=True))
-        )
+            b_val = bs if bs and bs != "pending" else ""
+            result.append_text(
+                self._build_col("B", b_val, w.get("B", 0), Style(color=ok if bs == "complete" else gold, bold=True))
+            )
 
-        # F (findings)
-        fc = self.todo.findings_count
-        result.append_text(self._build_col("F", str(fc) if fc else "", w.get("F", 0), Style(color=gold, bold=True)))
+            rs = self.todo.review_status
+            r_val = rs if rs and rs != "pending" else ""
+            result.append_text(
+                self._build_col("R", r_val, w.get("R", 0), Style(color=ok if rs == "approved" else gold, bold=True))
+            )
 
-        # D (deferrals)
-        ds = self.todo.deferrals_status
-        result.append_text(self._build_col("D", ds or "", w.get("D", 0), _DIM))
+            fc = self.todo.findings_count
+            result.append_text(self._build_col("F", str(fc) if fc else "", w.get("F", 0), Style(color=gold, bold=True)))
 
+            ds = self.todo.deferrals_status
+            result.append_text(self._build_col("D", ds or "", w.get("D", 0), _DIM))
+
+            return result
+
+        # 4. Ready/pending state — DOR only
+        result.append_text(dor_text)
         return result
 
     def render(self) -> Text:

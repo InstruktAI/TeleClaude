@@ -74,9 +74,7 @@ async def _revive_headless_and_send(
         env_vars=env_vars,
     )
     if not created:
-        logger.warning(
-            "Failed to create tmux session for headless session %s", session.session_id[:8]
-        )
+        logger.warning("Failed to create tmux session for headless session %s", session.session_id[:8])
         return False
 
     if session.active_agent and session.native_session_id:
@@ -102,9 +100,7 @@ async def _revive_headless_and_send(
 
     # Update in-place so callers see the new tmux_session_name immediately
     session.tmux_session_name = tmux_name
-    asyncio.create_task(
-        db.update_session(session.session_id, lifecycle_status="active", tmux_session_name=tmux_name)
-    )
+    asyncio.create_task(db.update_session(session.session_id, lifecycle_status="active", tmux_session_name=tmux_name))
 
     return await tmux_bridge.send_keys_existing_tmux(
         session_name=tmux_name,

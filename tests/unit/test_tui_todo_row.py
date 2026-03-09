@@ -18,6 +18,9 @@ def _todo(
     has_requirements: bool = True,
     has_impl_plan: bool = True,
     files: list[str] | None = None,
+    prepare_phase: str | None = None,
+    integration_phase: str | None = None,
+    finalize_status: str | None = None,
 ) -> TodoItem:
     return TodoItem(
         slug=slug,
@@ -31,6 +34,9 @@ def _todo(
         deferrals_status=deferrals_status,
         findings_count=findings_count,
         files=files or [],
+        prepare_phase=prepare_phase,
+        integration_phase=integration_phase,
+        finalize_status=finalize_status,
     )
 
 
@@ -39,7 +45,7 @@ def _todo(
 
 def test_col_widths_empty():
     """No todos produces all-zero widths."""
-    assert TodoRow.compute_col_widths([]) == {"DOR": 0, "B": 0, "R": 0, "F": 0, "D": 0}
+    assert TodoRow.compute_col_widths([]) == {"P": 0, "I": 0, "DOR": 0, "B": 0, "R": 0, "F": 0, "D": 0}
 
 
 def test_col_widths_with_dor():
@@ -230,3 +236,101 @@ def test_render_tree_lines_continuation(_mock):
     text = row.render()
     # First ancestor continues (│), second doesn't (space)
     assert "\u2502" in text.plain
+
+
+# -- phase-aware column rendering (V3/V4) --
+
+
+_PHASE_WIDTHS = {"P": 20, "I": 20, "DOR": 0, "B": 0, "R": 0, "F": 0, "D": 0}
+_WORK_WIDTHS = {"P": 0, "I": 0, "DOR": 8, "B": 12, "R": 12, "F": 0, "D": 0}
+
+
+@patch("teleclaude.cli.tui.widgets.todo_row.is_dark_mode", return_value=True)
+def test_build_columns_prepare_planning(_mock):
+    """prepare_phase=plan_drafting renders P:planning, no B/R/F/D."""
+    row = TodoRow(_todo(prepare_phase="plan_drafting"), col_widths=_PHASE_WIDTHS)
+    cols = row._build_columns()
+    assert "P:planning" in cols.plain
+    assert "B:" not in cols.plain
+    assert "R:" not in cols.plain
+
+
+@patch("teleclaude.cli.tui.widgets.todo_row.is_dark_mode", return_value=True)
+def test_build_columns_prepare_blocked(_mock):
+    """prepare_phase=blocked renders P:blocked."""
+    row = TodoRow(_todo(prepare_phase="blocked"), col_widths=_PHASE_WIDTHS)
+    cols = row._build_columns()
+    assert "P:blocked" in cols.plain
+
+
+@patch("teleclaude.cli.tui.widgets.todo_row.is_dark_mode", return_value=True)
+def test_build_columns_integration_queued(_mock):
+    """finalize_status=handed_off with no integration_phase renders I:queued."""
+    row = TodoRow(_todo(finalize_status="handed_off"), col_widths=_PHASE_WIDTHS)
+    cols = row._build_columns()
+    assert "I:queued" in cols.plain
+    assert "B:" not in cols.plain
+
+
+@patch("teleclaude.cli.tui.widgets.todo_row.is_dark_mode", return_value=True)
+def test_build_columns_integration_started(_mock):
+    """integration_phase=merge_clean renders I:started."""
+    row = TodoRow(_todo(integration_phase="merge_clean"), col_widths=_PHASE_WIDTHS)
+    cols = row._build_columns()
+    assert "I:started" in cols.plain
+
+
+@patch("teleclaude.cli.tui.widgets.todo_row.is_dark_mode", return_value=True)
+def test_build_columns_integration_delivered(_mock):
+    """integration_phase=candidate_delivered renders I:delivered."""
+    row = TodoRow(_todo(integration_phase="candidate_delivered"), col_widths=_PHASE_WIDTHS)
+    cols = row._build_columns()
+    assert "I:delivered" in cols.plain
+
+
+@patch("teleclaude.cli.tui.widgets.todo_row.is_dark_mode", return_value=True)
+def test_build_columns_integration_failed(_mock):
+    """integration_phase=push_rejected renders I:failed."""
+    row = TodoRow(_todo(integration_phase="push_rejected"), col_widths=_PHASE_WIDTHS)
+    cols = row._build_columns()
+    assert "I:failed" in cols.plain
+
+
+@patch("teleclaude.cli.tui.widgets.todo_row.is_dark_mode", return_value=True)
+def test_build_columns_work_phase_unchanged(_mock):
+    """build_status=complete with no phase fields renders existing B/R/F/D columns (R8 regression)."""
+    row = TodoRow(
+        _todo(build_status="complete", review_status="approved", dor_score=9),
+        col_widths=_WORK_WIDTHS,
+    )
+    cols = row._build_columns()
+    assert "B:complete" in cols.plain
+    assert "R:approved" in cols.plain
+    assert "P:" not in cols.plain
+    assert "I:" not in cols.plain
+
+
+@patch("teleclaude.cli.tui.widgets.todo_row.is_dark_mode", return_value=True)
+def test_build_columns_all_new_fields_none_falls_through(_mock):
+    """All new fields None falls through to existing DOR-only path (R8 regression)."""
+    row = TodoRow(_todo(dor_score=7), col_widths={"P": 0, "I": 0, "DOR": 8, "B": 0, "R": 0, "F": 0, "D": 0})
+    cols = row._build_columns()
+    assert "DOR:" in cols.plain
+    assert "P:" not in cols.plain
+    assert "I:" not in cols.plain
+
+
+@patch("teleclaude.cli.tui.widgets.todo_row.is_dark_mode", return_value=True)
+def test_col_widths_with_prepare_phase(_mock):
+    """P column width computed from prepare_phase label."""
+    todos = [_todo(prepare_phase="plan_drafting")]
+    w = TodoRow.compute_col_widths(todos)
+    assert w["P"] == len("P:planning") + 2
+
+
+@patch("teleclaude.cli.tui.widgets.todo_row.is_dark_mode", return_value=True)
+def test_col_widths_with_integration_phase(_mock):
+    """I column width computed from integration_phase label."""
+    todos = [_todo(integration_phase="candidate_delivered")]
+    w = TodoRow.compute_col_widths(todos)
+    assert w["I"] == len("I:delivered") + 2

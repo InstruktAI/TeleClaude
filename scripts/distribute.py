@@ -184,7 +184,7 @@ ArtifactFrontmatter = TypedDict(
         "name": str,
         "argument-hint": str,
         "hooks": object,
-        "parameters": list[dict[str, object]],
+        "parameters": list[dict[str, object]],  # guard: loose-dict - Parameter dicts have variable schema per artifact type
     },
     total=False,
 )
@@ -284,6 +284,7 @@ def _should_expand_inline(agent_name: str) -> bool:
     return agent_name in {"claude", "codex", "gemini"}
 
 
+# guard: loose-dict-func - Parameter dicts have variable schema per artifact type
 def _build_parameter_preamble(parameters: list[dict[str, object]]) -> str:
     """Build an HTML-comment preamble mapping named parameters to positions.
 
@@ -306,6 +307,7 @@ def _build_parameter_preamble(parameters: list[dict[str, object]]) -> str:
     return "\n".join(lines)
 
 
+# guard: loose-dict-func - Parameter dicts have variable schema per artifact type
 def _inject_parameter_preamble(content: str, parameters: list[dict[str, object]]) -> str:
     """Prepend parameter preamble to content if parameters are declared."""
     preamble = _build_parameter_preamble(parameters)

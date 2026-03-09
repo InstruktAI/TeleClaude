@@ -303,8 +303,12 @@ the tmux session. The pipe target writes to a per-session FIFO in the session's 
 An asyncio coroutine monitors the FIFO and sets `runtime.wake_dirty = True` when bytes
 arrive.
 
-On startup and reconnect, take an explicit reconciliation snapshot because `pipe-pane -o`
-is prospective (does not replay already-rendered content, confirmed by local probe).
+On startup, reconnect, headless tmux adoption/bootstrap, and audit-triggered drift
+recovery, take an explicit reconciliation snapshot because `pipe-pane -o` is prospective
+(does not replay already-rendered content, confirmed by local probe). The runtime/docs
+must make lane authority explicit for these transitions: hook lane for authoritative
+native lifecycle events, render lane for the live pane snapshot that re-establishes
+semantic truth, transcript lane for durable backfill only.
 
 Cleanup: `stop_pipe_pane()` on session teardown. The FIFO is removed with the tmp dir
 cleanup from Task 1.2.
@@ -319,13 +323,18 @@ suitable for "something changed" detection but not as a semantic source.
 - [ ] `pipe-pane -o` attached on poller start for Codex sessions
 - [ ] `pipe-pane` detached on poller stop
 - [ ] `wake_dirty` flag set when pipe output detected
-- [ ] Immediate reconciliation snapshot on startup/reconnect
+- [ ] Immediate reconciliation snapshot on startup/reconnect/headless bootstrap
+- [ ] Audit-triggered drift recovery re-enters the reconciliation snapshot path
 - [ ] Test: simulated pipe output sets dirty flag
+- [ ] Test: revived headless session triggers the same initial render reconciliation path
 
 **Referenced files:**
 - `teleclaude/core/session_runtime.py` — add wake signal handling
 - `teleclaude/core/tmux_bridge.py` — reuse existing `start_pipe_pane`, `stop_pipe_pane`
+- `teleclaude/core/tmux_io.py` — headless revive path must trigger runtime reconciliation
+- `teleclaude/core/command_handlers.py` — headless adoption path must trigger runtime reconciliation
 - `tests/unit/test_session_runtime.py` — add wake signal tests
+- `tests/unit/test_command_handlers.py` — extend headless adoption coverage
 
 ### Task 4.2: Adaptive cadence state machine
 
@@ -351,6 +360,10 @@ Config additions to `PollingConfig`:
 - `cadence_audit_s: float = 30.0`
 - `idle_transition_s: float = 10.0`
 
+Because these are new YAML-visible keys under the existing `polling:` section, the same
+change must update `config.sample.yml`, the config wizard surface/guidance, and
+`docs/project/spec/teleclaude-config.md`.
+
 **Why:** Fixed 1.0s cadence treats idle and active sessions identically. With 27+
 sessions, this means ~27 tmux subprocesses per second even when most sessions are idle.
 Adaptive cadence lets active sessions poll at 0.5s while idle sessions back off to 5s,
@@ -365,12 +378,18 @@ recovery even if the wake signal misses events.
 - [ ] Transition slow → fast on wake signal or user input
 - [ ] Config knobs tunable via `config.polling`
 - [ ] Test: cadence transitions work correctly in isolation
+- [ ] `config.sample.yml`, config wizard guidance/surface, and `teleclaude-config.md` all expose the new polling keys
 
 **Referenced files:**
 - `teleclaude/core/session_runtime.py` — add CadenceState + transition logic
 - `teleclaude/core/output_poller.py` — use runtime cadence instead of fixed interval
 - `teleclaude/config/__init__.py` — extend PollingConfig
+- `config.sample.yml` — document the new polling keys
+- `docs/project/spec/teleclaude-config.md` — keep config spec in sync with polling surface
+- `teleclaude/cli/config_handlers.py` — confirm wizard-visible polling section wiring
+- `teleclaude/cli/tui/config_components/guidance.py` — add operator guidance for new polling fields
 - `tests/unit/test_session_runtime.py` — add cadence transition tests
+- `tests/unit/test_config_wizard_guidance.py` — verify wizard exposure stays in sync
 
 ### Task 4.3: Make rendered snapshots conditional
 
@@ -466,19 +485,23 @@ exclude expanding the key-only API and reworking single-key controls.
 ### Task 6.1: Performance instrumentation
 
 **What:** Add counters to `SessionRuntime`: `capture_count`, `wake_count`,
-`skip_count`, `idle_transition_count`. Emit summary metrics at existing
-`OUTPUT_METRICS_SUMMARY_INTERVAL_S` boundary alongside output cadence metrics.
+`skip_count`, `idle_transition_count`, and `tmux_subprocess_count` for every
+runtime-owned tmux probe (`capture-pane`, liveness/pane-dead checks, directory checks,
+and pipe attach/detach). Emit summary metrics at existing
+`OUTPUT_METRICS_SUMMARY_INTERVAL_S` boundary alongside output cadence metrics, with
+matched idle-window labels so before/after runs can be compared directly.
 
 **Why:** Success criteria require demonstrable before/after reduction in tmux subprocess
 churn for idle sessions.
 
 **Verification:**
 - [ ] Runtime counters exist and increment correctly
-- [ ] Metrics logged at summary intervals
-- [ ] Before/after comparison shows reduced capture frequency for idle sessions
+- [ ] Metrics logged at summary intervals with both capture frequency and tmux subprocess counts
+- [ ] Before/after comparison over matched idle windows shows lower tmux subprocess counts and lower capture frequency while audit snapshots remain visible
 
 **Referenced files:**
 - `teleclaude/core/session_runtime.py` — add counters
+- `teleclaude/core/output_poller.py` — increment runtime-owned tmux probe counters
 - `teleclaude/core/polling_coordinator.py` — emit in existing metrics path
 
 ### Task 6.2: Test realignment
@@ -491,6 +514,8 @@ contracts instead.
 - `test_polling_coordinator.py`: update imports for items in `codex_render_semantics.py`.
   Update state access to use `SessionRuntime` via registry.
 - `test_codex_replay.py`: verify pass against extracted module.
+- `test_command_handlers.py`: preserve `get_session_data` transcript/tmux fallback and
+  headless adoption semantics while the runtime adds reconciliation snapshots.
 
 **Why:** Tests locking in implementation details become maintenance liabilities during
 refactors. Requirements explicitly call this out.
@@ -500,11 +525,13 @@ refactors. Requirements explicitly call this out.
 - [ ] Tests assert behavioral contracts: output detection, death detection, event emission
 - [ ] All semantic invariant tests pass
 - [ ] Replay corpus tests pass against extracted module
+- [ ] Docs/tests explicitly cover startup, reconnect, headless-bootstrap, and drift-recovery lane authority
 
 **Referenced files:**
 - `tests/unit/test_output_poller.py` — update health check assertions
 - `tests/unit/test_polling_coordinator.py` — update imports + state access
 - `tests/unit/test_codex_replay.py` — verify extracted module imports
+- `tests/unit/test_command_handlers.py` — preserve fallback + headless adoption contracts
 
 ### Task 6.3: Documentation update
 
@@ -514,11 +541,13 @@ refactors. Requirements explicitly call this out.
 - Wake-driven capture via `pipe-pane`
 - Adaptive cadence states and transitions
 - Ephemeral control queue for compound actions
+- Lane-authority table for startup, reconnect, headless-bootstrap, and drift-recovery
 - Updated Mermaid sequence diagrams
 - Preserve adapter-level QoS section (unchanged)
 
 Update `docs/project/design/architecture/tmux-management.md`:
 - `pipe-pane` wake signal contract
+- Headless adoption/bootstrap reconciliation requirements
 - Per-session tmp cleanup in teardown
 
 **Why:** Current docs describe a simpler diff/cursor model and omit the Codex render
@@ -527,6 +556,7 @@ lane. Stale docs mislead future work. Requirements explicitly include this.
 **Verification:**
 - [ ] Docs describe three-lane model, not single diff loop
 - [ ] Docs describe adaptive cadence and wake signals
+- [ ] Docs make startup/reconnect/headless-bootstrap/drift-recovery lane authority explicit
 - [ ] No stale references to old hot-loop probe order
 - [ ] Mermaid diagrams match implemented behavior
 
@@ -597,21 +627,29 @@ Phase 6 (after Phases 4 + 5):
 - `tests/fixtures/codex_pane_snapshots/` (directory + fixture files)
 
 ### Modified files
+- `config.sample.yml`
 - `teleclaude/constants.py`
 - `teleclaude/config/__init__.py`
+- `teleclaude/cli/config_handlers.py`
+- `teleclaude/cli/tui/config_components/guidance.py`
 - `teleclaude/core/tmux_bridge.py`
+- `teleclaude/core/tmux_io.py`
 - `teleclaude/core/output_poller.py`
 - `teleclaude/core/polling_coordinator.py`
 - `teleclaude/core/session_cleanup.py`
 - `teleclaude/core/command_handlers.py`
 - `teleclaude/daemon.py`
+- `tests/unit/test_command_handlers.py`
+- `tests/unit/test_config_wizard_guidance.py`
 - `tests/unit/test_output_poller.py`
 - `tests/unit/test_polling_coordinator.py`
 - `docs/project/design/architecture/output-polling.md`
 - `docs/project/design/architecture/tmux-management.md`
+- `docs/project/spec/teleclaude-config.md`
 
 ### Unchanged (dependency verification only)
-- `teleclaude/api/api_server.py`
+- `teleclaude/api_server.py`
+- `teleclaude/cli/api_client.py`
 - `teleclaude/core/agent_coordinator.py`
 - `teleclaude/output_projection/terminal_live_projector.py`
 
@@ -623,7 +661,6 @@ Phase 6 (after Phases 4 + 5):
   snapshots from live sessions requires instrumentation not yet built.
 - **Cross-process QoS rate enforcement**: Out of scope per requirements.
 - **Expanding public `/sessions/{id}/keys` API**: Explicitly out of scope.
-- **Reconnect authority table**: Task 4.1 handles basics; detailed table is follow-up.
 - **Daemon wiring refactor**: The daemon's `_start_polling_for_session` /
   `_poll_and_send_output` wrappers remain as-is. The runtime is integrated through
   the polling coordinator, not by replacing the daemon's bootstrap path. This limits

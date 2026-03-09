@@ -28,14 +28,14 @@ from teleclaude.core.db import db
 from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.next_machine import next_prepare
 from teleclaude.core.next_machine.core import (
+    _PREPARE_PHASE_VALUES,
+    _PREPARE_VERDICT_PHASES,
+    _PREPARE_VERDICT_VALUES,
     detect_circular_dependency,
     get_stash_entries,
     has_uncommitted_changes,
     load_roadmap,
     load_roadmap_deps,
-    _PREPARE_PHASE_VALUES,
-    _PREPARE_VERDICT_PHASES,
-    _PREPARE_VERDICT_VALUES,
     mark_finalize_ready,
     mark_phase,
     mark_prepare_phase,

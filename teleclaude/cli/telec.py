@@ -536,7 +536,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     _H,
                     Flag("--phase", desc="Phase: build, review, prepare, requirements_review, plan_review"),
-                    Flag("--status", desc="Work: pending/started/complete/approved/changes_requested; Prepare verdict: approve/needs_work; Prepare lifecycle: prepared, gate, etc."),
+                    Flag(
+                        "--status",
+                        desc="Work: pending/started/complete/approved/changes_requested; Prepare verdict: approve/needs_work; Prepare lifecycle: prepared, gate, etc.",
+                    ),
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),

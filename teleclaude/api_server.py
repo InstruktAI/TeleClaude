@@ -2030,6 +2030,9 @@ class APIServer:
                                 files=t.files,
                                 after=t.after,
                                 group=t.group,
+                                prepare_phase=t.prepare_phase,
+                                integration_phase=t.integration_phase,
+                                finalize_status=t.finalize_status,
                             )
                             for t in raw_todos
                         ]
@@ -2063,6 +2066,9 @@ class APIServer:
                                 files=todo.files,
                                 after=todo.after,
                                 group=todo.group,
+                                prepare_phase=todo.prepare_phase,
+                                integration_phase=todo.integration_phase,
+                                finalize_status=todo.finalize_status,
                             )
                         )
                 self._refresh_stale_todos(stale_remote_computers)
@@ -2456,6 +2462,9 @@ class APIServer:
                                             files=t.files,
                                             after=t.after,
                                             group=t.group,
+                                            prepare_phase=t.prepare_phase,
+                                            integration_phase=t.integration_phase,
+                                            finalize_status=t.finalize_status,
                                         )
                                         for t in todos
                                     ],

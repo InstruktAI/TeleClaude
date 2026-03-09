@@ -125,7 +125,6 @@ def project_entries(
 
         message = normalize_transcript_entry_message(entry_map)
         if not isinstance(message, dict):
-            logger.debug("Skipping un-normalizable entry at index %d", entry_idx)
             continue
 
         role = message.get("role")

@@ -208,6 +208,9 @@ class TodoDTO(BaseModel):  # type: ignore[explicit-any]
     after: list[str] = Field(default_factory=list)
     group: str | None = None
     delivered_at: str | None = None
+    prepare_phase: str | None = None
+    integration_phase: str | None = None
+    finalize_status: str | None = None
 
 
 class OperationStatusDTO(BaseModel):  # type: ignore[explicit-any]

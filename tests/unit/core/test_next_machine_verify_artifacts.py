@@ -10,6 +10,8 @@ import yaml
 from teleclaude.core.next_machine.core import (
     _extract_checklist_section,
     _is_review_findings_template,
+    _is_scaffold_template,
+    check_file_has_content,
     verify_artifacts,
 )
 
@@ -119,6 +121,177 @@ def test_extract_checklist_section_stops_at_next_h2() -> None:
     assert result is not None
     assert "A item" in result
     assert "B item" not in result
+
+
+# =============================================================================
+# _is_scaffold_template
+# =============================================================================
+
+
+_REQUIREMENTS_SCAFFOLD = """\
+# Requirements: test-slug
+
+## Goal
+
+- Define the intended outcome for this todo.
+
+## Scope
+
+- ## In scope:
+- ## Out of scope:
+
+## Success Criteria
+
+- [ ]
+- [ ]
+
+## Constraints
+
+-
+
+## Risks
+
+-
+"""
+
+_IMPL_PLAN_SCAFFOLD = """\
+# Implementation Plan: test-slug
+
+## Overview
+
+- Summarize the approach and why it is appropriate.
+
+## Phase 1: Core Changes
+
+### Task 1.1:
+
+**File(s):** ``
+
+- [ ] Complete this task
+
+### Task 1.2:
+
+**File(s):** ``
+
+- [ ] Complete this task
+
+---
+
+## Phase 2: Validation
+
+### Task 2.1: Tests
+
+- [ ] Add or update tests for the changed behavior
+- [ ] Run `make test`
+
+### Task 2.2: Quality Checks
+
+- [ ] Run `make lint`
+- [ ] Verify no unchecked implementation tasks remain
+
+---
+
+## Phase 3: Review Readiness
+
+- [ ] Confirm requirements are reflected in code changes
+- [ ] Confirm implementation tasks are all marked `[x]`
+- [ ] Document any deferrals explicitly in `deferrals.md` (if applicable)
+"""
+
+
+def test_scaffold_template_requirements_detected() -> None:
+    assert _is_scaffold_template(_REQUIREMENTS_SCAFFOLD) is True
+
+
+def test_scaffold_template_impl_plan_detected() -> None:
+    assert _is_scaffold_template(_IMPL_PLAN_SCAFFOLD) is True
+
+
+def test_scaffold_template_short_content() -> None:
+    assert _is_scaffold_template("# Title\n\n") is True
+
+
+def test_scaffold_template_real_requirements() -> None:
+    content = """\
+# Requirements: cache-transparency-refactor
+
+## Goal
+
+Refactor the cache layer to expose hit/miss status in API responses,
+enabling clients to make informed decisions about data freshness.
+
+## Scope
+
+- ## In scope:
+  - Add cache status headers to all API responses
+  - Expose cache TTL metadata
+- ## Out of scope:
+  - Cache eviction strategy changes
+
+## Success Criteria
+
+- [x] All API responses include X-Cache-Status header
+- [x] Cache TTL is visible in response metadata
+
+## Constraints
+
+- Must not break existing API contracts
+"""
+    assert _is_scaffold_template(content) is False
+
+
+def test_scaffold_template_real_impl_plan() -> None:
+    content = """\
+# Implementation Plan: cache-transparency-refactor
+
+## Overview
+
+Add cache transparency headers using the existing middleware pattern
+in teleclaude/api/middleware.py.
+
+## Phase 1: Core Changes
+
+### Task 1.1: Add CacheStatusMiddleware
+
+**File(s):** `teleclaude/api/middleware.py`
+
+- [ ] Create CacheStatusMiddleware class that reads cache metadata
+      from the response context and sets X-Cache-Status header
+
+### Task 1.2: Wire middleware into app
+
+**File(s):** `teleclaude/api/app.py`
+
+- [ ] Register CacheStatusMiddleware after auth middleware
+"""
+    assert _is_scaffold_template(content) is False
+
+
+# =============================================================================
+# check_file_has_content
+# =============================================================================
+
+
+def test_check_file_has_content_missing_file() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        assert check_file_has_content(tmpdir, "nonexistent.md") is False
+
+
+def test_check_file_has_content_scaffold_file() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fpath = Path(tmpdir) / "requirements.md"
+        fpath.write_text(_REQUIREMENTS_SCAFFOLD, encoding="utf-8")
+        assert check_file_has_content(tmpdir, "requirements.md") is False
+
+
+def test_check_file_has_content_real_file() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fpath = Path(tmpdir) / "requirements.md"
+        fpath.write_text(
+            "# Requirements\n\n## Goal\n\nRefactor cache to expose hit/miss status.\n",
+            encoding="utf-8",
+        )
+        assert check_file_has_content(tmpdir, "requirements.md") is True
 
 
 # =============================================================================

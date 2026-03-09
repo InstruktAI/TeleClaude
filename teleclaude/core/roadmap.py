@@ -86,7 +86,20 @@ def assemble_roadmap(
 
     def read_todo_metadata(
         todo_dir: Path,
-    ) -> tuple[bool, bool, str | None, str | None, int | None, str | None, int, str, list[str]]:
+    ) -> tuple[
+        bool,
+        bool,
+        str | None,
+        str | None,
+        int | None,
+        str | None,
+        int,
+        str,
+        list[str],
+        str | None,
+        str | None,
+        str | None,
+    ]:
         has_requirements = (todo_dir / "requirements.md").exists()
         has_impl_plan = (todo_dir / "implementation-plan.md").exists()
         build_status = None
@@ -95,6 +108,9 @@ def assemble_roadmap(
         deferrals_status = None
         findings_count = 0
         phase_status = "pending"
+        prepare_phase: str | None = None
+        integration_phase: str | None = None
+        finalize_status: str | None = None
 
         slug = todo_dir.name
         project_root = Path(project_path)
@@ -125,6 +141,23 @@ def assemble_roadmap(
                 unresolved = state.get("unresolved_findings")
                 if isinstance(unresolved, list):
                     findings_count = len(unresolved)
+
+                # prepare_phase: coerce empty string to None
+                raw_prepare_phase = state.get("prepare_phase")
+                if isinstance(raw_prepare_phase, str) and raw_prepare_phase:
+                    prepare_phase = raw_prepare_phase
+
+                # integration_phase: coerce empty string to None
+                raw_integration_phase = state.get("integration_phase")
+                if isinstance(raw_integration_phase, str) and raw_integration_phase:
+                    integration_phase = raw_integration_phase
+
+                # finalize_status: read from nested finalize.status; only accept known values
+                raw_finalize = state.get("finalize")
+                if isinstance(raw_finalize, dict):
+                    raw_finalize_status = raw_finalize.get("status")
+                    if raw_finalize_status in ("pending", "ready", "handed_off"):
+                        finalize_status = str(raw_finalize_status)
 
                 # Derive display status:
                 # - phase in_progress/done -> in_progress (lifecycle marker from state machine)
@@ -157,6 +190,9 @@ def assemble_roadmap(
             findings_count,
             phase_status,
             files,
+            prepare_phase,
+            integration_phase,
+            finalize_status,
         )
 
     def append_todo(
@@ -178,6 +214,9 @@ def assemble_roadmap(
             findings_count,
             phase_status,
             files,
+            prepare_phase,
+            integration_phase,
+            finalize_status,
         ) = read_todo_metadata(todo_dir)
 
         todos.append(
@@ -195,6 +234,9 @@ def assemble_roadmap(
                 files=files,
                 after=after or [],
                 group=group,
+                prepare_phase=prepare_phase,
+                integration_phase=integration_phase,
+                finalize_status=finalize_status,
             )
         )
 
@@ -235,7 +277,9 @@ def assemble_roadmap(
             if entry.slug in seen_slugs:
                 continue
             seen_slugs.add(entry.slug)
-            append_todo(entry.slug, description=entry.description, after=entry.after, group=entry.group, is_icebox_item=True)
+            append_todo(
+                entry.slug, description=entry.description, after=entry.after, group=entry.group, is_icebox_item=True
+            )
 
     # 2b. Load delivered entries
     if include_delivered:

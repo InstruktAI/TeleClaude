@@ -80,8 +80,8 @@ async def test_next_work_dispatches_defer():
         # Setup item files
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Req")
-        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "requirements.md").write_text("# Requirements\n\n## Goal\n\nRefactor cache layer for transparency.\n")
+        (item_dir / "implementation-plan.md").write_text("# Implementation Plan\n\n## Overview\n\nAdd cache status headers via middleware.\n")
         (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         # Setup worktree state (Build complete, Review approved, Deferrals pending)
@@ -123,8 +123,8 @@ async def test_next_work_skips_defer_if_processed():
         # Setup item files
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Req")
-        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "requirements.md").write_text("# Requirements\n\n## Goal\n\nRefactor cache layer for transparency.\n")
+        (item_dir / "implementation-plan.md").write_text("# Implementation Plan\n\n## Overview\n\nAdd cache status headers via middleware.\n")
         (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         # Setup worktree state (Build complete, Review approved, Deferrals PROCESSED)

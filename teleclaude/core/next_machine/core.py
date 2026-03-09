@@ -37,7 +37,9 @@ from teleclaude.core.integration_bridge import emit_branch_pushed, emit_deployme
 
 logger = get_logger(__name__)
 
-StateValue = str | bool | int | None | list[str] | dict[str, object]
+StateValue = (
+    str | bool | int | None | list[str] | dict[str, object]  # guard: loose-dict - YAML state values are heterogeneous
+)
 
 
 class FinalizeState(TypedDict, total=False):
@@ -592,6 +594,62 @@ def _extract_checklist_section(content: str, section_name: str) -> str | None:
     return "\n".join(section_lines)
 
 
+def _is_scaffold_template(content: str) -> bool:
+    """Check if a todo artifact is an unfilled scaffold template.
+
+    The scaffold creator (``telec todo create``) writes all files from
+    ``templates/todos/`` with placeholder content.  A file that still matches
+    its scaffold shape should be treated as *not yet written* by the state
+    machine so that it routes to the authoring phase rather than the review
+    phase.
+
+    Heuristic: scaffold templates are short and contain only headings,
+    empty list markers (``- [ ]``, ``-``), placeholder prose from the
+    template (``Define the intended outcome``, ``Summarize the approach``),
+    and whitespace.  Real authored content will exceed these markers.
+    """
+    stripped = content.strip()
+    if len(stripped) < 50:
+        return True
+
+    # Known phrases that appear only in scaffold templates.
+    _SCAFFOLD_PHRASES = (
+        "Define the intended outcome",
+        "Summarize the approach",
+        "Complete this task",
+        "Add or update tests",
+        "Run `make test`",
+        "Run `make lint`",
+        "Verify no unchecked",
+        "Confirm requirements are reflected",
+        "Confirm implementation tasks",
+        "Document any deferrals",
+        "In scope",
+        "Out of scope",
+    )
+
+    remaining_lines: list[str] = []
+    for line in stripped.splitlines():
+        text = line.strip()
+        # Skip blank lines, headings, horizontal rules
+        if not text or text.startswith("#") or re.fullmatch(r"-{3,}", text):
+            continue
+        # Skip bare list markers (-, - [ ], - [x])
+        if re.fullmatch(r"-\s*(\[[ x]?\]\s*)?", text):
+            continue
+        # Skip **File(s):** `` (empty file ref from impl plan template)
+        if re.fullmatch(r"\*\*[^*]+\*\*\s*``", text):
+            continue
+        # Skip lines that consist entirely of a scaffold phrase (with optional list marker)
+        bare = re.sub(r"^-\s*", "", text)
+        if any(phrase in bare for phrase in _SCAFFOLD_PHRASES):
+            continue
+        remaining_lines.append(text)
+
+    remaining = " ".join(remaining_lines).strip()
+    return len(remaining) < 30
+
+
 def _is_review_findings_template(content: str) -> bool:
     """Check if review-findings.md looks like an unfilled scaffold template.
 
@@ -606,6 +664,22 @@ def _is_review_findings_template(content: str) -> bool:
     if has_findings_header and not has_verdict:
         return True
     return False
+
+
+def check_file_has_content(cwd: str, relative_path: str) -> bool:
+    """Check if a file exists and contains real (non-scaffold) content.
+
+    Returns False when the file is missing or is still an unfilled scaffold
+    template from ``telec todo create``.
+    """
+    fpath = Path(cwd) / relative_path
+    if not fpath.exists():
+        return False
+    try:
+        content = fpath.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return not _is_scaffold_template(content)
 
 
 def verify_artifacts(worktree_cwd: str, slug: str, phase: str) -> tuple[bool, str]:
@@ -803,8 +877,8 @@ def _find_next_prepare_slug(cwd: str) -> str | None:
         if phase == ItemPhase.DONE.value:
             continue
 
-        has_requirements = check_file_exists(cwd, f"todos/{slug}/requirements.md")
-        has_impl_plan = check_file_exists(cwd, f"todos/{slug}/implementation-plan.md")
+        has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
+        has_impl_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
         if not has_requirements or not has_impl_plan:
             return slug
 
@@ -2809,7 +2883,7 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
 def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> PreparePhase:
     """Derive the initial prepare phase from artifact existence when no durable phase is set."""
     has_input = check_file_exists(cwd, f"todos/{slug}/input.md")
-    has_requirements = check_file_exists(cwd, f"todos/{slug}/requirements.md")
+    has_requirements = check_file_has_content(cwd, f"todos/{slug}/requirements.md")
 
     if has_input and not has_requirements:
         return PreparePhase.INPUT_ASSESSMENT
@@ -2821,7 +2895,7 @@ def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> 
     if not req_verdict or req_verdict == "needs_work":
         return PreparePhase.REQUIREMENTS_REVIEW
 
-    has_plan = check_file_exists(cwd, f"todos/{slug}/implementation-plan.md")
+    has_plan = check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md")
     if not has_plan:
         return PreparePhase.PLAN_DRAFTING
 
@@ -2850,7 +2924,7 @@ async def _prepare_step_input_assessment(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """INPUT_ASSESSMENT: choose requirements strategy and produce requirements."""
-    if check_file_exists(cwd, f"todos/{slug}/requirements.md"):
+    if check_file_has_content(cwd, f"todos/{slug}/requirements.md"):
         state["prepare_phase"] = PreparePhase.REQUIREMENTS_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         return True, ""  # loop
@@ -2879,7 +2953,7 @@ async def _prepare_step_triangulation(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """TRIANGULATION: requirements.md still needs discovery or revision."""
-    if check_file_exists(cwd, f"todos/{slug}/requirements.md"):
+    if check_file_has_content(cwd, f"todos/{slug}/requirements.md"):
         # Transition to REQUIREMENTS_REVIEW
         state["prepare_phase"] = PreparePhase.REQUIREMENTS_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
@@ -2932,8 +3006,10 @@ async def _prepare_step_requirements_review(
             await asyncio.to_thread(write_phase_state, cwd, slug, state)
             return False, (
                 f"BLOCKED: {slug} requirements review exceeded {DEFAULT_MAX_REVIEW_ROUNDS} rounds. "
-                f"Inspect todos/{slug}/requirements.md and resolve manually, then reset "
-                f"state.yaml requirements_review.rounds to 0."
+                f"Manual resolution required.\n\n"
+                f"Before acting, load the relevant worker role:\n"
+                f"  telec docs index\n"
+                f"Then use telec docs get to load the procedure for the role you are assuming."
             )
         # Loop back to TRIANGULATION with findings
         state["prepare_phase"] = PreparePhase.TRIANGULATION.value
@@ -2974,7 +3050,7 @@ async def _prepare_step_plan_drafting(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """PLAN_DRAFTING: implementation-plan.md needed."""
-    if check_file_exists(cwd, f"todos/{slug}/implementation-plan.md"):
+    if check_file_has_content(cwd, f"todos/{slug}/implementation-plan.md"):
         state["prepare_phase"] = PreparePhase.PLAN_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_drafted", {"slug": slug})
@@ -3026,8 +3102,10 @@ async def _prepare_step_plan_review(
             await asyncio.to_thread(write_phase_state, cwd, slug, state)
             return False, (
                 f"BLOCKED: {slug} plan review exceeded {DEFAULT_MAX_REVIEW_ROUNDS} rounds. "
-                f"Inspect todos/{slug}/implementation-plan.md and resolve manually, then reset "
-                f"state.yaml plan_review.rounds to 0."
+                f"Manual resolution required.\n\n"
+                f"Before acting, load the relevant worker role:\n"
+                f"  telec docs index\n"
+                f"Then use telec docs get to load the procedure for the role you are assuming."
             )
         # Loop back to PLAN_DRAFTING with findings
         state["prepare_phase"] = PreparePhase.PLAN_DRAFTING.value
@@ -3152,9 +3230,11 @@ def _prepare_step_grounding_check(
     # Check for staleness
     sha_changed = bool(current_sha and current_sha != base_sha)
     # Backward compatibility: empty stored digest means "not yet recorded", not "changed".
+    # Also treat wrong-length digests (e.g. MD5 written by agents) as unrecorded.
     digest_changed = bool(
         stored_input_digest
         and current_input_digest
+        and len(stored_input_digest) == len(current_input_digest)
         and current_input_digest != stored_input_digest
     )
 
@@ -3581,15 +3661,15 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     worktree_path = Path(cwd) / WORKTREE_DIR / resolved_slug
     if (
         worktree_path.exists()
-        and (worktree_path / "todos" / resolved_slug / "requirements.md").exists()
-        and (worktree_path / "todos" / resolved_slug / "implementation-plan.md").exists()
+        and check_file_has_content(str(worktree_path), f"todos/{resolved_slug}/requirements.md")
+        and check_file_has_content(str(worktree_path), f"todos/{resolved_slug}/implementation-plan.md")
     ):
         precondition_root = str(worktree_path)
 
     is_bug = await asyncio.to_thread(is_bug_todo, cwd, resolved_slug)
     if not is_bug:
-        has_requirements = check_file_exists(precondition_root, f"todos/{resolved_slug}/requirements.md")
-        has_impl_plan = check_file_exists(precondition_root, f"todos/{resolved_slug}/implementation-plan.md")
+        has_requirements = check_file_has_content(precondition_root, f"todos/{resolved_slug}/requirements.md")
+        has_impl_plan = check_file_has_content(precondition_root, f"todos/{resolved_slug}/implementation-plan.md")
         if not (has_requirements and has_impl_plan):
             _log_next_work_phase(phase_slug, "preconditions", preconditions_started, "error", "not_prepared")
             return format_error(
@@ -3939,12 +4019,13 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 "REVIEW_ROUND_LIMIT",
                 (
                     f"Review rounds exceeded for {resolved_slug}: "
-                    f"current={current_round}, max={max_rounds}. Decision required."
+                    f"current={current_round}, max={max_rounds}. "
+                    f"Manual resolution required.\n\n"
+                    f"Before acting, load the relevant worker role:\n"
+                    f"  telec docs index\n"
+                    f"Then use telec docs get to load the procedure for the role you are assuming."
                 ),
-                next_call=(
-                    f"Apply orchestrator review-round-limit closure for {resolved_slug}, "
-                    f"then call telec todo work {resolved_slug}"
-                ),
+                next_call=f"telec todo work {resolved_slug}",
             )
         try:
             guidance = await compose_agent_guidance(db)

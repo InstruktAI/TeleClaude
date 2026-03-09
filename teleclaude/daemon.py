@@ -79,7 +79,6 @@ from teleclaude.logging_config import setup_logging
 from teleclaude.mirrors.event_handlers import handle_agent_stop as handle_mirror_agent_stop
 from teleclaude.mirrors.event_handlers import handle_session_closed as handle_mirror_session_closed
 from teleclaude.mirrors.processors import register_default_processors
-from teleclaude.mirrors.worker import MirrorWorker
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.services.monitoring_service import MonitoringService

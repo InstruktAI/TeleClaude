@@ -1,0 +1,49 @@
+phase: pending
+build: pending
+review: pending
+deferrals_processed: false
+finalize:
+  status: pending
+breakdown:
+  assessed: true
+  todos: []
+review_round: 0
+max_review_rounds: 3
+review_baseline_commit: ''
+unresolved_findings: []
+resolved_findings: []
+prepare_phase: prepared
+grounding:
+  valid: true
+  base_sha: c4106089d13dfe5b9412381c60e003e0919a8cfc
+  input_digest: 7c077c5838079a97a2718481494a8cf00ecc02fce1101cfbc0b84f8e605bd241
+  referenced_paths:
+  - teleclaude/core/cache.py
+  - teleclaude/daemon.py
+  - teleclaude/api_server.py
+  - tests/unit/test_cache.py
+  - tests/unit/test_api_server.py
+  - tests/unit/test_daemon.py
+  last_grounded_at: '2026-03-09T13:32:51.888857+00:00'
+  invalidated_at: null
+  invalidation_reason: null
+  changed_paths: []
+requirements_review:
+  verdict: approved
+  reviewed_at: '2026-03-09T12:30:00Z'
+  findings_count: 0
+  rounds: 1
+plan_review:
+  verdict: approve
+  reviewed_at: '2026-03-09T13:30:00Z'
+  findings_count: 0
+dor:
+  last_assessed_at: '2026-03-09T13:20:00Z'
+  score: 9
+  status: pass
+  schema_version: 1
+  blockers: []
+  actions_taken:
+    requirements_updated: false
+    implementation_plan_updated: true
+schema_version: 1
