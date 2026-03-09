@@ -116,6 +116,9 @@ class PreparationView(Widget, can_focus=True):
                 ",".join(t.files),
                 ",".join(t.after),
                 t.group or "",
+                getattr(t, "prepare_phase", None) or "",
+                getattr(t, "integration_phase", None) or "",
+                getattr(t, "finalize_status", None) or "",
             )
             for p in projects
             for t in (p.todos or [])
@@ -181,6 +184,9 @@ class PreparationView(Widget, can_focus=True):
                         files=getattr(t, "files", []),
                         after=getattr(t, "after", []),
                         group=getattr(t, "group", None),
+                        prepare_phase=getattr(t, "prepare_phase", None),
+                        integration_phase=getattr(t, "integration_phase", None),
+                        finalize_status=getattr(t, "finalize_status", None),
                     )
                 )
         slug_width = max((len(t.slug) for t in all_todo_items), default=0)

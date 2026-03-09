@@ -115,15 +115,25 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             self._stop_event.wait(0.05)
 
         if self._stop_event.is_set():
+            logger.debug("ChipTunes: prebuffer aborted (stop event)")
             return
+        buffered = self._pcm_queue.qsize()
+        if buffered < prebuffer_frames:
+            logger.warning("ChipTunes: prebuffer incomplete (%d/%d frames) — opening stream anyway", buffered, prebuffer_frames)
+        else:
+            logger.debug("ChipTunes: prebuffer complete (%d frames), opening stream", buffered)
         with self._pause_lock:
             paused = self._paused
         if paused:
+            logger.debug("ChipTunes: skipping stream open (paused during prebuffer)")
             return
         if not self._open_stream():
+            logger.error("ChipTunes: stream open failed after prebuffer — stopping track")
             self._stop_event.set()
             self._playing = False
             self._notify_track_end()
+        else:
+            logger.info("ChipTunes: audio stream opened, playback active")
 
     def _stream_callback(
         self,
@@ -230,6 +240,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                 volume=self._volume,
             )
             driver.init_tune(subtune)
+            logger.debug("ChipTunes: emulation started (subtune=%d, pal=%s, speed=%s)", subtune, pal, speed)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("SID init failed: %s", exc)
             self._playing = False
@@ -310,11 +321,14 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             and self._stream is None
             and self._stream_blocksize is not None
         )
-        if should_reopen and not self._open_stream():
-            logger.warning("Failed to reopen audio stream on resume — stopping track")
-            self.stop()
-            return
+        if should_reopen:
+            if not self._open_stream():
+                logger.warning("Failed to reopen audio stream on resume — stopping track")
+                self.stop()
+                return
+            logger.debug("ChipTunes: stream reopened on resume")
         self._resume_event.set()
+        logger.debug("ChipTunes: resumed playback")
 
     def _notify_track_end(self) -> None:
         if self.on_track_end is not None:

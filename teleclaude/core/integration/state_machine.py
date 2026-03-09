@@ -31,6 +31,7 @@ from teleclaude.core.db import Db
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.queue import IntegrationQueue, default_integration_state_dir
 from teleclaude.core.integration.readiness_projection import CandidateKey
+from teleclaude.core.next_machine.core import read_phase_state, write_phase_state
 
 logger = get_logger(__name__)
 
@@ -759,6 +760,7 @@ def _step_idle(
     checkpoint.lease_token = lease_token
     checkpoint.started_at = now
     _write_checkpoint(checkpoint_path, checkpoint)
+    _mirror_integration_phase(cwd, key.slug, IntegrationPhase.CANDIDATE_DEQUEUED.value)
 
     logger.info("%s slug=%s phase=CANDIDATE_DEQUEUED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
     _emit_lifecycle_event(
@@ -843,6 +845,7 @@ def _do_merge(
         checkpoint.phase = IntegrationPhase.MERGE_CLEAN.value
         checkpoint.error_context = {"merge_type": "clean"}
         _write_checkpoint(checkpoint_path, checkpoint)
+        _mirror_integration_phase(cwd, key.slug, IntegrationPhase.MERGE_CLEAN.value)
         _emit_lifecycle_event("integration.merge.succeeded", {"slug": key.slug, "branch": key.branch})
         logger.info("%s slug=%s phase=MERGE_CLEAN", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
 
@@ -853,6 +856,7 @@ def _do_merge(
         checkpoint.phase = IntegrationPhase.MERGE_CONFLICTED.value
         checkpoint.error_context = {"merge_type": "conflicted", "conflicted_files": conflicted_files}
         _write_checkpoint(checkpoint_path, checkpoint)
+        _mirror_integration_phase(cwd, key.slug, IntegrationPhase.MERGE_CONFLICTED.value)
         _emit_lifecycle_event(
             "integration.merge.conflicted",
             {"slug": key.slug, "branch": key.branch, "conflicted_files": conflicted_files},
@@ -882,6 +886,7 @@ def _step_awaiting_commit(
         conflicted_files = _get_conflicted_files(wt)
         checkpoint.error_context = {**(checkpoint.error_context or {}), "conflicted_files": conflicted_files}
         _write_checkpoint(checkpoint_path, checkpoint)
+        _mirror_integration_phase(cwd, key.slug, checkpoint.phase)
         return False, _format_conflict_decision(key.slug, key.branch, conflicted_files)
 
     # Check if HEAD advanced in integration worktree (commit happened)
@@ -891,6 +896,7 @@ def _step_awaiting_commit(
         # Commit detected — advance to COMMITTED
         checkpoint.phase = IntegrationPhase.COMMITTED.value
         _write_checkpoint(checkpoint_path, checkpoint)
+        _mirror_integration_phase(cwd, key.slug, IntegrationPhase.COMMITTED.value)
         _emit_lifecycle_event("integration.candidate.committed", {"slug": key.slug, "commit_sha": head_sha})
         logger.info("%s slug=%s phase=COMMITTED commit=%s", _NEXT_INTEGRATE_PHASE_LOG, key.slug, head_sha)
         return True, ""  # loop into COMMITTED
@@ -921,6 +927,7 @@ def _step_committed(
 
     checkpoint.phase = IntegrationPhase.DELIVERY_BOOKKEEPING.value
     _write_checkpoint(checkpoint_path, checkpoint)
+    _mirror_integration_phase(cwd, key.slug, IntegrationPhase.DELIVERY_BOOKKEEPING.value)
 
     # Delivery bookkeeping runs on repo root — operational metadata, not delivery content
     is_bug = _is_bug_slug(cwd, key.slug)
@@ -982,6 +989,7 @@ def _step_delivery_bookkeeping(
         head_sha = _get_head_sha(wt)
         checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
         _write_checkpoint(checkpoint_path, checkpoint)
+        _mirror_integration_phase(cwd, key.slug, IntegrationPhase.PUSH_SUCCEEDED.value)
         _emit_lifecycle_event("integration.push.succeeded", {"slug": key.slug, "commit_sha": head_sha or "unknown"})
         logger.info("%s slug=%s phase=PUSH_SUCCEEDED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return True, ""  # loop into PUSH_SUCCEEDED
@@ -990,6 +998,7 @@ def _step_delivery_bookkeeping(
         checkpoint.phase = IntegrationPhase.PUSH_REJECTED.value
         checkpoint.error_context = {**(checkpoint.error_context or {}), "rejection_reason": rejection}
         _write_checkpoint(checkpoint_path, checkpoint)
+        _mirror_integration_phase(cwd, key.slug, IntegrationPhase.PUSH_REJECTED.value)
         _emit_lifecycle_event("integration.push.rejected", {"slug": key.slug, "rejection_reason": rejection})
         logger.info("%s slug=%s phase=PUSH_REJECTED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return False, _format_push_rejected(rejection, key.slug)
@@ -1013,6 +1022,7 @@ def _step_push_rejected(
         # Recovery detected
         checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
         _write_checkpoint(checkpoint_path, checkpoint)
+        _mirror_integration_phase(cwd, key.slug, IntegrationPhase.PUSH_SUCCEEDED.value)
         _emit_lifecycle_event("integration.push.succeeded", {"slug": key.slug, "commit_sha": local_head})
         logger.info("%s slug=%s phase=PUSH_SUCCEEDED (recovered)", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return True, ""  # loop into PUSH_SUCCEEDED
@@ -1116,6 +1126,7 @@ def _do_cleanup(
     checkpoint.phase = IntegrationPhase.CANDIDATE_DELIVERED.value
     checkpoint.items_processed += 1
     _write_checkpoint(checkpoint_path, checkpoint)
+    _mirror_integration_phase(cwd, key.slug, IntegrationPhase.CANDIDATE_DELIVERED.value)
     logger.info("%s slug=%s phase=CANDIDATE_DELIVERED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
 
     # Restart daemon (non-fatal; done last so state is persisted first)
@@ -1139,6 +1150,19 @@ def _try_release_lease(lease_store: IntegrationLeaseStore, session_id: str, leas
         lease_store.release(key=_INTEGRATION_LEASE_KEY, owner_session_id=session_id, lease_token=lease_token)
     except Exception:
         pass
+
+
+def _mirror_integration_phase(cwd: str, slug: str, phase: str) -> None:
+    """Write integration_phase into the candidate todo's per-todo state.yaml.
+
+    Best-effort: failures are logged but do not block the integration flow.
+    """
+    try:
+        state = read_phase_state(cwd, slug)
+        state["integration_phase"] = phase
+        write_phase_state(cwd, slug, state)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning("_mirror_integration_phase failed for %s phase=%s: %s", slug, phase, exc)
 
 
 # ---------------------------------------------------------------------------

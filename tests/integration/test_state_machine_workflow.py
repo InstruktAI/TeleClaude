@@ -160,7 +160,7 @@ async def test_removed_dependency_satisfaction():
         deps = {"new-feature": ["former-foundation"]}
         _write_roadmap_yaml(tmpdir, ["new-feature"], deps)
 
-        # Create required files for new-feature
+        # Create required files for new-feature (content must be >50 chars)
         item_dir = Path(tmpdir) / "todos" / "new-feature"
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Requirements\n\n## Goal\n\nImplement the new feature with complete coverage.\n")

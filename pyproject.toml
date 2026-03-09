@@ -274,6 +274,12 @@ filterwarnings = [
   "ignore:.*datetime.utcnow.*:DeprecationWarning",
 ]
 
+[tool.test-mapping]
+exclude = [
+    "teleclaude/core/metadata.py",       # Pure Pydantic model, no logic
+    "teleclaude/logging_config.py",       # Delegates to instrukt_ai_logging
+]
+
 [tool.coverage.run]
 source = ["teleclaude"]
 omit = [

@@ -1016,6 +1016,9 @@ class TodoInfo:
     after: List[str] = field(default_factory=list)
     group: Optional[str] = None
     delivered_at: Optional[str] = None
+    prepare_phase: Optional[str] = None
+    integration_phase: Optional[str] = None
+    finalize_status: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, object]) -> "TodoInfo":  # guard: loose-dict
@@ -1042,6 +1045,9 @@ class TodoInfo:
             after=[str(a) for a in cast(List[object], data.get("after", []))],
             group=cast(Optional[str], data.get("group")),
             delivered_at=cast(Optional[str], data.get("delivered_at")),
+            prepare_phase=cast(Optional[str], data.get("prepare_phase")),
+            integration_phase=cast(Optional[str], data.get("integration_phase")),
+            finalize_status=cast(Optional[str], data.get("finalize_status")),
         )
 
     def to_dict(self) -> Dict[str, object]:  # guard: loose-dict

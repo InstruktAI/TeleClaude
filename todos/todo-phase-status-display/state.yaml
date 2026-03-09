@@ -1,0 +1,56 @@
+phase: pending
+build: pending
+review: pending
+deferrals_processed: false
+finalize:
+  status: pending
+breakdown:
+  assessed: false
+  todos: []
+review_round: 0
+max_review_rounds: 3
+review_baseline_commit: ''
+unresolved_findings: []
+resolved_findings: []
+prepare_phase: prepared
+grounding:
+  valid: true
+  base_sha: 0aa80365a159e21b63a3ed6275a5a2bd804c252a
+  input_digest: 6710756bf73a59c5fc43fd50acfac936e3b47e1a5f4aa6c20ab1a91b8d1c01ef
+  referenced_paths:
+  - teleclaude/core/models.py
+  - teleclaude/api_models.py
+  - teleclaude/cli/tui/todos.py
+  - teleclaude/core/roadmap.py
+  - teleclaude/api_server.py
+  - teleclaude/cli/tui/views/preparation.py
+  - teleclaude/cli/tui/phase_labels.py
+  - teleclaude/cli/tui/widgets/todo_row.py
+  - teleclaude/core/integration/state_machine.py
+  - todos/todo-phase-status-display/demo.md
+  - tests/unit/cli/tui/test_phase_labels.py
+  - tests/unit/test_tui_todo_row.py
+  - tests/unit/core/test_roadmap.py
+  last_grounded_at: '2026-03-09T14:34:37.961194+00:00'
+  invalidated_at: ''
+  invalidation_reason: ''
+  changed_paths: []
+requirements_review:
+  verdict: approve
+  reviewed_at: '2026-03-09T12:37:41Z'
+  findings_count: 0
+  rounds: 1
+plan_review:
+  verdict: approve
+  reviewed_at: '2026-03-09T20:47:00Z'
+  findings_count: 0
+dor:
+  last_assessed_at: '2026-03-09T18:15:00Z'
+  score: 9
+  status: pass
+  schema_version: 1
+  blockers: []
+  actions_taken:
+    requirements_updated: false
+    implementation_plan_updated: false
+schema_version: 1

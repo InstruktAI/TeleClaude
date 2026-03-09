@@ -1,4 +1,4 @@
-.PHONY: help install init link certs format lint test-unit test-e2e test-all test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status
+.PHONY: help install init link certs format lint check-test-mapping test-unit test-e2e test-all test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status
 
 # Default target
 help:
@@ -16,7 +16,8 @@ help:
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make format       Format code with ruff"
-	@echo "  make lint         Run linting checks (ruff, pyright)"
+	@echo "  make lint                 Run linting checks (ruff, pyright)"
+	@echo "  make check-test-mapping   Check 1:1 source-to-test mapping (expected to fail during overhaul)"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test-unit        Run unit tests only"
@@ -72,6 +73,9 @@ lint:
 	@echo "Running lint checks..."
 	@./tools/lint.sh
 	@echo "✓ Lint checks passed"
+
+check-test-mapping:
+	@python tools/lint/test_mapping.py
 
 test-unit:
 	@echo "Running unit tests..."

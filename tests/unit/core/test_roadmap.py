@@ -320,3 +320,121 @@ def test_orphan_scan_does_not_skip_other_underscore_dirs(tmp_path: Path) -> None
     slugs = [t.slug for t in result]
     assert "_other-dir" in slugs
     assert "_icebox" not in slugs
+
+
+# ── Phase field pipeline tests ──────────────────────────────────────────────
+
+
+def test_read_todo_metadata_prepare_phase(tmp_path: Path) -> None:
+    """prepare_phase is read from state.yaml and flows through to TodoInfo."""
+    todos = tmp_path / "todos"
+    todos.mkdir()
+    (todos / "_icebox").mkdir()
+    (todos / "_icebox" / "icebox.yaml").touch()
+    (todos / "task-1").mkdir()
+    (todos / "task-1" / "state.yaml").write_text(
+        yaml.dump({"build": "pending", "prepare_phase": "plan_drafting"})
+    )
+
+    entries = [RoadmapEntry(slug="task-1", description="Task 1")]
+    with patch("teleclaude.core.roadmap.load_roadmap", return_value=entries):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[]):
+            todos_obj = assemble_roadmap(str(tmp_path))
+
+    assert len(todos_obj) == 1
+    assert todos_obj[0].prepare_phase == "plan_drafting"
+
+
+def test_read_todo_metadata_integration_phase(tmp_path: Path) -> None:
+    """integration_phase is read from state.yaml and flows through to TodoInfo."""
+    todos = tmp_path / "todos"
+    todos.mkdir()
+    (todos / "_icebox").mkdir()
+    (todos / "_icebox" / "icebox.yaml").touch()
+    (todos / "task-1").mkdir()
+    (todos / "task-1" / "state.yaml").write_text(
+        yaml.dump({"build": "pending", "integration_phase": "merge_clean"})
+    )
+
+    entries = [RoadmapEntry(slug="task-1", description="Task 1")]
+    with patch("teleclaude.core.roadmap.load_roadmap", return_value=entries):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[]):
+            todos_obj = assemble_roadmap(str(tmp_path))
+
+    assert len(todos_obj) == 1
+    assert todos_obj[0].integration_phase == "merge_clean"
+
+
+def test_read_todo_metadata_finalize_status(tmp_path: Path) -> None:
+    """finalize_status is read from state.yaml finalize.status and flows through."""
+    todos = tmp_path / "todos"
+    todos.mkdir()
+    (todos / "_icebox").mkdir()
+    (todos / "_icebox" / "icebox.yaml").touch()
+    (todos / "task-1").mkdir()
+    (todos / "task-1" / "state.yaml").write_text(
+        yaml.dump({"build": "pending", "finalize": {"status": "handed_off"}})
+    )
+
+    entries = [RoadmapEntry(slug="task-1", description="Task 1")]
+    with patch("teleclaude.core.roadmap.load_roadmap", return_value=entries):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[]):
+            todos_obj = assemble_roadmap(str(tmp_path))
+
+    assert len(todos_obj) == 1
+    assert todos_obj[0].finalize_status == "handed_off"
+
+
+def test_read_todo_metadata_missing_phase_fields_are_none(tmp_path: Path) -> None:
+    """Missing phase fields in state.yaml default to None (backward compat)."""
+    todos = tmp_path / "todos"
+    todos.mkdir()
+    (todos / "_icebox").mkdir()
+    (todos / "_icebox" / "icebox.yaml").touch()
+    (todos / "task-1").mkdir()
+    (todos / "task-1" / "state.yaml").write_text(yaml.dump({"build": "pending"}))
+
+    entries = [RoadmapEntry(slug="task-1", description="Task 1")]
+    with patch("teleclaude.core.roadmap.load_roadmap", return_value=entries):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[]):
+            todos_obj = assemble_roadmap(str(tmp_path))
+
+    assert todos_obj[0].prepare_phase is None
+    assert todos_obj[0].integration_phase is None
+    assert todos_obj[0].finalize_status is None
+
+
+def test_read_todo_metadata_empty_prepare_phase_coerced_to_none(tmp_path: Path) -> None:
+    """Empty string prepare_phase is coerced to None."""
+    todos = tmp_path / "todos"
+    todos.mkdir()
+    (todos / "_icebox").mkdir()
+    (todos / "_icebox" / "icebox.yaml").touch()
+    (todos / "task-1").mkdir()
+    (todos / "task-1" / "state.yaml").write_text(yaml.dump({"build": "pending", "prepare_phase": ""}))
+
+    entries = [RoadmapEntry(slug="task-1", description="Task 1")]
+    with patch("teleclaude.core.roadmap.load_roadmap", return_value=entries):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[]):
+            todos_obj = assemble_roadmap(str(tmp_path))
+
+    assert todos_obj[0].prepare_phase is None
+
+
+def test_read_todo_metadata_unknown_finalize_status_coerced_to_none(tmp_path: Path) -> None:
+    """Unknown finalize status is coerced to None."""
+    todos = tmp_path / "todos"
+    todos.mkdir()
+    (todos / "_icebox").mkdir()
+    (todos / "_icebox" / "icebox.yaml").touch()
+    (todos / "task-1").mkdir()
+    (todos / "task-1" / "state.yaml").write_text(
+        yaml.dump({"build": "pending", "finalize": {"status": "unknown_status"}})
+    )
+
+    entries = [RoadmapEntry(slug="task-1", description="Task 1")]
+    with patch("teleclaude.core.roadmap.load_roadmap", return_value=entries):
+        with patch("teleclaude.core.roadmap.load_icebox", return_value=[]):
+            todos_obj = assemble_roadmap(str(tmp_path))
+
+    assert todos_obj[0].finalize_status is None

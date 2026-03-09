@@ -22,3 +22,6 @@ class TodoItem:
     files: list[str] = field(default_factory=list)
     after: list[str] = field(default_factory=list)
     group: str | None = None
+    prepare_phase: str | None = None
+    integration_phase: str | None = None
+    finalize_status: str | None = None
