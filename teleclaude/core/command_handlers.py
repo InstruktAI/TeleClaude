@@ -997,17 +997,7 @@ async def deliver_inbound(
         if not session:
             raise RuntimeError(f"Startup gate timeout for session {session_id[:8]}")
 
-    if session.lifecycle_status == "headless":
-        adopted = await _ensure_tmux_for_headless(
-            session,
-            client,
-            start_polling,
-            resume_native=True,
-        )
-        if not adopted:
-            raise RuntimeError(f"Failed to adopt headless session {session_id[:8]}")
-        session = adopted
-    elif not await _session_message_delivery_available(session):
+    if not await _session_message_delivery_available(session):
         raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
 
     # DB update must precede broadcast so echo guard reads the persisted state.
@@ -1118,7 +1108,7 @@ async def keys(
     """Handle key-based commands via a single KeysCommand."""
     key_name = cmd.key
     session = await db.get_session(cmd.session_id)
-    if session and (session.lifecycle_status == "headless" or not session.tmux_session_name):
+    if session and (session.lifecycle_status == "headless"):
         adopted = await _ensure_tmux_for_headless(
             session,
             client,

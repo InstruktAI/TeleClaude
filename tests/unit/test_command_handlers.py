@@ -2613,7 +2613,10 @@ async def test_deliver_inbound_rejects_closed_session():
 
 
 @pytest.mark.asyncio
-async def test_deliver_inbound_adopts_headless_session_before_tmux_delivery():
+async def test_deliver_inbound_passes_headless_session_to_tmux_layer():
+    # Adoption now happens downstream in tmux_io._revive_headless_and_send,
+    # not in deliver_inbound. The session is passed as-is; the tmux layer
+    # mutates tmux_session_name in-place and fires the DB update.
     headless_session = MagicMock()
     headless_session.session_id = "headless-session"
     headless_session.closed_at = None
@@ -2622,15 +2625,6 @@ async def test_deliver_inbound_adopts_headless_session_before_tmux_delivery():
     headless_session.project_path = "/tmp"
     headless_session.subdir = None
     headless_session.active_agent = "codex"
-
-    adopted_session = MagicMock()
-    adopted_session.session_id = "headless-session"
-    adopted_session.closed_at = None
-    adopted_session.lifecycle_status = "active"
-    adopted_session.tmux_session_name = "tc_headless"
-    adopted_session.project_path = "/tmp"
-    adopted_session.subdir = None
-    adopted_session.active_agent = "codex"
 
     row = cast(
         InboundQueueRow,
@@ -2661,21 +2655,20 @@ async def test_deliver_inbound_adopts_headless_session_before_tmux_delivery():
     mock_client = AsyncMock()
     start_polling = AsyncMock()
 
+    def _mock_process_text(session, text, **kwargs):
+        # Simulate what _revive_headless_and_send does: mutate tmux_session_name in-place
+        session.tmux_session_name = "tc_headless"
+        return True
+
     with (
         patch.object(command_handlers, "db", mock_db),
-        patch.object(
-            command_handlers,
-            "_ensure_tmux_for_headless",
-            new=AsyncMock(return_value=adopted_session),
-        ) as mock_adopt,
-        patch.object(command_handlers.tmux_io, "process_text", new=AsyncMock(return_value=True)) as mock_process_text,
+        patch.object(command_handlers.tmux_io, "process_text", new=AsyncMock(side_effect=_mock_process_text)) as mock_process_text,
     ):
         await command_handlers.deliver_inbound(row, mock_client, start_polling)
 
-    mock_adopt.assert_awaited_once()
     mock_process_text.assert_awaited_once()
     process_args = mock_process_text.await_args.args
-    assert process_args[0] is adopted_session
+    assert process_args[0] is headless_session
     start_polling.assert_awaited_once_with("headless-session", "tc_headless")
 
 
