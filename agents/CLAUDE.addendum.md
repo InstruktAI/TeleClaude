@@ -6,6 +6,10 @@
 - If something is pending, say exactly what remains and continue.
 - Prefer short, factual reporting; avoid reassurance language.
 
+## Checkpoint Compliance
+
+- Checkpoint instructions are directives, not suggestions. Execute every step exactly as stated. Never insert confirmation gates, reinterpret, or defer any checkpoint instruction.
+
 ## Use the Force
 
 - Check if a file is a build artifact before editing it. `AGENTS.md` next to `AGENTS.master.md` is generated — edit the master, not the output.

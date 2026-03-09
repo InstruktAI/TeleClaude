@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "TeleClaude"
-version = "1.0.0"
+version = "0.2.0"
 license = { text = "GPL-3.0-only" }
 authors = [{ name = "Maurice Faber", email = "maurice@instrukt.ai" }]
 description = "Control terminal sessions on multiple computers remotely via Telegram"
@@ -272,6 +272,12 @@ filterwarnings = [
   "ignore::pytest.PytestUnraisableExceptionWarning",
   "ignore::pytest.PytestUnhandledThreadExceptionWarning",
   "ignore:.*datetime.utcnow.*:DeprecationWarning",
+]
+
+[tool.test-mapping]
+exclude = [
+    "teleclaude/core/metadata.py",       # Pure Pydantic model, no logic
+    "teleclaude/logging_config.py",       # Delegates to instrukt_ai_logging
 ]
 
 [tool.coverage.run]
