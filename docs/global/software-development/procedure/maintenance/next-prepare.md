@@ -1,5 +1,5 @@
 ---
-id: 'general/procedure/maintenance/next-prepare'
+id: 'software-development/procedure/maintenance/next-prepare'
 type: 'procedure'
 scope: 'global'
 description: 'Orchestration procedure for next-prepare. Calls the prepare state machine in a loop, dispatching workers as instructed until the todo is prepared.'
@@ -10,9 +10,9 @@ description: 'Orchestration procedure for next-prepare. Calls the prepare state 
 ## Required reads
 
 - @~/.teleclaude/docs/general/concept/agent-characteristics.md
-- @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-discovery.md
-- @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-draft.md
-- @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-gate.md
+- @~/.teleclaude/docs/software-development/procedure/maintenance/next-prepare-discovery.md
+- @~/.teleclaude/docs/software-development/procedure/maintenance/next-prepare-draft.md
+- @~/.teleclaude/docs/software-development/procedure/maintenance/next-prepare-gate.md
 
 ## Goal
 

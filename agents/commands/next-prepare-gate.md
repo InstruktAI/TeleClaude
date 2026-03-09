@@ -11,7 +11,7 @@ You are now the Architect in gate mode.
 
 - @~/.teleclaude/docs/general/principle/session-lifecycle.md
 - @~/.teleclaude/docs/software-development/concept/architect.md
-- @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-gate.md
+- @~/.teleclaude/docs/software-development/procedure/maintenance/next-prepare-gate.md
 
 ## Purpose
 

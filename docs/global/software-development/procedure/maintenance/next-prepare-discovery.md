@@ -1,5 +1,5 @@
 ---
-id: 'general/procedure/maintenance/next-prepare-discovery'
+id: 'software-development/procedure/maintenance/next-prepare-discovery'
 type: 'procedure'
 scope: 'global'
 description: 'Requirements discovery phase for next-prepare. Produces requirements from input using solo or triangulated discovery.'

@@ -9,15 +9,6 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: general/concept/agent-invocation-modes
-  description: Standardized invocation patterns for AI agent CLIs, separating structured
-    extraction from autonomous execution.
-  type: concept
-  scope: global
-  path: docs/general/concept/agent-invocation-modes.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
 - id: general/concept/ai-to-ai-coordination
   description: How AI agents coordinate using sub-sessions, listeners, and terminal
     notifications.
@@ -347,51 +338,6 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
-- id: general/procedure/maintenance/log-bug-hunter
-  description: Proactive log scanning procedure that discovers errors, fixes inline
-    or dispatches to the bug pipeline, and writes run reports.
-  type: procedure
-  scope: project
-  path: docs/general/procedure/maintenance/log-bug-hunter.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/maintenance/next-prepare
-  description: Orchestration procedure for next-prepare. Calls the prepare state machine
-    in a loop, dispatching workers as instructed until the todo is prepared.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/maintenance/next-prepare.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/maintenance/next-prepare-discovery
-  description: Requirements discovery phase for next-prepare. Produces requirements
-    from input using solo or triangulated discovery.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/maintenance/next-prepare-discovery.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/maintenance/next-prepare-draft
-  description: Plan drafting phase for next-prepare. Produces implementation plans
-    from approved requirements and splits the work when planning shows it is not atomic.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/maintenance/next-prepare-draft.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: general/procedure/maintenance/next-prepare-gate
-  description: Gate phase for next-prepare. Performs formal DOR validation on the
-    complete artifact set and is the only phase allowed to drive readiness decisions.
-  type: procedure
-  scope: global
-  path: docs/general/procedure/maintenance/next-prepare-gate.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
 - id: general/procedure/memory-management
   description: Guidelines for saving high-signal memories to the long-term database,
     distinguishing them from documentation and bugs.
@@ -496,6 +442,15 @@ snippets:
   type: spec
   scope: global
   path: docs/general/spec/tools/telec-cli.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/concept/agent-invocation-modes
+  description: Standardized invocation patterns for AI agent CLIs, separating structured
+    extraction from autonomous execution.
+  type: concept
+  scope: global
+  path: docs/software-development/concept/agent-invocation-modes.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -903,12 +858,57 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: software-development/procedure/maintenance/log-bug-hunter
+  description: Proactive log scanning procedure that discovers errors, fixes inline
+    or dispatches to the bug pipeline, and writes run reports.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/maintenance/log-bug-hunter.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: software-development/procedure/maintenance/maintenance-cadence
   description: Weekly and monthly maintenance cadence for small teams that need high
     stability with low process overhead.
   type: procedure
   scope: domain
   path: docs/software-development/procedure/maintenance/maintenance-cadence.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/maintenance/next-prepare
+  description: Orchestration procedure for next-prepare. Calls the prepare state machine
+    in a loop, dispatching workers as instructed until the todo is prepared.
+  type: procedure
+  scope: global
+  path: docs/software-development/procedure/maintenance/next-prepare.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/maintenance/next-prepare-discovery
+  description: Requirements discovery phase for next-prepare. Produces requirements
+    from input using solo or triangulated discovery.
+  type: procedure
+  scope: global
+  path: docs/software-development/procedure/maintenance/next-prepare-discovery.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/maintenance/next-prepare-draft
+  description: Plan drafting phase for next-prepare. Produces implementation plans
+    from approved requirements and splits the work when planning shows it is not atomic.
+  type: procedure
+  scope: global
+  path: docs/software-development/procedure/maintenance/next-prepare-draft.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/maintenance/next-prepare-gate
+  description: Gate phase for next-prepare. Performs formal DOR validation on the
+    complete artifact set and is the only phase allowed to drive readiness decisions.
+  type: procedure
+  scope: global
+  path: docs/software-development/procedure/maintenance/next-prepare-gate.md
   role: member
   visibility: internal
   source_project: TeleClaude

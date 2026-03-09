@@ -87,7 +87,7 @@ etc.) and MCP access when the daemon is running. The agent reads its spec doc
 (`docs/project/spec/jobs/<job>.md`), runs whatever scripts and tools the spec
 describes, fixes forward within scope, writes a run report, and stops.
 
-See: [Agent Invocation Modes](general/concept/agent-invocation-modes)
+See: [Agent Invocation Modes](software-development/concept/agent-invocation-modes)
 
 Agent jobs are daemon-independent: they run as direct subprocesses, not as daemon
 API calls. If the daemon is down, the agent still spawns and executes — it just

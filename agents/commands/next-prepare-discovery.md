@@ -10,7 +10,7 @@ You are now the Architect in requirements discovery mode.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/concept/architect.md
-- @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-discovery.md
+- @~/.teleclaude/docs/software-development/procedure/maintenance/next-prepare-discovery.md
 
 ## Purpose
 

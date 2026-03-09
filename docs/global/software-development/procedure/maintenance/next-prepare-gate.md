@@ -1,5 +1,5 @@
 ---
-id: 'general/procedure/maintenance/next-prepare-gate'
+id: 'software-development/procedure/maintenance/next-prepare-gate'
 type: 'procedure'
 scope: 'global'
 description: 'Gate phase for next-prepare. Performs formal DOR validation on the complete artifact set and is the only phase allowed to drive readiness decisions.'

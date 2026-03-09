@@ -14,6 +14,7 @@ description: 'Periodic self-awareness timer that keeps agents aligned during sus
 - When the timer fires, pause briefly and check: Am I still on track? Is my current direction aligned with the objective?
 - If yes, reset the timer and continue. If not, correct course or stop.
 - **Intent invalidation:** A timer encodes the intent that was valid when it was set. If the user has intervened since the timer was set — provided new direction, spoken to a worker directly, changed context, or expressed disagreement — the timer's encoded intent is stale. When a timer fires, check for user intervention first. If intervention occurred, discard the timer's original instructions and re-evaluate from the current state. Never execute stale instructions from a timer that was set before a context change.
+- **Mandatory until terminal state.** The heartbeat chain does not stop until the agent's mission is fully complete — all outputs delivered, all child sessions ended, own session ended. Each heartbeat encodes a note to self: what remains to be done. When it fires, check whether those conditions are met. If not, do them.
 - The heartbeat carries no other responsibilities. It is not a debrief, not a reporting moment, not a place for housekeeping. It is a pinch in the arm — nothing more.
 
 ## Rationale

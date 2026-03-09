@@ -1,8 +1,8 @@
 ---
-id: 'general/procedure/maintenance/log-bug-hunter'
+id: 'software-development/procedure/maintenance/log-bug-hunter'
 type: 'procedure'
 domain: 'software-development'
-scope: 'project'
+scope: 'domain'
 description: 'Proactive log scanning procedure that discovers errors, fixes inline or dispatches to the bug pipeline, and writes run reports.'
 ---
 

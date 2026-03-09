@@ -11,7 +11,7 @@ description: 'Hourly agent job that scans daemon logs for errors, fixes inline o
 ## Required reads
 
 @~/.teleclaude/docs/general/procedure/agent-job-hygiene.md
-@~/.teleclaude/docs/general/procedure/maintenance/log-bug-hunter.md
+@~/.teleclaude/docs/software-development/procedure/maintenance/log-bug-hunter.md
 
 ## What it is
 

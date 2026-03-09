@@ -394,8 +394,8 @@ def _format_clearance_wait(blocking_session_ids: tuple[str, ...]) -> str:
         lines.append("\nBlocking sessions (active work on main detected):")
         for sid in blocking_session_ids:
             lines.append(f"  - {sid}")
-    lines.append("\nCall telec todo integrate again once blockers are resolved.")
-    lines.append("\nNEXT: Wait for blockers to clear, then call telec todo integrate")
+    lines.append("\nSet a 60-second heartbeat timer. When it fires, call telec todo integrate to re-check clearance.")
+    lines.append("\nNEXT: Set heartbeat timer (60s), then call telec todo integrate when it fires")
     return "\n".join(lines)
 
 

@@ -1,5 +1,5 @@
 ---
-id: 'general/procedure/maintenance/next-prepare-draft'
+id: 'software-development/procedure/maintenance/next-prepare-draft'
 type: 'procedure'
 scope: 'global'
 description: 'Plan drafting phase for next-prepare. Produces implementation plans from approved requirements and splits the work when planning shows it is not atomic.'

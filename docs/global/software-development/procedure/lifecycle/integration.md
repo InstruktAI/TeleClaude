@@ -68,7 +68,10 @@ Push from integration worktree to origin/main was rejected (likely non-fast-forw
 ### INTEGRATION WAIT
 
 Main branch not clear — another session is actively modifying main.
-Wait for blockers to clear, then call `telec todo integrate`.
+
+1. Set a 60-second heartbeat timer.
+2. When the timer fires, call `telec todo integrate` to re-check clearance.
+3. Repeat until clearance is granted or a terminal condition is reached.
 
 Dirty tracked files on main do **not** block integration. The integrator operates
 in its own isolated worktree (`trees/_integration/`), independent of repo root state.

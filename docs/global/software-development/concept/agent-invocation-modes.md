@@ -1,5 +1,5 @@
 ---
-id: 'general/concept/agent-invocation-modes'
+id: 'software-development/concept/agent-invocation-modes'
 type: 'concept'
 scope: 'global'
 domain: 'software-development'
