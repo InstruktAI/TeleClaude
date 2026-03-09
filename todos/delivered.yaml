@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: icebox-physical-folder
+  date: '2026-03-09'
+  commit: 9217be140465
 - slug: prepare-state-machine
   date: '2026-03-08'
   commit: '127180446'
@@ -193,11 +196,11 @@
   commit: 6d201c8e3869dda28c10cef4b3df81bfc4cc5f2f
 - slug: mcp-to-tool-specs
   date: '2026-02-26'
+  commit: 92dd3c7d8cb0
   children:
   - mcp-migration-telec-commands
   - mcp-migration-agent-config
   - mcp-migration-delete-mcp
-  commit: 92dd3c7d8cb0
 - slug: mcp-migration-delete-mcp
   date: '2026-02-25'
   commit: ca23644eed6e6145e9569b608e32a09b60e399cb
@@ -308,14 +311,15 @@
   commit: 66bb82ca0b207064e404db2e3a9b5276571673ae
 - slug: web-interface
   date: '2026-02-21'
+  commit: 24339f34fc12
   children:
   - web-interface-1
   - web-interface-2
   - web-interface-3
   - web-interface-4
-  commit: 24339f34fc12
 - slug: release-automation
   date: '2026-02-21'
+  commit: e20dbc9fee64
   children:
   - release-manifests
   - release-workflow-foundation
@@ -323,7 +327,6 @@
   - release-lane-codex
   - release-lane-gemini
   - release-arbiter
-  commit: e20dbc9fee64
 - slug: pane-state-reconciliation
   date: '2026-02-21'
   commit: 02802843

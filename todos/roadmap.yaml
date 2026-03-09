@@ -48,6 +48,3 @@
 - slug: codex-render-semantic-runtime
   description: 'Render-aware session runtime: preserve Codex tmux semantics, move
     to wake-driven capture, and cut idle tmux overhead'
-- slug: icebox-physical-folder
-  description: 'Physical _icebox/ folder for frozen todos: folder-move on freeze/unfreeze,
-    migration of 17 existing entries'
