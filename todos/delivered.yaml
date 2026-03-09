@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: tso-infra
+  date: '2026-03-10'
+  commit: db45f2b80f4d
+- slug: todo-phase-status-display
+  date: '2026-03-09'
+  commit: 3dfac1dc6b4d
 - slug: icebox-physical-folder
   date: '2026-03-09'
   commit: 9217be140465

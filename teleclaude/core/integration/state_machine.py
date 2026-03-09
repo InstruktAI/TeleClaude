@@ -31,7 +31,6 @@ from teleclaude.core.db import Db
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.queue import IntegrationQueue, default_integration_state_dir
 from teleclaude.core.integration.readiness_projection import CandidateKey
-from teleclaude.core.integration.runtime import MainBranchClearanceProbe, SessionSnapshot
 
 logger = get_logger(__name__)
 
@@ -59,7 +58,6 @@ class IntegrationPhase(str, Enum):
 
     IDLE = "idle"
     CANDIDATE_DEQUEUED = "candidate_dequeued"
-    CLEARANCE_WAIT = "clearance_wait"
     MERGE_CLEAN = "merge_clean"
     MERGE_CONFLICTED = "merge_conflicted"
     AWAITING_COMMIT = "awaiting_commit"
@@ -262,65 +260,6 @@ def _read_file_safe(path: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Clearance probe factory
-# ---------------------------------------------------------------------------
-
-
-def _make_clearance_probe(cwd: str) -> MainBranchClearanceProbe:
-    """Create a MainBranchClearanceProbe backed by telec CLI calls and git status."""
-    git_dir_present = (Path(cwd) / ".git").exists()
-
-    def _sessions_provider() -> tuple[SessionSnapshot, ...]:
-        if not git_dir_present:
-            return ()
-        try:
-            result = subprocess.run(
-                ["telec", "sessions", "list", "--json"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                cwd=cwd,
-                check=False,
-            )
-            if result.returncode != 0:
-                return ()
-            data = json.loads(result.stdout)
-            raw_sessions = data if isinstance(data, list) else data.get("sessions", [])
-            return tuple(
-                SessionSnapshot(
-                    session_id=s["session_id"],
-                    initiator_session_id=s.get("initiator_session_id"),
-                )
-                for s in raw_sessions
-                if isinstance(s, dict) and s.get("session_id")
-            )
-        except Exception:
-            return ()
-
-    def _tail_provider(session_id: str) -> str:
-        if not git_dir_present:
-            return ""
-        try:
-            result = subprocess.run(
-                ["telec", "sessions", "tail", session_id],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                cwd=cwd,
-                check=False,
-            )
-            return result.stdout if result.returncode == 0 else ""
-        except Exception:
-            return ""
-
-    return MainBranchClearanceProbe(
-        sessions_provider=_sessions_provider,
-        session_tail_provider=_tail_provider,
-        dirty_tracked_paths_provider=lambda: (),
-    )
-
-
-# ---------------------------------------------------------------------------
 # Instruction formatters
 # ---------------------------------------------------------------------------
 
@@ -386,17 +325,6 @@ If conflicts are unresolvable, call: telec todo integrate
 To explicitly block the candidate, the agent must mark_blocked via queue.)
 
 NEXT: Resolve conflicts in trees/_integration, stage, commit, then call telec todo integrate"""
-
-
-def _format_clearance_wait(blocking_session_ids: tuple[str, ...]) -> str:
-    lines = ["INTEGRATION WAIT: Main branch not clear for integration"]
-    if blocking_session_ids:
-        lines.append("\nBlocking sessions (active work on main detected):")
-        for sid in blocking_session_ids:
-            lines.append(f"  - {sid}")
-    lines.append("\nSet a 60-second heartbeat timer. When it fires, call telec todo integrate to re-check clearance.")
-    lines.append("\nNEXT: Set heartbeat timer (60s), then call telec todo integrate when it fires")
-    return "\n".join(lines)
 
 
 def _format_push_rejected(rejection_reason: str, slug: str) -> str:
@@ -567,10 +495,10 @@ def _dispatch_sync(
     """Synchronous state machine loop. Returns instruction string for the agent."""
     _tls.loop = loop
     checkpoint_path = state_dir / "integrate-state.json"
+    queue = IntegrationQueue(state_path=state_dir / "queue.json")
+    lease_store = IntegrationLeaseStore(state_path=state_dir / "lease.json")
 
     for _iter in range(_LOOP_LIMIT):
-        queue = IntegrationQueue(state_path=state_dir / "queue.json")
-        lease_store = IntegrationLeaseStore(state_path=state_dir / "lease.json")
         checkpoint = _read_checkpoint(checkpoint_path)
 
         try:
@@ -630,11 +558,16 @@ def _step(
             started=started,
         )
 
-    if phase in (IntegrationPhase.CANDIDATE_DEQUEUED, IntegrationPhase.CLEARANCE_WAIT):
-        return _step_clearance_wait(
+    if phase == IntegrationPhase.CANDIDATE_DEQUEUED:
+        # After dequeue, go straight to merge (worktree isolation + push rejection
+        # handle concurrency; no pre-flight clearance check needed).
+        key = _get_candidate_key(checkpoint)
+        if not key:
+            return False, _format_error("INVALID_STATE", "CANDIDATE_DEQUEUED checkpoint missing candidate key")
+        return _do_merge(
             checkpoint=checkpoint,
             checkpoint_path=checkpoint_path,
-            session_id=session_id,
+            key=key,
             cwd=cwd,
         )
 
@@ -763,7 +696,7 @@ def _step_idle(
     cwd: str,
     started: float,
 ) -> tuple[bool, str]:
-    """IDLE: check queue, acquire lease, pop candidate, check clearance, do merge."""
+    """IDLE: check queue, acquire lease, pop candidate, proceed to merge."""
     queued_items = [item for item in queue.items() if item.status == "queued"]
     if not queued_items:
         # When a specific slug is requested, auto-enqueue from the local branch
@@ -826,46 +759,8 @@ def _step_idle(
     )
     _emit_lifecycle_event("integration.candidate.dequeued", {"slug": key.slug, "branch": key.branch, "sha": key.sha})
 
-    # Check clearance (session blockers only; dirty main is allowed)
-    clearance_probe = _make_clearance_probe(cwd)
-    clearance = clearance_probe.check(exclude_session_id=session_id)
-    if clearance.blocking_session_ids:
-        checkpoint.phase = IntegrationPhase.CLEARANCE_WAIT.value
-        _write_checkpoint(checkpoint_path, checkpoint)
-        return False, _format_clearance_wait(clearance.blocking_session_ids)
-
-    # Do merge
-    return _do_merge(
-        checkpoint=checkpoint,
-        checkpoint_path=checkpoint_path,
-        key=key,
-        cwd=cwd,
-    )
-
-
-def _step_clearance_wait(
-    *,
-    checkpoint: IntegrationCheckpoint,
-    checkpoint_path: Path,
-    session_id: str,
-    cwd: str,
-) -> tuple[bool, str]:
-    """CLEARANCE_WAIT: re-check clearance, proceed or stay waiting."""
-    key = _get_candidate_key(checkpoint)
-    if not key:
-        return False, _format_error("INVALID_STATE", "CLEARANCE_WAIT checkpoint missing candidate key")
-
-    clearance_probe = _make_clearance_probe(cwd)
-    clearance = clearance_probe.check(exclude_session_id=session_id)
-    if clearance.blocking_session_ids:
-        return False, _format_clearance_wait(clearance.blocking_session_ids)
-
-    return _do_merge(
-        checkpoint=checkpoint,
-        checkpoint_path=checkpoint_path,
-        key=key,
-        cwd=cwd,
-    )
+    # Go straight to merge — worktree isolation + push rejection handle concurrency
+    return True, ""  # loop into CANDIDATE_DEQUEUED → _do_merge
 
 
 def _do_merge(

@@ -65,17 +65,6 @@ Push from integration worktree to origin/main was rejected (likely non-fast-forw
 3. Resolve any new conflicts, then `git -C trees/_integration push origin HEAD:main`.
 4. Call `telec todo integrate`.
 
-### INTEGRATION WAIT
-
-Main branch not clear — another session is actively modifying main.
-
-1. Set a 60-second heartbeat timer.
-2. When the timer fires, call `telec todo integrate` to re-check clearance.
-3. Repeat until clearance is granted or a terminal condition is reached.
-
-Dirty tracked files on main do **not** block integration. The integrator operates
-in its own isolated worktree (`trees/_integration/`), independent of repo root state.
-
 ### LEASE_BUSY
 
 Another integrator session already holds the lease. Exit immediately.
@@ -121,8 +110,7 @@ from the last persisted phase. No manual checkpoint editing is required.
 
 | Crash point                          | What happens on re-entry                                              |
 | ------------------------------------ | --------------------------------------------------------------------- |
-| After dequeue, before merge          | Resumes at clearance check, then merge. No work lost.                 |
-| During clearance wait                | Re-checks clearance. Proceeds when clear.                             |
+| After dequeue, before merge          | Resumes at merge. No work lost.                                       |
 | After merge, before agent commits    | Re-prompts for commit. Git index (staged changes) persists on disk.   |
 | After commit, before push            | Re-runs delivery bookkeeping (idempotent), then pushes.               |
 | After push rejection                 | Re-checks if integration worktree HEAD matches remote main.           |

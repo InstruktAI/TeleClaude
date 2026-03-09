@@ -42,10 +42,16 @@ while read -r local_ref _local_sha remote_ref _remote_sha; do
     [ -z "${remote_ref:-}" ] && continue
     [ "$remote_ref" != "refs/heads/main" ] && continue
 
+    # Allow push from canonical repo root on branch main
     if [ "$REPO_ROOT" = "$CANONICAL_ROOT" ] \
         && [ "$BRANCH" = "main" ] \
         && [ "$local_ref" = "refs/heads/main" ] \
         && [ "$GIT_DIR" = "$GIT_COMMON_DIR" ]; then
+        continue
+    fi
+
+    # Allow push from the persistent integration worktree
+    if [ "$REPO_ROOT" = "$CANONICAL_ROOT/trees/_integration" ]; then
         continue
     fi
 

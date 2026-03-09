@@ -1,7 +1,7 @@
 """Unit tests for the integration state machine.
 
 Covers: checkpoint read/write/recovery, phase handlers, idempotency,
-queue drain, clearance wait, push rejection recovery.
+queue drain, push rejection recovery.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ def _make_checkpoint(phase: IntegrationPhase = IntegrationPhase.IDLE) -> Integra
 
 def test_write_and_read_checkpoint_roundtrip(tmp_path: Path) -> None:
     cp_path = tmp_path / "state.json"
-    cp = _make_checkpoint(IntegrationPhase.CLEARANCE_WAIT)
+    cp = _make_checkpoint(IntegrationPhase.CANDIDATE_DEQUEUED)
     cp.candidate_slug = "my-feature"
     cp.candidate_branch = "my-feature"
     cp.candidate_sha = "abc123"
@@ -62,7 +62,7 @@ def test_write_and_read_checkpoint_roundtrip(tmp_path: Path) -> None:
     _write_checkpoint(cp_path, cp)
 
     loaded = _read_checkpoint(cp_path)
-    assert loaded.phase == IntegrationPhase.CLEARANCE_WAIT.value
+    assert loaded.phase == IntegrationPhase.CANDIDATE_DEQUEUED.value
     assert loaded.candidate_slug == "my-feature"
     assert loaded.candidate_branch == "my-feature"
     assert loaded.candidate_sha == "abc123"
@@ -214,20 +214,10 @@ def test_dispatch_returns_complete_when_slug_auto_enqueue_invalid_sha(mock_git: 
 
 
 @patch("teleclaude.core.integration.state_machine._run_git")
-@patch("teleclaude.core.integration.state_machine._make_clearance_probe")
 def test_dispatch_auto_enqueues_when_slug_given_and_queue_empty(
-    mock_clearance: MagicMock, mock_git: MagicMock, tmp_path: Path
+    mock_git: MagicMock, tmp_path: Path
 ) -> None:
     """When slug is given and queue is empty, auto-enqueue via git rev-parse then proceed to lease."""
-    from teleclaude.core.integration.runtime import MainBranchClearanceCheck
-
-    # Clearance probe returns no blockers so the state machine proceeds to merge
-    mock_probe = MagicMock()
-    mock_probe.check.return_value = MainBranchClearanceCheck(
-        standalone_session_ids=(), blocking_session_ids=(), dirty_tracked_paths=()
-    )
-    mock_clearance.return_value = mock_probe
-
     sha = "a" * 40  # valid 40-char hex SHA
     # rev-parse returns SHA; all subsequent git calls return failure to stop early
     def _git_side_effect(args: list[str], *, cwd: str) -> tuple[int, str, str]:
@@ -286,17 +276,6 @@ def test_dispatch_returns_slug_not_next_error_when_slug_mismatch(tmp_path: Path)
 
     result = _run_dispatch(tmp_path, slug="wrong-slug", queue=queue)
     assert "SLUG_NOT_NEXT" in result
-
-
-@patch("teleclaude.core.integration.state_machine.subprocess.run")
-def test_clearance_probe_skips_cli_calls_outside_git_repo(mock_run: MagicMock, tmp_path: Path) -> None:
-    from teleclaude.core.integration.state_machine import _make_clearance_probe
-
-    clearance = _make_clearance_probe(str(tmp_path)).check(exclude_session_id="owner-session")
-
-    assert not clearance.blocking_session_ids
-    assert not clearance.dirty_tracked_paths
-    mock_run.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -507,74 +486,7 @@ def test_awaiting_commit_is_idempotent(
 
 
 # ---------------------------------------------------------------------------
-# Clearance wait: probe returns not-cleared
-# ---------------------------------------------------------------------------
-
-
-def _write_clearance_wait_checkpoint(state_dir: Path) -> None:
-    cp_path = state_dir / "integrate-state.json"
-    cp = _make_checkpoint(IntegrationPhase.CLEARANCE_WAIT)
-    cp.candidate_slug = "my-feature"
-    cp.candidate_branch = "my-feature"
-    cp.candidate_sha = "abc123"
-    cp.lease_token = "tok-1"
-    _write_checkpoint(cp_path, cp)
-
-
-def test_clearance_wait_returns_wait_instruction_when_not_cleared(tmp_path: Path) -> None:
-    state_dir = tmp_path / "state"
-    state_dir.mkdir()
-    _write_clearance_wait_checkpoint(state_dir)
-
-    queue = MagicMock()
-    queue.items.return_value = []
-
-    clearance_check = MagicMock()
-    clearance_check.cleared = False
-    clearance_check.blocking_session_ids = ("other-session",)
-    clearance_check.dirty_tracked_paths = ()
-
-    clearance_probe = MagicMock()
-    clearance_probe.check.return_value = clearance_check
-
-    with (
-        patch("teleclaude.core.integration.state_machine.IntegrationQueue", return_value=queue),
-        patch(
-            "teleclaude.core.integration.state_machine.IntegrationLeaseStore",
-            return_value=_make_lease_store(),
-        ),
-        patch(
-            "teleclaude.core.integration.state_machine._make_clearance_probe",
-            return_value=clearance_probe,
-        ),
-    ):
-        result = _dispatch_sync(
-            session_id="s1",
-            slug=None,
-            cwd=str(tmp_path),
-            state_dir=state_dir,
-            started=0.0,
-            loop=None,
-        )
-
-    assert "INTEGRATION WAIT" in result
-    assert "other-session" in result
-
-
-# ---------------------------------------------------------------------------
-# LEASE_ACQUIRED removed from enum
-# ---------------------------------------------------------------------------
-
-
-def test_lease_acquired_not_in_enum() -> None:
-    """LEASE_ACQUIRED was vestigial — verify it no longer exists."""
-    assert not hasattr(IntegrationPhase, "LEASE_ACQUIRED")
-    values = {p.value for p in IntegrationPhase}
-    assert "lease_acquired" not in values
-
-
-# ---------------------------------------------------------------------------
-# CANDIDATE_DEQUEUED recovery: routes through clearance → merge
+# CANDIDATE_DEQUEUED recovery: routes straight to merge
 # ---------------------------------------------------------------------------
 
 
@@ -589,23 +501,13 @@ def _write_candidate_dequeued_checkpoint(state_dir: Path) -> None:
 
 
 @patch("teleclaude.core.integration.state_machine._run_git")
-@patch("teleclaude.core.integration.state_machine._make_clearance_probe")
-def test_candidate_dequeued_resumes_through_clearance_and_merge(
-    mock_clearance: MagicMock, mock_git: MagicMock, tmp_path: Path
+def test_candidate_dequeued_resumes_through_merge(
+    mock_git: MagicMock, tmp_path: Path
 ) -> None:
-    """CANDIDATE_DEQUEUED phase should resume through clearance check into merge."""
-    from teleclaude.core.integration.runtime import MainBranchClearanceCheck
-
+    """CANDIDATE_DEQUEUED phase should go straight to merge."""
     state_dir = tmp_path / "state"
     state_dir.mkdir()
     _write_candidate_dequeued_checkpoint(state_dir)
-
-    # Clearance passes
-    mock_probe = MagicMock()
-    mock_probe.check.return_value = MainBranchClearanceCheck(
-        standalone_session_ids=(), blocking_session_ids=(), dirty_tracked_paths=()
-    )
-    mock_clearance.return_value = mock_probe
 
     # Git calls: fetch OK, checkout OK, pull OK, merge-base not-ancestor (rc=1),
     # merge --squash OK, diff --cached has changes (rc=1 = not empty), then diff stat etc.
@@ -661,68 +563,19 @@ def test_candidate_dequeued_resumes_through_clearance_and_merge(
     assert "SQUASH COMMIT REQUIRED" in result
 
 
-@patch("teleclaude.core.integration.state_machine._make_clearance_probe")
-def test_candidate_dequeued_waits_when_clearance_blocked(
-    mock_clearance: MagicMock, tmp_path: Path
-) -> None:
-    """CANDIDATE_DEQUEUED with blocking sessions should return CLEARANCE_WAIT."""
-    from teleclaude.core.integration.runtime import MainBranchClearanceCheck
-
-    state_dir = tmp_path / "state"
-    state_dir.mkdir()
-    _write_candidate_dequeued_checkpoint(state_dir)
-
-    mock_probe = MagicMock()
-    mock_probe.check.return_value = MainBranchClearanceCheck(
-        standalone_session_ids=(), blocking_session_ids=("blocker-session",), dirty_tracked_paths=()
-    )
-    mock_clearance.return_value = mock_probe
-
-    queue = MagicMock()
-    queue.items.return_value = []
-
-    with (
-        patch("teleclaude.core.integration.state_machine.IntegrationQueue", return_value=queue),
-        patch(
-            "teleclaude.core.integration.state_machine.IntegrationLeaseStore",
-            return_value=_make_lease_store(),
-        ),
-    ):
-        result = _dispatch_sync(
-            session_id="s1",
-            slug=None,
-            cwd=str(tmp_path),
-            state_dir=state_dir,
-            started=0.0,
-            loop=None,
-        )
-
-    assert "INTEGRATION WAIT" in result
-    assert "blocker-session" in result
-
-
 # ---------------------------------------------------------------------------
 # Empty squash merge: skip to CANDIDATE_DELIVERED
 # ---------------------------------------------------------------------------
 
 
 @patch("teleclaude.core.integration.state_machine._run_git")
-@patch("teleclaude.core.integration.state_machine._make_clearance_probe")
 def test_empty_squash_merge_skips_to_delivered(
-    mock_clearance: MagicMock, mock_git: MagicMock, tmp_path: Path
+    mock_git: MagicMock, tmp_path: Path
 ) -> None:
     """When squash merge produces no diff, candidate should skip to CANDIDATE_DELIVERED."""
-    from teleclaude.core.integration.runtime import MainBranchClearanceCheck
-
     state_dir = tmp_path / "state"
     state_dir.mkdir()
-    _write_clearance_wait_checkpoint(state_dir)
-
-    mock_probe = MagicMock()
-    mock_probe.check.return_value = MainBranchClearanceCheck(
-        standalone_session_ids=(), blocking_session_ids=(), dirty_tracked_paths=()
-    )
-    mock_clearance.return_value = mock_probe
+    _write_candidate_dequeued_checkpoint(state_dir)
 
     # Simulate: fetch OK, checkout OK, pull OK, merge-base not-ancestor,
     # merge --squash OK, diff --cached --quiet rc=0 (empty)
