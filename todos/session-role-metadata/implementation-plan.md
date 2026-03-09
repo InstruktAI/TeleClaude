@@ -3,12 +3,17 @@
 ## Overview
 
 Introduce `integrator` as a first-class session permission profile, add structured `job`
-metadata to command-driven session creation, and replace the integrator spawn guard's
-title-text heuristic with a structured metadata query.
+metadata to command-driven session creation, replace the integrator spawn guard's
+title-text heuristic with a structured metadata query, and unify daemon authorization
+onto the CLI's `CommandAuth` dual-factor model.
 
-The change flows through one chain: constant definition -> tool access whitelist ->
+The change flows through one chain: constant definition -> CLI CommandAuth alignment ->
+daemon auth wiring (`is_command_allowed` replaces legacy `is_tool_allowed`) ->
 auth derivation -> server-side metadata injection -> session listing filter -> spawn
-guard replacement -> CLI surface alignment.
+guard replacement.
+
+**Execution order note:** Task 6 (CommandAuth entries) must complete before Task 2
+(daemon auth wiring), since `is_command_allowed` reads from `CLI_SURFACE`.
 
 ## Tasks
 
@@ -25,33 +30,54 @@ prevents string literals from drifting.
 
 ---
 
-### Task 2: Add `INTEGRATOR_ALLOWED_TOOLS` whitelist and route in `is_tool_allowed()`
+### Task 2: Wire `is_command_allowed()` into daemon auth, retire legacy `is_tool_allowed()`
 
-**File(s):** `teleclaude/core/tool_access.py`, `tests/unit/test_role_tools.py`
+**File(s):** `teleclaude/api/auth.py`, `teleclaude/core/tool_access.py`,
+`tests/unit/test_role_tools.py`, `tests/unit/test_api_auth.py`,
+`tests/unit/test_help_desk_features.py`
 
-- [ ] Import `ROLE_INTEGRATOR` from constants
-- [ ] Add `INTEGRATOR_ALLOWED_TOOLS` set after `WORKER_ALLOWED_TOOLS` (line 32):
-  ```
-  "telec sessions tail", "telec sessions list", "telec sessions result",
-  "telec sessions escalate", "telec operations get", "telec todo integrate"
-  ```
-- [ ] Add integrator branch in `is_tool_allowed()` between the worker check and the
-  human-role fallback:
+**Depends on:** Task 6 (CommandAuth entries must include integrator before wiring)
+
+- [ ] In `_is_tool_denied()` in `auth.py`, replace the call to `is_tool_allowed()` with
+  `is_command_allowed()` from `telec.py`:
   ```python
-  if role == ROLE_INTEGRATOR:
-      return tool_name in INTEGRATOR_ALLOWED_TOOLS
+  from teleclaude.cli.telec import is_command_allowed
+
+  def _is_tool_denied(tool_name: str, identity: CallerIdentity) -> bool:
+      return not is_command_allowed(tool_name, identity.system_role, identity.human_role)
   ```
-- [ ] Write tests in `tests/unit/test_role_tools.py`:
-  - `test_integrator_whitelist_allows_integrate`
-  - `test_integrator_whitelist_blocks_dispatch`
-  - `test_integrator_whitelist_blocks_orchestration`
-  - `test_integrator_allowed_tools_complete`
+- [ ] If circular import arises, extract `is_command_allowed`, `_resolve_command_auth`,
+  and `CommandAuth` to `teleclaude/core/command_auth.py` and import from there in both
+  `telec.py` and `auth.py`
+- [ ] Remove from `tool_access.py`: `is_tool_allowed()`, `WORKER_ALLOWED_TOOLS`,
+  `UNAUTHORIZED_EXCLUDED_TOOLS`, `MEMBER_EXCLUDED_TOOLS`, `_get_human_excluded_tools()`
+- [ ] Keep `tool_access.py` if other exported symbols remain; remove if fully empty
+- [ ] Rebuild `get_excluded_tools()` / `filter_tool_names()` from `CLI_SURFACE`
+  human-role auth so help-desk/customer filtering keeps its current behavior without
+  the retired hardcoded exclusion sets
+- [ ] Update/replace tests in `tests/unit/test_role_tools.py`:
+  - Remove tests for legacy exclusion sets
+  - Add `test_command_auth_worker_restricted` — worker blocked from orchestrator-only commands
+  - Add `test_command_auth_integrator_restricted` — integrator blocked from non-whitelist commands
+- [ ] Add tests in `tests/unit/test_api_auth.py`:
+  - `test_tool_denied_uses_command_auth` — orchestrator with valid human_role allowed
+    for `sessions end`
+  - `test_tool_denied_null_human_role_fails_closed` — any system_role with null
+    human_role → denied
+  - `test_tool_denied_worker_restricted` — worker blocked from orchestrator-only commands
+  - `test_tool_denied_integrator_restricted` — integrator blocked from non-whitelist commands
+- [ ] Keep/update tests in `tests/unit/test_help_desk_features.py` so customer/member
+  exclusion behavior stays covered after the `tool_access.py` refactor
 
-**Why:** The integrator needs to observe sessions, report results, and drive the
-integration state machine — but must NOT dispatch sessions, mark phases, or use
-orchestrator commands. A whitelist (matching the worker pattern) enforces this.
+**Why:** The legacy `is_tool_allowed()` uses hardcoded exclusion sets that don't
+properly handle system roles beyond worker. `is_command_allowed()` uses the CommandAuth
+declarations in `CLI_SURFACE` — the same source of truth the CLI uses — providing
+dual-factor (system_role + human_role) authorization. Single source of truth eliminates
+drift between CLI and daemon auth. This directly fixes the bug where orchestrator
+sessions with null human_role were denied with "role 'unauthorized'" because the legacy
+code collapsed system_role and human_role checks into one path.
 
-**Verification:** New tests pass; existing role tests remain green.
+**Verification:** New tests pass; auth, role, and help-desk filtering tests pass or are updated.
 
 ---
 
@@ -159,6 +185,12 @@ arbitrary roles. The command IS the identity.
   - `test_list_sessions_job_filter_matches` — API returns only sessions with matching job
   - `test_list_sessions_job_filter_no_match` — returns empty when no sessions match
   - `test_list_sessions_no_job_filter` — returns all when filter absent
+  - `test_list_sessions_job_filter_respects_initiator_scope_without_all` — job filter
+    narrows the default initiator-scoped view instead of bypassing it
+  - `test_list_sessions_job_filter_respects_role_visibility` — web/member visibility
+    rules still apply before job filtering
+  - `test_list_sessions_job_filter_respects_closed_flag` — closed sessions stay excluded
+    unless `--closed` is requested
   - `test_sessions_list_cli_job_flag` — CLI sends correct `job` param
 
 **Why:** The spawn guard needs a reliable way to query for active integrator sessions.
@@ -260,23 +292,56 @@ sessions without metadata don't falsely block spawning.
 
 ---
 
-### Task 8: Full suite verification
+### Task 8: Update the demo artifact to match the approved architecture
+
+**File(s):** `todos/session-role-metadata/demo.md`
+
+- [ ] Replace legacy `tool_access.py` validation blocks with checks that reflect the
+  approved architecture:
+  - `is_command_allowed()` / daemon auth behavior for integrator access
+  - `COMMAND_ROLE_MAP` metadata derivation
+  - `telec sessions list --help` documenting `--job`
+  - integrator spawn using `telec sessions run --command /next-integrate`
+- [ ] Update the guided presentation text so it describes CommandAuth as the daemon
+  source of truth and removes references to widening `_SYS_ALL` or
+  `sessions start --title integrator`
+
+**Why:** Review always checks `demo.md`. The current demo still describes the superseded
+`tool_access.py` path, so it must be brought in line with the approved plan before build.
+
+**Verification:** `telec todo demo validate session-role-metadata` passes, or any
+remaining validation gap is explicit and reviewable.
+
+---
+
+### Task 9: Verification with targeted tests plus normal hook path
 
 **File(s):** (none — verification only)
 
-- [ ] Run `make test` — all tests pass
-- [ ] Run `make lint` — no violations
-- [ ] Pre-commit hooks pass on committed changes
+- [ ] Run targeted tests for the touched surfaces:
+  - `tests/unit/test_command_auth.py`
+  - `tests/unit/test_api_auth.py`
+  - `tests/unit/test_role_tools.py`
+  - `tests/unit/test_help_desk_features.py`
+  - `tests/unit/test_run_session_metadata.py`
+  - `tests/unit/test_session_list_job_filter.py`
+  - `tests/unit/test_integration_bridge_spawn.py`
+- [ ] Run the repo's normal pre-commit verification path before commit
+- [ ] Escalate to broader test scope only if the targeted tests or hooks expose wider
+  regressions; do not default to `make test`
+- [ ] Run `make lint` only if the hook output leaves lint/type status ambiguous or the
+  hook path does not cover it
 
-**Why:** Integration across 8+ files creates risk of subtle breakage. The full suite
-is the safety net.
+**Why:** This satisfies the success criteria while matching repository policy:
+targeted tests during development, then the normal hook path as the final gate.
 
-**Verification:** Clean exit from `make test` and `make lint`.
+**Verification:** Targeted tests pass and the normal pre-commit verification path is green.
 
 ## Referenced paths
 
 - `teleclaude/constants.py`
 - `teleclaude/core/tool_access.py`
+- `teleclaude/core/command_auth.py`
 - `teleclaude/api/auth.py`
 - `teleclaude/api_server.py`
 - `teleclaude/api_models.py`
@@ -287,9 +352,11 @@ is the safety net.
 - `tests/unit/test_role_tools.py`
 - `tests/unit/test_command_auth.py`
 - `tests/unit/test_api_auth.py`
+- `tests/unit/test_help_desk_features.py`
 - `tests/unit/test_run_session_metadata.py`
 - `tests/unit/test_session_list_job_filter.py`
 - `tests/unit/test_integration_bridge_spawn.py`
+- `todos/session-role-metadata/demo.md`
 
 ## Deferred
 
