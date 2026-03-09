@@ -250,12 +250,11 @@ async def _create_tmux_session(
         teleclaude_bin = str(Path.home() / ".teleclaude" / "bin")
         current_path = os.environ.get("PATH", "/usr/bin:/bin")
         path_parts = [part for part in current_path.split(os.pathsep) if part]
-        if teleclaude_bin in path_parts:
-            effective_env_vars["PATH"] = current_path
-        elif current_path:
-            effective_env_vars["PATH"] = f"{teleclaude_bin}{os.pathsep}{current_path}"
-        else:
-            effective_env_vars["PATH"] = teleclaude_bin
+        # Always prepend teleclaude_bin to first position, removing duplicates.
+        # Even when already present, it may not be first — macOS path_helper
+        # and shell startup can reorder PATH after tmux -e injection.
+        deduped = [p for p in path_parts if p != teleclaude_bin]
+        effective_env_vars["PATH"] = os.pathsep.join([teleclaude_bin] + deduped)
 
         # Enable truecolor for CLI agents.  Without this, CLIs (Gemini, Claude,
         # Codex) fall back to 256-color or plain text because TERM=tmux-256color

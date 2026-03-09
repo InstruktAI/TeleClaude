@@ -181,4 +181,44 @@ async def test_create_tmux_session_preserves_existing_wrapper_path_without_dup(t
     called_args = mock_exec.call_args_list[0][0]
     path_env = [arg for arg in called_args if isinstance(arg, str) and arg.startswith("PATH=")]
     assert len(path_env) == 1
-    assert path_env[0] == f"PATH={existing_path}"
+    # Wrapper path should still be first, without duplication
+    assert path_env[0] == f"PATH={tmp_path}/.teleclaude/bin:/usr/local/bin:/usr/bin"
+
+
+@pytest.mark.asyncio
+async def test_create_tmux_session_promotes_wrapper_path_to_first(tmp_path, monkeypatch):
+    """When wrapper path exists but is NOT first, it must be moved to front."""
+    from teleclaude.core import tmux_bridge
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    # Simulate macOS path_helper pushing teleclaude_bin behind system paths
+    existing_path = f"/usr/local/bin:{tmp_path}/.teleclaude/bin:/usr/bin"
+    monkeypatch.setenv("PATH", existing_path)
+
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.communicate = AsyncMock(return_value=(b"", b""))
+    proc_opt = MagicMock()
+    proc_opt.returncode = 0
+    proc_opt.communicate = AsyncMock(return_value=(b"", b""))
+    proc_hook = MagicMock()
+    proc_hook.returncode = 0
+    proc_hook.communicate = AsyncMock(return_value=(b"", b""))
+
+    with patch.object(
+        tmux_bridge.asyncio,
+        "create_subprocess_exec",
+        new=AsyncMock(side_effect=[proc, proc_opt, proc_hook]),
+    ) as mock_exec:
+        ok = await tmux_bridge._create_tmux_session(
+            name="tc_test",
+            working_dir=str(tmp_path),
+            session_id="sid",
+        )
+
+    assert ok is True
+    called_args = mock_exec.call_args_list[0][0]
+    path_env = [arg for arg in called_args if isinstance(arg, str) and arg.startswith("PATH=")]
+    assert len(path_env) == 1
+    # teleclaude_bin promoted to first, no duplicates
+    assert path_env[0] == f"PATH={tmp_path}/.teleclaude/bin:/usr/local/bin:/usr/bin"
