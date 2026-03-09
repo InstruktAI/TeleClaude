@@ -184,18 +184,23 @@ def remove_todo(project_root: Path, slug: str) -> None:
 
     todos_root = project_root / "todos"
     todo_dir = todos_root / slug
+    icebox_dir = todos_root / "_icebox" / slug
 
-    # Track if we found anything to remove
-    found_directory = todo_dir.exists()
+    # Check both active and icebox locations
+    found_in_active = todo_dir.exists()
+    found_in_icebox_dir = icebox_dir.exists()
+    found_directory = found_in_active or found_in_icebox_dir
+    target_dir = todo_dir if found_in_active else icebox_dir
+
     found_in_roadmap = remove_from_roadmap(str(project_root), slug)
     found_in_icebox = remove_from_icebox(str(project_root), slug)
 
     # Clean up dependency references
     clean_dependency_references(str(project_root), slug)
 
-    # Delete directory if it exists
+    # Delete directory if it exists (from either location)
     if found_directory:
-        shutil.rmtree(todo_dir)
+        shutil.rmtree(target_dir)
 
     # Error if nothing was found
     if not (found_directory or found_in_roadmap or found_in_icebox):

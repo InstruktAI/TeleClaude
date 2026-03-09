@@ -1802,8 +1802,13 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
 # =============================================================================
 
 
+def _icebox_dir(cwd: str) -> Path:
+    """Return the _icebox/ directory path (todos/_icebox)."""
+    return Path(cwd) / "todos" / "_icebox"
+
+
 def _icebox_path(cwd: str) -> Path:
-    return Path(cwd) / "todos" / "icebox.yaml"
+    return _icebox_dir(cwd) / "icebox.yaml"
 
 
 def load_icebox(cwd: str) -> list[RoadmapEntry]:
@@ -1914,7 +1919,88 @@ def freeze_to_icebox(cwd: str, slug: str) -> bool:
     icebox = load_icebox(cwd)
     icebox.insert(0, entry)
     save_icebox(cwd, icebox)
+
+    # Move folder if it exists
+    src = Path(cwd) / "todos" / slug
+    if src.exists():
+        dest_dir = _icebox_dir(cwd)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / slug
+        if dest.exists():
+            raise FileExistsError(f"Cannot freeze: destination already exists at {dest}")
+        shutil.move(str(src), str(dest))
+
     return True
+
+
+def unfreeze_from_icebox(cwd: str, slug: str) -> bool:
+    """Move a slug from icebox back to roadmap (appended). Returns False if not in icebox."""
+    icebox = load_icebox(cwd)
+    entry = None
+    for i, e in enumerate(icebox):
+        if e.slug == slug:
+            entry = icebox.pop(i)
+            break
+    if entry is None:
+        return False
+
+    save_icebox(cwd, icebox)
+
+    roadmap = load_roadmap(cwd)
+    roadmap.append(entry)
+    save_roadmap(cwd, roadmap)
+
+    # Move folder back if it exists in _icebox/
+    src = _icebox_dir(cwd) / slug
+    if src.exists():
+        dest = Path(cwd) / "todos" / slug
+        if dest.exists():
+            raise FileExistsError(f"Cannot unfreeze: destination already exists at {dest}")
+        shutil.move(str(src), str(dest))
+
+    return True
+
+
+def migrate_icebox_to_subfolder(cwd: str) -> int:
+    """One-time migration: move icebox folders from todos/ to todos/_icebox/.
+
+    Idempotent: if todos/icebox.yaml is absent but todos/_icebox/icebox.yaml
+    exists, the migration is considered done and 0 is returned.
+
+    Returns count of items moved.
+    """
+    todos_root = Path(cwd) / "todos"
+    old_manifest = todos_root / "icebox.yaml"
+    new_dir = todos_root / "_icebox"
+    new_manifest = new_dir / "icebox.yaml"
+
+    if not old_manifest.exists():
+        # Already migrated (or nothing to migrate)
+        return 0
+
+    new_dir.mkdir(parents=True, exist_ok=True)
+
+    entries = []
+    raw = yaml.safe_load(old_manifest.read_text()) or []
+    if isinstance(raw, list):
+        entries = raw
+
+    moved = 0
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        slug = item.get("slug") or item.get("group")
+        if not slug:
+            continue
+        src = todos_root / slug
+        dest = new_dir / slug
+        if src.exists() and not dest.exists():
+            shutil.move(str(src), str(dest))
+            moved += 1
+
+    # Relocate manifest
+    shutil.move(str(old_manifest), str(new_manifest))
+    return moved
 
 
 # =============================================================================

@@ -1171,8 +1171,8 @@ def validate_all_todos(project_root: Path) -> list[str]:
 
     for entry in todos_root.iterdir():
         if entry.is_dir() and entry.name not in delivered and entry.name not in icebox:
-            # Skip hidden dirs or __pycache__
-            if entry.name.startswith(".") or entry.name == "__pycache__":
+            # Skip hidden dirs, __pycache__, and the _icebox subfolder
+            if entry.name.startswith(".") or entry.name == "__pycache__" or entry.name == "_icebox":
                 continue
             errors.extend(validate_todo(entry.name, project_root))
 

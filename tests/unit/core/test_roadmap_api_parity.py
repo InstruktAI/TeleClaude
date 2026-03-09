@@ -27,7 +27,8 @@ def project_with_rich_state(tmp_path: Path) -> Path:
     """Project with state.yaml files covering all marker fields."""
     todos = tmp_path / "todos"
     todos.mkdir()
-    (todos / "icebox.yaml").touch()
+    (todos / "_icebox").mkdir(exist_ok=True)
+    (todos / "_icebox" / "icebox.yaml").touch()
 
     # Item with full state: DOR, build, review, findings, deferrals, deps
     (todos / "full-item").mkdir()

@@ -359,10 +359,19 @@ def test_is_slug_delivered(tmp_path: Path) -> None:
 
 
 def test_is_slug_frozen_via_icebox_yaml(tmp_path: Path) -> None:
-    icebox = tmp_path / "todos" / "icebox.yaml"
+    icebox = tmp_path / "todos" / "_icebox" / "icebox.yaml"
     icebox.parent.mkdir(parents=True)
     icebox.write_text(yaml.safe_dump([{"slug": "frozen-feature"}]))
     assert _is_slug_delivered_or_frozen("frozen-feature", tmp_path) is True
+
+
+def test_is_slug_frozen_via_new_icebox_yaml_path(tmp_path: Path) -> None:
+    """Frozen slug must be detected when icebox.yaml is at todos/_icebox/icebox.yaml."""
+    icebox = tmp_path / "todos" / "_icebox" / "icebox.yaml"
+    icebox.parent.mkdir(parents=True)
+    icebox.write_text(yaml.safe_dump([{"slug": "new-frozen-feature"}]))
+    assert _is_slug_delivered_or_frozen("new-frozen-feature", tmp_path) is True
+    assert _is_slug_delivered_or_frozen("other-feature", tmp_path) is False
 
 
 # ── Cartridge pass-through ────────────────────────────────────────────────────

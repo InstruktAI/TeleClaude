@@ -380,3 +380,82 @@ def test_run_tui_config_mode_passes_start_view_4(monkeypatch: pytest.MonkeyPatch
 
     assert calls["start_view"] == 4
     assert calls["config_guided"] is True
+
+
+# ── roadmap unfreeze / migrate-icebox CLI tests ───────────────────────────────
+
+
+def test_roadmap_unfreeze_prints_confirmation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """telec roadmap unfreeze must call unfreeze_from_icebox and print confirmation."""
+    monkeypatch.chdir(tmp_path)
+
+    def fake_unfreeze(cwd: str, slug: str) -> bool:
+        return True
+
+    monkeypatch.setattr(
+        "teleclaude.core.next_machine.core.unfreeze_from_icebox",
+        fake_unfreeze,
+    )
+
+    telec._handle_roadmap_unfreeze(["my-slug"])
+    out = capsys.readouterr().out
+    assert "my-slug" in out
+    assert "roadmap" in out
+
+
+def test_roadmap_unfreeze_missing_slug_prints_usage(capsys: pytest.CaptureFixture[str]) -> None:
+    """telec roadmap unfreeze with no args must print usage."""
+    telec._handle_roadmap_unfreeze([])
+    out = capsys.readouterr().out
+    assert "unfreeze" in out.lower() or "usage" in out.lower() or "slug" in out.lower()
+
+
+def test_roadmap_unfreeze_nonexistent_slug_exits_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """telec roadmap unfreeze on unknown slug must exit with code 1."""
+    monkeypatch.chdir(tmp_path)
+
+    def fake_unfreeze(cwd: str, slug: str) -> bool:
+        return False
+
+    monkeypatch.setattr(
+        "teleclaude.core.next_machine.core.unfreeze_from_icebox",
+        fake_unfreeze,
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        telec._handle_roadmap_unfreeze(["ghost-slug"])
+    assert exc.value.code == 1
+
+
+def test_roadmap_migrate_icebox_reports_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """telec roadmap migrate-icebox must report how many items were moved."""
+    monkeypatch.chdir(tmp_path)
+
+    def fake_migrate(cwd: str) -> int:
+        return 3
+
+    monkeypatch.setattr(
+        "teleclaude.core.next_machine.core.migrate_icebox_to_subfolder",
+        fake_migrate,
+    )
+
+    telec._handle_roadmap_migrate_icebox([])
+    out = capsys.readouterr().out
+    assert "3" in out
+
+
+def test_roadmap_migrate_icebox_idempotent_reports_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """telec roadmap migrate-icebox with nothing to do must report 0."""
+    monkeypatch.chdir(tmp_path)
+
+    def fake_migrate(cwd: str) -> int:
+        return 0
+
+    monkeypatch.setattr(
+        "teleclaude.core.next_machine.core.migrate_icebox_to_subfolder",
+        fake_migrate,
+    )
+
+    telec._handle_roadmap_migrate_icebox([])
+    out = capsys.readouterr().out
+    assert "0" in out or "already" in out.lower()

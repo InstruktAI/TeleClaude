@@ -90,19 +90,19 @@ def test_remove_todo_removes_from_icebox(tmp_path: Path) -> None:
     create_todo_skeleton(tmp_path, "test-slug", after=[])
     freeze_to_icebox(str(tmp_path), "test-slug")
 
-    todo_dir = tmp_path / "todos" / "test-slug"
-    icebox_path = tmp_path / "todos" / "icebox.yaml"
+    icebox_slug_dir = tmp_path / "todos" / "_icebox" / "test-slug"
+    icebox_path = tmp_path / "todos" / "_icebox" / "icebox.yaml"
 
-    # Verify preconditions
-    assert todo_dir.exists()
+    # Verify preconditions (folder moved to _icebox/)
+    assert icebox_slug_dir.exists()
     icebox = yaml.safe_load(icebox_path.read_text(encoding="utf-8"))
     assert any(e["slug"] == "test-slug" for e in icebox)
 
     # Remove the todo
     remove_todo(tmp_path, "test-slug")
 
-    # Verify directory is deleted
-    assert not todo_dir.exists()
+    # Verify directory is deleted from _icebox/
+    assert not icebox_slug_dir.exists()
 
     # Verify icebox entry is removed
     icebox = yaml.safe_load(icebox_path.read_text(encoding="utf-8"))
@@ -133,7 +133,7 @@ def test_remove_todo_cleans_up_dependency_references(tmp_path: Path) -> None:
     assert "dep1" not in dep2_entry.get("after", [])
 
     # Verify dep3's after list still contains dep2 (not affected)
-    icebox_path = tmp_path / "todos" / "icebox.yaml"
+    icebox_path = tmp_path / "todos" / "_icebox" / "icebox.yaml"
     icebox = yaml.safe_load(icebox_path.read_text(encoding="utf-8"))
     dep3_entry = next(e for e in icebox if e["slug"] == "dep3")
     assert "dep2" in dep3_entry.get("after", [])
@@ -160,3 +160,126 @@ def test_remove_todo_raises_error_when_slug_not_found(tmp_path: Path) -> None:
     # Attempt to remove non-existent slug
     with pytest.raises(FileNotFoundError, match="not found"):
         remove_todo(tmp_path, "nonexistent-slug")
+
+
+# ── New _icebox/ layout tests ──────────────────────────────────────────────────
+
+
+def test_freeze_moves_folder_to_icebox(tmp_path: Path) -> None:
+    """freeze_to_icebox must move the slug folder into todos/_icebox/."""
+    import yaml
+
+    from teleclaude.core.next_machine.core import freeze_to_icebox
+
+    create_todo_skeleton(tmp_path, "freeze-me", after=[])
+    assert (tmp_path / "todos" / "freeze-me").exists()
+
+    result = freeze_to_icebox(str(tmp_path), "freeze-me")
+    assert result is True
+    assert not (tmp_path / "todos" / "freeze-me").exists()
+    assert (tmp_path / "todos" / "_icebox" / "freeze-me").exists()
+    icebox = yaml.safe_load((tmp_path / "todos" / "_icebox" / "icebox.yaml").read_text())
+    assert any(e["slug"] == "freeze-me" for e in icebox)
+
+
+def test_freeze_without_folder_succeeds(tmp_path: Path) -> None:
+    """freeze_to_icebox must succeed even when the slug folder doesn't exist."""
+    import yaml
+
+    from teleclaude.core.next_machine.core import RoadmapEntry, freeze_to_icebox, save_roadmap
+
+    (tmp_path / "todos").mkdir(parents=True, exist_ok=True)
+    save_roadmap(str(tmp_path), [RoadmapEntry(slug="no-folder-slug")])
+
+    result = freeze_to_icebox(str(tmp_path), "no-folder-slug")
+    assert result is True
+    icebox = yaml.safe_load((tmp_path / "todos" / "_icebox" / "icebox.yaml").read_text())
+    assert any(e["slug"] == "no-folder-slug" for e in icebox)
+
+
+def test_unfreeze_moves_folder_back(tmp_path: Path) -> None:
+    """unfreeze_from_icebox must move the folder back to todos/ and update YAML."""
+    import yaml
+
+    from teleclaude.core.next_machine.core import freeze_to_icebox, unfreeze_from_icebox
+
+    create_todo_skeleton(tmp_path, "unfreeze-me", after=[])
+    freeze_to_icebox(str(tmp_path), "unfreeze-me")
+    assert (tmp_path / "todos" / "_icebox" / "unfreeze-me").exists()
+
+    result = unfreeze_from_icebox(str(tmp_path), "unfreeze-me")
+    assert result is True
+    assert (tmp_path / "todos" / "unfreeze-me").exists()
+    assert not (tmp_path / "todos" / "_icebox" / "unfreeze-me").exists()
+
+    roadmap = yaml.safe_load((tmp_path / "todos" / "roadmap.yaml").read_text())
+    assert any(e["slug"] == "unfreeze-me" for e in roadmap)
+
+
+def test_unfreeze_nonexistent_slug_returns_false(tmp_path: Path) -> None:
+    """unfreeze_from_icebox must return False for unknown slugs."""
+    from teleclaude.core.next_machine.core import unfreeze_from_icebox
+
+    (tmp_path / "todos" / "_icebox").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "todos" / "_icebox" / "icebox.yaml").write_text("[]")
+
+    result = unfreeze_from_icebox(str(tmp_path), "ghost-slug")
+    assert result is False
+
+
+def test_remove_todo_from_icebox_location(tmp_path: Path) -> None:
+    """remove_todo must delete a slug whose folder is in _icebox/."""
+    import yaml
+
+    from teleclaude.core.next_machine.core import freeze_to_icebox
+
+    create_todo_skeleton(tmp_path, "frozen-remove", after=[])
+    freeze_to_icebox(str(tmp_path), "frozen-remove")
+    assert (tmp_path / "todos" / "_icebox" / "frozen-remove").exists()
+
+    remove_todo(tmp_path, "frozen-remove")
+
+    assert not (tmp_path / "todos" / "_icebox" / "frozen-remove").exists()
+    icebox = yaml.safe_load((tmp_path / "todos" / "_icebox" / "icebox.yaml").read_text())
+    assert not any(e["slug"] == "frozen-remove" for e in icebox)
+
+
+def test_migrate_icebox_moves_folders(tmp_path: Path) -> None:
+    """migrate_icebox_to_subfolder must move folders and relocate icebox.yaml."""
+    import yaml
+
+    from teleclaude.core.next_machine.core import migrate_icebox_to_subfolder
+
+    todos = tmp_path / "todos"
+    todos.mkdir()
+    (todos / "roadmap.yaml").write_text("[]")
+    (todos / "icebox.yaml").write_text(yaml.dump([{"slug": "old-frozen"}]))
+    (todos / "old-frozen").mkdir()
+    (todos / "old-frozen" / "state.yaml").write_text("{}")
+
+    count = migrate_icebox_to_subfolder(str(tmp_path))
+    assert count == 1
+    assert not (todos / "icebox.yaml").exists()
+    assert (todos / "_icebox" / "icebox.yaml").exists()
+    assert not (todos / "old-frozen").exists()
+    assert (todos / "_icebox" / "old-frozen").exists()
+
+
+def test_migrate_icebox_idempotent(tmp_path: Path) -> None:
+    """Running migrate_icebox_to_subfolder twice must be safe."""
+    import yaml
+
+    from teleclaude.core.next_machine.core import migrate_icebox_to_subfolder
+
+    todos = tmp_path / "todos"
+    todos.mkdir()
+    (todos / "icebox.yaml").write_text(yaml.dump([{"slug": "already-moved"}]))
+    icebox_sub = todos / "_icebox"
+    icebox_sub.mkdir()
+    (icebox_sub / "icebox.yaml").write_text(yaml.dump([{"slug": "already-moved"}]))
+
+    # First run — old icebox.yaml exists, so it should detect it and migrate
+    migrate_icebox_to_subfolder(str(tmp_path))
+    # Second run — already migrated, should return 0
+    count2 = migrate_icebox_to_subfolder(str(tmp_path))
+    assert count2 == 0

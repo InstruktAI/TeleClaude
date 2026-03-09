@@ -1,11 +1,13 @@
 """Unit tests for roadmap assembly."""
 
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import yaml
 
-from teleclaude.core.next_machine.core import RoadmapEntry
+from teleclaude.core.next_machine.core import RoadmapEntry, _icebox_path
 from teleclaude.core.roadmap import assemble_roadmap
 
 
@@ -14,7 +16,9 @@ def mock_project(tmp_path):
     """Create a mock project structure."""
     todos_dir = tmp_path / "todos"
     todos_dir.mkdir()
-    (todos_dir / "icebox.yaml").touch()  # Ensure icebox logic triggers
+    icebox_sub = todos_dir / "_icebox"
+    icebox_sub.mkdir()
+    (icebox_sub / "icebox.yaml").touch()  # Ensure icebox logic triggers (new path)
 
     # Roadmap items
     (todos_dir / "task-1").mkdir()
@@ -30,8 +34,8 @@ def mock_project(tmp_path):
     (todos_dir / "task-3").mkdir()
     # task-3 is a child of task-2
 
-    # Icebox item
-    (todos_dir / "icebox-item").mkdir()
+    # Icebox item in new location
+    (icebox_sub / "icebox-item").mkdir()
 
     return tmp_path
 
@@ -100,7 +104,8 @@ def test_worktree_state_takes_precedence(tmp_path):
     """Worktree state.yaml overrides main todos/ state when present."""
     todos_dir = tmp_path / "todos"
     todos_dir.mkdir()
-    (todos_dir / "icebox.yaml").touch()
+    (todos_dir / "_icebox").mkdir(exist_ok=True)
+    (todos_dir / "_icebox" / "icebox.yaml").touch()
 
     # Main state: dor score 3
     (todos_dir / "task-1").mkdir()
@@ -131,7 +136,8 @@ def test_phase_in_progress_shows_active(tmp_path):
     """phase: in_progress (set by state machine on claim) derives in_progress status."""
     todos_dir = tmp_path / "todos"
     todos_dir.mkdir()
-    (todos_dir / "icebox.yaml").touch()
+    (todos_dir / "_icebox").mkdir(exist_ok=True)
+    (todos_dir / "_icebox" / "icebox.yaml").touch()
 
     (todos_dir / "task-1").mkdir()
     (todos_dir / "task-1" / "state.yaml").write_text(
@@ -152,7 +158,8 @@ def test_phase_done_shows_active(tmp_path):
     """phase: done derives in_progress status (still visible until delivered)."""
     todos_dir = tmp_path / "todos"
     todos_dir.mkdir()
-    (todos_dir / "icebox.yaml").touch()
+    (todos_dir / "_icebox").mkdir(exist_ok=True)
+    (todos_dir / "_icebox" / "icebox.yaml").touch()
 
     (todos_dir / "task-1").mkdir()
     (todos_dir / "task-1" / "state.yaml").write_text(
@@ -173,7 +180,8 @@ def test_phase_pending_defers_to_build_and_dor(tmp_path):
     """phase: pending (or absent) falls through to build/dor derivation."""
     todos_dir = tmp_path / "todos"
     todos_dir.mkdir()
-    (todos_dir / "icebox.yaml").touch()
+    (todos_dir / "_icebox").mkdir(exist_ok=True)
+    (todos_dir / "_icebox" / "icebox.yaml").touch()
 
     # phase pending + build pending + high DOR → ready
     (todos_dir / "task-1").mkdir()
@@ -204,7 +212,8 @@ def test_worktree_state_fallback_to_main(tmp_path):
     """Without a worktree, main todos/ state.yaml is used."""
     todos_dir = tmp_path / "todos"
     todos_dir.mkdir()
-    (todos_dir / "icebox.yaml").touch()
+    (todos_dir / "_icebox").mkdir(exist_ok=True)
+    (todos_dir / "_icebox" / "icebox.yaml").touch()
 
     (todos_dir / "task-1").mkdir()
     (todos_dir / "task-1" / "state.yaml").write_text(
@@ -245,3 +254,69 @@ def test_assemble_roadmap_container_reordering(mock_project):
     t2_idx = slugs.index("task-2")
     t3_idx = slugs.index("task-3")
     assert t2_idx < t3_idx
+
+
+# ── New _icebox/ layout tests ──────────────────────────────────────────────────
+
+
+def test_icebox_path_returns_new_location(tmp_path: Path) -> None:
+    """_icebox_path() must return todos/_icebox/icebox.yaml."""
+    result = _icebox_path(str(tmp_path))
+    assert result == tmp_path / "todos" / "_icebox" / "icebox.yaml"
+
+
+def test_assemble_roadmap_reads_icebox_metadata_from_subfolder(tmp_path: Path) -> None:
+    """Icebox items read state from todos/_icebox/{slug}/ after folder move."""
+    todos = tmp_path / "todos"
+    todos.mkdir()
+    icebox_dir = todos / "_icebox"
+    icebox_dir.mkdir()
+
+    # Write icebox manifest at new location
+    (icebox_dir / "icebox.yaml").write_text(yaml.dump([{"slug": "frozen-item"}]))
+
+    # Write icebox item state under _icebox/
+    item_dir = icebox_dir / "frozen-item"
+    item_dir.mkdir()
+    (item_dir / "state.yaml").write_text(yaml.dump({"build": "complete", "review": "pending"}))
+    (item_dir / "requirements.md").write_text("# Req")
+
+    with patch("teleclaude.core.roadmap.load_roadmap", return_value=[]):
+        todos_obj = assemble_roadmap(str(tmp_path), include_icebox=True)
+
+    assert len(todos_obj) == 1
+    assert todos_obj[0].slug == "frozen-item"
+    assert todos_obj[0].build_status == "complete"
+    assert todos_obj[0].has_requirements is True
+
+
+def test_orphan_scan_skips_icebox_dir(tmp_path: Path) -> None:
+    """_icebox directory must not appear as an orphan in roadmap listing."""
+    todos = tmp_path / "todos"
+    todos.mkdir()
+    icebox_dir = todos / "_icebox"
+    icebox_dir.mkdir()
+    (icebox_dir / "icebox.yaml").write_text(yaml.dump([]))
+
+    with patch("teleclaude.core.roadmap.load_roadmap", return_value=[]):
+        result = assemble_roadmap(str(tmp_path))
+
+    slugs = [t.slug for t in result]
+    assert "_icebox" not in slugs
+
+
+def test_orphan_scan_does_not_skip_other_underscore_dirs(tmp_path: Path) -> None:
+    """Only _icebox is excluded — other underscore directories are still listed."""
+    todos = tmp_path / "todos"
+    todos.mkdir()
+    icebox_dir = todos / "_icebox"
+    icebox_dir.mkdir()
+    (icebox_dir / "icebox.yaml").write_text(yaml.dump([]))
+    (todos / "_other-dir").mkdir()
+
+    with patch("teleclaude.core.roadmap.load_roadmap", return_value=[]):
+        result = assemble_roadmap(str(tmp_path))
+
+    slugs = [t.slug for t in result]
+    assert "_other-dir" in slugs
+    assert "_icebox" not in slugs

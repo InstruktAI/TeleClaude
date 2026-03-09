@@ -42,6 +42,7 @@ def assemble_roadmap(
         include_delivered = True
 
     todos_root = Path(project_path) / "todos"
+    icebox_root = todos_root / "_icebox"
     icebox_path = todos_root / "icebox.md"  # Legacy fallback
 
     todos: list[TodoInfo] = []
@@ -59,7 +60,7 @@ def assemble_roadmap(
     icebox_slugs: set[str] = set()
     icebox_groups: set[str] = set()
 
-    icebox_yaml_path = todos_root / "icebox.yaml"
+    icebox_yaml_path = icebox_root / "icebox.yaml"
     if icebox_yaml_path.exists():
         icebox_entries = load_icebox(str(todos_root.parent))
         icebox_slugs = {e.slug for e in icebox_entries}
@@ -163,8 +164,10 @@ def assemble_roadmap(
         description: str | None = None,
         after: list[str] | None = None,
         group: str | None = None,
+        is_icebox_item: bool = False,
     ) -> None:
-        todo_dir = todos_root / slug
+        # Icebox items live in _icebox/{slug}/ after migration
+        todo_dir = (icebox_root / slug) if is_icebox_item and (icebox_root / slug).is_dir() else todos_root / slug
         (
             has_requirements,
             has_impl_plan,
@@ -232,7 +235,7 @@ def assemble_roadmap(
             if entry.slug in seen_slugs:
                 continue
             seen_slugs.add(entry.slug)
-            append_todo(entry.slug, description=entry.description, after=entry.after, group=entry.group)
+            append_todo(entry.slug, description=entry.description, after=entry.after, group=entry.group, is_icebox_item=True)
 
     # 2b. Load delivered entries
     if include_delivered:
@@ -249,6 +252,8 @@ def assemble_roadmap(
         if not todo_dir.is_dir():
             continue
         if todo_dir.name.startswith("."):
+            continue
+        if todo_dir.name == "_icebox":
             continue
         if todo_dir.name in seen_slugs:
             continue

@@ -554,7 +554,7 @@ def _is_slug_delivered_or_frozen(slug: str, project_root: Path) -> bool:
         except (yaml.YAMLError, OSError):
             logger.warning("prepare-quality: cannot read delivered.yaml", path=str(delivered_path))
 
-    icebox_path = project_root / "todos" / "icebox.yaml"
+    icebox_path = project_root / "todos" / "_icebox" / "icebox.yaml"
     if icebox_path.exists():
         try:
             items = yaml.safe_load(icebox_path.read_text()) or []

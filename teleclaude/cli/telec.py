@@ -639,6 +639,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
+            "unfreeze": CommandDef(
+                desc="Promote entry from icebox to roadmap",
+                args="<slug>",
+                flags=[],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
+            "migrate-icebox": CommandDef(
+                desc="One-time migration: move icebox folders into todos/_icebox/",
+                args="",
+                flags=[],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
             "deliver": CommandDef(
                 desc="Move entry to delivered",
                 args="<slug>",
@@ -2704,6 +2716,10 @@ def _handle_roadmap(args: list[str]) -> None:
         _handle_roadmap_deps(args[1:])
     elif subcommand == "freeze":
         _handle_roadmap_freeze(args[1:])
+    elif subcommand == "unfreeze":
+        _handle_roadmap_unfreeze(args[1:])
+    elif subcommand == "migrate-icebox":
+        _handle_roadmap_migrate_icebox(args[1:])
     elif subcommand == "deliver":
         _handle_roadmap_deliver(args[1:])
     else:
@@ -3051,6 +3067,54 @@ def _handle_roadmap_freeze(args: list[str]) -> None:
     else:
         print(f"Slug not found in roadmap: {slug}")
         raise SystemExit(1)
+
+
+def _handle_roadmap_unfreeze(args: list[str]) -> None:
+    """Handle telec roadmap unfreeze <slug>."""
+    from teleclaude.core.next_machine.core import unfreeze_from_icebox
+
+    if not args:
+        print(_usage("roadmap", "unfreeze"))
+        return
+
+    slug: str | None = None
+    project_root = Path.cwd()
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("roadmap", "unfreeze"))
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if not slug:
+        print("Missing required slug.")
+        print(_usage("roadmap", "unfreeze"))
+        raise SystemExit(1)
+
+    if unfreeze_from_icebox(str(project_root), slug):
+        print(f"Unfroze {slug} → roadmap.yaml")
+    else:
+        print(f"Slug not found in icebox: {slug}")
+        raise SystemExit(1)
+
+
+def _handle_roadmap_migrate_icebox(args: list[str]) -> None:
+    """Handle telec roadmap migrate-icebox."""
+    from teleclaude.core.next_machine.core import migrate_icebox_to_subfolder
+
+    project_root = Path.cwd()
+    count = migrate_icebox_to_subfolder(str(project_root))
+    if count == 0:
+        print("Already migrated (nothing to move).")
+    else:
+        print(f"Migrated {count} icebox item(s) to todos/_icebox/.")
 
 
 def _handle_roadmap_deliver(args: list[str]) -> None:
