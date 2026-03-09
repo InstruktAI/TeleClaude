@@ -195,15 +195,22 @@ def _default_state_dir() -> Path:
 # ---------------------------------------------------------------------------
 
 
-def _run_git(args: list[str], *, cwd: str) -> tuple[int, str, str]:
+def _run_git(
+    args: list[str], *, cwd: str, timeout: float = 30
+) -> tuple[int, str, str]:
     """Run a git command; return (returncode, stdout, stderr)."""
-    result = subprocess.run(
-        ["git"] + args,
-        capture_output=True,
-        text=True,
-        cwd=cwd,
-    )
-    return result.returncode, result.stdout, result.stderr
+    try:
+        result = subprocess.run(
+            ["git"] + args,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            timeout=timeout,
+        )
+        return result.returncode, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        logger.warning("git %s timed out after %.0fs", " ".join(args[:2]), timeout)
+        return 1, "", f"timeout after {timeout}s"
 
 
 def _get_head_sha(cwd: str) -> str | None:
@@ -1062,15 +1069,15 @@ def _do_cleanup(
     # Remove worker worktree (from repo root)
     worktree_path = Path(cwd) / WORKTREE_DIR / key.slug
     if worktree_path.exists():
-        rc, _, stderr = _run_git(["worktree", "remove", "--force", str(worktree_path)], cwd=cwd)
+        rc, _, stderr = _run_git(["worktree", "remove", "--force", str(worktree_path)], cwd=cwd, timeout=10)
         if rc != 0:
             logger.warning("worktree remove failed for %s: %s", key.slug, stderr.strip())
 
     # Delete local branch
     _run_git(["branch", "-D", key.branch], cwd=cwd)
 
-    # Delete remote branch (non-fatal)
-    _run_git(["push", "origin", "--delete", key.branch], cwd=cwd)
+    # Delete remote branch (non-fatal, tight timeout — network call)
+    _run_git(["push", "origin", "--delete", key.branch], cwd=cwd, timeout=5)
 
     # Remove todo directory
     todo_dir = Path(cwd) / "todos" / key.slug
@@ -1112,7 +1119,10 @@ def _do_cleanup(
     logger.info("%s slug=%s phase=CANDIDATE_DELIVERED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
 
     # Restart daemon (non-fatal; done last so state is persisted first)
-    subprocess.run(["make", "restart"], capture_output=True, text=True, cwd=cwd)
+    try:
+        subprocess.run(["make", "restart"], capture_output=True, text=True, cwd=cwd, timeout=10)
+    except subprocess.TimeoutExpired:
+        logger.warning("make restart timed out during cleanup for %s", key.slug)
 
     return True, ""  # loop to pop next candidate
 
