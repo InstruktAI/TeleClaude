@@ -21,8 +21,7 @@ execution model.
    - Render lane for Codex live semantic inference from rendered tmux snapshots.
    - Transcript lane for discovery, backfill, and post-turn durability.
    The implementation must keep these responsibilities explicit rather than mixing them
-   implicitly inside one poll loop, including startup, reconnect, headless-bootstrap,
-   and drift-recovery transitions where `pipe-pane` cannot replay prior state.
+   implicitly inside one poll loop.
 
 3. **Wake-driven rendered capture** — Add a dirty/wake signal mechanism so rendered
    snapshots are captured when output likely changed, rather than by blind fixed-rate
@@ -57,8 +56,8 @@ execution model.
    current surfaces, the first targets are internal delayed text-injection paths rather
    than the public key-only API.
 
-9. **[inferred] Performance and semantic validation** — Add instrumentation, replay
-   fixtures, and validation paths that prove both:
+9. **Performance and semantic validation** — Add instrumentation, replay fixtures, and
+   validation paths that prove both:
    - lower steady-state tmux overhead,
    - semantic parity for Codex live event synthesis.
 
@@ -89,26 +88,18 @@ execution model.
       when no wake signal, turn activity, or audit condition exists.
 - [ ] The runtime captures rendered snapshots on meaningful wake/activity transitions
       and still reconciles idle drift with a slower audit path.
-- [ ] **[inferred]** Startup, reconnect, headless-bootstrap, and drift-recovery paths
-      have explicit lane-authority coverage in docs/tests, with rendered snapshots
-      captured anywhere the wake signal cannot reconstruct prior state.
-- [ ] **[inferred]** `capture-pane` line lookback and UI char budget are separate
-      configuration concerns, and the current regression is removed without silently
-      introducing undocumented user-facing config. If new YAML keys, env vars, or
-      wizard-visible settings are added, `config.sample.yml`, the config wizard, and
-      `docs/project/spec/teleclaude-config.md` are updated in the same change.
+- [ ] `capture-pane` line lookback and UI char budget are separate configuration
+      concerns, and the current regression is removed.
 - [ ] Session teardown removes per-session temp directories in the existing cleanup
       path.
-- [ ] **[inferred]** `get_session_data` transcript/tmux fallback behavior continues to
-      work for sessions whose native transcript is not yet available.
+- [ ] `get_session_data` transcript/tmux fallback behavior continues to work for
+      sessions whose native transcript is not yet available.
 - [ ] Durable queued user-message delivery remains unchanged and regression-free.
 - [ ] Compound control actions that traverse delayed text+enter injection can return
       queued/dispatched feedback without forcing the caller to wait inline on the
       bridge sleep.
-- [ ] **[inferred]** Performance instrumentation records per-session tmux subprocess
-      counts and rendered-capture frequency over matched idle observation windows
-      before and after the refactor, and the post-change idle measurements are
-      strictly lower while the audit path remains observable.
+- [ ] Performance instrumentation can show a before/after reduction in tmux subprocess
+      churn or capture frequency for idle sessions.
 - [ ] Output-polling documentation is updated to describe rendered full-snapshot
       semantics and the Codex render lane accurately.
 - [ ] Tests no longer depend on the old assumption that `session_exists()` must run
