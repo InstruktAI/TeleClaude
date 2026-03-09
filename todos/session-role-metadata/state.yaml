@@ -1,9 +1,50 @@
+phase: pending
 build: pending
 review: pending
 deferrals_processed: false
+finalize:
+  status: pending
 breakdown:
   assessed: true
   todos: []
+review_round: 0
+max_review_rounds: 3
+review_baseline_commit: ''
+unresolved_findings: []
+resolved_findings: []
+prepare_phase: plan_review
+grounding:
+  valid: true
+  base_sha: 0aa80365a
+  input_digest: ''
+  last_grounded_at: '2026-03-09T15:00:00Z'
+  invalidation_reason: null
+  referenced_paths:
+  - teleclaude/constants.py
+  - teleclaude/core/tool_access.py
+  - teleclaude/api/auth.py
+  - teleclaude/api_server.py
+  - teleclaude/api_models.py
+  - teleclaude/cli/tool_commands.py
+  - teleclaude/cli/telec.py
+  - teleclaude/core/integration_bridge.py
+  - teleclaude/core/models.py
+  - tests/unit/test_role_tools.py
+  - tests/unit/test_command_auth.py
+  - tests/unit/test_api_auth.py
+  - tests/unit/test_run_session_metadata.py
+  - tests/unit/test_session_list_job_filter.py
+  - tests/unit/test_integration_bridge_spawn.py
+requirements_review:
+  verdict: approve
+  reviewed_at: '2026-03-09T13:11:16Z'
+  findings_count: 0
+  rounds: 1
+plan_review:
+  verdict: approve
+  reviewed_at: '2026-03-09T15:06:53Z'
+  findings_count: 0
+  rounds: 2
 dor:
   last_assessed_at: null
   score: 0
@@ -13,37 +54,4 @@ dor:
   actions_taken:
     requirements_updated: true
     implementation_plan_updated: true
-grounding:
-  valid: true
-  base_sha: 'c4106089d'
-  input_digest: ''
-  last_grounded_at: '2026-03-09T14:00:00Z'
-  invalidation_reason: null
-  referenced_paths:
-    - teleclaude/constants.py
-    - teleclaude/core/tool_access.py
-    - teleclaude/api/auth.py
-    - teleclaude/api_server.py
-    - teleclaude/api_models.py
-    - teleclaude/cli/tool_commands.py
-    - teleclaude/cli/telec.py
-    - teleclaude/core/integration_bridge.py
-    - teleclaude/core/models.py
-    - tests/unit/test_role_tools.py
-    - tests/unit/test_command_auth.py
-    - tests/unit/test_api_auth.py
-review_round: 0
-max_review_rounds: 3
-review_baseline_commit: ''
-unresolved_findings: []
-resolved_findings: []
-requirements_review:
-  verdict: approve
-  reviewed_at: '2026-03-09T13:11:16Z'
-  findings_count: 0
-  rounds: 1
-plan_review:
-  verdict: needs_work
-  reviewed_at: '2026-03-09T14:19:28Z'
-  findings_count: 2
 schema_version: 1
