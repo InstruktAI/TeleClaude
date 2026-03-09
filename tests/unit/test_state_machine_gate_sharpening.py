@@ -183,6 +183,7 @@ def _apply_base_patches(stack: ExitStack, extra: dict | None = None) -> dict:
     stack.enter_context(patch(f"{ns}.get_item_phase", return_value="in_progress"))
     stack.enter_context(patch(f"{ns}.check_dependencies_satisfied", return_value=True))
     stack.enter_context(patch(f"{ns}.check_file_exists", return_value=True))
+    stack.enter_context(patch(f"{ns}.check_file_has_content", return_value=True))
     stack.enter_context(patch(f"{ns}.get_stash_entries", return_value=[]))
     stack.enter_context(patch(f"{ns}._get_slug_single_flight_lock", new=_make_lock_mock()))
     stack.enter_context(patch(f"{ns}.ensure_worktree_with_policy_async", new=_make_ensure_mock()))

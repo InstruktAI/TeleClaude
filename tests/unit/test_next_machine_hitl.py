@@ -62,6 +62,7 @@ async def test_prepare_slug_missing_from_roadmap_auto_adds():
         patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=False),
         patch("teleclaude.core.next_machine.core.add_to_roadmap") as mock_add,
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core.check_file_has_content", return_value=False),
         patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
         patch("teleclaude.core.next_machine.core.read_phase_state", return_value={"prepare_phase": ""}),
         patch("teleclaude.core.next_machine.core._emit_prepare_event"),
@@ -95,6 +96,7 @@ async def test_prepare_missing_requirements_dispatches_discovery():
         patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
         patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core.check_file_has_content", return_value=False),
         patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
@@ -120,6 +122,7 @@ async def test_prepare_missing_plan_dispatches_draft():
         patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
         patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core.check_file_has_content", return_value=False),
         patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
@@ -185,6 +188,7 @@ async def test_prepare_requirements_review_approve_transitions_to_plan():
         patch("teleclaude.core.next_machine.core.read_phase_state", side_effect=lambda *_: next(state_iter)),
         patch("teleclaude.core.next_machine.core.write_phase_state"),
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core.check_file_has_content", return_value=False),
         patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
@@ -221,6 +225,7 @@ async def test_prepare_requirements_review_needs_work_loops_back():
         ),
         patch("teleclaude.core.next_machine.core.write_phase_state", side_effect=fake_write),
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core.check_file_has_content", return_value=False),
         patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
@@ -293,6 +298,7 @@ async def test_prepare_plan_review_needs_work_loops_back():
         ),
         patch("teleclaude.core.next_machine.core.write_phase_state", side_effect=fake_write),
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core.check_file_has_content", return_value=False),
         patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
@@ -622,6 +628,7 @@ async def test_prepare_event_emission_at_transitions():
         patch("teleclaude.core.next_machine.core.read_phase_state", side_effect=lambda *_: next(state_iter)),
         patch("teleclaude.core.next_machine.core.write_phase_state"),
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core.check_file_has_content", return_value=False),
         patch(
             "teleclaude.core.next_machine.core._emit_prepare_event",
             side_effect=lambda et, _: emitted_events.append(et),
@@ -1027,8 +1034,8 @@ async def test_next_work_runs_gates_when_build_complete():
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Req")
-        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "requirements.md").write_text("# Requirements\n\n## Goal\n\nRefactor cache layer for transparency.\n")
+        (item_dir / "implementation-plan.md").write_text("# Implementation Plan\n\n## Overview\n\nAdd cache status headers via middleware.\n")
         (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
@@ -1062,8 +1069,8 @@ async def test_next_work_gate_failure_resets_build():
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Req")
-        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "requirements.md").write_text("# Requirements\n\n## Goal\n\nRefactor cache layer for transparency.\n")
+        (item_dir / "implementation-plan.md").write_text("# Implementation Plan\n\n## Overview\n\nAdd cache status headers via middleware.\n")
         (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
@@ -1099,8 +1106,8 @@ async def test_next_work_gate_failure_includes_output():
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Req")
-        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "requirements.md").write_text("# Requirements\n\n## Goal\n\nRefactor cache layer for transparency.\n")
+        (item_dir / "implementation-plan.md").write_text("# Implementation Plan\n\n## Overview\n\nAdd cache status headers via middleware.\n")
         (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
@@ -1133,8 +1140,8 @@ async def test_next_work_lazy_marking_no_state_mutation():
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Req")
-        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "requirements.md").write_text("# Requirements\n\n## Goal\n\nRefactor cache layer for transparency.\n")
+        (item_dir / "implementation-plan.md").write_text("# Implementation Plan\n\n## Overview\n\nAdd cache status headers via middleware.\n")
         (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
@@ -1180,8 +1187,8 @@ async def test_next_work_concurrent_same_slug_single_flight_prep():
 
         item_dir = tmp_path / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Req")
-        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "requirements.md").write_text("# Requirements\n\n## Goal\n\nRefactor cache layer for transparency.\n")
+        (item_dir / "implementation-plan.md").write_text("# Implementation Plan\n\n## Overview\n\nAdd cache status headers via middleware.\n")
         (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         subprocess.run(["git", "add", "todos"], cwd=tmpdir, check=True, capture_output=True, text=True)
@@ -1244,8 +1251,8 @@ async def test_next_work_concurrent_same_slug_different_repos_do_not_serialize_p
 
         item_dir = root / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Req")
-        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "requirements.md").write_text("# Requirements\n\n## Goal\n\nRefactor cache layer for transparency.\n")
+        (item_dir / "implementation-plan.md").write_text("# Implementation Plan\n\n## Overview\n\nAdd cache status headers via middleware.\n")
         (item_dir / "state.yaml").write_text('{"phase": "pending", "dor": {"score": 8}}')
 
         subprocess.run(["git", "add", "todos"], cwd=root, check=True, capture_output=True, text=True)
@@ -1379,8 +1386,8 @@ async def test_next_work_freshness_gate_blocks_non_prepared_phase():
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Req")
-        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "requirements.md").write_text("# Requirements\n\n## Goal\n\nRefactor cache layer for transparency.\n")
+        (item_dir / "implementation-plan.md").write_text("# Implementation Plan\n\n## Overview\n\nAdd cache status headers via middleware.\n")
         # prepare_phase is "discovery" — preparation not yet complete
         (item_dir / "state.yaml").write_text(
             yaml.dump({"phase": "in_progress", "dor": {"score": 9}, "prepare_phase": "discovery"})
@@ -1412,8 +1419,8 @@ async def test_next_work_freshness_gate_blocks_invalidated_grounding():
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Req")
-        (item_dir / "implementation-plan.md").write_text("# Plan")
+        (item_dir / "requirements.md").write_text("# Requirements\n\n## Goal\n\nRefactor cache layer for transparency.\n")
+        (item_dir / "implementation-plan.md").write_text("# Implementation Plan\n\n## Overview\n\nAdd cache status headers via middleware.\n")
         # prepare_phase is "prepared" but grounding was invalidated
         (item_dir / "state.yaml").write_text(
             yaml.dump(
@@ -1678,6 +1685,7 @@ async def test_prepare_needs_work_note_contains_fix_mode():
         patch("teleclaude.core.next_machine.core.read_phase_state", return_value=req_state),
         patch("teleclaude.core.next_machine.core.write_phase_state"),
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core.check_file_has_content", return_value=False),
         patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
@@ -1694,6 +1702,7 @@ async def test_prepare_needs_work_note_contains_fix_mode():
         patch("teleclaude.core.next_machine.core.read_phase_state", return_value=plan_state),
         patch("teleclaude.core.next_machine.core.write_phase_state"),
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=True),
+        patch("teleclaude.core.next_machine.core.check_file_has_content", return_value=True),
         patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
         result2 = await next_prepare(db, slug=slug, cwd=cwd)
@@ -1762,6 +1771,7 @@ async def test_prepare_legacy_phase_names_map_to_discovery():
             patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
             patch("teleclaude.core.next_machine.core.write_phase_state"),
             patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core.check_file_has_content", return_value=False),
             patch("teleclaude.core.next_machine.core._emit_prepare_event"),
         ):
             result = await next_prepare(db, slug=slug, cwd=cwd)

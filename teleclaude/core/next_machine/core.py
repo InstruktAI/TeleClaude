@@ -3228,9 +3228,11 @@ def _prepare_step_grounding_check(
     # Check for staleness
     sha_changed = bool(current_sha and current_sha != base_sha)
     # Backward compatibility: empty stored digest means "not yet recorded", not "changed".
+    # Also treat wrong-length digests (e.g. MD5 written by agents) as unrecorded.
     digest_changed = bool(
         stored_input_digest
         and current_input_digest
+        and len(stored_input_digest) == len(current_input_digest)
         and current_input_digest != stored_input_digest
     )
 

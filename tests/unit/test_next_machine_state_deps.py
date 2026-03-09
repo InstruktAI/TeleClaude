@@ -35,6 +35,10 @@ from teleclaude.core.next_machine import (
 )
 from teleclaude.core.next_machine.core import RoadmapEntry, run_build_gates
 
+# Realistic file content that passes scaffold detection
+_REAL_REQUIREMENTS = "# Requirements\n\n## Goal\n\nRefactor cache layer for transparency.\n"
+_REAL_IMPL_PLAN = "# Implementation Plan\n\n## Overview\n\nAdd cache status headers via middleware.\n"
+
 # =============================================================================
 # Item Readiness Tests
 # =============================================================================
@@ -254,8 +258,8 @@ async def test_next_work_no_bug_check():
         # Create required files
         item_dir = Path(tmpdir) / "todos" / "test-item"
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Requirements\n")
-        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "requirements.md").write_text(_REAL_REQUIREMENTS)
+        (item_dir / "implementation-plan.md").write_text(_REAL_IMPL_PLAN)
         (item_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 8}}')
 
         # Mock git operations
@@ -297,8 +301,8 @@ async def test_next_work_respects_dependencies():
         # Create required files for ready-item
         item_dir = Path(tmpdir) / "todos" / "ready-item"
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Requirements\n")
-        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "requirements.md").write_text(_REAL_REQUIREMENTS)
+        (item_dir / "implementation-plan.md").write_text(_REAL_IMPL_PLAN)
         (item_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 8}}')
 
         with (
@@ -383,8 +387,8 @@ async def test_next_work_explicit_holder_slug_resolves_first_runnable_child_by_g
 
         ready_dir = Path(tmpdir) / "todos" / "child-ready"
         ready_dir.mkdir(parents=True, exist_ok=True)
-        (ready_dir / "requirements.md").write_text("# Requirements\n")
-        (ready_dir / "implementation-plan.md").write_text("# Plan\n")
+        (ready_dir / "requirements.md").write_text(_REAL_REQUIREMENTS)
+        (ready_dir / "implementation-plan.md").write_text(_REAL_IMPL_PLAN)
         (ready_dir / "state.yaml").write_text('{"build": "pending", "review": "pending", "dor": {"score": 8}}')
 
         with (
@@ -589,8 +593,8 @@ async def test_next_work_review_includes_merge_base_note():
         # Create required files in main repo
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Requirements\n")
-        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "requirements.md").write_text(_REAL_REQUIREMENTS)
+        (item_dir / "implementation-plan.md").write_text(_REAL_IMPL_PLAN)
         (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         # Create worktree state with build complete and review pending
@@ -626,8 +630,8 @@ async def test_next_work_blocks_when_stash_debt_exists():
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Requirements\n")
-        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "requirements.md").write_text(_REAL_REQUIREMENTS)
+        (item_dir / "implementation-plan.md").write_text(_REAL_IMPL_PLAN)
         (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         with (
@@ -650,8 +654,8 @@ async def test_next_work_does_not_block_review_when_main_ahead():
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Requirements\n")
-        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "requirements.md").write_text(_REAL_REQUIREMENTS)
+        (item_dir / "implementation-plan.md").write_text(_REAL_IMPL_PLAN)
         (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
@@ -688,8 +692,8 @@ async def test_next_work_blocks_when_review_round_limit_reached():
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Requirements\n")
-        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "requirements.md").write_text(_REAL_REQUIREMENTS)
+        (item_dir / "implementation-plan.md").write_text(_REAL_IMPL_PLAN)
         (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
@@ -722,8 +726,8 @@ async def test_next_work_returns_structured_error_when_worktree_setup_throws():
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Requirements\n")
-        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "requirements.md").write_text(_REAL_REQUIREMENTS)
+        (item_dir / "implementation-plan.md").write_text(_REAL_IMPL_PLAN)
         (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         with patch(
@@ -754,8 +758,8 @@ async def test_next_work_finalize_next_call_without_slug():
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Requirements\n")
-        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "requirements.md").write_text(_REAL_REQUIREMENTS)
+        (item_dir / "implementation-plan.md").write_text(_REAL_IMPL_PLAN)
         (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
@@ -791,8 +795,8 @@ async def test_next_work_approved_review_repairs_build_drift_and_dispatches_fina
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Requirements\n")
-        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "requirements.md").write_text(_REAL_REQUIREMENTS)
+        (item_dir / "implementation-plan.md").write_text(_REAL_IMPL_PLAN)
         (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
@@ -831,8 +835,8 @@ async def test_next_work_stale_review_approval_routes_back_to_review():
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Requirements\n")
-        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "requirements.md").write_text(_REAL_REQUIREMENTS)
+        (item_dir / "implementation-plan.md").write_text(_REAL_IMPL_PLAN)
         (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
@@ -963,8 +967,8 @@ async def test_finalize_dispatch_emits_only_review_approved():
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Requirements\n")
-        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "requirements.md").write_text(_REAL_REQUIREMENTS)
+        (item_dir / "implementation-plan.md").write_text(_REAL_IMPL_PLAN)
         (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
@@ -1019,8 +1023,8 @@ async def test_finalize_ready_slug_rerun_emits_handoff_events():
 
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True, exist_ok=True)
-        (item_dir / "requirements.md").write_text("# Requirements\n")
-        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+        (item_dir / "requirements.md").write_text(_REAL_REQUIREMENTS)
+        (item_dir / "implementation-plan.md").write_text(_REAL_IMPL_PLAN)
         (item_dir / "state.yaml").write_text('{"build": "pending", "dor": {"score": 8}, "review": "pending"}')
 
         state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
