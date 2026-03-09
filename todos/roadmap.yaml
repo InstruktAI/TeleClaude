@@ -54,10 +54,6 @@
 - slug: todo-phase-status-display-2
 - slug: test-suite-overhaul
 - slug: mirror-runtime-isolation-2
-- slug: tso-infra
-  group: test-suite-overhaul
-  description: Feature branch, directory scaffold, conftest, CI enforcement, ignored.md
-    framework
 - slug: tso-adapters
   group: test-suite-overhaul
   after:
