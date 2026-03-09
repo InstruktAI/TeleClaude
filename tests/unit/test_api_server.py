@@ -792,7 +792,6 @@ def test_send_message_direct_creates_link_and_routes_to_peers(test_client, mock_
         patch("teleclaude.core.session_listeners.unregister_listener", new_callable=AsyncMock) as mock_unregister,
         patch("teleclaude.core.session_listeners.create_or_reuse_direct_link", new_callable=AsyncMock) as mock_create,
         patch("teleclaude.core.session_listeners.get_peer_members", new_callable=AsyncMock) as mock_peers,
-        patch("teleclaude.core.session_listeners.unregister_listener", new_callable=AsyncMock) as mock_unreg,
     ):
         mock_get_session.side_effect = [target_session, caller_session, target_session]
         mock_resolve.side_effect = [None, (link, members)]

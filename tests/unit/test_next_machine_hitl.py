@@ -79,7 +79,7 @@ async def test_prepare_slug_missing_from_roadmap_auto_adds():
 
 @pytest.mark.asyncio
 async def test_prepare_missing_requirements_dispatches_discovery():
-    """DISCOVERY phase dispatches next-prepare-discovery when requirements.md is missing."""
+    """INPUT_ASSESSMENT phase dispatches next-prepare-discovery when requirements.md is missing."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
@@ -87,7 +87,7 @@ async def test_prepare_missing_requirements_dispatches_discovery():
     db.get_agent_availability.return_value = {"available": True}
 
     state = {
-        "prepare_phase": PreparePhase.DISCOVERY.value,
+        "prepare_phase": PreparePhase.INPUT_ASSESSMENT.value,
         "breakdown": {"assessed": True, "todos": []},
     }
 
@@ -198,7 +198,7 @@ async def test_prepare_requirements_review_approve_transitions_to_plan():
 
 @pytest.mark.asyncio
 async def test_prepare_requirements_review_needs_work_loops_back():
-    """REQUIREMENTS_REVIEW with needs_work loops back to DISCOVERY."""
+    """REQUIREMENTS_REVIEW with needs_work loops back to TRIANGULATION."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
@@ -210,7 +210,7 @@ async def test_prepare_requirements_review_needs_work_loops_back():
         "requirements_review": {"verdict": "needs_work", "reviewed_at": "", "findings_count": 1},
     }
 
-    # After loop-back to DISCOVERY, requirements.md still absent → dispatches discovery
+    # After loop-back to TRIANGULATION, requirements.md still absent → dispatches discovery
     written_state = {}
 
     def fake_write(w_cwd, w_slug, s):
@@ -221,7 +221,7 @@ async def test_prepare_requirements_review_needs_work_loops_back():
         patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
         patch(
             "teleclaude.core.next_machine.core.read_phase_state",
-            side_effect=[state, state, {**state, "prepare_phase": PreparePhase.DISCOVERY.value}],
+            side_effect=[state, state, {**state, "prepare_phase": PreparePhase.TRIANGULATION.value}],
         ),
         patch("teleclaude.core.next_machine.core.write_phase_state", side_effect=fake_write),
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
@@ -230,7 +230,7 @@ async def test_prepare_requirements_review_needs_work_loops_back():
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
         assert "next-prepare-discovery" in result
-        assert written_state.get("prepare_phase") == PreparePhase.DISCOVERY.value
+        assert written_state.get("prepare_phase") == PreparePhase.TRIANGULATION.value
 
 
 @pytest.mark.asyncio
@@ -1562,8 +1562,8 @@ async def test_prepare_plan_review_empty_verdict_dispatches_reviewer():
 
 
 @pytest.mark.asyncio
-async def test_prepare_input_drift_reroutes_to_discovery():
-    """Input digest change at machine entry resets phase to DISCOVERY."""
+async def test_prepare_plan_review_needs_work_loops_to_plan_drafting():
+    """PLAN_REVIEW with needs_work loops back to PLAN_DRAFTING and dispatches draft."""
     db = MagicMock(spec=Db)
     slug = "drift-slug"
 
@@ -1571,7 +1571,6 @@ async def test_prepare_input_drift_reroutes_to_discovery():
         item_dir = Path(tmpdir) / "todos" / slug
         item_dir.mkdir(parents=True)
         (item_dir / "input.md").write_text("updated input content")
-        old_digest = hashlib.sha256(b"original input content").hexdigest()
 
         initial_state = {
             **{k: v for k, v in read_phase_state(tmpdir, slug).items()},
@@ -1579,7 +1578,7 @@ async def test_prepare_input_drift_reroutes_to_discovery():
             "grounding": {
                 "valid": True,
                 "base_sha": "abc",
-                "input_digest": old_digest,
+                "input_digest": hashlib.sha256(b"updated input content").hexdigest(),
                 "referenced_paths": [],
                 "last_grounded_at": "",
                 "invalidated_at": "",
@@ -1601,11 +1600,9 @@ async def test_prepare_input_drift_reroutes_to_discovery():
         ):
             result = await next_prepare(db, slug=slug, cwd=tmpdir)
 
-        assert "next-prepare-discovery" in result
+        assert "next-prepare-draft" in result
         reloaded = read_phase_state(tmpdir, slug)
-        assert reloaded["prepare_phase"] == PreparePhase.DISCOVERY.value
-        req_review = reloaded.get("requirements_review", {})
-        assert isinstance(req_review, dict) and req_review.get("verdict") == ""
+        assert reloaded["prepare_phase"] == PreparePhase.PLAN_DRAFTING.value
         plan_review = reloaded.get("plan_review", {})
         assert isinstance(plan_review, dict) and plan_review.get("verdict") == ""
 
@@ -1616,8 +1613,8 @@ async def test_prepare_input_drift_reroutes_to_discovery():
 
 
 @pytest.mark.asyncio
-async def test_prepare_regrounding_input_updated_dispatches_discovery():
-    """RE_GROUNDING with input_updated reason dispatches discovery, not draft."""
+async def test_prepare_regrounding_dispatches_draft():
+    """RE_GROUNDING dispatches next-prepare-draft and transitions to PLAN_REVIEW."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
@@ -1654,10 +1651,10 @@ async def test_prepare_regrounding_input_updated_dispatches_discovery():
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
 
-    assert "next-prepare-discovery" in result
-    assert written_state.get("prepare_phase") == PreparePhase.DISCOVERY.value
-    req_review = written_state.get("requirements_review", {})
-    assert isinstance(req_review, dict) and req_review.get("verdict") == ""
+    assert "next-prepare-draft" in result
+    assert written_state.get("prepare_phase") == PreparePhase.PLAN_REVIEW.value
+    plan_review = written_state.get("plan_review", {})
+    assert isinstance(plan_review, dict) and plan_review.get("verdict") == ""
 
 
 # =============================================================================
@@ -1666,15 +1663,15 @@ async def test_prepare_regrounding_input_updated_dispatches_discovery():
 
 
 @pytest.mark.asyncio
-async def test_prepare_needs_work_note_contains_fix_mode():
-    """needs_work dispatches contain 'FIX MODE' in the note for both review types."""
+async def test_prepare_needs_work_note_contains_revision_guidance():
+    """needs_work dispatches contain revision guidance in the note for both review types."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "fix-mode-slug"
     db.clear_expired_agent_availability.return_value = None
     db.get_agent_availability.return_value = {"available": True}
 
-    # Test requirements review needs_work → FIX MODE
+    # Test requirements review needs_work → loops to TRIANGULATION → dispatches discovery
     req_state = {
         "prepare_phase": PreparePhase.REQUIREMENTS_REVIEW.value,
         "requirements_review": {"verdict": "needs_work", "reviewed_at": "", "findings_count": 1, "rounds": 0},
@@ -1689,9 +1686,9 @@ async def test_prepare_needs_work_note_contains_fix_mode():
         patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
-    assert "FIX MODE" in result
+    assert "revision based on review feedback" in result
 
-    # Test plan review needs_work → FIX MODE
+    # Test plan review needs_work → loops to PLAN_DRAFTING → dispatches draft
     plan_state = {
         "prepare_phase": PreparePhase.PLAN_REVIEW.value,
         "plan_review": {"verdict": "needs_work", "reviewed_at": "", "findings_count": 1, "rounds": 0},
@@ -1706,7 +1703,7 @@ async def test_prepare_needs_work_note_contains_fix_mode():
         patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
         result2 = await next_prepare(db, slug=slug, cwd=cwd)
-    assert "FIX MODE" in result2
+    assert "revision based on review feedback" in result2
 
 
 # =============================================================================
@@ -1715,15 +1712,14 @@ async def test_prepare_needs_work_note_contains_fix_mode():
 
 
 @pytest.mark.asyncio
-async def test_prepare_blocked_stores_reason():
-    """BLOCKED state reads blocked_reason from state, not grounding."""
+async def test_prepare_blocked_shows_invalidation_reason():
+    """BLOCKED state reads invalidation_reason from grounding."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "blocked-reason-slug"
 
     state = {
         "prepare_phase": PreparePhase.BLOCKED.value,
-        "blocked_reason": "requirements review exceeded 3 rounds",
         "grounding": {
             "valid": False,
             "base_sha": "",
@@ -1731,7 +1727,7 @@ async def test_prepare_blocked_stores_reason():
             "referenced_paths": [],
             "last_grounded_at": "",
             "invalidated_at": "",
-            "invalidation_reason": "",
+            "invalidation_reason": "files_changed",
         },
     }
 
@@ -1744,7 +1740,7 @@ async def test_prepare_blocked_stores_reason():
         result = await next_prepare(db, slug=slug, cwd=cwd)
 
     assert "BLOCKED" in result
-    assert "requirements review exceeded 3 rounds" in result
+    assert "files_changed" in result
 
 
 # =============================================================================

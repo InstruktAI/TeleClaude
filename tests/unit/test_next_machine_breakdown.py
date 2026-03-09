@@ -134,7 +134,7 @@ async def test_next_prepare_input_md_unassessed_breakdown_dispatches_discovery_a
     db.get_agent_availability.return_value = {"available": True}
 
     state = {
-        "prepare_phase": PreparePhase.DISCOVERY.value,
+        "prepare_phase": PreparePhase.INPUT_ASSESSMENT.value,
         "breakdown": {"assessed": False, "todos": []},
     }
 

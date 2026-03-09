@@ -207,3 +207,16 @@ jobs:
           git tag "$NEXT_TAG"
           git push origin "$NEXT_TAG"
           gh release create "$NEXT_TAG" --title "$NEXT_TAG" --notes-file release-notes.md
+
+      - name: Update pyproject.toml version on main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEXT_VER="${{ steps.version.outputs.next_tag }}"
+          CLEAN_VER="${NEXT_VER#v}"
+          sed -i '' "s/^version = \".*\"/version = \"${CLEAN_VER}\"/" pyproject.toml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml
+          git commit -m "chore: bump version to ${CLEAN_VER} [skip ci]"
+          git push origin HEAD:main

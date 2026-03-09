@@ -37,7 +37,9 @@ from teleclaude.core.integration_bridge import emit_branch_pushed, emit_deployme
 
 logger = get_logger(__name__)
 
-StateValue = str | bool | int | None | list[str] | dict[str, object]
+StateValue = (
+    str | bool | int | None | list[str] | dict[str, object]
+)  # guard: loose-dict - YAML state values are heterogeneous
 
 
 class FinalizeState(TypedDict, total=False):

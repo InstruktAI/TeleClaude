@@ -140,6 +140,7 @@ async def test_duplicate_integration_events_reach_trigger_before_dedup(db: Event
     push_cb = AsyncMock()
     ingest_calls: list[str] = []
 
+    # guard: loose-dict-func - Test mock matching production callback signature
     def mock_ingest(canonical_type: str, _payload: dict[str, object]) -> list[tuple[str, str, str]]:
         ingest_calls.append(canonical_type)
         return []
@@ -195,8 +196,9 @@ async def test_unknown_source_flags_do_not_break_integration_ingest(db: EventDB)
         reachability_checker=lambda _branch, _sha, _remote: True,
         integrated_checker=lambda _sha, _ref: False,
     )
-    statuses: list[tuple[str, str, tuple[str, ...], dict[str, object]]] = []
+    statuses: list[tuple[str, str, tuple[str, ...], dict[str, object]]] = []  # guard: loose-dict - Test fixture matching production payload type
 
+    # guard: loose-dict-func - Test callback matching production ingest signature
     def ingest_with_real_service(
         canonical_type: str, payload: dict[str, object]
     ) -> list[tuple[str, str, str]]:
