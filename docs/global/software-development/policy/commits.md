@@ -45,6 +45,7 @@ All Committizen types are allowed.
 - Include migration notes when schema or data shape changes.
 - Avoid committing generated artifacts unless explicitly required.
 - Squash noisy fixups before merge to keep history readable.
+- **Push after committing in canonical context.** When operating on repo root main (canonical context), push to origin/main immediately after each atomic commit. Do not accumulate local commits — origin/main is the source of truth and must stay current. Deferred pushes cause divergence with the integration worktree.
 
 ## Rationale
 
