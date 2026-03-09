@@ -19,10 +19,33 @@ dor:
     implementation_plan_updated: false
 grounding:
   valid: true
-  base_sha: "23362ba0afd0325acb1946c1106b6312ad4652ee"
+  base_sha: "e7134c4a843e7d8ed6ab4bbeae137c587e8888d9"
   input_digest: "ffe4e057f7664bc7ff12ab6c44796a5b"
-  last_grounded_at: "2026-03-09T17:24:46Z"
+  last_grounded_at: "2026-03-09T18:30:00Z"
   invalidation_reason: null
+  referenced_paths:
+    - tests/conftest.py
+    - tests/ignored.md
+    - tests/unit/test_tui_agent_status_cycle.py
+    - tests/unit/test_deployment_channels.py
+    - tests/unit/test_deployment_migration_runner.py
+    - tests/unit/test_next_machine_demo.py
+    - tools/lint/guardrails.py
+    - tests/unit/test_lint_guardrails.py
+    - Makefile
+    - tools/lint/test_mapping.py
+    - tests/constants.py
+    - tests/unit/adapters/conftest.py
+    - tests/unit/api/conftest.py
+    - tests/unit/core/conftest.py
+    - tests/unit/cli/conftest.py
+    - tests/unit/hooks/conftest.py
+    - tests/unit/memory/conftest.py
+    - tests/unit/test_lint_test_mapping.py
+plan_review:
+  verdict: "approve"
+  reviewed_at: "2026-03-09T19:15:00Z"
+  findings_count: 2
 review_round: 0
 max_review_rounds: 3
 review_baseline_commit: ''
