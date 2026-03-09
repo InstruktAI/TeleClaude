@@ -15,6 +15,8 @@ Fix the integrator spawn guard by introducing `integrator` as a first-class sess
 - Add job-based session filtering to the existing session listing surface (API plus `telec sessions list`) so callers can request sessions by `session_metadata.job`.
 - Replace the integrator singleton guard's title-text check with a structured query for open sessions whose `session_metadata.job` is `integrator`.
 - Keep CLI help/auth metadata aligned with the runtime permission model so integrator-accessible commands remain accurately documented and authorized.
+- Wire `is_command_allowed()` into the daemon's `_is_tool_denied()` in `auth.py`, replacing the legacy `is_tool_allowed()` from `tool_access.py`. `CLI_SURFACE` CommandAuth becomes the single source of truth for dual-factor (system_role + human_role) authorization at the daemon level, eliminating the parallel auth system. `[inferred]`
+- Retire the legacy hardcoded exclusion sets (`WORKER_ALLOWED_TOOLS`, `UNAUTHORIZED_EXCLUDED_TOOLS`, `MEMBER_EXCLUDED_TOOLS`) from `tool_access.py`. `[inferred]`
 
 ### Out of scope
 
@@ -39,11 +41,16 @@ Fix the integrator spawn guard by introducing `integrator` as a first-class sess
 - [ ] An integrator session can call `telec todo integrate` successfully
 - [ ] Killing the active integrator tmux pane and queueing a new candidate results in a new integrator session spawning instead of the dead session blocking the queue
 - [ ] CLI help for the changed session-listing surface documents the new `--job` filter, and any documented session metadata flags continue to match implemented behavior `[inferred]`
+- [ ] `_is_tool_denied()` in `auth.py` delegates to `is_command_allowed()` using CommandAuth from `CLI_SURFACE` instead of the legacy `is_tool_allowed()` exclusion sets `[inferred]`
+- [ ] Authorization is dual-factor: both system_role and human_role must satisfy the CommandAuth for the endpoint `[inferred]`
+- [ ] A session with `system_role="orchestrator"` and valid `human_role` can call `telec sessions end` `[inferred]`
+- [ ] A session with `human_role=None` is denied (fail closed) regardless of system_role `[inferred]`
+- [ ] The legacy `is_tool_allowed()` function and its hardcoded exclusion sets are removed from `tool_access.py` `[inferred]`
 
 ## Constraints
 
 - Metadata derivation for `system_role` and `job` is strictly server-side; callers must not be able to override either field.
-- Python state-machine operations that execute inside `integration/state_machine.py` bypass the clearance system and must not be treated as integrator-allowed agent tools.
+- Python state-machine operations that execute inside `integration/state_machine.py` bypass the clearance system and must not be treated as integrator-allowed agent tools. `[inferred]`
 - The integrator remains a singleton queue drainer; any open session with `job=integrator` must block spawning a second integrator.
 - The new job filter must compose with the existing local-plus-cache session merge path instead of introducing a separate visibility path `[inferred]`
 
