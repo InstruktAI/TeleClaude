@@ -11,6 +11,7 @@ description: 'Safety rules for git operations and handling uncommitted work.'
 
 - Never use `git checkout`, `git restore`, `git reset`, `git clean`, or delete files unless explicitly instructed by the user.
 - Never use `git stash`, `git stash pop`, `git stash apply`, or `git stash drop` in agent workflows.
+- **`git revert` requires inspection.** Before reverting any commit, run `git show --stat <commit>` and verify that *every* file in the commit belongs to the scope you intend to undo. Commits in a multi-agent environment routinely contain changes from multiple workers — a blind revert destroys other agents' work. The git wrapper enforces this: bare `git revert` is blocked; pass `--confirmed` to acknowledge you have inspected the commit. Use `git revert` only as an escape hatch, not as a routine undo mechanism.
 - Dirty `main` is allowed. Agents may continue work in files required by the active task.
 - Unrelated local changes may be reported for awareness, but they are non-blocking and must not change task execution.
 - Only treat local changes as blockers when they overlap current task scope or create a concrete data-loss risk.
@@ -35,7 +36,7 @@ description: 'Safety rules for git operations and handling uncommitted work.'
 
 ## Enforcement
 
-- **Git wrapper** (`~/.teleclaude/bin/git`): A PATH-based binary wrapper prepended to all agent tmux sessions via `tmux_bridge.py`. Blocks `stash`, `checkout`, `restore`, `clean`, and `reset --hard/--merge/--keep` at the shell level, below AI reasoning. Agents cannot bypass this.
+- **Git wrapper** (`~/.teleclaude/bin/git`): A PATH-based binary wrapper prepended to all agent tmux sessions via `tmux_bridge.py`. Blocks `stash`, `checkout`, `restore`, `clean`, and `reset --hard/--merge/--keep` at the shell level, below AI reasoning. Agents cannot bypass this. `git revert` requires `--confirmed` flag; bare `git revert` is blocked with a warning explaining the inspection requirement.
 - Never discard or overwrite uncommitted work unless told to.
 - Do not stop, reroute, or escalate solely because unrelated files are dirty.
 - Agent instruction artifacts must not include stash workflows.
