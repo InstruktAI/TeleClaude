@@ -1108,3 +1108,59 @@ def test_tmux_contract_compatibility_rejects_cross_agent_native_mismatch(monkeyp
         "native-claude",
         agent="claude",
     )
+
+
+def test_receiver_drops_task_notification_prompt(monkeypatch, tmp_path):
+    """System-injected task-notification prompts should be dropped at the receiver."""
+    sent = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    prompt = "<task-notification><task-id>abc</task-id>some content</task-notification>"
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(
+        receiver,
+        "_read_stdin",
+        lambda: (
+            json.dumps({"session_id": "native-sys-1", "prompt": prompt}),
+            {"session_id": "native-sys-1", "prompt": prompt},
+        ),
+    )
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="user_prompt_submit", cwd=None)
+    )
+    monkeypatch.setattr(receiver, "_get_cached_session_id", lambda _agent, _native: "sess-sys-1")
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path.resolve()))
+
+    receiver.main()
+
+    assert sent == []
+
+
+def test_receiver_drops_system_reminder_prompt(monkeypatch, tmp_path):
+    """System-injected system-reminder prompts should be dropped at the receiver."""
+    sent = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    prompt = "<system-reminder>internal content</system-reminder>"
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(
+        receiver,
+        "_read_stdin",
+        lambda: (
+            json.dumps({"session_id": "native-sys-2", "prompt": prompt}),
+            {"session_id": "native-sys-2", "prompt": prompt},
+        ),
+    )
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="user_prompt_submit", cwd=None)
+    )
+    monkeypatch.setattr(receiver, "_get_cached_session_id", lambda _agent, _native: "sess-sys-2")
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path.resolve()))
+
+    receiver.main()
+
+    assert sent == []

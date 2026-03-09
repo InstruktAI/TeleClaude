@@ -67,7 +67,7 @@ from teleclaude.core.agents import AgentName, get_default_agent  # noqa: E402
 from teleclaude.core import db_models  # noqa: E402
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType  # noqa: E402
 from teleclaude.hooks.adapters import get_adapter  # noqa: E402
-from teleclaude.constants import MAIN_MODULE, UI_MESSAGE_MAX_CHARS  # noqa: E402
+from teleclaude.constants import MAIN_MODULE, UI_MESSAGE_MAX_CHARS, is_internal_user_text  # noqa: E402
 from teleclaude.paths import SESSION_MAP_PATH  # noqa: E402
 from teleclaude.hooks.checkpoint_flags import (  # noqa: E402
     CHECKPOINT_RECHECK_FLAG,
@@ -1015,6 +1015,13 @@ def main() -> None:
                 native_session_id=(raw_native_session_id or "")[:8],
                 hook_event_name=str(data.get("hook_event_name") or ""),
                 raw_event_type=str(raw_event_type or ""),
+            )
+            return
+        if is_internal_user_text(prompt_text):
+            logger.debug(
+                "Dropped system-injected user_prompt_submit",
+                agent=args.agent,
+                session_id=teleclaude_session_id[:8],
             )
             return
         _reset_checkpoint_flags(teleclaude_session_id)

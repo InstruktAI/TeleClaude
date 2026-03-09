@@ -3,6 +3,7 @@
 This module defines shared constants to ensure consistency.
 """
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -110,6 +111,28 @@ def format_system_message(label: str, content: str = "") -> str:
     if content:
         return f"{header}\n\n{content.strip()}"
     return header
+
+
+_INTERNAL_WRAPPER_RE = re.compile(
+    r"^\s*<(task-notification|system-reminder)\b[^>]*>.*</\1>\s*$",
+    re.DOTALL,
+)
+
+
+def is_internal_user_text(text: str) -> bool:
+    """Return True if text is system-injected content that must not enter public data fields.
+
+    Detects:
+    - TeleClaude system prefix ("[TeleClaude ...")
+    - Claude Code task-notification wrappers
+    - Claude Code system-reminder wrappers
+    """
+    stripped = text.lstrip()
+    if stripped.startswith(TELECLAUDE_SYSTEM_PREFIX):
+        return True
+    if _INTERNAL_WRAPPER_RE.match(text):
+        return True
+    return False
 
 
 # Checkpoint injection

@@ -32,11 +32,10 @@ Intentionally dropped data:
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Iterable, Iterator, Mapping
 from typing import Optional, cast
 
-from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
+from teleclaude.constants import is_internal_user_text
 from teleclaude.core.agents import AgentName
 from teleclaude.output_projection.models import ProjectedBlock, VisibilityPolicy
 from teleclaude.utils.transcript import (
@@ -48,21 +47,6 @@ from teleclaude.utils.transcript import (
 )
 
 logger = logging.getLogger(__name__)
-
-_INTERNAL_WRAPPER_RE = re.compile(
-    r"^\s*<(task-notification|system-reminder)\b[^>]*>.*</\1>\s*$",
-    re.DOTALL,
-)
-
-
-def _is_internal_user_text(text: str) -> bool:
-    """Return True if user text is a TeleClaude internal payload that must be stripped."""
-    stripped = text.lstrip()
-    if stripped.startswith(TELECLAUDE_SYSTEM_PREFIX):
-        return True
-    if _INTERNAL_WRAPPER_RE.match(text):
-        return True
-    return False
 
 
 def project_entries(
@@ -154,7 +138,7 @@ def project_entries(
 
         # User text messages (plain string content) — sanitize before emission
         if role == "user" and isinstance(content, str):
-            if _is_internal_user_text(content):
+            if is_internal_user_text(content):
                 logger.debug("Sanitized TeleClaude-internal user text at index %d", entry_idx)
                 continue
             yield ProjectedBlock(
@@ -186,7 +170,7 @@ def project_entries(
                 if not text.strip():
                     continue
                 # Sanitize user text blocks
-                if role == "user" and _is_internal_user_text(text):
+                if role == "user" and is_internal_user_text(text):
                     logger.debug("Sanitized TeleClaude-internal user text block at index %d", entry_idx)
                     continue
                 yield ProjectedBlock(
