@@ -2687,7 +2687,9 @@ def _create_or_attach_worktree(cwd: str, slug: str) -> bool:
     trees_dir.mkdir(exist_ok=True)
 
     try:
-        repo.git.worktree("add", str(worktree_path), "-b", slug)
+        # Fetch latest main and branch from origin/main (not local HEAD)
+        repo.git.fetch("origin", "main")
+        repo.git.worktree("add", str(worktree_path), "-b", slug, "origin/main")
     except GitCommandError as exc:
         branch_exists = any(head.name == slug for head in repo.heads)
         if not branch_exists:

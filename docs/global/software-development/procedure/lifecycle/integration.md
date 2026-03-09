@@ -16,6 +16,11 @@ each decision point until the queue is drained.
 
 - Candidate branches exist in the FIFO queue.
 - No other integrator session holds the lease.
+- The integrator operates in a persistent worktree at `trees/_integration/` (detached HEAD
+  from `origin/main`), created on first run and reused across subsequent runs. Reset to
+  `origin/main` before each merge. Repo root cleanliness is irrelevant — dirty files, hot
+  patches, and operational edits on `main` do not affect integration.
+- Worker worktrees branch from `origin/main` (not local HEAD).
 
 ## Steps
 
@@ -28,7 +33,8 @@ The state machine returns one of the following instruction blocks at each step.
 
 ### SQUASH COMMIT REQUIRED
 
-The branch has been squash-merged; staged changes are ready.
+The branch has been squash-merged in the integration worktree (`trees/_integration/`);
+staged changes are ready.
 
 1. Read the context: diff stats, branch commit history, `requirements.md`,
    `implementation-plan.md`.
@@ -36,33 +42,36 @@ The branch has been squash-merged; staged changes are ready.
    - Subject: imperative, scoped — e.g. `feat(my-feature): deliver my-feature`
    - Body: summarize what changed, key decisions, scope
    - Footer: `Co-Authored-By: TeleClaude <noreply@instrukt.ai>`
-3. Run `git commit -m '<message>'`, then call `telec todo integrate`.
+3. Run `git -C trees/_integration commit -m '<message>'`, then call `telec todo integrate`.
 
 ### CONFLICT RESOLUTION REQUIRED
 
-The squash merge encountered conflicts.
+The squash merge encountered conflicts in the integration worktree.
 
-1. Read each conflicted file; understand the code on both sides.
+1. Read each conflicted file in `trees/_integration/`; understand the code on both sides.
 2. Resolve all conflict markers (`<<<<`, `====`, `>>>>`).
-3. Stage resolved files with `git add <files>`.
+3. Stage resolved files with `git -C trees/_integration add <files>`.
 4. Compose a commit message (same quality standard as squash commit).
-5. Run `git commit -m '<message>'`, then call `telec todo integrate`.
+5. Run `git -C trees/_integration commit -m '<message>'`, then call `telec todo integrate`.
 6. If conflicts are genuinely unresolvable, call `telec todo integrate` without
    committing — the state machine will detect this and re-prompt.
 
 ### PUSH REJECTION RECOVERY
 
-Push of main to origin was rejected (likely non-fast-forward).
+Push from integration worktree to origin/main was rejected (likely non-fast-forward).
 
-1. Diagnose: `git fetch origin && git log --oneline origin/main ^main`.
-2. Rebase: `git rebase origin/main`.
-3. Resolve any new conflicts, then `git push origin main`.
+1. Diagnose: `git -C trees/_integration fetch origin && git -C trees/_integration log --oneline origin/main ^HEAD`.
+2. Rebase: `git -C trees/_integration rebase origin/main`.
+3. Resolve any new conflicts, then `git -C trees/_integration push origin HEAD:main`.
 4. Call `telec todo integrate`.
 
 ### INTEGRATION WAIT
 
-Main branch not clear — another session is active or main has uncommitted changes.
+Main branch not clear — another session is actively modifying main.
 Wait for blockers to clear, then call `telec todo integrate`.
+
+Dirty tracked files on main do **not** block integration. The integrator operates
+in its own isolated worktree (`trees/_integration/`), independent of repo root state.
 
 ### LEASE_BUSY
 
@@ -80,24 +89,14 @@ This happens when a candidate is re-dequeued after a daemon restart or stale
 re-queue. The agent sees no instruction for this candidate; the state machine
 logs `integration.candidate.already_merged` and moves on.
 
-### HOUSEKEEPING COMMIT REQUIRED
-
-Main has uncommitted tracked changes that must be committed before integration
-can proceed. The instruction lists the dirty paths.
-
-1. Review each dirty file briefly.
-2. Compose a concise commit message.
-3. Run `git add <paths> && git commit -m '<message>'`.
-4. Call `telec todo integrate`.
-
 ### INTEGRATION COMPLETE
 
 All candidates have been processed. Self-end: `telec sessions end self`.
 
 ## Outputs
 
-- Merged candidates on canonical main.
-- Delivery bookkeeping (roadmap delivered, demo snapshot promoted).
+- Merged candidates on canonical main (pushed from integration worktree).
+- Delivery bookkeeping (roadmap delivered, demo snapshot promoted) on repo root.
 - Cleaned worktrees and branches.
 - `integration.*` lifecycle events at each state transition.
 
@@ -109,11 +108,11 @@ from the last persisted phase. No manual checkpoint editing is required.
 
 ### Agent-actionable recovery
 
-- **Squash commit fails:** Read the error and retry the commit.
+- **Squash commit fails:** Read the error and retry the commit in `trees/_integration/`.
 - **Conflicts unresolvable:** Call `telec todo integrate` without committing — the state
   machine detects no HEAD advancement and re-prompts.
-- **Push repeatedly rejected:** Fetch, rebase, resolve, push, then call `telec todo integrate`.
-  If the problem persists, check for concurrent integrators.
+- **Push repeatedly rejected:** Fetch, rebase, resolve, push in `trees/_integration/`,
+  then call `telec todo integrate`. If the problem persists, check for concurrent integrators.
 
 ### Automatic crash recovery
 
@@ -123,6 +122,6 @@ from the last persisted phase. No manual checkpoint editing is required.
 | During clearance wait                | Re-checks clearance. Proceeds when clear.                             |
 | After merge, before agent commits    | Re-prompts for commit. Git index (staged changes) persists on disk.   |
 | After commit, before push            | Re-runs delivery bookkeeping (idempotent), then pushes.               |
-| After push rejection                 | Re-checks if local/remote heads match (agent may have recovered).     |
+| After push rejection                 | Re-checks if integration worktree HEAD matches remote main.           |
 | During cleanup                       | Re-runs cleanup (idempotent). Missing worktrees/branches are no-ops.  |
 | After candidate delivered            | Marks integrated, resets to IDLE, loops for next candidate.           |

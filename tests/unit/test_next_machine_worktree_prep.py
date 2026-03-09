@@ -141,7 +141,7 @@ class TestEnsureWorktreePrepPolicy:
         assert result.prepared is True
         assert result.prep_reason == "worktree_created"
         assert repo.git.worktree.call_args_list == [
-            (("add", str(tmp_path / "trees" / "test-slug"), "-b", "test-slug"), {}),
+            (("add", str(tmp_path / "trees" / "test-slug"), "-b", "test-slug", "origin/main"), {}),
             (("add", str(tmp_path / "trees" / "test-slug"), "test-slug"), {}),
         ]
         assert mock_prepare.call_args == ((str(tmp_path), "test-slug"), {})

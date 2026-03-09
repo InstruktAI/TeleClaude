@@ -221,8 +221,20 @@ def _get_remote_main_sha(cwd: str) -> str | None:
     return parts[0] if parts else None
 
 
+def _git_dir(cwd: str) -> Path | None:
+    """Return the actual .git directory, handling worktree indirection."""
+    rc, stdout, _ = _run_git(["rev-parse", "--git-dir"], cwd=cwd)
+    if rc != 0:
+        return None
+    git_dir = Path(stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = Path(cwd) / git_dir
+    return git_dir
+
+
 def _merge_head_exists(cwd: str) -> bool:
-    return (Path(cwd) / ".git" / "MERGE_HEAD").exists()
+    gd = _git_dir(cwd)
+    return gd is not None and (gd / "MERGE_HEAD").exists()
 
 
 def _get_conflicted_files(cwd: str) -> list[str]:
@@ -237,8 +249,8 @@ def _get_diff_stats(cwd: str) -> str:
     return stdout.strip() if rc == 0 else ""
 
 
-def _get_branch_log(cwd: str, branch: str) -> str:
-    rc, stdout, _ = _run_git(["log", f"main..{branch}", "--oneline", "--no-decorate"], cwd=cwd)
+def _get_branch_log(cwd: str, branch: str, *, base_ref: str = "main") -> str:
+    rc, stdout, _ = _run_git(["log", f"{base_ref}..{branch}", "--oneline", "--no-decorate"], cwd=cwd)
     return stdout.strip() if rc == 0 else ""
 
 
@@ -301,26 +313,10 @@ def _make_clearance_probe(cwd: str) -> MainBranchClearanceProbe:
         except Exception:
             return ""
 
-    def _dirty_paths_provider() -> tuple[str, ...]:
-        if not git_dir_present:
-            return ()
-        try:
-            rc, stdout, _ = _run_git(["status", "--short", "-uno"], cwd=cwd)
-            if rc != 0:
-                return ()
-            paths: list[str] = []
-            for line in stdout.splitlines():
-                parts = line.strip().split()
-                if len(parts) >= 2:
-                    paths.append(parts[-1])
-            return tuple(paths)
-        except Exception:
-            return ()
-
     return MainBranchClearanceProbe(
         sessions_provider=_sessions_provider,
         session_tail_provider=_tail_provider,
-        dirty_tracked_paths_provider=_dirty_paths_provider,
+        dirty_tracked_paths_provider=lambda: (),
     )
 
 
@@ -341,8 +337,8 @@ def _format_commit_decision(
 
 Candidate: {slug} (branch: {branch})
 
-The branch has been squash-merged into main. Stage is ready.
-Compose and execute a squash commit that captures the full delivery intent.
+The branch has been squash-merged in the integration worktree (trees/_integration/).
+Staged changes are ready for commit.
 
 ## Diff Stats
 {diff_stats or "(no staged changes stat available)"}
@@ -362,10 +358,10 @@ Compose and execute a squash commit that captures the full delivery intent.
    - Subject: clear, imperative, scoped (e.g. "feat({slug}): deliver {slug}")
    - Body: summarize what changed, key decisions, scope
    - Footer: TeleClaude Co-Authored-By trailer
-3. Run: git commit -m '<your message>'
+3. Run: git -C trees/_integration commit -m '<your message>'
 4. Then call: telec todo integrate
 
-NEXT: Compose and execute git commit, then call telec todo integrate"""
+NEXT: Compose and execute git commit in trees/_integration, then call telec todo integrate"""
 
 
 def _format_conflict_decision(slug: str, branch: str, conflicted_files: list[str]) -> str:
@@ -374,58 +370,33 @@ def _format_conflict_decision(slug: str, branch: str, conflicted_files: list[str
 
 Candidate: {slug} (branch: {branch})
 
-The squash merge of {branch} into main encountered conflicts:
+The squash merge of {branch} into main encountered conflicts in trees/_integration/:
 {file_list}
 
 ## Your Task
-1. Examine each conflicted file and understand the code context
+1. Examine each conflicted file in trees/_integration/ and understand the code context
 2. Resolve all conflict markers (<<<< ==== >>>>)
-3. Stage resolved files: git add <files>
+3. Stage resolved files: git -C trees/_integration add <files>
 4. Compose a commit message capturing the delivery intent (same quality as squash commit)
-5. Run: git commit -m '<your message>'
+5. Run: git -C trees/_integration commit -m '<your message>'
 6. Then call: telec todo integrate
 
 If conflicts are unresolvable, call: telec todo integrate
 (The state machine will detect no commit was made and re-prompt.
 To explicitly block the candidate, the agent must mark_blocked via queue.)
 
-NEXT: Resolve conflicts, stage, commit, then call telec todo integrate"""
+NEXT: Resolve conflicts in trees/_integration, stage, commit, then call telec todo integrate"""
 
 
-def _format_clearance_wait(blocking_session_ids: tuple[str, ...], dirty_paths: tuple[str, ...]) -> str:
+def _format_clearance_wait(blocking_session_ids: tuple[str, ...]) -> str:
     lines = ["INTEGRATION WAIT: Main branch not clear for integration"]
     if blocking_session_ids:
         lines.append("\nBlocking sessions (active work on main detected):")
         for sid in blocking_session_ids:
             lines.append(f"  - {sid}")
-    if dirty_paths:
-        lines.append("\nDirty tracked paths on main:")
-        for p in dirty_paths:
-            lines.append(f"  - {p}")
     lines.append("\nCall telec todo integrate again once blockers are resolved.")
     lines.append("\nNEXT: Wait for blockers to clear, then call telec todo integrate")
     return "\n".join(lines)
-
-
-def _format_housekeeping_commit(dirty_paths: tuple[str, ...]) -> str:
-    file_list = "\n".join(f"  - {p}" for p in dirty_paths)
-    add_args = " ".join(dirty_paths)
-    return f"""INTEGRATION DECISION: HOUSEKEEPING COMMIT REQUIRED
-
-Main has uncommitted tracked changes that must be committed before integration can proceed.
-
-## Dirty paths
-{file_list}
-
-## Your Task
-1. Review each dirty file briefly to understand what changed
-2. Compose a concise commit message describing the in-flight changes
-3. Run:
-   git add {add_args}
-   git commit -m '<your message>'
-4. Then call: telec todo integrate
-
-NEXT: Commit the dirty paths above, then call telec todo integrate"""
 
 
 def _format_push_rejected(rejection_reason: str, slug: str) -> str:
@@ -433,18 +404,20 @@ def _format_push_rejected(rejection_reason: str, slug: str) -> str:
 
 Candidate: {slug}
 
-Push of main to origin was rejected.
+Push from integration worktree to origin/main was rejected.
 Rejection output:
 {rejection_reason}
 
 ## Your Task
 1. Diagnose the rejection (likely non-fast-forward — another commit landed)
-2. Fetch and rebase: git fetch origin && git rebase origin/main
+2. Fetch and rebase in the integration worktree:
+   git -C trees/_integration fetch origin
+   git -C trees/_integration rebase origin/main
 3. Resolve any new conflicts if present
-4. Push again: git push origin main
+4. Push again: git -C trees/_integration push origin HEAD:main
 5. Then call: telec todo integrate
 
-NEXT: Pull/rebase, resolve (if needed), push, then call telec todo integrate"""
+NEXT: Rebase in trees/_integration, resolve (if needed), push, then call telec todo integrate"""
 
 
 def _format_lease_busy(holder_session_id: str) -> str:
@@ -492,6 +465,39 @@ def _get_candidate_key(checkpoint: IntegrationCheckpoint) -> CandidateKey | None
 def _is_bug_slug(cwd: str, slug: str) -> bool:
     """Heuristic: check for a bug.md in todos/bugs/{slug}/."""
     return (Path(cwd) / "todos" / "bugs" / slug / "bug.md").exists()
+
+
+def _integration_worktree_path(cwd: str) -> Path:
+    """Compute the persistent integration worktree path."""
+    return Path(cwd) / WORKTREE_DIR / "_integration"
+
+
+def _ensure_integration_worktree(cwd: str) -> tuple[Path, str]:
+    """Ensure persistent integration worktree exists and is synced to origin/main.
+
+    Returns (worktree_path, error_message). Error is empty on success.
+    """
+    integration_wt = _integration_worktree_path(cwd)
+
+    if not integration_wt.exists():
+        rc, _, stderr = _run_git(["fetch", "origin", "main"], cwd=cwd)
+        if rc != 0:
+            return integration_wt, f"git fetch origin main failed:\n{stderr.strip()}"
+        rc, _, stderr = _run_git(
+            ["worktree", "add", str(integration_wt), "origin/main", "--detach"], cwd=cwd
+        )
+        if rc != 0:
+            return integration_wt, f"git worktree add (integration) failed:\n{stderr.strip()}"
+
+    # Sync to latest origin/main
+    rc, _, stderr = _run_git(["fetch", "origin"], cwd=str(integration_wt))
+    if rc != 0:
+        return integration_wt, f"git fetch origin failed in integration worktree:\n{stderr.strip()}"
+    rc, _, stderr = _run_git(["reset", "--hard", "origin/main"], cwd=str(integration_wt))
+    if rc != 0:
+        return integration_wt, f"git reset to origin/main failed in integration worktree:\n{stderr.strip()}"
+
+    return integration_wt, ""
 
 
 # guard: loose-dict-func - lifecycle event payload shape varies per event type
@@ -820,17 +826,13 @@ def _step_idle(
     )
     _emit_lifecycle_event("integration.candidate.dequeued", {"slug": key.slug, "branch": key.branch, "sha": key.sha})
 
-    # Check clearance
+    # Check clearance (session blockers only; dirty main is allowed)
     clearance_probe = _make_clearance_probe(cwd)
     clearance = clearance_probe.check(exclude_session_id=session_id)
     if clearance.blocking_session_ids:
         checkpoint.phase = IntegrationPhase.CLEARANCE_WAIT.value
         _write_checkpoint(checkpoint_path, checkpoint)
-        return False, _format_clearance_wait(clearance.blocking_session_ids, clearance.dirty_tracked_paths)
-    if clearance.dirty_tracked_paths:
-        checkpoint.phase = IntegrationPhase.CLEARANCE_WAIT.value
-        _write_checkpoint(checkpoint_path, checkpoint)
-        return False, _format_housekeeping_commit(clearance.dirty_tracked_paths)
+        return False, _format_clearance_wait(clearance.blocking_session_ids)
 
     # Do merge
     return _do_merge(
@@ -856,9 +858,7 @@ def _step_clearance_wait(
     clearance_probe = _make_clearance_probe(cwd)
     clearance = clearance_probe.check(exclude_session_id=session_id)
     if clearance.blocking_session_ids:
-        return False, _format_clearance_wait(clearance.blocking_session_ids, clearance.dirty_tracked_paths)
-    if clearance.dirty_tracked_paths:
-        return False, _format_housekeeping_commit(clearance.dirty_tracked_paths)
+        return False, _format_clearance_wait(clearance.blocking_session_ids)
 
     return _do_merge(
         checkpoint=checkpoint,
@@ -875,29 +875,19 @@ def _do_merge(
     key: CandidateKey,
     cwd: str,
 ) -> tuple[bool, str]:
-    """Fetch, checkout main, pull, squash merge. Write MERGE_CLEAN or MERGE_CONFLICTED."""
-    # Record pre-merge HEAD for commit detection
-    pre_merge_head = _get_head_sha(cwd)
-    checkpoint.pre_merge_head = pre_merge_head
+    """Set up integration worktree, squash merge candidate. Write MERGE_CLEAN or MERGE_CONFLICTED."""
+    # Ensure persistent integration worktree exists and is synced to origin/main
+    integration_wt, err = _ensure_integration_worktree(cwd)
+    if err:
+        return False, _format_error("INTEGRATION_WORKTREE_FAILED", err)
+    wt = str(integration_wt)
 
-    rc, _, stderr = _run_git(["fetch", "origin"], cwd=cwd)
-    if rc != 0:
-        return False, _format_error("GIT_FETCH_FAILED", f"git fetch origin failed:\n{stderr.strip()}")
-
-    rc, _, stderr = _run_git(["checkout", "main"], cwd=cwd)
-    if rc != 0:
-        return False, _format_error("GIT_CHECKOUT_FAILED", f"git checkout main failed:\n{stderr.strip()}")
-
-    rc, _, stderr = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd)
-    if rc != 0:
-        return False, _format_error("GIT_PULL_FAILED", f"git pull --ff-only failed:\n{stderr.strip()}")
-
-    # Re-record pre-merge HEAD (it may have advanced from pull)
-    pre_merge_head = _get_head_sha(cwd)
+    # Record pre-merge HEAD for commit detection (in integration worktree)
+    pre_merge_head = _get_head_sha(wt)
     checkpoint.pre_merge_head = pre_merge_head
 
     # Guard: skip candidates already merged to main (stale re-queue after restart)
-    ancestor_rc, _, _ = _run_git(["merge-base", "--is-ancestor", key.sha, "HEAD"], cwd=cwd)
+    ancestor_rc, _, _ = _run_git(["merge-base", "--is-ancestor", key.sha, "HEAD"], cwd=wt)
     if ancestor_rc == 0:
         logger.info(
             "%s slug=%s sha=%s already ancestor of main — skipping as already integrated",
@@ -913,14 +903,14 @@ def _do_merge(
         _write_checkpoint(checkpoint_path, checkpoint)
         return True, ""
 
-    rc, _, stderr = _run_git(["merge", "--squash", key.branch], cwd=cwd)
+    rc, _, stderr = _run_git(["merge", "--squash", key.branch], cwd=wt)
 
     # Guard: squash merge produced no content changes — candidate already integrated.
     # Catches squash merges where ancestry check (above) doesn't fire because
     # squash commits don't create ancestry links.
-    empty_rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=cwd)
+    empty_rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=wt)
     if empty_rc == 0:
-        conflicted = _get_conflicted_files(cwd) if rc != 0 else []
+        conflicted = _get_conflicted_files(wt) if rc != 0 else []
         if not conflicted:
             logger.info(
                 "%s slug=%s already integrated (empty squash merge) — skipping",
@@ -931,21 +921,22 @@ def _do_merge(
                 "integration.candidate.already_merged",
                 {"slug": key.slug, "branch": key.branch, "sha": key.sha},
             )
-            # Clean up SQUASH_MSG left by git
-            squash_msg = Path(cwd) / ".git" / "SQUASH_MSG"
-            if squash_msg.exists():
-                squash_msg.unlink()
+            # Clean up SQUASH_MSG left by git (worktree-aware path)
+            gd = _git_dir(wt)
+            if gd:
+                squash_msg = gd / "SQUASH_MSG"
+                if squash_msg.exists():
+                    squash_msg.unlink()
             checkpoint.phase = IntegrationPhase.CANDIDATE_DELIVERED.value
             _write_checkpoint(checkpoint_path, checkpoint)
             return True, ""
 
     if rc == 0:
-        # Clean merge
-        diff_stats = _get_diff_stats(cwd)
-        branch_log = _get_branch_log(cwd, key.branch)
-        todos_root = Path(cwd)
-        requirements = _read_file_safe(todos_root / "todos" / key.slug / "requirements.md")
-        impl_plan = _read_file_safe(todos_root / "todos" / key.slug / "implementation-plan.md")
+        # Clean merge — read stats from integration worktree, context from repo root
+        diff_stats = _get_diff_stats(wt)
+        branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
+        requirements = _read_file_safe(Path(cwd) / "todos" / key.slug / "requirements.md")
+        impl_plan = _read_file_safe(Path(cwd) / "todos" / key.slug / "implementation-plan.md")
 
         checkpoint.phase = IntegrationPhase.MERGE_CLEAN.value
         checkpoint.error_context = {"merge_type": "clean"}
@@ -956,7 +947,7 @@ def _do_merge(
         return False, _format_commit_decision(key.slug, key.branch, diff_stats, branch_log, requirements, impl_plan)
     else:
         # Conflict
-        conflicted_files = _get_conflicted_files(cwd)
+        conflicted_files = _get_conflicted_files(wt)
         checkpoint.phase = IntegrationPhase.MERGE_CONFLICTED.value
         checkpoint.error_context = {"merge_type": "conflicted", "conflicted_files": conflicted_files}
         _write_checkpoint(checkpoint_path, checkpoint)
@@ -977,20 +968,22 @@ def _step_awaiting_commit(
     checkpoint_path: Path,
     cwd: str,
 ) -> tuple[bool, str]:
-    """MERGE_CLEAN / MERGE_CONFLICTED / AWAITING_COMMIT: check if agent committed."""
+    """MERGE_CLEAN / MERGE_CONFLICTED / AWAITING_COMMIT: check if agent committed in integration worktree."""
     key = _get_candidate_key(checkpoint)
     if not key:
         return False, _format_error("INVALID_STATE", "Awaiting-commit phase has no candidate key")
 
-    # Check for unresolved merge conflicts first
-    if _merge_head_exists(cwd):
-        conflicted_files = _get_conflicted_files(cwd)
+    wt = str(_integration_worktree_path(cwd))
+
+    # Check for unresolved merge conflicts first (in integration worktree)
+    if _merge_head_exists(wt):
+        conflicted_files = _get_conflicted_files(wt)
         checkpoint.error_context = {**(checkpoint.error_context or {}), "conflicted_files": conflicted_files}
         _write_checkpoint(checkpoint_path, checkpoint)
         return False, _format_conflict_decision(key.slug, key.branch, conflicted_files)
 
-    # Check if HEAD advanced (commit happened)
-    head_sha = _get_head_sha(cwd)
+    # Check if HEAD advanced in integration worktree (commit happened)
+    head_sha = _get_head_sha(wt)
     pre_merge = checkpoint.pre_merge_head
     if head_sha and pre_merge and head_sha != pre_merge:
         # Commit detected — advance to COMMITTED
@@ -1003,11 +996,10 @@ def _step_awaiting_commit(
     # No commit yet — re-prompt
     merge_type = (checkpoint.error_context or {}).get("merge_type", "conflicted")
     if merge_type == "clean":
-        diff_stats = _get_diff_stats(cwd)
-        branch_log = _get_branch_log(cwd, key.branch)
-        todos_root = Path(cwd)
-        requirements = _read_file_safe(todos_root / "todos" / key.slug / "requirements.md")
-        impl_plan = _read_file_safe(todos_root / "todos" / key.slug / "implementation-plan.md")
+        diff_stats = _get_diff_stats(wt)
+        branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
+        requirements = _read_file_safe(Path(cwd) / "todos" / key.slug / "requirements.md")
+        impl_plan = _read_file_safe(Path(cwd) / "todos" / key.slug / "implementation-plan.md")
         return False, _format_commit_decision(key.slug, key.branch, diff_stats, branch_log, requirements, impl_plan)
     else:
         conflicted_files = list((checkpoint.error_context or {}).get("conflicted_files", []))
@@ -1020,7 +1012,7 @@ def _step_committed(
     checkpoint_path: Path,
     cwd: str,
 ) -> tuple[bool, str]:
-    """COMMITTED: delivery bookkeeping (roadmap deliver, demo), stage, commit."""
+    """COMMITTED: delivery bookkeeping on repo root (roadmap deliver, demo), then push from integration worktree."""
     key = _get_candidate_key(checkpoint)
     if not key:
         return False, _format_error("INVALID_STATE", "COMMITTED phase has no candidate key")
@@ -1028,6 +1020,7 @@ def _step_committed(
     checkpoint.phase = IntegrationPhase.DELIVERY_BOOKKEEPING.value
     _write_checkpoint(checkpoint_path, checkpoint)
 
+    # Delivery bookkeeping runs on repo root — operational metadata, not delivery content
     is_bug = _is_bug_slug(cwd, key.slug)
     if not is_bug:
         result = subprocess.run(
@@ -1050,8 +1043,8 @@ def _step_committed(
         if result.returncode != 0:
             logger.warning("telec todo demo create %s failed: %s", key.slug, result.stderr.strip())
 
-    # Stage and commit delivery files if anything changed
-    _run_git(["add", "-A"], cwd=cwd)
+    # Stage only bookkeeping files on repo root (not git add -A which sweeps dirty main)
+    _run_git(["add", "todos/roadmap.yaml"], cwd=cwd)
     rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=cwd)
     if rc != 0:  # staged changes exist
         _run_git(
@@ -1076,14 +1069,15 @@ def _step_delivery_bookkeeping(
     checkpoint_path: Path,
     cwd: str,
 ) -> tuple[bool, str]:
-    """DELIVERY_BOOKKEEPING: push main to origin."""
+    """DELIVERY_BOOKKEEPING: push from integration worktree to origin/main."""
     key = _get_candidate_key(checkpoint)
     if not key:
         return False, _format_error("INVALID_STATE", "DELIVERY_BOOKKEEPING phase has no candidate key")
 
-    rc, stdout, stderr = _run_git(["push", "origin", "main"], cwd=cwd)
+    wt = str(_integration_worktree_path(cwd))
+    rc, stdout, stderr = _run_git(["push", "origin", "HEAD:main"], cwd=wt)
     if rc == 0:
-        head_sha = _get_head_sha(cwd)
+        head_sha = _get_head_sha(wt)
         checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
         _write_checkpoint(checkpoint_path, checkpoint)
         _emit_lifecycle_event("integration.push.succeeded", {"slug": key.slug, "commit_sha": head_sha or "unknown"})
@@ -1105,13 +1099,14 @@ def _step_push_rejected(
     checkpoint_path: Path,
     cwd: str,
 ) -> tuple[bool, str]:
-    """PUSH_REJECTED: check if agent recovered (local main == remote main)."""
+    """PUSH_REJECTED: check if agent recovered (integration worktree HEAD == remote main)."""
     key = _get_candidate_key(checkpoint)
     if not key:
         return False, _format_error("INVALID_STATE", "PUSH_REJECTED phase has no candidate key")
 
-    local_head = _get_head_sha(cwd)
-    remote_head = _get_remote_main_sha(cwd)
+    wt = str(_integration_worktree_path(cwd))
+    local_head = _get_head_sha(wt)
+    remote_head = _get_remote_main_sha(wt)
     if local_head and remote_head and local_head == remote_head:
         # Recovery detected
         checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
@@ -1165,9 +1160,11 @@ def _do_cleanup(
     cwd: str,
 ) -> tuple[bool, str]:
     """Perform cleanup and advance to CANDIDATE_DELIVERED."""
-    merge_commit = _get_head_sha(cwd) or "unknown"
+    # Merge commit SHA lives in the integration worktree (where delivery was committed)
+    wt = str(_integration_worktree_path(cwd))
+    merge_commit = _get_head_sha(wt) or "unknown"
 
-    # Remove worktree
+    # Remove worker worktree (from repo root)
     worktree_path = Path(cwd) / WORKTREE_DIR / key.slug
     if worktree_path.exists():
         rc, _, stderr = _run_git(["worktree", "remove", "--force", str(worktree_path)], cwd=cwd)
@@ -1185,8 +1182,8 @@ def _do_cleanup(
     if todo_dir.exists():
         shutil.rmtree(str(todo_dir), ignore_errors=True)
 
-    # Stage and commit cleanup
-    _run_git(["add", "-A"], cwd=cwd)
+    # Stage only the todo directory removal (not git add -A which sweeps dirty main)
+    _run_git(["add", f"todos/{key.slug}"], cwd=cwd)
     rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=cwd)
     if rc != 0:
         _run_git(
@@ -1194,7 +1191,7 @@ def _do_cleanup(
                 "commit",
                 "-m",
                 (
-                    f"chore({key.slug}): worktree and todo cleanup after delivery\n\n"
+                    f"chore({key.slug}): todo cleanup after delivery\n\n"
                     "🤖 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
                     "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
                 ),
