@@ -124,11 +124,13 @@ def is_internal_user_text(text: str) -> bool:
 
     Detects:
     - TeleClaude system prefix ("[TeleClaude ...")
-    - Claude Code task-notification wrappers
-    - Claude Code system-reminder wrappers
+    - Claude Code task-notification wrappers (full or prefix)
+    - Claude Code system-reminder wrappers (full or prefix)
     """
     stripped = text.lstrip()
     if stripped.startswith(TELECLAUDE_SYSTEM_PREFIX):
+        return True
+    if stripped.startswith(("<task-notification", "<system-reminder")):
         return True
     if _INTERNAL_WRAPPER_RE.match(text):
         return True
