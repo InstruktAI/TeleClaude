@@ -1,0 +1,32 @@
+build: pending
+review: pending
+deferrals_processed: false
+breakdown:
+  assessed: false
+  todos: []
+dor:
+  last_assessed_at: null
+  score: 0
+  status: needs_work
+  schema_version: 1
+  blockers: []
+  actions_taken:
+    requirements_updated: false
+    implementation_plan_updated: false
+review_round: 0
+max_review_rounds: 3
+review_baseline_commit: ''
+unresolved_findings: []
+resolved_findings: []
+schema_version: 1
+grounding:
+  valid: true
+  base_sha: "348f9b28895242dbaeda8cdda4711cd874167b51"
+  input_digest: "9b0d64af495a5ed7bd4b7b444ee7da88"
+  last_grounded_at: "2026-03-09T00:00:00Z"
+  invalidation_reason: null
+requirements_review:
+  verdict: approve
+  reviewed_at: "2026-03-09T12:37:41Z"
+  findings_count: 0
+  rounds: 1
