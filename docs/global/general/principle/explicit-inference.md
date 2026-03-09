@@ -19,7 +19,7 @@ description: 'The principle of explicit inference for AI agents, emphasizing the
 ## Implications
 
 - If a step cannot be stated, it is not ready to execute.
-- State the minimum assumption required to proceed.
+- State the minimum assumption required to proceed — as a declaration, not a question. "I'm assuming X because Y" lets the human correct you without burdening them with evaluation.
 - Use inference to accelerate, not to justify uncertainty.
 - If you have a hunch, verify it against sources before acting.
 

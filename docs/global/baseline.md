@@ -6,4 +6,5 @@
 @~/.teleclaude/docs/general/spec/tools/telec-cli.md
 @~/.teleclaude/docs/general/principle/attunement.md
 @~/.teleclaude/docs/general/principle/calibration.md
+@~/.teleclaude/docs/general/principle/stewardship.md
 @~/.teleclaude/docs/general/principle/grounding.md

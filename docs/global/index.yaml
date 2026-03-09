@@ -277,6 +277,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: general/principle/stewardship
+  description: The agent is the steward by default. Stewardship flows to whoever holds
+    the deepest knowledge on the topic at hand. During convergence, the steward leads.
+  type: principle
+  scope: global
+  path: docs/general/principle/stewardship.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/procedure/agent-artifact-authoring
   description: Author agent artifacts (agents, skills, commands) that compile into
     tool-specific formats.

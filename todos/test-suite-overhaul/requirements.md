@@ -28,7 +28,9 @@ Replace the current test suite with a TDD-first, behaviorally specified test sui
 - [ ] Every test function has a docstring stating the behavioral contract it verifies [inferred: docstring requirement not in input — derived from "TDD behavioral contracts" intent]
 - [ ] All tests pass (`pytest tests/` exits 0)
 - [ ] No source file behavior is changed — only test files are created/modified/deleted
-- [ ] Integration tests in `tests/integration/` test cross-module workflows, not unit-level behavior
+- [ ] Integration tests in `tests/integration/` test cross-module workflows (imports from 2+ teleclaude subpackages), not unit-level behavior
+- [ ] A pre-commit or CI check validates the 1:1 mapping and fails if an unmapped source file exists without an entry in `tests/ignored.md`
+- [ ] Known failing tests in `tests/ignored.md` are either fixed (if test infrastructure) or removed (if obsolete) — no skip-marked tests without active justification
 
 ## Constraints
 

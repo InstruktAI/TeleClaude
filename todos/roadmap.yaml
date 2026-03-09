@@ -51,3 +51,71 @@
 - slug: cache-transparency-refactor
 - slug: session-role-metadata
 - slug: todo-phase-status-display
+- slug: tui-chiptunes-resource-leaks
+- slug: todo-phase-status-display-2
+- slug: test-suite-overhaul
+- slug: mirror-runtime-isolation-2
+- slug: tso-infra
+  group: test-suite-overhaul
+  description: 'Feature branch, directory scaffold, conftest, CI enforcement, ignored.md
+    framework'
+- slug: tso-adapters
+  group: test-suite-overhaul
+  after:
+  - tso-infra
+  description: 'Test overhaul: adapters/, transport/ (~19 source files)'
+- slug: tso-api
+  group: test-suite-overhaul
+  after:
+  - tso-infra
+  description: 'Test overhaul: api/, services/ (~16 source files)'
+- slug: tso-cli
+  group: test-suite-overhaul
+  after:
+  - tso-infra
+  description: 'Test overhaul: cli/ non-TUI, config/, entrypoints/ (~21 source files)'
+- slug: tso-tui
+  group: test-suite-overhaul
+  after:
+  - tso-infra
+  description: 'Test overhaul: cli/tui/ full tree (~60 source files)'
+- slug: tso-core-data
+  group: test-suite-overhaul
+  after:
+  - tso-infra
+  description: 'Test overhaul: core/ data model layer + migrations (~59 source files)'
+- slug: tso-core-logic
+  group: test-suite-overhaul
+  after:
+  - tso-infra
+  description: 'Test overhaul: core/ behavioral layer, state machines, integration
+    (~44 source files)'
+- slug: tso-hooks
+  group: test-suite-overhaul
+  after:
+  - tso-infra
+  description: 'Test overhaul: hooks/ full tree (~23 source files)'
+- slug: tso-peripherals
+  group: test-suite-overhaul
+  after:
+  - tso-infra
+  description: 'Test overhaul: channels, chiptunes, cron, memory, mirrors, tts, stt,
+    utils, root files (~112 source files)'
+- slug: tso-integration
+  group: test-suite-overhaul
+  after:
+  - tso-adapters
+  - tso-api
+  - tso-cli
+  - tso-tui
+  - tso-core-data
+  - tso-core-logic
+  - tso-hooks
+  - tso-peripherals
+  description: 'Triage tests/integration/, enforce cross-module boundary'
+- slug: tso-validate
+  group: test-suite-overhaul
+  after:
+  - tso-integration
+  description: 'Final validation: full suite, 1:1 mapping check, success criteria
+    audit'

@@ -11,7 +11,7 @@ description: 'Guidelines for agent autonomy, escalation, and user interaction.'
 
 - **Default: act.** If a change is safe, reversible, and within scope, proceed without asking.
 - **Escalate only** for destructive/irreversible changes, security/access changes, high‑cost actions, or clearly out‑of‑scope work.
-- **Ambiguity rule:** if the ambiguity does not materially change the outcome, pick a reasonable default and proceed. If it _does_ change the outcome, ask.
+- **Ambiguity rule:** if the ambiguity does not materially change the outcome, pick a reasonable default and proceed. If it _does_ change the outcome, state your recommendation with reasoning and ask for agreement — do not present open questions or option lists.
 
 - Stop‑work triggers (explicit only; examples, not exhaustive):
   - “Don’t change anything yet.”
