@@ -997,7 +997,7 @@ async def deliver_inbound(
         if not session:
             raise RuntimeError(f"Startup gate timeout for session {session_id[:8]}")
 
-    if session.lifecycle_status == "headless" or not session.tmux_session_name:
+    if session.lifecycle_status == "headless":
         adopted = await _ensure_tmux_for_headless(
             session,
             client,
