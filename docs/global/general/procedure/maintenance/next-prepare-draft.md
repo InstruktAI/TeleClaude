@@ -54,14 +54,20 @@ fresh draft:
 
 ### 2. Decide whether the todo is atomic
 
-Ground in the code before deciding whether to split. Use the DOR scope/size rules:
+**This step is mandatory and must produce an explicit verdict before any plan
+drafting begins.** Apply DOR Gate 2 (Scope & size) using the splitting heuristics
+in the Definition of Ready policy. Ground in the actual code — not the prose.
 
-- estimate likely change volume from the real code paths, not from the prose alone
-- decide whether the work is one coherent builder behavior or multiple independently
-  shippable pieces
-- account for verification and coordination cost, not just file count
+Evaluate:
 
-If the work is too large for one builder session:
+- Does the work contain multiple independently shippable workstreams? If yes, split.
+- Count the phases, new modules, and distinct behavioral changes. A plan that spans
+  more than one coherent builder behavior must be split.
+- Apply the DOR coherence test, coordination cost, and detail-inverts-complexity
+  heuristics from the policy.
+
+**If the work fails the scope/size gate, stop here.** Do not draft a plan for
+work that will fail gate validation. Split first:
 
 - create focused child todos
 - seed them from the approved parent requirements
@@ -69,7 +75,7 @@ If the work is too large for one builder session:
 - update the holder `todos/{slug}/state.yaml` `breakdown.todos`
 - stop treating the parent as directly builder-ready
 
-If the work is atomic, continue to plan drafting.
+If the work passes the scope/size gate, continue to plan drafting.
 
 ### 3. Draft the implementation plan
 
