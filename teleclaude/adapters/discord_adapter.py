@@ -22,7 +22,12 @@ from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionLifecycleContext, SessionStatusContext, SessionUpdatedContext, TeleClaudeEvents
+from teleclaude.core.events import (
+    SessionLifecycleContext,
+    SessionStatusContext,
+    SessionUpdatedContext,
+    TeleClaudeEvents,
+)
 from teleclaude.core.models import SessionAdapterMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir

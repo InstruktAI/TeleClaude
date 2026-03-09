@@ -146,7 +146,7 @@ def _derive_session_system_role(session: "Session") -> str | None:
             if normalized in {ROLE_WORKER, ROLE_ORCHESTRATOR}:
                 return normalized
 
-    return ROLE_WORKER if session.working_slug else None
+    return ROLE_WORKER if session.working_slug else ROLE_ORCHESTRATOR
 
 
 @dataclass(frozen=True)

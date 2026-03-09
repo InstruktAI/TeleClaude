@@ -24,11 +24,11 @@ from teleclaude.api.transcript_converter import (
     message_start,
     stream_done,
 )
-from teleclaude.output_projection.conversation_projector import project_entries
-from teleclaude.output_projection.models import WEB_POLICY
 from teleclaude.core.agents import AgentName, resolve_parser_agent
 from teleclaude.core.db import db
 from teleclaude.core.db_models import Session
+from teleclaude.output_projection.conversation_projector import project_entries
+from teleclaude.output_projection.models import WEB_POLICY
 from teleclaude.utils.transcript import (
     _iter_claude_entries,
     _iter_codex_entries,

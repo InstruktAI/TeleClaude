@@ -162,6 +162,10 @@ class SessionsView(Widget, can_focus=True):
             self.preview_session_id = None
             state_changed = True
             self.post_message(PreviewChanged(None, request_focus=False))
+        stale_summaries = self._last_output_summary.keys() - new_ids
+        if stale_summaries:
+            for sid in stale_summaries:
+                del self._last_output_summary[sid]
 
         if old_ids != new_ids or not self._nav_items:
             # Session list changed — full rebuild (includes _apply_pending_selection)

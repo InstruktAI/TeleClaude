@@ -235,7 +235,9 @@ def assemble_roadmap(
             if entry.slug in seen_slugs:
                 continue
             seen_slugs.add(entry.slug)
-            append_todo(entry.slug, description=entry.description, after=entry.after, group=entry.group, is_icebox_item=True)
+            append_todo(
+                entry.slug, description=entry.description, after=entry.after, group=entry.group, is_icebox_item=True
+            )
 
     # 2b. Load delivered entries
     if include_delivered:
