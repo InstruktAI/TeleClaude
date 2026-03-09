@@ -112,6 +112,7 @@ async def test_process_mirror_event_generates_mirror_with_context_and_defaults(
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="Mirror dispatch disabled pending mirror-runtime-isolation")
 async def test_dispatch_isolates_processor_failures(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
 

@@ -27,13 +27,13 @@ calls it in a loop and dispatches what is requested.
 The human refines their thinking via `next-refine-input`, which rewrites
 `todos/{slug}/input.md` and invalidates grounding.
 
-### 2. Triangulation (two-agent)
+### 2. Discovery (solo or triangulated)
 
 When `input.md` exists and `requirements.md` is not yet approved, the state machine
-dispatches two agents to triangulate: one grounds in the codebase, the other in domain
-intent and documentation. They converge to produce `requirements.md`.
-
-Triangulation is always two-agent. There is no single-agent path for requirements derivation.
+dispatches a discovery worker. The worker decides whether to run solo (when the input
+is concrete enough) or triangulated with a complementary partner (when ambiguity,
+hidden assumptions, or unresolved architectural tension remain). Either path converges
+to produce `requirements.md`.
 
 ### 3. Requirements review
 
@@ -85,7 +85,7 @@ are consumed by automation (invalidation checks, notifications).
 | Phase transition | Event |
 |---|---|
 | Input refined | `prepare.input_refined` |
-| Triangulation dispatched | `prepare.triangulation_started` |
+| Discovery dispatched | `prepare.discovery_started` |
 | Requirements written | `prepare.requirements_drafted` |
 | Requirements approved | `prepare.requirements_approved` |
 | Plan written | `prepare.plan_drafted` |

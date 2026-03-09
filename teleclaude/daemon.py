@@ -2251,10 +2251,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
             logger.info("Hook outbox worker started")
 
-            mirror_worker = MirrorWorker(config.database.path)
-            self.mirror_worker_task = asyncio.create_task(mirror_worker.run())
-            self._track_background_task(self.mirror_worker_task, "mirror-worker")
-            logger.info("Mirror worker started")
+            # TODO: re-enable after mirror-runtime-isolation is delivered
+            # mirror_worker = MirrorWorker(config.database.path)
+            # self.mirror_worker_task = asyncio.create_task(mirror_worker.run())
+            # self._track_background_task(self.mirror_worker_task, "mirror-worker")
+            logger.info("Mirror worker disabled (pending mirror-runtime-isolation)")
 
             if CODEX_TRANSCRIPT_WATCH_INTERVAL_S > 0:
                 self.codex_transcript_watch_task = asyncio.create_task(

@@ -33,8 +33,13 @@ from teleclaude.core.next_machine.core import (
     has_uncommitted_changes,
     load_roadmap,
     load_roadmap_deps,
+    _PREPARE_PHASE_VALUES,
+    _PREPARE_VERDICT_PHASES,
+    _PREPARE_VERDICT_VALUES,
     mark_finalize_ready,
     mark_phase,
+    mark_prepare_phase,
+    mark_prepare_verdict,
     save_roadmap,
     sync_main_planning_to_all_worktrees,
 )
@@ -131,8 +136,31 @@ async def todo_mark_phase(  # pyright: ignore
     """
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
+
+    # Prepare sub-phases: verdict-based, operate on main repo
+    if phase in _PREPARE_VERDICT_PHASES:
+        if status not in _PREPARE_VERDICT_VALUES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"invalid verdict '{status}': must be one of {', '.join(_PREPARE_VERDICT_VALUES)}",
+            )
+        updated_state = mark_prepare_verdict(cwd, slug, phase, status)
+        return {"result": f"OK: {slug} state updated - {phase}.verdict: {status}", "state": str(updated_state)}
+
+    # Direct prepare_phase advancement, operate on main repo
+    if phase == "prepare":
+        if status not in _PREPARE_PHASE_VALUES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"invalid prepare status '{status}': must be one of {', '.join(_PREPARE_PHASE_VALUES)}",
+            )
+        updated_state = mark_prepare_phase(cwd, slug, status)
+        return {"result": f"OK: {slug} state updated - prepare_phase: {status}", "state": str(updated_state)}
+
+    # Work phases: build/review, operate on worktree
     if phase not in ("build", "review"):
-        raise HTTPException(status_code=400, detail=f"invalid phase '{phase}': must be 'build' or 'review'")
+        all_phases = ("build", "review", "prepare", *_PREPARE_VERDICT_PHASES)
+        raise HTTPException(status_code=400, detail=f"invalid phase '{phase}': must be one of {', '.join(all_phases)}")
     valid_statuses = ("pending", "started", "complete", "approved", "changes_requested")
     if status not in valid_statuses:
         raise HTTPException(

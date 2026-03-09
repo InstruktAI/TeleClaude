@@ -960,23 +960,36 @@ def _print_operation_recovery(status: dict[str, object]) -> None:  # guard: loos
 
 
 def handle_todo_mark_phase(args: list[str]) -> None:
-    """Mark a work phase as complete/approved in state.yaml.
+    """Mark a work or prepare phase in state.yaml.
 
     Usage: telec todo mark-phase <slug> --phase <phase> --status <status>
 
-    Updates the phase status for the given slug in its state.yaml file.
-    For terminal statuses (complete, approved), the worktree must have no
-    uncommitted changes and no stash debt.
+    Work phases (build, review):
+      Updates the phase status. Terminal statuses (complete, approved)
+      require the worktree to have no uncommitted changes and no stash debt.
+      Statuses: pending, started, complete, approved, changes_requested
+
+    Prepare verdict phases (requirements_review, plan_review):
+      Sets the verdict on a prepare sub-phase. Operates on the main repo
+      (no worktree required).
+      Statuses: approve, needs_work
+
+    Prepare lifecycle (prepare):
+      Sets prepare_phase directly. 'prepared' also stamps grounding valid.
+      Statuses: input_assessment, triangulation, requirements_review,
+                plan_drafting, plan_review, gate, grounding_check,
+                re_grounding, prepared, blocked
 
     Options:
       <slug>          Work item slug
-      --phase <p>     Phase to mark: build or review
-      --status <s>    New status: pending, started, complete, approved,
-                      or changes_requested
+      --phase <p>     Phase: build, review, prepare, requirements_review, plan_review
+      --status <s>    New status or verdict (see above)
 
     Examples:
       telec todo mark-phase my-slug --phase build --status complete
       telec todo mark-phase my-slug --phase review --status approved
+      telec todo mark-phase my-slug --phase plan_review --status approve
+      telec todo mark-phase my-slug --phase prepare --status prepared
     """
     if "--help" in args or "-h" in args:
         print(handle_todo_mark_phase.__doc__ or "")

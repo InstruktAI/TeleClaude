@@ -2,10 +2,10 @@
 id: 'general/procedure/maintenance/next-prepare-discovery'
 type: 'procedure'
 scope: 'global'
-description: 'Triangulation phase for next-prepare. Two agents research in parallel and converge to derive requirements from input, codebase, and documentation.'
+description: 'Requirements discovery phase for next-prepare. Produces requirements from input using solo or triangulated discovery.'
 ---
 
-# Next Prepare Triangulation — Procedure
+# Next Prepare Discovery — Procedure
 
 ## Required reads
 
@@ -14,74 +14,70 @@ description: 'Triangulation phase for next-prepare. Two agents research in paral
 
 ## Goal
 
-Derive `requirements.md` through triangulation: two agents with complementary cognitive
-profiles research the problem space in parallel — one grounding in the codebase and
-architecture, the other in domain intent and documentation — then converge to produce
-requirements that are grounded in all three sources of truth.
+Derive `requirements.md` from `input.md`, codebase grounding, and applicable
+documentation. Discovery may run either:
 
-Triangulation is the default and only path for deriving requirements from input.md.
-Two agents consistently produce better coverage than one. There is no single-agent
-alternative for this phase.
+- **solo** when one architect already has enough grounding to write trustworthy
+  requirements, or
+- **triangulated** when the input still carries substantial ambiguity, hidden
+  assumptions, or unresolved architectural tension.
 
-The output is `requirements.md` only. Implementation planning is a separate phase
-that takes approved requirements as input.
+This phase produces requirements only. Implementation planning and todo breakdown
+belong to the later draft phase.
 
 ## Preconditions
 
 1. `todos/{slug}/input.md` exists with human thinking to derive from.
-2. The router knows its own agent type and has read the Agent Characteristics
-   concept to select the complementary partner.
+2. The discovery worker knows its own agent type and can select a complementary
+   partner if triangulation is needed.
 3. `todos/roadmap.yaml` is readable.
 4. Slug is active (not icebox, not delivered).
 
 ## Steps
 
-### 1. Setup
+### 1. Read and ground
 
-The router is one of the two triangulation agents. It spawns the complementary
-agent as a worker session:
+Read:
 
-```
-telec sessions start --project <project_path> --agent <complementary_agent> --mode slow --message "<triangulation brief>"
-```
+- `todos/{slug}/input.md`
+- any existing `todos/{slug}/requirements-review-findings.md`
+- `todos/roadmap.yaml`
+- the relevant code paths and adjacent patterns
+- local docs needed to understand the domain constraints
 
-The brief includes: slug, the full content of `input.md`, the roadmap description,
-and the research assignment (see step 2).
+### 1b. Fix mode (when dispatched with "FIX MODE")
 
-### 2. Parallel research
+When the dispatch note starts with "FIX MODE", this is a targeted revision, not a
+fresh derivation:
 
-Research assignments split along natural seams:
+- Read the existing `todos/{slug}/requirements.md` alongside the review findings.
+- Apply targeted fixes to address each finding. Preserve all unflagged content.
+- Do not re-derive from scratch — the existing requirements were already grounded.
+- Skip strategy selection (step 2) and triangulation (step 3); proceed directly to
+  the quality standard check (step 4) and write the updated requirements (step 5).
 
-- **Codebase agent** (whichever agent is stronger at architecture): existing
-  patterns, related code, architectural constraints, how similar problems are
-  solved in the codebase, integration points, file paths that will be affected.
-- **Domain agent** (whichever agent is stronger at thoroughness/analysis):
-  intent from `input.md` and roadmap description, related active and delivered
-  todos (precedent and lessons), doc snippets relevant to the problem space
-  (use `telec docs index` to discover), edge cases and failure modes.
+### 2. Choose discovery strategy
 
-Both agents research in parallel. The router does its own research while the
-partner works.
+Decide how requirements should be produced:
 
-### 3. Triangulation convergence
+- Use **solo discovery** when the input is concrete enough that one grounded
+  architect can derive trustworthy requirements without burning extra cycles.
+- Use **triangulated discovery** when a second perspective is still needed to
+  expose hidden assumptions, missing constraints, or unresolved tensions.
 
-When the router's research is complete, open a direct conversation with the
-partner: `telec sessions send <partner_session_id> --direct`.
+If triangulation is needed, the discovery worker spawns the complementary agent
+and converges with it before writing requirements.
 
-Converge through multiple breath cycles:
+### 3. Triangulate only when needed
 
-- **Inhale**: share findings. Each agent presents what it discovered — codebase
-  patterns, domain constraints, related precedents, open questions.
-- **Hold**: identify tensions. Where do findings conflict? Where are gaps?
-  What can be confidently inferred vs. what genuinely needs human input?
-- **Exhale**: synthesize. Agree on requirements and scope.
+When triangulation is chosen:
 
-Use DOR gates 1–3 as convergence criteria — not "do we feel done" but "can
-we satisfy intent/success, scope/size, and verification with what we have?"
+- split research between codebase grounding and domain/intent grounding
+- compare findings directly
+- resolve tensions before writing requirements
 
-Iterate as many breath cycles as needed. The conversation self-regulates:
-when findings align and gates are satisfiable, convergence is fast. When gaps
-are deep, more cycles are needed.
+Use DOR gates 1–3 as the convergence bar: intent/success, scope/size, and
+verification must all be satisfiable before discovery is done.
 
 ### 4. Requirements quality standard
 
@@ -106,9 +102,9 @@ The converged `requirements.md` must satisfy:
 
 ### 5. Write requirements
 
-When converged, the router produces `requirements.md`:
+Write `requirements.md`:
 
-- Grounded in the triangulated findings from both agents.
+- Grounded in the discovery findings.
 - Structured per the quality standard above.
 - Inferences marked explicitly.
 
@@ -123,34 +119,29 @@ grounding:
   invalidation_reason: null
 ```
 
-### 6. Escalation
+### 6. Enforce boundaries
 
-If both agents agree that a design choice has no codebase precedent to anchor
-to AND genuinely goes either way — escalate with the specific question and the
-specific alternatives. Write blockers to `dor-report.md`.
-
-Escalation is for decisions that change architecture. Everything that can be
-grounded in evidence, the agents resolve themselves.
+- Do not split the todo here. Discovery owns requirements, not execution
+  decomposition.
+- Do not write `implementation-plan.md` here.
+- If you believe the work may be too large, express that in the requirements so
+  the draft phase can make the grounded split/no-split decision.
 
 ### 7. Cleanup
 
-End the partner session: `telec sessions end <partner_session_id>`.
-The router continues with the normal prepare flow (the state machine advances
-to requirements review).
+If triangulation was used, end the partner session when convergence is done.
 
 ## Outputs
 
-1. `todos/{slug}/requirements.md` — triangulated, grounded, review-aware.
+1. `todos/{slug}/requirements.md` — grounded, review-aware requirements.
 2. `todos/{slug}/state.yaml` — grounding metadata updated.
-3. Partner session ended after convergence.
+3. Partner session ended after convergence when triangulation was used.
 
 ## Recovery
 
-1. If the partner session fails to start, the router produces requirements
-   from its own research alone and notes the incomplete triangulation in
-   `dor-report.md`. Solo derivation is the fallback, not an alternative path.
-2. If convergence stalls (heartbeat fires with no progress after two iterations),
-   the router produces requirements from its own research alone and notes the
-   incomplete convergence in `dor-report.md`.
-3. If the partner's research contradicts the router's findings, investigate the
-   contradiction before resolving — contradictions often reveal the real complexity.
+1. If a triangulation partner fails to start, continue solo and note the missing
+   second perspective in `dor-report.md` if it materially reduces confidence.
+2. If convergence stalls, continue solo with explicit `[inferred]` markers where
+   needed rather than leaving requirements half-formed.
+3. If discovery still cannot ground a major architectural decision, write the
+   blocker clearly to `dor-report.md`.

@@ -22,9 +22,9 @@ from teleclaude.core.next_machine.core import (
 # =============================================================================
 
 
-def test_prepare_phase_has_all_10_values():
-    """PreparePhase enum defines exactly 10 states."""
-    assert len(list(PreparePhase)) == 10
+def test_prepare_phase_has_all_9_values():
+    """PreparePhase enum defines exactly 9 states."""
+    assert len(list(PreparePhase)) == 9
 
 
 def test_prepare_phase_values_are_string_typed():
@@ -36,8 +36,7 @@ def test_prepare_phase_values_are_string_typed():
 def test_prepare_phase_expected_values():
     """PreparePhase enum contains all expected state names."""
     expected = {
-        "input_assessment",
-        "triangulation",
+        "discovery",
         "requirements_review",
         "plan_drafting",
         "plan_review",
@@ -81,6 +80,12 @@ def test_default_state_has_prepare_phase_key():
     """DEFAULT_STATE includes prepare_phase key initialized to empty string."""
     assert "prepare_phase" in DEFAULT_STATE
     assert DEFAULT_STATE["prepare_phase"] == ""
+
+
+def test_default_state_has_blocked_reason():
+    """DEFAULT_STATE includes blocked_reason key initialized to empty string."""
+    assert "blocked_reason" in DEFAULT_STATE
+    assert DEFAULT_STATE["blocked_reason"] == ""
 
 
 def test_default_state_has_grounding_section():

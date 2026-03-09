@@ -205,8 +205,8 @@ def register_software_development(catalog: "EventCatalog") -> None:
     )
     catalog.register(
         EventSchema(
-            event_type="domain.software-development.prepare.triangulation_started",
-            description="Two-agent requirements triangulation dispatched",
+            event_type="domain.software-development.prepare.discovery_started",
+            description="Requirements discovery phase dispatched",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
             idempotency_fields=["slug"],

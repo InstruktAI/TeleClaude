@@ -79,5 +79,5 @@ Grounding: invalidated — next prepare call will reconcile.
 
 ## Recovery
 
-- If the human's input contradicts existing requirements, note the contradiction in input.md explicitly. Do not resolve it — the triangulation team handles reconciliation during prepare.
+- If the human's input contradicts existing requirements, note the contradiction in input.md explicitly. Do not resolve it — the discovery phase handles reconciliation during prepare.
 - If the human is still exploring and not ready to commit, say so. Do not force convergence. It is valid to end without writing — the human can come back later.

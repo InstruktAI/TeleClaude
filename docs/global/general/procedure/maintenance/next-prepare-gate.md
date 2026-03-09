@@ -25,7 +25,7 @@ coherent whole — not the individual artifacts (those are reviewed in earlier p
 
 1. `todos/{slug}/requirements.md` exists and is approved.
 2. `todos/{slug}/implementation-plan.md` exists and is approved.
-3. Gate worker is separate from draft/triangulation workers.
+3. Gate worker is separate from draft/discovery workers.
 
 ## Steps
 

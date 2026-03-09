@@ -73,7 +73,14 @@ _FRONTMATTER_HANDLER = StableYAMLHandler()
 
 
 def dump_frontmatter(post: Post) -> str:
-    """Serialize frontmatter using the stable YAML handler."""
+    """Serialize frontmatter using the stable YAML handler.
+
+    When the post has a ``parameters`` field, the preamble is injected
+    into the body and the field is stripped from emitted frontmatter.
+    """
+    parameters = post.metadata.pop("parameters", None)
+    if parameters:
+        post.content = _inject_parameter_preamble(post.content, parameters)
     return frontmatter.dumps(post, handler=_FRONTMATTER_HANDLER)
 
 
@@ -177,6 +184,7 @@ ArtifactFrontmatter = TypedDict(
         "name": str,
         "argument-hint": str,
         "hooks": object,
+        "parameters": list[dict[str, object]],
     },
     total=False,
 )
@@ -210,7 +218,10 @@ class FileArtifactType:
 
 
 def transform_to_codex(post: Post) -> str:
-    """Transform a post to the Codex format (same as Claude - standard YAML frontmatter)."""
+    """Transform a post to the Codex format (same as Claude - standard YAML frontmatter).
+
+    Parameter preamble injection is handled by ``dump_frontmatter``.
+    """
     # Codex uses Markdown with YAML frontmatter. Force explicit scalar quotes as
     # a compatibility workaround for intermittent frontmatter false positives.
     # TODO: GitHub issue openai/codex#11495 — remove when fixed upstream.
@@ -219,13 +230,21 @@ def transform_to_codex(post: Post) -> str:
 
 
 def transform_to_gemini(post: Post) -> str:
-    """Transform a post to the Gemini TOML format."""
+    """Transform a post to the Gemini TOML format.
+
+    Injects the parameter preamble (identical to Claude/Codex) before the
+    body content when ``parameters`` is present.
+    """
     description = post.metadata.get("description", "")
+    parameters = post.metadata.get("parameters")
 
     description_str = f'"""{description}"""'
 
     # replace $ARGUMENTS for {{args}} in gemini format
     content = post.content.replace("$ARGUMENTS", "{{args}}").strip()
+
+    if parameters:
+        content = _inject_parameter_preamble(content, parameters)
 
     return f"description = {description_str}\nprompt = '''\n{content}\n'''\n"
 
@@ -265,10 +284,41 @@ def _should_expand_inline(agent_name: str) -> bool:
     return agent_name in {"claude", "codex", "gemini"}
 
 
+def _build_parameter_preamble(parameters: list[dict[str, object]]) -> str:
+    """Build an HTML-comment preamble mapping named parameters to positions.
+
+    Position is derived from list order (index). The preamble does NOT
+    reference $ARGUMENTS or {{args}} to avoid empty-string rendering
+    when no arguments are provided.
+    """
+    if not parameters:
+        return ""
+    lines: list[str] = []
+    for idx, param in enumerate(parameters):
+        name = param["name"]
+        qualifiers: list[str] = []
+        if param.get("required"):
+            qualifiers.append("required")
+        if "default" in param:
+            qualifiers.append(f'default: "{param["default"]}"')
+        suffix = f" ({', '.join(qualifiers)})" if qualifiers else ""
+        lines.append(f"<!-- ${name} = argument at position {idx}{suffix} -->")
+    return "\n".join(lines)
+
+
+def _inject_parameter_preamble(content: str, parameters: list[dict[str, object]]) -> str:
+    """Prepend parameter preamble to content if parameters are declared."""
+    preamble = _build_parameter_preamble(parameters)
+    if not preamble:
+        return content
+    return f"{preamble}\n\n{content}"
+
+
 def _filter_frontmatter(metadata: ArtifactFrontmatter, agent_name: str) -> ArtifactFrontmatter:
     filtered = cast(ArtifactFrontmatter, dict(metadata))
     if agent_name != "claude":
         filtered.pop("hooks", None)
+    filtered.pop("parameters", None)
     return filtered
 
 

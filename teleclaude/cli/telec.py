@@ -531,12 +531,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "mark-phase": CommandDef(
-                desc="Mark a work phase as complete/approved in state.yaml",
+                desc="Mark a work or prepare phase in state.yaml",
                 args="<slug>",
                 flags=[
                     _H,
-                    Flag("--phase", desc="Phase: build or review"),
-                    Flag("--status", desc="Status: pending, started, complete, approved, changes_requested"),
+                    Flag("--phase", desc="Phase: build, review, prepare, requirements_review, plan_review"),
+                    Flag("--status", desc="Work: pending/started/complete/approved/changes_requested; Prepare verdict: approve/needs_work; Prepare lifecycle: prepared, gate, etc."),
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
@@ -643,8 +643,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Move entry to delivered",
                 args="<slug>",
                 flags=[
-                    Flag("--commit", desc="Commit hash"),
-                    Flag("--title", desc="Delivery title (default: entry description)"),
+                    Flag("--commit", desc="Commit hash (auto-detects HEAD if omitted)"),
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
@@ -3055,7 +3054,7 @@ def _handle_roadmap_freeze(args: list[str]) -> None:
 
 
 def _handle_roadmap_deliver(args: list[str]) -> None:
-    """Handle telec roadmap deliver <slug> [--commit SHA] [--title TEXT]."""
+    """Handle telec roadmap deliver <slug> [--commit SHA]."""
     from teleclaude.core.next_machine.core import deliver_to_delivered
 
     if not args:
@@ -3065,15 +3064,11 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
     slug: str | None = None
     project_root = Path.cwd()
     commit: str | None = None
-    title: str | None = None
     i = 0
     while i < len(args):
         arg = args[i]
         if arg == "--commit" and i + 1 < len(args):
             commit = args[i + 1]
-            i += 2
-        elif arg == "--title" and i + 1 < len(args):
-            title = args[i + 1]
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
@@ -3091,7 +3086,7 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
         print(_usage("roadmap", "deliver"))
         raise SystemExit(1)
 
-    if deliver_to_delivered(str(project_root), slug, commit=commit, title=title):
+    if deliver_to_delivered(str(project_root), slug, commit=commit):
         print(f"Delivered {slug} → delivered.yaml")
     else:
         print(f"Slug not found in roadmap: {slug}")

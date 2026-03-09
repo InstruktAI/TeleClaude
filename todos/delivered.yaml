@@ -2,227 +2,151 @@
 
 - slug: prepare-state-machine
   date: '2026-03-08'
+  commit: '127180446'
 - slug: telegram-callback-payload-migration
   date: '2026-03-08'
-  title: Migrate Telegram explicit user-selection callback payloads to canonical agent
-    identifiers (deferred from default-agent-resolution)
-  description: Migrate Telegram explicit user-selection callback payloads to canonical
-    agent identifiers (deferred from default-agent-resolution)
+  commit: 585f733b3c30
 - slug: conversation-projection-unification
   date: '2026-03-08'
-  title: Unify the core output projection route across poller, threaded, web, and
-    future search consumers without changing adapter implementations
-  description: Unify the core output projection route across poller, threaded, web,
-    and future search consumers without changing adapter implementations
+  commit: afa80e25ef65
 - slug: history-search-upgrade
   date: '2026-03-08'
+  commit: 8653e24ab814
 - slug: integration-event-chain-phase2
   date: '2026-03-07'
+  commit: 53aedca0cc44
 - slug: proficiency-to-expertise
   date: '2026-03-07'
+  commit: 4275a7e6a35c
 - slug: adapter-reflection-cleanup
   date: '2026-03-07'
-  title: 'Make reflection pipeline match architecture: core broadcasts, adapters own
-    everything'
-  description: 'Make reflection pipeline match architecture: core broadcasts, adapters
-    own everything'
+  commit: 832ef9d7f3f5
 - slug: chiptunes-playlist-controls
   date: '2026-03-06'
+  commit: 61d159a9f888
 - slug: async-operation-receipts
   date: '2026-03-06'
-  title: Durable receipt-and-poll contract for long-running commands, starting with
-    `telec todo work`
-  description: Durable receipt-and-poll contract for long-running commands, starting
-    with `telec todo work`
+  commit: f277cdf77ce0
 - slug: event-platform
   date: '2026-03-06'
-  title: Container vision delivered — 5/7 phases shipped, remaining children are independent
-    roadmap entries
-  description: 'Event processing platform: cartridges, domain pipelines, signal processing,
-    mesh distribution (container for phases 2-7)'
+  commit: c51c1c39ec44
 - slug: event-domain-pillars
   date: '2026-03-06'
-  title: 'Out-of-box domain configs: software-dev, marketing, creative, customer-relations'
-  description: 'Out-of-box domain configs: software-dev, marketing, creative, customer-relations'
+  commit: f4d5e845f39c
 - slug: chiptunes-audio
   date: '2026-03-06'
-  title: Play ChipTunes .sid audio via libsidplayfp with TUI integration and runtime
-    settings
-  description: Play ChipTunes .sid audio via libsidplayfp with TUI integration and
-    runtime settings
+  commit: c5f290dc7405
 - slug: event-signal-pipeline
   date: '2026-03-06'
-  title: 'Three-stage feed aggregation: ingest, cluster, synthesize utility cartridges'
-  description: 'Three-stage feed aggregation: ingest, cluster, synthesize utility
-    cartridges'
+  commit: 4f9523e8e7d3
 - slug: event-domain-infrastructure
   date: '2026-03-06'
-  title: 'Domain pipeline: parallel per-domain processing, guardian AIs, folder hierarchy,
-    personal subscriptions, autonomy matrix'
-  description: 'Domain pipeline: parallel per-domain processing, guardian AIs, folder
-    hierarchy, personal subscriptions, autonomy matrix'
+  commit: 00e47ff42034
 - slug: event-system-cartridges
   date: '2026-03-05'
-  title: 'System pipeline intelligence: trust evaluator, enrichment, correlation,
-    classification cartridges'
-  description: 'System pipeline intelligence: trust evaluator, enrichment, correlation,
-    classification cartridges'
+  commit: eb5b4511f97d
 - slug: cli-authz-overhaul
   date: '2026-03-05'
-  title: CLI command authorization matrix with role-based access control
-  description: CLI command authorization matrix with role-based access control
+  commit: b890af8901e2
 - slug: event-envelope-schema
   date: '2026-03-05'
-  title: 'Five-layer envelope: Identity, Semantic, Data, Affordances, Resolution +
-    core taxonomy'
-  description: 'Five-layer envelope: Identity, Semantic, Data, Affordances, Resolution
-    + core taxonomy'
+  commit: e00c49f343fb
 - slug: transcript-parser-fallback-policy
   date: '2026-03-05'
-  title: Define and implement transcript parser fallback policy for unknown/legacy
-    agent identifiers
-  description: Define and implement transcript parser fallback policy for unknown/legacy
-    agent identifiers
+  commit: e1b174f27094
 - slug: slug-helper
   date: '2026-03-05'
-  title: Consolidated slug helper module
   commit: ab2346e59
 - slug: integrator-state-machine
   date: '2026-03-05'
-  title: Idempotent state machine for the singleton integrator — deterministic script
-    with agent decision points
-  description: Idempotent state machine for the singleton integrator — deterministic
-    script with agent decision points
+  commit: 17284c33aad1
 - slug: person-proficiency-level
   date: '2026-03-05'
-  title: Add proficiency field to PersonEntry for agent behavioral calibration
-  description: Add proficiency field to PersonEntry for agent behavioral calibration
+  commit: 86156a820d9a
 - slug: prepare-quality-runner
   date: '2026-03-05'
-  title: Automated DOR quality runner for todo preparation
-  description: Automated DOR quality runner for todo preparation
+  commit: e1c0ae5f1868
 - slug: cli-knowledge-commands
   date: '2026-03-05'
-  title: telec history + telec memory CLI commands, retire standalone tool specs
-  description: telec history + telec memory CLI commands, retire standalone tool specs
+  commit: 1ae8b3ad57bf
 - slug: context-delivery-dedup
   date: '2026-03-05'
+  commit: dcc71c8b3001
 - slug: state-machine-gate-sharpening
   date: '2026-03-05'
+  commit: dcc71c8b3001
 - slug: default-agent-resolution
   date: '2026-03-05'
   commit: 806fd11c9c215477328a1793b368c64d63dd840e
 - slug: integrator-wiring
   date: '2026-03-04'
-  title: 'Wire integration module into production: event emission, integrator trigger,
-    POST_COMPLETION replacement, cutover activation'
-  description: 'Wire integration module into production: event emission, integrator
-    trigger, POST_COMPLETION replacement, cutover activation'
+  commit: df8746f985fc
 - slug: missing-client-services
   date: '2026-03-03'
-  title: Create Discord and WhatsApp service modules and event delivery adapters to
-    match existing Telegram/email parity
   commit: 1f646c5c8272aa84a95f0d6631716da1dee25fd5
-  description: Create Discord and WhatsApp service modules and event delivery adapters
-    to match existing Telegram/email parity
 - slug: todo-dump-command
   date: '2026-03-03'
-  title: telec todo dump — fire-and-forget brain dump with notification trigger
-  description: telec todo dump — fire-and-forget brain dump with notification trigger
+  commit: 4267ed186064
 - slug: integration-events-model
   date: '2026-03-01'
-  title: Integration Events Model — merged to main with full test coverage
-  commit: confirmed delivered via integrator-wiring input.md
+  commit: 3a2b0b8c47cf
 - slug: config-wizrd-enrichment
   date: '2026-03-01'
-  title: Enrich config wizard with improved UX and validation
   commit: 0414afe654900d9bc3ccc09bfca498c6c927c801
-  description: Enrich config wizard with improved UX and validation
 - slug: fix-layout-issues-sticky-removal
   date: '2026-03-01'
-  title: Restore 'a' key batch-toggle sticky sessions in Textual TUI
-  description: Restore 'a' key batch-toggle sticky sessions in Textual TUI
+  commit: 9a1b12233923
 - slug: content-dump-command
   date: '2026-03-01'
-  title: telec content dump — fire-and-forget content dump with notification trigger
-  description: telec content dump — fire-and-forget content dump with notification
-    trigger
+  commit: dcbc39376b40
 - slug: event-platform-core
   date: '2026-03-01'
-  title: 'Core platform: package, envelope, pipeline runtime, basic cartridges, SQLite
-    state, API, WebSocket, daemon hosting, consolidation'
-  description: 'Core platform: package, envelope, pipeline runtime, basic cartridges,
-    SQLite state, API, WebSocket, daemon hosting, consolidation'
+  commit: f2cc242b2db8
 - slug: animations-full-color
   date: '2026-02-28'
   commit: 96b2b972ba9ccbab1e4f754d850b48e04701d7d0
 - slug: guaranteed-inbound-delivery
   date: '2026-02-28'
-  title: Core inbound queue for guaranteed user message delivery — adapter-agnostic,
-    per-session FIFO, durable retry
-  description: Core inbound queue for guaranteed user message delivery — adapter-agnostic,
-    per-session FIFO, durable retry
+  commit: 5561ca509cbb
 - slug: cli-cleanup-maintain-cwd-delivered
   date: '2026-02-28'
   commit: 4d063b245e872d071fd1fc7ce306f811455ad1d5
 - slug: integrate-session-lifecycle-into-next-work
   date: '2026-02-28'
-  title: Integrate session lifecycle into next-work orchestration
-  description: Integrate session lifecycle into next-work orchestration
+  commit: f61157e202cb
 - slug: tui-footer-polish
   date: '2026-02-28'
   commit: 31e8d4e3
 - slug: harmonize-agent-notifications
   date: '2026-02-27'
+  commit: 830a8f517340
 - slug: tui-footer-key-contract-restoration
   date: '2026-02-27'
+  commit: ed0f6a5138fc
 - slug: config-wizard-redesign
   date: '2026-02-27'
-  title: Major visual and interaction redesign of the config wizard — card layout,
-    inline editing, guided onboarding, progress indicators
   commit: ff23e681c29223611995e6761a2abcfb72467d9c
-  description: Major visual and interaction redesign of the config wizard — card layout,
-    inline editing, guided onboarding, progress indicators
 - slug: integration-blocked-flow
   date: '2026-02-27'
-  title: 'Step 5: emit integration_blocked flow with follow-up todo creation and resume
-    UX'
   commit: 0f0e1d0a1a720a5fee0027098ecbd39343e5f708
-  description: 'Step 5: emit integration_blocked flow with follow-up todo creation
-    and resume UX'
 - slug: integrator-cutover
   date: '2026-02-27'
-  title: 'Step 4: make integrator the only path that merges and pushes canonical main'
   commit: dfa37b41c50c0675e97586385db4ad61c71a90ed
-  description: 'Step 4: make integrator the only path that merges and pushes canonical
-    main'
 - slug: integrator-shadow-mode
   date: '2026-02-27'
-  title: 'Step 3: run singleton lease+queue integrator in shadow mode without main
-    merges'
   commit: 449c4e02916a0c84788623c510b823bf52da6fb9
-  description: 'Step 3: run singleton lease+queue integrator in shadow mode without
-    main merges'
 - slug: fix-sticky-removal-layout-issues
   date: '2026-02-27'
-  title: Fix pane continuity on sticky removal
   commit: f9c7cf247be10579cb475fb09678b4551d9e6ea8
-  description: Fix layout issues when sticky header is removed
 - slug: config-wizard-governance
   date: '2026-02-27'
-  title: Add config wizard integration gates to DoD, DOR, add-adapter procedure, and
-    teleclaude-config spec
-  description: Add config wizard integration gates to DoD, DOR, add-adapter procedure,
-    and teleclaude-config spec
+  commit: 57c131b592a1
 - slug: config-wizard-whatsapp-wiring
   date: '2026-02-27'
-  title: Wire WhatsApp env vars, guidance, and config.sample into the config wizard
   commit: c0427e665b8dcb7be98106d917bf1185ea3895cf
-  description: Wire WhatsApp env vars, guidance, and config.sample into the config
-    wizard
 - slug: mature-deployment
   date: '2026-02-27'
-  title: 'Group: mature-deployment (4 children delivered)'
+  commit: 31e708481c83
   children:
   - deployment-versioning
   - deployment-channels
@@ -230,167 +154,80 @@
   - deployment-cleanup
 - slug: deployment-cleanup
   date: '2026-02-27'
-  title: 'Phase 4: Remove deploy_service, MCP tool (if still present), update docs,
-    write pipeline doc'
   commit: 5543233d
-  description: 'Phase 4: Remove deploy_service, MCP tool (if still present), update
-    docs, write pipeline doc'
 - slug: deployment-channels
   date: '2026-02-27'
-  title: 'Phase 3: Channel config, webhook handler, update executor, Redis fan-out'
   commit: b5d07b2d0ff08cb7c4f7b07a97c7c6a37df19f3c
-  description: 'Phase 3: Channel config, webhook handler, update executor, Redis fan-out'
-- slug: integration-events-model
-  date: '2026-02-27'
-  title: 'Step 2: persist review_approved/finalize_ready/branch_pushed events and
-    readiness projection'
-  commit: 3a2b0b8c47cf9c68fb61f4d08d91453465f09d7a
-  description: 'Step 2: persist review_approved/finalize_ready/branch_pushed events
-    and readiness projection'
 - slug: skills-procedure-taxonomy-alignment
   date: '2026-02-26'
-  title: Extract procedure logic from agents/skills into docs procedures and align
-    skill wrappers with breath-aware taxonomy (exploratory, skills-only scope).
   commit: 40830d507bcaf414590b9c45741ed0a6cb261524
-  description: Extract procedure logic from agents/skills into docs procedures and
-    align skill wrappers with breath-aware taxonomy (exploratory, skills-only scope).
 - slug: deployment-migrations
   date: '2026-02-26'
-  title: 'Phase 2: Migration manifest format, runner, version utilities (no CLI —
-    internal library)'
   commit: 3b43dc8c1fed747e047e3f74dea5a01950889746
-  description: 'Phase 2: Migration manifest format, runner, version utilities (no
-    CLI — internal library)'
 - slug: adapter-output-qos-scheduler
   date: '2026-02-26'
-  title: Adapter-aware output QoS system to prevent Telegram flood-control churn under
-    high concurrency
-  description: Adapter-aware output QoS system to prevent Telegram flood-control churn
-    under high concurrency
+  commit: d1b2dc225e09
 - slug: help-desk-startup-command-ordering
   date: '2026-02-26'
-  title: Deterministic startup ordering between help-desk bootstrap and first customer
-    message
   commit: 78dedfa9
-  description: Gate process_message on session lifecycle, ensuring auto-command dispatch
-    completes before customer input injection into tmux
 - slug: api-todos-work-stability-hardening
   date: '2026-02-26'
-  title: Stabilize `/todos/work` latency by removing redundant worktree prep/sync
-    and adding phase-level diagnostics
-  description: Stabilize `/todos/work` latency by removing redundant worktree prep/sync
-    and adding phase-level diagnostics
+  commit: 229827e310b2
 - slug: integration-orchestrator-rollout
   date: '2026-02-26'
-  title: Parent rollout for event-driven singleton integrator and guarded mainline
-    integration
   commit: a68b3fe07a008609a5fb43827630bed717fdb23f
-  description: Parent rollout for event-driven singleton integrator and guarded mainline
-    integration
 - slug: integration-safety-gates
   date: '2026-02-26'
-  title: 'Step 1: add finalize/apply safety gates for dirty/diverged canonical main'
   commit: 3e306a0a448f48cb1ba56898f7fde04f46c4bab1
-  description: 'Step 1: add finalize/apply safety gates for dirty/diverged canonical
-    main'
 - slug: help-desk-whatsapp
   date: '2026-02-26'
-  title: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
   commit: 2bcca366ae3709cfae601deb1c31ef3c7a0cd3bf
-  description: WhatsApp Business Cloud API adapter for customer-facing help desk messaging
 - slug: discord-slash-commands-like-telegram
   date: '2026-02-26'
-  title: Add Discord Application Commands (slash commands) mirroring Telegram command
-    set
   commit: 4319caeedeea9ea6a053278e49feb73a90339286
-  description: Add Discord Application Commands (slash commands) mirroring Telegram
-    command set
 - slug: deployment-versioning
   date: '2026-02-26'
-  title: 'Phase 1: Runtime __version__, telec version command, pyproject.toml 1.0.0'
   commit: 1dfcb10291148936d4ccd1bd4e1d430e2e9baae7
-  description: 'Phase 1: Runtime __version__, telec version command, pyproject.toml
-    1.0.0'
 - slug: agent-config-driven-selection-contract
   date: '2026-02-26'
   commit: 6d201c8e3869dda28c10cef4b3df81bfc4cc5f2f
 - slug: mcp-to-tool-specs
   date: '2026-02-26'
-  title: 'Group: mcp-to-tool-specs (3 children delivered)'
   children:
   - mcp-migration-telec-commands
   - mcp-migration-agent-config
   - mcp-migration-delete-mcp
+  commit: 92dd3c7d8cb0
 - slug: mcp-migration-delete-mcp
   date: '2026-02-25'
-  title: 'Phase 3: Delete all MCP server code (~3,400 lines), update architecture
-    and policy docs'
   commit: ca23644eed6e6145e9569b608e32a09b60e399cb
-  description: 'Phase 3: Delete all MCP server code (~3,400 lines), update architecture
-    and policy docs'
 - slug: mcp-migration-agent-config
   date: '2026-02-25'
-  title: 'Phase 2: Remove MCP from agent session configs, validate all agent types
-    and workflows'
   commit: d23e3e820f14164696f0e1751b3b354770b7dae4
-  description: 'Phase 2: Remove MCP from agent session configs, validate all agent
-    types and workflows'
 - slug: mcp-migration-telec-commands
   date: '2026-02-25'
-  title: 'Phase 1: Add telec subcommands for all 24 tools with rich --help, extend
-    REST API, update telec-cli spec doc with @exec directives'
   commit: fff5b10e3d64e2eb3f66db993df6916eaa0f8341
-  description: 'Phase 1: Add telec subcommands for all 24 tools with rich --help,
-    extend REST API, update telec-cli spec doc with @exec directives'
 - slug: ucap-cutover-parity-validation
   date: '2026-02-25'
-  title: 'Phase 6: Execute shadow/cutover, parity metrics validation, rollback criteria,
-    and final bypass removal checks.'
   commit: 3ad158134ae5704037a16cb6d75837212287d8dc
-  description: 'Phase 6: Execute shadow/cutover, parity metrics validation, rollback
-    criteria, and final bypass removal checks.'
 - slug: ucap-ingress-provisioning-harmonization
   date: '2026-02-25'
-  title: 'Phase 5: Standardize ingress semantics and centralize channel/provisioning
-    orchestration for client adapters.'
   commit: 51d9d25707a8f65ff1742fde08771e042deb42b1
-  description: 'Phase 5: Standardize ingress semantics and centralize channel/provisioning
-    orchestration for client adapters.'
 - slug: ucap-tui-adapter-alignment
   date: '2026-02-25'
-  title: 'Phase 4: Align TUI realtime delivery to adapter-driven contract and remove
-    direct TUI bypass paths.'
   commit: 5f64c003acf720b66ecc372e44c080a2dfac2ce7
-  description: 'Phase 4: Align TUI realtime delivery to adapter-driven contract and
-    remove direct TUI bypass paths.'
 - slug: ucap-web-adapter-alignment
   date: '2026-02-25'
-  title: 'Phase 3: Align Web realtime delivery to adapter-driven contract and remove
-    direct Web bypass paths.'
   commit: 79624a871b89d629bb82e68aa06c561875c7b1b7
-  description: 'Phase 3: Align Web realtime delivery to adapter-driven contract and
-    remove direct Web bypass paths.'
 - slug: ucap-truthful-session-status
   date: '2026-02-25'
-  title: 'Phase 2: Make core the source of truth for session lifecycle status and
-    map that contract to each adapter''s UI capabilities.'
   commit: 38c12b2a99bc29801f50e23d85c1f2edea1887da
-  description: 'Phase 2: Make core the source of truth for session lifecycle status
-    and map that contract to each adapter''s UI capabilities.'
 - slug: ucap-canonical-contract
   date: '2026-02-25'
-  title: 'Phase 1: Define canonical outbound realtime contract and shared serializer/validation
-    utilities across adapters.'
   commit: ee0980110fac811bcc93491bb28e9ffdc37b86b0
-  description: 'Phase 1: Define canonical outbound realtime contract and shared serializer/validation
-    utilities across adapters.'
 - slug: unified-client-adapter-pipeline
   date: '2026-02-25'
-  title: 'Umbrella: split Web/TUI adapter pipeline unification into atomic child todos
-    and track dependency-gated delivery.'
   commit: ef5280e395ae3a1419cf106b24e08ffd18f0ee93
-  description: 'Umbrella: split Web/TUI adapter pipeline unification into atomic child
-    todos and track dependency-gated delivery.'
 - slug: cross-project-context
   date: '2026-02-25'
   commit: 22ed1ed2b4ed75552461ad137053aca2355fcf84
@@ -399,140 +236,86 @@
   commit: d644465a70e773c19960384867a90ea57082730f
 - slug: consolidate-methodology-skills
   date: '2026-02-25'
-  title: Consolidate 6 methodology skills from Claude Code plugins into agents/skills/
-    for cross-agent distribution
   commit: 72e6f9b2
 - slug: bidirectional-agent-links
   date: '2026-02-25'
-  title: 'Shared listener link primitive for direct agent conversation and gathering-ready
-    multi-member fan-out. Supports single-party severing and preserves worker notification
-    mode.
-
-    '
   commit: 7e8184c3692c5913522a5d1c80992fdbcc3bda99
-  description: 'Shared listener link primitive for direct agent conversation and gathering-ready
-    multi-member fan-out. Supports single-party severing and preserves worker notification
-    mode.
-
-    '
 - slug: transcript-first-output-and-hook-backpressure
   date: '2026-02-24'
-  title: Make transcript deltas the only output data plane and add bounded hook backpressure/coalescing
   commit: 5405aa00
 - slug: finalize-push-guardrails
   date: '2026-02-24'
-  title: Split finalize ownership and enforce main-targeting push/merge guardrails
   commit: 4146edd1
 - slug: textual-footer-migration
   date: '2026-02-24'
-  title: Replace ActionBar with Textual Footer and complete footer-context migration
   commit: ccad44b7
 - slug: adapter-output-delivery
   date: '2026-02-24'
-  title: Guarantee complete, continuous output delivery from agent sessions to all
-    UI adapters, and ensure user input from any adapter is reflected to all others
-    with correct provenance
   commit: 21544a6d
 - slug: discord-adapter-integrity
   date: '2026-02-24'
-  title: Fix Discord adapter infrastructure and input routing so that the Discord
-    guild is reliable, correctly partitioned per computer, and admin input from forums
-    is routed correctly
   commit: 0b3448ca
 - slug: inbound-hook-service
   date: '2026-02-24'
-  title: Wire inbound webhook infrastructure into daemon, deliver GitHub normalizer
-    as proof of end-to-end path
   commit: 0ce2a0f8
 - slug: lifecycle-enforcement-gates
   date: '2026-02-23'
-  title: Machine-enforced build gates — demo subcommand refactor, state machine gate
-    validation in next_work(), POST_COMPLETION flow changes, snapshot.json reduction,
-    and lazy state marking
   commit: a7361db7
 - slug: remove-phase-field
   date: '2026-02-23'
-  title: Remove redundant phase field in favor of build/review status
   commit: 5330af88f33bfffe1a5355dc3f8225c3bb2ac931
 - slug: tui-footer-clickable-agents
   date: '2026-02-23'
-  title: Clickable agent pills in TUI footer to cycle availability
   commit: f4a65cde
 - slug: ui-adapter-pre-respond-trigger
   date: '2026-02-23'
-  title: Add typing indicator support to UI adapters
   commit: 45addf05
 - slug: frontend-theming-tui-parity
   date: '2026-02-23'
-  title: Implement agent-aware chat theming with static CSS variables and local theme
-    override pattern
   commit: fd4b5ce3
 - slug: discord-media-handling
   date: '2026-02-23'
-  title: Handle image uploads and file attachments in the Discord adapter, matching
-    Telegram parity
   commit: 0b093c44dab0e65ec462ed733b57a60477158bf8
 - slug: todo-remove-cli-option
   date: '2026-02-23'
-  title: Add telec todo remove <slug> CLI command and R keybinding in TUI PreparationView
   commit: 18d2fcc69883b60275767d14db974b9a25967180
 - slug: fix-demo-runner
   date: '2026-02-22'
-  title: 'Redesign demo system: replace shell-command demo field with demo.md'
   commit: 310ecbd1
 - slug: new-bug-key-in-todos-pane
   date: '2026-02-22'
-  title: TUI 'b' key for bug creation + telec bugs create CLI command
   commit: 5f1b5b8
 - slug: bugs-round-1
   date: '2026-02-22'
-  title: 'TUI visual bugs: slug color not inverting on row selection, TUI pane background
-    not updating after SIGUSR1 dark/light toggle'
   commit: 3b7fc0cc
 - slug: bug-delivery-service
   date: '2026-02-22'
-  title: 'Fire-and-forget bug pipeline: telec bugs report + autonomous fix/review/merge'
   commit: 4f04ac47
 - slug: state-yaml-migration
   date: '2026-02-22'
-  title: Migrate todo state serialization from JSON to YAML format
   commit: 92dd3c7d
 - slug: member-invite
   date: '2026-02-22'
-  title: Implement invite flow with token-based deep links for Telegram, Discord,
-    and email
   commit: 3c3baa1c
 - slug: agent-dispatch-guidance
   date: '2026-02-21'
-  title: Replace hardcoded agent selection matrices with config-driven guidance text
   commit: 6c3c5f10
 - slug: themed-primary-color
   date: '2026-02-21'
-  title: Introduce warm Claude-orange primary color for Textual theme at agent carousel
-    levels; fix blue outline in standalone editor
   commit: 809dbea1
 - slug: tui-markdown-editor
   date: '2026-02-21'
-  title: Inline markdown editing and one-key todo creation in TUI
   commit: 66bb82ca0b207064e404db2e3a9b5276571673ae
 - slug: web-interface
   date: '2026-02-21'
-  title: Next.js 15 web application bridged to TeleClaude via Vercel AI SDK v5. Daemon
-    produces AI SDK UIMessage Stream (SSE) from session transcripts and live output.
-    Frontend uses useChat with DefaultChatTransport. Auth via NextAuth email OTP.
-    Session-to-person metadata binding with visibility routing.
-  description: Next.js 15 web application bridged to TeleClaude via Vercel AI SDK
-    v5. Daemon produces AI SDK UIMessage Stream (SSE) from session transcripts and
-    live output. Frontend uses useChat with DefaultChatTransport. Auth via NextAuth
-    email OTP. Session-to-person metadata binding with visibility routing.
   children:
   - web-interface-1
   - web-interface-2
   - web-interface-3
   - web-interface-4
+  commit: 24339f34fc12
 - slug: release-automation
   date: '2026-02-21'
-  title: 'Group: release-automation (6 children delivered)'
   children:
   - release-manifests
   - release-workflow-foundation
@@ -540,321 +323,223 @@
   - release-lane-codex
   - release-lane-gemini
   - release-arbiter
+  commit: e20dbc9fee64
 - slug: pane-state-reconciliation
   date: '2026-02-21'
-  title: 'Reconciliation-first TUI pane state: 2-field PaneState, tmux reconcile before
-    layout, clean SIGUSR2 reload'
   commit: 02802843
 - slug: job-report-notifications
   date: '2026-02-21'
-  title: Subscription-driven job execution and notification delivery. Subscription
-    jobs only run when someone subscribes. System jobs deliver to all admins. Mailbox
-    flag scan, per-recipient outbox, enabled toggle.
   commit: 7a276ec8
 - slug: release-pipeline-simulation
   date: '2026-02-21'
-  title: 'Deterministic CI pipeline for release.yaml verification: mock AI lanes,
-    arbiter decision testing, release notes generation, and version bump validation
-    without live LLMs.'
   commit: 87f06fbc
 - slug: tui-todo-dependencies
   date: '2026-02-21'
-  title: Display todo dependency relationships (after) and group labels (group) in
-    the TUI Preparation view, matching the information already shown by telec roadmap.
   commit: 8b4991be
 - slug: session-relay
   date: '2026-02-19'
-  title: 'Output relay between agent sessions: monitor via capture_pane, deliver delta
-    to peers with attribution. Enables natural 1:1 conversations after send_message(direct=true)
-    handshake.'
   commit: ca99c3ec
 - slug: web-interface-4
   date: '2026-02-18'
-  title: Session Management & Role-Based Access
   commit: 51a89d54
 - slug: web-api-proxy-completion
   date: '2026-02-18'
-  title: WebSocket bridge, REST proxy expansion, auth enforcement, frontend state
-    integration
   commit: a020262c
 - slug: doc-access-control
   date: '2026-02-18'
-  title: 'Role-based access control for doc snippets: role frontmatter, get_context
-    filtering, CLI gating'
   commit: ba22fc83
 - slug: widget-sdk
   date: '2026-02-17'
-  title: Widget expression format, MCP tool, section renderers, AskUserQuestionUI,
-    and AI authoring guide
   commit: bc7698b8
 - slug: web-interface-3
   date: '2026-02-16'
-  title: Chat Interface & Part Rendering
   commit: de610451
 - slug: web-interface-2
   date: '2026-02-16'
-  title: Next.js Scaffold & Auth
   commit: 6f641ba0
 - slug: web-interface-1
   date: '2026-02-16'
-  title: Daemon SSE Plumbing
   commit: 1b4ea3ef
 - slug: session-messages-api
   date: '2026-02-16'
-  title: Structured messages endpoint from native session files
   commit: 609f4ce3
 - slug: help-desk-control-room
   date: '2026-02-16'
-  title: Discord threaded output for all sessions
   commit: f59ae28b
 - slug: output-origin-routing
   date: '2026-02-16'
-  title: Output Origin Routing
   commit: f03c25db
 - slug: help-desk-discord
   date: '2026-02-16'
-  title: 'Fix Discord routing layer: inbound channel gating, role normalization, config-driven
-    project paths, escalation notifications, relay context, Telegram relay awareness,
-    channel worker dispatch, idle compaction, template jobs, and identity key coverage.'
   commit: 619c71d3
 - slug: help-desk-platform
   date: '2026-02-15'
-  title: 'Two-plane help desk: customer ingress, operator workspace, identity-scoped
-    memory, escalation, relay, pub/sub channels'
   commit: 7156e94a
-- slug: release-pipeline-simulation
-  date: '2026-02-15'
-  title: Deterministic CI simulation for release arbiter logic verification without
-    live tokens.
-  commit: 87f06fbc
 - slug: tui-config-experience
   date: '2026-02-15'
-  title: TUI Config Experience & Animation Art
   commit: f8d3044b
 - slug: release-arbiter
   date: '2026-02-14'
-  title: AI consensus arbiter for automated release authorization based on lane reports.
   commit: 02d8c212
 - slug: release-lane-gemini
   date: '2026-02-14'
-  title: Gemini release inspector lane using @google/gemini-cli in GitHub Actions.
   commit: 47b12c04
 - slug: release-lane-codex
   date: '2026-02-14'
-  title: Codex CLI release inspector lane using openai/codex-action.
   commit: 726a1a16
 - slug: release-lane-claude
   date: '2026-02-14'
-  title: Claude Code release inspector lane using anthropics/claude-code-action.
   commit: 43153b37
 - slug: release-workflow-foundation
   date: '2026-02-14'
-  title: Baseline GitHub Actions for lint/test and skeleton release workflow.
   commit: d7eee9c0
 - slug: release-manifests
   date: '2026-02-14'
-  title: Public surface contract manifests and runtime alignment tests
   commit: fba68258
-- slug: help-desk-discord
-  date: '2026-02-14'
-  title: Discord adapter for Help Desk forum-thread routing and customer identity
-    mapping
-  commit: 52cd5bd9c0a8203d1391a0b917fbecb838390a7f
 - slug: webhook-service
   date: '2026-02-14'
-  title: Webhook Service
   commit: 54b70773
 - slug: role-based-notifications
   date: '2026-02-14'
-  title: Platform-agnostic notification routing subsystem with outbox persistence,
-    PlatformSender protocol, and delivery worker.
   commit: 27c4fbfd
 - slug: telec-config-interactive
   date: '2026-02-14'
-  title: Interactive Configuration System
   commit: 68ed3bab
 - slug: telegram-adapter-hardening
   date: '2026-02-13'
-  title: Telegram routing hardening with Law of Demeter metadata boundaries and fail-fast
-    contracts
   commit: 26798a9f
 - slug: auto-architecture-diagrams
   date: '2026-02-13'
-  title: Code-generated architecture diagrams via make diagrams (6 Mermaid outputs)
   commit: 5c0540ac
 - slug: help-desk
   date: '2026-02-12'
-  title: Help Desk Platform
   commit: 20f3602f
 - slug: tts-fallback-saturation
   date: '2026-02-12'
-  title: Fix TTS fallback logic to respect voice saturation
   commit: fd8d5cd2
 - slug: agent-activity-events-phase-3-7
   date: '2026-02-11'
-  title: 'Complete agent-activity-events pipeline: DB column rename, event vocabulary
-    rename, comprehensive tests, docs'
   commit: 5cd7f2d8
 - slug: daemon-independent-jobs
   date: '2026-02-11'
-  title: Daemon-independent agent job execution with subprocess spawning, full tool/MCP
-    access
   commit: 93fb9b97
 - slug: agent-activity-events
   date: '2026-02-11'
-  title: Direct agent activity event pipeline (Phase 1-2, foundation without DB-mediated
-    reasons)
   commit: 61fe04e3
 - slug: runtime-settings-tts-toggle
   date: '2026-02-11'
-  title: RuntimeSettings layer, TTS toggle in TUI footer, debounced YAML persistence,
-    SummarizerConfig cleanup
   commit: c7102753
 - slug: agent-output-monitor
   date: '2026-02-11'
-  title: Context-aware checkpoint messages at agent stop boundaries
   commit: 4173c150
 - slug: telec-config-cli
   date: '2026-02-10'
-  title: Add telec config get/patch/validate workflow for AI-safe config mutation
   commit: de0c0d2f
 - slug: telec-todo-scaffold
   date: '2026-02-10'
-  title: Add telec todo create scaffolding and AI-safe Telec CLI tool spec
   commit: 29937f18
 - slug: db-raw-sql-cleanup
   date: '2026-02-10'
-  title: Eliminate raw SQL from DB helpers and enforce raw-sql markers in hooks/check
-    script
   commit: ae55a25
 - slug: config-schema-validation
   date: '2026-02-10'
-  title: Pydantic-based schema validation for teleclaude.yml with level enforcement
   commit: bc999a3
 - slug: job-contract-refinements
   date: '2026-02-09'
-  title: Enforced agent job contract (job), sync-time job validation, interests parsing
-    fix
+  commit: 45ac888650b2
 - slug: next-prepare-maintenance
   date: '2026-02-09'
-  title: Next Prepare maintenance runner docs + scheduled agent job wiring
+  commit: b84c59804e89
 - slug: refactor-again
   date: '2026-02-09'
-  title: Hook/Core Ownership Refactor Follow-up
+  commit: b84c59804e89
 - slug: codebase-audit
   date: '2026-02-09'
-  title: TeleClaude Comprehensive Codebase Audit
+  commit: b84c59804e89
 - slug: threaded-output-experiment
   date: '2026-02-06'
-  title: Threaded Incremental Output Experiment
   commit: 8db1bd5
 - slug: role-tools-injection
   date: '2026-02-06'
-  title: MCP Role-Based Tool Filtering
+  commit: 0c2ba3b4910d
 - slug: banner-animations
   date: '2026-01-23'
-  title: Banner Animation System
   commit: fb7e5e8
 - slug: deferral-automation
   date: '2026-01-17'
-  title: Deferral Automation
   commit: c679224709663bb710290a00de6c25ae615fba45
 - slug: cache-unification
   date: '2026-01-15'
-  title: Cache Unification for Session UI Updates
   commit: 8b397f4
 - slug: test-cleanup
   date: '2026-01-14'
-  title: Test Cleanup
   commit: '1987535'
 - slug: cache-startup-warmup
   date: '2026-01-14'
-  title: Warmup remote projects on daemon startup and add digest-based invalidation
-    to heartbeats.
   commit: f47779e
 - slug: model-boundary-consolidation
   date: '2026-01-14'
-  title: Model Boundary Consolidation
   commit: 44fbd26
 - slug: delivery-verification-gates
   date: '2026-01-13'
-  title: Delivery Verification Gates
   commit: 5b5d668
 - slug: startup-cache-hook-fixes
   date: '2026-01-12'
-  title: Startup Cache Hook Fixes
   commit: 4462b44
 - slug: worktree-preparation
   date: '2026-01-12'
-  title: Worktree Preparation
   commit: e88f795
 - slug: todo-breakdown-assessment
   date: '2026-01-12'
-  title: Todo Breakdown Assessment
   commit: 04b209a
 - slug: cache-deferreds
   date: '2026-01-12'
-  title: Cache Population - Deferred Work Completion
   commit: fb5a79d
 - slug: performance-hardening
   date: '2026-01-12'
-  title: 'Performance Hardening: Async Resilience & Data Efficiency (Phase 1)'
   commit: 2a1cbcf
 - slug: tui-snapshot-tests
   date: '2026-01-11'
-  title: TUI View Architecture Refactor & Tests
   commit: 9210bbe
 - slug: e2e-smoke-tests
   date: '2026-01-11'
-  title: End-to-End Smoke Tests
   commit: 3966dc5
 - slug: data-caching-pushing
   date: '2026-01-11'
-  title: Data Caching & Push Architecture (Phases 0-7)
   commit: f12331d
 - slug: terminal-adapter-refactor
   date: '2026-01-10'
-  title: Rename TerminalAdapter to RESTAdapter
   commit: 5a1991d
 - slug: telec-enhancements
   date: '2026-01-09'
-  title: 'telec: TUI Client for TeleClaude'
   commit: ceb9e4f
 - slug: db-refactor
   date: '2026-01-09'
-  title: Eliminate ux_state JSON Blob
   commit: f9e45fb
 - slug: state-machine-refinement
   date: '2026-01-03'
-  title: State Machine Refinement
   commit: '3631176'
 - slug: reduce-loose-dict-typings
   date: '2026-01-02'
-  title: Reduce loose dict typings to zero guardrails warnings
   commit: 2e4b655
 - slug: next-prepare-hitl
   date: '2025-12-31'
-  title: HITL Support for next_prepare MCP Tool
   commit: 75ced1f
 - slug: next-machine
   date: '2025-12-30'
-  title: Deterministic Workflow State Machine
   commit: 89ec189
 - slug: title-update
   date: '2025-12-30'
-  title: Title Update fix
   commit: 34da4d2
 - slug: universal-hooks
   date: '2025-12-15'
-  title: Universal File-Watcher Hook System
+  commit: 44dbc7a0e8f4
 - slug: run-agent-command
   date: '2025-12-16'
-  title: Run Agent Command MCP Tool
+  commit: 44dbc7a0e8f4
 - slug: mode-selector
   date: '2025-12-17'
-  title: Mode Selector for Agent Model Variants
   commit: d1f28ba
 - slug: send-result
   date: '2025-12-23'
-  title: Send Result Tool - Formatted Output Messages
   commit: 4ef5d82

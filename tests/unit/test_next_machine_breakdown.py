@@ -13,8 +13,8 @@ from teleclaude.core.next_machine.core import PreparePhase
 
 
 @pytest.mark.asyncio
-async def test_next_prepare_input_md_unassessed_breakdown_dispatches_draft():
-    """next_prepare with unassessed breakdown dispatches next-prepare-draft."""
+async def test_next_prepare_input_md_unassessed_breakdown_dispatches_discovery():
+    """next_prepare dispatches next-prepare-discovery for requirements work."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
@@ -23,8 +23,8 @@ async def test_next_prepare_input_md_unassessed_breakdown_dispatches_draft():
     db.get_agent_availability.return_value = {"available": True}
 
     # State: no prepare_phase set — triggers phase derivation
-    # Derivation: input.md exists, breakdown not assessed → INPUT_ASSESSMENT
-    # INPUT_ASSESSMENT handler: breakdown not assessed → dispatches draft
+    # Derivation: requirements.md absent → DISCOVERY
+    # DISCOVERY handler: dispatches discovery for requirements work
     state = {
         "prepare_phase": "",
         "breakdown": {"assessed": False, "todos": []},
@@ -42,9 +42,9 @@ async def test_next_prepare_input_md_unassessed_breakdown_dispatches_draft():
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
         assert "telec sessions run" in result
-        assert '--command "/next-prepare-draft"' in result
+        assert '--command "/next-prepare-discovery"' in result
         assert f'--args "{slug}"' in result
-        assert "Assess todos/test-slug/input.md" in result
+        assert "requirements.md" in result
 
 
 @pytest.mark.asyncio
@@ -90,8 +90,8 @@ async def test_next_prepare_non_roadmap_holder_with_group_children_returns_conta
 
 
 @pytest.mark.asyncio
-async def test_next_prepare_assessed_breakdown_empty_todos_proceeds_to_triangulation():
-    """next_prepare with assessed breakdown and empty todos proceeds to TRIANGULATION."""
+async def test_next_prepare_assessed_breakdown_empty_todos_still_dispatches_discovery():
+    """Requirements routing no longer depends on breakdown.assessed."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-simple"
@@ -99,8 +99,7 @@ async def test_next_prepare_assessed_breakdown_empty_todos_proceeds_to_triangula
     db.clear_expired_agent_availability.return_value = None
     db.get_agent_availability.return_value = {"available": True}
 
-    # input.md exists, breakdown assessed with empty todos → INPUT_ASSESSMENT transitions to TRIANGULATION
-    # TRIANGULATION: requirements.md absent → dispatches draft
+    # input.md exists, requirements.md absent → dispatches discovery
     state = {
         "prepare_phase": "",
         "breakdown": {"assessed": True, "todos": []},
@@ -109,29 +108,22 @@ async def test_next_prepare_assessed_breakdown_empty_todos_proceeds_to_triangula
     def mock_check_file_exists(_path_cwd: str, relative_path: str) -> bool:
         return "input.md" in relative_path
 
-    # After INPUT_ASSESSMENT writes TRIANGULATION, second read_phase_state
-    state2 = {**state, "prepare_phase": PreparePhase.TRIANGULATION.value}
-
     with (
         patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
         patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
-        patch(
-            "teleclaude.core.next_machine.core.read_phase_state",
-            side_effect=[state, state2],
-        ),
-        patch("teleclaude.core.next_machine.core.write_phase_state"),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
         patch("teleclaude.core.next_machine.core.check_file_exists", side_effect=mock_check_file_exists),
         patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
-        assert "next-prepare-draft" in result
+        assert "next-prepare-discovery" in result
         assert "requirements.md" in result
         assert "CONTAINER" not in result
 
 
 @pytest.mark.asyncio
-async def test_next_prepare_input_md_unassessed_breakdown_dispatches_draft_autonomous():
-    """next_prepare dispatches architect for breakdown assessment in autonomous mode."""
+async def test_next_prepare_input_md_unassessed_breakdown_dispatches_discovery_autonomous():
+    """next_prepare dispatches discovery for requirements work in autonomous mode."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
@@ -140,7 +132,7 @@ async def test_next_prepare_input_md_unassessed_breakdown_dispatches_draft_auton
     db.get_agent_availability.return_value = {"available": True}
 
     state = {
-        "prepare_phase": PreparePhase.INPUT_ASSESSMENT.value,
+        "prepare_phase": PreparePhase.DISCOVERY.value,
         "breakdown": {"assessed": False, "todos": []},
     }
 
@@ -152,9 +144,9 @@ async def test_next_prepare_input_md_unassessed_breakdown_dispatches_draft_auton
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
         assert "telec sessions run" in result
-        assert '--command "/next-prepare-draft"' in result
+        assert '--command "/next-prepare-discovery"' in result
         assert f'--args "{slug}"' in result
-        assert "Assess todos/test-slug/input.md" in result
+        assert "requirements.md" in result
 
 
 def test_read_breakdown_state_returns_defaults_when_no_file():

@@ -50,8 +50,8 @@ async def test_prepare_no_slug_returns_tool_call():
 
 
 @pytest.mark.asyncio
-async def test_prepare_slug_missing_from_roadmap():
-    """next_prepare dispatches next-prepare-draft when slug not in roadmap."""
+async def test_prepare_slug_missing_from_roadmap_auto_adds():
+    """next_prepare auto-adds slug to roadmap when missing, then proceeds to dispatch."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
@@ -60,12 +60,15 @@ async def test_prepare_slug_missing_from_roadmap():
 
     with (
         patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=False),
+        patch("teleclaude.core.next_machine.core.add_to_roadmap") as mock_add,
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
         patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value={"prepare_phase": ""}),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
-        assert "not in todos/roadmap.yaml" in result
-        assert "next-prepare-draft" in result
+        mock_add.assert_called_once_with(cwd, slug)
+        assert "next-prepare-discovery" in result
 
 
 # =============================================================================
@@ -74,8 +77,8 @@ async def test_prepare_slug_missing_from_roadmap():
 
 
 @pytest.mark.asyncio
-async def test_prepare_missing_requirements_dispatches_draft():
-    """TRIANGULATION phase dispatches next-prepare-draft when requirements.md missing."""
+async def test_prepare_missing_requirements_dispatches_discovery():
+    """DISCOVERY phase dispatches next-prepare-discovery when requirements.md is missing."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
@@ -83,7 +86,7 @@ async def test_prepare_missing_requirements_dispatches_draft():
     db.get_agent_availability.return_value = {"available": True}
 
     state = {
-        "prepare_phase": PreparePhase.TRIANGULATION.value,
+        "prepare_phase": PreparePhase.DISCOVERY.value,
         "breakdown": {"assessed": True, "todos": []},
     }
 
@@ -95,7 +98,7 @@ async def test_prepare_missing_requirements_dispatches_draft():
         patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
-        assert "next-prepare-draft" in result
+        assert "next-prepare-discovery" in result
         assert f'--args "{slug}"' in result
 
 
@@ -157,9 +160,14 @@ async def test_prepare_requirements_review_approve_transitions_to_plan():
     db.clear_expired_agent_availability.return_value = None
     db.get_agent_availability.return_value = {"available": True}
 
-    # First call state: REQUIREMENTS_REVIEW approved → transitions to PLAN_DRAFTING
-    # PLAN_DRAFTING with no plan → dispatches next-prepare-draft
+    # Drift check reads state once, then loop reads twice:
+    # REQUIREMENTS_REVIEW approved → transitions to PLAN_DRAFTING → dispatches next-prepare-draft
+    drift_state = {
+        "prepare_phase": PreparePhase.REQUIREMENTS_REVIEW.value,
+        "requirements_review": {"verdict": "approve", "reviewed_at": "", "findings_count": 0},
+    }
     states = [
+        drift_state,  # drift check
         {
             "prepare_phase": PreparePhase.REQUIREMENTS_REVIEW.value,
             "requirements_review": {"verdict": "approve", "reviewed_at": "", "findings_count": 0},
@@ -186,7 +194,7 @@ async def test_prepare_requirements_review_approve_transitions_to_plan():
 
 @pytest.mark.asyncio
 async def test_prepare_requirements_review_needs_work_loops_back():
-    """REQUIREMENTS_REVIEW with needs_work loops back to TRIANGULATION."""
+    """REQUIREMENTS_REVIEW with needs_work loops back to DISCOVERY."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
@@ -198,7 +206,7 @@ async def test_prepare_requirements_review_needs_work_loops_back():
         "requirements_review": {"verdict": "needs_work", "reviewed_at": "", "findings_count": 1},
     }
 
-    # After loop-back to TRIANGULATION, requirements.md still absent → dispatches draft
+    # After loop-back to DISCOVERY, requirements.md still absent → dispatches discovery
     written_state = {}
 
     def fake_write(w_cwd, w_slug, s):
@@ -209,15 +217,15 @@ async def test_prepare_requirements_review_needs_work_loops_back():
         patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
         patch(
             "teleclaude.core.next_machine.core.read_phase_state",
-            side_effect=[state, {**state, "prepare_phase": PreparePhase.TRIANGULATION.value}],
+            side_effect=[state, state, {**state, "prepare_phase": PreparePhase.DISCOVERY.value}],
         ),
         patch("teleclaude.core.next_machine.core.write_phase_state", side_effect=fake_write),
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
         patch("teleclaude.core.next_machine.core._emit_prepare_event"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd)
-        assert "next-prepare-draft" in result
-        assert written_state.get("prepare_phase") == PreparePhase.TRIANGULATION.value
+        assert "next-prepare-discovery" in result
+        assert written_state.get("prepare_phase") == PreparePhase.DISCOVERY.value
 
 
 @pytest.mark.asyncio
@@ -229,7 +237,12 @@ async def test_prepare_plan_review_approve_transitions_to_gate():
     db.clear_expired_agent_availability.return_value = None
     db.get_agent_availability.return_value = {"available": True}
 
+    drift_state = {
+        "prepare_phase": PreparePhase.PLAN_REVIEW.value,
+        "plan_review": {"verdict": "approve", "reviewed_at": "", "findings_count": 0},
+    }
     states = [
+        drift_state,  # drift check
         {
             "prepare_phase": PreparePhase.PLAN_REVIEW.value,
             "plan_review": {"verdict": "approve", "reviewed_at": "", "findings_count": 0},
@@ -276,7 +289,7 @@ async def test_prepare_plan_review_needs_work_loops_back():
         patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
         patch(
             "teleclaude.core.next_machine.core.read_phase_state",
-            side_effect=[state, {**state, "prepare_phase": PreparePhase.PLAN_DRAFTING.value}],
+            side_effect=[state, state, {**state, "prepare_phase": PreparePhase.PLAN_DRAFTING.value}],
         ),
         patch("teleclaude.core.next_machine.core.write_phase_state", side_effect=fake_write),
         patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
@@ -400,7 +413,7 @@ async def test_prepare_grounding_check_fresh_transitions_to_prepared():
         with (
             patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
             patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
-            patch("teleclaude.core.next_machine.core.read_phase_state", side_effect=[state, state]),
+            patch("teleclaude.core.next_machine.core.read_phase_state", side_effect=[state, state, state]),
             patch("teleclaude.core.next_machine.core.write_phase_state"),
             patch(
                 "teleclaude.core.next_machine.core._run_git_prepare",
@@ -448,7 +461,7 @@ async def test_prepare_grounding_check_stale_transitions_to_regrounding():
             },
         }
 
-        states = [state, re_ground_state]
+        states = [state, state, re_ground_state]  # drift check + 2 loop iterations
         state_iter = iter(states)
 
         with (
@@ -591,8 +604,9 @@ async def test_prepare_event_emission_at_transitions():
         "prepare_phase": PreparePhase.REQUIREMENTS_REVIEW.value,
         "requirements_review": {"verdict": "approve", "reviewed_at": "", "findings_count": 0},
     }
-    # After approve, transition to PLAN_DRAFTING, then dispatch draft
+    # Drift check + after approve, transition to PLAN_DRAFTING, then dispatch draft
     states = [
+        state,  # drift check
         state,
         {
             "prepare_phase": PreparePhase.PLAN_DRAFTING.value,
@@ -625,7 +639,7 @@ async def test_prepare_loop_limit_returns_error():
     slug = "test-slug"
 
     # State that always loops (invalid phase string that triggers re-derivation,
-    # but derivation returns INPUT_ASSESSMENT which dispatches, so use a handler
+    # but derivation returns DISCOVERY which dispatches, so use a handler
     # that always returns loop=True by giving a state that cycles).
     # Simplest: provide GROUNDING_CHECK state that always reports stale but
     # RE_GROUNDING always writes GROUNDING_CHECK back — impossible with patching.
@@ -1367,9 +1381,9 @@ async def test_next_work_freshness_gate_blocks_non_prepared_phase():
         item_dir.mkdir(parents=True, exist_ok=True)
         (item_dir / "requirements.md").write_text("# Req")
         (item_dir / "implementation-plan.md").write_text("# Plan")
-        # prepare_phase is "triangulation" — preparation not yet complete
+        # prepare_phase is "discovery" — preparation not yet complete
         (item_dir / "state.yaml").write_text(
-            yaml.dump({"phase": "in_progress", "dor": {"score": 9}, "prepare_phase": "triangulation"})
+            yaml.dump({"phase": "in_progress", "dor": {"score": 9}, "prepare_phase": "discovery"})
         )
 
         with (
@@ -1384,7 +1398,7 @@ async def test_next_work_freshness_gate_blocks_non_prepared_phase():
             result = await next_work(db, slug=slug, cwd=tmpdir)
 
     assert "STALE" in result
-    assert "triangulation" in result
+    assert "discovery" in result
 
 
 @pytest.mark.asyncio
@@ -1533,3 +1547,222 @@ async def test_prepare_plan_review_empty_verdict_dispatches_reviewer():
 
     assert "next-review-plan" in result
     assert slug in result
+
+
+# =============================================================================
+# Input Drift Detection Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_prepare_input_drift_reroutes_to_discovery():
+    """Input digest change at machine entry resets phase to DISCOVERY."""
+    db = MagicMock(spec=Db)
+    slug = "drift-slug"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True)
+        (item_dir / "input.md").write_text("updated input content")
+        old_digest = hashlib.sha256(b"original input content").hexdigest()
+
+        initial_state = {
+            **{k: v for k, v in read_phase_state(tmpdir, slug).items()},
+            "prepare_phase": PreparePhase.PLAN_REVIEW.value,
+            "grounding": {
+                "valid": True,
+                "base_sha": "abc",
+                "input_digest": old_digest,
+                "referenced_paths": [],
+                "last_grounded_at": "",
+                "invalidated_at": "",
+                "invalidation_reason": "",
+            },
+            "requirements_review": {"verdict": "approve", "reviewed_at": "", "findings_count": 0, "rounds": 1},
+            "plan_review": {"verdict": "needs_work", "reviewed_at": "", "findings_count": 1, "rounds": 1},
+        }
+
+        write_phase_state(tmpdir, slug, initial_state)
+
+        db.clear_expired_agent_availability.return_value = None
+        db.get_agent_availability.return_value = {"available": True}
+
+        with (
+            patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+            patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+            patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+        ):
+            result = await next_prepare(db, slug=slug, cwd=tmpdir)
+
+        assert "next-prepare-discovery" in result
+        reloaded = read_phase_state(tmpdir, slug)
+        assert reloaded["prepare_phase"] == PreparePhase.DISCOVERY.value
+        req_review = reloaded.get("requirements_review", {})
+        assert isinstance(req_review, dict) and req_review.get("verdict") == ""
+        plan_review = reloaded.get("plan_review", {})
+        assert isinstance(plan_review, dict) and plan_review.get("verdict") == ""
+
+
+# =============================================================================
+# RE_GROUNDING Cascade Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_prepare_regrounding_input_updated_dispatches_discovery():
+    """RE_GROUNDING with input_updated reason dispatches discovery, not draft."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    state = {
+        "prepare_phase": PreparePhase.RE_GROUNDING.value,
+        "grounding": {
+            "valid": False,
+            "base_sha": "abc",
+            "input_digest": "old",
+            "referenced_paths": [],
+            "last_grounded_at": "",
+            "invalidated_at": "2026-01-01T00:00:00+00:00",
+            "invalidation_reason": "input_updated",
+            "changed_paths": [],
+        },
+        "requirements_review": {"verdict": "approve", "reviewed_at": "", "findings_count": 0, "rounds": 0},
+        "plan_review": {"verdict": "approve", "reviewed_at": "", "findings_count": 0, "rounds": 0},
+    }
+
+    written_state = {}
+
+    def fake_write(_cwd, _slug, s):
+        written_state.update(s)
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
+        patch("teleclaude.core.next_machine.core.write_phase_state", side_effect=fake_write),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+
+    assert "next-prepare-discovery" in result
+    assert written_state.get("prepare_phase") == PreparePhase.DISCOVERY.value
+    req_review = written_state.get("requirements_review", {})
+    assert isinstance(req_review, dict) and req_review.get("verdict") == ""
+
+
+# =============================================================================
+# Fix Mode Note Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_prepare_needs_work_note_contains_fix_mode():
+    """needs_work dispatches contain 'FIX MODE' in the note for both review types."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "fix-mode-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    # Test requirements review needs_work → FIX MODE
+    req_state = {
+        "prepare_phase": PreparePhase.REQUIREMENTS_REVIEW.value,
+        "requirements_review": {"verdict": "needs_work", "reviewed_at": "", "findings_count": 1, "rounds": 0},
+    }
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value=req_state),
+        patch("teleclaude.core.next_machine.core.write_phase_state"),
+        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+    assert "FIX MODE" in result
+
+    # Test plan review needs_work → FIX MODE
+    plan_state = {
+        "prepare_phase": PreparePhase.PLAN_REVIEW.value,
+        "plan_review": {"verdict": "needs_work", "reviewed_at": "", "findings_count": 1, "rounds": 0},
+    }
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value=plan_state),
+        patch("teleclaude.core.next_machine.core.write_phase_state"),
+        patch("teleclaude.core.next_machine.core.check_file_exists", return_value=True),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+    ):
+        result2 = await next_prepare(db, slug=slug, cwd=cwd)
+    assert "FIX MODE" in result2
+
+
+# =============================================================================
+# Block Reason Persistence Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_prepare_blocked_stores_reason():
+    """BLOCKED state reads blocked_reason from state, not grounding."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "blocked-reason-slug"
+
+    state = {
+        "prepare_phase": PreparePhase.BLOCKED.value,
+        "blocked_reason": "requirements review exceeded 3 rounds",
+        "grounding": {
+            "valid": False,
+            "base_sha": "",
+            "input_digest": "",
+            "referenced_paths": [],
+            "last_grounded_at": "",
+            "invalidated_at": "",
+            "invalidation_reason": "",
+        },
+    }
+
+    with (
+        patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+        patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
+        patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd)
+
+    assert "BLOCKED" in result
+    assert "requirements review exceeded 3 rounds" in result
+
+
+# =============================================================================
+# Legacy Phase Name Migration Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_prepare_legacy_phase_names_map_to_discovery():
+    """Legacy phase names 'input_assessment' and 'triangulation' map to DISCOVERY."""
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "legacy-slug"
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    for legacy_name in ("input_assessment", "triangulation"):
+        state = {
+            "prepare_phase": legacy_name,
+        }
+        with (
+            patch("teleclaude.core.next_machine.core.resolve_holder_children", return_value=[]),
+            patch("teleclaude.core.next_machine.core.slug_in_roadmap", return_value=True),
+            patch("teleclaude.core.next_machine.core.read_phase_state", return_value=state),
+            patch("teleclaude.core.next_machine.core.write_phase_state"),
+            patch("teleclaude.core.next_machine.core.check_file_exists", return_value=False),
+            patch("teleclaude.core.next_machine.core._emit_prepare_event"),
+        ):
+            result = await next_prepare(db, slug=slug, cwd=cwd)
+        assert "next-prepare-discovery" in result, f"Failed for legacy name: {legacy_name}"

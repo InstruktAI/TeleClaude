@@ -730,6 +730,28 @@ def validate_artifact_frontmatter(post: frontmatter.Post, path: str, *, kind: st
         name = post.metadata.get("name")
         if not isinstance(name, str) or not name.strip():
             raise ValueError(f"Skill {path} is missing frontmatter 'name'")
+    parameters = post.metadata.get("parameters")
+    if parameters is not None:
+        _validate_parameters_field(parameters, path)
+
+
+def _validate_parameters_field(parameters: object, path: str) -> None:
+    """Validate the ``parameters`` frontmatter field shape.
+
+    Position is implicit from list order — no explicit ``position`` field.
+    """
+    if not isinstance(parameters, list):
+        raise ValueError(f"{path} frontmatter 'parameters' must be a list")
+    seen_names: set[str] = set()
+    for param in parameters:
+        if not isinstance(param, dict):
+            raise ValueError(f"{path} each parameter must be a mapping")
+        name = param.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"{path} each parameter must have a 'name' string")
+        if name in seen_names:
+            raise ValueError(f"{path} duplicate parameter name '{name}'")
+        seen_names.add(name)
 
 
 def validate_artifact_body(post: frontmatter.Post, path: str, *, kind: str) -> None:

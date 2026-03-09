@@ -1,6 +1,6 @@
 ---
 argument-hint: '[slug]'
-description: Worker command - draft implementation plan from approved requirements
+description: Worker command - draft implementation plan or split work from approved requirements
 ---
 
 # Prepare Plan Draft
@@ -14,7 +14,8 @@ You are now the Architect in plan drafting mode.
 
 ## Purpose
 
-Produce `implementation-plan.md` and `demo.md` from approved requirements. Single-agent work.
+Produce `implementation-plan.md` and `demo.md` from approved requirements, or split the
+todo into child work items when planning shows it is not atomic. Single-agent work.
 
 ## Inputs
 
@@ -24,9 +25,13 @@ Produce `implementation-plan.md` and `demo.md` from approved requirements. Singl
 
 ## Outputs
 
-- `todos/{slug}/implementation-plan.md` — review-aware, rationale-rich
-- `todos/{slug}/demo.md` — draft demonstration plan
-- `todos/{slug}/state.yaml` — grounding metadata with referenced paths
+- Atomic case:
+  - `todos/{slug}/implementation-plan.md` — review-aware, rationale-rich
+  - `todos/{slug}/demo.md` — draft demonstration plan
+  - `todos/{slug}/state.yaml` — grounding metadata with referenced paths
+- Split case:
+  - child todo folders and dependency links
+  - `todos/{slug}/state.yaml` — updated holder `breakdown`
 
 ## Steps
 

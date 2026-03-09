@@ -62,10 +62,14 @@ class PreparationView(Widget, can_focus=True):
         Binding("down", "cursor_down", "Down", key_display="↓", group=Binding.Group("Nav", compact=True), show=False),
         Binding("left", "collapse", "Collapse", key_display="←", group=Binding.Group("Fold", compact=True), show=False),
         Binding("right", "expand", "Expand", key_display="→", group=Binding.Group("Fold", compact=True), show=False),
-        Binding("enter", "activate", "Toggle/Edit"),
+        Binding("enter", "activate", "Toggle/Edit", show=False),
         Binding("space", "preview_file", "View"),
-        Binding("equals_sign", "expand_all", "All", key_display="+", group=Binding.Group("Fold", compact=True)),
-        Binding("minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True)),
+        Binding(
+            "equals_sign", "expand_all", "All", key_display="+", group=Binding.Group("Fold", compact=True), show=False
+        ),
+        Binding(
+            "minus", "collapse_all", "None", key_display="-", group=Binding.Group("Fold", compact=True), show=False
+        ),
         Binding("n", "new_todo", "Todo"),
         Binding("n", "new_project", "New Project"),
         Binding("b", "new_bug", "Bug"),

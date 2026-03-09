@@ -80,6 +80,9 @@ class MirrorWorker:
 
     async def run(self) -> None:
         """Run reconciliation on startup and every interval until cancelled."""
+        # TODO: re-enable after mirror-runtime-isolation is delivered
+        logger.info("Mirror worker disabled (pending mirror-runtime-isolation)")
+        return
         await self.run_once()
         while True:
             await asyncio.sleep(self.interval_s)

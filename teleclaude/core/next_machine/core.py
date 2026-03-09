@@ -792,7 +792,6 @@ def _find_next_prepare_slug(cwd: str) -> str | None:
     Scans roadmap.yaml for slugs, then checks state.yaml phase for each.
     Active slugs have phase pending, ready, or in_progress.
     Returns the first slug that still needs action:
-    - breakdown assessment pending for input.md
     - requirements.md missing
     - implementation-plan.md missing
     - phase still pending (needs promotion to ready)
@@ -803,12 +802,6 @@ def _find_next_prepare_slug(cwd: str) -> str | None:
         # Skip done items
         if phase == ItemPhase.DONE.value:
             continue
-
-        has_input = check_file_exists(cwd, f"todos/{slug}/input.md")
-        if has_input:
-            breakdown_state = read_breakdown_state(cwd, slug)
-            if breakdown_state is None or not breakdown_state.get("assessed"):
-                return slug
 
         has_requirements = check_file_exists(cwd, f"todos/{slug}/requirements.md")
         has_impl_plan = check_file_exists(cwd, f"todos/{slug}/implementation-plan.md")
@@ -978,6 +971,80 @@ def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, StateV
             merged = list(dict.fromkeys([*(str(i) for i in resolved_ids), *(str(i) for i in unresolved_ids)]))
             state["resolved_findings"] = merged
             state["unresolved_findings"] = []
+    write_phase_state(cwd, slug, state)
+    return state
+
+
+# Valid prepare sub-phases that accept verdicts via mark-phase
+_PREPARE_VERDICT_PHASES = ("requirements_review", "plan_review")
+_PREPARE_VERDICT_VALUES = ("approve", "needs_work")
+
+# Valid prepare_phase values for direct phase advancement
+_PREPARE_PHASE_VALUES = tuple(p.value for p in PreparePhase)
+
+
+def mark_prepare_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, StateValue]:
+    """Mark a prepare sub-phase verdict in state.yaml.
+
+    Args:
+        cwd: Project root directory (not worktree)
+        slug: Work item slug
+        phase: Prepare sub-phase (requirements_review, plan_review)
+        verdict: Verdict value (approve, needs_work)
+
+    Returns:
+        Updated state dict
+    """
+    if phase not in _PREPARE_VERDICT_PHASES:
+        raise ValueError(f"invalid prepare phase '{phase}': must be one of {', '.join(_PREPARE_VERDICT_PHASES)}")
+    if verdict not in _PREPARE_VERDICT_VALUES:
+        raise ValueError(f"invalid verdict '{verdict}': must be one of {', '.join(_PREPARE_VERDICT_VALUES)}")
+
+    state = read_phase_state(cwd, slug)
+    review_dict = state.get(phase)
+    if not isinstance(review_dict, dict):
+        review_dict = {}
+    review_dict["verdict"] = verdict
+    state[phase] = review_dict  # type: ignore[assignment]
+    write_phase_state(cwd, slug, state)
+    return state
+
+
+def mark_prepare_phase(cwd: str, slug: str, status: str) -> dict[str, StateValue]:
+    """Set prepare_phase directly in state.yaml.
+
+    When advancing to 'prepared', also stamps grounding as valid with the
+    current HEAD sha and input digest so the work state machine accepts it.
+
+    Args:
+        cwd: Project root directory (not worktree)
+        slug: Work item slug
+        status: PreparePhase value (e.g. prepared, gate, plan_review)
+
+    Returns:
+        Updated state dict
+    """
+    if status not in _PREPARE_PHASE_VALUES:
+        raise ValueError(f"invalid prepare_phase '{status}': must be one of {', '.join(_PREPARE_PHASE_VALUES)}")
+
+    state = read_phase_state(cwd, slug)
+    state["prepare_phase"] = status
+
+    if status == PreparePhase.PREPARED.value:
+        grounding = state.get("grounding", {})
+        grounding_dict = {**DEFAULT_STATE["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore[arg-type]
+        rc, current_sha, _ = _run_git_prepare(["rev-parse", "HEAD"], cwd=cwd)
+        if rc == 0 and current_sha.strip():
+            grounding_dict["base_sha"] = current_sha.strip()
+        input_path = Path(cwd) / "todos" / slug / "input.md"
+        if input_path.exists():
+            grounding_dict["input_digest"] = hashlib.sha256(input_path.read_bytes()).hexdigest()
+        grounding_dict["valid"] = True
+        grounding_dict["last_grounded_at"] = datetime.now(timezone.utc).isoformat()
+        grounding_dict["invalidation_reason"] = ""
+        grounding_dict["changed_paths"] = []
+        state["grounding"] = grounding_dict  # type: ignore[assignment]
+
     write_phase_state(cwd, slug, state)
     return state
 
@@ -1859,18 +1926,14 @@ def freeze_to_icebox(cwd: str, slug: str) -> bool:
 class DeliveredEntry:
     slug: str
     date: str
-    title: str | None = None
     commit: str | None = None
-    description: str | None = None
     children: list[str] | None = None
 
 
 class DeliveredDict(TypedDict, total=False):
     slug: str
     date: str
-    title: str
     commit: str
-    description: str
     children: list[str]
 
 
@@ -1904,9 +1967,7 @@ def load_delivered(cwd: str) -> list[DeliveredEntry]:
             DeliveredEntry(
                 slug=item["slug"],
                 date=str(item.get("date", "")),
-                title=item.get("title"),
                 commit=item.get("commit"),
-                description=item.get("description"),
                 children=children,
             )
         )
@@ -1921,12 +1982,8 @@ def save_delivered(cwd: str, entries: list[DeliveredEntry]) -> None:
     data: list[DeliveredDict] = []
     for entry in entries:
         item: DeliveredDict = {"slug": entry.slug, "date": entry.date}
-        if entry.title:
-            item["title"] = entry.title
         if entry.commit:
             item["commit"] = entry.commit
-        if entry.description:
-            item["description"] = entry.description
         if entry.children:
             item["children"] = entry.children
         data.append(item)
@@ -1941,9 +1998,11 @@ def deliver_to_delivered(
     slug: str,
     *,
     commit: str | None = None,
-    title: str | None = None,
 ) -> bool:
-    """Move a slug from roadmap to delivered (prepended). Returns False if not in roadmap."""
+    """Move a slug from roadmap to delivered (prepended). Returns False if not in roadmap.
+
+    If no commit SHA is provided, auto-detects HEAD of the repository.
+    """
     entries = load_roadmap(cwd)
     entry = None
     for i, e in enumerate(entries):
@@ -1955,15 +2014,20 @@ def deliver_to_delivered(
 
     save_roadmap(cwd, entries)
 
+    if commit is None:
+        try:
+            repo = Repo(cwd, search_parent_directories=True)
+            commit = repo.head.commit.hexsha[:12]
+        except (InvalidGitRepositoryError, NoSuchPathError, ValueError):
+            pass
+
     delivered = load_delivered(cwd)
     delivered.insert(
         0,
         DeliveredEntry(
             slug=slug,
             date=date.today().isoformat(),
-            title=title or entry.description,
             commit=commit,
-            description=entry.description,
         ),
     )
     save_delivered(cwd, delivered)
@@ -2015,22 +2079,8 @@ def sweep_completed_groups(cwd: str) -> list[str]:
             continue
 
         group_slug = entry.name
-        description = None
 
-        # Try deliver_to_delivered (handles roadmap removal + delivered.yaml append)
-        # Load description from roadmap before removal
-        for rm_entry in load_roadmap(cwd):
-            if rm_entry.slug == group_slug:
-                description = rm_entry.description
-                break
-
-        group_title = description or f"Group: {group_slug} ({len(children)} children delivered)"
-
-        delivered = deliver_to_delivered(
-            cwd,
-            group_slug,
-            title=group_title,
-        )
+        delivered = deliver_to_delivered(cwd, group_slug)
 
         if delivered:
             # deliver_to_delivered added entry without children — patch it in
@@ -2042,13 +2092,18 @@ def sweep_completed_groups(cwd: str) -> list[str]:
             save_delivered(cwd, entries)
         else:
             # Not in roadmap — add directly to delivered.yaml with children
+            try:
+                repo = Repo(cwd, search_parent_directories=True)
+                head_sha: str | None = repo.head.commit.hexsha[:12]
+            except (InvalidGitRepositoryError, NoSuchPathError, ValueError):
+                head_sha = None
             entries = load_delivered(cwd)
             entries.insert(
                 0,
                 DeliveredEntry(
                     slug=group_slug,
                     date=date.today().isoformat(),
-                    title=group_title,
+                    commit=head_sha,
                     children=list(children),
                 ),
             )
@@ -2668,13 +2723,10 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
 def _derive_prepare_phase(slug: str, cwd: str, state: dict[str, StateValue]) -> PreparePhase:
     """Derive the initial prepare phase from artifact existence when no durable phase is set."""
     has_input = check_file_exists(cwd, f"todos/{slug}/input.md")
-    breakdown = state.get("breakdown", {})
-    breakdown_assessed = isinstance(breakdown, dict) and bool(breakdown.get("assessed"))
-
-    if has_input and not breakdown_assessed:
-        return PreparePhase.INPUT_ASSESSMENT
-
     has_requirements = check_file_exists(cwd, f"todos/{slug}/requirements.md")
+
+    if has_input and not has_requirements:
+        return PreparePhase.INPUT_ASSESSMENT
     if not has_requirements:
         return PreparePhase.TRIANGULATION
 
@@ -2711,22 +2763,25 @@ async def _prepare_step_input_assessment(
     cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
-    """INPUT_ASSESSMENT: breakdown hasn't been assessed yet."""
-    breakdown = state.get("breakdown", {})
-    if isinstance(breakdown, dict) and breakdown.get("assessed"):
-        # Transition to TRIANGULATION
-        state["prepare_phase"] = PreparePhase.TRIANGULATION.value
+    """INPUT_ASSESSMENT: choose requirements strategy and produce requirements."""
+    if check_file_exists(cwd, f"todos/{slug}/requirements.md"):
+        state["prepare_phase"] = PreparePhase.REQUIREMENTS_REVIEW.value
         await asyncio.to_thread(write_phase_state, cwd, slug, state)
         return True, ""  # loop
 
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command="next-prepare-draft",
+        command="next-prepare-discovery",
         args=slug,
         project=cwd,
         guidance=guidance,
         subfolder="",
-        note=f"Assess todos/{slug}/input.md for complexity. Split if needed.",
+        note=(
+            f"Assess todos/{slug}/input.md and produce todos/{slug}/requirements.md. "
+            "Work solo if the input is already concrete enough. If important intent, "
+            "constraints, or code grounding still need another perspective, run "
+            "triangulated discovery with a complementary partner."
+        ),
         next_call=f"telec todo prepare {slug}",
     )
 
@@ -2737,7 +2792,7 @@ async def _prepare_step_triangulation(
     cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
-    """TRIANGULATION: requirements.md needed."""
+    """TRIANGULATION: requirements.md still needs discovery or revision."""
     if check_file_exists(cwd, f"todos/{slug}/requirements.md"):
         # Transition to REQUIREMENTS_REVIEW
         state["prepare_phase"] = PreparePhase.REQUIREMENTS_REVIEW.value
@@ -2748,12 +2803,15 @@ async def _prepare_step_triangulation(
     _emit_prepare_event("domain.software-development.prepare.triangulation_started", {"slug": slug})
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
-        command="next-prepare-draft",
+        command="next-prepare-discovery",
         args=slug,
         project=cwd,
         guidance=guidance,
         subfolder="",
-        note=f"Discuss until you have enough input. Write todos/{slug}/requirements.md yourself.",
+        note=(
+            f"Produce todos/{slug}/requirements.md. Use solo discovery if you already have "
+            "enough grounding; otherwise triangulate with a complementary partner before writing."
+        ),
         next_call=f"telec todo prepare {slug}",
     )
 
@@ -2801,7 +2859,7 @@ async def _prepare_step_requirements_review(
             findings_note = f"\n\nReview findings:\n{read_text_sync(findings_path)}"
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
-            command="next-prepare-draft",
+            command="next-prepare-discovery",
             args=slug,
             project=cwd,
             guidance=guidance,
@@ -2843,7 +2901,11 @@ async def _prepare_step_plan_drafting(
         project=cwd,
         guidance=guidance,
         subfolder="",
-        note=f"Discuss until you have enough input. Write todos/{slug}/implementation-plan.md yourself.",
+        note=(
+            f"Ground the approved requirements for todos/{slug}. If the work is atomic, "
+            f"write todos/{slug}/implementation-plan.md and demo.md. If planning shows the "
+            "parent is too large, split it into child todos and update the holder breakdown."
+        ),
         next_call=f"telec todo prepare {slug}",
     )
 
@@ -3246,32 +3308,8 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
             return f"CONTAINER: {resolved_slug} was split into: {', '.join(holder_children)}. Work on those first."
 
         if not await asyncio.to_thread(slug_in_roadmap, cwd, resolved_slug):
-            has_requirements = check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md")
-            has_impl_plan = check_file_exists(cwd, f"todos/{resolved_slug}/implementation-plan.md")
-            missing_docs: list[str] = []
-            if not has_requirements:
-                missing_docs.append("requirements.md")
-            if not has_impl_plan:
-                missing_docs.append("implementation-plan.md")
-            docs_clause = "."
-            if missing_docs:
-                docs_list = " and ".join(missing_docs)
-                docs_clause = f" before writing {docs_list}."
-            next_step = (
-                "Discuss with the user where it should appear in the list and get approval, "
-                f"then add it to the roadmap{docs_clause}"
-            )
-            note = f"Preparing: {resolved_slug}. This slug is not in todos/roadmap.yaml. {next_step}"
-            guidance = await compose_agent_guidance(db)
-            return format_tool_call(
-                command="next-prepare-draft",
-                args=resolved_slug,
-                project=cwd,
-                guidance=guidance,
-                subfolder="",
-                note=note,
-                next_call=f"telec todo prepare {resolved_slug}",
-            )
+            await asyncio.to_thread(add_to_roadmap, cwd, resolved_slug)
+            logger.info("AUTO_ROADMAP_ADD slug=%s machine=prepare", resolved_slug)
 
         # Dispatch loop
         for _iter in range(_PREPARE_LOOP_LIMIT):
@@ -3348,6 +3386,14 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         # Bugs bypass the roadmap check (they're not in the roadmap)
         is_bug = await asyncio.to_thread(is_bug_todo, cwd, slug)
         if not is_bug and not await asyncio.to_thread(slug_in_roadmap, cwd, slug):
+            # Auto-add to roadmap — user intent is clear
+            await asyncio.to_thread(add_to_roadmap, cwd, slug)
+            logger.info("AUTO_ROADMAP_ADD slug=%s machine=work", slug)
+            # Reload deps after roadmap change
+            deps = await asyncio.to_thread(load_roadmap_deps, deps_cwd)
+
+        # Holder resolution: if slug is a container with children, route to first runnable child
+        if not is_bug:
             holder_child, holder_reason = await asyncio.to_thread(resolve_first_runnable_holder_child, cwd, slug, deps)
             if holder_child:
                 slug = holder_child
@@ -3361,7 +3407,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 return format_error(
                     "DEPS_UNSATISFIED",
                     f"Holder '{slug}' has children, but none are currently runnable due to unsatisfied dependencies.",
-                    next_call="Complete dependency items first, or check todos/roadmap.yaml.",
+                    next_call="Complete dependency items first.",
                 )
             elif holder_reason == "item_not_ready":
                 _log_next_work_phase(
@@ -3379,14 +3425,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 return format_error(
                     "NOT_PREPARED",
                     f"Holder '{slug}' has child todos, but none are in roadmap.",
-                    next_call="Check todos/roadmap.yaml or call telec todo prepare.",
-                )
-            else:
-                _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "slug_missing")
-                return format_error(
-                    "NOT_PREPARED",
-                    f"Item '{slug}' not found in roadmap.",
-                    next_call="Check todos/roadmap.yaml or call telec todo prepare.",
+                    next_call="Add child items to roadmap or call telec todo prepare.",
                 )
 
         phase = await asyncio.to_thread(get_item_phase, cwd, slug)

@@ -1,5 +1,9 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
+- slug: mirror-runtime-isolation
+  description: 'Isolate mirror reconciliation from the daemon control plane: canonical
+    transcript allowlist, worker isolation, exact source identity, conditional DB
+    split'
 - slug: mesh-trust-model
   after:
   - mesh-architecture
@@ -41,3 +45,9 @@
 - slug: a2ui-showcase-component
 - slug: web-frontend-test-bugs
 - slug: youtube-scrape-channels-job
+- slug: codex-render-semantic-runtime
+  description: 'Render-aware session runtime: preserve Codex tmux semantics, move
+    to wake-driven capture, and cut idle tmux overhead'
+- slug: icebox-physical-folder
+  description: 'Physical _icebox/ folder for frozen todos: folder-move on freeze/unfreeze,
+    migration of 17 existing entries'

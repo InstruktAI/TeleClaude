@@ -26,9 +26,13 @@ Create or update agent artifacts that follow the schema and compile correctly fo
 1. Choose the artifact type (agent, skill, command, or AGENTS.md).
 2. Follow the corresponding schema and taxonomy requirements.
 3. Ensure frontmatter fields are complete and consistent (except AGENTS.md, which has none).
-4. Add the artifact title (`# ...`) for all artifacts.
-5. Apply the artifact-specific rules below.
-6. After any doc change, run `telec sync`.
+4. If the command takes multiple arguments, declare `parameters` in frontmatter
+   as an ordered list with `name` and optional `required`/`default` per entry.
+   List order defines position. Use `$name` references in the body. See the
+   agent-artifacts spec for the full schema.
+5. Add the artifact title (`# ...`) for all artifacts.
+6. Apply the artifact-specific rules below.
+7. After any doc change, run `telec sync`.
 
 ## Outputs
 

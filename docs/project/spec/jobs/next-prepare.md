@@ -11,6 +11,7 @@ type: 'spec'
 
 - @~/.teleclaude/docs/general/procedure/agent-job-hygiene.md
 - @~/.teleclaude/docs/general/procedure/maintenance/next-prepare.md
+- @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-discovery.md
 - @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-draft.md
 - @~/.teleclaude/docs/general/procedure/maintenance/next-prepare-gate.md
 
@@ -19,8 +20,9 @@ type: 'spec'
 This spec defines the stable contract for the `next-prepare` job family.
 Execution flow and state handling live in maintenance procedures.
 
-The job family has two explicit variants:
+The job family has three explicit variants:
 
+- `next-prepare-discovery`
 - `next-prepare-draft`
 - `next-prepare-gate`
 
@@ -34,8 +36,8 @@ Hard rule: draft and gate must never run in the same worker session.
 ## Canonical fields
 
 - `scope`: active todo slugs under `todos/`; excludes `todos/icebox.md` and `todos/delivered.md`; runs idempotently.
-- `purpose`: improves preparation artifacts only (not feature implementation). Draft handles creation/refinement; gate handles formal DOR validation.
-- `outputs` per processed slug: `requirements.md`, `implementation-plan.md`, `dor-report.md`, `state.json` (`dor` section).
+- `purpose`: improves preparation artifacts only (not feature implementation). Discovery handles requirements, draft handles planning and breakdown, gate handles formal DOR validation.
+- `outputs` per processed slug: `requirements.md`, `implementation-plan.md`, `demo.md`, `dor-report.md`, `state.yaml`.
 
 ### `state.json.dor` schema
 
@@ -78,3 +80,6 @@ Only `next-prepare-gate` may authorize this transition.
 
 - This spec owns the **what** (job inputs/outputs/contracts).
 - The maintenance procedure owns the **how** (ordering, state transitions, skip rules, recovery).
+- `next-prepare-discovery` owns requirements only.
+- `next-prepare-draft` owns implementation planning and split/no-split execution decomposition.
+- `next-prepare-gate` owns final DOR validation only.

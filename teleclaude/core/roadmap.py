@@ -240,7 +240,7 @@ def assemble_roadmap(
             if entry.slug in seen_slugs:
                 continue
             seen_slugs.add(entry.slug)
-            append_todo(entry.slug, description=entry.description or entry.title, group="Delivered")
+            append_todo(entry.slug, group="Delivered")
             todos[-1].status = "delivered"
             todos[-1].delivered_at = entry.date
 

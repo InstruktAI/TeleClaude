@@ -38,14 +38,16 @@ Call `telec todo prepare [slug]`. Read the returned instruction block.
 
 The state machine returns one of the following instruction types:
 
-#### TRIANGULATION REQUIRED
+#### INPUT ASSESSMENT / REQUIREMENTS DISCOVERY REQUIRED
 
-`input.md` exists and requirements need derivation. Dispatch the two-agent
-triangulation team per the triangulation procedure. The orchestrator is one
-of the two agents — it spawns the complementary partner and runs convergence
-inline.
+`input.md` exists and `requirements.md` is still missing or needs rework. Dispatch
+`next-prepare-discovery` to a worker session.
 
-After requirements are written, call `telec todo prepare [slug]` again.
+The discovery worker owns requirements production. It decides whether solo discovery
+is enough or whether to triangulate with a complementary partner. Both paths converge
+to the same output: `requirements.md`.
+
+After requirements are written or revised, call `telec todo prepare [slug]` again.
 
 #### REQUIREMENTS REVIEW REQUIRED
 
@@ -58,10 +60,14 @@ After review, call `telec todo prepare [slug]` again.
 #### PLAN DRAFTING REQUIRED
 
 Requirements are approved but `implementation-plan.md` does not exist.
-Dispatch `next-prepare-draft` to a worker session. The draft agent writes
-the plan per the plan draft procedure.
+Dispatch `next-prepare-draft` to a worker session. The draft agent grounds the
+approved requirements, decides whether the work is atomic, and either:
 
-After the plan is written, call `telec todo prepare [slug]` again.
+- writes `implementation-plan.md` and `demo.md`, or
+- splits the todo into dependent child work items and updates the holder breakdown.
+
+After the plan is written or the split is materialized, call
+`telec todo prepare [slug]` again.
 
 #### PLAN REVIEW REQUIRED
 
@@ -80,8 +86,8 @@ All artifacts exist and are approved. The machine checks freshness:
 #### RE_GROUNDING REQUIRED
 
 The plan references files or policies that have changed since last grounding.
-Dispatch an agent with the diff to update the plan. After update, the plan
-re-enters review.
+Dispatch `next-prepare-draft` with the diff to update the plan. After update, the
+plan re-enters review.
 
 Call `telec todo prepare [slug]` again.
 

@@ -725,9 +725,18 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: project/spec/jobs/next-prepare-discovery
+  description: Discovery phase job for next-prepare. Produces grounded requirements
+    from input using solo or triangulated discovery.
+  type: spec
+  scope: project
+  path: docs/project/spec/jobs/next-prepare-discovery.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: project/spec/jobs/next-prepare-draft
-  description: Draft phase job for next-prepare. Builds or refines todo preparation
-    artifacts without final readiness decisions.
+  description: Draft phase job for next-prepare. Builds implementation plans from
+    approved requirements and splits oversized work into child todos when needed.
   type: spec
   scope: project
   path: docs/project/spec/jobs/next-prepare-draft.md

@@ -16,7 +16,7 @@ and where those outputs land.
 ## Canonical fields
 
 - **Commands**:
-  - Frontmatter: `description`, optional `argument-hint`
+  - Frontmatter: `description`, optional `argument-hint`, optional `parameters`
   - Body: normalized command schema (see below)
 - **Skills**:
   - Frontmatter: `name`, `description`
@@ -32,6 +32,13 @@ and where those outputs land.
 - `description`: short, imperative summary.
 - `argument-hint`: optional string for CLI argument hints (commands).
 - `name`: identifier used for skill/agent lookup; must match the skill folder name.
+- `parameters`: optional list of named parameter declarations (commands). Each entry
+  has `name` (string), optional `required` (bool), and optional `default` (string).
+  Position is implicit from list order (first entry = position 0). At compile time,
+  the distribution pipeline injects an HTML-comment preamble mapping parameter names
+  to positions. The body references parameters as `$name` — no runtime substitutes
+  these; the model interprets them via the preamble. The `parameters` field is
+  stripped from emitted frontmatter.
 
 No free text is allowed between the H1 title and the first schema section.
 If required reads are needed, place a `## Required reads` section immediately after
@@ -77,6 +84,51 @@ procedure handles the rest.
 A command that grows beyond ~35 lines is a signal that procedural content has leaked in.
 Extract it to the procedure, add the procedure as a required read, and replace the
 inline content with a pointer.
+
+#### Named parameters
+
+When a command takes multiple arguments, declare them in frontmatter `parameters`
+instead of parsing `$ARGUMENTS` inline. The distribution pipeline injects an
+HTML-comment preamble into the compiled output; the body stays identical across
+all runtimes.
+
+**Source artifact:**
+
+```yaml
+---
+description: Build implementation from plan
+argument-hint: <slug> [mode]
+parameters:
+  - name: slug
+    required: true
+  - name: mode
+    default: standard
+---
+```
+
+**Body references parameters as `$name`:**
+
+```markdown
+## Inputs
+
+- Slug: `$slug` (required)
+- Mode: `$mode` (default: `standard`)
+```
+
+**Compiled output (all runtimes, prepended to body):**
+
+```html
+<!-- $slug = argument at position 0 (required) -->
+<!-- $mode = argument at position 1 (default: "standard") -->
+```
+
+Rules:
+- Each parameter must have a unique `name`.
+- Position is derived from list order — no explicit position field needed.
+- Use `$name` (lowercase, no braces) in the body — no runtime substitutes this;
+  the model interprets it via the preamble.
+- `$ARGUMENTS` continues to work for single-argument commands; `parameters` is
+  only needed when multiple distinct arguments are required.
 
 ### Skills
 

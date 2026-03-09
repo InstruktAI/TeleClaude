@@ -357,8 +357,8 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/maintenance/next-prepare-discovery
-  description: Triangulation phase for next-prepare. Two agents research in parallel
-    and converge to derive requirements from input, codebase, and documentation.
+  description: Requirements discovery phase for next-prepare. Produces requirements
+    from input using solo or triangulated discovery.
   type: procedure
   scope: global
   path: docs/general/procedure/maintenance/next-prepare-discovery.md
@@ -366,8 +366,8 @@ snippets:
   visibility: internal
   source_project: TeleClaude
 - id: general/procedure/maintenance/next-prepare-draft
-  description: Plan drafting phase for next-prepare. Derives implementation-plan.md
-    from approved requirements. Single-agent work.
+  description: Plan drafting phase for next-prepare. Produces implementation plans
+    from approved requirements and splits the work when planning shows it is not atomic.
   type: procedure
   scope: global
   path: docs/general/procedure/maintenance/next-prepare-draft.md

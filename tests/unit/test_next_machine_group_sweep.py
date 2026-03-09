@@ -24,7 +24,7 @@ def _write_roadmap(tmpdir: str, entries: list[dict]) -> None:
 
 
 def _write_delivered(tmpdir: str, slugs: list[str]) -> None:
-    entries = [DeliveredEntry(slug=s, date="2026-02-21", title=f"Delivered {s}") for s in slugs]
+    entries = [DeliveredEntry(slug=s, date="2026-02-21") for s in slugs]
     save_delivered(tmpdir, entries)
 
 
@@ -121,10 +121,9 @@ def test_sweep_removes_group_from_roadmap():
         roadmap_slugs = [e["slug"] for e in roadmap]
         assert "roadmap-group" not in roadmap_slugs
         assert "other-item" in roadmap_slugs
-        # Added to delivered with description from roadmap
+        # Added to delivered with children from breakdown
         delivered = load_delivered(tmpdir)
         group_entry = next(e for e in delivered if e.slug == "roadmap-group")
-        assert group_entry.title == "My group description"
         assert group_entry.children == ["c1", "c2"]
 
 

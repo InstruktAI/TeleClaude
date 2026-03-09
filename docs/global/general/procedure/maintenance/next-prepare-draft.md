@@ -2,7 +2,7 @@
 id: 'general/procedure/maintenance/next-prepare-draft'
 type: 'procedure'
 scope: 'global'
-description: 'Plan drafting phase for next-prepare. Derives implementation-plan.md from approved requirements. Single-agent work.'
+description: 'Plan drafting phase for next-prepare. Produces implementation plans from approved requirements and splits the work when planning shows it is not atomic.'
 ---
 
 # Next Prepare Plan Draft — Procedure
@@ -15,11 +15,13 @@ description: 'Plan drafting phase for next-prepare. Derives implementation-plan.
 
 ## Goal
 
-Produce `implementation-plan.md` from approved `requirements.md`. This is a single-agent
-phase — requirements derivation is handled by the triangulation team, not here.
+Produce `implementation-plan.md` from approved `requirements.md`, or split the todo into
+dependent child work items when planning shows the work is not atomic. This is a
+single-agent phase — requirements derivation is handled earlier in discovery, not here.
 
 The plan must be detailed enough for a builder to execute without guessing, and
-review-aware enough that the reviewer finds no surprises.
+review-aware enough that the reviewer finds no surprises. If that bar cannot be met
+for one builder session, this phase owns the split.
 
 ## Preconditions
 
@@ -39,7 +41,37 @@ Read the full context before writing anything:
   of similar functionality. Use `telec docs index` for relevant policies and specs.
 - Definition of Done — every plan task must produce output that satisfies DoD gates.
 
-### 2. Draft the implementation plan
+### 1b. Fix mode (when dispatched with "FIX MODE")
+
+When the dispatch note starts with "FIX MODE", this is a targeted revision, not a
+fresh draft:
+
+- Read the existing `todos/{slug}/implementation-plan.md` alongside the review findings.
+- Apply targeted fixes to address each finding. Preserve all unflagged content.
+- Do not re-draft from scratch — the existing plan was already grounded and approved.
+- Skip the atomicity decision (step 2); proceed directly to updating the plan tasks
+  affected by findings, then write the updated artifacts (step 5).
+
+### 2. Decide whether the todo is atomic
+
+Ground in the code before deciding whether to split. Use the DOR scope/size rules:
+
+- estimate likely change volume from the real code paths, not from the prose alone
+- decide whether the work is one coherent builder behavior or multiple independently
+  shippable pieces
+- account for verification and coordination cost, not just file count
+
+If the work is too large for one builder session:
+
+- create focused child todos
+- seed them from the approved parent requirements
+- add dependency ordering in `todos/roadmap.yaml`
+- update the holder `todos/{slug}/state.yaml` `breakdown.todos`
+- stop treating the parent as directly builder-ready
+
+If the work is atomic, continue to plan drafting.
+
+### 3. Draft the implementation plan
 
 Structure the plan as an ordered task list. Each task must include:
 
@@ -52,7 +84,7 @@ Structure the plan as an ordered task list. Each task must include:
 - **Referenced files**: exact file paths that will be created or modified. These are
   extracted into `state.yaml.grounding.referenced_paths` for staleness detection.
 
-### 3. Anticipate review lanes
+### 4. Anticipate review lanes
 
 The plan must pre-satisfy what the reviewer will check. For each requirement:
 
@@ -65,9 +97,9 @@ The plan must pre-satisfy what the reviewer will check. For each requirement:
 A plan that does not anticipate review lanes will produce review findings that cost
 more to fix than they cost to prevent.
 
-### 4. Write artifacts
+### 5. Write artifacts
 
-Write:
+If the todo stays atomic, write:
 
 - `todos/{slug}/implementation-plan.md` — the full plan with tasks, rationale, and verification.
 - `todos/{slug}/demo.md` — draft demonstration plan: what medium (CLI, TUI, web, API),
@@ -79,23 +111,33 @@ Update `todos/{slug}/state.yaml`:
 - Set `grounding.referenced_paths` to the list of file paths from the plan.
 - Update `grounding.base_sha` to current HEAD.
 
-### 5. Enforce boundaries
+If the todo is split instead, write:
+
+- child todo artifacts
+- updated holder `breakdown.todos`
+- any dependency links needed in `todos/roadmap.yaml`
+
+### 6. Enforce boundaries
 
 - Do not invent behavior not grounded in requirements or codebase patterns.
-- Do not make architectural decisions — if the approach is genuinely unclear, write
-  blockers to `dor-report.md` and stop.
-- Do not change roadmap status.
+- Do not rewrite approved requirements unless the plan is blocked by a genuine
+  contradiction in those requirements.
+- Do not change roadmap status beyond the child dependency links needed for a split.
 - If blocked by uncertainty, record the blocker and continue with what is known.
 
 ## Outputs
 
-1. `todos/{slug}/implementation-plan.md` — review-aware, rationale-rich.
-2. `todos/{slug}/demo.md` — draft demonstration plan.
-3. `todos/{slug}/state.yaml` — grounding metadata with referenced paths.
+1. Atomic case:
+   `todos/{slug}/implementation-plan.md`, `todos/{slug}/demo.md`, and updated
+   `todos/{slug}/state.yaml`.
+2. Split case:
+   child todos, dependency links, and updated holder `breakdown`.
 
 ## Recovery
 
 1. If requirements are ambiguous, note the ambiguity in `dor-report.md` and derive the
    most likely interpretation. Mark it `[inferred]` in the plan.
-2. If a file referenced in requirements does not exist, verify whether it should be
+2. If planning reveals the parent is not atomic, split it rather than stretching one
+   builder plan past the session-size limit.
+3. If a file referenced in requirements does not exist, verify whether it should be
    created or whether the requirement is stale.
