@@ -15,7 +15,7 @@ resolved_findings: []
 prepare_phase: plan_review
 grounding:
   valid: true
-  base_sha: bec1cb3d96724394249507053dff2287e4a2abba
+  base_sha: d06c63c4e1c4d7f7ac874fb1ad7ea52c276debe7
   input_digest: 9b0d64af495a5ed7bd4b7b444ee7da88
   referenced_paths:
   - teleclaude/core/models.py
@@ -31,17 +31,14 @@ grounding:
   - tests/unit/cli/tui/test_phase_labels.py
   - tests/unit/test_tui_todo_row.py
   - tests/unit/core/test_roadmap.py
-  last_grounded_at: '2026-03-09T19:35:00Z'
-  invalidated_at: null
-  invalidation_reason: null
-  changed_paths: []
+  last_grounded_at: '2026-03-09T20:47:00Z'
 requirements_review:
   verdict: approve
   reviewed_at: '2026-03-09T12:37:41Z'
   findings_count: 0
   rounds: 1
 plan_review:
-  verdict: approve
+  verdict: ''
   reviewed_at: '2026-03-09T20:47:00Z'
   findings_count: 0
 dor:
