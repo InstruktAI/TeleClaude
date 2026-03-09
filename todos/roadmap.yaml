@@ -50,15 +50,14 @@
     to wake-driven capture, and cut idle tmux overhead'
 - slug: cache-transparency-refactor
 - slug: session-role-metadata
-- slug: todo-phase-status-display
 - slug: tui-chiptunes-resource-leaks
 - slug: todo-phase-status-display-2
 - slug: test-suite-overhaul
 - slug: mirror-runtime-isolation-2
 - slug: tso-infra
   group: test-suite-overhaul
-  description: 'Feature branch, directory scaffold, conftest, CI enforcement, ignored.md
-    framework'
+  description: Feature branch, directory scaffold, conftest, CI enforcement, ignored.md
+    framework
 - slug: tso-adapters
   group: test-suite-overhaul
   after:
@@ -112,7 +111,7 @@
   - tso-core-logic
   - tso-hooks
   - tso-peripherals
-  description: 'Triage tests/integration/, enforce cross-module boundary'
+  description: Triage tests/integration/, enforce cross-module boundary
 - slug: tso-validate
   group: test-suite-overhaul
   after:
