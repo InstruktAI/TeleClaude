@@ -1569,6 +1569,39 @@ def collect_transcript_messages(
     return messages
 
 
+def extract_recent_transcript_turns(
+    transcript_path: str,
+    agent_name: AgentName,
+    *,
+    max_turns_per_role: int = 3,
+) -> list[tuple[str, str]]:
+    """Return the most recent interleaved user/assistant transcript turns.
+
+    Uses the shared transcript normalization pipeline and keeps messages in their
+    original order while limiting each side to the most recent N turns.
+    """
+    if max_turns_per_role <= 0:
+        return []
+
+    messages = collect_transcript_messages(transcript_path, agent_name)
+    if not messages:
+        return []
+
+    selected_reversed: list[tuple[str, str]] = []
+    counts = {"user": 0, "assistant": 0}
+    for role, text in reversed(messages):
+        if role not in counts:
+            continue
+        if counts[role] >= max_turns_per_role:
+            continue
+        selected_reversed.append((role, text))
+        counts[role] += 1
+        if all(count >= max_turns_per_role for count in counts.values()):
+            break
+
+    return list(reversed(selected_reversed))
+
+
 def parse_session_transcript(
     transcript_path: str,
     title: str,

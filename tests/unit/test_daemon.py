@@ -1814,8 +1814,8 @@ class TestTitleUpdate:
         with (
             patch("teleclaude.core.agent_coordinator.db") as mock_db,
             patch(
-                "teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock
-            ) as mock_summarize,
+                "teleclaude.core.agent_coordinator.generate_session_title", new_callable=AsyncMock
+            ) as mock_generate,
         ):
             mock_db.get_session = AsyncMock(return_value=session)
             mock_db.update_session = AsyncMock()
@@ -1823,14 +1823,15 @@ class TestTitleUpdate:
 
             await coordinator.handle_user_prompt_submit(context)
 
-            # summarize_user_input_title should not be called for non-Untitled sessions
-            mock_summarize.assert_not_called()
+            # Title generation is async and transcript-driven, so there is no
+            # direct title write during the submit handler itself.
+            mock_generate.assert_not_called()
             # update_session is still called but should NOT include title
             call_kwargs = mock_db.update_session.call_args.kwargs
             assert "title" not in call_kwargs
 
     async def test_title_summarization_updates_untitled(self):
-        """Title summarization should run asynchronously for 'Untitled' sessions."""
+        """Session title generation should run asynchronously from transcript context."""
         coordinator = AgentCoordinator(
             client=MagicMock(),
             tts_manager=MagicMock(),
@@ -1844,7 +1845,9 @@ class TestTitleUpdate:
             last_input_origin=InputOrigin.TELEGRAM.value,
             title="Untitled",  # Should be updated
             active_agent="claude",
+            native_log_file="/tmp/transcript.jsonl",
             thinking_mode="slow",
+            last_message_sent_at=datetime.now(timezone.utc),
         )
 
         context = AgentEventContext(
@@ -1856,13 +1859,26 @@ class TestTitleUpdate:
         with (
             patch("teleclaude.core.agent_coordinator.db") as mock_db,
             patch(
-                "teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock
-            ) as mock_summarize,
+                "teleclaude.core.agent_coordinator.extract_recent_transcript_turns",
+                return_value=[
+                    ("user", "Help me debug the authentication flow"),
+                    ("assistant", "I inspected the auth code path"),
+                ],
+            ),
+            patch(
+                "teleclaude.core.agent_coordinator.generate_session_title", new_callable=AsyncMock
+            ) as mock_generate,
         ):
             mock_db.get_session = AsyncMock(side_effect=[session, session, session])
-            mock_db.update_session = AsyncMock()
+            mock_db.update_session = AsyncMock(
+                side_effect=lambda _session_id, **kwargs: setattr(
+                    session,
+                    "last_message_sent_at",
+                    datetime.fromisoformat(kwargs["last_message_sent_at"]) if "last_message_sent_at" in kwargs else session.last_message_sent_at,
+                )
+            )
             mock_db.set_notification_flag = AsyncMock()
-            mock_summarize.return_value = "Debug auth flow"
+            mock_generate.return_value = "Debug auth flow"
 
             queued_tasks: list[asyncio.Task[object]] = []
 
@@ -1873,7 +1889,7 @@ class TestTitleUpdate:
             await coordinator.handle_user_prompt_submit(context)
             await asyncio.gather(*queued_tasks)
 
-            mock_summarize.assert_called_once()
+            mock_generate.assert_called_once()
             update_calls = mock_db.update_session.call_args_list
             assert "title" not in update_calls[0].kwargs
             assert "title" not in update_calls[1].kwargs

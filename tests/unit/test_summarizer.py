@@ -6,8 +6,12 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from teleclaude.core.agents import AgentName
-from teleclaude.core.summarizer import summarize_agent_output
-from teleclaude.utils.transcript import collect_transcript_messages, extract_last_agent_message
+from teleclaude.core.summarizer import generate_session_title, summarize_agent_output
+from teleclaude.utils.transcript import (
+    collect_transcript_messages,
+    extract_last_agent_message,
+    extract_recent_transcript_turns,
+)
 
 
 def test_extract_last_agent_message_claude(tmp_path):
@@ -86,6 +90,13 @@ async def test_summarize_agent_output_rejects_whitespace_only_input():
             await summarize_agent_output(" \n\t ")
 
 
+@pytest.mark.asyncio
+async def test_generate_session_title_rejects_empty_context():
+    with patch("teleclaude.core.summarizer._call_title_summarizer", new=AsyncMock(return_value="title")):
+        with pytest.raises(ValueError, match="Empty session title context"):
+            await generate_session_title([])
+
+
 def test_collect_transcript_messages_claude(tmp_path):
     """Test collecting message pairs from Claude transcript."""
     jsonl_content = """{"type":"user","message":{"role":"user","content":"User 1"}}
@@ -154,3 +165,27 @@ def test_collect_transcript_messages_codex(tmp_path):
     messages = collect_transcript_messages(str(f), AgentName.CODEX)
     assert any(role == "user" and "Codex User 1" in text for role, text in messages)
     assert any(role == "assistant" and "Codex Response 1" in text for role, text in messages)
+
+
+def test_extract_recent_transcript_turns_limits_each_role_and_preserves_order(tmp_path):
+    jsonl_content = """{"type":"user","message":{"role":"user","content":"User 1"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Response 1"}]}}
+{"type":"user","message":{"role":"user","content":"User 2"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Response 2"}]}}
+{"type":"user","message":{"role":"user","content":"User 3"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Response 3"}]}}
+{"type":"user","message":{"role":"user","content":"User 4"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Response 4"}]}}
+"""
+    f = tmp_path / "claude_recent.jsonl"
+    f.write_text(jsonl_content)
+
+    turns = extract_recent_transcript_turns(str(f), AgentName.CLAUDE, max_turns_per_role=3)
+    assert turns == [
+        ("user", "User 2"),
+        ("assistant", "Response 2"),
+        ("user", "User 3"),
+        ("assistant", "Response 3"),
+        ("user", "User 4"),
+        ("assistant", "Response 4"),
+    ]

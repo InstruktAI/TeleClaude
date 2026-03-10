@@ -28,15 +28,19 @@ SUMMARY_SCHEMA: dict[str, object] = {  # guard: loose-dict - JSON schema definit
 }
 
 
-def _build_user_input_title_prompt(user_input: str) -> str:
-    """Build prompt for generating a title from user input."""
-    return f"""Generate a concise title for this user request.
+def _build_session_title_prompt(recent_turns: list[tuple[str, str]]) -> str:
+    """Build prompt for generating a title from recent session turns."""
+    formatted_turns = "\n\n".join(f"{role.title()}: {text}" for role, text in recent_turns)
+    return f"""Generate a concise title for this session.
 
-## User Input:
-{user_input}
+Base the title on the enduring user intent across the recent conversation, not
+transient operational chatter such as run commands, model changes, or status noise.
+
+## Recent Conversation:
+{formatted_turns}
 
 ## Output:
-1. **title** (max 7 words, max 70 chars): What the user wants. Use imperative form (e.g., "Fix login bug", "Add dark mode").
+1. **title** (max 7 words, max 70 chars): What the session is about. Prefer imperative phrasing when it fits.
 """
 
 
@@ -52,11 +56,11 @@ def _build_agent_output_summary_prompt(agent_output: str, max_summary_words: int
 """
 
 
-async def summarize_user_input_title(user_input: str) -> str | None:
-    """Generate a title for user input."""
-    if not user_input:
-        raise ValueError("Empty user input")
-    prompt = _build_user_input_title_prompt(user_input)
+async def generate_session_title(recent_turns: list[tuple[str, str]]) -> str | None:
+    """Generate a session title from recent transcript turns."""
+    if not recent_turns:
+        raise ValueError("Empty session title context")
+    prompt = _build_session_title_prompt(recent_turns)
     return await _call_title_summarizer(prompt)
 
 

@@ -59,7 +59,7 @@ from teleclaude.core.status_contract import (
     STALL_THRESHOLD_SECONDS,
     serialize_status_event,
 )
-from teleclaude.core.summarizer import summarize_agent_output, summarize_user_input_title
+from teleclaude.core.summarizer import generate_session_title, summarize_agent_output
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.tts.manager import TTSManager
@@ -67,6 +67,7 @@ from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import (
     count_renderable_assistant_blocks,
+    extract_recent_transcript_turns,
     extract_last_agent_message,
     extract_last_user_message_with_timestamp,
     get_assistant_messages_since,
@@ -682,7 +683,7 @@ class AgentCoordinator:
         """Handle user prompt submission.
 
         For ALL sessions: write last_message_sent to DB (captures direct terminal input).
-        If title is "Untitled", summarize user input and update title.
+        Refresh title from the latest accepted real user input.
         For headless sessions: also route through process_message for tmux adoption.
         """
         session_id = context.session_id
@@ -785,13 +786,6 @@ class AgentCoordinator:
                 }
             )
 
-        # Title update is non-critical and must not block hook ordering.
-        if session.title == "Untitled":
-            self._queue_background_task(
-                self._update_session_title_async(session_id, prompt_text),
-                f"title-summary:{session_id[:8]}",
-            )
-
         # Single DB update for all fields
         await db.update_session(session_id, **update_kwargs)
         logger.debug(
@@ -799,6 +793,14 @@ class AgentCoordinator:
             session_id[:8],
             prompt_text[:50],
         )
+
+        # Title update is non-critical and must not block hook ordering.
+        # Only schedule when this submit became the canonical persisted input.
+        if should_update_last_message:
+            self._queue_background_task(
+                self._update_session_title_async(session_id, now),
+                f"title-summary:{session_id[:8]}",
+            )
 
         # Reset threaded output state on user input.
         # This seals the previous agent output block, ensuring the next response
@@ -856,17 +858,26 @@ class AgentCoordinator:
 
         await get_command_service().process_message(cmd)
 
-    async def _update_session_title_async(self, session_id: str, prompt: str) -> None:
-        """Best-effort asynchronous title update for untitled sessions."""
-        if not prompt:
-            return
-
+    async def _update_session_title_async(self, session_id: str, expected_prompt_at: datetime) -> None:
+        """Best-effort asynchronous title update for the latest accepted prompt."""
         current = await db.get_session(session_id)
-        if not current or current.title != "Untitled":
+        if not current or _to_utc(current.last_message_sent_at) != _to_utc(expected_prompt_at):
+            return
+        transcript_path = current.native_log_file
+        if not current.active_agent or not transcript_path:
             return
 
         try:
-            new_title = await summarize_user_input_title(prompt)
+            agent_name = AgentName.from_str(current.active_agent)
+        except ValueError:
+            return
+
+        recent_turns = extract_recent_transcript_turns(transcript_path, agent_name, max_turns_per_role=3)
+        if not recent_turns:
+            return
+
+        try:
+            new_title = await generate_session_title(recent_turns)
         except Exception as exc:  # noqa: BLE001 - title update should not break flow
             logger.warning("Title summarization failed: %s", exc)
             return
@@ -875,7 +886,7 @@ class AgentCoordinator:
             return
 
         latest = await db.get_session(session_id)
-        if not latest or latest.title != "Untitled":
+        if not latest or _to_utc(latest.last_message_sent_at) != _to_utc(expected_prompt_at):
             return
 
         await db.update_session(session_id, title=new_title)

@@ -291,11 +291,7 @@ async def test_user_prompt_submit_persists_non_checkpoint_codex_synthetic_prompt
         mock_db.set_notification_flag = AsyncMock()
         mock_db.update_session = AsyncMock()
         with patch.object(coordinator, "_emit_activity_event") as mock_emit:
-            with patch(
-                "teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock
-            ) as mock_summarize:
-                mock_summarize.return_value = "Output regression follow-up"
-                await coordinator.handle_user_prompt_submit(context)
+            await coordinator.handle_user_prompt_submit(context)
             mock_emit.assert_called_once_with("sess-1", AgentHookEvents.USER_PROMPT_SUBMIT)
 
         mock_db.set_notification_flag.assert_called_once_with("sess-1", False)
@@ -335,6 +331,36 @@ async def test_user_prompt_submit_broadcasts_hook_input_for_non_headless_session
     assert broadcast_call.kwargs["actor_id"].endswith(":sess-1")
     assert isinstance(broadcast_call.kwargs.get("actor_name"), str)
     assert broadcast_call.kwargs["actor_name"]
+
+
+@pytest.mark.asyncio
+async def test_user_prompt_submit_queues_title_refresh_for_already_titled_session(coordinator, mock_client):
+    session = Session(
+        session_id="sess-title-1",
+        computer_name="macbook",
+        tmux_session_name="tmux-title-1",
+        title="Existing title",
+        active_agent="claude",
+        lifecycle_status="active",
+    )
+    payload = UserPromptSubmitPayload(prompt="rename this session", session_id="sess-title-1")
+    context = AgentEventContext(
+        event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
+        session_id="sess-title-1",
+        data=payload,
+    )
+
+    mock_client.broadcast_user_input = AsyncMock()
+    with patch("teleclaude.core.agent_coordinator.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.set_notification_flag = AsyncMock()
+        mock_db.update_session = AsyncMock()
+        with patch.object(coordinator, "_queue_background_task") as mock_queue:
+            await coordinator.handle_user_prompt_submit(context)
+
+    mock_queue.assert_called_once()
+    queued_coro = mock_queue.call_args.args[0]
+    queued_coro.close()
 
 
 @pytest.mark.asyncio
@@ -444,6 +470,63 @@ async def test_user_prompt_submit_emits_user_prompt_activity_for_non_synthetic_e
             await coordinator.handle_user_prompt_submit(context)
 
         mock_emit.assert_called_once_with("sess-2", AgentHookEvents.USER_PROMPT_SUBMIT)
+
+
+@pytest.mark.asyncio
+async def test_update_session_title_async_updates_existing_title_when_prompt_is_latest(coordinator):
+    prompt_at = datetime.now(timezone.utc)
+    session = Session(
+        session_id="sess-title-2",
+        computer_name="macbook",
+        tmux_session_name="tmux-title-2",
+        title="Old title",
+        active_agent="claude",
+        native_log_file="/tmp/transcript.jsonl",
+        last_message_sent_at=prompt_at,
+    )
+
+    with patch("teleclaude.core.agent_coordinator.db") as mock_db:
+        mock_db.get_session = AsyncMock(side_effect=[session, session])
+        mock_db.update_session = AsyncMock()
+        with (
+            patch(
+                "teleclaude.core.agent_coordinator.extract_recent_transcript_turns",
+                return_value=[("user", "inspect adapters"), ("assistant", "I checked them")],
+            ),
+            patch(
+                "teleclaude.core.agent_coordinator.generate_session_title",
+                new_callable=AsyncMock,
+                return_value="New title",
+            ),
+        ):
+            await coordinator._update_session_title_async("sess-title-2", prompt_at)
+
+    mock_db.update_session.assert_awaited_once_with("sess-title-2", title="New title")
+
+
+@pytest.mark.asyncio
+async def test_update_session_title_async_skips_stale_result_when_newer_prompt_exists(coordinator):
+    prompt_at = datetime.now(timezone.utc)
+    stale_session = Session(
+        session_id="sess-title-3",
+        computer_name="macbook",
+        tmux_session_name="tmux-title-3",
+        title="Old title",
+        active_agent="claude",
+        last_message_sent_at=prompt_at + timedelta(seconds=1),
+    )
+
+    with patch("teleclaude.core.agent_coordinator.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=stale_session)
+        mock_db.update_session = AsyncMock()
+        with patch(
+            "teleclaude.core.agent_coordinator.generate_session_title",
+            new_callable=AsyncMock,
+            return_value="Should not apply",
+        ):
+            await coordinator._update_session_title_async("sess-title-3", prompt_at)
+
+    mock_db.update_session.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -779,7 +862,6 @@ async def test_handle_user_prompt_submit_emits_accepted_status(coordinator):
         patch("teleclaude.core.agent_coordinator.db") as mock_db,
         patch("teleclaude.core.agent_coordinator.event_bus") as mock_bus,
         patch("teleclaude.core.agent_coordinator.is_threaded_output_enabled", return_value=False),
-        patch("teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock),
     ):
         mock_db.get_session = AsyncMock(return_value=session)
         mock_db.set_notification_flag = AsyncMock()
@@ -962,4 +1044,3 @@ async def test_stall_cancellation_prevents_stale_transitions(coordinator):
     statuses = [ctx.status for event, ctx in emitted if event == TeleClaudeEvents.SESSION_STATUS]  # type: ignore[union-attr]
     assert "awaiting_output" not in statuses
     assert "stalled" not in statuses
-
