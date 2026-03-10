@@ -50,9 +50,9 @@ plan_review:
   reviewed_at: '2026-03-10T15:55:20Z'
   findings_count: 0
 dor:
-  last_assessed_at: ''
-  score: 0
-  status: ''
+  last_assessed_at: '2026-03-10T16:01:48Z'
+  score: 9
+  status: pass
   schema_version: 1
   blockers: []
   actions_taken:

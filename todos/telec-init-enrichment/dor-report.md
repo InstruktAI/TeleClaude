@@ -3,51 +3,47 @@
 ## Gate Assessment
 
 **Date:** 2026-03-10
-**Phase:** Gate (formal DOR validation — re-gate after taxonomy alignment)
+**Phase:** Gate (formal DOR validation)
 **Assessor:** Architect (gate mode)
 
 ### Context
 
-Previous gate (2026-03-01) passed at score 8. Subsequently, taxonomy alignment
-fixes were applied to both requirements and implementation plan: generated snippets
-now land under their correct taxonomy directories (`docs/project/design/`,
-`docs/project/policy/`, `docs/project/spec/`) instead of a flat `docs/project/init/`
-namespace. Both artifacts were re-reviewed and approved. This re-gate validates the
-updated artifact set as a coherent whole.
+`requirements.md` and `implementation-plan.md` are both approved in
+`state.yaml`. This gate validates the current artifact set as a coherent whole and
+records the DOR verdict in the todo state.
 
 ### Cross-Artifact Validation
 
-**Plan-to-requirement fidelity:** Every plan task traces to a requirement. Every
-requirement has at least one plan task. No contradictions found.
+**Plan-to-requirement fidelity:** Pass
 
-| Requirement section | Plan tasks |
-|---|---|
-| Project analysis engine (In scope 1) | 1.1, 2.3 |
-| Documentation scaffolding (In scope 2) | 1.2, 2.2 |
-| Authorized author guidance (In scope 3) | 1.1 |
-| Init flow integration (In scope 4) | 2.1 |
-| Idempotency (In scope 5) | 3.1, 3.2 |
-| Local TeleClaude integration (In scope 6) | 2.5 |
+- In-scope requirements map cleanly to plan tasks:
+  - Project analysis engine -> Tasks 1.1, 2.3
+  - Documentation scaffolding and schema contract -> Tasks 1.2, 2.2
+  - Authorized author guidance -> Task 1.1
+  - Init flow integration -> Tasks 2.1, 2.5
+  - Idempotency and safe refresh -> Tasks 2.2, 3.1, 3.2
+  - Integration setup continuity and local project visibility -> Tasks 2.1, 2.5
+- No contradictions found between requirements and plan.
+- The plan preserves the explicit constraints: optional enrichment, reuse of the
+  existing session infrastructure, reuse of the existing deployment config surface,
+  and no new daemon dependencies.
 
-**Consistency checks:**
+**Coverage completeness:** Pass
 
-- Requirements: "each under its correct taxonomy directory" — Plan Task 1.2 lists
-  `project/design/architecture`, `project/policy/conventions`, `project/spec/dependencies`,
-  etc. Consistent.
-- Requirements: "reuse existing project catalog" — Plan Task 2.5 reuses existing
-  project manifest. Consistent.
-- Requirements: "reuse existing deployment config surface" — Plan Task 2.5 uses
-  `deployment.channel`/`deployment.pinned_minor`. Consistent.
-- Requirements: "enrichment must be optional" — Plan Task 2.1 has prompt/skip flow.
-  Consistent.
-- Requirements: "no new daemon dependencies" — Plan uses `telec sessions run`.
-  Consistent.
+- All 11 success criteria in `requirements.md` have at least one implementing or
+  verifying task in Phases 1-5.
+- Phase 4 and `demo.md` cover the observable outcomes that are not purely unit-test
+  concerns: docs discovery, docs retrieval, project inventory visibility,
+  release-channel persistence, and clean session completion.
 
-**Coverage completeness:** All 12 success criteria map to plan tasks and Phase 4
-verification steps.
+**Verification chain:** Pass
 
-**Verification chain:** TDD execution rules + pre-commit hooks + targeted tests +
-demo validation cover the DoD gates. No gap between "plan done" and "DoD met."
+- The plan specifies failing tests first, targeted checks while iterating, demo
+  validation, and the normal pre-commit hook path before commit.
+- `telec todo demo validate telec-init-enrichment` passes in gate mode with
+  7 executable blocks, so the demo lane is structurally ready.
+- The verification steps are concrete enough to satisfy the Definition of Done
+  without forcing the builder to invent additional acceptance criteria.
 
 ### Gate Results
 
@@ -56,20 +52,22 @@ demo validation cover the DoD gates. No gap between "plan done" and "DoD met."
 **Status:** Pass
 
 Problem statement is clear: `telec init` produces infrastructure but no intelligence
-layer. Outcome is explicit: AI-driven analysis produces durable doc snippets under
-the correct taxonomy. Twelve success criteria are concrete and testable — snippet
-generation, taxonomy placement, validation pass, index inclusion, content specificity,
-guidance usage, idempotency, human-edit preservation, project catalog registration,
-release-channel reuse, help text, and clean session completion.
+layer. Outcome is explicit: `telec init` optionally runs an analysis session that
+produces durable, project-specific documentation and bootstrap context. The 11
+success criteria are concrete and testable: snippet generation, content specificity,
+guidance usage, idempotent refresh, clean session completion, init/re-init behavior,
+plumbing preservation, project registration, release-channel persistence, and CLI/doc
+surface updates.
 
 #### 2. Scope & Size
 
 **Status:** Pass
 
 Atomic behavior extension to one command. Five phases with clear task boundaries.
-The taxonomy alignment (distributing snippets across `design/`, `policy/`, `spec/`)
-follows existing conventions and adds no material complexity. Plan correctly assessed
-atomicity: splitting would create half-working states with no independent ship value.
+The work remains one coherent feature slice: enrich `telec init` without breaking its
+current setup role. Splitting the guidance docs, init-flow wiring, writer/merge logic,
+manifest registration, and validation into separate todos would create partial states
+with no independent ship value.
 
 #### 3. Verification
 
@@ -79,8 +77,8 @@ Three-level test strategy: unit tests (snippet writing, merging, metadata detect
 integration tests (init flow, sync validation, index inclusion, re-init idempotency),
 and manual verification (sample project + demo). Edge cases addressed: large codebases
 (sampling strategy in guidance doc), human-edited snippets (merge rules), re-analysis
-(metadata tracking). Demo artifact uses correct taxonomy paths and covers all observable
-success criteria.
+(metadata tracking), and release-channel validation. The demo artifact uses the correct
+taxonomy paths and has already passed structural validation.
 
 #### 4. Approach Known
 
@@ -89,31 +87,33 @@ success criteria.
 All components use proven patterns:
 
 - Session launching via `telec sessions run`
-- Doc snippet authoring via existing schema
-- Index discovery via `iter_snippet_roots()` (confirmed: already scans `docs/project/`)
-- Init flow extension via existing `init_flow.py`
-- New modules well-specified: guidance doc (procedure snippet), enrichment writer
-  (Python module with explicit function signatures), analysis command (agent artifact)
+- Init-flow extension via existing `teleclaude/project_setup/init_flow.py`
+- Project registration via existing `teleclaude/project_manifest.py` and sync path
+- Docs discovery via existing `teleclaude/docs_index.py`; `iter_snippet_roots()`
+  already scans `docs/project/`
+- Existing targeted test seams in `tests/unit/test_project_setup_init_flow.py`,
+  `tests/unit/test_docs_index.py`, `tests/unit/test_telec_sync.py`,
+  `tests/unit/test_context_selector.py`, `tests/integration/test_telec_cli_commands.py`,
+  and `tests/integration/test_contracts.py`
 
-Task 2.4 is verification-only — existing `iter_snippet_roots()` already discovers
-snippets under `docs/project/`.
+The planned new writer module is narrow and isolated, which keeps the unknowns small.
 
 #### 5. Research Complete
 
-**Status:** Pass (no new third-party dependencies)
+**Status:** Pass (auto)
 
-Enrichment uses existing TeleClaude infrastructure exclusively. Analysis relies on
-Claude's built-in code understanding capabilities guided by the authorized author
-procedure.
+No new third-party tooling or integrations are introduced. The change uses existing
+TeleClaude infrastructure and internal artifact contracts, so the third-party research
+gate is automatically satisfied.
 
 #### 6. Dependencies & Preconditions
 
 **Status:** Pass
 
-Roadmap entry has no `after:` dependencies — the previous false blocker
-(`event-envelope-schema`) was removed. Event emission is explicitly deferred in
-requirements (out of scope). All infrastructure prerequisites exist: session launching,
-doc snippet system, sync pipeline, init flow module.
+The roadmap entry has no `after:` dependencies. Event emission and mesh registration
+are explicitly deferred in `requirements.md`, so they do not block readiness. The
+existing config surface already exposes `deployment.channel` and
+`deployment.pinned_minor`, which matches the plan's reuse requirement.
 
 #### 7. Integration Safety
 
@@ -121,28 +121,29 @@ doc snippet system, sync pipeline, init flow module.
 
 - **Additive:** existing `telec init` plumbing is untouched
 - **Optional:** user can decline enrichment during init
-- **Taxonomy-distributed:** generated snippets use standard taxonomy directories
-  (`design/`, `policy/`, `spec/`) with `generated_by: telec-init` metadata
-- **Rollback:** delete snippets identified by `generated_by: telec-init` metadata,
-  re-run `telec sync`
+- **Bounded writes:** the plan requires schema validation and normalized
+  `docs/project/` destinations before persistence
+- **Rollback:** auto-generated snippets are marked and refreshed through explicit
+  metadata rather than hidden side effects
 - **No schema migrations**
 
 #### 8. Tooling Impact
 
-**Status:** Pass (not applicable)
+**Status:** Pass (auto)
 
-No changes to scaffolding tooling. Uses existing `telec todo`, `telec docs`, and
-`telec sessions` infrastructure.
+No scaffolding procedure changes are required. The feature extends runtime behavior,
+docs, and tests using the existing `telec todo`, `telec docs`, and `telec sessions`
+surfaces.
 
 ### Review-Readiness Preview
 
 | Lane | Assessment |
 |---|---|
-| Test expectations | TDD execution rules explicit in plan. Each task starts with failing tests. Plan Phase 4 maps to success criteria. |
-| Security | No secrets, no new external APIs, no user data beyond codebase analysis. Low risk. |
-| Documentation | CLI help text update in Task 2.1. Demo artifact covers all observable paths with correct taxonomy. |
-| Config surface | Task 2.5 explicitly reuses existing deployment config. No new config keys or YAML sections. |
-| Rationale depth | Each plan task has "Why" and "Verification" sections sufficient for builder execution. |
+| Test expectations | Ready. The plan names the failing tests to add first and ties verification back to the success criteria. |
+| Security and operational safety | Ready. No new external integrations, no host-level service changes, and persistence is constrained to validated project doc paths. |
+| Documentation and CLI surface | Ready. `README.md` and `docs/project/spec/telec-cli-surface.md` are explicit plan deliverables, and the demo covers observable user behavior. |
+| Config surface | Ready. The plan reuses `deployment.channel` and `deployment.pinned_minor` rather than inventing new config keys or YAML sections. |
+| Builder guidance | Ready. Each task includes both rationale and verification, which is sufficient for a builder to execute without reopening architecture questions. |
 
 No review-readiness gaps found.
 
@@ -151,16 +152,13 @@ No review-readiness gaps found.
 **Score:** 9
 **Status:** pass
 
-The taxonomy alignment changes that triggered this re-gate improved coherence:
-snippets now follow the same taxonomy conventions as all other project docs instead
-of requiring a special `init/` namespace. All 8 DOR gates pass. Cross-artifact
-validation is clean. Review-readiness assessment has no gaps.
+All 8 DOR gates pass. The artifact set is coherent, grounded enough to execute, and
+ready for a builder session without further architecture clarification.
 
 **Actions taken:**
 
-- Verified taxonomy consistency between requirements and plan (correct paths)
-- Confirmed roadmap entry has no `after:` dependencies
-- Confirmed `iter_snippet_roots()` discovers `docs/project/` snippets (Task 2.4 verification-only)
-- Validated demo artifact uses taxonomy-correct paths
-- Confirmed no naming conflicts with existing `docs/project/` snippets
-- Verified all 12 success criteria trace to plan tasks and verification steps
+- Corrected the success-criteria count in this report from 12 to 11
+- Confirmed roadmap sequencing does not block the todo
+- Confirmed `iter_snippet_roots()` already discovers `docs/project/` snippets
+- Validated the demo artifact structure with `telec todo demo validate telec-init-enrichment`
+- Verified the plan covers the full requirement set and review-readiness lanes
