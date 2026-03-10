@@ -11,8 +11,19 @@ dor:
   schema_version: 1
   blockers: []
   actions_taken:
-    requirements_updated: false
+    requirements_updated: true
     implementation_plan_updated: false
+grounding:
+  valid: true
+  base_sha: "373df3ab05074248861510685f8a9dbc257bab8a"
+  input_digest: "3e7a418bfd12c15d562d88fb3fd0991b"
+  last_grounded_at: "2026-03-10T12:00:00Z"
+  invalidation_reason: null
+requirements_review:
+  verdict: approve
+  reviewed_at: '2026-03-10T19:20:41Z'
+  findings_count: 0
+  rounds: 1
 review_round: 0
 max_review_rounds: 3
 review_baseline_commit: ''
