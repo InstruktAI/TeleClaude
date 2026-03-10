@@ -34,6 +34,7 @@ def _source_identity_for_row(agent_value: str, metadata_raw: str | None) -> str 
 
 
 async def _create_mirrors_with_source_identity(db: aiosqlite.Connection) -> None:
+    await db.execute("DROP TABLE IF EXISTS mirrors_new")
     await db.execute(
         """
         CREATE TABLE mirrors_new (
@@ -57,6 +58,7 @@ async def _create_mirrors_with_source_identity(db: aiosqlite.Connection) -> None
 
 
 async def _create_legacy_mirrors_table(db: aiosqlite.Connection) -> None:
+    await db.execute("DROP TABLE IF EXISTS mirrors_new")
     await db.execute(
         """
         CREATE TABLE mirrors_new (
@@ -215,6 +217,21 @@ async def up(db: aiosqlite.Connection) -> None:
         """,
         payloads,
     )
+    # Deduplicate: keep most recent row per source_identity, NULL the rest.
+    # SQLite allows multiple NULLs in a UNIQUE index.
+    await db.execute(
+        """
+        UPDATE mirrors_new
+        SET source_identity = NULL
+        WHERE source_identity IS NOT NULL
+          AND id NOT IN (
+              SELECT MAX(id) FROM mirrors_new
+              WHERE source_identity IS NOT NULL
+              GROUP BY source_identity
+          )
+        """
+    )
+
     await _drop_mirror_indexes_and_fts(db)
     await db.execute("DROP TABLE mirrors")
     await db.execute("ALTER TABLE mirrors_new RENAME TO mirrors")

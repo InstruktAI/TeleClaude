@@ -76,6 +76,7 @@ from teleclaude.hooks.registry import ContractRegistry
 from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
 from teleclaude.logging_config import setup_logging
+from teleclaude.mirrors import MirrorWorker
 from teleclaude.mirrors.event_handlers import handle_agent_stop as handle_mirror_agent_stop
 from teleclaude.mirrors.event_handlers import handle_session_closed as handle_mirror_session_closed
 from teleclaude.mirrors.processors import register_default_processors
