@@ -138,6 +138,22 @@ API_WATCH_INFLIGHT_THRESHOLD_S = float(os.getenv("API_WATCH_INFLIGHT_THRESHOLD_S
 API_WATCH_DUMP_COOLDOWN_S = float(os.getenv("API_WATCH_DUMP_COOLDOWN_S", "30"))
 WORKER_LIFECYCLE_COMMANDS = {"next-build", "next-review-build", "next-fix-review", "next-finalize"}
 
+COMMAND_ROLE_MAP: dict[str, tuple[str, str]] = {
+    "next-build": ("worker", "builder"),
+    "next-bugs-fix": ("worker", "fixer"),
+    "next-review-build": ("worker", "reviewer"),
+    "next-review-plan": ("worker", "reviewer"),
+    "next-review-requirements": ("worker", "reviewer"),
+    "next-fix-review": ("worker", "fixer"),
+    "next-finalize": ("worker", "finalizer"),
+    "next-prepare-discovery": ("worker", "discoverer"),
+    "next-prepare-draft": ("worker", "drafter"),
+    "next-prepare-gate": ("worker", "gate-checker"),
+    "next-prepare": ("orchestrator", "prepare-orchestrator"),
+    "next-work": ("orchestrator", "work-orchestrator"),
+    "next-integrate": ("integrator", "integrator"),
+}
+
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 PatchBodyScalar = str | int | float | bool | None
 PatchBodyValue = PatchBodyScalar | list[PatchBodyScalar] | dict[str, PatchBodyScalar]
@@ -484,6 +500,7 @@ class APIServer:
             computer: str | None = None,
             include_closed: bool = Query(False, alias="closed"),
             all_sessions: bool = Query(False, alias="all"),
+            job: str | None = Query(None, alias="job"),
             identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_LIST),  # noqa: ARG001
         ) -> list[SessionDTO]:
             """List sessions from local storage and remote cache.
@@ -531,6 +548,14 @@ class APIServer:
 
                 # Role-based visibility filtering (only when identity headers present)
                 merged = _filter_sessions_by_role(request, merged)
+
+                # Job filter: narrows existing visibility results
+                if job:
+                    merged = [
+                        s for s in merged
+                        if isinstance(s.session_metadata, dict)
+                        and s.session_metadata.get("job") == job
+                    ]
 
                 return [SessionDTO.from_core(s, computer=s.computer) for s in merged]
             except Exception as e:
@@ -1347,11 +1372,17 @@ class APIServer:
                 channel_metadata = channel_metadata or {}
                 channel_metadata["working_slug"] = working_slug
 
+            role_info = COMMAND_ROLE_MAP.get(normalized_cmd)
+            session_meta: dict[str, str] | None = None
+            if role_info:
+                session_meta = {"system_role": role_info[0], "job": role_info[1]}
+
             metadata = self._metadata(
                 title=full_command,
                 project_path=request.project,
                 subdir=request.subfolder or None,
                 channel_metadata=channel_metadata,
+                session_metadata=session_meta,
             )
             metadata.auto_command = auto_command
 

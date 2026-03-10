@@ -267,10 +267,16 @@ def test_spawn_integrator_session_uses_generic_queue_drain_command() -> None:
     assert result == {"status": "spawned", "slug": "history-search-upgrade"}
     start_call = mock_run.call_args_list[1]
     command = start_call.args[0]
-    assert "--message" in command
-    assert command[command.index("--message") + 1] == "/next-integrate"
-    assert "--title" in command
-    assert command[command.index("--title") + 1] == "integrator"
+    assert "telec" in command
+    assert "sessions" in command
+    assert "run" in command
+    assert "--command" in command
+    assert command[command.index("--command") + 1] == "/next-integrate"
+    assert "--project" in command
+    assert "--detach" in command
+    # Verify new approach does NOT use old flags
+    assert "--message" not in command
+    assert "--title" not in command
 
 
 @pytest.mark.integration

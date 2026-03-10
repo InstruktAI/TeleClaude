@@ -46,6 +46,7 @@ from teleclaude.constants import (  # noqa: E402
     HUMAN_ROLE_MEMBER,
     HUMAN_ROLE_NEWCOMER,
     MAIN_MODULE,
+    ROLE_INTEGRATOR,
     ROLE_ORCHESTRATOR,
     ROLE_WORKER,
     WORKTREE_DIR,
@@ -164,6 +165,7 @@ _H = Flag("--help", "-h", "Show usage information", hidden=True)
 
 _SYS_ORCH = frozenset({ROLE_ORCHESTRATOR})
 _SYS_ALL = frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR})
+_SYS_INTG = frozenset({ROLE_INTEGRATOR})
 
 _HR_ADMIN = frozenset()  # admin implicit; no other human roles
 _HR_MEMBER = frozenset({HUMAN_ROLE_MEMBER})
@@ -182,8 +184,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _H,
                     Flag("--all", desc="Show all sessions"),
                     Flag("--closed", desc="Include closed sessions"),
+                    Flag("--job", desc="Filter by session_metadata.job value"),
                 ],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "start": CommandDef(
                 desc="Start a new agent session",
@@ -247,7 +250,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--tools", desc="Include tool use entries"),
                     Flag("--thinking", desc="Include thinking blocks"),
                 ],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "run": CommandDef(
                 desc="Run a slash command on a new agent session",
@@ -302,7 +305,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Send a formatted result to the session's user",
                 args="<content>",
                 flags=[_H, Flag("--format", desc="Output format: markdown, html")],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
+                auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER_CONTRIB),
             ),
             "file": CommandDef(
                 desc="Send a file to the session's user",
@@ -328,7 +331,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--summary", desc="Context summary for the admin"),
                 ],
                 auth=CommandAuth(
-                    system=_SYS_ALL,
+                    system=_SYS_ALL | _SYS_INTG,
                     human=_HR_ALL_NON_ADMIN,
                     exclude_human=frozenset({HUMAN_ROLE_ADMIN}),
                 ),
@@ -399,7 +402,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Fetch durable operation status by operation_id",
                 args="<operation_id>",
                 flags=[_H],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
+                auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER),
             ),
         },
     ),
@@ -528,7 +531,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Run the Phase C (integrate) state machine",
                 args="[<slug>]",
                 flags=[_H],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+                auth=CommandAuth(system=_SYS_ORCH | _SYS_INTG, human=_HR_MEMBER),
             ),
             "mark-phase": CommandDef(
                 desc="Mark a work or prepare phase in state.yaml",

@@ -1,69 +1,12 @@
-"""Role-based tool access filtering."""
+"""Role-based tool access filtering.
+
+Tool name filtering is derived from CLI_SURFACE CommandAuth entries.
+The legacy hardcoded exclusion sets (WORKER_ALLOWED_TOOLS, MEMBER_EXCLUDED_TOOLS,
+UNAUTHORIZED_EXCLUDED_TOOLS) have been retired. Authorization uses
+is_command_allowed() from teleclaude.cli.telec as the single source of truth.
+"""
 
 from typing_extensions import TypedDict
-
-from teleclaude.constants import (
-    HUMAN_ROLE_ADMIN,
-    HUMAN_ROLE_CONTRIBUTOR,
-    HUMAN_ROLE_CUSTOMER,
-    HUMAN_ROLE_MEMBER,
-    HUMAN_ROLE_NEWCOMER,
-    ROLE_WORKER,
-)
-
-# Worker tool access policy (whitelist).
-# Only these clearance-gated tools are permitted for worker sessions.
-# Tools without clearance gates (telec docs, telec version, etc.) are unaffected.
-WORKER_ALLOWED_TOOLS = {
-    "telec sessions send",
-    "telec sessions result",
-    "telec sessions file",
-    "telec sessions widget",
-    "telec sessions tail",
-    "telec sessions list",
-    "telec sessions unsubscribe",
-    "telec sessions escalate",
-    "telec channels list",
-    "telec channels publish",
-    "telec agents availability",
-    "telec computers list",
-    "telec projects list",
-    "telec operations get",
-}
-
-# Member tool access policy.
-MEMBER_EXCLUDED_TOOLS = {
-    "telec sessions end",
-    "telec agents status",
-    "telec sessions escalate",
-}
-
-# Unauthorized tool access policy (read-only).
-UNAUTHORIZED_EXCLUDED_TOOLS = {
-    "telec sessions start",
-    "telec sessions run",
-    "telec sessions send",
-    "telec sessions file",
-    "telec sessions unsubscribe",
-    "telec sessions end",
-    "telec todo prepare",
-    "telec todo work",
-    "telec todo mark-phase",
-    "telec todo set-deps",
-    "telec operations get",
-    "telec agents status",
-    "telec sessions escalate",
-}
-
-CUSTOMER_EXCLUDED_TOOLS: set[str] = (
-    UNAUTHORIZED_EXCLUDED_TOOLS
-    | {
-        "telec sessions list",
-        "telec roadmap list",
-        "telec channels publish",
-        "telec channels list",
-    }
-) - {"telec sessions escalate"}
 
 
 class ToolSpec(TypedDict, total=False):
@@ -72,46 +15,62 @@ class ToolSpec(TypedDict, total=False):
     name: str
 
 
-def _get_human_excluded_tools(human_role: str | None) -> set[str]:
-    """Return excluded tools based on human role only."""
-    if human_role == HUMAN_ROLE_CUSTOMER:
-        return CUSTOMER_EXCLUDED_TOOLS
-    if human_role in {HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER}:
-        return MEMBER_EXCLUDED_TOOLS
-    if human_role is None or human_role != HUMAN_ROLE_ADMIN:
-        return UNAUTHORIZED_EXCLUDED_TOOLS
-    return set()
+def _collect_gated_paths() -> list[str]:
+    """Enumerate all CLI command paths that have CommandAuth (clearance-gated)."""
+    from teleclaude.cli.telec import CLI_SURFACE
+
+    def _walk(surface, prefix=""):
+        for name, cmd in surface.items():
+            path = f"{prefix} {name}".strip() if prefix else name
+            if cmd.subcommands:
+                yield from _walk(cmd.subcommands, path)
+            elif cmd.auth is not None:
+                yield path
+
+    return list(_walk(CLI_SURFACE))
 
 
 def get_excluded_tools(role: str | None, human_role: str | None = None) -> set[str]:  # noqa: ARG001
-    """Return set of tool names excluded for this role.
+    """Return set of tool names excluded for this human role.
 
-    Note: worker enforcement uses a whitelist via is_tool_allowed().
-    This function returns human-role exclusions only.
+    Derived from CLI_SURFACE CommandAuth entries — human-role filtering only.
+    The role parameter is accepted for API compatibility but unused here;
+    system-role enforcement is handled by _is_tool_denied() in daemon auth.
     """
-    return _get_human_excluded_tools(human_role)
+    from teleclaude.cli.telec import is_command_allowed
 
-
-def is_tool_allowed(role: str | None, tool_name: str, human_role: str | None = None) -> bool:
-    """Return whether a tool is allowed for the given role.
-
-    Worker sessions use a whitelist: only tools in WORKER_ALLOWED_TOOLS pass.
-    Human roles use exclusion sets. The two layers are mutually exclusive —
-    workers are system-level sessions and not subject to human role restrictions.
-    """
-    if role == ROLE_WORKER:
-        return tool_name in WORKER_ALLOWED_TOOLS
-    return tool_name not in _get_human_excluded_tools(human_role)
+    excluded = set()
+    for path in _collect_gated_paths():
+        tool = f"telec {path}"
+        # Check with system_role=None (treated as orchestrator — TUI/terminal callers).
+        if not is_command_allowed(path, None, human_role):
+            excluded.add(tool)
+    return excluded
 
 
 def filter_tool_names(role: str | None, tool_names: list[str], human_role: str | None = None) -> list[str]:
     """Return filtered tool names for a role."""
-    return [n for n in tool_names if is_tool_allowed(role, n, human_role)]
+    from teleclaude.cli.telec import is_command_allowed
+
+    result = []
+    for name in tool_names:
+        path = name[len("telec "):] if name.startswith("telec ") else name
+        if is_command_allowed(path, role, human_role):
+            result.append(name)
+    return result
 
 
 def filter_tool_specs(role: str | None, tools: list[ToolSpec], human_role: str | None = None) -> list[ToolSpec]:
     """Return filtered tool specs for a role."""
-    return [t for t in tools if is_tool_allowed(role, t.get("name", ""), human_role)]
+    from teleclaude.cli.telec import is_command_allowed
+
+    result = []
+    for t in tools:
+        name = t.get("name", "")
+        path = name[len("telec "):] if name.startswith("telec ") else name
+        if is_command_allowed(path, role, human_role):
+            result.append(t)
+    return result
 
 
 def get_allowed_tools(role: str | None, all_tool_names: list[str], human_role: str | None = None) -> list[str]:

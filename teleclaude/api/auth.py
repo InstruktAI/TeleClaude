@@ -24,10 +24,10 @@ from typing import TYPE_CHECKING, Annotated, Final
 
 from fastapi import Depends, Header, HTTPException, Request
 
+from teleclaude.cli.telec import is_command_allowed
 from teleclaude.config.loader import load_global_config
-from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLES, ROLE_ORCHESTRATOR, ROLE_WORKER
+from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLES, ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_WORKER
 from teleclaude.core.db import db
-from teleclaude.core.tool_access import is_tool_allowed
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -143,7 +143,7 @@ def _derive_session_system_role(session: "Session") -> str | None:
         raw_role = metadata.get("system_role")
         if isinstance(raw_role, str):
             normalized = raw_role.strip().lower()
-            if normalized in {ROLE_WORKER, ROLE_ORCHESTRATOR}:
+            if normalized in {ROLE_WORKER, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR}:
                 return normalized
 
     return ROLE_WORKER if session.working_slug else ROLE_ORCHESTRATOR
@@ -239,7 +239,7 @@ async def verify_caller(
 
 def _is_tool_denied(tool_name: str, identity: CallerIdentity) -> bool:
     """Check if a tool (mapped from endpoint) is denied for this identity."""
-    return not is_tool_allowed(identity.system_role, tool_name, identity.human_role)
+    return not is_command_allowed(tool_name, identity.system_role, identity.human_role)
 
 
 def require_clearance(tool_name: str):

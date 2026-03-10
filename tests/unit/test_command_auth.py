@@ -9,10 +9,10 @@ from teleclaude.constants import (
     HUMAN_ROLE_CUSTOMER,
     HUMAN_ROLE_MEMBER,
     HUMAN_ROLE_NEWCOMER,
+    ROLE_INTEGRATOR,
     ROLE_ORCHESTRATOR,
     ROLE_WORKER,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -340,3 +340,56 @@ class TestEdgeCases:
 
     def test_config_env_subcommand_path(self):
         assert is_command_allowed("config env set", ROLE_ORCHESTRATOR, HUMAN_ROLE_ADMIN)
+
+
+# ---------------------------------------------------------------------------
+# Integrator role tests
+# ---------------------------------------------------------------------------
+
+# Integrator-allowed command paths (must match CommandAuth entries with _SYS_INTG).
+INTEGRATOR_ALLOWED_CLI_PATHS = {
+    "sessions list",
+    "sessions tail",
+    "sessions result",
+    "sessions escalate",
+    "operations get",
+    "todo integrate",
+}
+
+
+class TestIntegratorPermissions:
+    """Integrator role is selectively authorized — not _SYS_ALL."""
+
+    def test_integrator_allowed_todo_integrate(self):
+        assert is_command_allowed("todo integrate", ROLE_INTEGRATOR, HUMAN_ROLE_MEMBER)
+
+    def test_integrator_blocked_todo_work(self):
+        assert not is_command_allowed("todo work", ROLE_INTEGRATOR, HUMAN_ROLE_MEMBER)
+
+    def test_integrator_blocked_sessions_send(self):
+        assert not is_command_allowed("sessions send", ROLE_INTEGRATOR, HUMAN_ROLE_MEMBER)
+
+    def test_integrator_allowed_sessions_list(self):
+        assert is_command_allowed("sessions list", ROLE_INTEGRATOR, HUMAN_ROLE_MEMBER)
+
+    def test_integrator_allowed_sessions_tail(self):
+        assert is_command_allowed("sessions tail", ROLE_INTEGRATOR, HUMAN_ROLE_MEMBER)
+
+    def test_integrator_cli_auth_mirrors_whitelist(self):
+        """Every path in the whitelist allows integrator; SYS_ALL paths NOT in the whitelist deny it."""
+        leaves = _collect_leaves(CLI_SURFACE)
+        for path, cmd in leaves:
+            if cmd.auth is None:
+                continue
+            if path in INTEGRATOR_ALLOWED_CLI_PATHS:
+                assert ROLE_INTEGRATOR in cmd.auth.system, (
+                    f"Whitelist path '{path}' must include ROLE_INTEGRATOR in auth.system"
+                )
+            elif ROLE_INTEGRATOR in (cmd.auth.system - {ROLE_INTEGRATOR}):
+                # This can't happen by construction, but makes the mirror explicit
+                pass
+            else:
+                # All other commands: integrator must NOT be in auth.system (deny by default)
+                assert ROLE_INTEGRATOR not in cmd.auth.system, (
+                    f"Non-whitelist path '{path}' must NOT include ROLE_INTEGRATOR in auth.system"
+                )
