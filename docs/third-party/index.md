@@ -28,6 +28,7 @@
 @docs/third-party/gemini-cli/permissions.md
 @docs/third-party/gemini-cli/skills.md
 @docs/third-party/gemini-cli/sub-agents.md
+@docs/third-party/tmux/session-output-observation.md
 @docs/third-party/whatsapp/cloud-api.md
 @docs/third-party/whatsapp/media-api.md
 @docs/third-party/whatsapp/messages-api.md

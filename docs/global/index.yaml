@@ -614,6 +614,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: software-development/policy/test-structure
+  description: 1:1 source-to-test mapping, directory conventions, exemptions, and
+    CI enforcement.
+  type: policy
+  scope: domain
+  path: docs/software-development/policy/test-structure.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: software-development/policy/testing
   description: Pre-commit quality gates, test principles, linting, isolation, anti-patterns.
     Hooks-first verification.
