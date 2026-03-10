@@ -51,7 +51,6 @@
 - slug: cache-transparency-refactor
 - slug: session-role-metadata
 - slug: tui-chiptunes-resource-leaks
-- slug: todo-phase-status-display-2
 - slug: test-suite-overhaul
 - slug: tso-adapters
   group: test-suite-overhaul

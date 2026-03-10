@@ -9,12 +9,56 @@ from typing import Sequence
 from teleclaude.constants import AGENT_PROTOCOL
 from teleclaude.core.agents import AgentName
 
+__all__ = [
+    "build_source_identity",
+    "TranscriptCandidate",
+    "discover_transcripts",
+    "extract_project",
+    "extract_session_id",
+    "is_canonical",
+]
+
 
 @dataclass(frozen=True)
 class TranscriptCandidate:
     path: Path
     agent: AgentName
     mtime: float = 0.0
+
+
+def _discovery_roots(agent: AgentName) -> tuple[Path, ...]:
+    meta = AGENT_PROTOCOL[agent.value]
+    session_dir = Path(str(meta["session_dir"])).expanduser()
+    if agent == AgentName.CLAUDE:
+        return (session_dir.parent / "projects", session_dir)
+    return (session_dir,)
+
+
+def is_canonical(path: Path, agent: AgentName) -> bool:
+    """Return whether a transcript path is part of the canonical search surface."""
+    expanded_path = path.expanduser()
+    if agent == AgentName.CLAUDE:
+        return "subagents" not in expanded_path.parts
+    if agent == AgentName.CODEX:
+        history_root = Path("~/.codex/.history").expanduser()
+        try:
+            expanded_path.relative_to(history_root)
+        except ValueError:
+            return True
+        return False
+    return True
+
+
+def build_source_identity(path: Path | str, agent: AgentName) -> str:
+    """Build a deterministic identity from the transcript's canonical relative path."""
+    expanded_path = Path(path).expanduser()
+    for root in _discovery_roots(agent):
+        try:
+            relative = expanded_path.relative_to(root)
+        except ValueError:
+            continue
+        return f"{agent.value}:{relative.as_posix()}"
+    return f"{agent.value}:{expanded_path.as_posix()}"
 
 
 def discover_transcripts(agents: Sequence[AgentName] | None = None) -> list[TranscriptCandidate]:
@@ -29,8 +73,6 @@ def discover_transcripts(agents: Sequence[AgentName] | None = None) -> list[Tran
             projects_dir = session_dirs[0].parent / "projects"
             if projects_dir.exists():
                 session_dirs = [projects_dir]
-        if agent == AgentName.CODEX:
-            session_dirs.append(Path("~/.codex/.history/sessions").expanduser())
 
         pattern = str(meta["log_pattern"])
         if pattern.startswith("**/"):
@@ -41,7 +83,7 @@ def discover_transcripts(agents: Sequence[AgentName] | None = None) -> list[Tran
                 continue
             for path in session_dir.rglob(pattern):
                 key = (agent, path)
-                if not path.is_file() or key in seen:
+                if not path.is_file() or key in seen or not is_canonical(path, agent):
                     continue
                 candidates.append(TranscriptCandidate(path=path, agent=agent, mtime=path.stat().st_mtime))
                 seen.add(key)

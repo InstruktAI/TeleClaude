@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -47,14 +48,15 @@ def _render_conversation(messages: list[StructuredMessage]) -> str:
     return "\n\n".join(lines)
 
 
-async def generate_mirror(
+def generate_mirror_sync(
     session_id: str,
+    source_identity: str,
     transcript_path: str,
     agent_name: AgentName,
     computer: str,
     project: str,
     db: object | None,
-) -> None:
+) -> bool:
     """Extract conversation-only text from a transcript and upsert a mirror."""
     structured = extract_structured_messages(
         transcript_path,
@@ -64,10 +66,10 @@ async def generate_mirror(
     )
     conversation_messages = _normalize_conversation_messages(structured)
     if not conversation_messages:
-        delete_mirror(session_id, db=db)
-        return
+        delete_mirror(session_id=session_id, source_identity=source_identity, db=db)
+        return False
 
-    existing = get_mirror(session_id, db=db)
+    existing = get_mirror(source_identity=source_identity, db=db)
     now = datetime.now(timezone.utc).isoformat()
     timestamp_start = conversation_messages[0].timestamp
     timestamp_end = conversation_messages[-1].timestamp
@@ -85,5 +87,29 @@ async def generate_mirror(
         metadata={"transcript_path": transcript_path, "agent": agent_name.value},
         created_at=existing.created_at if existing else now,
         updated_at=now,
+        source_identity=source_identity,
     )
     upsert_mirror(record, db=db)
+    return True
+
+
+async def generate_mirror(
+    session_id: str,
+    source_identity: str,
+    transcript_path: str,
+    agent_name: AgentName,
+    computer: str,
+    project: str,
+    db: object | None,
+) -> bool:
+    """Async entry point that offloads blocking mirror generation work."""
+    return await asyncio.to_thread(
+        generate_mirror_sync,
+        session_id=session_id,
+        source_identity=source_identity,
+        transcript_path=transcript_path,
+        agent_name=agent_name,
+        computer=computer,
+        project=project,
+        db=db,
+    )

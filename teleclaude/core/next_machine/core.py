@@ -22,7 +22,7 @@ from datetime import date, datetime, timezone
 from enum import Enum
 from pathlib import Path
 from time import perf_counter
-from typing import TypedDict, cast
+from typing import TypeAlias, TypedDict, cast
 
 import yaml
 from git import Repo
@@ -37,9 +37,8 @@ from teleclaude.core.integration_bridge import emit_branch_pushed, emit_deployme
 
 logger = get_logger(__name__)
 
-StateValue = (
-    str | bool | int | None | list[str] | dict[str, object]
-)  # guard: loose-dict - YAML state values are heterogeneous
+StateScalar: TypeAlias = str | bool | int | None
+StateValue: TypeAlias = StateScalar | list["StateValue"] | dict[str, "StateValue"]
 
 
 class FinalizeState(TypedDict, total=False):
@@ -3296,6 +3295,8 @@ async def _prepare_step_re_grounding(
     changed_paths = grounding_dict.get("changed_paths", [])  # I1: actual changed paths, not all referenced
     if not isinstance(changed_paths, list):
         changed_paths = []
+    else:
+        changed_paths = [path for path in changed_paths if isinstance(path, str)]
 
     # Set next phase to PLAN_REVIEW so re-grounded plan gets reviewed
     state["prepare_phase"] = PreparePhase.PLAN_REVIEW.value

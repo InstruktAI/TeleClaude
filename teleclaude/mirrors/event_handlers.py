@@ -14,8 +14,6 @@ logger = get_logger(__name__)
 
 
 async def _dispatch(event: MirrorEvent) -> None:
-    # TODO: re-enable after mirror-runtime-isolation is delivered
-    return
     processors = get_processors()
     if not processors:
         return

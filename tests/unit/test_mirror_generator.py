@@ -28,6 +28,27 @@ def _load_mirror_migration():
     return module
 
 
+def _load_migration(filename: str):
+    migrations_dir = Path(__file__).resolve().parents[2] / "teleclaude" / "core" / "migrations"
+    path = migrations_dir / filename
+    assert path.exists(), f"missing migration: {filename}"
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+async def _apply_mirror_runtime_migrations(db_path: Path) -> None:
+    async with aiosqlite.connect(db_path) as conn:
+        for filename in (
+            "026_add_mirrors_table.py",
+            "028_add_mirror_source_identity.py",
+            "029_add_mirror_tombstones.py",
+        ):
+            await _load_migration(filename).up(conn)
+
+
 def _write_jsonl(path: Path, entries: list[dict[str, JsonValue]]) -> str:
     with open(path, "w", encoding="utf-8") as handle:
         for entry in entries:
@@ -69,10 +90,8 @@ async def test_mirror_migration_up_and_down(tmp_path: Path) -> None:
 async def test_generate_mirror_strips_system_reminders_and_tool_noise(tmp_path: Path) -> None:
     from teleclaude.mirrors.generator import generate_mirror
 
-    migration = _load_mirror_migration()
     db_path = tmp_path / "teleclaude.db"
-    async with aiosqlite.connect(db_path) as conn:
-        await migration.up(conn)
+    await _apply_mirror_runtime_migrations(db_path)
 
     transcript_path = _write_jsonl(
         tmp_path / "session.jsonl",
@@ -109,6 +128,7 @@ async def test_generate_mirror_strips_system_reminders_and_tool_noise(tmp_path: 
 
     await generate_mirror(
         session_id="sess-1",
+        source_identity="claude:session.jsonl",
         transcript_path=transcript_path,
         agent_name=AgentName.CLAUDE,
         computer="MozBook",
@@ -137,10 +157,8 @@ async def test_generate_mirror_strips_system_reminders_and_tool_noise(tmp_path: 
 async def test_generate_mirror_skips_tool_only_transcript(tmp_path: Path) -> None:
     from teleclaude.mirrors.generator import generate_mirror
 
-    migration = _load_mirror_migration()
     db_path = tmp_path / "teleclaude.db"
-    async with aiosqlite.connect(db_path) as conn:
-        await migration.up(conn)
+    await _apply_mirror_runtime_migrations(db_path)
 
     transcript_path = _write_jsonl(
         tmp_path / "tool-only.jsonl",
@@ -166,6 +184,7 @@ async def test_generate_mirror_skips_tool_only_transcript(tmp_path: Path) -> Non
 
     await generate_mirror(
         session_id="sess-2",
+        source_identity="claude:tool-only.jsonl",
         transcript_path=transcript_path,
         agent_name=AgentName.CLAUDE,
         computer="MozBook",
@@ -177,3 +196,36 @@ async def test_generate_mirror_skips_tool_only_transcript(tmp_path: Path) -> Non
         count = conn.execute("SELECT COUNT(*) FROM mirrors WHERE session_id = ?", ("sess-2",)).fetchone()[0]
 
     assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_generate_mirror_offloads_sync_work(monkeypatch: pytest.MonkeyPatch) -> None:
+    from teleclaude.mirrors import generator
+
+    expected = True
+    calls: list[object] = []
+
+    def fake_generate_mirror_sync(**kwargs):
+        assert kwargs["session_id"] == "sess-3"
+        assert kwargs["source_identity"] == "claude:session.jsonl"
+        return expected
+
+    async def fake_to_thread(func, /, *args, **kwargs):
+        calls.append(func)
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(generator, "generate_mirror_sync", fake_generate_mirror_sync)
+    monkeypatch.setattr(generator.asyncio, "to_thread", fake_to_thread)
+
+    result = await generator.generate_mirror(
+        session_id="sess-3",
+        source_identity="claude:session.jsonl",
+        transcript_path="/tmp/session.jsonl",
+        agent_name=AgentName.CLAUDE,
+        computer="MozBook",
+        project="teleclaude",
+        db="/tmp/teleclaude.db",
+    )
+
+    assert result is expected
+    assert calls == [fake_generate_mirror_sync]

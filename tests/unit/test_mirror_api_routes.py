@@ -19,6 +19,7 @@ def _create_mirror_schema(db_path: Path) -> None:
             CREATE TABLE mirrors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT NOT NULL UNIQUE,
+                source_identity TEXT,
                 computer TEXT NOT NULL,
                 agent TEXT NOT NULL,
                 project TEXT NOT NULL DEFAULT '',
@@ -68,13 +69,14 @@ def test_mirror_api_routes_search_get_and_transcript(
         conn.execute(
             """
             INSERT INTO mirrors (
-                session_id, computer, agent, project, title, timestamp_start, timestamp_end,
+                session_id, source_identity, computer, agent, project, title, timestamp_start, timestamp_end,
                 conversation_text, message_count, metadata, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "sess-1",
+                "claude:session.jsonl",
                 "MozBook",
                 "claude",
                 "teleclaude",

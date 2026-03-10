@@ -318,6 +318,27 @@ def test_create_session_success(test_client, mock_command_service):  # type: ign
     assert cmd.title == "Test Session"
 
 
+def test_create_session_propagates_verified_human_role(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    mock_command_service.create_session.return_value = {
+        "session_id": "sess-123",
+        "tmux_session_name": "tc_test",
+    }
+
+    response = test_client.post(
+        "/sessions",
+        json={
+            "project_path": "/home/user/project",
+            "computer": "local",
+        },
+    )
+
+    assert response.status_code == 200
+    cmd = mock_command_service.create_session.call_args.args[0]
+    assert cmd.channel_metadata is not None
+    assert cmd.channel_metadata.get("human_role") == "admin"
+    assert cmd.channel_metadata.get("initiator_session_id") == "test-session"
+
+
 def test_create_session_derives_title_from_message(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
     """Test that create_session derives title from message if not provided."""
     mock_command_service.create_session.return_value = {
@@ -516,8 +537,8 @@ def test_create_session_propagates_skip_listener_registration(test_client, mock_
     assert cmd.skip_listener_registration is True
 
 
-def test_run_session_sets_initiator_session_id(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
-    """sessions/run should preserve caller linkage metadata."""
+def test_run_session_propagates_identity_metadata(test_client, mock_command_service):  # type: ignore[explicit-any, unused-ignore]
+    """sessions/run should preserve caller identity metadata."""
     mock_command_service.create_session.return_value = {
         "session_id": "sess-run-1",
         "tmux_session_name": "tc_run_1",
@@ -536,6 +557,7 @@ def test_run_session_sets_initiator_session_id(test_client, mock_command_service
     call_args = mock_command_service.create_session.call_args
     cmd = call_args.args[0]
     assert cmd.channel_metadata is not None
+    assert cmd.channel_metadata.get("human_role") == "admin"
     assert cmd.channel_metadata.get("initiator_session_id") == "test-session"
     assert cmd.channel_metadata.get("working_slug") == "my-slug"
 

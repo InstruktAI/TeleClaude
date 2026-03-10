@@ -1,15 +1,15 @@
-phase: pending
-build: pending
+phase: in_progress
+build: complete
 review: pending
-deferrals_processed: false
+deferrals_processed: true
 finalize:
   status: pending
 breakdown:
   assessed: true
   todos: []
-review_round: 0
+review_round: 2
 max_review_rounds: 3
-review_baseline_commit: ''
+review_baseline_commit: 5572a795273bf6ab6667cf933a72122daf15d617
 unresolved_findings: []
 resolved_findings: []
 prepare_phase: prepared
@@ -56,6 +56,7 @@ plan_review:
   reviewed_at: '2026-03-08T19:47:35Z'
   findings_count: 0
   rounds: 1
+deferrals_hash: f3c47da424f20b14c9d00d7143530a058d983972d3d372deebedc856922917e8
 dor:
   last_assessed_at: '2026-03-08T23:59:00Z'
   score: 9

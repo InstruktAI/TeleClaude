@@ -18,6 +18,8 @@ Review findings addressed:
 
 ### Task A1: Canonical transcript allowlist contract
 
+- [x] Implemented during build.
+
 **What**
 
 Rewrite `teleclaude/utils/transcript_discovery.py` to use a positive allowlist
@@ -65,6 +67,8 @@ contract.
 
 ### Task A2: Prune non-canonical mirrors from existing DB
 
+- [x] Implemented during build.
+
 **What**
 
 Add migration `teleclaude/core/migrations/0XX_prune_non_canonical_mirrors.py`
@@ -98,6 +102,8 @@ size, directly lowering write pressure.
 ---
 
 ### Task A3: Thread-isolated reconciliation worker
+
+- [x] Implemented during build.
 
 **What**
 
@@ -151,6 +157,8 @@ approach that preserves the existing lifecycle model.
 
 ### Task A4: Re-enable event-driven mirror dispatch
 
+- [x] Verified during build.
+
 **What**
 
 Remove the early-return guards in:
@@ -182,6 +190,8 @@ is safe. Both paths must be active: events for real-time, worker for catch-up.
 ---
 
 ### Task A5: Reconciliation metrics and measurement gate
+
+- [x] Implemented during build. Deployment gate remains to be evaluated on main.
 
 **What**
 
@@ -228,6 +238,8 @@ premature optimization and deferred action.
 ---
 
 ### Task A6: Conditional DB split (gate-triggered only)
+
+- [x] Not triggered during build; explicitly deferred pending A5 production evidence. See `deferrals.md`.
 
 **What**
 
@@ -277,6 +289,8 @@ makes this reversible — remove the path to revert to single-DB.
 *Depends on Lane A measurement gate (A5) passing.*
 
 ### Task B1: Exact canonical source identity
+
+- [x] Implemented during build.
 
 **What**
 
@@ -366,6 +380,8 @@ from the sessions table) while giving the worker a collision-safe key.
 
 ### Task B2: Durable skip/tombstone state for empty transcripts
 
+- [x] Implemented during build.
+
 **What**
 
 Add `mirror_tombstones` table:
@@ -414,6 +430,8 @@ satisfying the convergence invariant.
 
 ### Task B3: Canonical-only backfill and convergence closeout
 
+- [x] Implemented during build.
+
 **What**
 
 After B1 and B2 are stable, run a one-time cleanup + backfill:
@@ -449,6 +467,8 @@ duplicates or stale entries.
 ## Separate Dependent Workstream
 
 ### Task D1: `/todos/integrate` receipt-backing tracked separately
+
+- [x] Implemented during build.
 
 **What**
 
@@ -495,24 +515,24 @@ B3 depends on B1+B2.
 
 ### Targeted tests
 
-- [ ] `pytest tests/unit/test_transcript_discovery.py`
-- [ ] `pytest tests/unit/test_mirror_worker.py`
-- [ ] `pytest tests/unit/test_mirror_generator.py`
-- [ ] `pytest tests/unit/test_mirror_processors.py`
-- [ ] `pytest tests/unit/test_mirror_store.py`
-- [ ] `pytest tests/unit/test_mirror_prune_migration.py`
-- [ ] `pytest tests/unit/test_history_mirror_search.py`
-- [ ] `pytest tests/unit/test_mirror_api_routes.py`
+- [x] `pytest tests/unit/test_transcript_discovery.py`
+- [x] `pytest tests/unit/test_mirror_worker.py`
+- [x] `pytest tests/unit/test_mirror_generator.py`
+- [x] `pytest tests/unit/test_mirror_processors.py`
+- [x] `pytest tests/unit/test_mirror_store.py`
+- [x] `pytest tests/unit/test_mirror_prune_migration.py`
+- [x] `pytest tests/unit/test_history_mirror_search.py`
+- [x] `pytest tests/unit/test_mirror_api_routes.py`
 
 ### Quality checks
 
-- [ ] `make lint`
-- [ ] `make status`
+- [x] `make lint`
+- [x] `make status`
 
 ## Review Readiness
 
-- [ ] Lane A proof obligations satisfied before Lane B begins.
-- [ ] DB split decision evidence-backed with concrete thresholds (Finding 3).
-- [ ] Conditional config surface documented (Finding 2).
-- [ ] `/todos/integrate` receipt migration tracked separately (D1).
-- [ ] All implemented checklist items marked `[x]`.
+- [x] Lane A proof obligations satisfied before Lane B begins.
+- [x] DB split decision evidence-backed with concrete thresholds (Finding 3).
+- [x] Conditional config surface documented (Finding 2).
+- [x] `/todos/integrate` receipt migration tracked separately (D1).
+- [x] All implemented checklist items marked `[x]`.

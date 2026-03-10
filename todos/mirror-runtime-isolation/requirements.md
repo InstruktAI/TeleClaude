@@ -1,69 +1,44 @@
 # Requirements: mirror-runtime-isolation
 
+This artifact was reconstructed during build from the approved plan, review findings,
+and DOR report because the original `requirements.md` was missing from the worktree.
+
 ## Goal
 
-- Remove mirror-induced API hang risk by isolating reconciliation runtime and enforcing strict mirror correctness invariants (canonical corpus membership, exact identity, and convergent reconciliation behavior).
+- Isolate mirror reconciliation from the daemon control plane without losing
+  canonical mirror identity or steady-state convergence.
 
 ## Scope
 
-### Lane A: Containment (must land first)
+- In scope:
+  - Canonical transcript allowlist enforcement for discovery and real-time mirror generation.
+  - Pruning previously indexed non-canonical mirror rows.
+  - Thread-isolated reconciliation with structured completion metrics.
+  - Exact source identity keyed by canonical transcript path.
+  - Empty-transcript tombstones and canonical backfill for convergence.
+  - Separate roadmap tracking for `/todos/integrate` receipt-backing work.
+- Out of scope:
+  - Moving mirrors to a separate SQLite database unless the A5 measurement gate fails.
+  - Bundling `/todos/integrate` receipt-backing changes into this mirror delivery.
 
-- Convert transcript discovery for mirror/historical reconciliation to a positive allowlist contract (not exclusion filters).
-- Restrict reconciliation and mirror-backed search inputs to canonical transcripts only.
-- Move reconciliation out of the daemon event loop into a separate worker/process.
-- Add a post-prune measurement gate before closing containment:
-  - reconciliation processed count per run
-  - main DB WAL growth during reconciliation
-  - API latency for `/sessions`, `/health`, `/computers`
-  - API loop-lag warnings while reconciliation is active
-- Apply conditional DB split gate using measured write pressure:
-  - if post-prune writes stay high, move mirror/search storage to a separate DB in this lane
-  - if post-prune writes collapse, DB split can be deferred to Lane B
+## Success Criteria
 
-### Lane B: Correctness (after containment gate)
-
-- Replace fallback mirror identity behavior with exact canonical source identity.
-- Persist durable skip/tombstone state for empty transcripts so they are not reprocessed forever.
-- Run canonical-only backfill after identity model is stable.
-
-## Canonical Transcript Contract (Hot Corpus)
-
-- Claude canonical:
-  - Root: `~/.claude/projects/`
-  - Shape: `<project-dir>/<session-id>.jsonl`
-  - Explicitly non-canonical: any path under `/subagents/`
-- Codex canonical:
-  - Root: `~/.codex/sessions/`
-  - Shape: `YYYY/MM/DD/rollout-*-<native_session_id>.jsonl`
-  - Explicitly non-canonical: `~/.codex/.history/sessions/**`
-- Gemini canonical:
-  - Root: `~/.gemini/tmp/`
-  - Shape: `**/chats/session-*.json`
-
-## Out of Scope
-
-- Search UX/product redesign.
-- Reintroducing non-canonical artifacts into the hot corpus.
-- Bundling `/todos/integrate` migration implementation into mirror code changes.
-
-## Success Criteria / Proof Obligations
-
-- [ ] Discovery invariant: only allowlisted canonical transcript shapes are eligible for mirror processing.
-- [ ] Identity invariant: mirror primary key is canonical source identity; fallback `session_id` semantics are removed.
-- [ ] Runtime isolation invariant: API loop-lag warnings do not appear while reconciliation runs.
-- [ ] Convergence invariant: processed reconciliation count trends toward near-zero steady state after initial prune/backfill.
-- [ ] Empty-transcript invariant: once classified as empty, transcripts remain skipped until source content changes.
-- [ ] Storage decision invariant: DB split is decided from measured post-prune write pressure, not preference.
-- [ ] Workflow boundary invariant: `/todos/integrate` receipt-backing is tracked as a separate dependent todo.
+- Discovery invariant: only canonical transcripts enter reconciliation and mirror generation.
+- Identity invariant: mirror updates are keyed by canonical source identity, not fallback-derived ids.
+- Runtime isolation invariant: bulk reconciliation runs off the daemon event loop.
+- Convergence invariant: steady-state reconciliation approaches zero processed work.
+- Empty-transcript invariant: empty transcripts converge via tombstones instead of perpetual churn.
+- Storage decision invariant: any DB split remains conditional on measured pressure, not speculation.
+- Workflow boundary invariant: `/todos/integrate` receipt-backing remains a separate tracked workstream.
 
 ## Constraints
 
-- Preserve canonical transcript rendering semantics unless a requirement explicitly changes behavior.
-- Keep containment and correctness incrementally mergeable, each with rollback boundaries.
-- Do not depend on non-canonical corpus inputs for steady-state metrics.
+- Keep containment and correctness incrementally mergeable with rollback boundaries.
+- Preserve real-time event-driven mirror generation while moving bulk reconciliation off the event loop.
+- Skip transcripts without authoritative session context; do not fall back to lossy derived ids.
+- Prefer tests and executable verification over comments or surface reads.
 
 ## Risks
 
-- Ambiguous canonical contract will reintroduce heuristic discovery drift.
-- Process isolation alone can shift failure mode if write pressure remains high.
-- Delaying DB split despite high write pressure can preserve contention-induced instability.
+- The A5 measurement gate requires deployed reconciliation cycles; the A6 DB-split decision cannot be closed inside this worktree alone.
+- Existing mirror rows created before canonical allowlisting can pollute metrics until prune and backfill land together.

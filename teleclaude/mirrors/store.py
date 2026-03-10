@@ -47,6 +47,17 @@ class MirrorRecord:
     metadata: dict[str, JsonValue]
     created_at: str
     updated_at: str
+    source_identity: str | None = None
+
+
+@dataclass(frozen=True)
+class MirrorTombstoneRecord:
+    source_identity: str
+    agent: str
+    transcript_path: str
+    file_size: int
+    file_mtime: str
+    created_at: str
 
 
 @dataclass(frozen=True)
@@ -204,17 +215,32 @@ def search_mirrors(
     return results
 
 
-def get_mirror(session_id: str, *, db: object | None = None, computer: str | None = None) -> MirrorRecord | None:
+def get_mirror(
+    session_id: str | None = None,
+    *,
+    db: object | None = None,
+    computer: str | None = None,
+    source_identity: str | None = None,
+) -> MirrorRecord | None:
     """Fetch a mirror by exact or prefix session id."""
-    clauses = ["(session_id = ? OR session_id LIKE ?)"]
-    params: list[object] = [session_id, f"{session_id}%"]
-    if computer:
-        clauses.append("computer = ?")
-        params.append(computer)
+    clauses: list[str]
+    params: list[object]
+    if source_identity:
+        clauses = ["source_identity = ?"]
+        params = [source_identity]
+    elif session_id:
+        clauses = ["(session_id = ? OR session_id LIKE ?)"]
+        params = [session_id, f"{session_id}%"]
+        if computer:
+            clauses.append("computer = ?")
+            params.append(computer)
+    else:
+        return None
 
     sql = f"""
         SELECT
             session_id,
+            source_identity,
             computer,
             agent,
             project,
@@ -228,10 +254,17 @@ def get_mirror(session_id: str, *, db: object | None = None, computer: str | Non
             updated_at
         FROM mirrors
         WHERE {" AND ".join(clauses)}
-        ORDER BY CASE WHEN session_id = ? THEN 0 ELSE 1 END, LENGTH(session_id)
+        ORDER BY
+            CASE
+                WHEN ? IS NOT NULL AND session_id = ? THEN 0
+                WHEN ? IS NOT NULL AND session_id LIKE ? THEN 1
+                ELSE 0
+            END,
+            LENGTH(session_id),
+            updated_at DESC
         LIMIT 1
     """
-    params.append(session_id)
+    params.extend([session_id, session_id, session_id, f"{session_id}%" if session_id else ""])
 
     try:
         with _connect_ro(db) as conn:
@@ -251,6 +284,7 @@ def get_mirror(session_id: str, *, db: object | None = None, computer: str | Non
 
     return MirrorRecord(
         session_id=str(row["session_id"]),
+        source_identity=str(row["source_identity"]) if row["source_identity"] else None,
         computer=str(row["computer"]),
         agent=str(row["agent"]),
         project=str(row["project"]),
@@ -267,8 +301,13 @@ def get_mirror(session_id: str, *, db: object | None = None, computer: str | Non
 
 def upsert_mirror(record: MirrorRecord, *, db: object | None = None) -> None:
     """Insert or update a mirror row."""
+    if not record.source_identity:
+        msg = "MirrorRecord.source_identity is required"
+        raise ValueError(msg)
+
     payload = (
         record.session_id,
+        record.source_identity,
         record.computer,
         record.agent,
         record.project,
@@ -280,6 +319,7 @@ def upsert_mirror(record: MirrorRecord, *, db: object | None = None) -> None:
         json.dumps(record.metadata, sort_keys=True),
         record.created_at,
         record.updated_at,
+        record.session_id,
         record.computer,
         record.agent,
         record.project,
@@ -296,6 +336,7 @@ def upsert_mirror(record: MirrorRecord, *, db: object | None = None) -> None:
             """
             INSERT INTO mirrors (
                 session_id,
+                source_identity,
                 computer,
                 agent,
                 project,
@@ -308,8 +349,9 @@ def upsert_mirror(record: MirrorRecord, *, db: object | None = None) -> None:
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(session_id) DO UPDATE SET
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_identity) DO UPDATE SET
+                session_id = ?,
                 computer = ?,
                 agent = ?,
                 project = ?,
@@ -326,10 +368,20 @@ def upsert_mirror(record: MirrorRecord, *, db: object | None = None) -> None:
         conn.commit()
 
 
-def delete_mirror(session_id: str, *, db: object | None = None) -> None:
+def delete_mirror(
+    session_id: str | None = None,
+    *,
+    db: object | None = None,
+    source_identity: str | None = None,
+) -> None:
     """Delete a mirror row if it exists."""
+    if not session_id and not source_identity:
+        return
     with _connect_rw(db) as conn:
-        conn.execute("DELETE FROM mirrors WHERE session_id = ?", (session_id,))
+        if source_identity:
+            conn.execute("DELETE FROM mirrors WHERE source_identity = ?", (source_identity,))
+        else:
+            conn.execute("DELETE FROM mirrors WHERE session_id = ?", (session_id,))
         conn.commit()
 
 
@@ -380,17 +432,17 @@ def get_session_context(
     )
 
 
-def get_mirror_state_by_transcript(db: object | None = None) -> dict[str, tuple[str, str]]:
+def get_mirror_state_by_transcript(db: object | None = None) -> dict[str, tuple[str | None, str]]:
     """Return transcript-path keyed mirror state for reconciliation."""
     try:
         with _connect_ro(db) as conn:
-            rows = conn.execute("SELECT session_id, metadata, updated_at FROM mirrors").fetchall()
+            rows = conn.execute("SELECT source_identity, metadata, updated_at FROM mirrors").fetchall()
     except sqlite3.OperationalError as exc:
         if "no such table" in str(exc).lower():
             return {}
         raise
 
-    state: dict[str, tuple[str, str]] = {}
+    state: dict[str, tuple[str | None, str]] = {}
     for row in rows:
         try:
             metadata = json.loads(row["metadata"] or "{}")
@@ -400,5 +452,76 @@ def get_mirror_state_by_transcript(db: object | None = None) -> dict[str, tuple[
             continue
         transcript_path = metadata.get("transcript_path")
         if isinstance(transcript_path, str) and transcript_path:
-            state[transcript_path] = (str(row["session_id"]), str(row["updated_at"]))
+            source_identity = str(row["source_identity"]) if row["source_identity"] else None
+            state[transcript_path] = (source_identity, str(row["updated_at"]))
     return state
+
+
+def get_mirror_tombstone(source_identity: str, *, db: object | None = None) -> MirrorTombstoneRecord | None:
+    """Fetch a tombstone by source identity."""
+    try:
+        with _connect_ro(db) as conn:
+            row = conn.execute(
+                """
+                SELECT source_identity, agent, transcript_path, file_size, file_mtime, created_at
+                FROM mirror_tombstones
+                WHERE source_identity = ?
+                """,
+                (source_identity,),
+            ).fetchone()
+    except sqlite3.OperationalError as exc:
+        if "no such table" in str(exc).lower():
+            return None
+        raise
+
+    if row is None:
+        return None
+
+    return MirrorTombstoneRecord(
+        source_identity=str(row["source_identity"]),
+        agent=str(row["agent"]),
+        transcript_path=str(row["transcript_path"]),
+        file_size=int(row["file_size"]),
+        file_mtime=str(row["file_mtime"]),
+        created_at=str(row["created_at"]),
+    )
+
+
+def upsert_mirror_tombstone(record: MirrorTombstoneRecord, *, db: object | None = None) -> None:
+    """Insert or update an empty-transcript tombstone."""
+    with _connect_rw(db) as conn:
+        conn.execute(
+            """
+            INSERT INTO mirror_tombstones (
+                source_identity,
+                agent,
+                transcript_path,
+                file_size,
+                file_mtime,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_identity) DO UPDATE SET
+                agent = excluded.agent,
+                transcript_path = excluded.transcript_path,
+                file_size = excluded.file_size,
+                file_mtime = excluded.file_mtime,
+                created_at = excluded.created_at
+            """,
+            (
+                record.source_identity,
+                record.agent,
+                record.transcript_path,
+                record.file_size,
+                record.file_mtime,
+                record.created_at,
+            ),
+        )
+        conn.commit()
+
+
+def delete_mirror_tombstone(source_identity: str, *, db: object | None = None) -> None:
+    """Delete a tombstone if it exists."""
+    with _connect_rw(db) as conn:
+        conn.execute("DELETE FROM mirror_tombstones WHERE source_identity = ?", (source_identity,))
+        conn.commit()

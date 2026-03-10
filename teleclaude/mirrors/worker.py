@@ -3,32 +3,47 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
+from time import perf_counter
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.core.agents import AgentName
 
-from ..utils.transcript_discovery import (
-    TranscriptCandidate,
+from ..utils.transcript_discovery import TranscriptCandidate, build_source_identity, is_canonical
+from ..utils.transcript_discovery import discover_transcripts as _discover_transcripts
+from .generator import generate_mirror_sync
+from .store import (
+    MirrorTombstoneRecord,
+    delete_mirror,
+    delete_mirror_tombstone,
+    get_mirror_state_by_transcript,
+    get_mirror_tombstone,
+    get_session_context,
+    resolve_db_path,
+    upsert_mirror_tombstone,
 )
-from ..utils.transcript_discovery import (
-    discover_transcripts as _discover_transcripts,
-)
-from ..utils.transcript_discovery import (
-    extract_project as _fallback_project,
-)
-from ..utils.transcript_discovery import (
-    extract_session_id as _fallback_session_id,
-)
-from .generator import generate_mirror
-from .store import get_mirror_state_by_transcript, get_session_context, resolve_db_path
 
 logger = get_logger(__name__)
 
 RECONCILE_INTERVAL_S = 300
 
-__all__ = ["MirrorWorker", "TranscriptCandidate"]
+__all__ = ["MirrorWorker", "ReconcileResult", "TranscriptCandidate"]
+
+
+@dataclass
+class ReconcileResult:
+    discovered: int
+    processed: int
+    failed: int
+    skipped_unchanged: int
+    skipped_no_context: int
+    duration_s: float
 
 
 class MirrorWorker:
@@ -38,52 +53,179 @@ class MirrorWorker:
         self.db_path = resolve_db_path(db)
         self.interval_s = interval_s
 
-    async def run_once(self) -> int:
+    def _wal_size_kb(self) -> int:
+        wal_path = Path(f"{self.db_path}-wal")
+        if not wal_path.exists():
+            return 0
+        return wal_path.stat().st_size // 1024
+
+    @staticmethod
+    def _parse_updated_at(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+    @staticmethod
+    def _candidate_file_state(candidate: TranscriptCandidate) -> tuple[int, str]:
+        stat = candidate.path.stat()
+        return stat.st_size, str(stat.st_mtime_ns)
+
+    def _should_skip_tombstoned_transcript(self, source_identity: str, candidate: TranscriptCandidate) -> bool:
+        tombstone = get_mirror_tombstone(source_identity, db=self.db_path)
+        if tombstone is None:
+            return False
+        file_size, file_mtime = self._candidate_file_state(candidate)
+        if tombstone.file_size == file_size and tombstone.file_mtime == file_mtime:
+            return True
+        delete_mirror_tombstone(source_identity, db=self.db_path)
+        return False
+
+    def _record_tombstone(self, source_identity: str, candidate: TranscriptCandidate) -> None:
+        file_size, file_mtime = self._candidate_file_state(candidate)
+        upsert_mirror_tombstone(
+            MirrorTombstoneRecord(
+                source_identity=source_identity,
+                agent=candidate.agent.value,
+                transcript_path=str(candidate.path),
+                file_size=file_size,
+                file_mtime=file_mtime,
+                created_at=datetime.now(timezone.utc).isoformat(),
+            ),
+            db=self.db_path,
+        )
+
+    def _log_reconcile_result(self, result: ReconcileResult, wal_before_kb: int, wal_after_kb: int) -> None:
+        logger.info(
+            "mirror.reconciliation.complete "
+            f"discovered={result.discovered} "
+            f"processed={result.processed} "
+            f"failed={result.failed} "
+            f"skipped_unchanged={result.skipped_unchanged} "
+            f"skipped_no_context={result.skipped_no_context} "
+            f"duration_s={result.duration_s:.3f} "
+            f"wal_before_kb={wal_before_kb} "
+            f"wal_after_kb={wal_after_kb}"
+        )
+
+    def _reconcile_sync(self) -> ReconcileResult:
         """Reconcile all known transcripts once."""
+        wal_before_kb = self._wal_size_kb()
+        started_at = perf_counter()
         state = get_mirror_state_by_transcript(self.db_path)
         transcripts = _discover_transcripts()
-        total = len(transcripts)
-        processed = 0
-        if total == 0:
-            logger.info("Mirror reconciliation: 0 transcripts discovered")
-            return 0
+        result = ReconcileResult(
+            discovered=len(transcripts),
+            processed=0,
+            failed=0,
+            skipped_unchanged=0,
+            skipped_no_context=0,
+            duration_s=0.0,
+        )
 
-        logger.info("Mirror reconciliation: 0/%d", total)
-        for index, candidate in enumerate(transcripts, start=1):
+        for candidate in transcripts:
             transcript_path = str(candidate.path)
-            mtime_dt = datetime.fromtimestamp(candidate.mtime, tz=timezone.utc)
-            existing = state.get(transcript_path)
-            updated_at = existing[1] if existing else None
-            parsed_updated = datetime.fromisoformat(updated_at.replace("Z", "+00:00")) if updated_at else None
-            if parsed_updated is not None and parsed_updated >= mtime_dt:
-                continue
+            try:
+                mtime_dt = datetime.fromtimestamp(candidate.mtime or candidate.path.stat().st_mtime, tz=timezone.utc)
+                existing = state.get(transcript_path)
+                updated_at = existing[1] if existing else None
+                parsed_updated = self._parse_updated_at(updated_at)
+                if parsed_updated is not None and parsed_updated >= mtime_dt:
+                    result.skipped_unchanged += 1
+                    continue
 
-            context = get_session_context(transcript_path=transcript_path, db=self.db_path)
-            session_id = context.session_id if context else _fallback_session_id(candidate.path, candidate.agent)
-            project = context.project if context else _fallback_project(candidate.path, candidate.agent)
-            computer = context.computer if context and context.computer else config.computer.name
+                context = get_session_context(transcript_path=transcript_path, db=self.db_path)
+                if context is None:
+                    logger.debug(
+                        "Mirror reconciliation skipped transcript without session context",
+                        transcript_path=transcript_path,
+                        agent=candidate.agent.value,
+                    )
+                    result.skipped_no_context += 1
+                    continue
 
-            await generate_mirror(
-                session_id=session_id,
-                transcript_path=transcript_path,
-                agent_name=candidate.agent,
-                computer=computer,
-                project=project,
-                db=self.db_path,
-            )
-            processed += 1
-            if index == total or index % 100 == 0:
-                logger.info("Mirror reconciliation: %d/%d", index, total)
+                source_identity = build_source_identity(candidate.path, candidate.agent)
+                if self._should_skip_tombstoned_transcript(source_identity, candidate):
+                    result.skipped_unchanged += 1
+                    continue
 
-        logger.info("Mirror reconciliation complete: %d/%d processed", processed, total)
-        return processed
+                generated = generate_mirror_sync(
+                    session_id=context.session_id,
+                    source_identity=source_identity,
+                    transcript_path=transcript_path,
+                    agent_name=candidate.agent,
+                    computer=context.computer or config.computer.name,
+                    project=context.project or "",
+                    db=self.db_path,
+                )
+                if generated:
+                    delete_mirror_tombstone(source_identity, db=self.db_path)
+                else:
+                    self._record_tombstone(source_identity, candidate)
+                    delete_mirror(session_id=context.session_id, source_identity=source_identity, db=self.db_path)
+                result.processed += 1
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                result.failed += 1
+                logger.error(
+                    "Mirror reconciliation failed for transcript %s (%s): %s",
+                    transcript_path,
+                    candidate.agent.value,
+                    exc,
+                    exc_info=True,
+                )
+
+        result.duration_s = perf_counter() - started_at
+        wal_after_kb = self._wal_size_kb()
+        self._log_reconcile_result(result, wal_before_kb, wal_after_kb)
+        return result
+
+    def backfill_sync(self) -> ReconcileResult:
+        """Remove stale mirror rows and repopulate canonical rows from transcripts."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute("SELECT id, agent, source_identity, metadata FROM mirrors").fetchall()
+                delete_ids: list[int] = []
+                for row in rows:
+                    source_identity = row["source_identity"]
+                    if not source_identity:
+                        delete_ids.append(int(row["id"]))
+                        continue
+                    try:
+                        metadata = json.loads(row["metadata"] or "{}")
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(metadata, dict):
+                        continue
+                    transcript_path = metadata.get("transcript_path")
+                    if not isinstance(transcript_path, str) or not transcript_path:
+                        continue
+                    agent_value = row["agent"]
+                    try:
+                        agent = AgentName(str(agent_value))
+                    except ValueError:
+                        continue
+                    if not is_canonical(Path(transcript_path), agent):
+                        delete_ids.append(int(row["id"]))
+                for row_id in delete_ids:
+                    conn.execute("DELETE FROM mirrors WHERE id = ?", (row_id,))
+                conn.commit()
+        except sqlite3.OperationalError as exc:
+            if "no such table" not in str(exc).lower():
+                raise
+
+        return self._reconcile_sync()
+
+    async def run_once(self) -> ReconcileResult:
+        """Reconcile all known transcripts once."""
+        return await asyncio.to_thread(self._reconcile_sync)
 
     async def run(self) -> None:
         """Run reconciliation on startup and every interval until cancelled."""
-        # TODO: re-enable after mirror-runtime-isolation is delivered
-        logger.info("Mirror worker disabled (pending mirror-runtime-isolation)")
-        return
-        await self.run_once()
         while True:
+            try:
+                await self.run_once()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.error("Mirror reconciliation cycle failed: %s", exc, exc_info=True)
             await asyncio.sleep(self.interval_s)
-            await self.run_once()
