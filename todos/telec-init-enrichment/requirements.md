@@ -22,7 +22,7 @@ SDLC capabilities.
    - Language and framework detection
    - Entry point and route/handler mapping
    - Architecture pattern recognition
-   - Test pattern identification
+   - Test pattern and coverage model identification
    - Package dependency inventory and role classification
    - Build and deploy model
    - Configuration structure
@@ -32,8 +32,12 @@ SDLC capabilities.
 2. **Documentation scaffolding** — turn analysis findings into durable doc snippets
    that conform to the existing snippet authoring schema. The analysis determines
    which snippets to produce and which taxonomy types to use based on what the
-   codebase contains. [inferred] Project-specific agent bootstrap content for
-   `AGENTS.md` is included, consistent with agent artifact governance.
+   codebase contains. The generated set covers the concrete findings from the
+   analyzed repository, including architecture summaries, convention/policy stubs,
+   dependency maps, and entry-point documentation where those structures exist.
+   [inferred] Project-local agent bootstrap content yields project-specific
+   `AGENTS.md` / `CLAUDE.md` runtime artifacts consistent with agent artifact
+   governance rather than generic templates.
 
 3. **Authorized author guidance** — a procedure doc snippet consumed by the AI
    during analysis that encodes the discovery dimensions, per-language checklists,
@@ -45,12 +49,21 @@ SDLC capabilities.
    - On first init: prompt user to run enrichment or skip
    - On re-init: offer to refresh analysis
    - Enrichment runs through the existing session infrastructure
-   - Session produces doc snippets, commits them, and ends
+   - Session produces artifacts and exits after generation completes
 
 5. **[inferred] Idempotency** — enrichment is safe to re-run:
    - Re-analysis updates existing snippets rather than duplicating
    - User-modified snippets are preserved (not overwritten)
    - Auto-generated snippets are distinguishable from human-authored ones
+
+6. **Integration setup continuity** — enrichment keeps `telec init`'s project
+   setup role complete:
+   - Existing hook/sync/watcher setup still happens
+   - The initialized project becomes discoverable to the local TeleClaude
+     project inventory, not just inside the repo
+   - Release-channel enrollment is surfaced during init and uses an existing
+     documented configuration surface or explicitly introduces one with matching
+     config/help/spec updates
 
 ### Out of scope
 
@@ -65,15 +78,27 @@ SDLC capabilities.
 
 - [ ] `telec init` on a fresh project (with code) produces schema-valid, project-specific
       doc snippets that are discoverable via `telec docs index` and `telec docs get`.
-- [ ] Generated snippet content reflects the actual codebase (package names, entry points,
-      patterns found) — not generic placeholder text.
-- [ ] The analysis session uses the authorized author guidance during its run.
+- [ ] Generated snippet content reflects the actual codebase (for example package names,
+      entry points, conventions, and dependency roles that were actually found) rather than
+      generic placeholder text.
+- [ ] The generated snippet set includes the categories implied by the analyzed codebase
+      (for example architecture summaries, convention/policy stubs, dependency maps,
+      entry-point docs, and project-specific agent bootstrap content).
+- [ ] The enrichment run exposes evidence that the authorized author guidance was loaded
+      during analysis (for example in the assembled prompt/session input or run logs).
 - [ ] Re-running enrichment updates existing auto-generated snippets without duplicating
       them and without overwriting human-edited snippets.
 - [ ] The enrichment session completes and does not remain active after artifact generation.
+- [ ] First-time init and re-init enrichment flows are both observable and verifiable:
+      fresh init offers enrich-or-skip behavior, and re-init offers refresh behavior.
 - [ ] Existing `telec init` plumbing (hooks, watchers, sync) continues to work unchanged
       when enrichment is declined.
-- [ ] [inferred] User-facing `telec init` help text reflects the enrichment option.
+- [ ] The initialized project is visible to the local TeleClaude project inventory after
+      init completes.
+- [ ] Release-channel enrollment performed by `telec init` persists through a documented
+      config surface and remains valid on rerun.
+- [ ] [inferred] User-facing `telec init` help text and the CLI surface documentation
+      reflect the enrichment option and any new init prompts/flags.
 
 ## Constraints
 
@@ -83,8 +108,9 @@ SDLC capabilities.
 - The enrichment step must be optional — `telec init` without enrichment must still work
   as it does today (plumbing only).
 - No new daemon dependencies — enrichment uses existing session infrastructure.
-- [inferred] No new config surfaces — any configuration produced during init reuses
-  existing config fields.
+- If enrichment introduces or changes configuration, the config surface must be
+  documented explicitly and the corresponding config wizard/help/spec updates
+  must be included.
 
 ## Risks
 

@@ -23,8 +23,8 @@ grounding:
   invalidation_reason: 'requirements rewritten after process improvements'
   changed_paths: []
 requirements_review:
-  verdict: ''
-  reviewed_at: ''
+  verdict: 'approve'
+  reviewed_at: '2026-03-10T14:58:15Z'
   findings_count: 0
 plan_review:
   verdict: ''
