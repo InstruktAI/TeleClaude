@@ -25,8 +25,9 @@ A new `YouTubeScraperJob` class in `jobs/youtube_scraper.py` that:
 4. Filters rows to those whose `tags` field intersects with the job config's
    `tags` list (intersection-based matching per requirements).
 5. For each matching channel, fetches recent videos using
-   `youtube_search(channels=handle, ...)` from
-   `teleclaude/helpers/youtube_helper.py`.
+   `youtube_search(channels=handle, query=channel_name, get_transcripts=False, ...)`
+   from `teleclaude/helpers/youtube_helper.py` so the scraper stays within the
+   metadata-only scope.
 6. Collects structured results (channel name, video title, URL, publish time,
    duration) and returns a `JobResult` with accurate counts.
 
@@ -53,8 +54,10 @@ It reuses `discover_youtube_subscribers()`, `read_csv()`, and
 
 - **Search query**: `youtube_search` requires a non-empty `query` argument.
   The job uses the channel name as the query with a configurable
-  `period_days` window (default 7). This reuses the existing channel search
-  page scraping without introducing new YouTube access patterns.
+  `period_days` window (default 7). It also disables transcript extraction
+  (`get_transcripts=False`) because transcript fetching is explicitly out of
+  scope for this todo. This reuses the existing channel search page scraping
+  without introducing new YouTube access patterns.
 
 - **Output**: The job logs structured results per subscriber (channels
   evaluated, videos found). It does not persist video data to disk — that is
@@ -219,25 +222,30 @@ Update the affected artifacts so they describe the final wiring consistently:
    wiring used here.
 2. `teleclaude.sample.yml` shows the corrected `youtube_scraper` and
    `youtube_sync_subscriptions` entries.
-3. `docs/project/spec/jobs/youtube-sync-subscriptions.md` notes that the
-   tagging job is scheduled under its own config key
-   (`youtube_sync_subscriptions`) rather than sharing `youtube_scraper`.
-4. `todos/youtube-scrape-channels-job/demo.md` validates the corrected wiring
+3. `docs/project/spec/jobs/youtube-sync-subscriptions.md` is corrected to
+   describe the existing script-job wiring accurately, including its own
+   `youtube_sync_subscriptions` config key rather than the shared
+   `youtube_scraper` entry.
+4. `docs/project/design/architecture/jobs-runner.md` updates the runner
+   examples and execution-mode description that currently imply
+   `youtube_sync_subscriptions` is an agent job.
+5. `todos/youtube-scrape-channels-job/demo.md` validates the corrected wiring
    and shows both jobs as independently scheduled script jobs.
 
 ### Why
 
 The requirements explicitly call out config-surface updates when the
 `jobs.youtube_scraper.tags` field becomes part of the supported workflow.
-Without a config spec update, sample config update, and demo refresh, the
-builder would satisfy the code path while still failing the documentation and
-review lanes.
+Without a config spec update, runner-design update, sample config update, and
+demo refresh, the builder would satisfy the code path while still leaving
+repository docs inconsistent about how these jobs are wired and scheduled.
 
 ### Referenced files
 
 - `docs/project/spec/teleclaude-config.md` (modify)
 - `teleclaude.sample.yml` (modify)
 - `docs/project/spec/jobs/youtube-sync-subscriptions.md` (modify)
+- `docs/project/design/architecture/jobs-runner.md` (modify)
 - `todos/youtube-scrape-channels-job/demo.md` (modify)
 
 ### Verification
