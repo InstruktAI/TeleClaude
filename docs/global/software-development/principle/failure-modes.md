@@ -25,6 +25,10 @@ These recurring failures produce incorrect conclusions:
 ## Implications
 
 - Always walk the code with concrete values.
+- Keep the active objective current.
+- When code, tests, comments, plans, or prior conclusions disagree, ascertain what is leading and what is stale before changing anything.
+- A failing test proves there is a mismatch. Existing code proves there is current behavior. Neither one alone proves intended behavior.
+- Treat mismatch as investigation work: trace the real behavior, determine the intended behavior for the active objective, then fix the stale side of the mismatch.
 - Verify comments against actual behavior.
 - Assume the bug exists and hunt the exact failure path.
 - Prefer a quick test over speculation.

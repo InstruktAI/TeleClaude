@@ -1135,7 +1135,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Observer-only handler for session_closed events.
 
         SESSION_CLOSED is a fact: the session record is now closed in DB.
-        This handler cleans up in-memory state only. It MUST NOT call
+        This handler cleans up in-memory state and dispatches mirror cleanup. It MUST NOT call
         terminate_session — doing so causes duplicate channel deletion
         (Topic_id_invalid). The close-intent path is SESSION_CLOSE_REQUESTED.
 
@@ -2250,11 +2250,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
             logger.info("Hook outbox worker started")
 
-            # TODO: re-enable after mirror-runtime-isolation is delivered
-            # mirror_worker = MirrorWorker(config.database.path)
-            # self.mirror_worker_task = asyncio.create_task(mirror_worker.run())
-            # self._track_background_task(self.mirror_worker_task, "mirror-worker")
-            logger.info("Mirror worker disabled (pending mirror-runtime-isolation)")
+            mirror_db_path = getattr(getattr(config, "database", None), "path", None)
+            if isinstance(mirror_db_path, str) and mirror_db_path:
+                mirror_worker = MirrorWorker(mirror_db_path)
+                self.mirror_worker_task = asyncio.create_task(mirror_worker.run())
+                self._track_background_task(self.mirror_worker_task, "mirror-worker")
+                logger.info("Mirror worker started")
+            else:
+                logger.warning("Mirror worker skipped: database path unavailable")
 
             if CODEX_TRANSCRIPT_WATCH_INTERVAL_S > 0:
                 self.codex_transcript_watch_task = asyncio.create_task(

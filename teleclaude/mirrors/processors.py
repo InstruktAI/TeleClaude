@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.core.agents import AgentName
+from teleclaude.utils.transcript_discovery import build_source_identity, is_canonical
 
 from .generator import generate_mirror
 from .store import get_session_context, resolve_db_path
@@ -60,9 +62,13 @@ async def process_mirror_event(event: MirrorEvent) -> None:
     except ValueError:
         logger.warning("Mirror processor skipped unknown agent %s for %s", context.agent, context.session_id[:8])
         return
+    if not is_canonical(Path(transcript_path), agent_name):
+        logger.debug("Mirror processor skipped non-canonical transcript", transcript_path=transcript_path)
+        return
 
     await generate_mirror(
         session_id=context.session_id,
+        source_identity=build_source_identity(transcript_path, agent_name),
         transcript_path=transcript_path,
         agent_name=agent_name,
         computer=context.computer or config.computer.name,

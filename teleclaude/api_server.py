@@ -556,13 +556,14 @@ class APIServer:
             """
             # Normalize request into internal command.
 
+            effective_human_role = request.human_role or identity.human_role
             channel_metadata: dict[str, str] | None = None
-            if request.human_email or request.human_role:
+            if request.human_email or effective_human_role:
                 channel_metadata = {}
                 if request.human_email:
                     channel_metadata["human_email"] = request.human_email
-                if request.human_role:
-                    channel_metadata["human_role"] = request.human_role
+                if effective_human_role:
+                    channel_metadata["human_role"] = effective_human_role
             if request.direct and not identity.session_id:
                 raise HTTPException(
                     status_code=400,
@@ -1337,8 +1338,11 @@ class APIServer:
                 working_slug = normalized_args.split()[0]
 
             channel_metadata: dict[str, str] | None = None
+            if identity.human_role:
+                channel_metadata = {"human_role": identity.human_role}
             if identity.session_id and not identity.session_id.startswith("web:"):
-                channel_metadata = {"initiator_session_id": identity.session_id}
+                channel_metadata = channel_metadata or {}
+                channel_metadata["initiator_session_id"] = identity.session_id
             if working_slug:
                 channel_metadata = channel_metadata or {}
                 channel_metadata["working_slug"] = working_slug

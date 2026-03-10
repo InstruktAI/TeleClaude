@@ -86,12 +86,13 @@ async def test_process_mirror_event_generates_mirror_with_context_and_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     generate_mirror = AsyncMock()
+    monkeypatch.setenv("HOME", "/tmp")
     context = SessionMirrorContext(
         session_id="sess-1",
         computer="",
         agent="claude",
         project="teleclaude",
-        transcript_path="/tmp/from-context.jsonl",
+        transcript_path="/tmp/.claude/projects/teleclaude/from-context.jsonl",
     )
 
     monkeypatch.setattr(processors, "resolve_db_path", lambda: "/tmp/teleclaude.db")
@@ -103,7 +104,8 @@ async def test_process_mirror_event_generates_mirror_with_context_and_defaults(
 
     generate_mirror.assert_awaited_once_with(
         session_id="sess-1",
-        transcript_path="/tmp/from-context.jsonl",
+        source_identity="claude:teleclaude/from-context.jsonl",
+        transcript_path="/tmp/.claude/projects/teleclaude/from-context.jsonl",
         agent_name=processors.AgentName.CLAUDE,
         computer="FallbackBox",
         project="teleclaude",
@@ -112,7 +114,27 @@ async def test_process_mirror_event_generates_mirror_with_context_and_defaults(
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Mirror dispatch disabled pending mirror-runtime-isolation")
+async def test_process_mirror_event_skips_non_canonical_transcripts(monkeypatch: pytest.MonkeyPatch) -> None:
+    generate_mirror = AsyncMock()
+    monkeypatch.setenv("HOME", "/tmp")
+    context = SessionMirrorContext(
+        session_id="sess-1",
+        computer="MozBook",
+        agent="codex",
+        project="teleclaude",
+        transcript_path="/tmp/.codex/.history/sessions/session.jsonl",
+    )
+
+    monkeypatch.setattr(processors, "resolve_db_path", lambda: "/tmp/teleclaude.db")
+    monkeypatch.setattr(processors, "get_session_context", lambda **_: context)
+    monkeypatch.setattr(processors, "generate_mirror", generate_mirror)
+
+    await processors.process_mirror_event(MirrorEvent(session_id="sess-1", transcript_path=None))
+
+    generate_mirror.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_dispatch_isolates_processor_failures(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
 

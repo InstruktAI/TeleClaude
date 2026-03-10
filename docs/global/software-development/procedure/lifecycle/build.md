@@ -32,6 +32,7 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
    - Commit changes for the task (one commit per task).
    - Update the task checkbox to `[x]` and include that change in the same commit.
    - Do not use `git stash`/`git stash pop`; keep the flow commit-based inside the current worktree.
+   - When a test or check disagrees with the current code, do the intent-resolution work before fixing either side. Ascertain what is leading for the active objective, then fix the stale side of the mismatch.
    - When adding or updating tests, assert behavioral contracts; avoid exact wording assertions on docs/agent prose unless execution depends on that exact token.
 4. If a task is truly out of scope, create `deferrals.md` with the required template and continue with remaining tasks.
 
