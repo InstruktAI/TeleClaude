@@ -6,127 +6,133 @@
 - Score: `7/10`
 - Ready Decision: **Not Ready**
 
+The artifact set is coherent and technically grounded, but it still fails two
+Definition-of-Ready gates: atomic scope and third-party research capture.
+
 ## Cross-Artifact Validation
 
 ### Plan-to-requirement fidelity: PASS
 
-- Phase 1 covers the capture-budget correction, teardown cleanup, and hot-loop cost reduction.
-- Phases 2 through 4 cover the render-aware runtime, explicit lane authority, wake-driven capture, and adaptive cadence.
-- Phase 5 covers the ephemeral control-command lane without expanding the public key-only API.
-- Phase 6 covers performance validation, docs/config realignment, and regression verification.
-- No plan task contradicts the requirements. The plan preserves `agent_stop` as hook-authoritative and keeps rendered snapshots as the canonical live semantic source.
+- The requirements and plan agree on the core architecture:
+  render-aware runtime, three observability lanes, wake-driven rendered capture,
+  adaptive cadence, hook-authoritative `agent_stop`, teardown cleanup, and the
+  non-durable control lane.
+- No plan task contradicts a requirement. The plan keeps rendered snapshots as
+  the canonical live semantic source and uses `pipe-pane` only as a wake signal.
 
 ### Coverage completeness: PASS
 
-- Every in-scope requirement has at least one plan task.
-- Smaller scope items are still covered explicitly:
-  - capture budget correction: Task 1.1
-  - teardown tmp cleanup: Task 1.2
-  - compound control queue: Tasks 5.1 and 5.2
-  - performance proof and semantic parity: Tasks 6.1 through 6.4
+- Every in-scope requirement maps to at least one implementation task.
+- Smaller but important requirements are explicitly covered:
+  - capture-budget correction: Task 1.1
+  - session tmp cleanup: Task 1.2
+  - transcript/tmux fallback preservation: Tasks 6.2 and 6.4
+  - control-lane scope limits: Tasks 5.1 and 5.2
+  - performance proof and semantic parity: Tasks 2.2, 6.1, and 6.4
 
-### Verification chain: PASS (blocked by readiness gaps)
+### Verification chain: PASS
 
-- Task-level verification is explicit throughout the plan.
-- The plan closes with full lint/test/demo/integration checks, so the Definition of Done chain is present.
-- The verification strategy is sufficient once the scope is split into buildable slices and the tmux integration research is recorded as durable documentation.
+- The plan defines observable proof for each phase: fixture corpus, parser replay,
+  runtime lifecycle tests, config-surface synchronization, docs updates, and final
+  integration checks.
+- The verification chain is sufficient to satisfy the build/review quality gates
+  once the readiness blockers below are resolved.
 
 ## DOR Gate Results
 
 ### 1. Intent & success: PASS
 
-The problem statement, architectural direction, and desired outcomes are explicit in
-`requirements.md`. Success criteria are concrete and testable: semantic parity for
-Codex live events, reduced idle tmux overhead, startup/reconnect authority coverage,
-config-surface synchronization, cleanup behavior, and documentation realignment.
+The artifacts state the problem, desired architecture, and measurable success
+criteria clearly. The outcome is not "improve polling" in the abstract; it is a
+specific runtime model with preserved Codex semantics, reduced idle tmux churn,
+explicit lifecycle authority, cleanup behavior, and documentation/config alignment.
 
 ### 2. Scope & size: FAIL
 
-This is too broad for one builder session. The plan spans six phases, multiple new core
-modules, fixture corpus creation, config-surface changes, documentation rewrites,
-performance instrumentation, and full regression validation. It also combines at least
-two independently shippable workstreams:
+This work is still too broad for a single builder todo.
 
-1. Core render-observability runtime refactor.
-2. Ephemeral compound control queue.
+Evidence:
+- `implementation-plan.md` spans six phases and combines immediate fixes, replay
+  corpus creation, semantic extraction, a new runtime actor, wake/cadence logic,
+  a separate control queue, instrumentation, documentation rewrites, and full
+  regression validation.
+- `todos/roadmap.yaml` still contains only the single slug
+  `codex-render-semantic-runtime` with no dependent child todos registered for the
+  runtime lane and control-lane workstreams.
 
-Those can be reviewed and delivered separately without creating a half-working system.
-Until the work is split into dependent todos and registered in `roadmap.yaml`, the item
-does not satisfy the atomic-session gate.
+This fails the atomic-session gate. At minimum, split the core render/runtime work
+from the ephemeral compound control queue and register the dependency order in
+`todos/roadmap.yaml` before dispatch.
 
 ### 3. Verification: PASS
 
-Verification is well specified. The plan includes replay fixtures, parser invariants,
-runtime lifecycle tests, config-surface checks, documentation updates, and final
-`make test`, `make lint`, and demo validation. Error-path and lifecycle coverage are
-called out explicitly for startup, reconnect, headless bootstrap, drift recovery, and
-cleanup.
+Verification is explicit and testable. The plan covers:
+- replay fixtures and semantic parity checks,
+- runtime and cleanup tests,
+- config/documentation synchronization,
+- startup, reconnect, headless-bootstrap, and drift-recovery coverage,
+- final lint/test/demo validation.
+
+The gate is blocked by readiness gaps, not missing verification.
 
 ### 4. Approach known: PASS
 
-The technical path is concrete. The artifacts identify the current code seams, define a
-phased migration order, and use existing patterns already present in the codebase:
-polling coordinator integration, tmux bridge helpers, config wiring, and runtime-owned
-state. The remaining risk is execution breadth, not architectural ambiguity.
+The technical path is concrete. The artifacts identify the relevant seams,
+proposed modules, migration order, and invariants to preserve. This is an
+execution-breadth problem, not an architecture-discovery problem.
 
 ### 5. Research complete: FAIL
 
-This change materially modifies a third-party integration surface: tmux
-`capture-pane` and `pipe-pane` behavior become central to the runtime design. The input
-captures useful local probe findings, but no indexed third-party research artifact was
-found for tmux under the project or shared docs roots. The DOR policy requires that
-such findings be captured as durable third-party documentation with authoritative
-sources before dispatch.
+The required third-party tmux research is still not captured as indexed durable docs.
 
-### 6. Dependencies & preconditions: PASS (with follow-up)
+Evidence:
+- The design depends directly on tmux `capture-pane` and `pipe-pane` behavior.
+- `docs/third-party/index.yaml` contains no tmux entry.
+- `rg -n "tmux" docs/third-party/index.yaml docs/third-party -g '*.md'` returned no
+  matches during this gate run.
 
-External preconditions are otherwise clear:
+`input.md` records useful local findings, but the DOR gate requires authoritative
+third-party findings to be published into the third-party docs system before build.
 
-- the tmux substrate stays in place,
-- config-surface additions are explicitly listed,
-- wizard/spec/sample updates are named,
-- affected code paths are grounded.
+### 6. Dependencies & preconditions: PASS (follow-up required)
 
-The only missing precondition is the scope split required by Gate 2. That is
-preparation work, not a human decision blocker.
+The operational preconditions are otherwise identified: tmux remains the substrate,
+adapter contracts stay stable, config surface changes are enumerated, and the
+affected code paths are grounded. The remaining missing preconditions are the scope
+split and tmux research artifact.
 
 ### 7. Integration safety: PASS
 
-The plan is explicitly incremental. It starts with low-risk corrections, builds a
-semantic safety net before extraction, preserves adapter contracts and the tmux session
-substrate, and keeps the key-only public API unchanged. The runtime and control work
-can be staged without destabilizing main, provided the scope is split first.
+The plan is intentionally incremental: low-risk fixes first, then semantic safety
+net, then extraction/runtime changes, then cadence/wake logic, then validation.
+This can be merged safely in stages once the prep work is split into buildable units.
 
 ### 8. Tooling impact: PASS
 
-No scaffolding or build-tooling redesign is proposed. The only operator-facing surface
-change is new polling configuration, and the plan already requires synchronized updates
-to `config.sample.yml`, the wizard guidance, and the config spec.
+No scaffolding or platform-tooling redesign is proposed. The only operator-facing
+surface change is polling configuration, and the plan already requires synchronized
+updates to the sample config, wizard guidance, and config spec.
 
 ## Review-Readiness Preview
 
-- Test lane: strong. The plan is explicit about fixture-first safety nets, behavioral
-  contract tests, and final integration checks.
-- Security and operational review: acceptable. The work is internal, and cleanup,
-  observability, lifecycle recovery, and failure handling are all called out.
-- Documentation/config review: strong. Required updates to architecture docs, config
-  docs, and wizard surfaces are already part of scope.
-- Review-readiness gap: as one todo, the eventual diff would be too large and mixed to
-  preserve TDD discipline and yield a clean review. Splitting is required before builder
-  dispatch.
+- Test lane: ready once split. The plan is explicit about behavior-first checks and
+  semantic replay.
+- Security/operations lane: acceptable. Cleanup, observability, and lifecycle
+  recovery are explicitly in scope.
+- Documentation/config lane: ready. The plan already includes the required updates.
+- Review-readiness gap: the eventual diff would still be too large and mixed to keep
+  review quality high or preserve TDD discipline as one todo.
 
 ## Unresolved Blockers
 
-1. Split this work into dependent builder todos so each item is atomic. At minimum,
-   separate the core render-observability runtime from the compound control-queue lane,
-   then register the resulting dependencies in `todos/roadmap.yaml`.
-2. Capture the tmux `pipe-pane` and `capture-pane` behavior research as indexed
-   third-party documentation with authoritative sources before dispatching the runtime
-   refactor.
+1. Split this work into dependent builder todos and register them in
+   `todos/roadmap.yaml`. Minimum split: core render/runtime refactor vs. ephemeral
+   control-queue work.
+2. Capture tmux `capture-pane` / `pipe-pane` behavior as indexed third-party docs
+   under `docs/third-party/` and sync the third-party index before dispatch.
 
-## Minimal Tightening Applied in Gate
+## Minimal Tightening Applied In Gate
 
-1. Wrote the formal DOR verdict into `state.yaml`.
-2. Created the missing `dor-report.md`.
-3. Left `requirements.md` and `implementation-plan.md` unchanged because remediation
-   requires broader prep work than a safe gate-time tightening.
+1. Re-ran the DOR assessment against the current repo state.
+2. Refreshed `state.yaml` with the current gate timestamp and unchanged verdict.
+3. Rewrote this report with concrete repo evidence for the unresolved readiness gaps.
