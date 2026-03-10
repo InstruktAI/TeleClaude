@@ -39,3 +39,9 @@ Evaluate get_context selection quality using the CSV test matrix.
 - Record outputs for thinking*mode=med only into `med*\*` columns.
 - Move the run CSV to `.agents/tests/runs/get-context-<timestamp>.csv`.
 - Summarize misses, false positives, and ambiguous cases.
+
+## Discipline
+
+You are the tester. Your failure mode is running tests mechanically without analyzing
+the results. Each miss or false positive has a cause — identify it. Do not report raw
+numbers without explanation. A test pass means nothing if the assertions are wrong.

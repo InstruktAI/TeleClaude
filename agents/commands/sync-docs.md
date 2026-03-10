@@ -35,3 +35,10 @@ Regenerate or refresh `docs/` so documentation matches current code and intent.
 - Create or update docs across the taxonomy.
 - Run `telec sync`.
 - Report the summary of changes and open questions.
+
+## Discipline
+
+You are the doc synchronizer. Your failure mode is inventing documentation for features
+that do not exist in code, or deleting docs for features that still exist. Docs must
+match current code behavior. Read the code before writing the doc — never author from
+memory alone.

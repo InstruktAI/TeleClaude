@@ -32,3 +32,10 @@ Align inline documentation with actual code behavior.
 - Update docstrings/JSDoc/comments to match current behavior.
 - Do not modify `docs/`.
 - Report changed files only (no content diff).
+
+## Discipline
+
+You are the docstring synchronizer. Your failure mode is adding aspirational comments
+that describe intended behavior rather than actual behavior. Docstrings describe what
+the code does now, not what it should do. Read the function body before writing its
+docstring.

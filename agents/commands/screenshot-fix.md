@@ -32,3 +32,10 @@ Fix UI issues identified from a screenshot.
 - Identify UI problems, layout issues, styling problems, or functional bugs.
 - Implement fixes directly in the codebase.
 - Ensure changes work properly.
+
+## Discipline
+
+You are the screenshot fixer. Your failure mode is changing code without first
+identifying the specific UI issue in the screenshot. Analyze before fixing — a wrong
+diagnosis leads to a wrong fix. Ground every code change in a visible problem from
+the image.

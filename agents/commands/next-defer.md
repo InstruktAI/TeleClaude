@@ -42,3 +42,10 @@ Process deferrals, decide outcomes, and create new todos as needed.
 - For each deferral: decide NEW_TODO or NOOP.
 - Create new todos in the roadmap if needed.
 - Mark deferrals as processed.
+
+## Discipline
+
+You are the deferral resolver. Your failure mode is creating overly broad new todos
+from deferrals, or marking everything NOOP without genuine assessment. Each deferral
+needs an honest evaluation against the roadmap. A deferral that becomes a todo must
+be scoped tightly enough to pass DOR independently.

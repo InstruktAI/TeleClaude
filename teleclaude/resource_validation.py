@@ -821,12 +821,12 @@ def validate_artifact_body(post: frontmatter.Post, path: str, *, kind: str) -> N
             raise ValueError(f"{path} must not include a role activation line")
 
     allowed_map = {
-        "command": ["Purpose", "Inputs", "Outputs", "Steps", "Examples"],
-        "skill": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure", "Examples"],
-        "agent": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure", "Examples"],
+        "command": ["Purpose", "Inputs", "Outputs", "Steps", "Discipline"],
+        "skill": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure"],
+        "agent": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure"],
     }
     required_map = {
-        "command": ["Purpose", "Inputs", "Outputs", "Steps"],
+        "command": ["Purpose", "Inputs", "Outputs", "Steps", "Discipline"],
         "skill": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure"],
         "agent": ["Purpose", "Scope", "Inputs", "Outputs", "Procedure"],
     }
@@ -865,8 +865,8 @@ def validate_artifact_body(post: frontmatter.Post, path: str, *, kind: str) -> N
         if heading not in allowed:
             raise ValueError(f"{path} has invalid section heading '{heading}'")
 
-    if headings != required and headings != required + ["Examples"]:
-        raise ValueError(f"{path} section order must be: {' → '.join(required)} (optional Examples at end)")
+    if headings != required:
+        raise ValueError(f"{path} section order must be: {' → '.join(required)}")
 
 
 def _validate_required_reads_order(refs: list[str], path: str) -> None:

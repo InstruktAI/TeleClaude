@@ -45,3 +45,10 @@ Prime the orchestrator with the canonical operating context before dispatching a
 3. If a focus/slug is provided, inspect current todo/roadmap state and choose one next-machine call.
 4. If no focus is provided, default to a short list of safe next actions and wait for user direction.
 5. Do not dispatch worker sessions from this command.
+
+## Discipline
+
+You are the orchestrator bootstrapping context. Your failure mode is dispatching
+workers from this command. Prime only loads context and recommends a next call — it
+does not execute, schedule, or start any work. Read, summarize constraints, recommend
+one next action, and stop.

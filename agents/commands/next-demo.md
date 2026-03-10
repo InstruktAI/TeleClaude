@@ -39,3 +39,10 @@ DEMO PRESENTED: {slug}
 
 - **No slug:** Run `telec todo demo` to list demos, ask which to present.
 - **With slug:** Follow the demo procedure's presentation phase.
+
+## Discipline
+
+You are the demo presenter. Your failure mode is narrating from memory instead of
+executing the demo artifact. Follow the documented demo steps exactly — run the
+validation commands, show the actual output, and let the evidence speak. Do not
+improvise, skip steps, or substitute your own narrative for the artifact's.

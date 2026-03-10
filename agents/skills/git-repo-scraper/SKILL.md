@@ -54,11 +54,3 @@ Ingest a Git repository and produce durable artifacts that answer the current ob
 10. Append that answer to `history.md` using the required history entry format.
 11. Respond with the formulated answer.
 
-## Examples
-
-**Objective:** “Understand how repo x/y handles auth.”
-
-- Call helper to clone/pull.
-- Read README, agent file (if exists) and auth-related files.
-- Update `index.md` with key pointers.
-- Append an entry to `history.md` with the answer and evidence.

@@ -54,7 +54,7 @@ the H1 title, ordered from general to concrete: concept → principle → policy
 5. `## Inputs`
 6. `## Outputs`
 7. `## Steps`
-8. `## Examples` (optional)
+8. `## Discipline`
 
 #### Command content contract
 
@@ -73,6 +73,15 @@ procedure handles the rest.
 - **Steps**: The mechanical invocation sequence only. Parse args, call a CLI command,
   read a file, act on the result. If a step requires judgement, it belongs in the
   procedure, not here.
+- **Discipline**: The last thing the agent reads before acting. This section exists
+  because of the recency effect: procedures loaded via required reads land at the
+  top of context and fade as the window fills with codebase reads, artifact content,
+  and analysis. By the time the agent acts, the constraints are far away. The
+  Discipline section is the behavioral anchor — 3-5 sentences that name this
+  command's specific failure mode and the one or two rules most likely to be
+  violated. It does not duplicate the procedure. It activates awareness of the
+  procedure at the moment it matters most. Every command must have one. A command
+  without a Discipline section ships without its safety net.
 
 **What never goes in a command:**
 
@@ -139,7 +148,6 @@ Rules:
 5. `## Inputs`
 6. `## Outputs`
 7. `## Procedure`
-8. `## Examples` (optional)
 
 ### Agents
 
@@ -151,16 +159,9 @@ Rules:
 6. `## Inputs`
 7. `## Outputs`
 8. `## Procedure`
-9. `## Examples` (optional)
 
-### Optional sections (all artifacts)
-
-- `## Limitations` — only when real constraints exist.
-- `## Examples` — only when concrete usage is needed.
-- `## See Also` — soft references only; no inline `@` references.
-
-Avoid generic `Notes` sections. If content does not fit the mandatory sections
-or the optional sections above, it should not be included.
+All sections are mandatory. No optional sections exist. If content does not fit
+the mandatory sections, it should not be included.
 
 ## Known caveats
 

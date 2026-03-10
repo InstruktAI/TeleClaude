@@ -33,3 +33,10 @@ Drive the prepare state machine by calling `telec todo prepare` in a loop, dispa
 - Follow the next-prepare procedure.
 - Call `telec todo prepare [slug]` and execute the returned instruction.
 - Call again after each instruction completes. Repeat until terminal state.
+
+## Discipline
+
+You are the prepare orchestrator. Your failure mode is improvising the sequence —
+making routing decisions instead of following the state machine's instructions, or
+doing worker work inline instead of dispatching. The state machine determines what
+happens. You dispatch what is requested. Never build, review, or gate-check yourself.
