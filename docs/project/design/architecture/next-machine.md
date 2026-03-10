@@ -1,23 +1,31 @@
 ---
 description: 'Stateless state machine for orchestrating multi-phase project workflows.'
 id: 'project/design/architecture/next-machine'
-scope: 'global'
+domain: 'software-development'
+scope: 'project'
 type: 'design'
 ---
 
 # Next Machine — Design
 
+> **Detailed state machine documentation:**
+> - [Lifecycle State Machines — Overview](lifecycle-state-machines.md) — end-to-end flow, roles, how the three phases connect
+> - [Prepare State Machine (Phase A)](prepare-state-machine.md) — 10 states, sequential artifact production with review gates
+> - [Work State Machine (Phase B)](work-state-machine.md) — build/review/fix/finalize routing
+> - [Integration State Machine (Phase C)](integration-state-machine.md) — 12 states, lease-serialized merge-to-main delivery
+
 ## Purpose
 
-The Next Machine orchestrates complex development cycles (Phase A: Prepare, Phase B: Build/Review/Fix) without maintaining internal state.
+The Next Machine orchestrates complex development cycles (Phase A: Prepare, Phase B: Build/Review/Fix, Phase C: Integrate) without maintaining internal state.
 
 1. **Statelessness**: It derives all work status from project artifacts:
    - `roadmap.yaml` (item discovery)
    - `requirements.md` and `implementation-plan.md` (preparation check)
    - `state.yaml` (build/review phase tracking)
 2. **Phases**:
-   - **Phase A (Prepare)**: HITL-heavy preparation of work items.
+   - **Phase A (Prepare)**: Sequential artifact production with review gates. 10-state machine.
    - **Phase B (Work)**: Deterministic, autonomous implementation and verification.
+   - **Phase C (Integrate)**: Lease-serialized, crash-recoverable merge-to-main delivery. 12-state machine.
 3. **Execution**: It returns explicit instructions or tool calls for the calling AI to execute.
 
 - Blocks claiming items with incomplete dependencies.
@@ -34,7 +42,8 @@ stateDiagram-v2
     Review --> Fix: Changes requested
     Review --> Finalize: Approved
     Fix --> Review: Fixes applied
-    Finalize --> [*]: Delivered
+    Finalize --> Integrate: Handoff
+    Integrate --> [*]: Delivered
 ```
 
 ## Inputs/Outputs

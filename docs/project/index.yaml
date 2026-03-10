@@ -139,6 +139,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: project/design/architecture/integration-state-machine
+  description: 'Phase C state machine: lease-serialized, crash-recoverable integration
+    from feature branches to canonical main.'
+  type: design
+  scope: project
+  path: docs/project/design/architecture/integration-state-machine.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: project/design/architecture/jobs-runner
   description: 'Scheduled job runner: architecture, job contract, and configuration
     surface.'
@@ -157,6 +166,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: project/design/architecture/lifecycle-state-machines
+  description: Overview of the three state machines that drive the TeleClaude software
+    development lifecycle.
+  type: design
+  scope: project
+  path: docs/project/design/architecture/lifecycle-state-machines.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: project/design/architecture/memory-system
   description: Persistent memory subsystem for storing, searching, and injecting relationship-centric
     observations into agent sessions.
@@ -169,7 +187,7 @@ snippets:
 - id: project/design/architecture/next-machine
   description: Stateless state machine for orchestrating multi-phase project workflows.
   type: design
-  scope: global
+  scope: project
   path: docs/project/design/architecture/next-machine.md
   role: member
   visibility: internal
@@ -224,6 +242,15 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/performance-tuning.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/prepare-state-machine
+  description: 'Phase A state machine: sequential artifact production with review
+    gates, from idea to implementation-ready.'
+  type: design
+  scope: project
+  path: docs/project/design/architecture/prepare-state-machine.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -320,6 +347,15 @@ snippets:
   type: design
   scope: project
   path: docs/project/design/architecture/web-interface.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: project/design/architecture/work-state-machine
+  description: 'Phase B state machine: build, review, fix, and finalize routing for
+    implementation work.'
+  type: design
+  scope: project
+  path: docs/project/design/architecture/work-state-machine.md
   role: member
   visibility: internal
   source_project: TeleClaude

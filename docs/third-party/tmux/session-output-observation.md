@@ -160,8 +160,8 @@ All of this persists across client detach/reattach cycles.
 
 ## Sources
 
-- [tmux(1) man page (OpenBSD)](https://man.openbsd.org/tmux.1) — authoritative reference
-- [tmux Wiki: Advanced Use](https://github.com/tmux/tmux/wiki/Advanced-Use) — capture-pane and pipe-pane usage
-- [tmux Wiki: Getting Started](https://github.com/tmux/tmux/wiki/Getting-Started) — session model, attach/detach
-- [tmux Wiki: Control Mode](https://github.com/tmux/tmux/wiki/Control-Mode) — raw output byte stream semantics
-- [tmux source repository](https://github.com/tmux/tmux) — pipe-pane implementation confirming prospective-only behavior
+- [tmux(1) man page — OpenBSD](https://man.openbsd.org/tmux.1)
+- [tmux Wiki — Advanced Use](https://github.com/tmux/tmux/wiki/Advanced-Use)
+- [tmux Wiki — Getting Started](https://github.com/tmux/tmux/wiki/Getting-Started)
+- [tmux Wiki — Control Mode](https://github.com/tmux/tmux/wiki/Control-Mode)
+- [tmux source repository](https://github.com/tmux/tmux)

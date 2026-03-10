@@ -1,6 +1,24 @@
 project_root: /Users/Morriz/.teleclaude
 snippets_root: /Users/Morriz/.teleclaude/docs
 snippets:
+- id: creative/procedure/design-discovery
+  description: Translate human visual thinking into a grounded design system document
+    through structured dialogue and reference analysis.
+  type: procedure
+  scope: global
+  path: docs/creative/procedure/design-discovery.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: creative/spec/design-system
+  description: Schema for design system documents that anchor visual identity and
+    constrain agent-generated UI.
+  type: spec
+  scope: global
+  path: docs/creative/spec/design-system.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: general/concept/agent-characteristics
   description: Cognitive profiles and collaboration selection heuristics for AI agents.
   type: concept
@@ -577,6 +595,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: software-development/policy/preparation-artifact-quality
+  description: Quality rules for preparation artifacts (requirements and plans). Shared
+    by creators and reviewers.
+  type: policy
+  scope: domain
+  path: docs/software-development/policy/preparation-artifact-quality.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: software-development/policy/python/core
   description: Python typing, data handling, error patterns, async, idioms. Modern
     syntax, explicit types, pure functions.
@@ -592,15 +619,6 @@ snippets:
   type: policy
   scope: domain
   path: docs/software-development/policy/python/logging.md
-  role: member
-  visibility: internal
-  source_project: TeleClaude
-- id: software-development/policy/preparation-artifact-quality
-  description: Quality rules for preparation artifacts (requirements and plans). Shared
-    by creators and reviewers.
-  type: policy
-  scope: domain
-  path: docs/software-development/policy/preparation-artifact-quality.md
   role: member
   visibility: internal
   source_project: TeleClaude
@@ -945,6 +963,15 @@ snippets:
   type: procedure
   scope: domain
   path: docs/software-development/procedure/maintenance/release-and-stabilization-rhythm.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/procedure/preparation-discipline
+  description: Behavioral primer for preparation work. Activates quality discipline
+    before the agent acts.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/preparation-discipline.md
   role: member
   visibility: internal
   source_project: TeleClaude

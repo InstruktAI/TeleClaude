@@ -17,6 +17,7 @@ Frontmatter (required for all snippets):
 
 - `id` — unique snippet identifier.
 - `type` — taxonomy type (see table below).
+- `domain` — knowledge domain (e.g., `software-development`, `general`). Derived from the directory path.
 - `scope` — `global`, `domain`, or `project`.
 - `description` — short summary of the snippet's purpose.
 
