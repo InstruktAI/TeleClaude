@@ -141,6 +141,10 @@ class TelecFooter(Widget):
         margin: 0 1 0 0;
     }
 
+    .footer-action-button.-chiptunes-hidden {
+        display: none;
+    }
+
     .footer-action-button.-last-action {
         margin: 0 1 0 0;
     }
@@ -188,10 +192,18 @@ class TelecFooter(Widget):
             with Horizontal(id="footer-actions"):
                 yield Static("", id="footer-pane-toggle", classes="footer-token")
                 yield Static("", id="footer-tts-toggle", classes="footer-token")
-                yield FooterActionButton("\u23ee", id="footer-prev", classes="footer-action-button")
-                yield FooterActionButton("\u25b6", id="footer-play", classes="footer-action-button")
-                yield FooterActionButton("\u23ed", id="footer-next", classes="footer-action-button")
-                yield FooterActionButton("\u2b50", id="footer-fav", classes="footer-action-button -last-action")
+                yield FooterActionButton(
+                    "\u23ee", id="footer-prev", classes="footer-action-button -chiptunes-hidden"
+                )
+                yield FooterActionButton(
+                    "\u25b6", id="footer-play", classes="footer-action-button -chiptunes-hidden"
+                )
+                yield FooterActionButton(
+                    "\u23ed", id="footer-next", classes="footer-action-button -chiptunes-hidden"
+                )
+                yield FooterActionButton(
+                    "\u2b50", id="footer-fav", classes="footer-action-button -chiptunes-hidden -last-action"
+                )
                 yield Static("", id="footer-anim-toggle", classes="footer-token -last-token")
 
     def on_mount(self) -> None:
@@ -365,6 +377,16 @@ class TelecFooter(Widget):
         fav_button.disabled = not self.chiptunes_enabled
         # Play can enable chiptunes from the stopped state.
         play_button.disabled = False
+        if self.chiptunes_enabled:
+            prev_button.remove_class("-chiptunes-hidden")
+            play_button.remove_class("-chiptunes-hidden")
+            next_button.remove_class("-chiptunes-hidden")
+            fav_button.remove_class("-chiptunes-hidden")
+        else:
+            prev_button.add_class("-chiptunes-hidden")
+            play_button.add_class("-chiptunes-hidden")
+            next_button.add_class("-chiptunes-hidden")
+            fav_button.add_class("-chiptunes-hidden")
 
     def on_click(self, event: Click) -> None:
         widget = event.widget

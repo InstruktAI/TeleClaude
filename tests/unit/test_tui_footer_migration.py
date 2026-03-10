@@ -282,6 +282,33 @@ async def test_telec_footer_transport_controls_use_real_buttons() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.asyncio
+async def test_telec_footer_transport_controls_hide_when_disabled() -> None:
+    app = FooterHarness()
+
+    async with app.run_test() as pilot:
+        footer = app.query_one(TelecFooter)
+        prev_button = footer.query_one("#footer-prev", FooterActionButton)
+        play_button = footer.query_one("#footer-play", FooterActionButton)
+        next_button = footer.query_one("#footer-next", FooterActionButton)
+        fav_button = footer.query_one("#footer-fav", FooterActionButton)
+        await pilot.pause(0.05)
+
+        assert prev_button.has_class("-chiptunes-hidden")
+        assert play_button.has_class("-chiptunes-hidden")
+        assert next_button.has_class("-chiptunes-hidden")
+        assert fav_button.has_class("-chiptunes-hidden")
+
+        footer.chiptunes_enabled = True
+        await pilot.pause(0.05)
+
+        assert not prev_button.has_class("-chiptunes-hidden")
+        assert not play_button.has_class("-chiptunes-hidden")
+        assert not next_button.has_class("-chiptunes-hidden")
+        assert not fav_button.has_class("-chiptunes-hidden")
+
+
+@pytest.mark.unit
 def test_footer_action_button_enabled_icon_uses_neutral_highlight_color() -> None:
     button = FooterActionButton("▶")
 

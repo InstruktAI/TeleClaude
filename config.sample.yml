@@ -274,3 +274,10 @@ tts:
     pyttsx3:
       enabled: true
       voices: []
+
+# ChipTunes background music runtime settings.
+# `volume` is app-level chiptune gain (0.0–1.0), applied before OS mixer.
+# This is not an operating-system volume control; set OS volume at the system level.
+chiptunes:
+  enabled: true
+  volume: 0.8
