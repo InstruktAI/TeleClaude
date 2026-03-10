@@ -353,6 +353,8 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
     "claude": {
         "session_dir": "~/.claude/sessions",
         "log_pattern": "*.jsonl",
+        "session_root": "~/.claude/projects",
+        "session_pattern": "*/*.jsonl",
         "profiles": {
             "default": ('--dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\''),
             "restricted": (
@@ -375,6 +377,8 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
     "gemini": {
         "session_dir": "~/.gemini/tmp",
         "log_pattern": "**/chats/*.json",
+        "session_root": "~/.gemini/tmp",
+        "session_pattern": "*/chats/*.json",
         "profiles": {
             "default": "--yolo --allowed-mcp-server-names _none_",
             "restricted": "--sandbox --include-directories ~/.teleclaude/docs --allowed-mcp-server-names _none_",
@@ -393,6 +397,8 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
     "codex": {
         "session_dir": "~/.codex/sessions",
         "log_pattern": "*.jsonl",
+        "session_root": "~/.codex/sessions",
+        "session_pattern": "**/*.jsonl",
         "profiles": {
             "default": "--dangerously-bypass-approvals-and-sandbox --search",
             "restricted": "--full-auto --search",
@@ -401,7 +407,6 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "fast": (
                 "-m gpt-5.4"
                 " --config model_reasoning_effort='medium'"
-                " --config model_reasoning_summary='detailed'"
                 " --config model_supports_reasoning_summaries=true"
                 " --config show_raw_agent_reasoning=true"
                 " --config hide_agent_reasoning=false"
@@ -409,7 +414,6 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "med": (
                 "-m gpt-5.4"
                 " --config model_reasoning_effort='high'"
-                " --config model_reasoning_summary='detailed'"
                 " --config model_supports_reasoning_summaries=true"
                 " --config show_raw_agent_reasoning=true"
                 " --config hide_agent_reasoning=false"
@@ -417,7 +421,6 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "slow": (
                 "-m gpt-5.4"
                 " --config model_reasoning_effort='xhigh'"
-                " --config model_reasoning_summary='detailed'"
                 " --config model_supports_reasoning_summaries=true"
                 " --config show_raw_agent_reasoning=true"
                 " --config hide_agent_reasoning=false"

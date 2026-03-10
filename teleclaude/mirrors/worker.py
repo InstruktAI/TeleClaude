@@ -20,7 +20,7 @@ from ..utils.transcript_discovery import (
     build_source_identity,
     extract_project,
     extract_session_id,
-    is_canonical,
+    in_session_root,
 )
 from ..utils.transcript_discovery import discover_transcripts as _discover_transcripts
 from .generator import generate_mirror_sync
@@ -30,7 +30,6 @@ from .store import (
     delete_mirror_tombstone,
     get_mirror_state_by_transcript,
     get_mirror_tombstone,
-    get_session_context,
     resolve_db_path,
     upsert_mirror_tombstone,
 )
@@ -141,10 +140,9 @@ class MirrorWorker:
                     result.skipped_unchanged += 1
                     continue
 
-                context = get_session_context(transcript_path=transcript_path, db=self.db_path)
-                session_id = context.session_id if context else extract_session_id(candidate.path, candidate.agent)
-                computer = (context.computer if context else None) or config.computer.name
-                project = (context.project if context else None) or extract_project(candidate.path, candidate.agent)
+                session_id = extract_session_id(candidate.path, candidate.agent)
+                computer = config.computer.name
+                project = extract_project(candidate.path, candidate.agent)
 
                 generated = generate_mirror_sync(
                     session_id=session_id,
@@ -202,7 +200,7 @@ class MirrorWorker:
                         agent = AgentName(str(agent_value))
                     except ValueError:
                         continue
-                    if not is_canonical(Path(transcript_path), agent):
+                    if not in_session_root(transcript_path, agent):
                         delete_ids.append(int(row["id"]))
                 for row_id in delete_ids:
                     conn.execute("DELETE FROM mirrors WHERE id = ?", (row_id,))

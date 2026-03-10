@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, Mock
 import aiosqlite
 import pytest
 
+from teleclaude.constants import AGENT_PROTOCOL
 from teleclaude.core.agents import AgentName
 from teleclaude.mirrors.worker import MirrorWorker, ReconcileResult, TranscriptCandidate
 
@@ -266,7 +267,7 @@ def test_reconcile_sync_processes_transcripts_reports_metrics_and_converges(tmp_
     assert second.processed == 0
     assert second.failed == 0
     assert second.skipped_unchanged == 1
-    assert row == ("sess-1", "claude:teleclaude/session.jsonl", 2)
+    assert row == ("session", "claude:teleclaude/session.jsonl", 2)
     assert any(
         "mirror.reconciliation.complete discovered=1 processed=1 failed=0 skipped_unchanged=0"
         in call.args[0]
@@ -362,7 +363,7 @@ def test_reconcile_sync_continues_after_per_candidate_failure(tmp_path: Path, mo
     assert result.discovered == 2
     assert result.processed == 1
     assert result.failed == 1
-    assert rows == [("sess-healthy", "claude:teleclaude/healthy.jsonl")]
+    assert rows == [("healthy", "claude:teleclaude/healthy.jsonl")]
     logger_error.assert_called_once()
 
 
@@ -413,100 +414,66 @@ def test_reconcile_sync_tombstones_empty_transcripts_until_the_file_changes(tmp_
     with sqlite3.connect(db_path) as conn:
         tombstone_count_after = conn.execute("SELECT COUNT(*) FROM mirror_tombstones").fetchone()[0]
         row = conn.execute(
-            "SELECT session_id, source_identity, message_count FROM mirrors WHERE session_id = ?",
-            ("sess-empty",),
+            "SELECT session_id, source_identity, message_count FROM mirrors WHERE source_identity = ?",
+            ("claude:teleclaude/tool-only.jsonl",),
         ).fetchone()
 
     assert third.processed == 1
     assert fourth.processed == 0
     assert tombstone_count_after == 0
-    assert row == ("sess-empty", "claude:teleclaude/tool-only.jsonl", 2)
+    assert row == ("tool-only", "claude:teleclaude/tool-only.jsonl", 2)
 
 
 def test_backfill_sync_removes_stale_rows_and_rebuilds_canonical_rows(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
 
     db_path = tmp_path / "teleclaude.db"
-    transcript_path = tmp_path / ".claude" / "projects" / "teleclaude" / "session.jsonl"
-    non_canonical_path = tmp_path / ".claude" / "projects" / "teleclaude" / "subagents" / "worker" / "session.jsonl"
+    claude_root = tmp_path / ".claude" / "projects"
+    transcript_path = claude_root / "teleclaude" / "session.jsonl"
+    outside_root_path = tmp_path / "exports" / "old-session.jsonl"
     _write_jsonl(transcript_path, _conversation_entries())
     os.utime(transcript_path, (10, 10))
 
     import asyncio
 
     asyncio.run(_apply_mirror_migrations(db_path))
-    _create_sessions_table(db_path)
-    _insert_session_context(db_path, session_id="sess-1", transcript_path=transcript_path)
+
+    monkeypatch.setitem(AGENT_PROTOCOL[AgentName.CLAUDE.value], "session_root", str(claude_root))
+    monkeypatch.setitem(AGENT_PROTOCOL[AgentName.CLAUDE.value], "session_pattern", "*/*.jsonl")
 
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             """
             INSERT INTO mirrors (
-                session_id,
-                source_identity,
-                computer,
-                agent,
-                project,
-                title,
-                timestamp_start,
-                timestamp_end,
-                conversation_text,
-                message_count,
-                metadata,
-                created_at,
-                updated_at
+                session_id, source_identity, computer, agent, project,
+                title, timestamp_start, timestamp_end, conversation_text,
+                message_count, metadata, created_at, updated_at
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                "orphan-1",
-                None,
-                "MozBook",
-                "claude",
-                "teleclaude",
-                "orphan row",
-                "2026-03-01T10:00:00Z",
-                "2026-03-01T10:00:01Z",
-                "User: orphan",
-                1,
+                "orphan-1", None, "MozBook", "claude", "teleclaude",
+                "orphan row", "2026-03-01T10:00:00Z", "2026-03-01T10:00:01Z",
+                "User: orphan", 1,
                 json.dumps({"agent": "claude", "transcript_path": str(transcript_path)}),
-                "2026-03-01T10:00:00Z",
-                "2026-03-01T10:00:01Z",
+                "2026-03-01T10:00:00Z", "2026-03-01T10:00:01Z",
             ),
         )
         conn.execute(
             """
             INSERT INTO mirrors (
-                session_id,
-                source_identity,
-                computer,
-                agent,
-                project,
-                title,
-                timestamp_start,
-                timestamp_end,
-                conversation_text,
-                message_count,
-                metadata,
-                created_at,
-                updated_at
+                session_id, source_identity, computer, agent, project,
+                title, timestamp_start, timestamp_end, conversation_text,
+                message_count, metadata, created_at, updated_at
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                "bad-1",
-                "claude:teleclaude/subagents/worker/session.jsonl",
-                "MozBook",
-                "claude",
-                "teleclaude",
-                "non canonical row",
-                "2026-03-01T10:00:00Z",
-                "2026-03-01T10:00:01Z",
-                "User: bad",
-                1,
-                json.dumps({"agent": "claude", "transcript_path": str(non_canonical_path)}),
-                "2026-03-01T10:00:00Z",
-                "2026-03-01T10:00:01Z",
+                "bad-1", "claude:exports/old-session.jsonl", "MozBook", "claude", "exports",
+                "outside root row", "2026-03-01T10:00:00Z", "2026-03-01T10:00:01Z",
+                "User: bad", 1,
+                json.dumps({"agent": "claude", "transcript_path": str(outside_root_path)}),
+                "2026-03-01T10:00:00Z", "2026-03-01T10:00:01Z",
             ),
         )
         conn.commit()
@@ -531,4 +498,4 @@ def test_backfill_sync_removes_stale_rows_and_rebuilds_canonical_rows(tmp_path: 
         ).fetchall()
 
     assert result.processed == 1
-    assert rows == [("sess-1", "claude:teleclaude/session.jsonl", "Need mirror reconciliation.")]
+    assert rows == [("session", "claude:teleclaude/session.jsonl", "Need mirror reconciliation.")]

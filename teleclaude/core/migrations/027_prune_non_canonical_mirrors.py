@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-
 import aiosqlite
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
-from teleclaude.utils.transcript_discovery import is_canonical
+from teleclaude.utils.transcript_discovery import in_session_root
 
 logger = get_logger(__name__)
 
@@ -45,7 +43,7 @@ async def up(db: aiosqlite.Connection) -> None:
         except ValueError:
             continue
 
-        if not is_canonical(Path(transcript_path), agent):
+        if not in_session_root(transcript_path, agent):
             to_delete.append(int(row["id"]))
 
     for row_id in to_delete:
