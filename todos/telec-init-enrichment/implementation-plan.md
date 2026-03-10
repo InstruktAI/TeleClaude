@@ -86,9 +86,11 @@ snippet is referenced explicitly.
       `generated_by: telec-init` and `generated_at: <ISO8601>`.
 - [ ] Define merge rules for re-analysis: update auto-generated sections, preserve
       human-authored sections, and keep the operation idempotent.
-- [ ] Define how generated `AGENTS.md` content coexists with existing agent artifact
-      rules (`AGENTS.master.md` inflation, `CLAUDE.md` companion behavior, and
-      skip-if-present handling for plain `AGENTS.md`).
+- [ ] Define how generated project-local agent bootstrap source content coexists
+      with existing agent artifact rules so normal inflation still produces
+      runtime `AGENTS.md` / `CLAUDE.md` outputs (`AGENTS.master.md` inflation,
+      `CLAUDE.md` companion behavior, and skip-if-present handling for existing
+      project-local artifact sources).
 
 **Why:** The writer module and analysis command need one schema source of truth for
 IDs, metadata, file placement, and merge semantics.
@@ -111,9 +113,18 @@ this contract.
       - Re-init offers refresh/skip when auto-generated snippets already exist
       - Declining enrichment preserves the current plumbing-only behavior
       - Existing hook/sync/watch order remains unchanged
+      - Init surfaces release-channel enrollment and persists it through the
+        existing deployment config fields
+      - Stable-channel enrollment requires a pinned minor before init can finish
 - [ ] After the existing plumbing steps complete, detect whether enrichment should run.
 - [ ] On first init, prompt to run enrichment or skip.
 - [ ] On re-init, offer refresh or skip.
+- [ ] Prompt for release-channel enrollment during init using the existing
+      `deployment.channel` / `deployment.pinned_minor` fields and show the
+      current enrollment on rerun.
+- [ ] Validate that stable-channel enrollment collects a pinned minor and persist
+      the chosen values to `teleclaude.yml` without introducing new config keys
+      or YAML sections.
 - [ ] Launch `telec sessions run --command /telec-init-analyze --project <root>`
       and print a status message with enough session context to follow the run.
 - [ ] Handle a declined enrichment path gracefully and continue with normal init
@@ -122,8 +133,8 @@ this contract.
       user-facing command description.
 - [ ] Update the user-facing command docs that mirror `telec init` behavior
       (`docs/project/spec/telec-cli-surface.md` and `README.md`) so the documented
-      setup flow matches the new optional enrichment step and any release-channel
-      choice the command actually exposes.
+      setup flow matches the new optional enrichment step and the release-channel
+      enrollment prompt/init behavior.
 
 **Why:** Optional enrichment is user-visible behavior layered on top of the existing
 init contract. The prompt path, session launch, help text, and mirrored user-facing
@@ -150,10 +161,11 @@ spec describe the same behavior.
 - [ ] Implement `merge_snippet(existing, generated)` so human-authored sections
       survive refresh runs.
 - [ ] Implement `ensure_taxonomy_directories(project_root, snippet_ids)` for the
-      required `design/`, `policy/`, and `spec/` directories.
-- [ ] Validate analysis output against the canonical snippet ID set and normalized
-      `docs/project/` destinations before any file write so the AI session cannot
-      create unexpected files or escape the taxonomy contract.
+      taxonomy directories implied by the validated output, with `design/`,
+      `policy/`, and `spec/` covered by the baseline fixtures.
+- [ ] Validate analysis output against schema-valid project snippet IDs and
+      normalized `docs/project/` destinations before any file write so the AI
+      session cannot create unexpected files or escape the taxonomy contract.
 - [ ] Write and read `.telec-init-meta.yaml` with timestamps, counts, generated
       snippet IDs, and preserved snippet IDs.
 
@@ -176,11 +188,11 @@ snippet IDs are rejected before persistence.
       explicit required reads.
 - [ ] Instruct the session to inspect the repo with the guidance checklist and emit
       structured output that the enrichment writer can persist.
-- [ ] Instruct the session to generate initial project-specific `AGENTS.md` content
-      only when `AGENTS.md` is absent; if an artifact source file already exists, keep
-      normal artifact-governance behavior instead of writing around it.
-- [ ] Instruct the session to commit generated snippet changes with a clear message,
-      run `telec sync --validate-only`, and finish cleanly.
+- [ ] Instruct the session to generate initial project-specific agent bootstrap
+      source content only when no project-local artifact source already exists, and
+      otherwise keep normal artifact-governance behavior instead of writing around it.
+- [ ] Instruct the session to leave a concise created/updated-files summary, run
+      `telec sync --validate-only`, and finish cleanly.
 - [ ] Make the required-read references observable in the transcript so tests can
       prove the guidance contract was actually used.
 
@@ -222,16 +234,18 @@ new snippet IDs, and `telec docs get` returns project-specific content.
 
 - [ ] Start with failing tests proving a first-time `telec init` on a repo without a
       pre-existing `teleclaude.yml` still ends with a live project-manifest entry that
-      points at `docs/project/index.yaml`.
+      points at `docs/project/index.yaml`, and that init persists release-channel
+      enrollment through the existing deployment fields on first run and rerun.
 - [ ] If manifest registration currently depends on `teleclaude.yml` existing before
       sync begins, adjust the init/sync ordering so first-run projects are registered
       after config creation.
 - [ ] Reuse the existing project catalog behavior instead of introducing a parallel
       registration file or init-only manifest path.
-- [ ] Reuse the existing deployment config surface. If init exposes a non-default
-      release-channel choice, persist it only through `deployment.channel` and
-      `deployment.pinned_minor`; otherwise keep the existing defaults unchanged and
-      avoid new config keys or YAML sections.
+- [ ] Surface release-channel enrollment during init and persist it only through
+      `deployment.channel` and `deployment.pinned_minor`, avoiding new config
+      keys or YAML sections.
+- [ ] For `stable`, collect and validate `deployment.pinned_minor`; for `alpha`
+      and `beta`, keep `deployment.pinned_minor` empty.
 
 **Why:** The project-catalog requirement is observable behavior, and the current
 first-run sync path has an edge case around registering a project after
@@ -239,7 +253,8 @@ first-run sync path has an edge case around registering a project after
 surface so init does not fork deployment behavior.
 
 **Verification:** Targeted sync/init tests pass, `telec projects list` shows the repo
-after init, and no new config surface appears beyond the existing deployment fields.
+after init, reruns preserve the selected release channel through the existing
+deployment fields, and no new config surface appears beyond those fields.
 
 ## Phase 3: Idempotency and Re-analysis
 
@@ -249,11 +264,11 @@ after init, and no new config surface appears beyond the existing deployment fie
 `teleclaude/project_setup/init_flow.py`, `tests/unit/project_setup/test_enrichment.py`
 
 - [ ] Start with failing tests for re-init refresh/skip detection, changed-file-only
-      commits, and preservation of human-authored sections.
+      rewrites, and preservation of human-authored sections.
 - [ ] Detect existing auto-generated snippets via `generated_by` metadata.
 - [ ] Compare existing snippet content with the new analysis output.
 - [ ] Apply the merge rules from Task 1.2 and log what was updated versus preserved.
-- [ ] Commit only changed generated files on refresh runs.
+- [ ] Rewrite only generated files whose merged output actually changed on refresh runs.
 
 **Why:** Idempotency is a core requirement, not a follow-up enhancement. The refresh
 path has to be safe before the feature ships.
@@ -295,6 +310,7 @@ timestamps, counts, generated snippet IDs, and preserved snippet IDs.
       - `merge_snippet()` preserves human sections
       - `read_existing_snippets()` detects auto-generated markers
       - first-run init registers the project manifest after config creation
+      - init persists release-channel enrollment through existing deployment fields
       - init help/prompt copy reflects enrichment
       - the analysis transcript proves the guidance/scaffolding required reads were used
 - [ ] Integration tests:
@@ -304,6 +320,7 @@ timestamps, counts, generated snippet IDs, and preserved snippet IDs.
       - `telec docs index` includes generated snippets
       - `telec docs get <generated-snippet-id>` returns project-specific non-empty content
       - re-init merges rather than duplicates
+      - re-init preserves the selected release channel and keeps config validation green
       - the enrichment session exits cleanly after generation
       - the CLI surface contract test still passes after the `telec init` docs updates
 - [ ] Keep the existing init plumbing regression coverage green so hooks, sync, and
@@ -325,8 +342,8 @@ sync, and docs indexing pass locally.
 - [ ] Run the normal pre-commit hook path before commit; if hooks or targeted checks
       expose wider issues, escalate to broader suites.
 - [ ] Manual test: run `telec init` on a sample project, accept enrichment, verify
-      snippet quality, `telec docs get`, `telec projects list`, and re-init
-      preservation.
+      snippet quality, `telec docs get`, `telec projects list`, release-channel
+      persistence in `teleclaude.yml`, and re-init preservation.
 
 **Why:** This matches the repository verification policy: targeted checks by default,
 demo validation for user-facing behavior, and hooks as the final gate.

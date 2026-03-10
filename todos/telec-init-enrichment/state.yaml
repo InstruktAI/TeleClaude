@@ -14,21 +14,40 @@ unresolved_findings: []
 resolved_findings: []
 prepare_phase: requirements_exist
 grounding:
-  valid: false
-  base_sha: ''
-  input_digest: ''
-  referenced_paths: []
-  last_grounded_at: ''
-  invalidated_at: '2026-03-10T14:00:00+00:00'
-  invalidation_reason: 'requirements rewritten after process improvements'
+  valid: true
+  base_sha: '3a0f2e5ecb2112d1d57779bd637ed6021307fb22'
+  input_digest: '380883338d54339109961a02d0c1092ec49cdb1c511499bb17129eca122ed4c6'
+  referenced_paths:
+  - docs/global/software-development/procedure/project-analysis.md
+  - docs/global/software-development/spec/init-scaffolding.md
+  - teleclaude/project_setup/init_flow.py
+  - teleclaude/cli/telec.py
+  - docs/project/spec/telec-cli-surface.md
+  - README.md
+  - tests/unit/test_project_setup_init_flow.py
+  - tests/integration/test_telec_cli_commands.py
+  - tests/integration/test_contracts.py
+  - teleclaude/project_setup/enrichment.py
+  - tests/unit/project_setup/test_enrichment.py
+  - agents/commands/telec-init-analyze.md
+  - teleclaude/docs_index.py
+  - tests/unit/test_docs_index.py
+  - teleclaude/sync.py
+  - teleclaude/project_manifest.py
+  - tests/unit/test_telec_sync.py
+  - tests/unit/test_context_selector.py
+  - todos/telec-init-enrichment/demo.md
+  last_grounded_at: '2026-03-10T15:55:20Z'
+  invalidated_at: ''
+  invalidation_reason: ''
   changed_paths: []
 requirements_review:
   verdict: 'approve'
   reviewed_at: '2026-03-10T15:46:02Z'
   findings_count: 0
 plan_review:
-  verdict: ''
-  reviewed_at: ''
+  verdict: 'approve'
+  reviewed_at: '2026-03-10T15:55:20Z'
   findings_count: 0
 dor:
   last_assessed_at: ''
