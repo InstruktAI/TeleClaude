@@ -105,7 +105,9 @@ this contract.
 ### Task 2.1: Add enrichment prompting and session launch to `telec init`
 
 **File(s):** `teleclaude/project_setup/init_flow.py`, `teleclaude/cli/telec.py`,
-`tests/unit/test_project_setup_init_flow.py`, `tests/integration/test_telec_cli_commands.py`
+`docs/project/spec/telec-cli-surface.md`, `README.md`,
+`tests/unit/test_project_setup_init_flow.py`, `tests/integration/test_telec_cli_commands.py`,
+`tests/integration/test_contracts.py`
 
 - [ ] Start with failing tests for:
       - First init prompts for enrichment when no `generated_by: telec-init` snippets exist
@@ -121,13 +123,18 @@ this contract.
       completion output.
 - [ ] Update `telec init` help/usage text so the enrichment option is visible in the
       user-facing command description.
+- [ ] Update the user-facing command docs that mirror `telec init` behavior
+      (`docs/project/spec/telec-cli-surface.md` and `README.md`) so the documented
+      setup flow matches the new optional enrichment step and any release-channel
+      choice the command actually exposes.
 
 **Why:** Optional enrichment is user-visible behavior layered on top of the existing
-init contract. The prompt path, session launch, and help text all need to reflect the
-new behavior without destabilizing the existing plumbing.
+init contract. The prompt path, session launch, help text, and mirrored user-facing
+docs all need to reflect the new behavior without destabilizing the existing plumbing.
 
-**Verification:** Targeted init-flow and CLI tests pass, and `telec init --help`
-shows that init includes an optional enrichment step.
+**Verification:** Targeted init-flow, CLI, and contract tests pass, `telec init --help`
+shows that init includes an optional enrichment step, and the README / CLI surface
+spec describe the same behavior.
 
 ---
 
@@ -137,7 +144,8 @@ shows that init includes an optional enrichment step.
 `tests/unit/project_setup/test_enrichment.py`
 
 - [ ] Start with failing tests for snippet writing, directory creation, existing
-      snippet detection, merge preservation, and metadata persistence.
+      snippet detection, merge preservation, metadata persistence, and rejection of
+      unknown or unsafe snippet IDs.
 - [ ] Implement `write_snippet(project_root, snippet_id, content, metadata)` so it
       writes schema-valid snippets under `docs/project/`.
 - [ ] Implement `read_existing_snippets(project_root)` so re-analysis can inspect
@@ -146,6 +154,9 @@ shows that init includes an optional enrichment step.
       survive refresh runs.
 - [ ] Implement `ensure_taxonomy_directories(project_root, snippet_ids)` for the
       required `design/`, `policy/`, and `spec/` directories.
+- [ ] Validate analysis output against the canonical snippet ID set and normalized
+      `docs/project/` destinations before any file write so the AI session cannot
+      create unexpected files or escape the taxonomy contract.
 - [ ] Write and read `.telec-init-meta.yaml` with timestamps, counts, generated
       snippet IDs, and preserved snippet IDs.
 
@@ -154,7 +165,8 @@ durable repo artifacts. Keeping that logic isolated makes idempotency and valida
 testable.
 
 **Verification:** Targeted enrichment tests pass and generated files land under the
-correct taxonomy directories with valid frontmatter and merge markers.
+correct taxonomy directories with valid frontmatter and merge markers, while invalid
+snippet IDs are rejected before persistence.
 
 ---
 
@@ -296,6 +308,7 @@ timestamps, counts, generated snippet IDs, and preserved snippet IDs.
       - `telec docs get <generated-snippet-id>` returns project-specific non-empty content
       - re-init merges rather than duplicates
       - the enrichment session exits cleanly after generation
+      - the CLI surface contract test still passes after the `telec init` docs updates
 - [ ] Keep the existing init plumbing regression coverage green so hooks, sync, and
       watchers remain unchanged when enrichment is skipped.
 
