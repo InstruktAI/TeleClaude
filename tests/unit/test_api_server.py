@@ -64,7 +64,6 @@ def mock_cache():  # type: ignore[explicit-any, unused-ignore]
     cache.get_projects = MagicMock(return_value=[])
     cache.get_todos = MagicMock(return_value=[])
     cache.get_todo_entries = MagicMock(return_value=[])
-    cache.is_stale = MagicMock(return_value=False)
     return cache
 
 
@@ -1256,7 +1255,7 @@ def test_list_projects_with_computer_filter(test_client, mock_cache):  # type: i
         response = test_client.get("/projects?computer=local")
         assert response.status_code == 200
         # Verify cache was queried with computer filter
-        assert mock_cache.get_projects.call_args == (("local",), {"include_stale": True})
+        assert mock_cache.get_projects.call_args == (("local",), {})
 
 
 def test_list_projects_without_cache(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -1314,7 +1313,6 @@ def test_list_todos_all_cached(test_client, mock_cache):  # type: ignore[explici
             computer="remote",
             project_path="/remote/path",
             todos=[TodoInfo(slug="remote-1", status="pending", description="Remote todo")],
-            is_stale=False,
         ),
     ]
 
@@ -1327,7 +1325,7 @@ def test_list_todos_all_cached(test_client, mock_cache):  # type: ignore[explici
     assert data[0]["project_path"] == "/remote/path"
     assert mock_cache.get_todo_entries.call_args == (
         (),
-        {"computer": None, "project_path": None, "include_stale": True},
+        {"computer": None, "project_path": None},
     )
 
 
@@ -1340,7 +1338,6 @@ def test_list_todos_project_filter(test_client, mock_cache):  # type: ignore[exp
             computer="remote",
             project_path="/remote/path",
             todos=[TodoInfo(slug="remote-1", status="pending")],
-            is_stale=True,
         ),
     ]
 
@@ -1351,54 +1348,8 @@ def test_list_todos_project_filter(test_client, mock_cache):  # type: ignore[exp
     assert data[0]["slug"] == "remote-1"
     assert mock_cache.get_todo_entries.call_args == (
         (),
-        {"computer": "remote", "project_path": "/remote/path", "include_stale": True},
+        {"computer": "remote", "project_path": "/remote/path"},
     )
-
-
-def test_list_todos_stale_remote_entries_refresh_projects(test_client, api_server, mock_cache):  # type: ignore[explicit-any, unused-ignore]
-    """Stale remote todos should trigger projects refresh once per computer."""
-    from teleclaude.core.cache import TodoCacheEntry
-
-    redis_adapter = RedisTransport(MagicMock())
-    redis_adapter.request_refresh = MagicMock()
-    api_server.client.adapters = {"redis": redis_adapter}
-
-    mock_cache.get_todo_entries.return_value = [
-        TodoCacheEntry(
-            computer="remote-b",
-            project_path="/remote-b/path",
-            todos=[TodoInfo(slug="b-1", status="pending")],
-            is_stale=True,
-        ),
-        TodoCacheEntry(
-            computer="remote-a",
-            project_path="/remote-a/path-1",
-            todos=[TodoInfo(slug="a-1", status="pending")],
-            is_stale=True,
-        ),
-        TodoCacheEntry(
-            computer="remote-a",
-            project_path="/remote-a/path-2",
-            todos=[TodoInfo(slug="a-2", status="pending")],
-            is_stale=True,
-        ),
-        TodoCacheEntry(
-            computer="local",
-            project_path="/local/path",
-            todos=[TodoInfo(slug="l-1", status="pending")],
-            is_stale=True,
-        ),
-    ]
-
-    response = test_client.get("/todos")
-    assert response.status_code == 200
-
-    assert redis_adapter.request_refresh.call_count == 2
-    calls = [(c.args[0], c.args[1], c.kwargs.get("reason")) for c in redis_adapter.request_refresh.call_args_list]
-    assert calls == [
-        ("remote-a", "projects", "ttl"),
-        ("remote-b", "projects", "ttl"),
-    ]
 
 
 def test_list_todos_without_cache_falls_back_to_local(test_client):  # type: ignore[explicit-any, unused-ignore]

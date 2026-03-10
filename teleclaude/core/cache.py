@@ -57,7 +57,6 @@ class TodoCacheEntry:
     computer: str
     project_path: str
     todos: list[TodoInfo]
-    is_stale: bool
 
 
 class DaemonCache:
@@ -70,8 +69,16 @@ class DaemonCache:
     - Todos: Pull once on access, TTL=5min
     """
 
-    def __init__(self) -> None:
-        """Initialize empty cache."""
+    def __init__(self, on_stale_read: Callable[[str, str], None] | None = None) -> None:
+        """Initialize empty cache.
+
+        Args:
+            on_stale_read: Optional callback invoked when a read returns stale cached data.
+                Signature: (resource_type: str, computer: str) where resource_type is
+                "projects" or "todos". Exceptions are suppressed and logged.
+        """
+        self._on_stale_read = on_stale_read
+
         # Computer cache: key = computer name
         self._computers: dict[str, CachedItem[ComputerInfo]] = {}
 
@@ -99,30 +106,21 @@ class DaemonCache:
         # Examples: {"sessions": {"raspi", "macbook"}, "projects": {"raspi"}}
         self._interest: dict[str, set[str]] = {}
 
-    # ==================== TTL Management ====================
-
-    def is_stale(self, key: str, ttl_seconds: int) -> bool:
-        """Check if a cached item is stale.
+    def _signal_stale_read(self, resource_type: str, computer: str) -> None:
+        """Signal a stale read to the callback, suppressing any exceptions.
 
         Args:
-            key: Cache key
-            ttl_seconds: Time-to-live in seconds (0=always stale, <0=never stale)
-
-        Returns:
-            True if item is stale or missing, False otherwise
+            resource_type: "projects" or "todos"
+            computer: Computer name where stale data was read
         """
-        # Check each cache dictionary explicitly
-        if key in self._computers:
-            return self._computers[key].is_stale(ttl_seconds)
-        if key in self._projects:
-            return self._projects[key].is_stale(ttl_seconds)
-        if key in self._sessions:
-            return self._sessions[key].is_stale(ttl_seconds)
-        if key in self._todos:
-            return self._todos[key].is_stale(ttl_seconds)
+        if self._on_stale_read is None:
+            return
+        try:
+            self._on_stale_read(resource_type, computer)
+        except Exception as e:
+            logger.error("on_stale_read callback failed: %s", e, exc_info=True)
 
-        # Not found = stale
-        return True
+    # ==================== TTL Management ====================
 
     def invalidate(self, key: str) -> None:
         """Remove a specific item from cache.
@@ -148,39 +146,33 @@ class DaemonCache:
     # ==================== Data Access ====================
 
     def get_computers(self) -> list[ComputerInfo]:
-        """Get all cached computers (auto-expires stale entries).
+        """Get all cached computers, including stale ones.
+
+        Computers are refreshed via heartbeats (push model); the read path
+        must not mutate state or filter entries based on TTL.
 
         Returns:
-            List of computer info objects
+            List of all cached computer info objects
         """
-        # Filter to non-stale computers (TTL=60s)
-        computers = []
-        for key, cached in list(self._computers.items()):
-            if cached.is_stale(60):
-                self._computers.pop(key)  # Auto-expire
-                logger.debug("Auto-expired stale computer: %s", key)
-            else:
-                computers.append(cached.data)
-        return computers
+        return [cached.data for cached in self._computers.values()]
 
-    def get_projects(self, computer: str | None = None, *, include_stale: bool = False) -> list[ProjectInfo]:
+    def get_projects(self, computer: str | None = None) -> list[ProjectInfo]:
         """Get cached projects, optionally filtered by computer.
+
+        Always returns all cached entries regardless of TTL. Stale reads trigger
+        the on_stale_read callback once per unique computer per call.
 
         Args:
             computer: Optional computer name to filter by
-            include_stale: When True, include stale entries (caller may trigger refresh)
 
         Returns:
             List of project info objects
         """
         projects: list[ProjectInfo] = []
+        stale_computers: set[str] = set()
         for key, cached in self._projects.items():
             # Filter by computer if specified
             if computer and not key.startswith(f"{computer}:"):
-                continue
-
-            # Filter out stale projects (TTL=5min) unless explicitly included
-            if cached.is_stale(300) and not include_stale:
                 continue
 
             # Include computer name derived from key for optimistic rendering
@@ -188,6 +180,12 @@ class DaemonCache:
             project = cached.data
             project.computer = comp_name
             projects.append(project)
+
+            if cached.is_stale(300) and comp_name not in stale_computers:
+                stale_computers.add(comp_name)
+
+        for comp_name in stale_computers:
+            self._signal_stale_read("projects", comp_name)
 
         return projects
 
@@ -227,23 +225,27 @@ class DaemonCache:
             sessions.append(session)
         return sessions
 
-    def get_todos(self, computer: str, project_path: str, *, include_stale: bool = False) -> list[TodoInfo]:
+    def get_todos(self, computer: str, project_path: str) -> list[TodoInfo]:
         """Get cached todos for a project.
+
+        Always returns cached data regardless of TTL. Stale reads trigger the
+        on_stale_read callback.
 
         Args:
             computer: Computer name
             project_path: Project path
 
         Returns:
-            List of todo info objects (empty if not cached or stale unless include_stale)
+            List of todo info objects (empty if not cached)
         """
         key = f"{computer}:{project_path}"
         cached = self._todos.get(key)
 
         if not cached:
             return []
-        if cached.is_stale(300) and not include_stale:  # TTL=5min
-            return []
+
+        if cached.is_stale(300):
+            self._signal_stale_read("todos", computer)
 
         return cached.data
 
@@ -252,36 +254,40 @@ class DaemonCache:
         *,
         computer: str | None = None,
         project_path: str | None = None,
-        include_stale: bool = False,
     ) -> list[TodoCacheEntry]:
         """Get cached todos with context, optionally filtered.
+
+        Always returns all matching entries regardless of TTL. Stale reads trigger
+        the on_stale_read callback once per unique computer per call.
 
         Args:
             computer: Optional computer name to filter by
             project_path: Optional project path to filter by
-            include_stale: When True, include stale entries
 
         Returns:
             List of todo cache entries with context
         """
         entries: list[TodoCacheEntry] = []
+        stale_computers: set[str] = set()
         for key, cached in self._todos.items():
             comp_name, path = key.split(CACHE_KEY_SEPARATOR, 1) if CACHE_KEY_SEPARATOR in key else ("", key)
             if computer and comp_name != computer:
                 continue
             if project_path and path != project_path:
                 continue
-            is_stale = cached.is_stale(300)
-            if is_stale and not include_stale:
-                continue
             entries.append(
                 TodoCacheEntry(
                     computer=comp_name,
                     project_path=path,
                     todos=cached.data,
-                    is_stale=is_stale,
                 )
             )
+            if cached.is_stale(300) and comp_name not in stale_computers:
+                stale_computers.add(comp_name)
+
+        for comp_name in stale_computers:
+            self._signal_stale_read("todos", comp_name)
+
         return entries
 
     # ==================== Data Updates ====================

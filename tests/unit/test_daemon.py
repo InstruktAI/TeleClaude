@@ -1988,3 +1988,47 @@ def test_all_events_have_handlers():
     assert not missing_handlers, (
         f"Events missing handlers: {missing_handlers}\nAdd handler method on TeleClaudeDaemon or mark as skipped."
     )
+
+
+# ==================== Daemon stale-read callback wiring tests ====================
+
+
+def test_stale_read_callback_skips_local_computer():
+    """Local-computer reads must not trigger a refresh request."""
+    adapter = MagicMock()
+    cb = TeleClaudeDaemon._make_stale_read_callback(
+        local_computer_name="mybox",
+        get_adapter=lambda: adapter,
+    )
+
+    cb("projects", "local")
+    cb("projects", "mybox")
+    cb("projects", "")
+
+    adapter.request_refresh.assert_not_called()
+
+
+def test_stale_read_callback_delegates_to_redis_transport():
+    """Remote-computer reads must call request_refresh with correct args."""
+    from teleclaude.transport.redis_transport import RedisTransport
+
+    adapter = MagicMock(spec=RedisTransport)
+    cb = TeleClaudeDaemon._make_stale_read_callback(
+        local_computer_name="mybox",
+        get_adapter=lambda: adapter,
+    )
+
+    cb("projects", "raspi")
+
+    adapter.request_refresh.assert_called_once_with("raspi", "projects", reason="ttl")
+
+
+def test_stale_read_callback_skips_when_no_redis_adapter():
+    """If the redis adapter is absent or wrong type, no refresh is requested."""
+    cb = TeleClaudeDaemon._make_stale_read_callback(
+        local_computer_name="mybox",
+        get_adapter=lambda: None,
+    )
+
+    # Should not raise and should not attempt refresh
+    cb("projects", "raspi")

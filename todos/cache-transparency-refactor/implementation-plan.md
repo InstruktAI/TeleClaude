@@ -16,7 +16,7 @@ This fixes the TUI preparation pane bug (empty after TTL expiry) by removing the
 
 ## Tasks
 
-### Task 1: Remove `is_stale` field from `TodoCacheEntry` dataclass
+### [x] Task 1: Remove `is_stale` field from `TodoCacheEntry` dataclass
 **File:** `teleclaude/core/cache.py:53-60`
 
 **What:**
@@ -34,7 +34,7 @@ This fixes the TUI preparation pane bug (empty after TTL expiry) by removing the
 
 ---
 
-### Task 2: Add callback injection to `DaemonCache.__init__`
+### [x] Task 2: Add callback injection to `DaemonCache.__init__`
 **File:** `teleclaude/core/cache.py:73-101`
 
 **What:**
@@ -60,7 +60,7 @@ This fixes the TUI preparation pane bug (empty after TTL expiry) by removing the
 
 ---
 
-### Task 3: Rewrite `get_projects()` to always serve cached data
+### [x] Task 3: Rewrite `get_projects()` to always serve cached data
 **File:** `teleclaude/core/cache.py:166-192`
 
 **What:**
@@ -83,7 +83,7 @@ This fixes the TUI preparation pane bug (empty after TTL expiry) by removing the
 
 ---
 
-### Task 4: Rewrite `get_todos()` to always serve cached data
+### [x] Task 4: Rewrite `get_todos()` to always serve cached data
 **File:** `teleclaude/core/cache.py:230-248`
 
 **What:**
@@ -104,7 +104,7 @@ This fixes the TUI preparation pane bug (empty after TTL expiry) by removing the
 
 ---
 
-### Task 5: Rewrite `get_todo_entries()` to always serve cached data
+### [x] Task 5: Rewrite `get_todo_entries()` to always serve cached data
 **File:** `teleclaude/core/cache.py:250-285`
 
 **What:**
@@ -127,7 +127,7 @@ This fixes the TUI preparation pane bug (empty after TTL expiry) by removing the
 
 ---
 
-### Task 6: Rewrite `get_computers()` to return all cached entries (no mutation)
+### [x] Task 6: Rewrite `get_computers()` to return all cached entries (no mutation)
 **File:** `teleclaude/core/cache.py:150-164`
 
 **What:**
@@ -149,7 +149,7 @@ This fixes the TUI preparation pane bug (empty after TTL expiry) by removing the
 
 ---
 
-### Task 7: Remove `DaemonCache.is_stale()` public method
+### [x] Task 7: Remove `DaemonCache.is_stale()` public method
 **File:** `teleclaude/core/cache.py:104-125`
 
 **What:**
@@ -167,7 +167,7 @@ This fixes the TUI preparation pane bug (empty after TTL expiry) by removing the
 
 ---
 
-### Task 8: Wire callback in `Daemon.__init__`
+### [x] Task 8: Wire callback in `Daemon.__init__`
 **File:** `teleclaude/daemon.py:314`
 
 **What:**
@@ -198,7 +198,7 @@ This fixes the TUI preparation pane bug (empty after TTL expiry) by removing the
 
 ---
 
-### Task 9: Clean up `api_server.py` — Remove `include_stale` and stale-collection logic
+### [x] Task 9: Clean up `api_server.py` — Remove `include_stale` and stale-collection logic
 **File:** `teleclaude/api_server.py` (multiple locations)
 
 **What:**
@@ -240,7 +240,7 @@ This fixes the TUI preparation pane bug (empty after TTL expiry) by removing the
 
 ---
 
-### Task 10: Update `tests/unit/test_cache.py` — Invert stale-filtering tests and add callback tests
+### [x] Task 10: Update `tests/unit/test_cache.py` — Invert stale-filtering tests and add callback tests
 **File:** `tests/unit/test_cache.py`
 
 **What:**
@@ -279,7 +279,7 @@ This fixes the TUI preparation pane bug (empty after TTL expiry) by removing the
 
 ---
 
-### Task 11: Update `tests/unit/test_api_server.py` — Remove deleted API references
+### [x] Task 11: Update `tests/unit/test_api_server.py` — Remove deleted API references
 **File:** `tests/unit/test_api_server.py`
 
 **What:**

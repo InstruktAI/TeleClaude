@@ -1623,7 +1623,7 @@ class APIServer:
                 # Try cache first for local projects
                 cached_local: list[ProjectInfo] | None = None
                 if self.cache:
-                    cached_local_raw = self.cache.get_projects(computer_name, include_stale=True)
+                    cached_local_raw = self.cache.get_projects(computer_name)
                     if cached_local_raw:
                         cached_local = [p for p in cached_local_raw if (p.computer or "") == computer_name]
 
@@ -1661,19 +1661,14 @@ class APIServer:
                             )
                         )
 
-                stale_computers: set[str] = set()
                 # Add cached REMOTE projects from cache (skip local to avoid duplicates)
                 if self.cache:
-                    cached_projects = self.cache.get_projects(computer, include_stale=True)
+                    cached_projects = self.cache.get_projects(computer)
                     for proj in cached_projects:
                         comp_name = str(proj.computer or "")
                         if comp_name == computer_name:
                             continue
                         proj_path = str(proj.path or "")
-                        if comp_name and proj_path:
-                            cache_key = f"{comp_name}:{proj_path}"
-                            if self.cache.is_stale(cache_key, 300):
-                                stale_computers.add(comp_name)
                         result.append(
                             ProjectDTO(
                                 computer=comp_name,
@@ -1682,7 +1677,6 @@ class APIServer:
                                 description=proj.description,
                             )
                         )
-                self._refresh_stale_projects(stale_computers)
 
                 return result
             except Exception as e:
@@ -2045,13 +2039,9 @@ class APIServer:
                 entries = self.cache.get_todo_entries(
                     computer=computer,
                     project_path=project,
-                    include_stale=True,
                 )
-                stale_remote_computers: set[str] = set()
                 result: list[TodoDTO] = []
                 for entry in entries:
-                    if entry.is_stale and entry.computer:
-                        stale_remote_computers.add(entry.computer)
                     for todo in entry.todos:
                         result.append(
                             TodoDTO(
@@ -2075,7 +2065,6 @@ class APIServer:
                                 finalize_status=todo.finalize_status,
                             )
                         )
-                self._refresh_stale_todos(stale_remote_computers)
                 return result
             except Exception as e:
                 logger.error("list_todos: failed to get todos: %s", e, exc_info=True)
@@ -2381,31 +2370,6 @@ class APIServer:
         elif data_type == "sessions":
             adapter.request_refresh(computer, "sessions", reason="interest")
 
-    def _refresh_stale_projects(self, computers: set[str]) -> None:
-        """Trigger background refresh for stale project caches."""
-        if not computers:
-            return
-        adapter = self.client.adapters.get("redis")
-        if not isinstance(adapter, RedisTransport):
-            return
-
-        for computer in sorted(computers):
-            if computer == "local":
-                continue
-            adapter.request_refresh(computer, "projects", reason="ttl")
-
-    def _refresh_stale_todos(self, computers: set[str]) -> None:
-        """Trigger background refresh for stale todo cache entries."""
-        if not self.cache or not computers:
-            return
-        adapter = self.client.adapters.get("redis")
-        if not isinstance(adapter, RedisTransport):
-            return
-        for computer in sorted(computers):
-            if computer == "local":
-                continue
-            adapter.request_refresh(computer, "projects", reason="ttl")
-
     async def _send_initial_state(self, websocket: WebSocket, data_type: str, computer: str) -> None:
         """Send initial state for a subscription.
 
@@ -2440,7 +2404,7 @@ class APIServer:
                     for proj in cached_projects:
                         comp = proj.computer or ""
                         if data_type == "preparation":
-                            todos = self.cache.get_todos(comp or config.computer.name, proj.path, include_stale=True)
+                            todos = self.cache.get_todos(comp or config.computer.name, proj.path)
                             roadmap_exists = Path(f"{proj.path}/todos/roadmap.yaml").exists()
                             projects.append(
                                 ProjectWithTodosDTO(
