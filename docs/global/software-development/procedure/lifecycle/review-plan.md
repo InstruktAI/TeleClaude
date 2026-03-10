@@ -12,6 +12,7 @@ description: 'Plan review phase. Validate implementation-plan.md against policie
 - @~/.teleclaude/docs/software-development/policy/definition-of-done.md
 - @~/.teleclaude/docs/software-development/policy/code-quality.md
 - @~/.teleclaude/docs/software-development/policy/testing.md
+- @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/review.md
 
 ## Goal
@@ -34,6 +35,9 @@ it without guessing and a reviewer finds no surprises.
 - `todos/{slug}/input.md` — original human thinking.
 - Relevant codebase files referenced in the plan.
 - The code review procedure — to understand what the reviewer will check.
+- Apply the domain-context loading rule from the preparation artifact quality
+  policy: identify which specs the plan touches and load them before
+  validation begins.
 
 ### 2. Requirement coverage
 
@@ -57,25 +61,32 @@ the plan's actual task list, not just the requirements prose.
 This is not auto-remediable — scope splits require the drafter, not the
 reviewer. If scope fails, mark `needs_work`.
 
-### 4. Rationale presence
+### 4. Plan-specific quality
 
-Every task must explain *why* this approach was chosen. The rationale prevents
-the builder from taking shortcuts. Findings:
+Apply the plan-specific quality rules from the preparation artifact quality
+policy:
 
-- Task with no rationale → Important.
-- Rationale that contradicts codebase patterns → Critical.
+- Every task has a rationale explaining *why* this approach. Task with no
+  rationale → Important. Rationale that contradicts codebase patterns or
+  loaded domain specs → Critical.
+- Every task has a verification step. Task with no verification → Important.
+  Verification that doesn't prove the task is done → Important.
+- Referenced file paths are listed in `state.yaml.grounding.referenced_paths`.
+  Missing or incomplete → Important.
 
-### 5. Verification completeness
+### 5. Grounding
 
-Every task must have a verification step: a test to write, behavior to observe,
-or check to run. The builder needs to know when each task is done. Findings:
-
-- Task with no verification → Important.
-- Verification that doesn't actually prove the task is done → Important.
+Apply the grounding rule from the preparation artifact quality policy. Verify
+plan tasks against the domain specs loaded in step 1. Plans that reference
+non-existent APIs, wrong schema fields, or incorrect directory structures are
+defective — the builder will discover the error at build time, wasting a
+session.
 
 ### 6. Review lane anticipation
 
-Check whether the plan would survive each code review lane without findings:
+Apply the DoD-driven review-awareness rule from the preparation artifact
+quality policy. Check whether the plan would survive each code review lane
+without findings:
 
 - **Tests**: does the plan include test tasks for every new behavior?
 - **Security**: does the plan address input validation, auth checks, and
@@ -86,8 +97,7 @@ Check whether the plan would survive each code review lane without findings:
   wizard, sample, and spec updates?
 - **Demo**: does the plan include demo artifact updates?
 
-Missing lane coverage is an Important finding. The plan should pre-satisfy
-what the reviewer will check.
+Missing lane coverage is an Important finding.
 
 ### 7. Policy compliance
 
@@ -101,13 +111,7 @@ Check the plan against:
 
 Policy violations are Critical findings.
 
-### 8. Referenced paths
-
-Verify that `state.yaml.grounding.referenced_paths` lists all file paths
-from the plan. These paths enable automated staleness detection. If missing
-or incomplete, flag as Important.
-
-### 9. Auto-remediate localized findings
+### 8. Auto-remediate localized findings
 
 Default behavior is to act in place. If a finding is localized, high-confidence,
 and does not change intent, the reviewer should fix the plan directly in this
@@ -120,10 +124,13 @@ Localized means all of the following are true:
 - Scope stays within the reviewed plan/demo artifacts and related grounding metadata.
 - The reviewer can fully validate the fix from current context.
 
-If these conditions do not hold, keep the finding unresolved and route via
-`needs_work`.
+Not allowed — route via `needs_work` instead:
 
-### 10. Write verdict
+- Adding new tasks not traceable to requirements.
+- Changing scope or splitting the todo.
+- Inventing architectural decisions not grounded in requirements or codebase.
+
+### 9. Write verdict
 
 Update `todos/{slug}/state.yaml`:
 
@@ -146,7 +153,7 @@ as code review findings.
 
 If no unresolved findings remain, remove stale `plan-review-findings.md` if present.
 
-### 11. Commit and report
+### 10. Commit and report
 
 Commit the verdict and any findings. Report:
 

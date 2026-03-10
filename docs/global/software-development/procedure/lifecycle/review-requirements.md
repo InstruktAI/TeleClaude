@@ -11,6 +11,7 @@ description: 'Requirements review phase. Validate requirements.md against qualit
 
 - @~/.teleclaude/docs/software-development/policy/definition-of-ready.md
 - @~/.teleclaude/docs/software-development/policy/definition-of-done.md
+- @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 
 ## Goal
 
@@ -29,27 +30,14 @@ Validate `requirements.md` against the requirements quality standard and write a
 - `todos/{slug}/input.md` — the original human thinking.
 - `todos/roadmap.yaml` — the slug's description.
 - Relevant codebase files referenced in the requirements.
-
-### 1b. Load domain-specific specs
-
-Before validation begins, identify which domain specs the requirements touch
-and load them. This is mandatory — grounding cannot be verified without the
-ground truth.
-
-- Read the requirements and identify the domains they affect (documentation
-  system, CLI surface, config surface, messaging, session infrastructure, etc.).
-- Run `telec docs index` and load the relevant specs via `telec docs get`.
-- Examples: requirements about doc snippets → load the snippet authoring schema.
-  Requirements about CLI changes → load the CLI surface spec. Requirements
-  about config → load the teleclaude-config spec.
-
-The reviewer must have the domain specs loaded before evaluating grounding,
-implementation leakage, or review-awareness. Without them, the review validates
-structure but not substance.
+- Apply the domain-context loading rule from the preparation artifact quality
+  policy: identify which specs the requirements touch and load them before
+  validation begins.
 
 ### 2. Validate against quality standard
 
-Check each criterion. Every failure is a finding.
+Check each criterion from the preparation artifact quality policy. Every
+failure is a finding.
 
 #### Completeness
 
@@ -66,59 +54,19 @@ this is done?"
 
 #### Grounding
 
-Requirements reference codebase patterns, existing APIs, or documented
-conventions — not invented abstractions. If the codebase has an established
-way to do X, the requirement says "using the existing X pattern." Requirements
-that prescribe approaches contradicting codebase patterns are findings.
-
-Verify grounding against the domain specs loaded in step 1b, not against
-general knowledge. If a requirement references a taxonomy, schema, config
-surface, or API — confirm it matches the actual spec.
+Apply the grounding rule from the preparation artifact quality policy. Verify
+against the domain specs loaded in step 1, not against general knowledge.
 
 #### Review-awareness
 
-Requirements anticipate what the code reviewer will check. Use the Definition
-of Done gates as the systematic checklist:
-
-- Walk each DoD section (functionality, code quality, testing, linting,
-  security, documentation, commit hygiene, observability).
-- For each requirement, identify which DoD gates it triggers.
-- Verify those implications are reflected in the requirements — either as
-  explicit success criteria or as constraints.
-
-Common gaps to check:
-- Requirement implies CLI changes → help text and config surface updates stated.
-- Requirement implies new behavior → test expectations stated.
-- Requirement implies new config → config wizard, sample, and spec updates stated.
-- Requirement implies security boundaries → validation and auth expectations stated.
-- Requirement implies documentation changes → doc update expectations stated.
-- Requirement implies user-visible behavior → demo coverage stated.
-
-Missing review-awareness is a finding — it means the builder will miss it and
-the reviewer will catch it too late.
+Apply the DoD-driven review-awareness rule from the preparation artifact
+quality policy. Walk each DoD section and verify that the requirements
+reflect the implications.
 
 #### No implementation leakage
 
-Requirements state what and why, never how. If a requirement prescribes a
-specific implementation approach, it belongs in the implementation plan, not
-here.
-
-Concrete signals of leakage — flag these as findings:
-- Enumerating specific directory paths, file names, or file locations.
-- Naming specific config field names, YAML keys, or database columns.
-- Prescribing specific function signatures, class names, or module structure.
-- Specifying counts, minimums, or thresholds that aren't user-facing.
-- Listing specific taxonomy types, schema fields, or internal identifiers
-  when the requirement could instead reference the governing spec.
-
-Exception: constraints that narrow the solution space are requirements, not
-leakage. "Must use the existing adapter pattern" constrains. "Must conform
-to the snippet authoring schema" constrains. "Place files under
-`docs/project/design/`" prescribes.
-
-The test: could the builder satisfy the requirement using a different
-implementation approach? If the requirement forecloses valid alternatives
-without justification, it's leakage.
+Apply the implementation leakage rule from the preparation artifact quality
+policy. Use the concrete signals and discriminator test to identify leakage.
 
 #### Inference transparency
 

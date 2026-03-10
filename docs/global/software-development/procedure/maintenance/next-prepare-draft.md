@@ -12,6 +12,7 @@ description: 'Plan drafting phase for next-prepare. Produces implementation plan
 - @~/.teleclaude/docs/software-development/policy/definition-of-done.md
 - @~/.teleclaude/docs/software-development/policy/code-quality.md
 - @~/.teleclaude/docs/software-development/policy/testing.md
+- @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 
 ## Goal
 
@@ -40,6 +41,11 @@ Read the full context before writing anything:
 - The codebase: files that will be affected, adjacent patterns, existing implementations
   of similar functionality. Use `telec docs index` for relevant policies and specs.
 - Definition of Done — every plan task must produce output that satisfies DoD gates.
+
+Apply the domain-context loading rule from the preparation artifact quality
+policy: identify which specs the requirements touch and load them before
+drafting begins. Domain specs are the ground truth — grounding and
+review-awareness cannot be evaluated without them.
 
 ### 1b. Fix mode (when dispatched with "FIX MODE")
 
@@ -79,7 +85,8 @@ If the work passes the scope/size gate, continue to plan drafting.
 
 ### 3. Draft the implementation plan
 
-Structure the plan as an ordered task list. Each task must include:
+Apply the plan-specific quality rules from the preparation artifact quality
+policy. Structure the plan as an ordered task list. Each task must include:
 
 - **What**: the concrete change (file, function, component).
 - **Why**: the rationale for the approach. This prevents the builder from taking shortcuts.
@@ -90,15 +97,16 @@ Structure the plan as an ordered task list. Each task must include:
 - **Referenced files**: exact file paths that will be created or modified. These are
   extracted into `state.yaml.grounding.referenced_paths` for staleness detection.
 
+Verify plan tasks against the domain specs loaded in step 1. Plans that reference
+non-existent APIs, wrong schema fields, or incorrect directory structures are
+defective — the builder will discover the error at build time, wasting a session.
+
 ### 4. Anticipate review lanes
 
-The plan must pre-satisfy what the reviewer will check. For each requirement:
-
-- If it implies new behavior: plan includes corresponding test tasks.
-- If it touches CLI: plan includes help text update task.
-- If it introduces config surface: plan includes config wizard, sample, and spec update tasks.
-- If it touches security boundaries: plan includes input validation and auth check tasks.
-- If it introduces new code paths: plan states which patterns to follow and why.
+Apply the DoD-driven review-awareness rule from the preparation artifact quality
+policy. The plan must pre-satisfy what the reviewer will check. For each
+requirement, identify which DoD gates it triggers and verify those implications
+are reflected as task verification steps.
 
 A plan that does not anticipate review lanes will produce review findings that cost
 more to fix than they cost to prevent.
@@ -117,11 +125,10 @@ Update `todos/{slug}/state.yaml`:
 - Set `grounding.referenced_paths` to the list of file paths from the plan.
 - Update `grounding.base_sha` to current HEAD.
 
-If the todo is split instead, write:
+If the todo is split instead:
 
-- child todo artifacts
-- updated holder `breakdown.todos`
-- any dependency links needed in `todos/roadmap.yaml`
+- Call `telec todo split <slug> --into <child1> <child2> ...`
+- Seed each child's `input.md` with the relevant subset of parent requirements
 
 ### 6. Enforce boundaries
 

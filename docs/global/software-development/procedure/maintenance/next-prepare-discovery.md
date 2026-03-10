@@ -11,6 +11,7 @@ description: 'Requirements discovery phase for next-prepare. Produces requiremen
 
 - @~/.teleclaude/docs/software-development/policy/definition-of-ready.md
 - @~/.teleclaude/docs/software-development/policy/definition-of-done.md
+- @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 
 ## Goal
 
@@ -44,6 +45,11 @@ Read:
 - `todos/roadmap.yaml`
 - the relevant code paths and adjacent patterns
 - local docs needed to understand the domain constraints
+
+Apply the domain-context loading rule from the preparation artifact quality
+policy: identify which specs the input touches and load them before writing
+requirements. Domain specs are the ground truth — grounding, leakage detection,
+and review-awareness cannot be evaluated without them.
 
 ### 1b. Fix mode (when dispatched with "FIX MODE")
 
@@ -81,21 +87,22 @@ verification must all be satisfiable before discovery is done.
 
 ### 4. Requirements quality standard
 
-The converged `requirements.md` must satisfy:
+The converged `requirements.md` must satisfy all rules from the preparation
+artifact quality policy. In particular:
 
 - **Completeness**: every intent expressed in `input.md` is captured as a
   concrete requirement or explicitly deferred with justification.
 - **Testability**: each requirement has a verification path (test, observable
   behavior, or measurable outcome). "Works correctly" is not testable.
-- **Grounding**: requirements reference codebase patterns, existing APIs, or
-  documented conventions — not invented abstractions. If the codebase has an
-  established way to do X, the requirement says "using the existing X pattern."
-- **Review-awareness**: requirements anticipate what the reviewer will check.
-  If a requirement implies CLI changes, it explicitly states help text and
-  config surface updates. If it implies new behavior, it explicitly states
-  test expectations. The Definition of Done gates are the checklist.
-- **No implementation leakage**: requirements state what and why, never how.
-  Implementation approach belongs in the plan.
+- **Grounding**: verify against the domain specs loaded in step 1, not against
+  general knowledge. Requirements that reference non-existent APIs, wrong schema
+  fields, or incorrect conventions are defective.
+- **Review-awareness**: apply the DoD-driven review-awareness rule from the
+  preparation artifact quality policy. Walk each DoD section and verify that the
+  requirements reflect the implications.
+- **No implementation leakage**: apply the implementation leakage rule from the
+  preparation artifact quality policy. Use the concrete signals and discriminator
+  test to identify leakage.
 - **Inferences marked**: anything inferred from codebase or docs rather than
   explicitly stated in `input.md` is marked `[inferred]`. The human can
   correct inferences without searching for them.

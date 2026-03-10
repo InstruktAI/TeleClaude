@@ -11,6 +11,7 @@ description: 'Gate phase for next-prepare. Performs formal DOR validation on the
 
 - @~/.teleclaude/docs/software-development/policy/definition-of-ready.md
 - @~/.teleclaude/docs/software-development/policy/definition-of-done.md
+- @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 
 ## Goal
 
@@ -29,7 +30,14 @@ coherent whole — not the individual artifacts (those are reviewed in earlier p
 
 ## Steps
 
-### 1. Cross-artifact validation
+### 1. Load domain context
+
+Apply the domain-context loading rule from the preparation artifact quality
+policy: identify which specs the artifacts touch and load them before validation
+begins. The gate validates substance, not just structure — domain specs are
+required to verify grounding.
+
+### 2. Cross-artifact validation
 
 Validate the artifact set as a coherent delivery plan:
 
@@ -41,7 +49,7 @@ Validate the artifact set as a coherent delivery plan:
 - **Verification chain**: the plan's verification steps, taken together, would
   satisfy the DoD gates. No gap between "plan done" and "DoD met."
 
-### 2. DOR gate validation
+### 3. DOR gate validation
 
 Validate all eight DOR gates:
 
@@ -54,19 +62,21 @@ Validate all eight DOR gates:
 7. Integration safety — can merge incrementally.
 8. Tooling impact — scaffolding procedures updated if applicable.
 
-### 3. Review-readiness preview
+### 4. Review-readiness preview
 
-Check whether the plan would survive each review lane without findings:
+Apply the DoD-driven review-awareness rule from the preparation artifact quality
+policy. Check whether the plan would survive each review lane without findings:
 
 - Does the plan account for test expectations?
 - Does the plan address security review concerns?
 - Does the plan include documentation and config surface updates where needed?
 - Are the rationale annotations sufficient for the builder to avoid shortcuts?
+- Do requirements satisfy the grounding and implementation leakage rules?
 
-Gaps in review-readiness are `needs_work` — not blockers, but the plan needs
+Gaps in review-readiness are `needs_work` — not blockers, but the artifacts need
 enrichment before the builder can execute safely.
 
-### 4. Assign gate result
+### 5. Assign gate result
 
 Write to `todos/{slug}/state.yaml`:
 
@@ -87,7 +97,7 @@ Threshold constants:
 - Target quality: score >= 8 for pass.
 - Decision required: score < 7 triggers `needs_decision`.
 
-### 5. Write gate report
+### 6. Write gate report
 
 Update `todos/{slug}/dor-report.md` with:
 
@@ -97,7 +107,7 @@ Update `todos/{slug}/dor-report.md` with:
 - Review-readiness assessment.
 - Exact unresolved blockers if any.
 
-### 6. Commit and go idle
+### 7. Commit and go idle
 
 Commit all todo artifact changes. The commit is the delivery mechanism — your
 caller verifies the commit exists, not the file state on disk.
