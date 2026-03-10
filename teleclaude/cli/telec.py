@@ -589,6 +589,17 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
+            "split": CommandDef(
+                desc="Split a todo into child items (container transition)",
+                args="<slug>",
+                flags=[
+                    Flag("--into", desc="Child slug (repeatable, at least one required)"),
+                ],
+                notes=[
+                    "Scaffolds children, cleans parent artifacts, sets container state.",
+                ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
         },
     ),
     "roadmap": CommandDef(
@@ -2061,6 +2072,8 @@ def _handle_todo(args: list[str]) -> None:
         _handle_todo_verify_artifacts(args[1:])
     elif subcommand == "dump":
         _handle_todo_dump(args[1:])
+    elif subcommand == "split":
+        _handle_todo_split(args[1:])
     else:
         print(f"Unknown todo subcommand: {subcommand}")
         print(_usage("todo"))
@@ -2554,6 +2567,55 @@ def _handle_todo_dump(args: list[str]) -> None:
         print(f"Dumped todo: todos/{slug}/")
         print(f"Warning: notification emission failed: {exc}")
         print("Notification can be retried manually.")
+
+
+def _handle_todo_split(args: list[str]) -> None:
+    """Handle telec todo split <slug> --into <child1> [<child2> ...]."""
+    from teleclaude.todo_scaffold import split_todo
+
+    if not args:
+        print(_usage("todo", "split"))
+        return
+
+    slug: str | None = None
+    children: list[str] = []
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--into" and i + 1 < len(args):
+            i += 1
+            children.append(args[i])
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "split"))
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one parent slug is allowed.")
+                print(_usage("todo", "split"))
+                raise SystemExit(1)
+            slug = arg
+        i += 1
+
+    if not slug:
+        print("Missing required argument: <slug>")
+        print(_usage("todo", "split"))
+        raise SystemExit(1)
+
+    if not children:
+        print("Missing required flag: --into <child> (at least one)")
+        print(_usage("todo", "split"))
+        raise SystemExit(1)
+
+    project_root = Path.cwd()
+    try:
+        created = split_todo(project_root, slug, children)
+        print(f"Split '{slug}' into {len(created)} children: {', '.join(children)}")
+        for d in created:
+            print(f"  Created: {d}")
+    except (FileNotFoundError, ValueError, FileExistsError) as e:
+        print(f"Error: {e}")
+        raise SystemExit(1) from e
 
 
 def _handle_todo_demo(args: list[str]) -> None:
@@ -3124,8 +3186,11 @@ def _handle_roadmap_migrate_icebox(args: list[str]) -> None:
 
 
 def _handle_roadmap_deliver(args: list[str]) -> None:
-    """Handle telec roadmap deliver <slug> [--commit SHA]."""
-    from teleclaude.core.next_machine.core import deliver_to_delivered
+    """Handle telec roadmap deliver <slug> [--commit SHA].
+
+    Full idempotent delivery: moves YAML entry, cleans up worktree/branch/todo dir, commits.
+    """
+    from teleclaude.core.next_machine.core import cleanup_delivered_slug, deliver_to_delivered
 
     if not args:
         print(_usage("roadmap", "deliver"))
@@ -3156,11 +3221,49 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
         print(_usage("roadmap", "deliver"))
         raise SystemExit(1)
 
-    if deliver_to_delivered(str(project_root), slug, commit=commit):
-        print(f"Delivered {slug} → delivered.yaml")
-    else:
-        print(f"Slug not found in roadmap: {slug}")
+    cwd = str(project_root)
+
+    # 1. Move YAML entry (idempotent — returns True if already delivered)
+    if not deliver_to_delivered(cwd, slug, commit=commit):
+        print(f"Slug not found in roadmap or delivered: {slug}")
         raise SystemExit(1)
+
+    # 2. Physical cleanup (idempotent — each step no-ops if already done)
+    cleanup_delivered_slug(cwd, slug)
+
+    # 3. Stage and commit all delivery artifacts
+    import subprocess
+
+    subprocess.run(
+        ["git", "add", "todos/roadmap.yaml", "todos/delivered.yaml", f"todos/{slug}"],
+        capture_output=True,
+        text=True,
+        cwd=cwd,
+    )
+    # Only commit if there are staged changes
+    diff_result = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        capture_output=True,
+        text=True,
+        cwd=cwd,
+    )
+    if diff_result.returncode != 0:
+        subprocess.run(
+            [
+                "git",
+                "commit",
+                "-m",
+                (
+                    f"chore({slug}): deliver and cleanup\n\n"
+                    "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
+                ),
+            ],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+        )
+
+    print(f"Delivered {slug} → delivered.yaml (cleanup complete)")
 
 
 def _handle_bugs(args: list[str]) -> None:

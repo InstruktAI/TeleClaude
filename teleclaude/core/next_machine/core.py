@@ -2158,8 +2158,9 @@ def deliver_to_delivered(
     *,
     commit: str | None = None,
 ) -> bool:
-    """Move a slug from roadmap to delivered (prepended). Returns False if not in roadmap.
+    """Move a slug from roadmap to delivered (prepended). Returns False only if slug is unknown.
 
+    Idempotent: returns True if the slug is already in delivered.yaml.
     If no commit SHA is provided, auto-detects HEAD of the repository.
     """
     entries = load_roadmap(cwd)
@@ -2169,6 +2170,9 @@ def deliver_to_delivered(
             entry = entries.pop(i)
             break
     if entry is None:
+        # Not in roadmap — check if already delivered (idempotent success)
+        if slug in load_delivered_slugs(cwd):
+            return True
         return False
 
     save_roadmap(cwd, entries)
@@ -2191,6 +2195,66 @@ def deliver_to_delivered(
     )
     save_delivered(cwd, delivered)
     return True
+
+
+def _run_git_cmd(
+    args: list[str], *, cwd: str, timeout: float = 30
+) -> tuple[int, str, str]:
+    """Run a git command; return (returncode, stdout, stderr)."""
+    try:
+        result = subprocess.run(
+            ["git"] + args,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            timeout=timeout,
+        )
+        return result.returncode, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        logger.warning("git %s timed out after %.0fs", " ".join(args[:2]), timeout)
+        return 1, "", f"timeout after {timeout}s"
+
+
+def cleanup_delivered_slug(
+    cwd: str,
+    slug: str,
+    *,
+    branch: str | None = None,
+    remove_remote_branch: bool = True,
+) -> None:
+    """Idempotent cleanup of all physical artifacts for a delivered slug.
+
+    Each step is a no-op if the artifact is already gone.
+
+    Args:
+        cwd: Project root directory.
+        slug: Work item slug.
+        branch: Git branch name (defaults to slug).
+        remove_remote_branch: Whether to delete the remote tracking branch.
+    """
+    branch = branch or slug
+
+    # 1. Remove worktree
+    worktree_path = Path(cwd) / WORKTREE_DIR / slug
+    if worktree_path.exists():
+        rc, _, stderr = _run_git_cmd(["worktree", "remove", "--force", str(worktree_path)], cwd=cwd, timeout=10)
+        if rc != 0:
+            logger.warning("worktree remove failed for %s: %s", slug, stderr.strip())
+
+    # 2. Delete local branch
+    _run_git_cmd(["branch", "-D", branch], cwd=cwd)
+
+    # 3. Delete remote branch (non-fatal, tight timeout)
+    if remove_remote_branch:
+        _run_git_cmd(["push", "origin", "--delete", branch], cwd=cwd, timeout=5)
+
+    # 4. Remove todo directory
+    todo_dir = Path(cwd) / "todos" / slug
+    if todo_dir.exists():
+        shutil.rmtree(str(todo_dir), ignore_errors=True)
+
+    # 5. Clean dependency references
+    clean_dependency_references(cwd, slug)
 
 
 def sweep_completed_groups(cwd: str) -> list[str]:
@@ -2268,8 +2332,8 @@ def sweep_completed_groups(cwd: str) -> list[str]:
             )
             save_delivered(cwd, entries)
 
-        # Remove the group todo directory
-        shutil.rmtree(entry)
+        # Clean up physical artifacts (worktree/branch no-op for group parents)
+        cleanup_delivered_slug(cwd, group_slug, remove_remote_branch=False)
         swept.append(group_slug)
         logger.info("Group sweep: delivered %s (all %d children complete)", group_slug, len(children))
 

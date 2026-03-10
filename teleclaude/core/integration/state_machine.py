@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shutil
 import subprocess
 import threading
 from dataclasses import dataclass
@@ -932,14 +931,10 @@ def _step_committed(
     # Delivery bookkeeping runs on repo root — operational metadata, not delivery content
     is_bug = _is_bug_slug(cwd, key.slug)
     if not is_bug:
-        result = subprocess.run(
-            ["telec", "roadmap", "deliver", key.slug],
-            capture_output=True,
-            text=True,
-            cwd=cwd,
-        )
-        if result.returncode != 0:
-            logger.warning("telec roadmap deliver %s failed: %s", key.slug, result.stderr.strip())
+        from teleclaude.core.next_machine.core import deliver_to_delivered
+
+        if not deliver_to_delivered(cwd, key.slug):
+            logger.warning("deliver_to_delivered failed for %s (not in roadmap or delivered)", key.slug)
 
     demo_path = Path(cwd) / "todos" / key.slug / "demo.md"
     if demo_path.exists():
@@ -953,7 +948,7 @@ def _step_committed(
             logger.warning("telec todo demo create %s failed: %s", key.slug, result.stderr.strip())
 
     # Stage only bookkeeping files on repo root (not git add -A which sweeps dirty main)
-    _run_git(["add", "todos/roadmap.yaml"], cwd=cwd)
+    _run_git(["add", "todos/roadmap.yaml", "todos/delivered.yaml"], cwd=cwd)
     rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=cwd)
     if rc != 0:  # staged changes exist
         _run_git(
@@ -1072,29 +1067,16 @@ def _do_cleanup(
     cwd: str,
 ) -> tuple[bool, str]:
     """Perform cleanup and advance to CANDIDATE_DELIVERED."""
+    from teleclaude.core.next_machine.core import cleanup_delivered_slug
+
     # Merge commit SHA lives in the integration worktree (where delivery was committed)
     wt = str(_integration_worktree_path(cwd))
     merge_commit = _get_head_sha(wt) or "unknown"
 
-    # Remove worker worktree (from repo root)
-    worktree_path = Path(cwd) / WORKTREE_DIR / key.slug
-    if worktree_path.exists():
-        rc, _, stderr = _run_git(["worktree", "remove", "--force", str(worktree_path)], cwd=cwd, timeout=10)
-        if rc != 0:
-            logger.warning("worktree remove failed for %s: %s", key.slug, stderr.strip())
+    # Delegate physical cleanup (worktree, branch, todo dir, deps)
+    cleanup_delivered_slug(cwd, key.slug, branch=key.branch)
 
-    # Delete local branch
-    _run_git(["branch", "-D", key.branch], cwd=cwd)
-
-    # Delete remote branch (non-fatal, tight timeout — network call)
-    _run_git(["push", "origin", "--delete", key.branch], cwd=cwd, timeout=5)
-
-    # Remove todo directory
-    todo_dir = Path(cwd) / "todos" / key.slug
-    if todo_dir.exists():
-        shutil.rmtree(str(todo_dir), ignore_errors=True)
-
-    # Stage only the todo directory removal (not git add -A which sweeps dirty main)
+    # Stage todo directory removal and commit
     _run_git(["add", f"todos/{key.slug}"], cwd=cwd)
     rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=cwd)
     if rc != 0:
@@ -1116,8 +1098,7 @@ def _do_cleanup(
         {"slug": key.slug, "branch": key.branch, "merge_commit_sha": merge_commit},
     )
 
-    # Mark integrated and advance checkpoint BEFORE restarting the daemon
-    # (restart severs the connection, so these must complete first)
+    # Mark integrated and advance checkpoint
     try:
         queue.mark_integrated(key=key, reason="integrated via state machine")
     except Exception as exc:
@@ -1128,12 +1109,6 @@ def _do_cleanup(
     _write_checkpoint(checkpoint_path, checkpoint)
     _mirror_integration_phase(cwd, key.slug, IntegrationPhase.CANDIDATE_DELIVERED.value)
     logger.info("%s slug=%s phase=CANDIDATE_DELIVERED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
-
-    # Restart daemon (non-fatal; done last so state is persisted first)
-    try:
-        subprocess.run(["make", "restart"], capture_output=True, text=True, cwd=cwd, timeout=10)
-    except subprocess.TimeoutExpired:
-        logger.warning("make restart timed out during cleanup for %s", key.slug)
 
     return True, ""  # loop to pop next candidate
 
