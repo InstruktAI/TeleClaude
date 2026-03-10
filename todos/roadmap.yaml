@@ -1,9 +1,5 @@
 # Priority order (first = highest). Per-item state in {slug}/state.yaml.
 
-- slug: mirror-runtime-isolation
-  description: 'Isolate mirror reconciliation from the daemon control plane: canonical
-    transcript allowlist, worker isolation, exact source identity, conditional DB
-    split'
 - slug: mesh-trust-model
   after:
   - mesh-architecture
@@ -51,7 +47,6 @@
 - slug: cache-transparency-refactor
 - slug: session-role-metadata
 - slug: tui-chiptunes-resource-leaks
-- slug: todo-phase-status-display-2
 - slug: test-suite-overhaul
 - slug: tso-adapters
   group: test-suite-overhaul
