@@ -147,6 +147,91 @@ def create_bug_skeleton(
     return todo_dir
 
 
+def split_todo(project_root: Path, parent_slug: str, child_slugs: list[str]) -> list[Path]:
+    """Split a todo into child items (container transition).
+
+    Scaffolds children, cleans parent builder artifacts, and sets container state.
+    Returns list of created child directories.
+
+    Raises:
+        FileNotFoundError: If parent todo directory does not exist
+        ValueError: If parent is already a container or child slug is invalid
+        FileExistsError: If any child directory already exists
+    """
+    from teleclaude.core.next_machine.core import read_phase_state, write_phase_state
+
+    validate_slug(parent_slug)
+    parent_slug = parent_slug.strip()
+
+    todos_root = project_root / "todos"
+    parent_dir = todos_root / parent_slug
+
+    if not parent_dir.exists():
+        raise FileNotFoundError(f"Todo '{parent_slug}' not found at {parent_dir}")
+
+    # Check parent is not already a container
+    state = read_phase_state(str(project_root), parent_slug)
+    breakdown = state.get("breakdown", {})
+    if isinstance(breakdown, dict) and breakdown.get("todos"):
+        raise ValueError(
+            f"Todo '{parent_slug}' is already a container with children: {breakdown['todos']}"
+        )
+
+    # Validate all child slugs and check they don't exist
+    for child in child_slugs:
+        validate_slug(child)
+        child_dir = todos_root / child
+        if child_dir.exists():
+            raise FileExistsError(f"Child todo '{child}' already exists at {child_dir}")
+
+    # Scaffold children
+    created: list[Path] = []
+    for child in child_slugs:
+        child_dir = create_todo_skeleton(project_root, child, after=[parent_slug])
+        created.append(child_dir)
+
+    # Clean parent builder artifacts — keep only input.md and state.yaml
+    keep = {"input.md", "state.yaml"}
+    for f in parent_dir.iterdir():
+        if f.is_file() and f.name not in keep:
+            f.unlink()
+
+    # Reset parent state.yaml to container state
+    state["breakdown"] = {"assessed": True, "todos": child_slugs}
+    state["dor"] = {
+        "score": 0,
+        "status": "needs_work",
+        "schema_version": 1,
+        "blockers": [],
+        "actions_taken": [],
+    }
+    state["requirements_review"] = {
+        "verdict": "",
+        "reviewed_at": "",
+        "findings_count": 0,
+        "rounds": 0,
+    }
+    state["plan_review"] = {
+        "verdict": "",
+        "reviewed_at": "",
+        "findings_count": 0,
+        "rounds": 0,
+    }
+    state["grounding"] = {
+        "valid": False,
+        "base_sha": "",
+        "input_digest": "",
+        "referenced_paths": [],
+        "last_grounded_at": "",
+        "invalidated_at": "",
+        "invalidation_reason": "",
+    }
+    state["prepare_phase"] = ""
+    write_phase_state(str(project_root), parent_slug, state)
+
+    return created
+
+
 def remove_todo(project_root: Path, slug: str) -> None:
     """Remove a todo and all its references.
 
