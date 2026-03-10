@@ -30,6 +30,23 @@ Validate `requirements.md` against the requirements quality standard and write a
 - `todos/roadmap.yaml` — the slug's description.
 - Relevant codebase files referenced in the requirements.
 
+### 1b. Load domain-specific specs
+
+Before validation begins, identify which domain specs the requirements touch
+and load them. This is mandatory — grounding cannot be verified without the
+ground truth.
+
+- Read the requirements and identify the domains they affect (documentation
+  system, CLI surface, config surface, messaging, session infrastructure, etc.).
+- Run `telec docs index` and load the relevant specs via `telec docs get`.
+- Examples: requirements about doc snippets → load the snippet authoring schema.
+  Requirements about CLI changes → load the CLI surface spec. Requirements
+  about config → load the teleclaude-config spec.
+
+The reviewer must have the domain specs loaded before evaluating grounding,
+implementation leakage, or review-awareness. Without them, the review validates
+structure but not substance.
+
 ### 2. Validate against quality standard
 
 Check each criterion. Every failure is a finding.
@@ -54,13 +71,28 @@ conventions — not invented abstractions. If the codebase has an established
 way to do X, the requirement says "using the existing X pattern." Requirements
 that prescribe approaches contradicting codebase patterns are findings.
 
+Verify grounding against the domain specs loaded in step 1b, not against
+general knowledge. If a requirement references a taxonomy, schema, config
+surface, or API — confirm it matches the actual spec.
+
 #### Review-awareness
 
-Requirements anticipate what the code reviewer will check:
-- If a requirement implies CLI changes: help text and config surface updates stated.
-- If it implies new behavior: test expectations stated.
-- If it touches security boundaries: validation and auth expectations stated.
-- If it touches documentation: doc update expectations stated.
+Requirements anticipate what the code reviewer will check. Use the Definition
+of Done gates as the systematic checklist:
+
+- Walk each DoD section (functionality, code quality, testing, linting,
+  security, documentation, commit hygiene, observability).
+- For each requirement, identify which DoD gates it triggers.
+- Verify those implications are reflected in the requirements — either as
+  explicit success criteria or as constraints.
+
+Common gaps to check:
+- Requirement implies CLI changes → help text and config surface updates stated.
+- Requirement implies new behavior → test expectations stated.
+- Requirement implies new config → config wizard, sample, and spec updates stated.
+- Requirement implies security boundaries → validation and auth expectations stated.
+- Requirement implies documentation changes → doc update expectations stated.
+- Requirement implies user-visible behavior → demo coverage stated.
 
 Missing review-awareness is a finding — it means the builder will miss it and
 the reviewer will catch it too late.
@@ -69,8 +101,24 @@ the reviewer will catch it too late.
 
 Requirements state what and why, never how. If a requirement prescribes a
 specific implementation approach, it belongs in the implementation plan, not
-here. Exception: constraints like "must use the existing adapter pattern"
-are requirements because they constrain the solution space.
+here.
+
+Concrete signals of leakage — flag these as findings:
+- Enumerating specific directory paths, file names, or file locations.
+- Naming specific config field names, YAML keys, or database columns.
+- Prescribing specific function signatures, class names, or module structure.
+- Specifying counts, minimums, or thresholds that aren't user-facing.
+- Listing specific taxonomy types, schema fields, or internal identifiers
+  when the requirement could instead reference the governing spec.
+
+Exception: constraints that narrow the solution space are requirements, not
+leakage. "Must use the existing adapter pattern" constrains. "Must conform
+to the snippet authoring schema" constrains. "Place files under
+`docs/project/design/`" prescribes.
+
+The test: could the builder satisfy the requirement using a different
+implementation approach? If the requirement forecloses valid alternatives
+without justification, it's leakage.
 
 #### Inference transparency
 
@@ -84,15 +132,26 @@ Default behavior is to act in place. If a finding is localized, high-confidence,
 and does not alter human intent, the reviewer should fix `requirements.md`
 directly in this same pass instead of handing it back.
 
-Typical in-place fixes include:
+Allowed in-place fixes:
 
 - Adding missing `[inferred]` markers.
 - Tightening vague verification wording.
-- Filling explicit review-awareness omissions (tests/docs/config mentions).
+- Filling review-awareness gaps for implications already present in the
+  requirements.
+- Removing implementation leakage (replacing specific paths/fields/counts
+  with references to governing specs).
 
-Do not auto-remediate when the change would invent new intent, settle unresolved
-product decisions, or introduce an architectural choice that was not grounded.
-Leave those findings unresolved and route via `needs_work`.
+Not allowed — route via `needs_work` instead:
+
+- Adding new scope items.
+- Adding new success criteria.
+- Adding new constraints.
+- Inventing new intent not traceable to `input.md`.
+- Settling unresolved product decisions.
+- Introducing architectural choices that were not grounded.
+
+The boundary: auto-remediation fixes what exists. It does not expand what
+the requirements cover.
 
 ### 4. Write verdict
 

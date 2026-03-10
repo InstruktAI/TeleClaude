@@ -76,15 +76,12 @@ snippet is referenced explicitly.
 
 **File(s):** `docs/global/software-development/spec/init-scaffolding.md`
 
-- [ ] Define the generated snippet set and canonical IDs:
-      - `project/design/architecture`
-      - `project/policy/conventions`
-      - `project/spec/dependencies`
-      - `project/design/entry-points`
-      - `project/policy/testing`
-      - `project/spec/build-deploy`
-      - `project/spec/configuration`
-- [ ] Define the expected file placement for each snippet under `docs/project/`.
+- [ ] Define the discovery-to-taxonomy mapping: which analysis dimensions map to
+      which taxonomy types (`principle`, `concept`, `policy`, `procedure`, `design`,
+      `spec`). The mapping is guidance, not a fixed list — the analysis session
+      decides which snippets to produce based on what it finds in the codebase.
+- [ ] Define naming conventions for generated snippet IDs under `project/`.
+- [ ] Define the expected file placement per taxonomy type under `docs/project/`.
 - [ ] Define the frontmatter template for generated snippets, including
       `generated_by: telec-init` and `generated_at: <ISO8601>`.
 - [ ] Define merge rules for re-analysis: update auto-generated sections, preserve
