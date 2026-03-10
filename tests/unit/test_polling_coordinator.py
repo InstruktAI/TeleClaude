@@ -507,6 +507,47 @@ class TestCodexSyntheticPromptDetection:
         finally:
             polling_coordinator._cleanup_codex_input_state(session_id)
 
+    async def test_single_character_prompt_is_captured_when_marker_boundaries_match(self):
+        """Single-character user prompts should still capture when marker boundaries are present."""
+        session_id = "codex-single-char-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› y\n• Working...",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+
+            emit.assert_awaited_once()
+            context = emit.await_args.args[0]
+            payload = context.data
+            assert isinstance(payload, UserPromptSubmitPayload)
+            assert payload.prompt == "y"
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
+    async def test_pasted_content_placeholder_is_not_forwarded_as_user_prompt(self):
+        """Paste placeholders are synthetic noise and should not become synthetic user submits."""
+        session_id = "codex-placeholder-noise-1"
+        emit = AsyncMock()
+        polling_coordinator._cleanup_codex_input_state(session_id)
+
+        try:
+            await polling_coordinator._maybe_emit_codex_input(
+                session_id=session_id,
+                active_agent="codex",
+                current_output="› [Pasted Content 5074 chars]\n• Working...",
+                output_changed=True,
+                emit_agent_event=emit,
+            )
+            emit.assert_not_awaited()
+        finally:
+            polling_coordinator._cleanup_codex_input_state(session_id)
+
     async def test_emits_on_prompt_to_agent_transition_without_overlap_frame(self):
         """Emit submit when prompt disappears and first visible agent line is a tool action."""
         session_id = "codex-transition-1"
@@ -550,7 +591,7 @@ class TestCodexSyntheticPromptDetection:
 
         try:
             with patch(
-                "teleclaude.core.polling_coordinator._has_live_prompt_marker",
+                "teleclaude.core.codex_prompt_submit._has_live_prompt_marker",
                 side_effect=[False, False],
             ):
                 await polling_coordinator._maybe_emit_codex_input(
@@ -804,6 +845,44 @@ class TestCodexSyntheticPromptDetection:
                 "line d",
             ]
         )
+        assert polling_coordinator._find_prompt_input(stale_output) == ""
+
+    async def test_find_prompt_input_ignores_stale_prompt_even_with_submit_marker(self):
+        """Prompt markers deep in scrollback should be ignored even if a boundary exists."""
+        stale_output = "\n".join(
+            [
+                "header",
+                "line 0",
+                "line 1",
+                "line 2",
+                "line 3",
+                "line 4",
+                "line 5",
+                "line 6",
+                "line 7",
+                "line 8",
+                "line 9",
+                "line 10",
+                "line 11",
+                "line 12",
+                "line 13",
+                "line 14",
+                "line 15",
+                "line 16",
+                "line 17",
+                "line 18",
+                "line 19",
+                "line 20",
+                "› l",
+                "stale output",
+                "stale output",
+                "stale output",
+                "stale output",
+                "stale output",
+                "• Working...",
+            ]
+        )
+
         assert polling_coordinator._find_prompt_input(stale_output) == ""
 
     async def test_duplicate_prompt_not_re_emitted(self):

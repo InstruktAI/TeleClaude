@@ -5,7 +5,6 @@ Handles polling lifecycle orchestration and event routing to message manager.
 """
 
 import asyncio
-import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.core import session_cleanup, tmux_bridge
+from teleclaude.core import codex_prompt_submit
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     AgentEventContext,
@@ -30,134 +30,12 @@ from teleclaude.core.output_poller import (
 )
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.core.tool_activity import truncate_tool_preview
-from teleclaude.utils import strip_ansi_codes
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
 OUTPUT_METRICS_SUMMARY_INTERVAL_S = 30.0
-
-# Codex input detection - marker-pair approach
-# Capture input block after "›" prompt and emit when submit boundary marker appears.
-CODEX_INPUT_MAX_CHARS = 4000
-
-# Codex TUI markers
-CODEX_PROMPT_MARKER = "›"  # User input prompt line
-CODEX_PROMPT_LIVE_DISTANCE = 4  # Prompt marker must be close to bottom unless submit boundary is found
-CODEX_TOOL_ACTION_LOOKBACK_LINES = 120
-# Agent "thinking/working" markers - Codex uses animated symbols
-# These indicate agent has started responding (user input complete)
-CODEX_AGENT_MARKERS = frozenset(
-    {
-        "•",  # Bullet - "Working"
-        "◦",  # White bullet - "Planning/Diagnosing ... (esc to interrupt)"
-        "✶",  # Six-pointed star - "Sublimating"
-        "✦",  # Black four-pointed star
-        "✧",  # White four-pointed star
-        "✴",  # Eight-pointed black star
-        "✸",  # Heavy eight-pointed star
-        "✹",  # Twelve-pointed star
-        "✺",  # Sixteen-pointed star
-        "★",  # Black star
-        "☆",  # White star
-        "●",  # Black circle
-        "○",  # White circle
-        "◆",  # Black diamond
-        "◇",  # White diamond
-    }
-)
-
-_ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
-_ANSI_BOLD_TOKEN_RE = re.compile(r"\x1b\[[0-9;]*1m([A-Za-z][A-Za-z_-]{1,40})\x1b\[[0-9;]*m")
-_ACTION_WORD_RE = re.compile(r"^([A-Za-z][A-Za-z_-]{1,40})")
-_TREE_CONTINUATION_PREFIX_RE = re.compile(r"^(?:[│┃┆┊|]+\s*|[├└]\s*)+")
-
-# Visible Codex action verbs in tmux output (bold in UI) that imply tool usage.
-_CODEX_TOOL_ACTION_WORDS = frozenset(
-    {
-        "Applied",
-        "Called",
-        "Created",
-        "Deleted",
-        "Edited",
-        "Explored",
-        "Listed",
-        "Moved",
-        "Opened",
-        "Ran",
-        "Read",
-        "Searched",
-        "Updated",
-        "Wrote",
-    }
-)
-
-
-def _strip_ansi(text: str) -> str:
-    """Remove all ANSI escape codes from text."""
-    return strip_ansi_codes(text)
-
-
-def _has_sgr_param(text: str, target: str) -> bool:
-    """Return True when any SGR sequence contains the exact parameter."""
-    for match in _ANSI_SGR_RE.finditer(text):
-        params = [p for p in match.group(1).split(";") if p]
-        if target in params:
-            return True
-    return False
-
-
-def _is_suggestion_styled(text: str) -> bool:
-    """Check if text contains dim or italic SGR styling (indicates a suggestion)."""
-    return _has_sgr_param(text, "2") or _has_sgr_param(text, "3")
-
-
-def _strip_suggestion_segments(text: str) -> str:
-    """Remove only dim/italic-styled text segments (autocomplete suggestions)."""
-    if "\x1b[" not in text:
-        return text
-
-    out: list[str] = []
-    active_suggestion_style = False
-    idx = 0
-    while idx < len(text):
-        if text[idx] == "\x1b":
-            match = _ANSI_SGR_RE.match(text, idx)
-            if match:
-                params = [p for p in match.group(1).split(";") if p]
-                if not params or "0" in params:
-                    active_suggestion_style = False
-                else:
-                    if "22" in params and "2" not in params:
-                        active_suggestion_style = False
-                    if "23" in params and "3" not in params:
-                        active_suggestion_style = False
-                    if "2" in params or "3" in params:
-                        active_suggestion_style = True
-                idx = match.end()
-                continue
-        if not active_suggestion_style:
-            out.append(text[idx])
-        idx += 1
-    return "".join(out)
-
-
-@dataclass
-class CodexInputState:
-    """Per-session state for Codex user input detection.
-
-    Marker-boundary approach:
-    - Track text seen after "› " prompt marker
-    - Emit only when prompt text is no longer visible and output boundary indicates submit
-    """
-
-    last_prompt_input: str = ""  # Last seen text after › prompt
-    last_emitted_prompt: str = ""  # Last emitted synthetic prompt (duplicate guard)
-    last_output_change_time: float = 0.0
-    submitted_for_current_response: bool = False  # Prevent duplicate emits during same response phase
-    has_authoritative_seed: bool = False  # True when last_prompt_input came from process_message seed
-
 
 @dataclass
 class CodexTurnState:
@@ -169,9 +47,6 @@ class CodexTurnState:
     initialized: bool = False
     last_tool_signature: str = ""
 
-
-# Per-session Codex input tracking state
-_codex_input_state: dict[str, CodexInputState] = {}
 _codex_turn_state: dict[str, CodexTurnState] = {}
 
 
@@ -254,236 +129,15 @@ def _mark_codex_turn_started(session_id: str) -> None:
     state.turn_active = True
 
 
-def seed_codex_prompt_from_message(session_id: str, prompt_text: str) -> None:
-    """Seed Codex prompt buffer from authoritative user message dispatch.
-
-    This hardens synthetic submit detection when prompt text is not visible in
-    captured tmux snapshots (e.g. fast transitions), while emission still
-    requires marker-based response boundaries.
-    """
-    text = prompt_text.strip()
-    if not text:
-        return
-
-    state = _codex_input_state.get(session_id)
-    if state is None:
-        state = CodexInputState()
-        state.last_output_change_time = time.time()
-        _codex_input_state[session_id] = state
-
-    clipped = text[:CODEX_INPUT_MAX_CHARS]
-    if clipped != state.last_prompt_input:
-        logger.debug(
-            "[CODEX %s] Seeded prompt from dispatch: %r",
-            session_id[:8],
-            clipped[:50],
-        )
-
-    state.last_prompt_input = clipped
-    # New dispatched message starts a fresh turn-candidate.
-    state.submitted_for_current_response = False
-    state.has_authoritative_seed = True
-
-
-def _extract_prompt_block(output: str) -> tuple[str, bool]:
-    """Extract prompt block and whether a submit boundary marker is present below it.
-
-    Returns:
-        (prompt_text, has_submit_boundary)
-    """
-    lines = output.rstrip().split("\n")
-    if not lines:
-        return "", False
-
-    # Find the most recent prompt marker near the live bottom region.
-    start_index = max(0, len(lines) - 60)
-    prompt_idx = -1
-    for idx in range(len(lines) - 1, start_index - 1, -1):
-        line = lines[idx]
-        clean_line = _strip_ansi(line.strip())
-        if clean_line.startswith(CODEX_PROMPT_MARKER):
-            prompt_idx = idx
-            break
-
-    if prompt_idx < 0:
-        return "", False
-
-    prompt_line = lines[prompt_idx]
-    marker_pos = prompt_line.find(CODEX_PROMPT_MARKER)
-    if marker_pos == -1:
-        return "", False
-
-    raw_after = prompt_line[marker_pos + len(CODEX_PROMPT_MARKER) :]
-    raw_after_without_suggestion = _strip_suggestion_segments(raw_after)
-    if _is_suggestion_styled(raw_after) and not _strip_ansi(raw_after_without_suggestion).strip():
-        logger.debug(
-            "[CODEX] Skipping suggestion-styled text: %r",
-            _strip_ansi(raw_after).strip()[:30],
-        )
-        return "", False
-
-    parts: list[str] = []
-    first = _strip_ansi(raw_after_without_suggestion).strip()
-    if first:
-        parts.append(first)
-
-    has_submit_boundary = False
-    for line in lines[prompt_idx + 1 :]:
-        clean_line = _strip_ansi(line)
-        stripped = clean_line.strip()
-        # Live status/spinner marker is an authoritative submit boundary.
-        if _is_live_agent_marker_line(line):
-            has_submit_boundary = True
-            break
-        # Some fast turns skip spinner/status and go straight to a compact assistant
-        # marker line (e.g. "• hi"). Treat those as boundaries when marker is dimmed.
-        if _is_compact_dimmed_agent_boundary_line(line):
-            has_submit_boundary = True
-            break
-        # Other marker lines below prompt are treated as stale scrollback.
-        if stripped and stripped[0] in CODEX_AGENT_MARKERS:
-            continue
-        if stripped.startswith(CODEX_PROMPT_MARKER):
-            # New prompt marker means previous block ended.
-            break
-        line_without_suggestion = _strip_suggestion_segments(line)
-        if _is_suggestion_styled(line) and not _strip_ansi(line_without_suggestion).strip():
-            continue
-        parts.append(_strip_ansi(line_without_suggestion).rstrip())
-
-    # Ignore stale scrollback prompt markers that are too far above live bottom
-    # unless we already detected a submit boundary marker below this prompt block.
-    if not has_submit_boundary and (len(lines) - 1 - prompt_idx) >= CODEX_PROMPT_LIVE_DISTANCE:
-        return "", False
-
-    text = "\n".join(parts).strip()
-    if not text:
-        return "", has_submit_boundary
-    return text[:CODEX_INPUT_MAX_CHARS], has_submit_boundary
-
-
-def _find_prompt_input(output: str) -> str:  # pyright: ignore[reportUnusedFunction]  # used in tests
-    """Backward-compatible helper for tests/callers expecting prompt text only."""
-    text, _ = _extract_prompt_block(output)
-    return text
-
-
-def _has_agent_marker(output: str) -> bool:  # pyright: ignore[reportUnusedFunction]  # used in tests
-    """Check if agent is responding (agent marker in recent lines)."""
-    lines = output.rstrip().split("\n")
-    for line in lines[-10:]:
-        clean_line = _strip_ansi(line.strip())
-        if clean_line and clean_line[0] in CODEX_AGENT_MARKERS:
-            return True
-    return False
-
-
-def _has_live_prompt_marker(output: str) -> bool:
-    """Return True when a live prompt marker is visible at the pane bottom."""
-    lines = output.rstrip().split("\n")
-    for line in reversed(lines[-10:]):
-        clean_line = _strip_ansi(line).strip()
-        if not clean_line:
-            continue
-        if clean_line.startswith(CODEX_PROMPT_MARKER):
-            return True
-        # Codex UI footer hints can appear below the prompt and should be ignored.
-        if clean_line.startswith("?") and "shortcut" in clean_line.lower():
-            continue
-        if clean_line[0] in CODEX_AGENT_MARKERS:
-            return False
-    return False
-
-
-def _is_live_agent_marker_line(line: str) -> bool:
-    """Return True for short spinner/status lines, not full assistant bullet text."""
-    clean_line = _strip_ansi(line).strip()
-    if not clean_line or clean_line[0] not in CODEX_AGENT_MARKERS:
-        return False
-    tail = clean_line[1:].strip()
-    if not tail:
-        return True
-    normalized = tail.lower()
-    if "esc to interrupt" in normalized:
-        return True
-    if normalized.startswith(("working", "thinking", "sublimating", "planning", "analyzing")):
-        return True
-    return False
-
-
-def _is_compact_dimmed_agent_boundary_line(line: str) -> bool:
-    """Return True for compact assistant lines that reliably mark response start."""
-    clean_line = _strip_ansi(line).strip()
-    if not clean_line or clean_line[0] not in CODEX_AGENT_MARKERS:
-        return False
-
-    marker = clean_line[0]
-    marker_pos = line.find(marker)
-    if marker_pos < 0:
-        return False
-    prefix = line[:marker_pos]
-    # Codex renders agent marker glyphs dimmed. Require that signature to avoid
-    # treating stale/plain scrollback bullets as submit boundaries.
-    if not _has_sgr_param(prefix, "2"):
-        return False
-
-    tail = clean_line[1:].strip()
-    if not tail:
-        return True
-    # Accept concise assistant openings (e.g. "• hi", "• done", "• Ran ...").
-    return len(tail) <= 24 and len(tail.split()) <= 4
-
-
-def _find_recent_tool_action(output: str) -> tuple[str, str, str] | None:
-    """Find recent visible tool action and return (action_word, signature, preview)."""
-    lines = output.rstrip().split("\n")
-    start_index = max(0, len(lines) - CODEX_TOOL_ACTION_LOOKBACK_LINES)
-    for idx in range(len(lines) - 1, start_index - 1, -1):
-        raw_line = lines[idx]
-        clean_line = _strip_ansi(raw_line).strip()
-        if not clean_line or clean_line[0] not in CODEX_AGENT_MARKERS:
-            continue
-        tail = clean_line[1:].strip()
-        if not tail:
-            continue
-        match = _ACTION_WORD_RE.match(tail)
-        action_word = match.group(1) if match else None
-        bold_match = _ANSI_BOLD_TOKEN_RE.search(raw_line)
-        bold_word = bold_match.group(1) if bold_match else None
-
-        def _preview_for(action: str) -> str:
-            detail = ""
-            if action_word and tail.startswith(action_word):
-                detail = tail[len(action_word) :].strip()
-
-            if not detail:
-                for continuation_idx in range(idx + 1, min(len(lines), idx + 4)):
-                    continuation = _strip_ansi(lines[continuation_idx]).strip()
-                    if not continuation:
-                        continue
-                    if continuation.startswith(CODEX_PROMPT_MARKER):
-                        break
-                    if continuation[0] in CODEX_AGENT_MARKERS:
-                        break
-                    continuation = _TREE_CONTINUATION_PREFIX_RE.sub("", continuation).strip()
-                    if continuation:
-                        detail = continuation
-                        break
-
-            detail = _TREE_CONTINUATION_PREFIX_RE.sub("", detail).strip()
-            return f"{action} {detail}".strip() if detail else action
-
-        if action_word in _CODEX_TOOL_ACTION_WORDS:
-            return action_word, clean_line, _preview_for(action_word)
-        if bold_word and (bold_word in _CODEX_TOOL_ACTION_WORDS or bold_word == action_word):
-            return bold_word, clean_line, _preview_for(bold_word)
-    return None
-
-
-def _is_live_agent_responding(output: str) -> bool:
-    """Return True when visible pane effects indicate the agent is actively responding."""
-    lines = output.rstrip().split("\n")
-    return any(_is_live_agent_marker_line(line) for line in lines[-10:])
+seed_codex_prompt_from_message = codex_prompt_submit.seed_codex_prompt_from_message
+CodexInputState = codex_prompt_submit.CodexInputState
+_codex_input_state = codex_prompt_submit._codex_input_state
+_find_prompt_input = codex_prompt_submit._find_prompt_input
+_has_agent_marker = codex_prompt_submit._has_agent_marker
+_has_live_prompt_marker = codex_prompt_submit._has_live_prompt_marker
+_is_live_agent_marker_line = codex_prompt_submit._is_live_agent_marker_line
+_is_suggestion_styled = codex_prompt_submit._is_suggestion_styled
+_strip_suggestion_segments = codex_prompt_submit._strip_suggestion_segments
 
 
 async def _emit_synthetic_codex_event(
@@ -537,9 +191,9 @@ async def _maybe_emit_codex_turn_events(
         state = CodexTurnState()
         _codex_turn_state[session_id] = state
 
-    prompt_visible = _has_live_prompt_marker(current_output)
-    responding = _is_live_agent_responding(current_output)
-    tool_match = _find_recent_tool_action(current_output)
+    prompt_visible = codex_prompt_submit._has_live_prompt_marker(current_output)
+    responding = codex_prompt_submit._is_live_agent_responding(current_output)
+    tool_match = codex_prompt_submit._find_recent_tool_action(current_output)
     raw_tool_action = tool_match[0] if tool_match else None
     raw_tool_signature = tool_match[1] if tool_match else ""
     raw_tool_preview = tool_match[2] if tool_match else ""
@@ -616,117 +270,20 @@ async def _maybe_emit_codex_input(
     output_changed: bool,
     emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
 ) -> None:
-    """Detect and emit synthetic user_prompt_submit for Codex sessions.
-
-    Detection path:
-    1. Marker boundary: agent marker appears and prompt text has cleared
-
-    Args:
-        session_id: Session ID
-        active_agent: Current agent type
-        current_output: Current tmux output
-        output_changed: Whether output changed since last poll
-    """
-    if active_agent != "codex":
-        return
-
-    state = _codex_input_state.get(session_id)
-    if state is None:
-        state = CodexInputState()
-        state.last_output_change_time = time.time()
-        _codex_input_state[session_id] = state
-
-    current_time = time.time()
-
-    # Contract: prompt submit comes only from strict marker boundaries inside output.
-    current_input, has_submit_boundary = _extract_prompt_block(current_output)
-
-    # Check if agent is responding using live status markers only.
-    # Fallback to live tool action lines when prompt is no longer visible.
-    prompt_visible = _has_live_prompt_marker(current_output)
-    recent_tool_action_match = _find_recent_tool_action(current_output)
-    recent_tool_action = recent_tool_action_match[0] if recent_tool_action_match else None
-    agent_responding = _is_live_agent_responding(current_output) or (
-        recent_tool_action is not None and not prompt_visible
+    """Thin integration wrapper around the Codex synthetic-submit module."""
+    await codex_prompt_submit.maybe_emit_codex_input(
+        session_id=session_id,
+        active_agent=active_agent,
+        current_output=current_output,
+        output_changed=output_changed,
+        emit_agent_event=emit_agent_event,
+        on_submit_emitted=_mark_codex_turn_started,
     )
-
-    async def _emit_captured_input(source: str) -> bool:
-        if not state.last_prompt_input:
-            return False
-        logger.info(
-            "Emitting synthetic user_prompt_submit for Codex session %s: %d chars: %r",
-            session_id[:8],
-            len(state.last_prompt_input),
-            state.last_prompt_input[:50],
-        )
-        payload = UserPromptSubmitPayload(
-            prompt=state.last_prompt_input,
-            session_id=session_id,
-            raw={"synthetic": True, "source": source},
-        )
-        context = AgentEventContext(
-            session_id=session_id,
-            event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
-            data=payload,
-        )
-        await emit_agent_event(context)
-        _mark_codex_turn_started(session_id)
-        state.last_emitted_prompt = state.last_prompt_input
-        state.last_prompt_input = ""
-        state.has_authoritative_seed = False
-        return True
-
-    if current_input:
-        if current_input != state.last_prompt_input:
-            logger.debug(
-                "[CODEX %s] Tracking input: %r",
-                session_id[:8],
-                current_input[:50],
-            )
-
-        overwrite_seeded_with_shorter = (
-            state.has_authoritative_seed
-            and bool(state.last_prompt_input)
-            and len(current_input) < len(state.last_prompt_input)
-        )
-        if overwrite_seeded_with_shorter:
-            logger.debug(
-                "[CODEX %s] Keeping authoritative seeded prompt over shorter snapshot (%d < %d)",
-                session_id[:8],
-                len(current_input),
-                len(state.last_prompt_input),
-            )
-        else:
-            state.last_prompt_input = current_input
-            state.has_authoritative_seed = False
-
-    strict_boundary = bool(current_input and has_submit_boundary)
-    transition_boundary = agent_responding and not current_input and bool(state.last_prompt_input)
-    if strict_boundary and not state.submitted_for_current_response:
-        emitted = await _emit_captured_input("codex_output_polling")
-        if emitted:
-            state.submitted_for_current_response = True
-    elif agent_responding and not state.submitted_for_current_response:
-        emitted = False
-        if transition_boundary:
-            emitted = await _emit_captured_input("codex_marker_transition")
-        elif not current_input:
-            logger.debug("[CODEX %s] Agent marker found but no input to emit", session_id[:8])
-
-        if emitted:
-            state.submitted_for_current_response = True
-
-    if not agent_responding and not strict_boundary:
-        state.submitted_for_current_response = False
-
-    # Update last change time only when output actually changed
-    if output_changed:
-        state.last_output_change_time = current_time
 
 
 def _cleanup_codex_input_state(session_id: str) -> None:
     """Clean up Codex input tracking state when session ends."""
-    _codex_input_state.pop(session_id, None)
+    codex_prompt_submit.cleanup_codex_prompt_state(session_id)
     _codex_turn_state.pop(session_id, None)
 
 

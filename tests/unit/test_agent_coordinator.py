@@ -417,72 +417,6 @@ async def test_user_prompt_submit_broadcasts_hook_input_for_headless_sessions(co
 
 
 @pytest.mark.asyncio
-async def test_user_prompt_submit_ignores_tiny_codex_synthetic_prompt(coordinator):
-    session = Session(
-        session_id="sess-1",
-        computer_name="macbook",
-        tmux_session_name="tmux-1",
-        title="Untitled",
-        active_agent="codex",
-    )
-    payload = UserPromptSubmitPayload(
-        prompt="r",
-        session_id="sess-1",
-        raw={"synthetic": True, "source": "codex_output_polling"},
-    )
-    context = AgentEventContext(
-        event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
-        session_id="sess-1",
-        data=payload,
-    )
-
-    with patch("teleclaude.core.agent_coordinator.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=session)
-        mock_db.set_notification_flag = AsyncMock()
-        mock_db.update_session = AsyncMock()
-        with patch.object(coordinator, "_emit_activity_event") as mock_emit:
-            await coordinator.handle_user_prompt_submit(context)
-
-        mock_db.set_notification_flag.assert_not_called()
-        mock_db.update_session.assert_not_called()
-        mock_emit.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_user_prompt_submit_skips_title_summary_for_pasted_content_placeholder(coordinator):
-    session = Session(
-        session_id="sess-3",
-        computer_name="macbook",
-        tmux_session_name="tmux-3",
-        title="Untitled",
-        active_agent="codex",
-    )
-    payload = UserPromptSubmitPayload(
-        prompt="[Pasted Content 5074 chars]",
-        session_id="sess-3",
-        raw={"synthetic": True, "source": "codex_output_polling"},
-    )
-    context = AgentEventContext(
-        event_type=AgentHookEvents.USER_PROMPT_SUBMIT,
-        session_id="sess-3",
-        data=payload,
-    )
-
-    with patch("teleclaude.core.agent_coordinator.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=session)
-        mock_db.set_notification_flag = AsyncMock()
-        mock_db.update_session = AsyncMock()
-        with patch(
-            "teleclaude.core.agent_coordinator.summarize_user_input_title", new_callable=AsyncMock
-        ) as mock_summarize:
-            await coordinator.handle_user_prompt_submit(context)
-
-        mock_summarize.assert_not_awaited()
-        mock_db.set_notification_flag.assert_called_once_with("sess-3", False)
-        assert mock_db.update_session.await_count >= 1
-
-
-@pytest.mark.asyncio
 async def test_user_prompt_submit_emits_user_prompt_activity_for_non_synthetic_event(coordinator):
     session = Session(
         session_id="sess-2",
@@ -1028,5 +962,4 @@ async def test_stall_cancellation_prevents_stale_transitions(coordinator):
     statuses = [ctx.status for event, ctx in emitted if event == TeleClaudeEvents.SESSION_STATUS]  # type: ignore[union-attr]
     assert "awaiting_output" not in statuses
     assert "stalled" not in statuses
-
 

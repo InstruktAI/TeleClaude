@@ -10,7 +10,6 @@ import asyncio
 import base64
 import inspect
 import random
-import re
 import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -81,7 +80,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_PASTED_CONTENT_PLACEHOLDER_RE = re.compile(r"^\[Pasted Content \d+ chars\]$")
 _NOOP_LOG_INTERVAL_SECONDS = 30.0
 _MAX_FORWARDED_LINK_OUTPUT_CHARS = 12000
 
@@ -174,11 +172,6 @@ def _has_active_output_message(session: "Session") -> bool:
         or meta.get_discord().output_message_id
         or meta.get_whatsapp().output_message_id
     )
-
-
-def _is_pasted_content_placeholder(prompt: str) -> bool:
-    """Return True when prompt is a synthetic pasted-content placeholder."""
-    return bool(_PASTED_CONTENT_PLACEHOLDER_RE.fullmatch((prompt or "").strip()))
 
 
 def _coerce_nonempty_str(value: object) -> str | None:
@@ -706,16 +699,6 @@ class AgentCoordinator:
             return
 
         is_codex_synthetic = _is_codex_synthetic_prompt_event(payload.raw)
-        # Guard against occasional single-character Codex polling artifacts (e.g. "r")
-        # that would overwrite the real last input and cause misleading TUI state.
-        if is_codex_synthetic and len(prompt_text.strip()) <= 1:
-            logger.debug(
-                "Ignoring tiny synthetic Codex prompt for session %s: %r",
-                session_id[:8],
-                prompt_text,
-            )
-            return
-
         # System-injected checkpoint — not real user input, skip entirely
         if _is_checkpoint_prompt(prompt_text, raw_payload=payload.raw):
             logger.debug("Checkpoint prompt detected, skipping user input persistence for session %s", session_id[:8])
@@ -803,7 +786,7 @@ class AgentCoordinator:
             )
 
         # Title update is non-critical and must not block hook ordering.
-        if session.title == "Untitled" and not (is_codex_synthetic and _is_pasted_content_placeholder(prompt_text)):
+        if session.title == "Untitled":
             self._queue_background_task(
                 self._update_session_title_async(session_id, prompt_text),
                 f"title-summary:{session_id[:8]}",
