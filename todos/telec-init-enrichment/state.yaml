@@ -12,47 +12,28 @@ max_review_rounds: 3
 review_baseline_commit: ''
 unresolved_findings: []
 resolved_findings: []
-prepare_phase: plan_review
+prepare_phase: requirements_exist
 grounding:
-  valid: true
-  base_sha: 4d3622b7a0641aaf9455b5a5699a322a8e484ae0
-  input_digest: 380883338d54339109961a02d0c1092ec49cdb1c511499bb17129eca122ed4c6
-  referenced_paths:
-  - docs/global/software-development/procedure/project-analysis.md
-  - docs/global/software-development/spec/init-scaffolding.md
-  - teleclaude/project_setup/init_flow.py
-  - teleclaude/cli/telec.py
-  - docs/project/spec/telec-cli-surface.md
-  - README.md
-  - tests/unit/test_project_setup_init_flow.py
-  - tests/integration/test_telec_cli_commands.py
-  - tests/integration/test_contracts.py
-  - teleclaude/project_setup/enrichment.py
-  - tests/unit/project_setup/test_enrichment.py
-  - agents/commands/telec-init-analyze.md
-  - teleclaude/docs_index.py
-  - tests/unit/test_docs_index.py
-  - teleclaude/sync.py
-  - teleclaude/project_manifest.py
-  - tests/unit/test_telec_sync.py
-  - tests/unit/test_context_selector.py
-  - todos/telec-init-enrichment/demo.md
-  last_grounded_at: '2026-03-10T12:30:00Z'
-  invalidated_at: ''
-  invalidation_reason: ''
+  valid: false
+  base_sha: ''
+  input_digest: ''
+  referenced_paths: []
+  last_grounded_at: ''
+  invalidated_at: '2026-03-10T14:00:00+00:00'
+  invalidation_reason: 'requirements rewritten after process improvements'
   changed_paths: []
 requirements_review:
-  verdict: approve
-  reviewed_at: '2026-03-10T00:00:00Z'
+  verdict: ''
+  reviewed_at: ''
   findings_count: 0
 plan_review:
-  verdict: approve
-  reviewed_at: '2026-03-10T11:52:01Z'
+  verdict: ''
+  reviewed_at: ''
   findings_count: 0
 dor:
-  last_assessed_at: '2026-03-10T12:15:00Z'
-  score: 9
-  status: pass
+  last_assessed_at: ''
+  score: 0
+  status: ''
   schema_version: 1
   blockers: []
   actions_taken:
