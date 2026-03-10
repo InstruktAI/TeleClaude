@@ -133,19 +133,15 @@ class MirrorWorker:
                     result.skipped_unchanged += 1
                     continue
 
-                context = get_session_context(transcript_path=transcript_path, db=self.db_path)
-                if context is None:
-                    logger.debug(
-                        "Mirror reconciliation skipped transcript without session context",
-                        transcript_path=transcript_path,
-                        agent=candidate.agent.value,
-                    )
-                    result.skipped_no_context += 1
-                    continue
-
                 source_identity = build_source_identity(candidate.path, candidate.agent)
                 if self._should_skip_tombstoned_transcript(source_identity, candidate):
                     result.skipped_unchanged += 1
+                    continue
+
+                context = get_session_context(transcript_path=transcript_path, db=self.db_path)
+                if context is None:
+                    self._record_tombstone(source_identity, candidate)
+                    result.skipped_no_context += 1
                     continue
 
                 generated = generate_mirror_sync(
