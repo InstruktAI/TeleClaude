@@ -257,7 +257,9 @@ def test_receiver_persists_native_fields_to_db(monkeypatch, tmp_path):
         )
         session.commit()
 
-    monkeypatch.setenv("TELECLAUDE_DB_PATH", str(db_path))
+    from teleclaude.config import config as tc_config
+
+    monkeypatch.setattr(tc_config.database, "path", str(db_path))
     monkeypatch.setattr(receiver, "_enqueue_hook_event", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         receiver,
@@ -305,7 +307,9 @@ def test_receiver_logs_native_log_rotation(monkeypatch, tmp_path, caplog):
         )
         session.commit()
 
-    monkeypatch.setenv("TELECLAUDE_DB_PATH", str(db_path))
+    from teleclaude.config import config as tc_config
+
+    monkeypatch.setattr(tc_config.database, "path", str(db_path))
     monkeypatch.setattr(receiver, "_enqueue_hook_event", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(receiver, "_maybe_checkpoint_output", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(

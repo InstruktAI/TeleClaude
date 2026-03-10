@@ -5,7 +5,6 @@ computer:
   bot_username: teleclaude_mac_bot # Bot username for computer registry (must match TELEGRAM_BOT_USERNAME)
   is_master: false # Master computer advertises full command list in Telegram autocomplete. Set to true on ONE computer only to avoid duplicates. All computers still handle all commands.
   default_working_dir: ${WORKING_DIR}
-  help_desk_dir: ${HOME}/.teleclaude/help-desk # Jailed-session working directory for unauthorized/missing-role requests
   timezone: Europe/Amsterdam # Timezone for timestamps (default: Europe/Amsterdam)
   host: null # Optional hostname/IP for SSH remote execution (null = local computer)
   # tmux binary is resolved internally by platform policy:
@@ -21,31 +20,13 @@ computer:
       desc: coding projects
       path: ${HOME}/Projects
 
-database:
-  path: ${WORKING_DIR}/teleclaude.db
-
-polling:
-  directory_check_interval: 5
-  output_cadence_s: 1.0 # Output update cadence target (seconds)
-
 telegram:
-  # Whitelist of trusted bots (security for AI-to-AI communication)
-  trusted_bots:
-    - teleclaude_mac_bot
-    - teleclaude_workstation_bot
-    - teleclaude_server_bot
-    # Add other computer bot usernames here
-  # Output QoS: pacing and coalescing to prevent Telegram flood-control churn
-  qos:
-    enabled: true # Enable output QoS scheduler for Telegram
-    group_mpm: 20 # Telegram group message-per-minute limit
-    output_budget_ratio: 0.8 # Fraction of group_mpm reserved for output updates
-    reserve_mpm: 4 # Additional mpm reserve for non-output messages
-    min_session_tick_s: 3.0 # Minimum seconds between dispatches for the same session
-    active_emitter_window_s: 10.0 # Seconds a session remains "active" after last dispatch
-    active_emitter_ema_alpha: 0.2 # EMA smoothing factor for active session count
-    rounding_ms: 100 # Cadence rounding granularity in milliseconds
-
+  # # Whitelist of trusted bots (security for AI-to-AI communication)
+  # trusted_bots:
+  #   - teleclaude_mac_bot
+  #   - teleclaude_workstation_bot
+  #   - teleclaude_server_bot
+  # Add other computer bot usernames here
 discord:
   enabled: false
   # Bot token. Prefer environment interpolation to avoid plaintext secrets.
@@ -55,10 +36,6 @@ discord:
   # All channel/category IDs below are auto-provisioned on startup.
   # The bot creates the full structure (categories, forums, text channels)
   # and persists IDs here. Do not edit manually.
-  # Output QoS: coalescing mode (no hard cap; Discord library handles transport RL)
-  qos:
-    mode: coalesce_only # "off" | "coalesce_only" | "strict"
-
 # Agent binaries are resolved internally by platform policy:
 # macOS: ~/Applications/{Claude,Gemini,Codex}Launcher.app/...
 # other Unix: claude, gemini, codex
@@ -70,7 +47,6 @@ whatsapp:
   access_token: ${WHATSAPP_ACCESS_TOKEN}
   webhook_secret: ${WHATSAPP_WEBHOOK_SECRET}
   verify_token: ${WHATSAPP_VERIFY_TOKEN}
-  api_version: v21.0
   template_name: ${WHATSAPP_TEMPLATE_NAME}
   template_language: en_US
 
@@ -80,21 +56,14 @@ redis:
   url: redis://redis.srv.instrukt.ai:6379
   password: ${REDIS_PASSWORD} # Set in .env
 
-# Agent dispatch guidance (optional machine-level guidance for the orchestrator AI)
 agents:
   default: claude
   claude:
     enabled: true
-    strengths: 'Superior reasoning, complex architecture, and deep technical investigation. Best for ambiguous tasks requiring high autonomy.'
-    avoid: 'Extremely large file reads that exceed context limits; repetitive mechanical edits without prior planning.'
   gemini:
     enabled: true
-    strengths: 'Large-scale codebase analysis, multimodal context, and rapid information synthesis across many files. Best for massive context windows.'
-    avoid: 'Surgical precision edits in highly fragile files where reasoning must be strictly constrained.'
   codex:
     enabled: true
-    strengths: 'High-speed code generation, refactoring, and following established patterns. Best for well-defined implementation tasks.'
-    avoid: 'Broad architectural planning or high-level strategic decisions.'
 
 # Speech-to-Text Configuration
 stt:
@@ -279,5 +248,4 @@ tts:
 # `volume` is app-level chiptune gain (0.0–1.0), applied before OS mixer.
 # This is not an operating-system volume control; set OS volume at the system level.
 chiptunes:
-  enabled: true
   volume: 0.8

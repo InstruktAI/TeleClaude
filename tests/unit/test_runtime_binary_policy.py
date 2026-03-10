@@ -55,7 +55,5 @@ def test_config_rejects_legacy_tmux_key(monkeypatch: pytest.MonkeyPatch, tmp_pat
 
     monkeypatch.setenv("TELECLAUDE_CONFIG_PATH", str(config_file))
     monkeypatch.setenv("TELECLAUDE_ENV_PATH", str(env_path))
-    monkeypatch.delenv("TELECLAUDE_DB_PATH", raising=False)
-
     with pytest.raises(ValueError, match="disallowed runtime keys: computer\\.tmux_binary"):
         _load_config_module(config_py)

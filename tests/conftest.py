@@ -73,7 +73,13 @@ def _isolate_test_environment(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch)
 
     # Ensure any fallback DB usage is isolated from production.
     temp_db_path = tmp_path / "teleclaude.db"
-    monkeypatch.setenv("TELECLAUDE_DB_PATH", str(temp_db_path))
+
+    try:
+        from teleclaude.config import config as tc_config
+
+        monkeypatch.setattr(tc_config.database, "path", str(temp_db_path))
+    except Exception:
+        pass
 
     try:
         from teleclaude.core import db as db_module

@@ -91,7 +91,9 @@ def test_mirror_api_routes_search_get_and_transcript(
             ),
         )
 
-    monkeypatch.setenv("TELECLAUDE_DB_PATH", str(db_path))
+    from teleclaude.config import config as tc_config
+
+    monkeypatch.setattr(tc_config.database, "path", str(db_path))
 
     from tests.unit.test_api_server import _install_admin_auth_override
 

@@ -30,7 +30,7 @@ The migration must bridge these two states.
 
 Find the single-user layout:
 
-- Locate `teleclaude.db` (check project root, check `TELECLAUDE_DB_PATH` env var, check config for `database.path`)
+- Locate `teleclaude.db` (constant path: `{project_root}/teleclaude.db`)
 - Locate `config.yml` and `.env`
 - Locate `~/.teleclaude/docs/` for doc snippets
 

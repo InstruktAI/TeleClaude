@@ -91,7 +91,9 @@ def test_display_combined_history_reads_local_mirrors(tmp_path: Path, monkeypatc
     transcript_path.write_text('{"hello":"world"}\n', encoding="utf-8")
     _create_mirror_schema(db_path)
     _insert_mirror(db_path, transcript_path=transcript_path)
-    monkeypatch.setenv("TELECLAUDE_DB_PATH", str(db_path))
+    from teleclaude.config import config as tc_config
+
+    monkeypatch.setattr(tc_config.database, "path", str(db_path))
 
     display_combined_history([AgentName.CLAUDE], "mirror rollout", limit=5)
 
@@ -109,7 +111,9 @@ def test_show_transcript_renders_mirror_text_by_default(
     transcript_path.write_text('{"raw":"transcript"}\n', encoding="utf-8")
     _create_mirror_schema(db_path)
     _insert_mirror(db_path, transcript_path=transcript_path)
-    monkeypatch.setenv("TELECLAUDE_DB_PATH", str(db_path))
+    from teleclaude.config import config as tc_config
+
+    monkeypatch.setattr(tc_config.database, "path", str(db_path))
 
     show_transcript([AgentName.CLAUDE], "sess-1")
 
@@ -125,7 +129,9 @@ def test_show_transcript_raw_reads_transcript_file(tmp_path: Path, monkeypatch, 
     transcript_path.write_text('{"raw":"transcript"}\n', encoding="utf-8")
     _create_mirror_schema(db_path)
     _insert_mirror(db_path, transcript_path=transcript_path)
-    monkeypatch.setenv("TELECLAUDE_DB_PATH", str(db_path))
+    from teleclaude.config import config as tc_config
+
+    monkeypatch.setattr(tc_config.database, "path", str(db_path))
 
     show_transcript([AgentName.CLAUDE], "sess-1", raw=True)
 

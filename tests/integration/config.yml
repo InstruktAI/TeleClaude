@@ -4,8 +4,6 @@ computer:
   default_working_dir: /tmp
   trustedDirs:
   - /tmp
-database:
-  path: /tmp/teleclaude-test.db
 terminal:
   default_size: 80x24
   sizes:
@@ -42,13 +40,7 @@ agents:
   default: claude
   claude:
     enabled: true
-    strengths: General purpose, planning.
-    avoid: ''
   gemini:
     enabled: true
-    strengths: Creative writing.
-    avoid: ''
   codex:
     enabled: false
-    strengths: Code completion.
-    avoid: ''

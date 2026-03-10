@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
@@ -70,10 +69,9 @@ class SessionMirrorContext:
 
 
 def resolve_db_path(db: object | None = None) -> str:
-    """Resolve a database path from env/config or a db-like object."""
-    env_path = os.getenv("TELECLAUDE_DB_PATH")
+    """Resolve a database path from a db-like object or fall back to config."""
     if db is None:
-        return env_path or config.database.path
+        return config.database.path
     if isinstance(db, Path):
         return str(db.expanduser())
     if isinstance(db, str):
@@ -83,8 +81,6 @@ def resolve_db_path(db: object | None = None) -> str:
         return db_path
     if isinstance(db_path, Path):
         return str(db_path.expanduser())
-    if env_path:
-        return env_path
     return config.database.path
 
 

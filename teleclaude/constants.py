@@ -26,7 +26,11 @@ API_SOCKET_PATH = "/tmp/teleclaude-api.sock"
 MCP_SOCKET_PATH = "/tmp/teleclaude.sock"
 
 # Internal configuration (not user-configurable)
+DATABASE_FILENAME = "teleclaude.db"
 DIRECTORY_CHECK_INTERVAL = 5  # Seconds between directory change checks
+OUTPUT_CADENCE_S = 1.0
+HELP_DESK_SUBDIR = ".teleclaude/help-desk"
+WHATSAPP_API_VERSION = "v21.0"
 UI_MESSAGE_MAX_CHARS = 3900  # Char budget for content selection (format + fit)
 TELEGRAM_MAX_MESSAGE_BYTES = 4096  # Telegram API hard limit for message text
 

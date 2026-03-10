@@ -29,15 +29,13 @@ def test_working_dir_fallback_used_for_database_path(monkeypatch, tmp_path):
 
     config_file = tmp_path / "config.yml"
     config_file.write_text(
-        "database:\n  path: ${WORKING_DIR}/teleclaude.db\nagents:\n  default: claude\n  claude:\n    enabled: true\n",
+        "agents:\n  default: claude\n  claude:\n    enabled: true\n",
         encoding="utf-8",
     )
 
     monkeypatch.setenv("TELECLAUDE_CONFIG_PATH", str(config_file))
     monkeypatch.setenv("TELECLAUDE_ENV_PATH", str(env_path))
     monkeypatch.delenv("WORKING_DIR", raising=False)
-    monkeypatch.delenv("TELECLAUDE_DB_PATH", raising=False)
-
     module = _load_config_module(config_py)
 
     assert os.environ["WORKING_DIR"] == str(repo_root)

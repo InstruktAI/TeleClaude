@@ -141,10 +141,11 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     # branch and instantiates MockTelegramAdapter (patched below).
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake-token-for-tests")
 
-    # CRITICAL: Set temp database path BEFORE importing teleclaude modules
-    # tmp_path is function-scoped, so each test gets unique database automatically
+    # Isolate database path per test
     temp_db_path = str(tmp_path / "test_teleclaude.db")
-    monkeypatch.setenv("TELECLAUDE_DB_PATH", temp_db_path)
+    from teleclaude.config import config as tc_config
+
+    monkeypatch.setattr(tc_config.database, "path", temp_db_path)
 
     # CRITICAL: Set unique REST socket path for parallel execution
     # Keep path short to avoid AF_UNIX length limits on macOS

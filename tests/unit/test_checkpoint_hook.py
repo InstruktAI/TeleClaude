@@ -30,7 +30,9 @@ def db_with_session(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{db_path}")
     SQLModel.metadata.create_all(engine)
 
-    monkeypatch.setenv("TELECLAUDE_DB_PATH", str(db_path))
+    from teleclaude.config import config as tc_config
+
+    monkeypatch.setattr(tc_config.database, "path", str(db_path))
 
     # Patch _create_sync_engine to use our test engine
     monkeypatch.setattr(receiver, "_create_sync_engine", lambda: engine)

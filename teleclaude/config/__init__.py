@@ -13,12 +13,16 @@ import yaml
 from dotenv import load_dotenv
 
 from teleclaude.constants import (
+    DATABASE_FILENAME,
     DIRECTORY_CHECK_INTERVAL,
+    HELP_DESK_SUBDIR,
+    OUTPUT_CADENCE_S,
     REDIS_MAX_CONNECTIONS,
     REDIS_MESSAGE_STREAM_MAXLEN,
     REDIS_OUTPUT_STREAM_MAXLEN,
     REDIS_OUTPUT_STREAM_TTL,
     REDIS_SOCKET_TIMEOUT,
+    WHATSAPP_API_VERSION,
 )
 from teleclaude.runtime.binaries import resolve_agent_binary, resolve_tmux_binary
 from teleclaude.utils import expand_env_vars
@@ -55,22 +59,7 @@ class TrustedDir:
 
 @dataclass
 class DatabaseConfig:
-    _configured_path: str
-
-    @property
-    def path(self) -> str:
-        """Get database path (lazy-loaded from env var for test compatibility)."""
-
-        # Allow tests to override via TELECLAUDE_DB_PATH env var
-
-        env_path = os.getenv("TELECLAUDE_DB_PATH")
-
-        if env_path:
-            return env_path
-
-        # Otherwise use configured path
-
-        return self._configured_path
+    path: str
 
 
 @dataclass
@@ -271,8 +260,6 @@ class STTConfig:
 class ChiptunesConfig:
     """ChipTunes background music configuration."""
 
-    enabled: bool = True
-    paused: bool = False
     music_dir: str | None = None  # default: assets/audio/C64Music
     volume: float = 0.5
 
@@ -369,23 +356,15 @@ class Config:
 
 # Default configuration values (single source of truth for user-configurable keys)
 DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration structure
-    "database": {
-        "path": f"{WORKING_DIR}/teleclaude.db",
-    },
     "computer": {
         "name": "unknown",
         "user": "unknown",
         "role": "general",
         "timezone": "Europe/Amsterdam",
         "default_working_dir": "~",
-        "help_desk_dir": "${HOME}/.teleclaude/help-desk",
         "is_master": False,
         "trusted_dirs": [],
         "host": None,
-    },
-    "polling": {
-        "directory_check_interval": DIRECTORY_CHECK_INTERVAL,
-        "output_cadence_s": 1.0,
     },
     "redis": {
         "enabled": False,
@@ -399,16 +378,6 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
     },
     "telegram": {
         "trusted_bots": [],
-        "qos": {
-            "enabled": True,
-            "group_mpm": 20,
-            "output_budget_ratio": 0.8,
-            "reserve_mpm": 4,
-            "min_session_tick_s": 3.0,
-            "active_emitter_window_s": 10.0,
-            "active_emitter_ema_alpha": 0.2,
-            "rounding_ms": 100,
-        },
     },
     "discord": {
         "enabled": False,
@@ -421,9 +390,6 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "announcements_channel_id": None,
         "general_channel_id": None,
         "categories": None,
-        "qos": {
-            "mode": "coalesce_only",
-        },
     },
     "whatsapp": {
         "enabled": False,
@@ -431,12 +397,8 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "access_token": None,
         "webhook_secret": None,
         "verify_token": None,
-        "api_version": "v21.0",
         "template_name": None,
         "template_language": "en_US",
-        "qos": {
-            "mode": "off",
-        },
     },
     "creds": {
         "telegram": None,
@@ -649,8 +611,6 @@ def _parse_chiptunes_config(raw: dict[str, object] | None) -> ChiptunesConfig | 
     if not raw:
         return None
     return ChiptunesConfig(
-        enabled=bool(raw.get("enabled", True)),
-        paused=bool(raw.get("paused", False)),
         music_dir=str(raw["music_dir"]) if raw.get("music_dir") else None,
         volume=float(raw.get("volume", 0.5)),  # type: ignore[arg-type]
     )
@@ -692,45 +652,9 @@ def _parse_optional_int(value: object) -> int | None:
     return None
 
 
-def _parse_telegram_qos_config(raw_qos: dict[str, object] | None) -> TelegramQoSConfig:  # guard: loose-dict
-    """Parse Telegram QoS config from raw dict, falling back to defaults."""
-    if not isinstance(raw_qos, dict):
-        return TelegramQoSConfig()
-    return TelegramQoSConfig(
-        enabled=bool(raw_qos.get("enabled", True)),
-        group_mpm=int(raw_qos.get("group_mpm", 20)),  # type: ignore[arg-type]
-        output_budget_ratio=float(raw_qos.get("output_budget_ratio", 0.8)),  # type: ignore[arg-type]
-        reserve_mpm=int(raw_qos.get("reserve_mpm", 4)),  # type: ignore[arg-type]
-        min_session_tick_s=float(raw_qos.get("min_session_tick_s", 3.0)),  # type: ignore[arg-type]
-        active_emitter_window_s=float(raw_qos.get("active_emitter_window_s", 10.0)),  # type: ignore[arg-type]
-        active_emitter_ema_alpha=float(raw_qos.get("active_emitter_ema_alpha", 0.2)),  # type: ignore[arg-type]
-        rounding_ms=int(raw_qos.get("rounding_ms", 100)),  # type: ignore[arg-type]
-    )
-
-
-def _parse_discord_qos_config(raw_qos: dict[str, object] | None) -> DiscordQoSConfig:  # guard: loose-dict
-    """Parse Discord QoS config from raw dict, falling back to defaults."""
-    if not isinstance(raw_qos, dict):
-        return DiscordQoSConfig()
-    return DiscordQoSConfig(
-        mode=str(raw_qos.get("mode", "coalesce_only")),
-    )
-
-
-def _parse_whatsapp_qos_config(raw_qos: dict[str, object] | None) -> WhatsAppQoSConfig:  # guard: loose-dict
-    """Parse WhatsApp QoS config from raw dict, falling back to defaults."""
-    if not isinstance(raw_qos, dict):
-        return WhatsAppQoSConfig()
-    return WhatsAppQoSConfig(
-        mode=str(raw_qos.get("mode", "off")),
-    )
-
-
 def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML deserialization input
     """Build typed Config from raw dict with proper type conversion."""
-    db_raw = raw["database"]
     comp_raw = raw["computer"]
-    polling_raw = raw.get("polling", {"directory_check_interval": DIRECTORY_CHECK_INTERVAL})
     redis_raw = raw["redis"]
     tg_raw = raw["telegram"]
     discord_raw = raw.get("discord", {})
@@ -828,7 +752,6 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
     whatsapp_access_token = None
     whatsapp_webhook_secret = None
     whatsapp_verify_token = None
-    whatsapp_api_version = "v21.0"
     whatsapp_template_name = None
     whatsapp_template_language = "en_US"
     whatsapp_enabled_flag = False
@@ -842,7 +765,6 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
             str(whatsapp_raw.get("webhook_secret")) if whatsapp_raw.get("webhook_secret") else None
         )
         whatsapp_verify_token = str(whatsapp_raw.get("verify_token")) if whatsapp_raw.get("verify_token") else None
-        whatsapp_api_version = str(whatsapp_raw.get("api_version") or "v21.0")
         whatsapp_template_name = str(whatsapp_raw.get("template_name")) if whatsapp_raw.get("template_name") else None
         whatsapp_template_language = str(whatsapp_raw.get("template_language") or "en_US")
         whatsapp_enabled_flag = bool(whatsapp_raw.get("enabled", False))
@@ -858,7 +780,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
 
     return Config(
         database=DatabaseConfig(
-            _configured_path=str(db_raw["path"]),  # type: ignore[index,misc]
+            path=f"{WORKING_DIR}/{DATABASE_FILENAME}",
         ),
         computer=ComputerConfig(
             name=str(comp_raw["name"]),  # type: ignore[index,misc]
@@ -866,15 +788,15 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
             role=str(comp_raw["role"]),  # type: ignore[index,misc]
             timezone=str(comp_raw["timezone"]),  # type: ignore[index,misc]
             default_working_dir=str(comp_raw["default_working_dir"]),  # type: ignore[index,misc]
-            help_desk_dir=str(comp_raw["help_desk_dir"]),  # type: ignore[index,misc]
+            help_desk_dir=str(Path.home() / HELP_DESK_SUBDIR),
             is_master=bool(comp_raw["is_master"]),  # type: ignore[index,misc]
             trusted_dirs=_parse_trusted_dirs(list(comp_raw["trusted_dirs"])),  # type: ignore[index,misc]
             host=str(comp_raw["host"]) if comp_raw["host"] else None,  # type: ignore[index,misc]
             tmux_binary=resolve_tmux_binary(),
         ),
         polling=PollingConfig(
-            directory_check_interval=int(polling_raw["directory_check_interval"]),  # type: ignore[index,misc]
-            output_cadence_s=float(polling_raw.get("output_cadence_s", 1.0)),  # type: ignore[union-attr]
+            directory_check_interval=DIRECTORY_CHECK_INTERVAL,
+            output_cadence_s=OUTPUT_CADENCE_S,
         ),
         redis=RedisConfig(
             enabled=bool(redis_raw["enabled"]),  # type: ignore[index,misc]
@@ -888,7 +810,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
         ),
         telegram=TelegramConfig(
             trusted_bots=list(tg_raw["trusted_bots"]),  # type: ignore[index,misc]
-            qos=_parse_telegram_qos_config(tg_raw.get("qos")),  # type: ignore[arg-type]
+            qos=TelegramQoSConfig(),
         ),
         discord=DiscordConfig(
             enabled=bool(discord_raw.get("enabled", False)) if isinstance(discord_raw, dict) else False,
@@ -921,7 +843,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
                 _parse_optional_int(discord_raw.get("general_channel_id")) if isinstance(discord_raw, dict) else None
             ),
             categories=(_parse_categories(discord_raw.get("categories")) if isinstance(discord_raw, dict) else None),
-            qos=_parse_discord_qos_config(discord_raw.get("qos") if isinstance(discord_raw, dict) else None),  # type: ignore[arg-type]
+            qos=DiscordQoSConfig(),
         ),
         creds=CredsConfig(telegram=tg_creds, whatsapp=whatsapp_creds),
         agents=agents_registry,
@@ -935,10 +857,10 @@ def _build_config(raw: dict[str, object]) -> Config:  # guard: loose-dict - YAML
             access_token=whatsapp_access_token,
             webhook_secret=whatsapp_webhook_secret,
             verify_token=whatsapp_verify_token,
-            api_version=whatsapp_api_version,
+            api_version=WHATSAPP_API_VERSION,
             template_name=whatsapp_template_name,
             template_language=whatsapp_template_language,
-            qos=_parse_whatsapp_qos_config(whatsapp_raw.get("qos") if isinstance(whatsapp_raw, dict) else None),  # type: ignore[arg-type]
+            qos=WhatsAppQoSConfig(),
         ),
         tts=_parse_tts_config(tts_raw),  # type: ignore[arg-type]
         stt=_parse_stt_config(stt_raw),  # type: ignore[arg-type]

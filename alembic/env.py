@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
 from alembic import context
+from teleclaude.config import config as tc_config
 from teleclaude.core import db_models  # noqa: F401  # ensure models are registered
 
 # Alembic Config object
@@ -16,10 +16,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override URL via env if provided
-db_path = os.getenv("TELECLAUDE_DB_PATH")
-if db_path:
-    config.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+config.set_main_option("sqlalchemy.url", f"sqlite:///{tc_config.database.path}")
 
 target_metadata = SQLModel.metadata
 
