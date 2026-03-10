@@ -108,3 +108,13 @@
   - tso-integration
   description: 'Final validation: full suite, 1:1 mapping check, success criteria
     audit'
+- slug: codex-render-runtime
+  after:
+  - codex-render-baseline
+- slug: codex-control-lane
+  after:
+  - codex-render-runtime
+- slug: codex-render-baseline
+  after:
+  - codex-render-semantic-runtime
+  description: Immediate corrections + replay corpus (split from codex-render-semantic-runtime)
