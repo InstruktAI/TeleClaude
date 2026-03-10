@@ -598,14 +598,16 @@ class TelecApp(App[str | None]):
             self.notify(event.data.message, severity="error")
 
         elif isinstance(event, ChiptunesTrackEvent):
-            self._apply_chiptunes_footer_state(
-                enabled=True,
-                playing=True,
-                track=event.track,
-                sid_path=event.sid_path,
-            )
-            if event.track:
-                self.notify(f"♪ Now Playing: {event.track}", timeout=4)
+            footer = self.query_one("#telec-footer", TelecFooter)
+            if footer.chiptunes_enabled:
+                self._apply_chiptunes_footer_state(
+                    enabled=True,
+                    playing=True,
+                    track=event.track,
+                    sid_path=event.sid_path,
+                )
+                if event.track:
+                    self.notify(f"♪ Now Playing: {event.track}", timeout=4)
 
         elif isinstance(event, ChiptunesStateEvent):
             self._apply_chiptunes_footer_state(
@@ -1012,22 +1014,11 @@ class TelecApp(App[str | None]):
 
     @work(exclusive=False, group="settings")
     async def _chiptunes_play_pause(self) -> None:
-        """Play/pause toggle: enable chiptunes if off, else pause/resume.
-
-        Uses optimistic local updates for instant visual feedback.
-        ChiptunesStateEvent WS broadcasts correct state eventually.
-        """
+        """Play/pause toggle for enabled chiptunes only."""
         footer = self.query_one("#telec-footer", TelecFooter)
         if not footer.chiptunes_enabled:
-            from teleclaude.cli.models import ChiptunesSettingsPatchInfo, SettingsPatchInfo
-
-            try:
-                await self.api.patch_settings(SettingsPatchInfo(chiptunes=ChiptunesSettingsPatchInfo(enabled=True)))
-                footer.chiptunes_enabled = True
-                footer.chiptunes_playing = True
-            except Exception as e:
-                self.notify(f"Failed to enable ChipTunes: {e}", severity="error")
             return
+
         # Sync fresh state from daemon before deciding pause vs resume
         try:
             await self._sync_chiptunes_footer_state()
@@ -1046,6 +1037,9 @@ class TelecApp(App[str | None]):
     @work(exclusive=False, group="settings")
     async def _chiptunes_next(self) -> None:
         """Skip to the next chiptunes track."""
+        footer = self.query_one("#telec-footer", TelecFooter)
+        if not footer.chiptunes_enabled:
+            return
         try:
             await self.api.chiptunes_next()
         except Exception as e:
@@ -1054,6 +1048,9 @@ class TelecApp(App[str | None]):
     @work(exclusive=False, group="settings")
     async def _chiptunes_prev(self) -> None:
         """Go back to the previous chiptunes track."""
+        footer = self.query_one("#telec-footer", TelecFooter)
+        if not footer.chiptunes_enabled:
+            return
         try:
             await self.api.chiptunes_prev()
         except Exception as e:
@@ -1089,6 +1086,8 @@ class TelecApp(App[str | None]):
     async def _chiptunes_favorite(self) -> None:
         """Toggle the current track in favorites."""
         footer = self.query_one("#telec-footer", TelecFooter)
+        if not footer.chiptunes_enabled:
+            return
         if not footer.chiptunes_sid_path:
             return
         from teleclaude.chiptunes.favorites import is_favorited, remove_favorite, save_favorite

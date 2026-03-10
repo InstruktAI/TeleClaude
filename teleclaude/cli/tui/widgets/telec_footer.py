@@ -178,6 +178,10 @@ class TelecFooter(Widget):
         super().__init__(**kwargs)
         self._agent_availability: dict[str, AgentAvailabilityInfo] = agent_availability or {}
 
+    def _show_transport_controls(self) -> bool:
+        """Show transport controls only when chiptunes are enabled."""
+        return self.chiptunes_enabled
+
     def compose(self) -> ComposeResult:
         yield Static(id="footer-context-row")
         yield Static(id="footer-global-row")
@@ -372,12 +376,12 @@ class TelecFooter(Widget):
         next_button.icon = "\u23ed"
         fav_button.icon = "\u2705" if (self.chiptunes_enabled and self.chiptunes_favorited) else "\u2b50"
 
-        prev_button.disabled = not self.chiptunes_enabled
-        next_button.disabled = not self.chiptunes_enabled
-        fav_button.disabled = not self.chiptunes_enabled
-        # Play can enable chiptunes from the stopped state.
-        play_button.disabled = False
-        if self.chiptunes_enabled:
+        controls_enabled = self._show_transport_controls()
+        prev_button.disabled = not controls_enabled
+        next_button.disabled = not controls_enabled
+        play_button.disabled = not controls_enabled
+        fav_button.disabled = not controls_enabled
+        if controls_enabled:
             prev_button.remove_class("-chiptunes-hidden")
             play_button.remove_class("-chiptunes-hidden")
             next_button.remove_class("-chiptunes-hidden")
@@ -406,7 +410,7 @@ class TelecFooter(Widget):
         if widget_id == "footer-tts-toggle":
             self.post_message(SettingsChanged("tts_enabled", not self.tts_enabled))
             return
-        if not self.chiptunes_enabled and widget_id in {"footer-prev", "footer-play", "footer-next", "footer-fav"}:
+        if not self._show_transport_controls() and widget_id in {"footer-prev", "footer-play", "footer-next", "footer-fav"}:
             return
         if widget_id == "footer-prev":
             self.post_message(SettingsChanged("chiptunes_prev", None))
@@ -431,7 +435,7 @@ class TelecFooter(Widget):
         if button_id == "footer-play":
             self.post_message(SettingsChanged("chiptunes_play_pause", None))
             return
-        if not self.chiptunes_enabled:
+        if not self._show_transport_controls():
             return
         if button_id == "footer-prev":
             self.post_message(SettingsChanged("chiptunes_prev", None))

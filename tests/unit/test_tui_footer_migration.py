@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from textual.app import App, ComposeResult
 
-from teleclaude.cli.models import ChiptunesStateEvent, ComputerInfo, ProjectInfo, SessionInfo
+from teleclaude.cli.models import ChiptunesStateEvent, ChiptunesTrackEvent, ComputerInfo, ProjectInfo, SessionInfo
 from teleclaude.cli.tui.app import TelecApp
 from teleclaude.cli.tui.persistence import Persistable
 from teleclaude.cli.tui.theme import get_neutral_color
@@ -150,6 +150,97 @@ async def test_telec_app_applies_chiptunes_state_events() -> None:
         assert footer.chiptunes_playing is False
         assert footer.chiptunes_track == "Paused Tune"
         assert footer.chiptunes_sid_path == "/music/paused.sid"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_telec_app_ignores_track_events_when_disabled() -> None:
+    api = SimpleNamespace(
+        connect=AsyncMock(),
+        start_websocket=MagicMock(),
+        list_computers=AsyncMock(return_value=[]),
+        list_projects_with_todos=AsyncMock(return_value=[]),
+        list_sessions=AsyncMock(return_value=[]),
+        get_agent_availability=AsyncMock(return_value={}),
+        list_jobs=AsyncMock(return_value=[]),
+        get_settings=AsyncMock(
+            return_value=SimpleNamespace(
+                tts=SimpleNamespace(enabled=False),
+                chiptunes=SimpleNamespace(enabled=False),
+            )
+        ),
+        get_chiptunes_status=AsyncMock(
+            return_value=SimpleNamespace(
+                enabled=False,
+                playing=False,
+                paused=False,
+                track="",
+                sid_path="",
+            )
+        ),
+    )
+    app = TelecApp(api)  # type: ignore[arg-type]
+
+    async with app.run_test():
+        footer = app.query_one(TelecFooter)
+        footer.chiptunes_enabled = False
+        footer.chiptunes_playing = False
+        footer.chiptunes_track = ""
+        footer.chiptunes_sid_path = ""
+
+        app._handle_ws_event(
+            ChiptunesTrackEvent(
+                track="Looping Tune",
+                sid_path="/music/loop.sid",
+            )
+        )
+
+        assert footer.chiptunes_enabled is False
+        assert footer.chiptunes_playing is False
+        assert footer.chiptunes_track == ""
+        assert footer.chiptunes_sid_path == ""
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_telec_app_play_pause_noop_when_disabled() -> None:
+    api = SimpleNamespace(
+        connect=AsyncMock(),
+        start_websocket=MagicMock(),
+        list_computers=AsyncMock(return_value=[]),
+        list_projects_with_todos=AsyncMock(return_value=[]),
+        list_sessions=AsyncMock(return_value=[]),
+        get_agent_availability=AsyncMock(return_value={}),
+        list_jobs=AsyncMock(return_value=[]),
+        patch_settings=AsyncMock(),
+        chiptunes_pause=AsyncMock(),
+        chiptunes_resume=AsyncMock(),
+        get_chiptunes_status=AsyncMock(
+            return_value=SimpleNamespace(
+                enabled=False,
+                playing=False,
+                paused=False,
+                track="",
+                sid_path="",
+            )
+        ),
+        get_settings=AsyncMock(
+            return_value=SimpleNamespace(
+                tts=SimpleNamespace(enabled=False),
+                chiptunes=SimpleNamespace(enabled=False),
+            )
+        ),
+    )
+    app = TelecApp(api)  # type: ignore[arg-type]
+
+    async with app.run_test():
+        footer = app.query_one(TelecFooter)
+        assert footer.chiptunes_enabled is False
+
+        await TelecApp._chiptunes_play_pause.__wrapped__(app)
+
+        api.chiptunes_pause.assert_not_awaited()
+        api.chiptunes_resume.assert_not_awaited()
 
 
 @pytest.mark.unit
