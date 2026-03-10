@@ -4,6 +4,30 @@ deferrals_processed: false
 breakdown:
   assessed: false
   todos: []
+grounding:
+  valid: true
+  base_sha: '9b09700a0a585d0183b18b422b684c411fb0624b'
+  input_digest: '380883338d54339109961a02d0c1092ec49cdb1c511499bb17129eca122ed4c6'
+  referenced_paths:
+    - docs/global/software-development/procedure/project-analysis.md
+    - docs/global/software-development/spec/init-scaffolding.md
+    - teleclaude/project_setup/init_flow.py
+    - teleclaude/cli/telec.py
+    - tests/unit/test_project_setup_init_flow.py
+    - tests/integration/test_telec_cli_commands.py
+    - teleclaude/project_setup/enrichment.py
+    - tests/unit/project_setup/test_enrichment.py
+    - agents/commands/telec-init-analyze.md
+    - teleclaude/docs_index.py
+    - tests/unit/test_docs_index.py
+    - teleclaude/sync.py
+    - teleclaude/project_manifest.py
+    - tests/unit/test_telec_sync.py
+    - tests/unit/test_context_selector.py
+    - todos/telec-init-enrichment/demo.md
+  last_grounded_at: '2026-03-10T11:31:55Z'
+  invalidated_at: ''
+  invalidation_reason: ''
 dor:
   last_assessed_at: '2026-03-10T00:00:00Z'
   score: 0
@@ -17,6 +41,10 @@ dor:
 requirements_review:
   verdict: approve
   reviewed_at: '2026-03-10T00:00:00Z'
+  findings_count: 0
+plan_review:
+  verdict: approve
+  reviewed_at: '2026-03-10T11:31:55Z'
   findings_count: 0
 review_round: 0
 max_review_rounds: 3

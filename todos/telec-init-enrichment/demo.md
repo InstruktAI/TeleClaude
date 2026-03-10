@@ -5,38 +5,45 @@
 ```bash
 # Pre-check: create a sample project to test against
 mkdir /tmp/demo-project && cd /tmp/demo-project
-git init && echo '{"name":"demo","version":"1.0.0"}' > package.json
+git init
+cat > package.json <<'EOF'
+{"name":"demo-project","version":"1.0.0","scripts":{"test":"vitest"}}
+EOF
+mkdir -p src/routes
+echo 'export default function Home() { return "hi" }' > src/routes/index.tsx
 echo 'console.log("hello")' > index.js
-mkdir -p src/routes && echo 'export default function Home() { return "hi" }' > src/routes/index.tsx
 git add -A && git commit -m "initial"
 ```
 
 ```bash
-# Run telec init with enrichment on the sample project
+# Run telec init and accept enrichment
 cd /tmp/demo-project && telec init
 ```
 
 ```bash
-# Verify doc snippets were generated
-telec docs index --baseline-only 2>/dev/null
-ls docs/project/init/
+# Verify generated snippets land in the project taxonomy
+find docs/project -maxdepth 2 -type f | sort
+telec docs index
 ```
 
 ```bash
-# Verify snippets pass validation
+# Verify snippet retrieval is project-specific, not boilerplate
+telec docs get project/design/architecture
+telec docs get project/policy/conventions
+telec docs get project/spec/dependencies
+```
+
+```bash
+# Verify generated snippets pass validation and the project is registered locally
 telec sync --validate-only
+telec projects list | rg demo-project
 ```
 
 ```bash
-# Verify snippet content is project-specific (not generic templates)
-telec docs get project/init/architecture
-```
-
-```bash
-# Verify re-init is idempotent — edit a snippet, re-run, verify edit preserved
-echo "# Human addition" >> docs/project/init/architecture.md
+# Verify re-init preserves human edits
+echo "# Human addition" >> docs/project/design/architecture.md
 telec init
-grep "Human addition" docs/project/init/architecture.md
+rg "Human addition" docs/project/design/architecture.md
 ```
 
 ```bash
@@ -48,48 +55,45 @@ rm -rf /tmp/demo-project
 
 ### Step 1: The Problem — Cold Start
 
-Start with a fresh project that has code but no AI-readable documentation.
+Start with a fresh project that has code but no AI-readable project snippets.
 
-**Do:** Show the project structure. Run `telec docs index` — it returns nothing
-project-specific. The AI has no context.
+**Do:** Show the project structure. Run `telec docs index` and point out that there
+is no project-specific architecture, conventions, or dependency context yet.
 
 **Observe:** The gap between "code exists" and "AI understands the code."
 
 ### Step 2: Run Enriched Init
 
-**Do:** Run `telec init` on the project. The command does its usual plumbing (hooks,
-watchers), then prompts: "Analyze project and generate documentation? [Y/n]"
+**Do:** Run `telec init`. The command performs its existing plumbing and then offers
+optional enrichment.
 
-**Observe:** Accept. An analysis session starts. The AI reads the codebase, identifies
-patterns, and generates doc snippets. Progress is visible in the terminal.
+**Observe:** Accept the enrichment prompt. An analysis session starts, reads the repo,
+and reports completion when snippet generation and validation finish.
 
 ### Step 3: Inspect Generated Documentation
 
-**Do:** Run `telec docs index`. Show the new snippets: architecture, conventions,
-dependencies, entry points, testing, build/deploy.
+**Do:** Run `telec docs index` and `telec docs get project/design/architecture`.
 
-**Observe:** Each snippet ID follows the `project/init/*` namespace. Run
-`telec docs get project/init/architecture` — the content is specific to THIS project,
-not boilerplate. It names actual files, patterns, and frameworks found in the code.
+**Observe:** The generated snippets live under `docs/project/design/`,
+`docs/project/policy/`, and `docs/project/spec/`. The content names real files,
+frameworks, entry points, config files, and conventions from this repo.
 
-### Step 4: Future Sessions Start Informed
+### Step 4: Confirm Local TeleClaude Integration
 
-**Do:** Start a new AI session on this project. Ask it about the architecture.
+**Do:** Run `telec projects list`.
 
-**Observe:** The AI loads the generated snippets via `telec docs index` + `telec docs get`
-and immediately understands the project structure. No discovery phase needed.
+**Observe:** The repo appears in the local project catalog and points at
+`docs/project/index.yaml`, so other TeleClaude surfaces can discover it.
 
 ### Step 5: Re-init Preserves Human Work
 
-**Do:** Edit one of the generated snippets — add a section about a convention the AI
-missed. Run `telec init` again.
+**Do:** Append a short human-authored note to `docs/project/design/architecture.md`
+and run `telec init` again.
 
-**Observe:** The human-added section is preserved. Auto-generated sections are refreshed
-with current analysis. The merge is visible in the git diff.
+**Observe:** The human note remains while the generated sections refresh. The git diff
+shows an in-place merge, not duplicated snippets.
 
 ### Why It Matters
 
-`telec init` is the seed. Before enrichment, it was plumbing. After enrichment, it's
-the moment a project becomes part of the intelligence layer. Every future interaction —
-every build, review, fix, conversation — benefits from the context that was bootstrapped
-here.
+`telec init` stops being plumbing-only. It becomes the moment a raw repo gains
+durable, queryable project context for future AI sessions.
