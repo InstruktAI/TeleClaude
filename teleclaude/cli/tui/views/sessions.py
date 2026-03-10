@@ -48,6 +48,7 @@ DOUBLE_PRESS_THRESHOLD = 0.65
 MAX_STICKY = 5
 # Auto-clear highlights on preview session after this many seconds
 PREVIEW_HIGHLIGHT_DURATION = 3.0
+HIDDEN_SESSION_STATUSES = frozenset({"closing", "closed"})
 
 
 class SessionsView(Widget, can_focus=True):
@@ -102,6 +103,7 @@ class SessionsView(Widget, can_focus=True):
         # session_id → {"text": str, "ts": float (monotonic)}
         self._last_output_summary: dict[str, dict[str, object]] = {}  # guard: loose-dict
         self._collapsed_sessions: set[str] = set()
+        self._optimistically_hidden_session_ids: set[str] = set()
         # TreeInteractionState for Space double-press detection
         self._interaction = TreeInteractionState()
         # Double-click detection for mouse clicks (separate from Space)
@@ -140,16 +142,27 @@ class SessionsView(Widget, can_focus=True):
     ) -> None:
         """Update view with fresh API data. Only rebuild tree if structure changed."""
         self._logger.trace("[PERF] SessionsView.update_data called sessions=%d t=%.3f", len(sessions), time.monotonic())
+        restored_hidden = {
+            session.session_id
+            for session in sessions
+            if session.session_id in self._optimistically_hidden_session_ids and session.status not in HIDDEN_SESSION_STATUSES
+        }
+        if restored_hidden:
+            self._optimistically_hidden_session_ids.difference_update(restored_hidden)
+
+        visible_sessions = [
+            session for session in sessions if session.session_id not in self._optimistically_hidden_session_ids
+        ]
         old_ids = {s.session_id for s in self._sessions}
-        new_ids = {s.session_id for s in sessions}
+        new_ids = {s.session_id for s in visible_sessions}
         self._computers = computers
         self._projects = projects
-        self._sessions = sessions
+        self._sessions = visible_sessions
         if availability is not None:
             self._availability = availability
 
         # Prune stale session IDs from sticky/preview state
-        state_changed = False
+        state_changed = bool(restored_hidden)
         stale_sticky = [sid for sid in self._sticky_session_ids if sid not in new_ids]
         if stale_sticky:
             self._logger.info("Pruning %d stale sticky IDs: %s", len(stale_sticky), [s[:8] for s in stale_sticky])
@@ -172,7 +185,7 @@ class SessionsView(Widget, can_focus=True):
             self._rebuild_tree()
         else:
             # Same sessions — just update data on existing rows
-            session_map = {s.session_id: s for s in sessions}
+            session_map = {s.session_id: s for s in visible_sessions}
             for widget in self._nav_items:
                 if isinstance(widget, SessionRow) and widget.session_id in session_map:
                     widget.update_session(session_map[widget.session_id])
@@ -1130,8 +1143,77 @@ class SessionsView(Widget, can_focus=True):
                 widget.highlight_type = highlight_type
                 break
 
+    def optimistically_hide_session(self, session_id: str) -> None:
+        """Hide a session immediately after close intent succeeds locally."""
+        self._optimistically_hidden_session_ids.add(session_id)
+        if all(session.session_id != session_id for session in self._sessions):
+            return
+        remaining = [session for session in self._sessions if session.session_id != session_id]
+        self.update_data(
+            computers=self._computers,
+            projects=self._projects,
+            sessions=remaining,
+            availability=self._availability,
+        )
+
+    def confirm_session_closed(self, session_id: str) -> None:
+        """Finalize optimistic hide once closure is confirmed."""
+        self._optimistically_hidden_session_ids.discard(session_id)
+        if all(session.session_id != session_id for session in self._sessions):
+            return
+        remaining = [session for session in self._sessions if session.session_id != session_id]
+        self.update_data(
+            computers=self._computers,
+            projects=self._projects,
+            sessions=remaining,
+            availability=self._availability,
+        )
+
     def update_session(self, session: SessionInfo) -> None:
         """Update a single session row with new data."""
+        if session.status in HIDDEN_SESSION_STATUSES:
+            remaining = [item for item in self._sessions if item.session_id != session.session_id]
+            if len(remaining) != len(self._sessions):
+                self.update_data(
+                    computers=self._computers,
+                    projects=self._projects,
+                    sessions=remaining,
+                    availability=self._availability,
+                )
+            return
+
+        updated = False
+        next_sessions: list[SessionInfo] = []
+        for existing in self._sessions:
+            if existing.session_id == session.session_id:
+                next_sessions.append(session)
+                updated = True
+            else:
+                next_sessions.append(existing)
+
+        if session.session_id in self._optimistically_hidden_session_ids:
+            self._optimistically_hidden_session_ids.discard(session.session_id)
+            if not updated:
+                next_sessions.append(session)
+            self.update_data(
+                computers=self._computers,
+                projects=self._projects,
+                sessions=next_sessions,
+                availability=self._availability,
+            )
+            return
+
+        if not updated:
+            next_sessions.append(session)
+            self.update_data(
+                computers=self._computers,
+                projects=self._projects,
+                sessions=next_sessions,
+                availability=self._availability,
+            )
+            return
+
+        self._sessions = next_sessions
         for widget in self._nav_items:
             if isinstance(widget, SessionRow) and widget.session_id == session.session_id:
                 widget.update_session(session)

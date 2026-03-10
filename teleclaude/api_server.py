@@ -14,6 +14,7 @@ import shlex
 import socket
 import tempfile
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal
@@ -129,6 +130,9 @@ API_TCP_HOST = "127.0.0.1"
 API_TCP_PORT = int(os.getenv("API_TCP_PORT", "8420"))
 API_WS_PING_INTERVAL_S = 20.0
 API_WS_PING_TIMEOUT_S = 20.0
+API_WS_CONTROL_SEND_TIMEOUT_S = float(os.getenv("API_WS_CONTROL_SEND_TIMEOUT_S", "30"))
+API_WS_DEFAULT_SEND_TIMEOUT_S = float(os.getenv("API_WS_DEFAULT_SEND_TIMEOUT_S", "15"))
+API_WS_REPLACEABLE_SEND_TIMEOUT_S = float(os.getenv("API_WS_REPLACEABLE_SEND_TIMEOUT_S", "5"))
 API_TIMEOUT_KEEP_ALIVE_S = 5
 API_STOP_TIMEOUT_S = 5.0
 API_WATCH_INTERVAL_S = float(os.getenv("API_WATCH_INTERVAL_S", "5"))
@@ -136,6 +140,21 @@ API_WATCH_LAG_THRESHOLD_MS = float(os.getenv("API_WATCH_LAG_THRESHOLD_MS", "250"
 API_WATCH_INFLIGHT_THRESHOLD_S = float(os.getenv("API_WATCH_INFLIGHT_THRESHOLD_S", "1"))
 API_WATCH_DUMP_COOLDOWN_S = float(os.getenv("API_WATCH_DUMP_COOLDOWN_S", "30"))
 WORKER_LIFECYCLE_COMMANDS = {"next-build", "next-review-build", "next-fix-review", "next-finalize"}
+API_WS_CONTROL_EVENTS = frozenset(
+    {
+        "agent_activity",
+        "error",
+        "notification",
+        "projects_initial",
+        "preparation_initial",
+        "session_closed",
+        "session_started",
+        "session_status",
+        "session_updated",
+        "sessions_initial",
+    }
+)
+API_WS_REPLACEABLE_EVENTS = frozenset({"chiptunes_state", "chiptunes_track", "refresh"})
 
 COMMAND_ROLE_MAP: dict[str, tuple[str, str]] = {
     "next-build": ("worker", "builder"),
@@ -156,6 +175,14 @@ COMMAND_ROLE_MAP: dict[str, tuple[str, str]] = {
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 PatchBodyScalar = str | int | float | bool | None
 PatchBodyValue = PatchBodyScalar | list[PatchBodyScalar] | dict[str, PatchBodyScalar]
+
+
+@dataclass
+class _WsClientState:
+    """Per-client sender state for serialized WebSocket writes."""
+
+    queue: asyncio.Queue[tuple[str, dict[str, object]]]
+    sender_task: asyncio.Task[object] | None = None
 
 
 def _filter_sessions_by_role(request: Request, sessions: list[SessionSnapshot]) -> list[SessionSnapshot]:
@@ -278,6 +305,8 @@ class APIServer:
         self._ws_clients: set[WebSocket] = set()
         # Per-computer subscriptions: {websocket: {computer: {data_types}}}
         self._client_subscriptions: dict[WebSocket, dict[str, set[str]]] = {}
+        # Per-websocket sender state for serialized outbound writes.
+        self._ws_client_states: dict[WebSocket, _WsClientState] = {}
         # Track previous interest to remove stale entries
         self._previous_interest: dict[str, set[str]] = {}  # {data_type: {computers}}
         # Debounce refresh-style WS events to avoid burst refresh storms
@@ -2223,6 +2252,7 @@ class APIServer:
         await websocket.accept()
         self._ws_clients.add(websocket)
         self._client_subscriptions[websocket] = {}
+        self._ensure_ws_client_state(websocket)
         logger.info("WebSocket client connected")
 
         # Update interest in cache when first client connects
@@ -2332,17 +2362,7 @@ class APIServer:
         except Exception as e:
             logger.error("WebSocket error: %s", e, exc_info=True)
         finally:
-            # Clean up
-            self._ws_clients.discard(websocket)
-            self._client_subscriptions.pop(websocket, None)
-            try:
-                await websocket.close()
-            except Exception:
-                pass
-
-            # Update interest in cache when last client disconnects
-            if self.cache and len(self._ws_clients) == 0:
-                self._update_cache_interest()
+            await self._drop_ws_client(websocket, reason="receiver-finished")
 
     def _update_cache_interest(self) -> list[tuple[str, str]]:
         """Update cache interest based on active WebSocket subscriptions."""
@@ -2438,7 +2458,7 @@ class APIServer:
                             cached_sessions = [s for s in cached_sessions if s.human_email == email]
                     sessions = [SessionDTO.from_core(s, computer=s.computer) for s in cached_sessions]
                     event = SessionsInitialEventDTO(data=SessionsInitialDataDTO(sessions=sessions, computer=computer))
-                    await websocket.send_json(event.model_dump(exclude_none=True))
+                    await self._send_or_enqueue_payload(websocket, event.event, event.model_dump(exclude_none=True))
             elif data_type in ("preparation", "projects"):
                 # Send current projects from cache for this computer
                 if self.cache:
@@ -2495,11 +2515,15 @@ class APIServer:
                         event="projects_initial" if data_type == "projects" else "preparation_initial",
                         data=ProjectsInitialDataDTO(projects=projects, computer=computer),
                     )
-                    await websocket.send_json(event.model_dump(exclude_none=True))
+                    await self._send_or_enqueue_payload(websocket, event.event, event.model_dump(exclude_none=True))
             elif data_type == "notifications":
                 if self._event_db is not None:
                     rows = await self._event_db.list_notifications(limit=50)
-                    await websocket.send_json({"type": "notifications_initial", "notifications": rows})
+                    await self._send_or_enqueue_payload(
+                        websocket,
+                        "notifications_initial",
+                        {"type": "notifications_initial", "notifications": rows},
+                    )
             elif data_type == "todos":
                 # Todos are project-specific, can't send initial state without project context
                 logger.debug("Skipping initial state for todos (project-specific)")
@@ -2641,36 +2665,7 @@ class APIServer:
         """Send a WS payload to connected clients. If targets is given, only those clients receive it."""
         clients = targets if targets is not None else list(self._ws_clients)
         for ws in clients:
-
-            async def _send_with_timeout(client: WebSocket = ws) -> None:
-                try:
-                    await asyncio.wait_for(client.send_json(payload), timeout=2.0)
-                except TimeoutError:
-                    logger.warning("WebSocket send timeout, removing client")
-                    self._ws_clients.discard(client)
-                    self._client_subscriptions.pop(client, None)
-                    await self._close_ws(client)
-                except (OSError, ConnectionError) as exc:
-                    logger.info("WebSocket connection lost: %s", exc)
-                    self._ws_clients.discard(client)
-                    self._client_subscriptions.pop(client, None)
-                    await self._close_ws(client)
-                except Exception as exc:
-                    # UNEXPECTED - likely a bug in payload construction or serialization
-                    logger.error(
-                        "Unexpected error sending WebSocket event '%s': %s",
-                        event,
-                        exc,
-                        exc_info=True,
-                        extra={"event_type": event, "payload_keys": list(payload.keys())},
-                    )
-                    # Re-raise to make bugs visible in tests/monitoring
-                    raise
-
-            if self.task_registry:
-                self.task_registry.spawn(_send_with_timeout(), name=f"ws-broadcast-{event}")
-            else:
-                asyncio.create_task(_send_with_timeout())
+            self._enqueue_ws_payload(ws, event, payload)
 
     async def _close_ws(self, websocket: WebSocket) -> None:
         """Close a WebSocket connection safely with timeout."""
@@ -2678,6 +2673,134 @@ class APIServer:
             await asyncio.wait_for(websocket.close(), timeout=1.0)
         except (TimeoutError, Exception):
             pass
+
+    def _ensure_ws_client_state(self, websocket: WebSocket) -> _WsClientState:
+        """Create sender state lazily for a websocket client."""
+        state = self._ws_client_states.get(websocket)
+        if state is None:
+            state = _WsClientState(queue=asyncio.Queue())
+            self._ws_client_states[websocket] = state
+        if state.sender_task is None or state.sender_task.done():
+            sender = self._ws_sender_loop(websocket, state)
+            task_name = f"ws-sender-{id(websocket)}"
+            if self.task_registry:
+                state.sender_task = self.task_registry.spawn(sender, name=task_name)
+            else:
+                state.sender_task = asyncio.create_task(sender, name=task_name)
+        return state
+
+    def _enqueue_ws_payload(self, websocket: WebSocket, event: str, payload: dict[str, object]) -> None:
+        """Queue a payload for serialized delivery to one websocket."""
+        if websocket not in self._ws_clients:
+            return
+        state = self._ensure_ws_client_state(websocket)
+        state.queue.put_nowait((event, payload))
+
+    async def _send_or_enqueue_payload(self, websocket: WebSocket, event: str, payload: dict[str, object]) -> None:
+        """Send directly for untracked sockets or enqueue for managed clients."""
+        if websocket in self._ws_clients:
+            self._enqueue_ws_payload(websocket, event, payload)
+            return
+        await self._send_ws_payload(websocket, event, payload)
+
+    async def _ws_sender_loop(self, websocket: WebSocket, state: _WsClientState) -> None:
+        """Serialize outbound writes for a websocket client."""
+        while True:
+            event, payload = await state.queue.get()
+            try:
+                delivered = await self._send_ws_payload(websocket, event, payload)
+                if not delivered:
+                    return
+            finally:
+                state.queue.task_done()
+
+    async def _send_ws_payload(self, websocket: WebSocket, event: str, payload: dict[str, object]) -> bool:
+        """Send one payload and normalize disconnect handling."""
+        timeout = self._ws_send_timeout_seconds(event)
+        try:
+            if timeout is None:
+                await websocket.send_json(payload)
+            else:
+                await asyncio.wait_for(websocket.send_json(payload), timeout=timeout)
+            return True
+        except TimeoutError:
+            logger.warning(
+                "WebSocket send timeout, removing client",
+                extra={"event_type": event, "timeout_s": timeout},
+            )
+            await self._drop_ws_client(websocket, reason=f"send-timeout:{event}")
+            return False
+        except Exception as exc:
+            if self._is_expected_ws_disconnect(exc):
+                logger.info(
+                    "WebSocket connection lost during send: %s",
+                    exc,
+                    extra={"event_type": event},
+                )
+                await self._drop_ws_client(websocket, reason=f"send-disconnect:{event}")
+                return False
+            logger.error(
+                "Unexpected error sending WebSocket event '%s': %s",
+                event,
+                exc,
+                exc_info=True,
+                extra={"event_type": event, "payload_keys": list(payload.keys())},
+            )
+            await self._drop_ws_client(websocket, reason=f"send-error:{event}")
+            raise
+
+    def _ws_send_timeout_seconds(self, event: str) -> float | None:
+        """Return the timeout budget for a websocket event.
+
+        Control-plane state must not be dropped aggressively; low-value refresh and
+        chiptunes updates can use a shorter budget.
+        """
+        if event in API_WS_CONTROL_EVENTS:
+            return API_WS_CONTROL_SEND_TIMEOUT_S
+        if event in API_WS_REPLACEABLE_EVENTS:
+            return API_WS_REPLACEABLE_SEND_TIMEOUT_S
+        return API_WS_DEFAULT_SEND_TIMEOUT_S
+
+    def _is_expected_ws_disconnect(self, exc: BaseException) -> bool:
+        """Classify disconnect-shaped transport errors that should not be treated as bugs."""
+        seen: set[int] = set()
+        current: BaseException | None = exc
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            if isinstance(current, (WebSocketDisconnect, OSError, ConnectionError)):
+                return True
+            name = current.__class__.__name__
+            if name in {"ClientDisconnected", "ConnectionClosed", "ConnectionClosedError", "ConnectionClosedOK"}:
+                return True
+            if isinstance(current, RuntimeError) and "close message has been sent" in str(current):
+                return True
+            next_exc = current.__cause__ if current.__cause__ is not None else current.__context__
+            current = next_exc
+        return False
+
+    async def _drop_ws_client(self, websocket: WebSocket, *, reason: str) -> None:
+        """Remove sender/subscription state for one websocket client."""
+        state = self._ws_client_states.pop(websocket, None)
+        self._ws_clients.discard(websocket)
+        self._client_subscriptions.pop(websocket, None)
+
+        sender_task = state.sender_task if state is not None else None
+        current_task = asyncio.current_task()
+        if sender_task is not None and sender_task is not current_task and not sender_task.done():
+            sender_task.cancel()
+            try:
+                await sender_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.debug("WebSocket sender task ended with error during cleanup", exc_info=True)
+
+        await self._close_ws(websocket)
+
+        if self.cache and len(self._ws_clients) == 0:
+            self._update_cache_interest()
+
+        logger.debug("WebSocket client removed", extra={"client_id": id(websocket), "reason": reason})
 
     async def _notification_push(
         self,

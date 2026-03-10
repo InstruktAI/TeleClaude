@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi import WebSocketDisconnect
 from pydantic import TypeAdapter
 
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot
@@ -690,5 +691,49 @@ async def test_dead_websocket_client_removed_on_error(
 
     # Verify dead client removed from tracking
     # The _on_cache_change callback creates task with done_callback that removes failed clients
+    assert mock_ws not in api_server._ws_clients
+    assert mock_ws not in api_server._client_subscriptions
+
+
+@pytest.mark.asyncio
+async def test_dead_websocket_client_removed_on_websocket_disconnect(
+    api_server: APIServer,
+    cache: DaemonCache,
+) -> None:
+    """WebSocketDisconnect during send should clean up the client like any other disconnect."""
+    mock_ws = create_mock_websocket()
+    mock_ws.send_json.side_effect = WebSocketDisconnect(code=1006)
+
+    api_server._ws_clients.add(mock_ws)
+    api_server._client_subscriptions[mock_ws] = {"local": {"sessions"}}
+
+    test_session = create_test_session(session_id="ws-disconnect-test")
+    cache.update_session(test_session)
+
+    await asyncio.sleep(0.1)
+
+    assert mock_ws.send_json.called
+    assert mock_ws not in api_server._ws_clients
+    assert mock_ws not in api_server._client_subscriptions
+
+
+@pytest.mark.asyncio
+async def test_dead_websocket_client_removed_on_close_race_runtime_error(
+    api_server: APIServer,
+    cache: DaemonCache,
+) -> None:
+    """Close-race RuntimeError should be treated as a normal disconnect cleanup path."""
+    mock_ws = create_mock_websocket()
+    mock_ws.send_json.side_effect = RuntimeError('Cannot call "send" once a close message has been sent.')
+
+    api_server._ws_clients.add(mock_ws)
+    api_server._client_subscriptions[mock_ws] = {"local": {"sessions"}}
+
+    test_session = create_test_session(session_id="ws-close-race-test")
+    cache.update_session(test_session)
+
+    await asyncio.sleep(0.1)
+
+    assert mock_ws.send_json.called
     assert mock_ws not in api_server._ws_clients
     assert mock_ws not in api_server._client_subscriptions

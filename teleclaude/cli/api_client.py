@@ -45,8 +45,8 @@ BASE_URL = "http://localhost"
 WS_URI = "ws://localhost/ws"
 
 # Reconnection settings
-WS_INITIAL_BACKOFF = 1.0  # Initial reconnect delay in seconds
-WS_MAX_BACKOFF = 30.0  # Maximum reconnect delay
+WS_INITIAL_BACKOFF = 0.5  # Initial reconnect delay in seconds
+WS_MAX_BACKOFF = 5.0  # Maximum reconnect delay for local unix-socket reconnects
 WS_BACKOFF_MULTIPLIER = 2.0  # Exponential backoff multiplier
 API_CONNECT_RETRY_DELAYS_S = (0.1, 0.3, 0.6)
 
@@ -81,6 +81,7 @@ class TelecAPIClient:
         self._ws_running = False
         self._ws_subscriptions: set[str] = set()
         self._ws_callback: Callable[[WsEvent], None] | None = None
+        self._ws_on_connect: Callable[[], None] | None = None
         self._ws_lock = threading.Lock()
         self._last_connect_error_log: float | None = None
         self._identity_headers: dict[str, str] = {}
@@ -117,6 +118,7 @@ class TelecAPIClient:
         self,
         callback: Callable[[WsEvent], None],
         subscriptions: list[str] | None = None,
+        on_connect: Callable[[], None] | None = None,
     ) -> None:
         """Start WebSocket connection for push updates.
 
@@ -131,6 +133,7 @@ class TelecAPIClient:
             return
 
         self._ws_callback = callback
+        self._ws_on_connect = on_connect
         self._ws_subscriptions = set(subscriptions or ["sessions", "preparation"])
         self._ws_running = True
 
@@ -227,6 +230,8 @@ class TelecAPIClient:
             }
         }
         ws.send(json.dumps(initial_payload))
+        if self._ws_on_connect:
+            self._ws_on_connect()
 
         # Process incoming messages
         for message in ws:

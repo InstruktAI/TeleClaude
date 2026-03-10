@@ -40,6 +40,7 @@ from teleclaude.core.events import (
     ErrorEventContext,
     EventType,
     SessionLifecycleContext,
+    SessionStatusContext,
     SystemCommandContext,
     TeleClaudeEvents,
     build_agent_payload,
@@ -50,6 +51,7 @@ from teleclaude.core.lifecycle import DaemonLifecycle
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputPoller
+from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.session_utils import (
     get_output_file,
     get_short_project_name,
@@ -1200,12 +1202,38 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return
 
         logger.info("Handling session_close_requested for %s", ctx.session_id[:8])
-        await session_cleanup.terminate_session(
-            ctx.session_id,
-            self.client,
-            reason="close_requested",
-            session=session,
-        )
+        try:
+            await session_cleanup.terminate_session(
+                ctx.session_id,
+                self.client,
+                reason="close_requested",
+                session=session,
+            )
+        except Exception as exc:
+            logger.error("Failed to close session %s: %s", ctx.session_id[:8], exc, exc_info=True)
+
+            restored = await db.get_session(ctx.session_id)
+            if restored and not restored.closed_at:
+                await db.update_session(ctx.session_id, lifecycle_status="active")
+                timestamp = datetime.now(timezone.utc).isoformat()
+                canonical = serialize_status_event(
+                    session_id=ctx.session_id,
+                    status="error",
+                    reason="close_failed",
+                    timestamp=timestamp,
+                )
+                if canonical is not None:
+                    event_bus.emit(
+                        TeleClaudeEvents.SESSION_STATUS,
+                        SessionStatusContext(
+                            session_id=ctx.session_id,
+                            status="error",
+                            reason="close_failed",
+                            timestamp=timestamp,
+                            message_intent=canonical.message_intent,
+                            delivery_scope=canonical.delivery_scope,
+                        ),
+                    )
 
     async def _handle_session_started(self, _event: str, context: SessionLifecycleContext) -> None:
         """Handler for session_started events (headless snapshot bootstrap)."""

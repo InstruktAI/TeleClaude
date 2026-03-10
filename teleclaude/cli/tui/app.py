@@ -334,6 +334,7 @@ class TelecApp(App[str | None]):
         self.api.start_websocket(
             callback=self._on_ws_event,
             subscriptions=["sessions", "preparation", "todos"],
+            on_connect=self._on_ws_connected,
         )
 
         logger.trace("[PERF] on_mount api+ws done dt=%.3f", _t.monotonic() - _m0)
@@ -547,6 +548,14 @@ class TelecApp(App[str | None]):
         """Handle WebSocket event from background thread — safe handoff to Textual."""
         self.call_from_thread(self._handle_ws_event, event)
 
+    def _on_ws_connected(self) -> None:
+        """Handle websocket reconnect from the background thread."""
+        self.call_from_thread(self._handle_ws_connected)
+
+    def _handle_ws_connected(self) -> None:
+        """Refresh authoritative state after websocket (re)connect."""
+        self._refresh_data()
+
     def _handle_ws_event(self, event: WsEvent) -> None:
         """Process WebSocket event in the main thread."""
         if isinstance(event, SessionsInitialEvent):
@@ -597,7 +606,11 @@ class TelecApp(App[str | None]):
         elif isinstance(event, SessionLifecycleStatusEvent):
             # Surface stall and error transitions as TUI notifications.
             if event.status in ("stalled", "error"):
-                self.notify(f"Session {event.session_id[:8]}: {event.status}", severity="warning")
+                if event.reason == "close_failed":
+                    self.notify(f"Session {event.session_id[:8]} failed to close", severity="error")
+                    self._refresh_data()
+                else:
+                    self.notify(f"Session {event.session_id[:8]}: {event.status}", severity="warning")
 
         elif isinstance(event, ErrorEvent):
             self.notify(event.data.message, severity="error")
@@ -656,6 +669,8 @@ class TelecApp(App[str | None]):
 
     def on_session_closed(self, message: SessionClosed) -> None:
         self._session_agents.pop(message.session_id, None)
+        sessions_view = self.query_one("#sessions-view", SessionsView)
+        sessions_view.confirm_session_closed(message.session_id)
         self._refresh_data()
 
     def on_agent_activity(self, message: AgentActivity) -> None:
@@ -751,7 +766,10 @@ class TelecApp(App[str | None]):
     @work(exclusive=True, group="session-action")
     async def on_kill_session_request(self, message: KillSessionRequest) -> None:
         try:
-            await self.api.end_session(message.session_id, message.computer)
+            ended = await self.api.end_session(message.session_id, message.computer)
+            if ended:
+                sessions_view = self.query_one("#sessions-view", SessionsView)
+                sessions_view.optimistically_hide_session(message.session_id)
         except Exception as e:
             self.notify(f"Failed to kill session: {e}", severity="error")
 
