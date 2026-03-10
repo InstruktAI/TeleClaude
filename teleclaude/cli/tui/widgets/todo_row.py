@@ -9,17 +9,108 @@ from textual.message import Message
 from textual.widget import Widget
 
 from teleclaude.cli.tui.base import TelecMixin
-from teleclaude.cli.tui.phase_labels import integration_phase_label, prepare_phase_label
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
-from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD
+from teleclaude.core.integration.state_machine import IntegrationPhase
+from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD, PreparePhase
 
 _CONNECTOR = Style(color=CONNECTOR_COLOR)
 _DIM = Style(dim=True)
 
+_PHASE_PREFIX_PREPARE = "P"
+_PHASE_PREFIX_INTEGRATION = "I"
+
+_PREPARE_LABEL_DISCOVERY = "discovery"
+_PREPARE_LABEL_REQUIREMENTS = "requirements"
+_PREPARE_LABEL_PLANNING = "planning"
+_PREPARE_LABEL_BLOCKED = "blocked"
+
+_INTEGRATION_LABEL_STARTED = "started"
+_INTEGRATION_LABEL_DELIVERED = "delivered"
+_INTEGRATION_LABEL_FAILED = "failed"
+_INTEGRATION_LABEL_QUEUED = "queued"
+
+_TODO_STATUS_DRAFT = "draft"
+_TODO_STATUS_READY = "ready"
+_TODO_STATUS_ACTIVE = "active"
+_TODO_STATUS_PENDING = "pending"
+_TODO_STATUS_COMPLETE = "complete"
+_TODO_STATUS_APPROVED = "approved"
+
+_PREPARE_PHASE_LABELS: dict[PreparePhase, str] = {
+    PreparePhase.INPUT_ASSESSMENT: _PREPARE_LABEL_DISCOVERY,
+    PreparePhase.TRIANGULATION: _PREPARE_LABEL_DISCOVERY,
+    PreparePhase.REQUIREMENTS_REVIEW: _PREPARE_LABEL_REQUIREMENTS,
+    PreparePhase.PLAN_DRAFTING: _PREPARE_LABEL_PLANNING,
+    PreparePhase.PLAN_REVIEW: _PREPARE_LABEL_PLANNING,
+    PreparePhase.GATE: _PREPARE_LABEL_PLANNING,
+    PreparePhase.GROUNDING_CHECK: _PREPARE_LABEL_PLANNING,
+    PreparePhase.RE_GROUNDING: _PREPARE_LABEL_PLANNING,
+    PreparePhase.BLOCKED: _PREPARE_LABEL_BLOCKED,
+}
+
+_FINALIZE_LABEL_QUEUED = "handed_off"
+_INTEGRATION_CLEARANCE_PHASE = "clearance_wait"
+
+_INTEGRATION_STARTED_PHASES: frozenset[str] = frozenset(
+    {
+        IntegrationPhase.CANDIDATE_DEQUEUED.value,
+        _INTEGRATION_CLEARANCE_PHASE,
+        IntegrationPhase.MERGE_CLEAN.value,
+        IntegrationPhase.MERGE_CONFLICTED.value,
+        IntegrationPhase.AWAITING_COMMIT.value,
+        IntegrationPhase.COMMITTED.value,
+        IntegrationPhase.DELIVERY_BOOKKEEPING.value,
+    }
+)
+
+_INTEGRATION_DELIVERED_PHASES: frozenset[str] = frozenset(
+    {
+        IntegrationPhase.PUSH_SUCCEEDED.value,
+        IntegrationPhase.CLEANUP.value,
+        IntegrationPhase.CANDIDATE_DELIVERED.value,
+        IntegrationPhase.COMPLETED.value,
+    }
+)
+
+
+def _coerce_prepare_phase(phase: str | None) -> PreparePhase | None:
+    if not phase:
+        return None
+    try:
+        return PreparePhase(phase)
+    except ValueError:
+        return None
+
+
+def prepare_phase_label(phase: str | None) -> tuple[str, str, str] | None:
+    prepared_phase = _coerce_prepare_phase(phase)
+    if not prepared_phase:
+        return None
+    value = _PREPARE_PHASE_LABELS.get(prepared_phase)
+    if not value:
+        return None
+    color = _gold_color() if prepared_phase == PreparePhase.BLOCKED else _ok_color()
+    return _PHASE_PREFIX_PREPARE, value, color
+
+
+def integration_phase_label(phase: str | None, finalize_status: str | None) -> tuple[str, str, str] | None:
+    if phase in _INTEGRATION_STARTED_PHASES:
+        return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_STARTED, _ok_color()
+    if phase in _INTEGRATION_DELIVERED_PHASES:
+        return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_DELIVERED, _ok_color()
+    if phase == IntegrationPhase.PUSH_REJECTED.value:
+        return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_FAILED, _gold_color()
+    if not phase:
+        if finalize_status == _FINALIZE_LABEL_QUEUED:
+            return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_QUEUED, _ok_color()
+        return None
+
+    return None
+
 # Status colors: dark/light table (like agent colors)
-_STATUS_COLORS_DARK = {"draft": "color(244)", "ready": "color(71)", "active": "color(178)"}
-_STATUS_COLORS_LIGHT = {"draft": "color(244)", "ready": "color(28)", "active": "color(136)"}
+_STATUS_COLORS_DARK = {_TODO_STATUS_DRAFT: "color(244)", _TODO_STATUS_READY: "color(71)", _TODO_STATUS_ACTIVE: "color(178)"}
+_STATUS_COLORS_LIGHT = {_TODO_STATUS_DRAFT: "color(244)", _TODO_STATUS_READY: "color(28)", _TODO_STATUS_ACTIVE: "color(136)"}
 
 # Phase value colors
 _OK_DARK = "color(71)"
@@ -101,17 +192,19 @@ class TodoRow(TelecMixin, Widget):
         for t in todos:
             p_result = prepare_phase_label(t.prepare_phase)
             if p_result is not None:
-                maxes["P"] = max(maxes["P"], len(p_result[0]))
+                p_prefix, p_value, _ = p_result
+                maxes["P"] = max(maxes["P"], len(f"{p_prefix}:{p_value}"))
             i_result = integration_phase_label(t.integration_phase, t.finalize_status)
             if i_result is not None:
-                maxes["I"] = max(maxes["I"], len(i_result[0]))
+                i_prefix, i_value, _ = i_result
+                maxes["I"] = max(maxes["I"], len(f"{i_prefix}:{i_value}"))
             if t.dor_score is not None:
                 maxes["DOR"] = max(maxes["DOR"], len(f"DOR:{t.dor_score}"))
             bs = t.build_status
-            if bs and bs != "pending":
+            if bs and bs != _TODO_STATUS_PENDING:
                 maxes["B"] = max(maxes["B"], len(f"B:{bs}"))
             rs = t.review_status
-            if rs and rs != "pending":
+            if rs and rs != _TODO_STATUS_PENDING:
                 maxes["R"] = max(maxes["R"], len(f"R:{rs}"))
             if t.findings_count:
                 maxes["F"] = max(maxes["F"], len(f"F:{t.findings_count}"))
@@ -126,8 +219,8 @@ class TodoRow(TelecMixin, Widget):
     def _status_style(self) -> Style:
         label = self.todo.status.display_label
         colors = _STATUS_COLORS_DARK if is_dark_mode() else _STATUS_COLORS_LIGHT
-        color = colors.get(label, colors["draft"])
-        bold = label == "active"
+        color = colors.get(label, colors[_TODO_STATUS_DRAFT])
+        bold = label == _TODO_STATUS_ACTIVE
         return Style(color=color, bold=bold)
 
     def _build_col(self, label: str, value: str, width: int, value_style: Style) -> Text:
@@ -156,36 +249,36 @@ class TodoRow(TelecMixin, Widget):
         # 1. Active prepare phase
         p_result = prepare_phase_label(self.todo.prepare_phase)
         if p_result is not None:
-            p_label, p_color = p_result
+            p_label, p_value, p_color = p_result
             result.append_text(dor_text)
             result.append_text(
-                self._build_col("", p_label, w.get("P", 0), Style(color=p_color, bold=True))
+                self._build_col(p_label, p_value, w.get("P", 0), Style(color=p_color, bold=True))
             )
             return result
 
         # 2. Active or queued integration phase
         i_result = integration_phase_label(self.todo.integration_phase, self.todo.finalize_status)
         if i_result is not None:
-            i_label, i_color = i_result
+            i_label, i_value, i_color = i_result
             result.append_text(
-                self._build_col("", i_label, w.get("I", 0), Style(color=i_color, bold=True))
+                self._build_col(i_label, i_value, w.get("I", 0), Style(color=i_color, bold=True))
             )
             return result
 
         # 3. Work phase (build != pending) — existing B/R/F/D path
         bs = self.todo.build_status
-        if bs is not None and bs != "pending":
+        if bs is not None and bs != _TODO_STATUS_PENDING:
             result.append_text(dor_text)
 
-            b_val = bs if bs and bs != "pending" else ""
+            b_val = bs if bs and bs != _TODO_STATUS_PENDING else ""
             result.append_text(
-                self._build_col("B", b_val, w.get("B", 0), Style(color=ok if bs == "complete" else gold, bold=True))
+                self._build_col("B", b_val, w.get("B", 0), Style(color=ok if bs == _TODO_STATUS_COMPLETE else gold, bold=True))
             )
 
             rs = self.todo.review_status
-            r_val = rs if rs and rs != "pending" else ""
+            r_val = rs if rs and rs != _TODO_STATUS_PENDING else ""
             result.append_text(
-                self._build_col("R", r_val, w.get("R", 0), Style(color=ok if rs == "approved" else gold, bold=True))
+                self._build_col("R", r_val, w.get("R", 0), Style(color=ok if rs == _TODO_STATUS_APPROVED else gold, bold=True))
             )
 
             fc = self.todo.findings_count
@@ -210,7 +303,7 @@ class TodoRow(TelecMixin, Widget):
             line.append("\u2502 " if continues else "  ", style=_CONNECTOR)
         line.append("\u2514\u2500" if self.is_last else "\u251c\u2500", style=_CONNECTOR)
         status_label = self.todo.status.display_label
-        if status_label == "draft":
+        if status_label == _TODO_STATUS_DRAFT:
             line.append("\u25a1", style=self._status_style())
         else:
             line.append("\u25a0", style=self._status_style())
