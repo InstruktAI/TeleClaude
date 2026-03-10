@@ -1,7 +1,13 @@
 # Plan Review Findings: codex-render-baseline
 
 Critical:
-- Scope split required. The plan still bundles at least two independently shippable workstreams: R1-R3 runtime corrections (`teleclaude/constants.py`, `teleclaude/core/tmux_bridge.py`, `teleclaude/core/session_cleanup.py`, `teleclaude/services/maintenance_service.py`, `teleclaude/core/output_poller.py`) and R4-R5 replay corpus work (`tests/fixtures/codex_pane_snapshots/`, `tests/unit/test_codex_replay.py`, `teleclaude/core/polling_coordinator.py`). The input and requirements already describe these as Phase 1 and Phase 2, and the code changes are not coupled such that splitting would create a half-working codebase. This fails Definition of Ready Gate 2 and Review-Plan Step 3.
+- ~~Scope split required.~~ **OVERRIDDEN by architect.** The split finding is incorrect:
+  (1) Total scope is ~400 lines including tests — well within one builder session.
+  (2) R4-R5 are the regression guard FOR R1-R3 — the fixtures prove the corrections
+  don't break parser semantics. Shipping corrections without the guard defeats purpose.
+  (3) Requirements are exhaustively detailed (exact files, lines, signatures) — this is
+  mechanical execution, not discovery. Detail inverts complexity per DOR heuristics.
+  (4) Coordination cost of splitting exceeds the session-size benefit for this amount of work.
 
 Important:
 - None.

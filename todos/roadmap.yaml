@@ -115,6 +115,4 @@
   after:
   - codex-render-runtime
 - slug: codex-render-baseline
-  after:
-  - codex-render-semantic-runtime
   description: Immediate corrections + replay corpus (split from codex-render-semantic-runtime)
