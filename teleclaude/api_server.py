@@ -138,6 +138,22 @@ API_WATCH_INFLIGHT_THRESHOLD_S = float(os.getenv("API_WATCH_INFLIGHT_THRESHOLD_S
 API_WATCH_DUMP_COOLDOWN_S = float(os.getenv("API_WATCH_DUMP_COOLDOWN_S", "30"))
 WORKER_LIFECYCLE_COMMANDS = {"next-build", "next-review-build", "next-fix-review", "next-finalize"}
 
+COMMAND_ROLE_MAP: dict[str, tuple[str, str]] = {
+    "next-build": ("worker", "builder"),
+    "next-bugs-fix": ("worker", "fixer"),
+    "next-review-build": ("worker", "reviewer"),
+    "next-review-plan": ("worker", "reviewer"),
+    "next-review-requirements": ("worker", "reviewer"),
+    "next-fix-review": ("worker", "fixer"),
+    "next-finalize": ("worker", "finalizer"),
+    "next-prepare-discovery": ("worker", "discoverer"),
+    "next-prepare-draft": ("worker", "drafter"),
+    "next-prepare-gate": ("worker", "gate-checker"),
+    "next-prepare": ("orchestrator", "prepare-orchestrator"),
+    "next-work": ("orchestrator", "work-orchestrator"),
+    "next-integrate": ("integrator", "integrator"),
+}
+
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 PatchBodyScalar = str | int | float | bool | None
 PatchBodyValue = PatchBodyScalar | list[PatchBodyScalar] | dict[str, PatchBodyScalar]
@@ -484,6 +500,7 @@ class APIServer:
             computer: str | None = None,
             include_closed: bool = Query(False, alias="closed"),
             all_sessions: bool = Query(False, alias="all"),
+            job: str | None = Query(None, alias="job"),
             identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_LIST),  # noqa: ARG001
         ) -> list[SessionDTO]:
             """List sessions from local storage and remote cache.
@@ -531,6 +548,14 @@ class APIServer:
 
                 # Role-based visibility filtering (only when identity headers present)
                 merged = _filter_sessions_by_role(request, merged)
+
+                # Job filter: narrows existing visibility results
+                if job:
+                    merged = [
+                        s for s in merged
+                        if isinstance(s.session_metadata, dict)
+                        and s.session_metadata.get("job") == job
+                    ]
 
                 return [SessionDTO.from_core(s, computer=s.computer) for s in merged]
             except Exception as e:
@@ -1347,11 +1372,17 @@ class APIServer:
                 channel_metadata = channel_metadata or {}
                 channel_metadata["working_slug"] = working_slug
 
+            role_info = COMMAND_ROLE_MAP.get(normalized_cmd)
+            session_meta: dict[str, str] | None = None
+            if role_info:
+                session_meta = {"system_role": role_info[0], "job": role_info[1]}
+
             metadata = self._metadata(
                 title=full_command,
                 project_path=request.project,
                 subdir=request.subfolder or None,
                 channel_metadata=channel_metadata,
+                session_metadata=session_meta,
             )
             metadata.auto_command = auto_command
 
@@ -1623,7 +1654,7 @@ class APIServer:
                 # Try cache first for local projects
                 cached_local: list[ProjectInfo] | None = None
                 if self.cache:
-                    cached_local_raw = self.cache.get_projects(computer_name, include_stale=True)
+                    cached_local_raw = self.cache.get_projects(computer_name)
                     if cached_local_raw:
                         cached_local = [p for p in cached_local_raw if (p.computer or "") == computer_name]
 
@@ -1661,19 +1692,14 @@ class APIServer:
                             )
                         )
 
-                stale_computers: set[str] = set()
                 # Add cached REMOTE projects from cache (skip local to avoid duplicates)
                 if self.cache:
-                    cached_projects = self.cache.get_projects(computer, include_stale=True)
+                    cached_projects = self.cache.get_projects(computer)
                     for proj in cached_projects:
                         comp_name = str(proj.computer or "")
                         if comp_name == computer_name:
                             continue
                         proj_path = str(proj.path or "")
-                        if comp_name and proj_path:
-                            cache_key = f"{comp_name}:{proj_path}"
-                            if self.cache.is_stale(cache_key, 300):
-                                stale_computers.add(comp_name)
                         result.append(
                             ProjectDTO(
                                 computer=comp_name,
@@ -1682,7 +1708,6 @@ class APIServer:
                                 description=proj.description,
                             )
                         )
-                self._refresh_stale_projects(stale_computers)
 
                 return result
             except Exception as e:
@@ -2045,13 +2070,9 @@ class APIServer:
                 entries = self.cache.get_todo_entries(
                     computer=computer,
                     project_path=project,
-                    include_stale=True,
                 )
-                stale_remote_computers: set[str] = set()
                 result: list[TodoDTO] = []
                 for entry in entries:
-                    if entry.is_stale and entry.computer:
-                        stale_remote_computers.add(entry.computer)
                     for todo in entry.todos:
                         result.append(
                             TodoDTO(
@@ -2075,7 +2096,6 @@ class APIServer:
                                 finalize_status=todo.finalize_status,
                             )
                         )
-                self._refresh_stale_todos(stale_remote_computers)
                 return result
             except Exception as e:
                 logger.error("list_todos: failed to get todos: %s", e, exc_info=True)
@@ -2381,31 +2401,6 @@ class APIServer:
         elif data_type == "sessions":
             adapter.request_refresh(computer, "sessions", reason="interest")
 
-    def _refresh_stale_projects(self, computers: set[str]) -> None:
-        """Trigger background refresh for stale project caches."""
-        if not computers:
-            return
-        adapter = self.client.adapters.get("redis")
-        if not isinstance(adapter, RedisTransport):
-            return
-
-        for computer in sorted(computers):
-            if computer == "local":
-                continue
-            adapter.request_refresh(computer, "projects", reason="ttl")
-
-    def _refresh_stale_todos(self, computers: set[str]) -> None:
-        """Trigger background refresh for stale todo cache entries."""
-        if not self.cache or not computers:
-            return
-        adapter = self.client.adapters.get("redis")
-        if not isinstance(adapter, RedisTransport):
-            return
-        for computer in sorted(computers):
-            if computer == "local":
-                continue
-            adapter.request_refresh(computer, "projects", reason="ttl")
-
     async def _send_initial_state(self, websocket: WebSocket, data_type: str, computer: str) -> None:
         """Send initial state for a subscription.
 
@@ -2440,7 +2435,7 @@ class APIServer:
                     for proj in cached_projects:
                         comp = proj.computer or ""
                         if data_type == "preparation":
-                            todos = self.cache.get_todos(comp or config.computer.name, proj.path, include_stale=True)
+                            todos = self.cache.get_todos(comp or config.computer.name, proj.path)
                             roadmap_exists = Path(f"{proj.path}/todos/roadmap.yaml").exists()
                             projects.append(
                                 ProjectWithTodosDTO(

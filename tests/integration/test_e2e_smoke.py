@@ -249,14 +249,14 @@ async def test_session_removal_notifies_websocket(
 
 
 @pytest.mark.asyncio
-async def test_stale_cache_data_filtered(cache: DaemonCache) -> None:
+async def test_stale_cache_data_always_served(cache: DaemonCache) -> None:
     """
-    Flow: Add stale computer → get_computers() → stale data filtered out.
+    Flow: Add stale computer → get_computers() → stale data still returned (always-serve contract).
 
     Validates:
-    - TTL staleness filtering works in get_computers()
-    - Stale entries are auto-expired on access
-    - Fresh data returned correctly
+    - CachedItem.is_stale() still works as the internal TTL primitive
+    - get_computers() returns ALL entries including stale (no filtering, no mutation)
+    - Cache state is not mutated on read
     """
     from teleclaude.core.cache import CachedItem
 
@@ -276,7 +276,7 @@ async def test_stale_cache_data_filtered(cache: DaemonCache) -> None:
     stale_item = CachedItem(stale_computer, cached_at=old_timestamp)
     cache._computers["stale-computer"] = stale_item
 
-    # Verify stale check works
+    # Verify stale check works (CachedItem.is_stale is unchanged)
     assert stale_item.is_stale(60)  # Stale after 60 seconds
 
     # Add fresh computer
@@ -291,13 +291,15 @@ async def test_stale_cache_data_filtered(cache: DaemonCache) -> None:
     )
     cache.update_computer(fresh_computer)
 
-    # get_computers() should filter out stale entry and return only fresh
+    # get_computers() returns ALL entries regardless of staleness (always-serve contract)
     computers = cache.get_computers()
-    assert len(computers) == 1
-    assert computers[0].name == "fresh-computer"
+    assert len(computers) == 2
+    names = {c.name for c in computers}
+    assert "stale-computer" in names
+    assert "fresh-computer" in names
 
-    # Verify stale entry was removed from cache
-    assert "stale-computer" not in cache._computers
+    # Cache state is NOT mutated on read — stale entry remains
+    assert "stale-computer" in cache._computers
     assert "fresh-computer" in cache._computers
 
 

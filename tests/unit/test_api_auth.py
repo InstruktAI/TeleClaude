@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 from teleclaude.api.auth import CallerIdentity, _session_cache, require_clearance, verify_caller
-from teleclaude.constants import ROLE_ORCHESTRATOR, ROLE_WORKER
+from teleclaude.constants import ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_WORKER
 
 
 @pytest.fixture(autouse=True)
@@ -168,3 +168,78 @@ async def test_require_clearance_denies_excluded_tool() -> None:
     with pytest.raises(HTTPException) as excinfo:
         await check(identity=identity)
     assert excinfo.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_tool_denied_uses_command_auth() -> None:
+    """Orchestrator with valid human_role is allowed for sessions end."""
+    check = require_clearance("telec sessions end")
+    identity = CallerIdentity(
+        session_id="sess-1",
+        system_role=ROLE_ORCHESTRATOR,
+        human_role="member",
+        tmux_session_name="tc_1",
+    )
+    result = await check(identity=identity)
+    assert result == identity
+
+
+@pytest.mark.asyncio
+async def test_tool_denied_null_human_role_fails_closed() -> None:
+    """Any system_role with null human_role is denied (fail closed)."""
+    check = require_clearance("telec sessions list")
+    for system_role in (ROLE_ORCHESTRATOR, ROLE_WORKER, ROLE_INTEGRATOR):
+        identity = CallerIdentity(
+            session_id="sess-1",
+            system_role=system_role,
+            human_role=None,
+            tmux_session_name="tc_1",
+        )
+        with pytest.raises(HTTPException) as excinfo:
+            await check(identity=identity)
+        assert excinfo.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_tool_denied_worker_restricted() -> None:
+    """Worker is blocked from orchestrator-only commands."""
+    check = require_clearance("telec todo work")
+    identity = CallerIdentity(
+        session_id="sess-1",
+        system_role=ROLE_WORKER,
+        human_role="member",
+        tmux_session_name="tc_1",
+    )
+    with pytest.raises(HTTPException) as excinfo:
+        await check(identity=identity)
+    assert excinfo.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_tool_denied_integrator_restricted() -> None:
+    """Integrator is blocked from commands not on its whitelist."""
+    check = require_clearance("telec todo work")
+    identity = CallerIdentity(
+        session_id="sess-1",
+        system_role=ROLE_INTEGRATOR,
+        human_role="member",
+        tmux_session_name="tc_1",
+    )
+    with pytest.raises(HTTPException) as excinfo:
+        await check(identity=identity)
+    assert excinfo.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_derive_session_system_role_integrator() -> None:
+    """Session with system_role=integrator in metadata derives integrator role."""
+    from types import SimpleNamespace
+
+    from teleclaude.api.auth import _derive_session_system_role
+
+    session = SimpleNamespace(
+        session_metadata={"system_role": "integrator"},
+        working_slug=None,
+    )
+    role = _derive_session_system_role(session)
+    assert role == ROLE_INTEGRATOR

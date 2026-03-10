@@ -110,16 +110,18 @@ Run 'telec sessions <subcommand> --help' for subcommand-specific help."""
 def handle_sessions_list(args: list[str]) -> None:
     """List sessions.
 
-    Usage: telec sessions list [--all] [--closed]
+    Usage: telec sessions list [--all] [--closed] [--job <job>]
 
     Without --all, lists only sessions spawned by the current session.
     With --all, lists all sessions on the local computer.
     With --closed, includes closed sessions.
+    With --job <job>, filters to sessions whose session_metadata.job matches.
 
     Examples:
       telec sessions list
       telec sessions list --all
       telec sessions list --all --closed
+      telec sessions list --all --job integrator
     """
     show_all = "--all" in args
     closed = "--closed" in args
@@ -128,6 +130,13 @@ def handle_sessions_list(args: list[str]) -> None:
         params["all"] = "true"
     if closed:
         params["closed"] = "true"
+    job_filter = None
+    for i, arg in enumerate(args):
+        if arg == "--job" and i + 1 < len(args):
+            job_filter = args[i + 1]
+            break
+    if job_filter:
+        params["job"] = job_filter
     data = tool_api_call("GET", "/sessions", params=params)
     print_json(data)
 

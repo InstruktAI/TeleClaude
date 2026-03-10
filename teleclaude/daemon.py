@@ -311,7 +311,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         )
 
         # Initialize cache for remote data
-        self.cache = DaemonCache()
+        self.cache = DaemonCache(
+            on_stale_read=TeleClaudeDaemon._make_stale_read_callback(
+                local_computer_name=config.computer.name,
+                get_adapter=lambda: self.client.adapters.get("redis"),
+            )
+        )
         logger.info("DaemonCache initialized")
 
         # Initialize TTS manager for direct speech (no event bus coupling)
@@ -446,6 +451,28 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             launchd_watch_interval_s=LAUNCHD_WATCH_INTERVAL_S,
             db_path=db.db_path,
         )
+
+    @staticmethod
+    def _make_stale_read_callback(
+        local_computer_name: str,
+        get_adapter: Callable[[], object],
+    ) -> Callable[[str, str], None]:
+        """Return the on_stale_read callback for DaemonCache.
+
+        Args:
+            local_computer_name: Name of the local computer (from config).
+            get_adapter: Callable that returns the "redis" adapter (or None).
+        """
+
+        def _on_stale_read(resource_type: str, computer: str) -> None:
+            # Local computers manage freshness via startup warming and TodoWatcher
+            if computer in ("local", local_computer_name, ""):
+                return
+            adapter = get_adapter()
+            if isinstance(adapter, RedisTransport):
+                adapter.request_refresh(computer, resource_type, reason="ttl")
+
+        return _on_stale_read
 
     def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]:
         """Return a done-callback that logs unexpected background task failures."""

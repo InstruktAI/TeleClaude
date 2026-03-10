@@ -38,6 +38,7 @@ ENV_ENABLE = "1"
 # System roles
 ROLE_ORCHESTRATOR = "orchestrator"
 ROLE_WORKER = "worker"
+ROLE_INTEGRATOR = "integrator"
 
 # Human identity roles
 HUMAN_ROLE_ADMIN = "admin"

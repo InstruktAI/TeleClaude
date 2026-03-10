@@ -48,26 +48,28 @@ def test_cached_item_is_stale_at_boundary():
 # ==================== DaemonCache Tests ====================
 
 
-def test_get_computers_auto_expires_stale_entries():
-    """Test get_computers() removes stale entries automatically."""
+def test_get_computers_returns_all_including_stale():
+    """Test get_computers() returns all entries without auto-expiring stale ones."""
     cache = DaemonCache()
 
     # Add fresh computer
     fresh_computer = ComputerInfo(name="fresh", status="online")
     cache.update_computer(fresh_computer)
 
-    # Add stale computer (cached 120 seconds ago, TTL is 60s)
+    # Add stale computer (cached 120 seconds ago, TTL would be 60s)
     stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=120)
     stale_computer = ComputerInfo(name="stale", status="online")
     cache._computers["stale"] = CachedItem(stale_computer, cached_at=stale_timestamp)
 
-    # get_computers should auto-expire stale entry
+    # get_computers must return both entries (always-serve contract)
     computers = cache.get_computers()
-    assert len(computers) == 1
-    assert computers[0].name == "fresh"
+    assert len(computers) == 2
+    names = {c.name for c in computers}
+    assert "fresh" in names
+    assert "stale" in names
 
-    # Verify stale entry was removed from cache
-    assert "stale" not in cache._computers
+    # Internal dict must not have been mutated
+    assert "stale" in cache._computers
 
 
 def test_get_sessions_filters_by_computer():
@@ -309,8 +311,8 @@ def test_notify_handles_callback_exception():
     assert succeeded == [True]
 
 
-def test_get_projects_filters_stale_entries():
-    """Test get_projects() filters out stale entries."""
+def test_get_projects_returns_stale_entries():
+    """Test get_projects() returns stale entries (always-serve contract)."""
     cache = DaemonCache()
 
     # Add fresh project
@@ -322,27 +324,16 @@ def test_get_projects_filters_stale_entries():
     stale_project = ProjectInfo(name="stale", path="/stale", description="Stale")
     cache._projects["local:/stale"] = CachedItem(stale_project, cached_at=stale_timestamp)
 
-    # get_projects should filter out stale entry
+    # get_projects must return both entries regardless of TTL
     projects = cache.get_projects()
-    assert len(projects) == 1
-    assert projects[0].name == "fresh"
+    assert len(projects) == 2
+    names = {p.name for p in projects}
+    assert "fresh" in names
+    assert "stale" in names
 
 
-def test_get_projects_includes_stale_when_requested():
-    """Test get_projects(include_stale=True) includes stale entries."""
-    cache = DaemonCache()
-
-    stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=400)
-    stale_project = ProjectInfo(name="stale", path="/stale", description="Stale")
-    cache._projects["local:/stale"] = CachedItem(stale_project, cached_at=stale_timestamp)
-
-    projects = cache.get_projects(include_stale=True)
-    assert len(projects) == 1
-    assert projects[0].name == "stale"
-
-
-def test_get_todos_returns_empty_for_stale_data():
-    """Test get_todos() returns empty list for stale data."""
+def test_get_todos_returns_stale_data():
+    """Test get_todos() returns stale data (always-serve contract)."""
     cache = DaemonCache()
 
     # Add stale todos (cached 400 seconds ago, TTL is 300s)
@@ -350,24 +341,25 @@ def test_get_todos_returns_empty_for_stale_data():
     todos = [TodoInfo(slug="todo-1", status="pending")]
     cache._todos["local:/path"] = CachedItem(todos, cached_at=stale_timestamp)
 
-    # get_todos should return empty list for stale data
+    # get_todos must return stale data, not an empty list
     result = cache.get_todos("local", "/path")
-    assert result == []
+    assert len(result) == 1
+    assert result[0].slug == "todo-1"
 
 
-def test_get_todo_entries_include_stale():
-    """Test get_todo_entries(include_stale=True) returns stale entries with context."""
+def test_get_todo_entries_returns_stale_entries():
+    """Test get_todo_entries() returns stale entries (always-serve contract)."""
     cache = DaemonCache()
 
     stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=400)
     todos = [TodoInfo(slug="todo-1", status="pending")]
     cache._todos["remote:/path"] = CachedItem(todos, cached_at=stale_timestamp)
 
-    entries = cache.get_todo_entries(include_stale=True)
+    entries = cache.get_todo_entries()
     assert len(entries) == 1
     assert entries[0].computer == "remote"
     assert entries[0].project_path == "/path"
-    assert entries[0].is_stale is True
+    assert entries[0].todos[0].slug == "todo-1"
 
 
 def test_invalidate_removes_from_cache():
@@ -463,12 +455,6 @@ def test_remove_interest():
     assert cache.get_interested_computers("sessions") == []
 
 
-def test_is_stale_returns_true_for_missing_key():
-    """Test is_stale() returns True for non-existent key."""
-    cache = DaemonCache()
-    assert cache.is_stale("nonexistent", 60) is True
-
-
 def test_get_projects_filters_by_computer():
     """Test get_projects() filters by computer prefix."""
     cache = DaemonCache()
@@ -505,3 +491,118 @@ def test_get_interested_computers_returns_list():
 
     # Original cache should be unchanged
     assert set(cache.get_interested_computers("sessions")) == {"raspi", "macbook"}
+
+
+# ==================== on_stale_read Callback Tests ====================
+
+
+def test_on_stale_read_not_called_when_fresh():
+    """Callback must not fire when data is fresh."""
+    callback = MagicMock()
+    cache = DaemonCache(on_stale_read=callback)
+
+    project = ProjectInfo(name="proj", path="/proj", description="")
+    cache._projects["local:/proj"] = CachedItem(project)
+
+    cache.get_projects()
+    callback.assert_not_called()
+
+
+def test_on_stale_read_called_for_stale_projects():
+    """Callback fires with ('projects', computer) when a stale project is read."""
+    callback = MagicMock()
+    cache = DaemonCache(on_stale_read=callback)
+
+    stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=400)
+    project = ProjectInfo(name="proj", path="/proj", description="")
+    cache._projects["remote:/proj"] = CachedItem(project, cached_at=stale_timestamp)
+
+    cache.get_projects()
+    callback.assert_called_once_with("projects", "remote")
+
+
+def test_on_stale_read_called_for_stale_todos():
+    """Callback fires with ('todos', computer) when stale todos are read."""
+    callback = MagicMock()
+    cache = DaemonCache(on_stale_read=callback)
+
+    stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=400)
+    todos = [TodoInfo(slug="todo-1", status="pending")]
+    cache._todos["remote:/path"] = CachedItem(todos, cached_at=stale_timestamp)
+
+    cache.get_todos("remote", "/path")
+    callback.assert_called_once_with("todos", "remote")
+
+
+def test_on_stale_read_suppresses_exceptions():
+    """Callback exceptions are swallowed; read result is unaffected."""
+    def bad_callback(resource_type: str, computer: str) -> None:
+        raise RuntimeError("boom")
+
+    stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=400)
+    cache = DaemonCache(on_stale_read=bad_callback)
+    project = ProjectInfo(name="proj", path="/proj", description="")
+    cache._projects["remote:/proj"] = CachedItem(project, cached_at=stale_timestamp)
+
+    # Must not raise; must still return the data
+    projects = cache.get_projects()
+    assert len(projects) == 1
+
+
+def test_on_stale_read_deduplicates_per_computer():
+    """Callback fires once per unique computer per get_projects call."""
+    callback = MagicMock()
+    cache = DaemonCache(on_stale_read=callback)
+
+    stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=400)
+    for i in range(3):
+        proj = ProjectInfo(name=f"proj{i}", path=f"/proj{i}", description="")
+        cache._projects[f"remote:/proj{i}"] = CachedItem(proj, cached_at=stale_timestamp)
+
+    cache.get_projects()
+    # Despite 3 stale entries from the same computer, callback fires only once
+    callback.assert_called_once_with("projects", "remote")
+
+
+def test_get_todo_entries_signals_stale_read():
+    """get_todo_entries() fires callback with ('todos', computer) for stale entries."""
+    callback = MagicMock()
+    cache = DaemonCache(on_stale_read=callback)
+
+    stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=400)
+    cache._todos["remote:/path"] = CachedItem(
+        [TodoInfo(slug="t-1", status="pending")], cached_at=stale_timestamp
+    )
+
+    cache.get_todo_entries()
+    callback.assert_called_once_with("todos", "remote")
+
+
+def test_get_todo_entries_deduplicates_callback_per_computer():
+    """get_todo_entries() fires callback once per unique stale computer."""
+    callback = MagicMock()
+    cache = DaemonCache(on_stale_read=callback)
+
+    stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=400)
+    for i in range(3):
+        cache._todos[f"remote:/proj{i}"] = CachedItem(
+            [TodoInfo(slug=f"t-{i}", status="pending")], cached_at=stale_timestamp
+        )
+
+    cache.get_todo_entries()
+    callback.assert_called_once_with("todos", "remote")
+
+
+def test_get_computers_returns_stale_entries():
+    """get_computers() must return stale entries without deleting them."""
+    cache = DaemonCache()
+
+    stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=120)
+    computer = ComputerInfo(name="raspi", status="online")
+    cache._computers["raspi"] = CachedItem(computer, cached_at=stale_timestamp)
+
+    result = cache.get_computers()
+    assert len(result) == 1
+    assert result[0].name == "raspi"
+    # Internal dict must not have been mutated
+    assert "raspi" in cache._computers

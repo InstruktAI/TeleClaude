@@ -98,15 +98,18 @@ class TestCustomerToolFiltering:
         excluded = get_excluded_tools(None, human_role=HUMAN_ROLE_CUSTOMER)
         assert "telec sessions escalate" not in excluded
 
-    def test_admin_has_all_tools(self) -> None:
-        """Admin role has no tool exclusions."""
+    def test_admin_exclusions(self) -> None:
+        """Admin is excluded only from commands with explicit exclude_human (e.g. sessions escalate)."""
         excluded = get_excluded_tools(None, human_role=HUMAN_ROLE_ADMIN)
-        assert len(excluded) == 0
-
-    def test_member_cannot_use_escalate(self) -> None:
-        """Member role excludes telec sessions escalate."""
-        excluded = get_excluded_tools(None, human_role=HUMAN_ROLE_MEMBER)
+        # Admin is explicitly excluded from escalate
         assert "telec sessions escalate" in excluded
+        # Admin can use privileged commands not restricted to non-admins
+        assert "telec agents status" not in excluded
+
+    def test_member_can_use_escalate(self) -> None:
+        """Member role is allowed telec sessions escalate (CLI_SURFACE allows non-admins)."""
+        excluded = get_excluded_tools(None, human_role=HUMAN_ROLE_MEMBER)
+        assert "telec sessions escalate" not in excluded
 
     def test_customer_filter_applied(self) -> None:
         """filter_tool_names for customer removes internal tools, keeps escalate."""

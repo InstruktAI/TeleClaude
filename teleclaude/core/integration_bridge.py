@@ -7,6 +7,7 @@ session spawn/wake helper used by the integration trigger cartridge.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -281,18 +282,26 @@ def _spawn_integrator_sync(slug: str, branch: str, sha: str) -> _SpawnResult | N
     """Synchronous helper — check for running integrator and spawn if needed."""
     import subprocess
 
-    # Check if an integrator session is already running
+    # Check if an integrator session is already running via structured job filter.
     try:
         list_result = subprocess.run(
-            ["telec", "sessions", "list"],
+            ["telec", "sessions", "list", "--all", "--job", "integrator"],
             capture_output=True,
             text=True,
             timeout=10,
         )
-        if list_result.returncode == 0 and "integrator" in list_result.stdout.lower():
-            logger.info("Integrator session already running; candidate %s queued for drain", slug)
-            return None
-    except (subprocess.TimeoutExpired, FileNotFoundError):
+        if list_result.returncode != 0:
+            logger.warning(
+                "Integrator guard check failed (exit %d); proceeding to spawn. stderr: %s",
+                list_result.returncode,
+                (list_result.stderr or "").strip() or "(empty)",
+            )
+        else:
+            sessions = json.loads(list_result.stdout)
+            if sessions:
+                logger.info("Integrator session already running; candidate %s queued for drain", slug)
+                return None
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
         logger.warning("Could not check for running integrator sessions")
 
     # Spawn a new queue-draining integrator session with parity evidence for main push authorization.
@@ -304,13 +313,11 @@ def _spawn_integrator_sync(slug: str, branch: str, sha: str) -> _SpawnResult | N
             [
                 "telec",
                 "sessions",
-                "start",
+                "run",
+                "--command",
+                "/next-integrate",
                 "--project",
                 project_path,
-                "--message",
-                "/next-integrate",
-                "--title",
-                "integrator",
                 "--detach",
             ],
             env=spawn_env,
