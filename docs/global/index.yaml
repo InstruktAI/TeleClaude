@@ -595,6 +595,15 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: software-development/policy/preparation-artifact-quality
+  description: Quality rules for preparation artifacts (requirements and plans). Shared
+    by creators and reviewers.
+  type: policy
+  scope: domain
+  path: docs/software-development/policy/preparation-artifact-quality.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: software-development/policy/regression-zero-tolerance
   description: Regression is the supreme red flag. No change that introduces unscoped
     modifications may be merged, finalized, or approved under any circumstance.
