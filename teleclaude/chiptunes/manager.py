@@ -11,6 +11,7 @@ from instrukt_ai_logging import get_logger
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+from teleclaude.config.runtime_settings import ChiptunesRuntimeState
 from teleclaude.chiptunes.worker import _Worker
 
 logger = get_logger(__name__)
@@ -71,6 +72,15 @@ class ChiptunesManager:
         self._enabled = True
         self._worker.enable(start_paused=paused)
 
+    def start_from_runtime_state(self, state: ChiptunesRuntimeState) -> None:
+        """Start from persisted runtime state."""
+        self._enabled = True
+        self._worker.start_from_state(state)
+
+    def restore_runtime_state(self, state: ChiptunesRuntimeState) -> None:
+        """Restore non-playing runtime context without loading audio engine."""
+        self._enabled = False
+
     def stop(self) -> None:
         """Stop playback immediately."""
         self._enabled = False
@@ -112,6 +122,15 @@ class ChiptunesManager:
         """Return the current SID path, if any."""
         track = self._worker.current_track
         return str(track) if track is not None else ""
+
+    def capture_runtime_state(self) -> ChiptunesRuntimeState:
+        """Capture full runtime playback state for persistence."""
+        state = self._worker.capture_runtime_state()
+        if state.playback == "cold":
+            self._enabled = False
+        else:
+            self._enabled = True
+        return state
 
     def _pick_random_track(self) -> Path | None:
         """Lazily discover and cache all PSID tracks, then pick one at random."""

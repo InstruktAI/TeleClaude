@@ -28,7 +28,9 @@ class DataRefreshed(Message):
         availability: dict[str, AgentAvailabilityInfo],
         jobs: list[JobInfo],
         tts_enabled: bool,
-        chiptunes_enabled: bool = False,
+        chiptunes_loaded: bool = False,
+        chiptunes_playback: str = "cold",
+        chiptunes_state_version: int = 0,
         chiptunes_playing: bool = False,
         chiptunes_track: str = "",
         chiptunes_sid_path: str = "",
@@ -41,7 +43,9 @@ class DataRefreshed(Message):
         self.availability = availability
         self.jobs = jobs
         self.tts_enabled = tts_enabled
-        self.chiptunes_enabled = chiptunes_enabled
+        self.chiptunes_loaded = chiptunes_loaded
+        self.chiptunes_playback = chiptunes_playback
+        self.chiptunes_state_version = chiptunes_state_version
         self.chiptunes_playing = chiptunes_playing
         self.chiptunes_track = chiptunes_track
         self.chiptunes_sid_path = chiptunes_sid_path

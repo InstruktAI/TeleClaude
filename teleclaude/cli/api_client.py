@@ -738,21 +738,25 @@ class TelecAPIClient:
         resp = await self._request("PATCH", "/settings", json_body=updates.model_dump(exclude_none=True))
         return TypeAdapter(SettingsInfo).validate_json(resp.text)
 
-    async def chiptunes_next(self) -> None:
+    async def chiptunes_next(self) -> ChiptunesStatusInfo:
         """Skip to the next chiptunes track."""
-        await self._request("POST", "/api/chiptunes/next")
+        resp = await self._request("POST", "/api/chiptunes/next")
+        return TypeAdapter(ChiptunesStatusInfo).validate_json(resp.text)
 
-    async def chiptunes_prev(self) -> None:
+    async def chiptunes_prev(self) -> ChiptunesStatusInfo:
         """Go back to the previous chiptunes track."""
-        await self._request("POST", "/api/chiptunes/prev")
+        resp = await self._request("POST", "/api/chiptunes/prev")
+        return TypeAdapter(ChiptunesStatusInfo).validate_json(resp.text)
 
-    async def chiptunes_pause(self) -> None:
+    async def chiptunes_pause(self) -> ChiptunesStatusInfo:
         """Pause chiptunes playback."""
-        await self._request("POST", "/api/chiptunes/pause")
+        resp = await self._request("POST", "/api/chiptunes/pause")
+        return TypeAdapter(ChiptunesStatusInfo).validate_json(resp.text)
 
-    async def chiptunes_resume(self) -> None:
+    async def chiptunes_resume(self) -> ChiptunesStatusInfo:
         """Resume chiptunes playback."""
-        await self._request("POST", "/api/chiptunes/resume")
+        resp = await self._request("POST", "/api/chiptunes/resume")
+        return TypeAdapter(ChiptunesStatusInfo).validate_json(resp.text)
 
     async def get_chiptunes_status(self) -> ChiptunesStatusInfo:
         """Fetch current chiptunes playback state."""

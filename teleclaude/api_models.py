@@ -422,9 +422,12 @@ class ChiptunesStatusDTO(BaseModel):  # type: ignore[explicit-any]
 
     model_config = ConfigDict(frozen=True)
 
-    enabled: bool = False
+    playback: Literal["cold", "playing", "paused"] = "cold"
+    state_version: int = 0
+    loaded: bool = False
     playing: bool = False
     paused: bool = False
+    position_seconds: float = 0.0
     track: str = ""
     sid_path: str = ""
 
@@ -435,9 +438,12 @@ class ChiptunesStateEventDTO(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True)
 
     event: Literal["chiptunes_state"] = "chiptunes_state"
-    enabled: bool = False
+    playback: Literal["cold", "playing", "paused"] = "cold"
+    state_version: int = 0
+    loaded: bool = False
     playing: bool = False
     paused: bool = False
+    position_seconds: float = 0.0
     track: str = ""
     sid_path: str = ""
 
@@ -499,33 +505,16 @@ class TTSSettingsDTO(BaseModel):  # type: ignore[explicit-any]
     enabled: bool = False
 
 
-class ChiptunesSettingsDTO(BaseModel):  # type: ignore[explicit-any]
-    """ChipTunes section of settings response."""
-
-    model_config = ConfigDict(frozen=True)
-
-    enabled: bool = False
-
-
 class SettingsDTO(BaseModel):  # type: ignore[explicit-any]
     """Runtime settings response."""
 
     model_config = ConfigDict(frozen=True)
 
     tts: TTSSettingsDTO
-    chiptunes: ChiptunesSettingsDTO = ChiptunesSettingsDTO()
 
 
 class TTSSettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
     """TTS section of settings patch request."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    enabled: bool | None = None
-
-
-class ChiptunesSettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
-    """ChipTunes section of settings patch request."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -538,7 +527,6 @@ class SettingsPatchDTO(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     tts: TTSSettingsPatchDTO | None = None
-    chiptunes: ChiptunesSettingsPatchDTO | None = None
 
 
 class MessageDTO(BaseModel):  # type: ignore[explicit-any]

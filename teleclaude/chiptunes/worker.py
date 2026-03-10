@@ -9,6 +9,7 @@ from typing import Callable
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config.runtime_settings import ChiptunesRuntimeState
 from teleclaude.chiptunes.player import ChiptunesPlayer
 
 logger = get_logger(__name__)
@@ -56,6 +57,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         self._enabled: bool = False
         self._current_track: Path | None = None
         self._paused_requested: bool = False
+        self._paused_position_seconds: float = 0.0
         self._lock = threading.RLock()
 
     # ------------------------------------------------------------------ #
@@ -69,6 +71,26 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         self._notify_state_change()
         threading.Thread(target=self._play_next, daemon=True, name="chiptunes-start").start()
 
+    def start_from_state(self, state: ChiptunesRuntimeState) -> None:
+        """Start playback from persisted runtime state."""
+        with self._lock:
+            self._enabled = True
+            self._paused_requested = state.playback == "paused"
+            self._paused_position_seconds = max(0.0, state.position_seconds)
+            self._history = [Path(item) for item in state.history if item]
+            self._history_index = state.history_index
+            self._current_track = Path(state.track_path) if state.track_path else None
+        self._notify_state_change()
+        if self._current_track is None:
+            threading.Thread(target=self._play_next, daemon=True, name="chiptunes-start").start()
+            return
+        threading.Thread(
+            target=self._play_track,
+            args=(self._current_track,),
+            daemon=True,
+            name="chiptunes-resume",
+        ).start()
+
     def disable(self) -> None:
         """Mark worker as disabled and stop playback."""
         with self._lock:
@@ -78,6 +100,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
                 self._player.stop()
                 self._player = None
             self._current_track = None
+            self._paused_position_seconds = 0.0
         self._notify_state_change()
 
     def pause(self) -> None:
@@ -87,6 +110,8 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             if self._paused_requested and (player is None or player.is_paused):
                 return
             self._paused_requested = True
+            if player is not None:
+                self._paused_position_seconds = player.playback_position_seconds
         if player is not None:
             player.pause()
         self._notify_state_change()
@@ -95,8 +120,21 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         """Resume paused playback."""
         with self._lock:
             self._paused_requested = False
-        if self._player is not None:
+            player = self._player
+            current_track = self._current_track
+            start_pos = self._paused_position_seconds
+        if player is not None:
             self._player.resume()
+            self._notify_state_change()
+            return
+        if current_track is not None:
+            threading.Thread(
+                target=self._play_track,
+                args=(current_track,),
+                kwargs={"start_position_seconds": start_pos},
+                daemon=True,
+                name="chiptunes-resume",
+            ).start()
         self._notify_state_change()
 
     @property
@@ -123,6 +161,32 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             return ""
         return self._current_track.stem.replace("_", " ")
 
+    @property
+    def has_loaded_track(self) -> bool:
+        """Return True if playback context is loaded."""
+        return self._current_track is not None
+
+    def capture_runtime_state(self) -> ChiptunesRuntimeState:
+        """Capture current runtime state for persistence."""
+        with self._lock:
+            playback: str
+            if self._player is not None and self._player.is_playing:
+                playback = "playing"
+            elif self._paused_requested:
+                playback = "paused"
+            else:
+                playback = "cold"
+            position = self._paused_position_seconds
+            if self._player is not None:
+                position = self._player.playback_position_seconds
+            return ChiptunesRuntimeState(
+                playback=playback,
+                track_path=str(self._current_track) if self._current_track is not None else "",
+                position_seconds=max(0.0, position),
+                history=[str(item) for item in self._history],
+                history_index=self._history_index,
+            )
+
     def handle_cmd(self, cmd: dict[str, object]) -> None:  # guard: loose-dict - cmd payload
         """Dispatch a command dict to the appropriate navigation method.
 
@@ -140,7 +204,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
     # Internal navigation                                                   #
     # ------------------------------------------------------------------ #
 
-    def _play_track(self, track: Path) -> None:
+    def _play_track(self, track: Path, start_position_seconds: float | None = None) -> None:
         """Stop current player, emit track_start callback, and start playback."""
         with self._lock:
             if self._player is not None:
@@ -151,6 +215,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             self._player = player
             self._current_track = track
             start_paused = self._paused_requested
+            start_position = self._paused_position_seconds if start_position_seconds is None else start_position_seconds
 
         track_label = track.stem.replace("_", " ")
         logger.info("ChipTunes: playing %s", track_label)
@@ -158,7 +223,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         if self.on_track_start is not None:
             self.on_track_start(track_label, str(track))
 
-        player.play(track, start_paused=start_paused)
+        player.play(track, start_paused=start_paused, start_position_seconds=max(0.0, start_position))
         with self._lock:
             paused_requested = self._paused_requested
         if paused_requested and not start_paused:
@@ -212,8 +277,15 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
 
         self._play_track(track)
 
-    def _on_track_end(self) -> None:
+    def _on_track_end(self, reason: str | None = None) -> None:
         """Called by the player when a track finishes — auto-advance."""
+        if reason is None:
+            reason = self._player.track_end_reason if self._player is not None else None
+        track_end_reason = reason
+        if track_end_reason == "stream_open_failed":
+            logger.debug("ChipTunes: track ended due to stream open failure, not auto-advancing")
+            self._notify_state_change()
+            return
         if self._enabled:
             logger.debug("ChipTunes: track ended, advancing to next")
             threading.Thread(target=self._play_next, daemon=True, name="chiptunes-auto-next").start()

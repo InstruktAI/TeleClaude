@@ -286,7 +286,7 @@ class TestChiptunesPlayerLifecycle:
 
         called = threading.Event()
         player = ChiptunesPlayer(volume=0.5)
-        player.on_track_end = called.set
+        player.on_track_end = lambda _reason=None: called.set()  # noqa: ARG005
 
         # Feed an invalid file — should trigger on_track_end
         bad_file = tmp_path / "bad.sid"
@@ -510,85 +510,46 @@ class TestRuntimeSettingsChiptunes:
         mgr = MagicMock()
         mgr.enabled = False
         mgr.is_paused = False
+        mgr.is_playing = False
         return mgr
 
     @pytest.fixture
-    def config_yml(self, tmp_path: Path) -> Path:
-        p = tmp_path / "config.yml"
-        p.write_text("tts:\n  enabled: false\nchiptunes:\n  enabled: false\n")
+    def settings_json(self, tmp_path: Path) -> Path:
+        p = tmp_path / "runtime-settings.json"
+        p.write_text('{"tts": {"enabled": false}}')
         return p
 
-    def test_patch_chiptunes_enabled(
+    def test_set_chiptunes_paused_persists_playback_state(
         self,
-        config_yml: Path,
+        settings_json: Path,
         tts_manager: MagicMock,
         chiptunes_manager: MagicMock,
     ) -> None:
-        from teleclaude.config.runtime_settings import ChiptunesSettingsPatch, RuntimeSettings, SettingsPatch
-
-        settings = RuntimeSettings(config_yml, tts_manager, chiptunes_manager)
-        result = settings.patch(SettingsPatch(chiptunes=ChiptunesSettingsPatch(enabled=True)))
-
-        assert result.chiptunes.enabled is True
-        chiptunes_manager.start.assert_called_once()
-
-    def test_patch_chiptunes_disabled(
-        self,
-        config_yml: Path,
-        tts_manager: MagicMock,
-        chiptunes_manager: MagicMock,
-    ) -> None:
-        from teleclaude.config.runtime_settings import ChiptunesSettingsPatch, RuntimeSettings, SettingsPatch
-
-        settings = RuntimeSettings(config_yml, tts_manager, chiptunes_manager)
-        settings.patch(SettingsPatch(chiptunes=ChiptunesSettingsPatch(enabled=False)))
-
-        chiptunes_manager.stop.assert_called_once()
-
-    def test_set_chiptunes_paused_persists_user_pause(
-        self,
-        config_yml: Path,
-        tts_manager: MagicMock,
-        chiptunes_manager: MagicMock,
-    ) -> None:
-        from teleclaude.config.runtime_settings import RuntimeSettings
+        from teleclaude.config.runtime_settings import ChiptunesRuntimeState, RuntimeSettings
 
         chiptunes_manager.enabled = True
-        settings = RuntimeSettings(config_yml, tts_manager, chiptunes_manager)
+        chiptunes_manager.is_playing = True
+        chiptunes_manager.capture_runtime_state.return_value = ChiptunesRuntimeState(
+            playback="paused",
+            track_path="/music/demo.sid",
+            position_seconds=12.5,
+            history=["/music/demo.sid"],
+            history_index=0,
+        )
+        settings = RuntimeSettings(settings_json, tts_manager, chiptunes_manager)
         result = settings.set_chiptunes_paused(True)
 
-        assert result.chiptunes.paused is True
+        assert result.chiptunes.playback == "paused"
+        assert result.chiptunes.track_path == "/music/demo.sid"
+        assert result.chiptunes.position_seconds == 12.5
         tts_manager.on_chiptunes_user_pause.assert_called_once()
         chiptunes_manager.pause.assert_called_once()
 
-    def test_patch_chiptunes_enabled_restores_paused_state(
-        self,
-        config_yml: Path,
-        tts_manager: MagicMock,
-        chiptunes_manager: MagicMock,
-    ) -> None:
-        from teleclaude.config.runtime_settings import ChiptunesSettingsPatch, RuntimeSettings, SettingsPatch
-
-        settings = RuntimeSettings(config_yml, tts_manager, chiptunes_manager)
-        settings.set_chiptunes_paused(True)
-        chiptunes_manager.pause.reset_mock()
-
-        settings.patch(SettingsPatch(chiptunes=ChiptunesSettingsPatch(enabled=True)))
-
-        chiptunes_manager.start.assert_called_once_with(paused=True)
-
-    def test_parse_patch_chiptunes_valid(self) -> None:
+    def test_parse_patch_rejects_chiptunes_key(self) -> None:
         from teleclaude.config.runtime_settings import RuntimeSettings
 
-        result = RuntimeSettings.parse_patch({"chiptunes": {"enabled": True}})
-        assert result.chiptunes is not None
-        assert result.chiptunes.enabled is True
-
-    def test_parse_patch_chiptunes_unknown_key(self) -> None:
-        from teleclaude.config.runtime_settings import RuntimeSettings
-
-        with pytest.raises(ValueError, match="Unknown chiptunes keys"):
-            RuntimeSettings.parse_patch({"chiptunes": {"enabled": True, "volume": 0.8}})
+        with pytest.raises(ValueError, match="Unknown settings keys"):
+            RuntimeSettings.parse_patch({"chiptunes": {"enabled": True}})
 
     def test_parse_patch_rejects_unknown_top_key(self) -> None:
         from teleclaude.config.runtime_settings import RuntimeSettings
@@ -596,46 +557,43 @@ class TestRuntimeSettingsChiptunes:
         with pytest.raises(ValueError, match="Unknown settings keys"):
             RuntimeSettings.parse_patch({"music": {"enabled": True}})
 
-    def test_parse_patch_chiptunes_requires_boolean(self) -> None:
-        from teleclaude.config.runtime_settings import RuntimeSettings
-
-        with pytest.raises(ValueError, match="chiptunes.enabled must be a boolean"):
-            RuntimeSettings.parse_patch({"chiptunes": {"enabled": "yes"}})
-
     def test_get_state_includes_chiptunes(
         self,
-        config_yml: Path,
+        settings_json: Path,
         tts_manager: MagicMock,
         chiptunes_manager: MagicMock,
     ) -> None:
-        from teleclaude.config.runtime_settings import RuntimeSettings
+        from teleclaude.config.runtime_settings import ChiptunesRuntimeState, RuntimeSettings
 
-        chiptunes_manager.enabled = True
-        chiptunes_manager.is_paused = True
-        settings = RuntimeSettings(config_yml, tts_manager, chiptunes_manager)
+        chiptunes_manager.capture_runtime_state.return_value = ChiptunesRuntimeState(
+            playback="cold",
+            track_path="",
+            position_seconds=0.0,
+            history=[],
+            history_index=-1,
+        )
+        settings = RuntimeSettings(settings_json, tts_manager, chiptunes_manager)
         state = settings.get_state()
-        assert state.chiptunes.enabled is True
-        assert state.chiptunes.paused is True
+        assert state.chiptunes.playback == "cold"
+        assert state.chiptunes.position_seconds == 0.0
 
 
 # --- Task 2.3: API patch validation for chiptunes key ---
 
 class TestAPIChiptunesPatch:
-    def test_settings_patch_dto_accepts_chiptunes(self) -> None:
-        from teleclaude.api_models import ChiptunesSettingsPatchDTO, SettingsPatchDTO
+    def test_settings_patch_dto_rejects_chiptunes(self) -> None:
+        from pydantic import ValidationError
 
-        dto = SettingsPatchDTO(chiptunes=ChiptunesSettingsPatchDTO(enabled=True))
-        assert dto.chiptunes is not None
-        assert dto.chiptunes.enabled is True
+        from teleclaude.api_models import SettingsPatchDTO
 
-    def test_settings_dto_includes_chiptunes(self) -> None:
-        from teleclaude.api_models import ChiptunesSettingsDTO, SettingsDTO, TTSSettingsDTO
+        with pytest.raises(ValidationError):
+            SettingsPatchDTO(chiptunes={"enabled": True})
 
-        dto = SettingsDTO(
-            tts=TTSSettingsDTO(enabled=False),
-            chiptunes=ChiptunesSettingsDTO(enabled=True),
-        )
-        assert dto.chiptunes.enabled is True
+    def test_settings_dto_contains_tts_only(self) -> None:
+        from teleclaude.api_models import SettingsDTO, TTSSettingsDTO
+
+        dto = SettingsDTO(tts=TTSSettingsDTO(enabled=False))
+        assert dto.tts.enabled is False
 
 
 # --- Task 4.1: TTS + chiptunes coexistence (pause/resume) ---
@@ -884,11 +842,19 @@ class TestWorkerTrackHistory:
                 self.on_track_end = None
                 self.is_playing = True
                 self.is_paused = False
+                self.playback_position_seconds = 0.0
 
             def stop(self) -> None:
                 events.append("stop")
 
-            def play(self, track: Path, *, start_paused: bool = False) -> None:
+            def play(
+                self,
+                track: Path,
+                *,
+                start_paused: bool = False,
+                start_position_seconds: float = 0.0,
+            ) -> None:
+                self.playback_position_seconds = start_position_seconds
                 events.append(f"play:{track.name}:{start_paused}")
 
             def pause(self) -> None:
@@ -920,6 +886,7 @@ class TestWorkerTrackHistory:
         class FakePlayer:
             def __init__(self) -> None:
                 self.is_paused = False
+                self.playback_position_seconds = 0.0
 
             def pause(self) -> None:
                 self.is_paused = True
@@ -932,6 +899,39 @@ class TestWorkerTrackHistory:
         worker.pause()
 
         assert events == ["pause", "state"]
+
+    def test_on_track_end_does_not_auto_advance_on_stream_open_failure(self, tmp_path: Path) -> None:
+        from types import SimpleNamespace
+        from teleclaude.chiptunes.worker import _Worker
+
+        track = tmp_path / "bad.sid"
+        track.write_bytes(_build_psid())
+        events: list[str] = []
+        worker = _Worker(pick_random_track=lambda: track, volume=0.0)
+        worker._enabled = True
+        worker._player = SimpleNamespace(track_end_reason="stream_open_failed")
+        worker._play_next = lambda: events.append("next")
+        worker.on_state_change = lambda: events.append("state")
+
+        worker._on_track_end()
+
+        assert events == ["state"]
+
+    def test_on_track_end_advances_on_normal_completion(self, tmp_path: Path) -> None:
+        from types import SimpleNamespace
+        from teleclaude.chiptunes.worker import _Worker
+
+        track = tmp_path / "ok.sid"
+        track.write_bytes(_build_psid())
+        events: list[str] = []
+        worker = _Worker(pick_random_track=lambda: track, volume=0.0)
+        worker._enabled = True
+        worker._player = SimpleNamespace(track_end_reason="track_completed")
+        worker._play_next = lambda: events.append("next")
+
+        worker._on_track_end()
+
+        assert events == ["next"]
 
 
 # --- Manager next_track / prev_track proxy methods ---

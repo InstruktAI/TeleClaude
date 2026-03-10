@@ -29,16 +29,16 @@ def tts_manager():
 
 
 @pytest.fixture
-def config_yml(tmp_path: Path) -> Path:
-    """Create a minimal config.yml for round-trip tests."""
-    p = tmp_path / "config.yml"
-    p.write_text("# TTS settings\ntts:\n  enabled: true\n  service_priority: [elevenlabs]\n")
+def settings_json(tmp_path: Path) -> Path:
+    """Create a runtime-settings.json for round-trip tests."""
+    p = tmp_path / "runtime-settings.json"
+    p.write_text('{"tts": {"enabled": true}}')
     return p
 
 
 @pytest.fixture
-def settings(config_yml: Path, tts_manager: MagicMock) -> RuntimeSettings:
-    return RuntimeSettings(config_yml, tts_manager)
+def settings(settings_json: Path, tts_manager: MagicMock) -> RuntimeSettings:
+    return RuntimeSettings(settings_json, tts_manager)
 
 
 def test_get_state_initial(settings: RuntimeSettings, tts_manager: MagicMock) -> None:
@@ -48,8 +48,8 @@ def test_get_state_initial(settings: RuntimeSettings, tts_manager: MagicMock) ->
     assert state.tts.enabled is True
 
     tts_manager.enabled = False
-    s2 = RuntimeSettings(settings._config_path, tts_manager)
-    assert s2.get_state().tts.enabled is False
+    s2 = RuntimeSettings(settings.settings_path, tts_manager)
+    assert s2.get_state().tts.enabled is True
 
 
 @pytest.mark.asyncio
@@ -102,25 +102,24 @@ def test_parse_patch_rejects_pane_theming_mode() -> None:
 
 
 @pytest.mark.asyncio
-async def test_flush_writes_yaml(settings: RuntimeSettings, config_yml: Path) -> None:
-    """_flush_to_disk round-trips the config preserving structure."""
+async def test_flush_writes_json(settings: RuntimeSettings, settings_json: Path) -> None:
+    """_flush_to_disk writes runtime-settings JSON."""
     settings.patch(SettingsPatch(tts=TTSSettingsPatch(enabled=False)))
     await asyncio.sleep(0.6)
-    content = config_yml.read_text()
-    assert "enabled: false" in content
-    assert "# TTS settings" in content
-    assert "service_priority" in content
+    content = settings_json.read_text()
+    assert '"tts"' in content
+    assert '"enabled": false' in content
 
 
 @pytest.mark.asyncio
-async def test_debounce_coalesces(settings: RuntimeSettings, config_yml: Path) -> None:
+async def test_debounce_coalesces(settings: RuntimeSettings, settings_json: Path) -> None:
     """Rapid patches result in a single disk write."""
     settings.patch(SettingsPatch(tts=TTSSettingsPatch(enabled=False)))
     settings.patch(SettingsPatch(tts=TTSSettingsPatch(enabled=True)))
     settings.patch(SettingsPatch(tts=TTSSettingsPatch(enabled=False)))
     await asyncio.sleep(0.6)
-    content = config_yml.read_text()
-    assert "enabled: false" in content
+    content = settings_json.read_text()
+    assert '"enabled": false' in content
 
 
 # --- API endpoint tests ---
@@ -157,7 +156,6 @@ def test_get_settings(settings_client: TestClient, mock_runtime_settings: MagicM
     assert resp.status_code == 200
     data = resp.json()
     assert data["tts"] == {"enabled": True}
-    assert "chiptunes" in data
     mock_runtime_settings.get_state.assert_called_once()
 
 
@@ -166,7 +164,6 @@ def test_patch_settings_success(settings_client: TestClient, mock_runtime_settin
     assert resp.status_code == 200
     data = resp.json()
     assert data["tts"] == {"enabled": False}
-    assert "chiptunes" in data
     mock_runtime_settings.patch.assert_called_once()
 
 

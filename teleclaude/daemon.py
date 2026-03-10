@@ -80,6 +80,7 @@ from teleclaude.mirrors import MirrorWorker
 from teleclaude.mirrors.event_handlers import handle_agent_stop as handle_mirror_agent_stop
 from teleclaude.mirrors.event_handlers import handle_session_closed as handle_mirror_session_closed
 from teleclaude.mirrors.processors import register_default_processors
+from teleclaude.paths import RUNTIME_SETTINGS_PATH
 from teleclaude.services.headless_snapshot_service import HeadlessSnapshotService
 from teleclaude.services.maintenance_service import MaintenanceService
 from teleclaude.services.monitoring_service import MonitoringService
@@ -331,24 +332,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             else project_root / "assets" / "audio" / "C64Music"
         )
         chiptunes_volume = chiptunes_cfg.volume if chiptunes_cfg else 0.5
-        chiptunes_was_enabled = chiptunes_cfg.enabled if chiptunes_cfg else False
-        chiptunes_was_paused = chiptunes_cfg.paused if chiptunes_cfg else False
         self.chiptunes_manager = ChiptunesManager(chiptunes_music_dir, volume=chiptunes_volume)
         self.chiptunes_manager.on_track_start = self._on_chiptunes_track_start
         self.chiptunes_manager.on_state_change = self._on_chiptunes_state_change
         self.tts_manager.set_chiptunes_manager(self.chiptunes_manager)
-        if chiptunes_was_enabled:
-            self.chiptunes_manager.start(paused=chiptunes_was_paused)
-            logger.info(
-                "ChiptunesManager initialized and started (music_dir=%s paused=%s)",
-                chiptunes_music_dir,
-                chiptunes_was_paused,
-            )
-        else:
-            logger.info("ChiptunesManager initialized (music_dir=%s)", chiptunes_music_dir)
+        logger.info("ChiptunesManager initialized (music_dir=%s)", chiptunes_music_dir)
 
-        # Mutable runtime settings with debounced YAML persistence
-        self.runtime_settings = RuntimeSettings(config_path, self.tts_manager, self.chiptunes_manager)
+        # Mutable runtime settings with debounced JSON persistence
+        self.runtime_settings = RuntimeSettings(RUNTIME_SETTINGS_PATH, self.tts_manager, self.chiptunes_manager)
+        self.runtime_settings.bootstrap_chiptunes()
 
         # Summary + headless snapshot services
         self.headless_snapshot_service = HeadlessSnapshotService()
@@ -1642,6 +1634,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Broadcast chiptunes_state WebSocket events from worker thread callbacks."""
         if hasattr(self, "tts_manager"):
             self.tts_manager.on_chiptunes_state_change()
+        if hasattr(self, "runtime_settings"):
+            self.runtime_settings.sync_chiptunes_state()
         loop = getattr(self, "_loop", None)
         if loop is not None and loop.is_running():
             loop.call_soon_threadsafe(self._broadcast_chiptunes_state)
@@ -1657,10 +1651,18 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if api_server is None or manager is None:
             return
 
+        runtime_state = manager.capture_runtime_state()
+        state_version = 0
+        runtime_settings = getattr(self, "runtime_settings", None)
+        if runtime_settings is not None:
+            state_version = runtime_settings.chiptunes_state_version
         payload = ChiptunesStateEventDTO(
-            enabled=manager.enabled,
+            playback=runtime_state.playback,
+            state_version=state_version,
+            loaded=manager.enabled,
             playing=manager.is_playing,
             paused=manager.is_paused,
+            position_seconds=runtime_state.position_seconds,
             track=manager.current_track,
             sid_path=manager.current_sid_path,
         ).model_dump()

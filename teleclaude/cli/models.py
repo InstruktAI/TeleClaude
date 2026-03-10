@@ -11,9 +11,6 @@ from teleclaude.api_models import (
     AgentAvailabilityDTO as AgentAvailabilityInfo,
 )
 from teleclaude.api_models import (
-    ChiptunesSettingsPatchDTO as ChiptunesSettingsPatchInfo,
-)
-from teleclaude.api_models import (
     ChiptunesStateEventDTO as ChiptunesStateEvent,
 )
 from teleclaude.api_models import (
@@ -112,7 +109,6 @@ __all__ = [
     "SessionUpdatedEvent",
     "SettingsInfo",
     "ChiptunesStatusInfo",
-    "ChiptunesSettingsPatchInfo",
     "ChiptunesStateEvent",
     "ChiptunesTrackEvent",
     "SettingsPatchInfo",

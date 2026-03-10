@@ -46,14 +46,15 @@ async def test_telec_app_uses_compact_textual_footer() -> None:
         get_settings=AsyncMock(
             return_value=SimpleNamespace(
                 tts=SimpleNamespace(enabled=False),
-                chiptunes=SimpleNamespace(enabled=False),
             )
         ),
         get_chiptunes_status=AsyncMock(
             return_value=SimpleNamespace(
-                enabled=False,
+                loaded=False,
+                playback="cold",
                 playing=False,
                 paused=False,
+                position_seconds=0.0,
                 track="",
                 sid_path="",
             )
@@ -81,14 +82,15 @@ async def test_telec_app_initializes_chiptunes_footer_from_status() -> None:
         get_settings=AsyncMock(
             return_value=SimpleNamespace(
                 tts=SimpleNamespace(enabled=False),
-                chiptunes=SimpleNamespace(enabled=True),
             )
         ),
         get_chiptunes_status=AsyncMock(
             return_value=SimpleNamespace(
-                enabled=True,
+                loaded=True,
+                playback="playing",
                 playing=True,
                 paused=False,
+                position_seconds=12.0,
                 track="Demo Tune",
                 sid_path="/music/demo.sid",
             )
@@ -99,7 +101,7 @@ async def test_telec_app_initializes_chiptunes_footer_from_status() -> None:
     async with app.run_test() as pilot:
         await pilot.pause(0.1)
         footer = app.query_one(TelecFooter)
-        assert footer.chiptunes_enabled is True
+        assert footer.chiptunes_loaded is True
         assert footer.chiptunes_playing is True
         assert footer.chiptunes_track == "Demo Tune"
         assert footer.chiptunes_sid_path == "/music/demo.sid"
@@ -119,14 +121,15 @@ async def test_telec_app_applies_chiptunes_state_events() -> None:
         get_settings=AsyncMock(
             return_value=SimpleNamespace(
                 tts=SimpleNamespace(enabled=False),
-                chiptunes=SimpleNamespace(enabled=False),
             )
         ),
         get_chiptunes_status=AsyncMock(
             return_value=SimpleNamespace(
-                enabled=False,
+                loaded=False,
+                playback="cold",
                 playing=False,
                 paused=False,
+                position_seconds=0.0,
                 track="",
                 sid_path="",
             )
@@ -138,15 +141,18 @@ async def test_telec_app_applies_chiptunes_state_events() -> None:
         footer = app.query_one(TelecFooter)
         app._handle_ws_event(
             ChiptunesStateEvent(
-                enabled=True,
+                loaded=True,
+                playback="paused",
+                state_version=3,
                 playing=False,
                 paused=True,
+                position_seconds=33.0,
                 track="Paused Tune",
                 sid_path="/music/paused.sid",
             )
         )
 
-        assert footer.chiptunes_enabled is True
+        assert footer.chiptunes_loaded is True
         assert footer.chiptunes_playing is False
         assert footer.chiptunes_track == "Paused Tune"
         assert footer.chiptunes_sid_path == "/music/paused.sid"
@@ -154,7 +160,7 @@ async def test_telec_app_applies_chiptunes_state_events() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_telec_app_ignores_track_events_when_disabled() -> None:
+async def test_telec_app_track_events_reconcile_loaded_state() -> None:
     api = SimpleNamespace(
         connect=AsyncMock(),
         start_websocket=MagicMock(),
@@ -166,14 +172,15 @@ async def test_telec_app_ignores_track_events_when_disabled() -> None:
         get_settings=AsyncMock(
             return_value=SimpleNamespace(
                 tts=SimpleNamespace(enabled=False),
-                chiptunes=SimpleNamespace(enabled=False),
             )
         ),
         get_chiptunes_status=AsyncMock(
             return_value=SimpleNamespace(
-                enabled=False,
+                loaded=False,
+                playback="cold",
                 playing=False,
                 paused=False,
+                position_seconds=0.0,
                 track="",
                 sid_path="",
             )
@@ -183,7 +190,7 @@ async def test_telec_app_ignores_track_events_when_disabled() -> None:
 
     async with app.run_test():
         footer = app.query_one(TelecFooter)
-        footer.chiptunes_enabled = False
+        footer.chiptunes_loaded = False
         footer.chiptunes_playing = False
         footer.chiptunes_track = ""
         footer.chiptunes_sid_path = ""
@@ -195,15 +202,15 @@ async def test_telec_app_ignores_track_events_when_disabled() -> None:
             )
         )
 
-        assert footer.chiptunes_enabled is False
-        assert footer.chiptunes_playing is False
-        assert footer.chiptunes_track == ""
-        assert footer.chiptunes_sid_path == ""
+        assert footer.chiptunes_loaded is True
+        assert footer.chiptunes_playing is True
+        assert footer.chiptunes_track == "Looping Tune"
+        assert footer.chiptunes_sid_path == "/music/loop.sid"
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_telec_app_play_pause_noop_when_disabled() -> None:
+async def test_telec_app_play_pause_starts_from_cold_state() -> None:
     api = SimpleNamespace(
         connect=AsyncMock(),
         start_websocket=MagicMock(),
@@ -213,13 +220,37 @@ async def test_telec_app_play_pause_noop_when_disabled() -> None:
         get_agent_availability=AsyncMock(return_value={}),
         list_jobs=AsyncMock(return_value=[]),
         patch_settings=AsyncMock(),
-        chiptunes_pause=AsyncMock(),
-        chiptunes_resume=AsyncMock(),
-        get_chiptunes_status=AsyncMock(
+        chiptunes_pause=AsyncMock(
             return_value=SimpleNamespace(
-                enabled=False,
+                loaded=False,
+                playback="cold",
+                state_version=2,
                 playing=False,
                 paused=False,
+                position_seconds=0.0,
+                track="",
+                sid_path="",
+            )
+        ),
+        chiptunes_resume=AsyncMock(
+            return_value=SimpleNamespace(
+                loaded=True,
+                playback="playing",
+                state_version=2,
+                playing=True,
+                paused=False,
+                position_seconds=0.0,
+                track="Demo Tune",
+                sid_path="/music/demo.sid",
+            )
+        ),
+        get_chiptunes_status=AsyncMock(
+            return_value=SimpleNamespace(
+                loaded=False,
+                playback="cold",
+                playing=False,
+                paused=False,
+                position_seconds=0.0,
                 track="",
                 sid_path="",
             )
@@ -227,7 +258,6 @@ async def test_telec_app_play_pause_noop_when_disabled() -> None:
         get_settings=AsyncMock(
             return_value=SimpleNamespace(
                 tts=SimpleNamespace(enabled=False),
-                chiptunes=SimpleNamespace(enabled=False),
             )
         ),
     )
@@ -235,12 +265,12 @@ async def test_telec_app_play_pause_noop_when_disabled() -> None:
 
     async with app.run_test():
         footer = app.query_one(TelecFooter)
-        assert footer.chiptunes_enabled is False
+        assert footer.chiptunes_loaded is False
 
         await TelecApp._chiptunes_play_pause.__wrapped__(app)
 
         api.chiptunes_pause.assert_not_awaited()
-        api.chiptunes_resume.assert_not_awaited()
+        api.chiptunes_resume.assert_awaited_once()
 
 
 @pytest.mark.unit
@@ -262,14 +292,15 @@ async def test_telec_app_chiptunes_favorite_toggles(tmp_path: Path, monkeypatch:
         get_settings=AsyncMock(
             return_value=SimpleNamespace(
                 tts=SimpleNamespace(enabled=False),
-                chiptunes=SimpleNamespace(enabled=True),
             )
         ),
         get_chiptunes_status=AsyncMock(
             return_value=SimpleNamespace(
-                enabled=True,
+                loaded=True,
+                playback="playing",
                 playing=True,
                 paused=False,
+                position_seconds=1.0,
                 track="Demo Tune",
                 sid_path="/music/demo.sid",
             )
@@ -311,7 +342,7 @@ def test_telec_footer_implements_persistable_protocol() -> None:
 @pytest.mark.unit
 def test_telec_footer_play_click_routes_to_play_pause() -> None:
     footer = TelecFooter()
-    footer.chiptunes_enabled = True
+    footer.chiptunes_loaded = True
 
     seen: list[tuple[str, object]] = []
     footer.post_message = lambda message: seen.append((message.key, message.value))  # type: ignore[method-assign]
@@ -328,7 +359,7 @@ def test_telec_footer_next_click_routes_to_next() -> None:
     seen: list[tuple[str, object]] = []
     footer.post_message = lambda message: seen.append((message.key, message.value))  # type: ignore[method-assign]
 
-    footer.chiptunes_enabled = True
+    footer.chiptunes_loaded = True
     footer.on_footer_action_button_pressed(SimpleNamespace(button=SimpleNamespace(id="footer-next")))
 
     assert seen == [("chiptunes_next", None)]
@@ -341,7 +372,7 @@ async def test_telec_footer_play_button_width_is_stable() -> None:
 
     async with app.run_test() as pilot:
         footer = app.query_one(TelecFooter)
-        footer.chiptunes_enabled = True
+        footer.chiptunes_loaded = True
         await pilot.pause(0.05)
 
         play_button = footer.query_one("#footer-play", FooterActionButton)
@@ -361,7 +392,7 @@ async def test_telec_footer_transport_controls_use_real_buttons() -> None:
 
     async with app.run_test() as pilot:
         footer = app.query_one(TelecFooter)
-        footer.chiptunes_enabled = True
+        footer.chiptunes_loaded = True
         await pilot.pause(0.05)
 
         play_button = footer.query_one("#footer-play", FooterActionButton)
@@ -374,7 +405,7 @@ async def test_telec_footer_transport_controls_use_real_buttons() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_telec_footer_transport_controls_hide_when_disabled() -> None:
+async def test_telec_footer_transport_controls_disable_when_cold() -> None:
     app = FooterHarness()
 
     async with app.run_test() as pilot:
@@ -383,20 +414,23 @@ async def test_telec_footer_transport_controls_hide_when_disabled() -> None:
         play_button = footer.query_one("#footer-play", FooterActionButton)
         next_button = footer.query_one("#footer-next", FooterActionButton)
         fav_button = footer.query_one("#footer-fav", FooterActionButton)
+        footer.chiptunes_loaded = True
+        await pilot.pause(0.05)
+        footer.chiptunes_loaded = False
         await pilot.pause(0.05)
 
-        assert prev_button.has_class("-chiptunes-hidden")
-        assert play_button.has_class("-chiptunes-hidden")
-        assert next_button.has_class("-chiptunes-hidden")
-        assert fav_button.has_class("-chiptunes-hidden")
+        assert prev_button.disabled is True
+        assert play_button.disabled is False
+        assert next_button.disabled is True
+        assert fav_button.disabled is True
 
-        footer.chiptunes_enabled = True
+        footer.chiptunes_loaded = True
         await pilot.pause(0.05)
 
-        assert not prev_button.has_class("-chiptunes-hidden")
-        assert not play_button.has_class("-chiptunes-hidden")
-        assert not next_button.has_class("-chiptunes-hidden")
-        assert not fav_button.has_class("-chiptunes-hidden")
+        assert prev_button.disabled is False
+        assert play_button.disabled is False
+        assert next_button.disabled is False
+        assert fav_button.disabled is False
 
 
 @pytest.mark.unit

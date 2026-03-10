@@ -50,7 +50,6 @@ from teleclaude.api_models import (
     AgentActivityEventDTO,
     AgentAvailabilityDTO,
     AgentStatusRequest,
-    ChiptunesSettingsDTO,
     ChiptunesStatusDTO,
     ComputerDTO,
     CreateSessionRequest,
@@ -1862,10 +1861,7 @@ class APIServer:
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
             state = self.runtime_settings.get_state()
-            return SettingsDTO(
-                tts=TTSSettingsDTO(enabled=state.tts.enabled),
-                chiptunes=ChiptunesSettingsDTO(enabled=state.chiptunes.enabled),
-            )
+            return SettingsDTO(tts=TTSSettingsDTO(enabled=state.tts.enabled))
 
         @self.app.patch("/settings")
         async def patch_settings(body: dict[str, PatchBodyValue] = Body(...)) -> SettingsDTO:  # pyright: ignore
@@ -1877,15 +1873,40 @@ class APIServer:
             try:
                 typed_patch = RuntimeSettings.parse_patch(body)
                 state = self.runtime_settings.patch(typed_patch)
-                return SettingsDTO(
-                    tts=TTSSettingsDTO(enabled=state.tts.enabled),
-                    chiptunes=ChiptunesSettingsDTO(enabled=state.chiptunes.enabled),
-                )
+                return SettingsDTO(tts=TTSSettingsDTO(enabled=state.tts.enabled))
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
 
+        def _build_chiptunes_status() -> ChiptunesStatusDTO:
+            if not self.runtime_settings:
+                raise HTTPException(503, "Runtime settings not available")
+            manager = self.runtime_settings._chiptunes_manager
+            if manager is None:
+                raise HTTPException(503, "Chiptunes manager not available")
+            runtime_state = self.runtime_settings.get_state().chiptunes
+            track_label = Path(runtime_state.track_path).stem.replace("_", " ") if runtime_state.track_path else ""
+            sid_path = runtime_state.track_path
+            playing = runtime_state.playback == "playing"
+            paused = runtime_state.playback == "paused"
+            if manager.enabled:
+                runtime_state = manager.capture_runtime_state()
+                track_label = manager.current_track
+                sid_path = manager.current_sid_path
+                playing = manager.is_playing
+                paused = manager.is_paused
+            return ChiptunesStatusDTO(
+                playback=runtime_state.playback,
+                state_version=self.runtime_settings.chiptunes_state_version,
+                loaded=manager.enabled,
+                playing=playing,
+                paused=paused,
+                position_seconds=runtime_state.position_seconds,
+                track=track_label,
+                sid_path=sid_path,
+            )
+
         @self.app.post("/api/chiptunes/next")
-        async def chiptunes_next() -> JSONResponse:  # pyright: ignore
+        async def chiptunes_next() -> ChiptunesStatusDTO:  # pyright: ignore
             """Skip to the next chiptunes track."""
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
@@ -1893,26 +1914,16 @@ class APIServer:
             if manager is None:
                 raise HTTPException(503, "Chiptunes manager not available")
             manager.next_track()
-            return JSONResponse({"status": "ok"})
+            self.runtime_settings.sync_chiptunes_state()
+            return _build_chiptunes_status()
 
         @self.app.get("/api/chiptunes/status")
         async def chiptunes_status() -> ChiptunesStatusDTO:  # pyright: ignore
             """Return current chiptunes playback state."""
-            if not self.runtime_settings:
-                raise HTTPException(503, "Runtime settings not available")
-            manager = self.runtime_settings._chiptunes_manager
-            if manager is None:
-                raise HTTPException(503, "Chiptunes manager not available")
-            return ChiptunesStatusDTO(
-                enabled=manager.enabled,
-                playing=manager.is_playing,
-                paused=manager.is_paused,
-                track=manager.current_track,
-                sid_path=manager.current_sid_path,
-            )
+            return _build_chiptunes_status()
 
         @self.app.post("/api/chiptunes/prev")
-        async def chiptunes_prev() -> JSONResponse:  # pyright: ignore
+        async def chiptunes_prev() -> ChiptunesStatusDTO:  # pyright: ignore
             """Go back to the previous chiptunes track."""
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
@@ -1920,27 +1931,28 @@ class APIServer:
             if manager is None:
                 raise HTTPException(503, "Chiptunes manager not available")
             manager.prev_track()
-            return JSONResponse({"status": "ok"})
+            self.runtime_settings.sync_chiptunes_state()
+            return _build_chiptunes_status()
 
         @self.app.post("/api/chiptunes/pause")
-        async def chiptunes_pause() -> JSONResponse:  # pyright: ignore
+        async def chiptunes_pause() -> ChiptunesStatusDTO:  # pyright: ignore
             """Pause chiptunes playback."""
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
             if self.runtime_settings._chiptunes_manager is None:
                 raise HTTPException(503, "Chiptunes manager not available")
             self.runtime_settings.set_chiptunes_paused(True)
-            return JSONResponse({"status": "ok"})
+            return _build_chiptunes_status()
 
         @self.app.post("/api/chiptunes/resume")
-        async def chiptunes_resume() -> JSONResponse:  # pyright: ignore
+        async def chiptunes_resume() -> ChiptunesStatusDTO:  # pyright: ignore
             """Resume chiptunes playback."""
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
             if self.runtime_settings._chiptunes_manager is None:
                 raise HTTPException(503, "Chiptunes manager not available")
             self.runtime_settings.set_chiptunes_paused(False)
-            return JSONResponse({"status": "ok"})
+            return _build_chiptunes_status()
 
         @self.app.get("/jobs")
         async def list_jobs() -> list[JobDTO]:  # pyright: ignore

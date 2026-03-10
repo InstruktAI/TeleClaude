@@ -41,12 +41,15 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         self._thread: threading.Thread | None = None
         self._stream: object | None = None  # sounddevice.RawOutputStream
         self._stream_blocksize: int | None = None
+        self._last_track_end_reason: str | None = None
         self._stream_lock = threading.RLock()
         self._pcm_queue: queue.Queue[bytes] = queue.Queue(maxsize=_QUEUE_MAX_CHUNKS)
         self._playing = False
         self._paused = False
         self._pause_lock = threading.Lock()
-        self.on_track_end: Callable[[], None] | None = None
+        self._playback_position_seconds = 0.0
+        self._position_lock = threading.Lock()
+        self.on_track_end: Callable[[str | None], None] | None = None
 
     @property
     def is_playing(self) -> bool:
@@ -58,7 +61,18 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         """Return True if playback is loaded but currently paused."""
         return self._paused and not self._stop_event.is_set()
 
-    def play(self, sid_path: Path, *, start_paused: bool = False) -> None:
+    @property
+    def track_end_reason(self) -> str | None:
+        """Return the last track-end reason for diagnostics."""
+        return self._last_track_end_reason
+
+    @property
+    def playback_position_seconds(self) -> float:
+        """Current playback position within the active track."""
+        with self._position_lock:
+            return self._playback_position_seconds
+
+    def play(self, sid_path: Path, *, start_paused: bool = False, start_position_seconds: float = 0.0) -> None:
         """Parse and start playing a SID file in the background."""
         if not _sounddevice_available:
             raise ImportError(
@@ -66,16 +80,20 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             )
         self.stop()
 
+        self._last_track_end_reason = None
+
         try:
             header = parse_sid_file(sid_path)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("Failed to parse SID file %s: %s", sid_path, exc)
-            self._notify_track_end()
+            self._notify_track_end("sid_parse_failed")
             return
 
         self._stop_event.clear()
         self._playing = True
         self._paused = start_paused
+        with self._position_lock:
+            self._playback_position_seconds = max(0.0, start_position_seconds)
         if start_paused:
             self._resume_event.clear()
         else:
@@ -89,7 +107,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
 
         self._thread = threading.Thread(
             target=self._emulation_loop,
-            args=(header,),
+            args=(header, max(0.0, start_position_seconds)),
             daemon=True,
             name="chiptunes-emulator",
         )
@@ -131,7 +149,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             logger.error("ChipTunes: stream open failed after prebuffer — stopping track")
             self._stop_event.set()
             self._playing = False
-            self._notify_track_end()
+            self._notify_track_end("stream_open_failed")
         else:
             logger.info("ChipTunes: audio stream opened, playback active")
 
@@ -221,7 +239,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                 self._stop_event.wait(wait_s)
         return False
 
-    def _emulation_loop(self, header: SIDHeader) -> None:
+    def _emulation_loop(self, header: SIDHeader, start_position_seconds: float = 0.0) -> None:
         """Background thread: emulate CPU + SID and push PCM chunks to the queue."""
         pal = is_pal(header)
         frame_rate = 50.0 if pal else 60.0
@@ -248,6 +266,18 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             return
 
         playback_elapsed = 0.0
+        if start_position_seconds > 0.0:
+            target_frames = int(start_position_seconds / frame_duration)
+            for _ in range(target_frames):
+                if self._stop_event.is_set():
+                    break
+                if playback_elapsed >= self._max_track_duration:
+                    break
+                driver.play_frame()
+                playback_elapsed += frame_duration
+            with self._position_lock:
+                self._playback_position_seconds = playback_elapsed
+
         while not self._stop_event.is_set():
             if not self._resume_event.wait(timeout=0.1):
                 continue
@@ -260,10 +290,13 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                 writes = driver.play_frame()
                 pcm = renderer.render_frame(writes, frame_duration)
                 playback_elapsed += frame_duration
+                with self._position_lock:
+                    self._playback_position_seconds = playback_elapsed
                 if not self._enqueue_pcm(pcm, frame_duration):
                     continue
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning("Emulation error (skipping track): %s", exc)
+                self._notify_track_end("emulation_error")
                 break
             # Adaptive pacing: run flat-out when buffer is low, yield CPU when healthy.
             # This prevents 100% CPU usage from starving the audio callback thread.
@@ -275,7 +308,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
 
         self._playing = False
         if not self._stop_event.is_set():
-            self._notify_track_end()
+            self._notify_track_end("track_completed")
 
     def stop(self) -> None:
         """Stop playback and clean up resources."""
@@ -284,6 +317,8 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         self._playing = False
         self._paused = False
         self._stream_blocksize = None
+        with self._position_lock:
+            self._playback_position_seconds = 0.0
 
         self._close_stream()
 
@@ -330,9 +365,10 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         self._resume_event.set()
         logger.debug("ChipTunes: resumed playback")
 
-    def _notify_track_end(self) -> None:
+    def _notify_track_end(self, reason: str | None = None) -> None:
+        self._last_track_end_reason = reason
         if self.on_track_end is not None:
             try:
-                self.on_track_end()
+                self.on_track_end(reason)
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning("on_track_end callback error: %s", exc)

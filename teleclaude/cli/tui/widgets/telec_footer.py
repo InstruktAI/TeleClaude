@@ -141,10 +141,6 @@ class TelecFooter(Widget):
         margin: 0 1 0 0;
     }
 
-    .footer-action-button.-chiptunes-hidden {
-        display: none;
-    }
-
     .footer-action-button.-last-action {
         margin: 0 1 0 0;
     }
@@ -161,7 +157,8 @@ class TelecFooter(Widget):
     """
 
     tts_enabled = reactive(False)
-    chiptunes_enabled = reactive(False)
+    chiptunes_loaded = reactive(False)
+    chiptunes_playback = reactive("cold")
     chiptunes_playing = reactive(False)
     chiptunes_track = reactive("")
     chiptunes_sid_path = reactive("")
@@ -179,8 +176,8 @@ class TelecFooter(Widget):
         self._agent_availability: dict[str, AgentAvailabilityInfo] = agent_availability or {}
 
     def _show_transport_controls(self) -> bool:
-        """Show transport controls only when chiptunes are enabled."""
-        return self.chiptunes_enabled
+        """Transport controls are always visible."""
+        return True
 
     def compose(self) -> ComposeResult:
         yield Static(id="footer-context-row")
@@ -197,16 +194,16 @@ class TelecFooter(Widget):
                 yield Static("", id="footer-pane-toggle", classes="footer-token")
                 yield Static("", id="footer-tts-toggle", classes="footer-token")
                 yield FooterActionButton(
-                    "\u23ee", id="footer-prev", classes="footer-action-button -chiptunes-hidden"
+                    "\u23ee", id="footer-prev", classes="footer-action-button"
                 )
                 yield FooterActionButton(
-                    "\u25b6", id="footer-play", classes="footer-action-button -chiptunes-hidden"
+                    "\u25b6", id="footer-play", classes="footer-action-button"
                 )
                 yield FooterActionButton(
-                    "\u23ed", id="footer-next", classes="footer-action-button -chiptunes-hidden"
+                    "\u23ed", id="footer-next", classes="footer-action-button"
                 )
                 yield FooterActionButton(
-                    "\u2b50", id="footer-fav", classes="footer-action-button -chiptunes-hidden -last-action"
+                    "\u2b50", id="footer-fav", classes="footer-action-button -last-action"
                 )
                 yield Static("", id="footer-anim-toggle", classes="footer-token -last-token")
 
@@ -372,25 +369,15 @@ class TelecFooter(Widget):
         fav_button = self.query_one("#footer-fav", FooterActionButton)
 
         prev_button.icon = "\u23ee"
-        play_button.icon = "\u23f8" if (self.chiptunes_enabled and self.chiptunes_playing) else "\u25b6"
+        play_button.icon = "\u23f8" if self.chiptunes_playing else "\u25b6"
         next_button.icon = "\u23ed"
-        fav_button.icon = "\u2705" if (self.chiptunes_enabled and self.chiptunes_favorited) else "\u2b50"
+        fav_button.icon = "\u2705" if self.chiptunes_favorited else "\u2b50"
 
-        controls_enabled = self._show_transport_controls()
-        prev_button.disabled = not controls_enabled
-        next_button.disabled = not controls_enabled
-        play_button.disabled = not controls_enabled
-        fav_button.disabled = not controls_enabled
-        if controls_enabled:
-            prev_button.remove_class("-chiptunes-hidden")
-            play_button.remove_class("-chiptunes-hidden")
-            next_button.remove_class("-chiptunes-hidden")
-            fav_button.remove_class("-chiptunes-hidden")
-        else:
-            prev_button.add_class("-chiptunes-hidden")
-            play_button.add_class("-chiptunes-hidden")
-            next_button.add_class("-chiptunes-hidden")
-            fav_button.add_class("-chiptunes-hidden")
+        controls_loaded = self.chiptunes_loaded
+        prev_button.disabled = not controls_loaded
+        next_button.disabled = not controls_loaded
+        play_button.disabled = False
+        fav_button.disabled = not controls_loaded
 
     def on_click(self, event: Click) -> None:
         widget = event.widget
@@ -409,8 +396,6 @@ class TelecFooter(Widget):
             return
         if widget_id == "footer-tts-toggle":
             self.post_message(SettingsChanged("tts_enabled", not self.tts_enabled))
-            return
-        if not self._show_transport_controls() and widget_id in {"footer-prev", "footer-play", "footer-next", "footer-fav"}:
             return
         if widget_id == "footer-prev":
             self.post_message(SettingsChanged("chiptunes_prev", None))
@@ -435,8 +420,6 @@ class TelecFooter(Widget):
         if button_id == "footer-play":
             self.post_message(SettingsChanged("chiptunes_play_pause", None))
             return
-        if not self._show_transport_controls():
-            return
         if button_id == "footer-prev":
             self.post_message(SettingsChanged("chiptunes_prev", None))
             return
@@ -449,7 +432,10 @@ class TelecFooter(Widget):
     def watch_tts_enabled(self, _value: bool) -> None:
         self._refresh_controls()
 
-    def watch_chiptunes_enabled(self, _value: bool) -> None:
+    def watch_chiptunes_loaded(self, _value: bool) -> None:
+        self._refresh_controls()
+
+    def watch_chiptunes_playback(self, _value: str) -> None:
         self._refresh_controls()
 
     def watch_chiptunes_playing(self, _value: bool) -> None:
