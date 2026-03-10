@@ -7,6 +7,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -17,7 +18,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 FLUSH_DELAY_S = 0.5
-PlaybackState = Literal["cold", "playing", "paused"]
+PlaybackState = Literal["cold", "loading", "playing", "paused"]
+CommandAction = Literal["resume", "pause", "next", "prev"]
 
 
 @dataclass
@@ -36,6 +38,8 @@ class ChiptunesRuntimeState:
     position_seconds: float = 0.0
     history: list[str] = field(default_factory=list)
     history_index: int = -1
+    pending_command_id: str = ""
+    pending_action: Literal["", "resume", "pause", "next", "prev"] = ""
 
 
 @dataclass
@@ -147,6 +151,20 @@ class RuntimeSettings:
         self._schedule_flush()
         return self.get_state()
 
+    def issue_chiptunes_command(self, action: CommandAction) -> str:
+        """Enqueue a chiptunes command and return its receipt command_id."""
+        manager = self._chiptunes_manager
+        if manager is None:
+            raise ValueError("Chiptunes manager not available")
+
+        command_id = uuid4().hex
+        self._state.chiptunes.pending_command_id = command_id
+        self._state.chiptunes.pending_action = action
+        self._state.chiptunes_state_version += 1
+        manager.enqueue_command(command_id, action)
+        self._schedule_flush()
+        return command_id
+
     def sync_chiptunes_state(self) -> None:
         """Mirror manager runtime state into persisted in-memory state."""
         manager = self._chiptunes_manager
@@ -203,7 +221,7 @@ class RuntimeSettings:
         chiptunes_raw = data.get("chiptunes")
         if isinstance(chiptunes_raw, dict):
             playback = chiptunes_raw.get("playback")
-            if playback in {"cold", "playing", "paused"}:
+            if playback in {"cold", "loading", "playing", "paused"}:
                 self._state.chiptunes.playback = playback
             track_path = chiptunes_raw.get("track_path")
             if isinstance(track_path, str):
@@ -217,6 +235,12 @@ class RuntimeSettings:
             history_index = chiptunes_raw.get("history_index")
             if isinstance(history_index, int):
                 self._state.chiptunes.history_index = history_index
+            pending_command_id = chiptunes_raw.get("pending_command_id")
+            if isinstance(pending_command_id, str):
+                self._state.chiptunes.pending_command_id = pending_command_id
+            pending_action = chiptunes_raw.get("pending_action")
+            if pending_action in {"", "resume", "pause", "next", "prev"}:
+                self._state.chiptunes.pending_action = pending_action
             state_version = chiptunes_raw.get("state_version")
             if isinstance(state_version, int):
                 self._state.chiptunes_state_version = max(0, state_version)
@@ -257,6 +281,8 @@ class RuntimeSettings:
                     "position_seconds": self._state.chiptunes.position_seconds,
                     "history": self._state.chiptunes.history,
                     "history_index": self._state.chiptunes.history_index,
+                    "pending_command_id": self._state.chiptunes.pending_command_id,
+                    "pending_action": self._state.chiptunes.pending_action,
                 },
             }
             self._settings_path.write_text(f"{json.dumps(payload, indent=2, sort_keys=True)}\n", encoding="utf-8")

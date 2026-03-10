@@ -11,7 +11,7 @@ from instrukt_ai_logging import get_logger
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from teleclaude.config.runtime_settings import ChiptunesRuntimeState
+from teleclaude.config.runtime_settings import ChiptunesRuntimeState, CommandAction
 from teleclaude.chiptunes.worker import _Worker
 
 logger = get_logger(__name__)
@@ -101,6 +101,11 @@ class ChiptunesManager:
     def prev_track(self) -> None:
         """Go back to the previous track in session history."""
         self._worker.handle_cmd({"cmd": "prev"})
+
+    def enqueue_command(self, command_id: str, action: CommandAction) -> None:
+        """Enqueue a user command for asynchronous execution."""
+        self._enabled = True
+        self._worker.enqueue_command(command_id, action)
 
     @property
     def is_playing(self) -> bool:

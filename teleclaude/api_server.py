@@ -51,6 +51,7 @@ from teleclaude.api_models import (
     AgentActivityEventDTO,
     AgentAvailabilityDTO,
     AgentStatusRequest,
+    ChiptunesCommandReceiptDTO,
     ChiptunesStatusDTO,
     ComputerDTO,
     CreateSessionRequest,
@@ -1932,56 +1933,56 @@ class APIServer:
                 position_seconds=runtime_state.position_seconds,
                 track=track_label,
                 sid_path=sid_path,
+                pending_command_id=runtime_state.pending_command_id,
+                pending_action=runtime_state.pending_action,
             )
 
-        @self.app.post("/api/chiptunes/next")
-        async def chiptunes_next() -> ChiptunesStatusDTO:  # pyright: ignore
-            """Skip to the next chiptunes track."""
+        @self.app.post("/api/chiptunes/next", status_code=202)
+        async def chiptunes_next() -> ChiptunesCommandReceiptDTO:  # pyright: ignore
+            """Queue "next track" command and return receipt."""
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
             manager = self.runtime_settings._chiptunes_manager
             if manager is None:
                 raise HTTPException(503, "Chiptunes manager not available")
-            manager.next_track()
-            self.runtime_settings.sync_chiptunes_state()
-            return _build_chiptunes_status()
+            command_id = self.runtime_settings.issue_chiptunes_command("next")
+            return ChiptunesCommandReceiptDTO(command_id=command_id, action="next")
 
         @self.app.get("/api/chiptunes/status")
         async def chiptunes_status() -> ChiptunesStatusDTO:  # pyright: ignore
             """Return current chiptunes playback state."""
             return _build_chiptunes_status()
 
-        @self.app.post("/api/chiptunes/prev")
-        async def chiptunes_prev() -> ChiptunesStatusDTO:  # pyright: ignore
-            """Go back to the previous chiptunes track."""
+        @self.app.post("/api/chiptunes/prev", status_code=202)
+        async def chiptunes_prev() -> ChiptunesCommandReceiptDTO:  # pyright: ignore
+            """Queue "previous track" command and return receipt."""
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
             manager = self.runtime_settings._chiptunes_manager
             if manager is None:
                 raise HTTPException(503, "Chiptunes manager not available")
-            manager.prev_track()
-            self.runtime_settings.sync_chiptunes_state()
-            return _build_chiptunes_status()
+            command_id = self.runtime_settings.issue_chiptunes_command("prev")
+            return ChiptunesCommandReceiptDTO(command_id=command_id, action="prev")
 
-        @self.app.post("/api/chiptunes/pause")
-        async def chiptunes_pause() -> ChiptunesStatusDTO:  # pyright: ignore
-            """Pause chiptunes playback."""
+        @self.app.post("/api/chiptunes/pause", status_code=202)
+        async def chiptunes_pause() -> ChiptunesCommandReceiptDTO:  # pyright: ignore
+            """Queue pause command and return receipt."""
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
             if self.runtime_settings._chiptunes_manager is None:
                 raise HTTPException(503, "Chiptunes manager not available")
-            self.runtime_settings.set_chiptunes_paused(True)
-            return _build_chiptunes_status()
+            command_id = self.runtime_settings.issue_chiptunes_command("pause")
+            return ChiptunesCommandReceiptDTO(command_id=command_id, action="pause")
 
-        @self.app.post("/api/chiptunes/resume")
-        async def chiptunes_resume() -> ChiptunesStatusDTO:  # pyright: ignore
-            """Resume chiptunes playback."""
+        @self.app.post("/api/chiptunes/resume", status_code=202)
+        async def chiptunes_resume() -> ChiptunesCommandReceiptDTO:  # pyright: ignore
+            """Queue resume command and return receipt."""
             if not self.runtime_settings:
                 raise HTTPException(503, "Runtime settings not available")
             if self.runtime_settings._chiptunes_manager is None:
                 raise HTTPException(503, "Chiptunes manager not available")
-            self.runtime_settings.set_chiptunes_paused(False)
-            return _build_chiptunes_status()
+            command_id = self.runtime_settings.issue_chiptunes_command("resume")
+            return ChiptunesCommandReceiptDTO(command_id=command_id, action="resume")
 
         @self.app.get("/jobs")
         async def list_jobs() -> list[JobDTO]:  # pyright: ignore

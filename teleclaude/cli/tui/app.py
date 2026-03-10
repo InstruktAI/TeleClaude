@@ -426,6 +426,12 @@ class TelecApp(App[str | None]):
                     chiptunes_playing=chiptunes_status.playing if chiptunes_status else False,
                     chiptunes_track=chiptunes_status.track if chiptunes_status else "",
                     chiptunes_sid_path=chiptunes_status.sid_path if chiptunes_status else "",
+                    chiptunes_pending_command_id=str(getattr(chiptunes_status, "pending_command_id", ""))
+                    if chiptunes_status
+                    else "",
+                    chiptunes_pending_action=str(getattr(chiptunes_status, "pending_action", ""))
+                    if chiptunes_status
+                    else "",
                 )
             )
         except Exception:
@@ -457,6 +463,8 @@ class TelecApp(App[str | None]):
             playing=message.chiptunes_playing,
             track=message.chiptunes_track,
             sid_path=message.chiptunes_sid_path,
+            pending_command_id=message.chiptunes_pending_command_id,
+            pending_action=message.chiptunes_pending_action,
         )
 
         logger.trace("[PERF] on_data_refreshed views updated dt=%.3f", _t.monotonic() - _d0)
@@ -623,6 +631,8 @@ class TelecApp(App[str | None]):
                 playing=True,
                 track=event.track,
                 sid_path=event.sid_path,
+                pending_command_id="",
+                pending_action="",
             )
             if event.track:
                 self.notify(f"♪ Now Playing: {event.track}", timeout=4)
@@ -635,6 +645,8 @@ class TelecApp(App[str | None]):
                 playing=event.playing,
                 track=event.track,
                 sid_path=event.sid_path,
+                pending_command_id=event.pending_command_id,
+                pending_action=event.pending_action,
             )
 
         else:
@@ -1032,10 +1044,10 @@ class TelecApp(App[str | None]):
             pass  # proceed with cached state if sync fails
         try:
             if footer.chiptunes_playing:
-                status = await self.api.chiptunes_pause()
+                receipt = await self.api.chiptunes_pause()
             else:
-                status = await self.api.chiptunes_resume()
-            self._apply_chiptunes_status(status)
+                receipt = await self.api.chiptunes_resume()
+            self._apply_chiptunes_receipt(receipt.command_id, receipt.action)
             self._schedule_chiptunes_reconcile()
         except Exception as e:
             self.notify(f"Failed to pause/resume: {e}", severity="error")
@@ -1047,8 +1059,8 @@ class TelecApp(App[str | None]):
         if not footer.chiptunes_loaded:
             return
         try:
-            status = await self.api.chiptunes_next()
-            self._apply_chiptunes_status(status)
+            receipt = await self.api.chiptunes_next()
+            self._apply_chiptunes_receipt(receipt.command_id, receipt.action)
             self._schedule_chiptunes_reconcile()
         except Exception as e:
             self.notify(f"Failed to skip track: {e}", severity="error")
@@ -1060,8 +1072,8 @@ class TelecApp(App[str | None]):
         if not footer.chiptunes_loaded:
             return
         try:
-            status = await self.api.chiptunes_prev()
-            self._apply_chiptunes_status(status)
+            receipt = await self.api.chiptunes_prev()
+            self._apply_chiptunes_receipt(receipt.command_id, receipt.action)
             self._schedule_chiptunes_reconcile()
         except Exception as e:
             self.notify(f"Failed to go to previous track: {e}", severity="error")
@@ -1075,6 +1087,8 @@ class TelecApp(App[str | None]):
         playing: bool,
         track: str,
         sid_path: str,
+        pending_command_id: str,
+        pending_action: str,
     ) -> None:
         from teleclaude.chiptunes.favorites import is_favorited
 
@@ -1089,6 +1103,8 @@ class TelecApp(App[str | None]):
         footer.chiptunes_playing = playing
         footer.chiptunes_track = track
         footer.chiptunes_sid_path = sid_path
+        footer.chiptunes_pending_command_id = pending_command_id
+        footer.chiptunes_pending_action = pending_action
         footer.chiptunes_favorited = is_favorited(sid_path) if sid_path else False
 
     def _apply_chiptunes_status(self, status: ChiptunesStatusInfo) -> None:
@@ -1096,10 +1112,19 @@ class TelecApp(App[str | None]):
             loaded=bool(getattr(status, "loaded", False)),
             playback=str(getattr(status, "playback", "cold")),
             state_version=int(getattr(status, "state_version", 0)),
-            playing=status.playing,
-            track=status.track,
-            sid_path=status.sid_path,
+            playing=bool(getattr(status, "playing", False)),
+            track=str(getattr(status, "track", "")),
+            sid_path=str(getattr(status, "sid_path", "")),
+            pending_command_id=str(getattr(status, "pending_command_id", "")),
+            pending_action=str(getattr(status, "pending_action", "")),
         )
+
+    def _apply_chiptunes_receipt(self, command_id: str, action: str) -> None:
+        footer = self.query_one("#telec-footer", TelecFooter)
+        footer.chiptunes_pending_command_id = command_id
+        footer.chiptunes_pending_action = action
+        if action in {"resume", "next", "prev"}:
+            footer.chiptunes_playback = "loading"
 
     def _schedule_chiptunes_reconcile(self) -> None:
         async def _reconcile() -> None:

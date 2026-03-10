@@ -1693,6 +1693,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             position_seconds=runtime_state.position_seconds,
             track=manager.current_track,
             sid_path=manager.current_sid_path,
+            pending_command_id=runtime_state.pending_command_id,
+            pending_action=runtime_state.pending_action,
         ).model_dump()
         api_server._broadcast_payload("chiptunes_state", payload)
 

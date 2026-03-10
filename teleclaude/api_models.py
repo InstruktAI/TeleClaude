@@ -422,7 +422,7 @@ class ChiptunesStatusDTO(BaseModel):  # type: ignore[explicit-any]
 
     model_config = ConfigDict(frozen=True)
 
-    playback: Literal["cold", "playing", "paused"] = "cold"
+    playback: Literal["cold", "loading", "playing", "paused"] = "cold"
     state_version: int = 0
     loaded: bool = False
     playing: bool = False
@@ -430,6 +430,8 @@ class ChiptunesStatusDTO(BaseModel):  # type: ignore[explicit-any]
     position_seconds: float = 0.0
     track: str = ""
     sid_path: str = ""
+    pending_command_id: str = ""
+    pending_action: Literal["", "resume", "pause", "next", "prev"] = ""
 
 
 class ChiptunesStateEventDTO(BaseModel):  # type: ignore[explicit-any]
@@ -438,7 +440,7 @@ class ChiptunesStateEventDTO(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True)
 
     event: Literal["chiptunes_state"] = "chiptunes_state"
-    playback: Literal["cold", "playing", "paused"] = "cold"
+    playback: Literal["cold", "loading", "playing", "paused"] = "cold"
     state_version: int = 0
     loaded: bool = False
     playing: bool = False
@@ -446,6 +448,18 @@ class ChiptunesStateEventDTO(BaseModel):  # type: ignore[explicit-any]
     position_seconds: float = 0.0
     track: str = ""
     sid_path: str = ""
+    pending_command_id: str = ""
+    pending_action: Literal["", "resume", "pause", "next", "prev"] = ""
+
+
+class ChiptunesCommandReceiptDTO(BaseModel):  # type: ignore[explicit-any]
+    """Receipt for accepted chiptunes command (asynchronous execution)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["accepted"] = "accepted"
+    command_id: str
+    action: Literal["resume", "pause", "next", "prev"]
 
 
 class SessionLifecycleStatusEventDTO(BaseModel):  # type: ignore[explicit-any]

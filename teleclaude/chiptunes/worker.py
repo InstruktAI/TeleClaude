@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import random
+import queue
 import threading
 from pathlib import Path
 from typing import Callable
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config.runtime_settings import ChiptunesRuntimeState
+from teleclaude.config.runtime_settings import ChiptunesRuntimeState, CommandAction
 from teleclaude.chiptunes.player import ChiptunesPlayer
 
 logger = get_logger(__name__)
@@ -58,7 +59,13 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         self._current_track: Path | None = None
         self._paused_requested: bool = False
         self._paused_position_seconds: float = 0.0
+        self._loading: bool = False
+        self._pending_command_id: str = ""
+        self._pending_action: str = ""
         self._lock = threading.RLock()
+        self._command_queue: queue.Queue[tuple[str, CommandAction]] = queue.Queue()
+        self._command_worker = threading.Thread(target=self._command_loop, daemon=True, name="chiptunes-commands")
+        self._command_worker.start()
 
     # ------------------------------------------------------------------ #
     # Public control                                                        #
@@ -68,6 +75,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         """Mark worker as enabled and start the first track."""
         self._enabled = True
         self._paused_requested = start_paused
+        self._loading = True
         self._notify_state_change()
         threading.Thread(target=self._play_next, daemon=True, name="chiptunes-start").start()
 
@@ -80,6 +88,9 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             self._history = [Path(item) for item in state.history if item]
             self._history_index = state.history_index
             self._current_track = Path(state.track_path) if state.track_path else None
+            self._loading = state.playback == "loading" or state.playback == "playing"
+            self._pending_command_id = state.pending_command_id
+            self._pending_action = state.pending_action
         self._notify_state_change()
         if self._current_track is None:
             threading.Thread(target=self._play_next, daemon=True, name="chiptunes-start").start()
@@ -101,6 +112,9 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
                 self._player = None
             self._current_track = None
             self._paused_position_seconds = 0.0
+            self._loading = False
+            self._pending_command_id = ""
+            self._pending_action = ""
         self._notify_state_change()
 
     def pause(self) -> None:
@@ -128,6 +142,9 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             self._notify_state_change()
             return
         if current_track is not None:
+            with self._lock:
+                self._loading = True
+            self._notify_state_change()
             threading.Thread(
                 target=self._play_track,
                 args=(current_track,),
@@ -170,7 +187,9 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         """Capture current runtime state for persistence."""
         with self._lock:
             playback: str
-            if self._player is not None and self._player.is_playing:
+            if self._loading:
+                playback = "loading"
+            elif self._player is not None and self._player.is_playing:
                 playback = "playing"
             elif self._paused_requested:
                 playback = "paused"
@@ -185,6 +204,8 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
                 position_seconds=max(0.0, position),
                 history=[str(item) for item in self._history],
                 history_index=self._history_index,
+                pending_command_id=self._pending_command_id,
+                pending_action=self._pending_action,
             )
 
     def handle_cmd(self, cmd: dict[str, object]) -> None:  # guard: loose-dict - cmd payload
@@ -199,6 +220,16 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             threading.Thread(target=self._play_prev, daemon=True, name="chiptunes-prev").start()
         else:
             logger.warning("ChipTunes: unknown command %r", name)
+
+    def enqueue_command(self, command_id: str, action: CommandAction) -> None:
+        """Queue command for serial asynchronous processing."""
+        with self._lock:
+            self._pending_command_id = command_id
+            self._pending_action = action
+            if action in {"resume", "next", "prev"}:
+                self._loading = True
+        self._notify_state_change()
+        self._command_queue.put((command_id, action))
 
     # ------------------------------------------------------------------ #
     # Internal navigation                                                   #
@@ -216,6 +247,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             self._current_track = track
             start_paused = self._paused_requested
             start_position = self._paused_position_seconds if start_position_seconds is None else start_position_seconds
+            self._loading = True
 
         track_label = track.stem.replace("_", " ")
         logger.info("ChipTunes: playing %s", track_label)
@@ -226,8 +258,10 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         player.play(track, start_paused=start_paused, start_position_seconds=max(0.0, start_position))
         with self._lock:
             paused_requested = self._paused_requested
+            self._loading = False
         if paused_requested and not start_paused:
             player.pause()
+        self._finalize_pending_command()
         self._notify_state_change()
 
     def _play_next(self) -> None:
@@ -238,6 +272,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         """
         with self._lock:
             if not self._enabled:
+                self._loading = False
                 return
 
             if self._history_index < len(self._history) - 1:
@@ -247,6 +282,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
                 track = self._pick_random_track()
                 if track is None:
                     logger.warning("ChipTunes: no tracks available for next()")
+                    self._loading = False
                     return
                 self._history.append(track)
                 self._history_index = len(self._history) - 1
@@ -266,6 +302,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         """
         with self._lock:
             if not self._enabled:
+                self._loading = False
                 return
 
             if self._history_index > 0:
@@ -273,6 +310,9 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
                 track = self._history[self._history_index]
             else:
                 logger.debug("ChipTunes: already at beginning of history, prev() is a no-op")
+                self._loading = False
+                self._finalize_pending_command()
+                self._notify_state_change()
                 return
 
         self._play_track(track)
@@ -291,6 +331,63 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
             threading.Thread(target=self._play_next, daemon=True, name="chiptunes-auto-next").start()
         else:
             self._notify_state_change()
+
+    def _command_loop(self) -> None:
+        while True:
+            command_id, action = self._command_queue.get()
+            try:
+                self._run_command(action)
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger.exception("ChipTunes command failed: %s", action)
+                with self._lock:
+                    if self._pending_command_id == command_id:
+                        self._loading = False
+                        self._pending_command_id = ""
+                        self._pending_action = ""
+                self._notify_state_change()
+            finally:
+                self._command_queue.task_done()
+
+    def _run_command(self, action: CommandAction) -> None:
+        if action == "pause":
+            self.pause()
+            with self._lock:
+                self._loading = False
+            self._finalize_pending_command()
+            self._notify_state_change()
+            return
+        if action == "resume":
+            self.resume()
+            # cold->resume completes asynchronously in _play_track
+            with self._lock:
+                if not self._loading:
+                    self._finalize_pending_command()
+            self._notify_state_change()
+            return
+        if action == "next":
+            self._play_next()
+            with self._lock:
+                if not self._loading:
+                    self._finalize_pending_command()
+            self._notify_state_change()
+            return
+        if action == "prev":
+            self._play_prev()
+            with self._lock:
+                if not self._loading:
+                    self._finalize_pending_command()
+            self._notify_state_change()
+            return
+        logger.warning("ChipTunes: unsupported queued command %s", action)
+        with self._lock:
+            self._loading = False
+            self._finalize_pending_command()
+        self._notify_state_change()
+
+    def _finalize_pending_command(self) -> None:
+        with self._lock:
+            self._pending_command_id = ""
+            self._pending_action = ""
 
     def _discover_tracks(self) -> list[Path]:
         """Collect PSID tracks when worker is initialized with a music directory."""

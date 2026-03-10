@@ -11,6 +11,9 @@ from teleclaude.api_models import (
     AgentAvailabilityDTO as AgentAvailabilityInfo,
 )
 from teleclaude.api_models import (
+    ChiptunesCommandReceiptDTO as ChiptunesCommandReceiptInfo,
+)
+from teleclaude.api_models import (
     ChiptunesStateEventDTO as ChiptunesStateEvent,
 )
 from teleclaude.api_models import (
@@ -108,6 +111,7 @@ __all__ = [
     "SessionStartedEvent",
     "SessionUpdatedEvent",
     "SettingsInfo",
+    "ChiptunesCommandReceiptInfo",
     "ChiptunesStatusInfo",
     "ChiptunesStateEvent",
     "ChiptunesTrackEvent",

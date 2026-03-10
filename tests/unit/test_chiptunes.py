@@ -452,6 +452,63 @@ class TestChiptunesPlayerLifecycle:
         assert player._enqueue_pcm(b"\x01\x02", frame_duration=0.02) is False
         assert time.monotonic() - started < 0.2
 
+    def test_stream_callback_preserves_fifo_when_chunk_spans_callbacks(self) -> None:
+        from teleclaude.chiptunes.player import ChiptunesPlayer
+
+        player = ChiptunesPlayer()
+        player._pcm_queue = queue.Queue(maxsize=8)
+        player._pcm_queue.put_nowait(b"ABCDEFGH")
+        player._pcm_queue.put_nowait(b"IJKLMNOP")
+        player._pcm_queue.put_nowait(b"QRSTUVWX")
+
+        out1 = bytearray(12)
+        player._stream_callback(out1, frames=6, _time=None, status=None)
+        assert bytes(out1) == b"ABCDEFGHIJKL"
+
+        out2 = bytearray(8)
+        player._stream_callback(out2, frames=4, _time=None, status=None)
+        assert bytes(out2) == b"MNOPQRST"
+
+        out3 = bytearray(8)
+        player._stream_callback(out3, frames=4, _time=None, status=None)
+        assert bytes(out3) == b"UVWX\x00\x00\x00\x00"
+
+    def test_stream_callback_logs_underflow_status_throttled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import teleclaude.chiptunes.player as player_module
+        from teleclaude.chiptunes.player import ChiptunesPlayer
+
+        class FakeStatus:
+            output_underflow = True
+            output_overflow = False
+            input_underflow = False
+            input_overflow = False
+            priming_output = False
+
+            def __bool__(self) -> bool:
+                return True
+
+            def __str__(self) -> str:
+                return "output underflow"
+
+        warnings: list[str] = []
+
+        def _warn(msg: str, *args: object) -> None:
+            warnings.append(msg % args if args else msg)
+
+        ticks = iter([10.0, 10.5, 13.0])
+        monkeypatch.setattr(player_module.time, "monotonic", lambda: next(ticks))
+        monkeypatch.setattr(player_module.logger, "warning", _warn)
+
+        player = ChiptunesPlayer()
+
+        player._stream_callback(bytearray(4), frames=2, _time=None, status=FakeStatus())
+        player._stream_callback(bytearray(4), frames=2, _time=None, status=FakeStatus())
+        player._stream_callback(bytearray(4), frames=2, _time=None, status=FakeStatus())
+
+        assert len(warnings) == 2
+        assert "output_underflow" in warnings[0]
+        assert "suppressed=1" in warnings[1]
+
 
 class TestChiptunesManagerLifecycle:
     def test_start_stop(self, tmp_path: Path) -> None:

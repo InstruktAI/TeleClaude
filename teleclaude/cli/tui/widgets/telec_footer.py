@@ -162,6 +162,8 @@ class TelecFooter(Widget):
     chiptunes_playing = reactive(False)
     chiptunes_track = reactive("")
     chiptunes_sid_path = reactive("")
+    chiptunes_pending_command_id = reactive("")
+    chiptunes_pending_action = reactive("")
     chiptunes_favorited = reactive(False)
     animation_mode = reactive("periodic")
     pane_theming_mode = reactive("off")
@@ -369,15 +371,19 @@ class TelecFooter(Widget):
         fav_button = self.query_one("#footer-fav", FooterActionButton)
 
         prev_button.icon = "\u23ee"
-        play_button.icon = "\u23f8" if self.chiptunes_playing else "\u25b6"
+        if self.chiptunes_pending_command_id:
+            play_button.icon = "\u23f3"
+        else:
+            play_button.icon = "\u23f8" if self.chiptunes_playing else "\u25b6"
         next_button.icon = "\u23ed"
         fav_button.icon = "\u2705" if self.chiptunes_favorited else "\u2b50"
 
         controls_loaded = self.chiptunes_loaded
-        prev_button.disabled = not controls_loaded
-        next_button.disabled = not controls_loaded
-        play_button.disabled = False
-        fav_button.disabled = not controls_loaded
+        pending = bool(self.chiptunes_pending_command_id)
+        prev_button.disabled = (not controls_loaded) or pending
+        next_button.disabled = (not controls_loaded) or pending
+        play_button.disabled = pending
+        fav_button.disabled = (not controls_loaded) or pending
 
     def on_click(self, event: Click) -> None:
         widget = event.widget
@@ -439,6 +445,12 @@ class TelecFooter(Widget):
         self._refresh_controls()
 
     def watch_chiptunes_playing(self, _value: bool) -> None:
+        self._refresh_controls()
+
+    def watch_chiptunes_pending_command_id(self, _value: str) -> None:
+        self._refresh_controls()
+
+    def watch_chiptunes_pending_action(self, _value: str) -> None:
         self._refresh_controls()
 
     def watch_chiptunes_favorited(self, _value: bool) -> None:

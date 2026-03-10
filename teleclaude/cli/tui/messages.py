@@ -34,6 +34,8 @@ class DataRefreshed(Message):
         chiptunes_playing: bool = False,
         chiptunes_track: str = "",
         chiptunes_sid_path: str = "",
+        chiptunes_pending_command_id: str = "",
+        chiptunes_pending_action: str = "",
     ) -> None:
         super().__init__()
         self.computers = computers
@@ -49,6 +51,8 @@ class DataRefreshed(Message):
         self.chiptunes_playing = chiptunes_playing
         self.chiptunes_track = chiptunes_track
         self.chiptunes_sid_path = chiptunes_sid_path
+        self.chiptunes_pending_command_id = chiptunes_pending_command_id
+        self.chiptunes_pending_action = chiptunes_pending_action
 
 
 # --- Session interaction messages ---

@@ -222,26 +222,16 @@ async def test_telec_app_play_pause_starts_from_cold_state() -> None:
         patch_settings=AsyncMock(),
         chiptunes_pause=AsyncMock(
             return_value=SimpleNamespace(
-                loaded=False,
-                playback="cold",
-                state_version=2,
-                playing=False,
-                paused=False,
-                position_seconds=0.0,
-                track="",
-                sid_path="",
+                status="accepted",
+                command_id="cmd-pause-1",
+                action="pause",
             )
         ),
         chiptunes_resume=AsyncMock(
             return_value=SimpleNamespace(
-                loaded=True,
-                playback="playing",
-                state_version=2,
-                playing=True,
-                paused=False,
-                position_seconds=0.0,
-                track="Demo Tune",
-                sid_path="/music/demo.sid",
+                status="accepted",
+                command_id="cmd-resume-1",
+                action="resume",
             )
         ),
         get_chiptunes_status=AsyncMock(
@@ -271,6 +261,9 @@ async def test_telec_app_play_pause_starts_from_cold_state() -> None:
 
         api.chiptunes_pause.assert_not_awaited()
         api.chiptunes_resume.assert_awaited_once()
+        assert footer.chiptunes_pending_command_id == "cmd-resume-1"
+        assert footer.chiptunes_pending_action == "resume"
+        assert footer.chiptunes_playback == "loading"
 
 
 @pytest.mark.unit
