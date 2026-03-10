@@ -15,7 +15,13 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.core.agents import AgentName
 
-from ..utils.transcript_discovery import TranscriptCandidate, build_source_identity, is_canonical
+from ..utils.transcript_discovery import (
+    TranscriptCandidate,
+    build_source_identity,
+    extract_project,
+    extract_session_id,
+    is_canonical,
+)
 from ..utils.transcript_discovery import discover_transcripts as _discover_transcripts
 from .generator import generate_mirror_sync
 from .store import (
@@ -42,7 +48,6 @@ class ReconcileResult:
     processed: int
     failed: int
     skipped_unchanged: int
-    skipped_no_context: int
     duration_s: float
 
 
@@ -101,7 +106,6 @@ class MirrorWorker:
             f"processed={result.processed} "
             f"failed={result.failed} "
             f"skipped_unchanged={result.skipped_unchanged} "
-            f"skipped_no_context={result.skipped_no_context} "
             f"duration_s={result.duration_s:.3f} "
             f"wal_before_kb={wal_before_kb} "
             f"wal_after_kb={wal_after_kb}"
@@ -118,7 +122,6 @@ class MirrorWorker:
             processed=0,
             failed=0,
             skipped_unchanged=0,
-            skipped_no_context=0,
             duration_s=0.0,
         )
 
@@ -139,25 +142,24 @@ class MirrorWorker:
                     continue
 
                 context = get_session_context(transcript_path=transcript_path, db=self.db_path)
-                if context is None:
-                    self._record_tombstone(source_identity, candidate)
-                    result.skipped_no_context += 1
-                    continue
+                session_id = context.session_id if context else extract_session_id(candidate.path, candidate.agent)
+                computer = (context.computer if context else None) or config.computer.name
+                project = (context.project if context else None) or extract_project(candidate.path, candidate.agent)
 
                 generated = generate_mirror_sync(
-                    session_id=context.session_id,
+                    session_id=session_id,
                     source_identity=source_identity,
                     transcript_path=transcript_path,
                     agent_name=candidate.agent,
-                    computer=context.computer or config.computer.name,
-                    project=context.project or "",
+                    computer=computer,
+                    project=project,
                     db=self.db_path,
                 )
                 if generated:
                     delete_mirror_tombstone(source_identity, db=self.db_path)
                 else:
                     self._record_tombstone(source_identity, candidate)
-                    delete_mirror(session_id=context.session_id, source_identity=source_identity, db=self.db_path)
+                    delete_mirror(session_id=session_id, source_identity=source_identity, db=self.db_path)
                 result.processed += 1
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 result.failed += 1

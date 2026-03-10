@@ -137,7 +137,6 @@ async def test_run_once_offloads_reconciliation_to_thread(monkeypatch: pytest.Mo
         processed=1,
         failed=0,
         skipped_unchanged=0,
-        skipped_no_context=0,
         duration_s=0.01,
     )
     calls: list[object] = []
@@ -169,7 +168,6 @@ async def test_run_cancels_cleanly_while_waiting_for_the_next_cycle(monkeypatch:
             processed=0,
             failed=0,
             skipped_unchanged=0,
-            skipped_no_context=0,
             duration_s=0.0,
         )
     )
@@ -207,7 +205,6 @@ async def test_run_logs_cycle_failures_and_continues(monkeypatch: pytest.MonkeyP
                 processed=0,
                 failed=0,
                 skipped_unchanged=0,
-                skipped_no_context=0,
                 duration_s=0.0,
             ),
         ]
@@ -265,25 +262,26 @@ def test_reconcile_sync_processes_transcripts_reports_metrics_and_converges(tmp_
     assert first.processed == 1
     assert first.failed == 0
     assert first.skipped_unchanged == 0
-    assert first.skipped_no_context == 0
     assert first.duration_s >= 0
     assert second.processed == 0
     assert second.failed == 0
     assert second.skipped_unchanged == 1
     assert row == ("sess-1", "claude:teleclaude/session.jsonl", 2)
     assert any(
-        "mirror.reconciliation.complete discovered=1 processed=1 failed=0 skipped_unchanged=0 skipped_no_context=0"
+        "mirror.reconciliation.complete discovered=1 processed=1 failed=0 skipped_unchanged=0"
         in call.args[0]
         for call in logger_info.call_args_list
         if call.args
     )
 
 
-def test_reconcile_sync_skips_candidates_without_session_context(tmp_path: Path, monkeypatch) -> None:
+def test_reconcile_sync_processes_transcripts_without_session_context_using_fallbacks(
+    tmp_path: Path, monkeypatch
+) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
 
     db_path = tmp_path / "teleclaude.db"
-    transcript_path = tmp_path / ".claude" / "projects" / "teleclaude" / "missing.jsonl"
+    transcript_path = tmp_path / ".claude" / "projects" / "myproject" / "missing.jsonl"
     _write_jsonl(transcript_path, _conversation_entries())
     os.utime(transcript_path, (10, 10))
 
@@ -291,6 +289,7 @@ def test_reconcile_sync_skips_candidates_without_session_context(tmp_path: Path,
 
     asyncio.run(_apply_mirror_migrations(db_path))
     _create_sessions_table(db_path)
+    # No session row inserted — transcript has no TeleClaude context
 
     monkeypatch.setattr(
         "teleclaude.mirrors.worker._discover_transcripts",
@@ -307,13 +306,14 @@ def test_reconcile_sync_skips_candidates_without_session_context(tmp_path: Path,
     result = worker._reconcile_sync()
 
     with sqlite3.connect(db_path) as conn:
-        count = conn.execute("SELECT COUNT(*) FROM mirrors").fetchone()[0]
+        row = conn.execute("SELECT source_identity, message_count FROM mirrors").fetchone()
 
     assert result.discovered == 1
-    assert result.processed == 0
+    assert result.processed == 1
     assert result.failed == 0
-    assert result.skipped_no_context == 1
-    assert count == 0
+    assert row is not None
+    assert row[0] == "claude:myproject/missing.jsonl"
+    assert row[1] == 2
 
 
 def test_reconcile_sync_continues_after_per_candidate_failure(tmp_path: Path, monkeypatch) -> None:
