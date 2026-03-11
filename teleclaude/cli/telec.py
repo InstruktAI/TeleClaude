@@ -276,7 +276,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "revive": CommandDef(
                 desc="Revive session by TeleClaude session ID",
                 args="<session_id>",
-                flags=[_H, Flag("--attach", desc="Attach to tmux session after revive")],
+                flags=[
+                    _H,
+                    Flag("--agent", desc="Treat session_id as native agent session ID for the given agent"),
+                    Flag("--attach", desc="Attach to tmux session after revive"),
+                ],
+                notes=[
+                    "Without --agent, session_id is a TeleClaude session ID.",
+                    "With --agent, session_id is a native agent session ID resolved via the specified agent.",
+                ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
             ),
             "end": CommandDef(
@@ -1781,6 +1789,7 @@ def _handle_revive(args: list[str]) -> None:
         return
 
     attach = False
+    agent: str | None = None
     session_id: str | None = None
     i = 0
     while i < len(args):
@@ -1788,6 +1797,13 @@ def _handle_revive(args: list[str]) -> None:
         if arg == "--attach":
             attach = True
             i += 1
+        elif arg == "--agent":
+            if i + 1 >= len(args):
+                print("--agent requires a value.")
+                print(_usage("sessions", "revive"))
+                raise SystemExit(1)
+            agent = args[i + 1]
+            i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("sessions", "revive"))
@@ -1805,13 +1821,13 @@ def _handle_revive(args: list[str]) -> None:
         print(_usage("sessions", "revive"))
         raise SystemExit(1)
 
-    _revive_session(session_id, attach)
+    _revive_session(session_id, attach, agent=agent)
 
 
-def _revive_session(session_id: str, attach: bool) -> None:
-    """Revive a session by TeleClaude session ID."""
+def _revive_session(session_id: str, attach: bool, *, agent: str | None = None) -> None:
+    """Revive a session by TeleClaude or native session ID."""
     try:
-        result = asyncio.run(_revive_session_via_api(session_id))
+        result = asyncio.run(_revive_session_via_api(session_id, agent=agent))
     except APIError as e:
         print(f"Error: {e}")
         return
@@ -1829,12 +1845,12 @@ def _revive_session(session_id: str, attach: bool) -> None:
         _attach_tmux_session(result.tmux_session_name)
 
 
-async def _revive_session_via_api(session_id: str) -> CreateSessionResult:
+async def _revive_session_via_api(session_id: str, *, agent: str | None = None) -> CreateSessionResult:
     """Revive a session via API and return the response."""
     api = TelecAPIClient()
     await api.connect()
     try:
-        return await api.revive_session(session_id)
+        return await api.revive_session(session_id, agent=agent)
     finally:
         await api.close()
 

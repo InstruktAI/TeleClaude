@@ -1004,8 +1004,9 @@ def build_checkpoint_message(
 def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) -> str:
     """Compose checkpoint text from precomputed heuristic output."""
     response_policy = (
-        "Response policy: perform checkpoint-required housekeeping silently. "
-        "End with a short user-relevant debrief about actual task outcome, blocker, or decision needed. "
+        "Response policy: complete ALL required actions first. "
+        "Do not compose the debrief until every action is done. "
+        "Then end with a short user-relevant debrief about actual task outcome, blocker, or decision needed. "
         "Do not mention checkpoint chores."
     )
     escape_hatch = (
@@ -1039,10 +1040,11 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
     # Required actions (numbered)
     if result.required_actions:
         lines.append("")
-        lines.append("Required actions:")
+        lines.append("Required actions (BLOCKING — do not resume user-facing work until all complete):")
         for i, action in enumerate(result.required_actions, 1):
             lines.append(f"{i}. {action}")
-        lines.append(f"{len(result.required_actions) + 1}. Commit after steps above are complete")
+        lines.append(f"{len(result.required_actions) + 1}. Commit changed files")
+        lines.append(f"{len(result.required_actions) + 2}. All steps done — only then proceed")
 
     # Observations (bullet points)
     if result.observations:
@@ -1055,7 +1057,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
     lines.append("")
     lines.append("Docs check: If relevant, update existing docs or add a new doc.")
     lines.append("")
-    lines.append("Finish the steps above.")
+    lines.append("Execute every required action above before responding to the user.")
     lines.append("")
     lines.append(response_policy)
     lines.append("")

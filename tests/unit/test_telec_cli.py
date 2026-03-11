@@ -94,7 +94,7 @@ def test_main_requires_login_for_multi_user_tui(
 def test_revive_session_attaches_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
     called: Dict[str, str] = {}
 
-    async def fake_revive(_session_id: str) -> CreateSessionResult:
+    async def fake_revive(_session_id: str, *, agent: str | None = None) -> CreateSessionResult:
         return CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tc_revived", agent="codex")
 
     async def fake_kick(_session_id: str) -> bool:
@@ -117,7 +117,7 @@ def test_revive_session_attaches_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_revive_session_does_not_attach_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     called: Dict[str, str] = {}
 
-    async def fake_revive(_session_id: str) -> CreateSessionResult:
+    async def fake_revive(_session_id: str, *, agent: str | None = None) -> CreateSessionResult:
         return CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tc_revived", agent="codex")
 
     async def fake_kick(_session_id: str) -> bool:
@@ -140,7 +140,7 @@ def test_revive_session_does_not_attach_by_default(monkeypatch: pytest.MonkeyPat
 def test_revive_session_warns_when_kick_fails(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    async def fake_revive(_session_id: str) -> CreateSessionResult:
+    async def fake_revive(_session_id: str, *, agent: str | None = None) -> CreateSessionResult:
         return CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tc_revived", agent="codex")
 
     async def fake_kick(_session_id: str) -> bool:

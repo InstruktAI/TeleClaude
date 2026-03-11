@@ -32,7 +32,7 @@ def handle_sessions(args: list[str]) -> None:
       send        Send a message to a session
       tail        Get recent messages from a session
       run         Run a slash command on a new agent session
-      revive      Revive a session by TeleClaude session ID
+      revive      Revive a session by TeleClaude or native session ID
       end         End a session ('self' to end own session)
       restart     Restart a session ('self' to restart own session)
       unsubscribe Stop receiving notifications from a session
@@ -94,7 +94,7 @@ Subcommands:
   send         Send a message to a running session
   tail         Get recent messages from a session
   run          Run a slash command on a new agent session
-  revive       Revive session by TeleClaude session ID
+  revive       Revive session by TeleClaude or native session ID
   end          End (terminate) a session ('self' to end own session)
   restart      Restart an agent session ('self' to restart own session)
   unsubscribe  Stop receiving notifications from a session

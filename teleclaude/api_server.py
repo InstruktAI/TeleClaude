@@ -1201,10 +1201,28 @@ class APIServer:
         async def revive_session(  # pyright: ignore
             http_request: "Request",
             session_id: str,
+            agent: str | None = Query(None, description="When provided, session_id is a native agent session ID"),
             identity: "CallerIdentity" = Depends(CLEARANCE_SESSIONS_REVIVE),  # noqa: ARG001
         ) -> CreateSessionResponseDTO:
-            """Revive a session by TeleClaude session ID, including previously closed sessions."""
+            """Revive a session by TeleClaude or native session ID."""
             from teleclaude.api.session_access import check_session_access
+
+            # When agent is provided, resolve native session ID to TeleClaude session ID.
+            if agent:
+                resolved = await db.get_session_by_field(
+                    "native_session_id", session_id, include_initializing=True
+                )
+                if not resolved:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"No session found for native ID {session_id[:8]} (agent={agent})",
+                    )
+                if resolved.active_agent and resolved.active_agent != agent:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Native session belongs to agent '{resolved.active_agent}', not '{agent}'",
+                    )
+                session_id = resolved.session_id
 
             await check_session_access(http_request, session_id)
             try:

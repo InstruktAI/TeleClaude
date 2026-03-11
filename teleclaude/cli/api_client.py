@@ -769,13 +769,16 @@ class TelecAPIClient:
         resp = await self._request("GET", "/api/chiptunes/status")
         return TypeAdapter(ChiptunesStatusInfo).validate_json(resp.text)
 
-    async def revive_session(self, session_id: str) -> CreateSessionResult:
-        """Revive a session by TeleClaude session ID.
+    async def revive_session(self, session_id: str, *, agent: str | None = None) -> CreateSessionResult:
+        """Revive a session by TeleClaude or native session ID.
 
-        This endpoint can revive previously closed sessions as long as the session
-        still has an active agent and native session ID.
+        Without agent, session_id is a TeleClaude session ID.
+        With agent, session_id is a native agent session ID resolved server-side.
         """
-        resp = await self._request("POST", f"/sessions/{session_id}/revive", timeout=30.0)
+        params: dict[str, str] = {}
+        if agent:
+            params["agent"] = agent
+        resp = await self._request("POST", f"/sessions/{session_id}/revive", params=params, timeout=30.0)
         return TypeAdapter(CreateSessionResult).validate_json(resp.text)
 
     async def memory_search(
