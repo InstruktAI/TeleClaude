@@ -1,5 +1,11 @@
 # Delivered work items. Newest first.
 
+- slug: session-role-metadata
+  date: '2026-03-09'
+  commit: ec06a63e4
+- slug: cache-transparency-refactor
+  date: '2026-03-09'
+  commit: bdeb96782
 - slug: tso-infra
   date: '2026-03-10'
   commit: db45f2b80f4d
