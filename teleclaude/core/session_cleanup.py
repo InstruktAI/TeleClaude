@@ -37,7 +37,8 @@ TMUX_TUI_SESSION_NAME = "tc_tui"
 
 # Lookback window for replaying cleanup for closed sessions from an earlier process instance.
 # Only sessions with unresolved channel references (e.g. topic_id still set) are replayed.
-RECENTLY_CLOSED_SESSION_HOURS = 12
+# One minute covers the restart window without replaying hours of old sessions.
+RECENTLY_CLOSED_SESSION_SECONDS = 60
 
 # Concurrency guard: session IDs whose cleanup is currently in flight.
 # Prevents duplicate terminate_session calls from parallel SESSION_CLOSE_REQUESTED events.
@@ -200,7 +201,7 @@ async def _terminate_session_inner(
 
 async def emit_recently_closed_session_events(
     *,
-    hours: float = RECENTLY_CLOSED_SESSION_HOURS,
+    seconds: float = RECENTLY_CLOSED_SESSION_SECONDS,
     include_headless: bool = True,
 ) -> int:
     """Replay SESSION_CLOSE_REQUESTED for closed sessions with unresolved channel cleanup.
@@ -215,10 +216,10 @@ async def emit_recently_closed_session_events(
     Returns:
         Number of sessions for which a SESSION_CLOSE_REQUESTED event was emitted.
     """
-    if hours <= 0:
+    if seconds <= 0:
         return 0
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=seconds)
     sessions = await db.list_sessions(
         include_closed=True,
         include_initializing=True,

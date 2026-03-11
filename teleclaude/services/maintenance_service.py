@@ -57,7 +57,7 @@ class MaintenanceService:
                 first_run = False
 
                 await self._cleanup_inactive_sessions()
-                await session_cleanup.emit_recently_closed_session_events(hours=12)
+                await session_cleanup.emit_recently_closed_session_events()
                 await session_cleanup.cleanup_orphan_tmux_sessions()
                 await session_cleanup.cleanup_orphan_workspaces()
                 await db.cleanup_stale_voice_assignments()

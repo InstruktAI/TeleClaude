@@ -348,12 +348,12 @@ async def test_emit_recently_closed_session_events_only_replays_window() -> None
     """Replay SESSION_CLOSE_REQUESTED only for sessions with unresolved cleanup within the window."""
     fixed_now = datetime(2026, 1, 14, 12, 0, 0, tzinfo=timezone.utc)
 
-    # Recent, topic still set → should be replayed
-    recent_with_topic = _session_with_topic("recent-topic", fixed_now - timedelta(hours=1), topic_id=111)
+    # Recent (within 60s), topic still set → should be replayed
+    recent_with_topic = _session_with_topic("recent-topic", fixed_now - timedelta(seconds=30), topic_id=111)
     # Recent, topic already cleared → should be skipped
-    recent_no_topic = _session_with_topic("recent-no-topic", fixed_now - timedelta(hours=1), topic_id=None)
-    # Too old → should be skipped
-    old_with_topic = _session_with_topic("old", fixed_now - timedelta(hours=24), topic_id=222)
+    recent_no_topic = _session_with_topic("recent-no-topic", fixed_now - timedelta(seconds=30), topic_id=None)
+    # Too old (beyond 60s window) → should be skipped
+    old_with_topic = _session_with_topic("old", fixed_now - timedelta(seconds=120), topic_id=222)
     # Not closed → should be skipped
     active_session = _session_with_topic("active", None, topic_id=333)
 
@@ -367,7 +367,7 @@ async def test_emit_recently_closed_session_events_only_replays_window() -> None
     ):
         mock_datetime.now.return_value = fixed_now
 
-        emitted = await emit_recently_closed_session_events(hours=12)
+        emitted = await emit_recently_closed_session_events(seconds=60)
 
     assert emitted == 1
     assert mock_emit.call_count == 1
