@@ -238,13 +238,12 @@ class SessionRow(TelecMixin, Widget):
             line4.append(truncate_text(self.activity_text, text_limit), style=output_style)
             lines.append(line4)
         elif self.activity_event == "tool_done":
-            # Agent reasoning between tools — italic, no dots
+            # Agent reasoning between tools — NOT italic
             activity_time_str = format_time(self.session.last_activity)
-            thinking_style = Style(color=output_style.color, bold=output_style.bold, italic=True)
             line4 = Text(no_wrap=True)
             line4.append(connector_pad)
             line4.append("\u2502", style=connector_style)
-            line4.append(f"{detail_pad}[{activity_time_str}] out: ", style=thinking_style)
+            line4.append(f"{detail_pad}[{activity_time_str}] out: ...", style=output_style)
             lines.append(line4)
         elif self.activity_event == "user_prompt_submit":
             # User action — NOT italic
