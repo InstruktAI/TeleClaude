@@ -45,8 +45,8 @@
   description: 'Render-aware session runtime: wake-driven capture, adaptive cadence,
     and reduced idle tmux overhead for all session types'
 - slug: refactor-large-files
-  description: 'Split files over ~500 LOC into focused modules. 20 files targeted,
-    top 4 over 2900 lines. No test changes — tests are rebuilt separately after.'
+  description: Split files over ~500 LOC into focused modules. 20 files targeted,
+    top 4 over 2900 lines. No test changes — tests are rebuilt separately after.
 - slug: test-suite-overhaul
   after:
   - refactor-large-files
@@ -128,3 +128,34 @@
   - session-adaptive-runtime
 - slug: session-polling-baseline
   description: Immediate corrections + replay corpus (split from session-runtime-overhaul)
+- slug: prepare-phase-tiering-2
+- slug: prepare-phase-tiering
+  description: Tiered prepare phase — skip ceremony for well-defined inputs
+- slug: rlf-cli
+  group: refactor-large-files
+  description: 'Decompose CLI entrypoint: cli/telec.py (4,329), cli/tool_commands.py (1,417)'
+- slug: rlf-tui
+  group: refactor-large-files
+  description: 'Decompose TUI layer: 6 files in cli/tui/ (~7,231 lines total)'
+- slug: rlf-core-machines
+  group: refactor-large-files
+  description: 'Decompose state machines: core/next_machine/core.py (4,168), core/integration/state_machine.py
+    (1,183)'
+- slug: rlf-core-data
+  group: refactor-large-files
+  description: 'Decompose data layer: core/db.py (2,506), core/models.py (1,095),
+    core/command_handlers.py (2,023)'
+- slug: rlf-core-infra
+  group: refactor-large-files
+  description: 'Decompose core infra: core/agent_coordinator.py (1,619), core/tmux_bridge.py
+    (1,402), core/adapter_client.py (1,161)'
+- slug: rlf-adapters
+  group: refactor-large-files
+  description: 'Decompose adapters: discord (2,951), telegram (1,368), ui (1,048)'
+- slug: rlf-services
+  group: refactor-large-files
+  description: 'Decompose service layer: api_server.py (3,268), daemon.py (2,669)'
+- slug: rlf-peripherals
+  group: refactor-large-files
+  description: 'Decompose peripherals: transport, utils, hooks, helpers, validation
+    (6 files, ~9,066 lines)'
