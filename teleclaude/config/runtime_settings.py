@@ -245,6 +245,12 @@ class RuntimeSettings:
             if isinstance(state_version, int):
                 self._state.chiptunes_state_version = max(0, state_version)
 
+        # "loading" is a transient in-memory phase; never restore it from disk.
+        if self._state.chiptunes.playback == "loading":
+            self._state.chiptunes.playback = "cold"
+            self._state.chiptunes.pending_command_id = ""
+            self._state.chiptunes.pending_action = ""
+
     def _read_settings_file(self) -> dict[str, object] | None:
         try:
             if not self._settings_path.exists():
