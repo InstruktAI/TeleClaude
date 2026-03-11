@@ -5,5 +5,11 @@
   },
   "skills": {
     "enabled": true
+  },
+  "mcpServers": {
+    "firecrawl": {
+      "command": "bash",
+      "args": ["-c", "npx -y @dotenvx/dotenvx run --env-file $HOME/.teleclaude/.env -- npx -y firecrawl-mcp"]
+    }
   }
 }

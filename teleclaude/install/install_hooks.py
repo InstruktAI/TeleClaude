@@ -347,6 +347,42 @@ def _configure_json_agent_hooks(
     print(f"{agent.capitalize()} hooks and settings configured in {settings_path}")
 
 
+CLAUDE_MCP_SERVERS: dict[str, dict[str, object]] = {
+    "firecrawl": {
+        "command": "bash",
+        "args": ["-c", "npx -y @dotenvx/dotenvx run --env-file $HOME/.teleclaude/.env -- npx -y firecrawl-mcp"],
+    },
+}
+
+
+def _ensure_claude_mcp_servers(claude_json_path: Path) -> None:
+    """Ensure managed MCP servers exist in ~/.claude.json."""
+    if not claude_json_path.exists():
+        return
+
+    settings = _load_json_settings(claude_json_path, label="Claude MCP")
+    if settings is None:
+        return
+
+    mcp_servers = settings.get("mcpServers", {})
+    if not isinstance(mcp_servers, dict):
+        mcp_servers = {}
+
+    changed = False
+    for name, spec in CLAUDE_MCP_SERVERS.items():
+        if mcp_servers.get(name) != spec:
+            mcp_servers[name] = spec
+            changed = True
+
+    if changed:
+        settings["mcpServers"] = mcp_servers
+        with open(claude_json_path, "w") as f:
+            json.dump(settings, f, indent=2)
+        print(f"Claude MCP servers updated in {claude_json_path}")
+    else:
+        print(f"Claude MCP servers already configured in {claude_json_path}")
+
+
 def configure_claude(repo_root: Path) -> None:
     """Configure Claude Code hooks."""
     repo_root = resolve_main_repo_root(repo_root)
@@ -356,6 +392,7 @@ def configure_claude(repo_root: Path) -> None:
         Path.home() / ".claude" / "settings.json",
         _claude_hook_map,
     )
+    _ensure_claude_mcp_servers(Path.home() / ".claude.json")
 
 
 def configure_gemini(repo_root: Path) -> None:
@@ -451,6 +488,7 @@ def configure_codex(repo_root: Path) -> None:
     # Phase 2 (mcp-migration-agent-config): stop injecting MCP server config
     # and scrub any legacy TeleClaude MCP section from existing Codex config.
     content = _remove_codex_mcp_config(content)
+    content = _ensure_codex_mcp_servers(content)
     content = _apply_codex_settings_overrides(content)
     config_path.write_text(content)
     print(f"Codex hooks and settings configured in {config_path}")
@@ -500,6 +538,57 @@ def _remove_codex_mcp_config(content: str) -> str:
     )
     content = section_pattern.sub("", content)
     return content.rstrip() + "\n" if content.strip() else ""
+
+
+CODEX_MCP_SERVERS: dict[str, dict[str, object]] = {
+    "firecrawl": {
+        "command": "bash",
+        "args": ["-c", "npx -y @dotenvx/dotenvx run --env-file $HOME/.teleclaude/.env -- npx -y firecrawl-mcp"],
+        "type": "stdio",
+    },
+}
+
+
+def _ensure_codex_mcp_servers(content: str) -> str:
+    """Ensure managed MCP server sections exist in Codex TOML config."""
+    try:
+        config = tomllib.loads(content)
+    except tomllib.TOMLDecodeError:
+        return content
+
+    existing_mcp = config.get("mcp_servers", {})
+
+    for name, spec in CODEX_MCP_SERVERS.items():
+        if name in existing_mcp and existing_mcp[name] == spec:
+            continue
+
+        # Remove existing section if present (will be re-added)
+        section_pattern = re.compile(
+            rf"(?m)^[ \t]*\[mcp_servers\.{re.escape(name)}\]\n"
+            r"(?:^(?![ \t]*\[).*(?:\n|$))*"
+        )
+        content = section_pattern.sub("", content)
+
+        # Build TOML section
+        lines = [f"\n  [mcp_servers.{name}]"]
+        for key, value in spec.items():
+            lines.append(f"    {key}={json.dumps(value)}")
+        block = "\n".join(lines) + "\n"
+
+        # Insert after [mcp_servers] header or append
+        mcp_header = re.search(r"^\[mcp_servers\]\s*$", content, re.MULTILINE)
+        if mcp_header:
+            # Find end of mcp_servers section (next top-level section or EOF)
+            next_section = re.search(r"^\[[^\.]", content[mcp_header.end():], re.MULTILINE)
+            if next_section:
+                insert_pos = mcp_header.end() + next_section.start()
+            else:
+                insert_pos = len(content.rstrip())
+            content = content[:insert_pos] + block + content[insert_pos:]
+        else:
+            content = content.rstrip() + "\n\n[mcp_servers]" + block
+
+    return content
 
 
 def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:
@@ -557,12 +646,36 @@ def resolve_main_repo_root(start: Path | None = None) -> Path:
     return start
 
 
+def install_env_symlink(repo_root: Path) -> None:
+    """Symlink ~/.teleclaude/.env to the project .env for MCP server env loading."""
+    project_env = repo_root / ".env"
+    target = Path.home() / ".teleclaude" / ".env"
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    if not project_env.exists():
+        print(f"Warning: No .env found at {project_env}, skipping symlink")
+        return
+
+    if target.is_symlink():
+        if target.resolve() == project_env.resolve():
+            print(f".env symlink already configured at {target}")
+            return
+        target.unlink()
+    elif target.exists():
+        print(f"Warning: {target} exists and is not a symlink, skipping")
+        return
+
+    target.symlink_to(project_env)
+    print(f".env symlink installed: {target} -> {project_env}")
+
+
 def main() -> None:
     repo_root = resolve_main_repo_root()
     print(f"Configuring hooks from repo: {repo_root}")
 
     install_agent_wrapper(repo_root, "git")
     install_agent_wrapper(repo_root, "gh")
+    install_env_symlink(repo_root)
     configure_claude(repo_root)
     configure_gemini(repo_root)
     configure_codex(repo_root)
