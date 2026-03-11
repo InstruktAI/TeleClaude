@@ -24,6 +24,7 @@ from teleclaude.cli.session_auth import (
     read_current_session_email,
     write_current_session_email,
 )
+from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.cli.tool_commands import (
     handle_agents,
     handle_channels,
@@ -51,11 +52,12 @@ from teleclaude.constants import (
     ROLE_WORKER,
     WORKTREE_DIR,
 )
-from teleclaude.content_scaffold import _emit_content_dumped, _resolve_author, create_content_inbox_entry
+from teleclaude.content_scaffold import _resolve_author, create_content_inbox_entry
 from teleclaude.logging_config import setup_logging
 from teleclaude.project_setup import init_project
 from teleclaude.slug import normalize_slug
 from teleclaude.todo_scaffold import create_bug_skeleton, create_todo_skeleton
+from teleclaude_events.envelope import EventEnvelope, EventLevel
 
 TMUX_ENV_KEY = "TMUX"
 TUI_ENV_KEY = "TELEC_TUI_SESSION"
@@ -746,6 +748,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--domain", desc="Filter by domain"),
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+            ),
+            "emit": CommandDef(
+                desc="Emit an event via the daemon",
+                hidden=True,
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
         },
     ),
@@ -2553,37 +2560,21 @@ def _handle_todo_dump(args: list[str]) -> None:
     input_path = todo_dir / "input.md"
     input_path.write_text(f"# {todo_dir.name} — Input\n\n{content}\n", encoding="utf-8")
 
-    # Emit todo.dumped notification (async, wrapped in asyncio.run())
-    async def _emit() -> None:
-        from redis.asyncio import Redis  # type: ignore[import-untyped]
-
-        from teleclaude_events.envelope import EventEnvelope, EventLevel
-        from teleclaude_events.producer import EventProducer
-
-        redis_url = config.redis.url
-        redis_password = getattr(config.redis, "password", None)
-        redis_client = Redis.from_url(redis_url, password=redis_password, decode_responses=False)
-        try:
-            producer = EventProducer(redis_client=redis_client)
-            envelope = EventEnvelope(
-                event="todo.dumped",
-                source="telec-cli",
-                level=EventLevel.WORKFLOW,
-                domain="todo",
-                description=f"Todo dumped: {slug}",
-                payload={"slug": slug, "project_root": str(project_root)},
-            )
-            await producer.emit(envelope)
-        finally:
-            await redis_client.aclose()
-
+    # Emit todo.dumped notification via daemon API
+    _log = get_logger(__name__)
     try:
-        asyncio.run(_emit())
-        print(f"Dumped todo: todos/{slug}/ — notification sent.")
-    except Exception as exc:
-        print(f"Dumped todo: todos/{slug}/")
-        print(f"Warning: notification emission failed: {exc}")
-        print("Notification can be retried manually.")
+        envelope = EventEnvelope(
+            event="todo.dumped",
+            source="telec-cli",
+            level=EventLevel.WORKFLOW,
+            domain="todo",
+            description=f"Todo dumped: {slug}",
+            payload={"slug": slug, "project_root": str(project_root)},
+        )
+        tool_api_request("POST", "/events/emit", json_body=envelope.model_dump(mode="json"), timeout=5.0)
+        _log.info("Dumped todo: todos/%s/ — notification sent.", slug)
+    except Exception:
+        _log.warning("Dumped todo: todos/%s/ — notification emission failed", slug)
 
 
 def _handle_todo_split(args: list[str]) -> None:
@@ -3609,12 +3600,24 @@ def _handle_content_dump(args: list[str]) -> None:
             tags=resolved_tags,
             author=resolved_author,
         )
-        _emit_content_dumped(
-            inbox_path=str(entry_dir.relative_to(project_root)),
-            author=resolved_author,
-            tags=resolved_tags,
-        )
-        print(f"Content dumped: {entry_dir.relative_to(project_root)}")
+        try:
+            envelope = EventEnvelope(
+                event="content.dumped",
+                source="telec-cli",
+                level=EventLevel.WORKFLOW,
+                domain="content",
+                description=f"Content dumped: {entry_dir.relative_to(project_root)}",
+                payload={
+                    "inbox_path": str(entry_dir.relative_to(project_root)),
+                    "author": resolved_author,
+                    "tags": resolved_tags,
+                },
+            )
+            tool_api_request("POST", "/events/emit", json_body=envelope.model_dump(mode="json"), timeout=5.0)
+        except Exception:
+            pass
+        _log = get_logger(__name__)
+        _log.info("Content dumped: %s", entry_dir.relative_to(project_root))
     except Exception as exc:
         print(f"Error: {exc}")
         raise SystemExit(1) from exc

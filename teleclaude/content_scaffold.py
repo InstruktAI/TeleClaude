@@ -2,21 +2,14 @@
 
 from __future__ import annotations
 
-import json
-import logging
 import re
-import ssl
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict
 
-import redis
 import yaml
 
-from teleclaude.config import config
 from teleclaude.slug import ensure_unique_slug, normalize_slug
-
-logger = logging.getLogger(__name__)
 
 
 def _derive_slug(text: str) -> str:
@@ -39,51 +32,10 @@ def _resolve_author() -> str:
         return "unknown"
 
 
-class _EventPayload(TypedDict):
-    event: str
-    inbox_path: str
-    author: str
-    tags: str
-    timestamp: str
-
-
 class _MetaPayload(TypedDict):
     author: str
     tags: list[str]
     created_at: str
-
-
-def _emit_content_dumped(  # pyright: ignore[reportUnusedFunction]  # used by telec.py
-    inbox_path: str, author: str, tags: list[str]
-) -> None:
-    """Emit a content.dumped notification via sync Redis XADD.
-
-    Guarded: prints a warning and continues if Redis is unavailable.
-    """
-    try:
-        if not config.redis.enabled:
-            return
-
-        kwargs: dict[str, object] = {
-            "decode_responses": False,
-            "socket_connect_timeout": 2,
-        }
-        if config.redis.url.startswith("rediss://"):
-            kwargs["ssl_cert_reqs"] = ssl.CERT_NONE
-        if config.redis.password:
-            kwargs["password"] = config.redis.password
-
-        r = redis.Redis.from_url(config.redis.url, **kwargs)
-        payload: _EventPayload = {
-            "event": "content.dumped",
-            "inbox_path": inbox_path,
-            "author": author,
-            "tags": json.dumps(tags),
-            "timestamp": datetime.now(UTC).isoformat(),
-        }
-        r.xadd("teleclaude:events", payload, maxlen=10000)
-    except Exception:
-        logger.warning("Notification service not available, skipping content.dumped emission")
 
 
 def create_content_inbox_entry(
