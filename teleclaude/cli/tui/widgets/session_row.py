@@ -238,7 +238,7 @@ class SessionRow(TelecMixin, Widget):
             line4.append(truncate_text(self.activity_text, text_limit), style=output_style)
             lines.append(line4)
         elif self.activity_event == "tool_done":
-            # Agent reasoning between tools — NOT italic
+            # Agent reasoning — no real content, all normal style
             activity_time_str = format_time(self.session.last_activity)
             line4 = Text(no_wrap=True)
             line4.append(connector_pad)
