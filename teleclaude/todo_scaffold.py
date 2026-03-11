@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 from datetime import UTC
 from pathlib import Path
 
@@ -251,9 +252,11 @@ def split_todo(project_root: Path, parent_slug: str, child_slugs: list[str]) -> 
 
 
 def remove_todo(project_root: Path, slug: str) -> None:
-    """Remove a todo and all its references.
+    """Remove a todo and all its references. Best-effort: removes whatever exists.
 
     Removes:
+    - Worktree trees/{slug}/ (if present)
+    - Local branch {slug} (if present)
     - todos/{slug}/ directory
     - Entry from todos/roadmap.yaml
     - Entry from todos/icebox.yaml (if present)
@@ -265,8 +268,7 @@ def remove_todo(project_root: Path, slug: str) -> None:
 
     Raises:
         ValueError: If slug format is invalid
-        RuntimeError: If worktree trees/{slug}/ exists
-        FileNotFoundError: If slug has no directory and no roadmap/icebox entry
+        FileNotFoundError: If slug has no artifacts anywhere (unknown slug)
     """
     from teleclaude.core.next_machine.core import (
         clean_dependency_references,
@@ -277,13 +279,22 @@ def remove_todo(project_root: Path, slug: str) -> None:
     validate_slug(slug)
     slug = slug.strip()
 
-    # Guard: check if worktree exists
+    # Remove worktree if present (best-effort: non-fatal)
     worktree_path = project_root / WORKTREE_DIR / slug
-    if worktree_path.exists():
-        raise RuntimeError(
-            f"Cannot remove {slug}: worktree exists at {worktree_path}. "
-            "Remove the worktree first with 'git worktree remove'."
+    found_worktree = worktree_path.exists()
+    if found_worktree:
+        subprocess.run(
+            ["git", "worktree", "remove", "--force", str(worktree_path)],
+            capture_output=True,
+            cwd=str(project_root),
         )
+
+    # Remove local branch if present (best-effort: non-fatal)
+    subprocess.run(
+        ["git", "branch", "-D", slug],
+        capture_output=True,
+        cwd=str(project_root),
+    )
 
     todos_root = project_root / "todos"
     todo_dir = todos_root / slug
@@ -305,6 +316,6 @@ def remove_todo(project_root: Path, slug: str) -> None:
     if found_directory:
         shutil.rmtree(target_dir)
 
-    # Error if nothing was found
-    if not (found_directory or found_in_roadmap or found_in_icebox):
-        raise FileNotFoundError(f"Todo '{slug}' not found in directory, roadmap, or icebox")
+    # Error only if slug is completely unknown
+    if not (found_directory or found_in_roadmap or found_in_icebox or found_worktree):
+        raise FileNotFoundError(f"Todo '{slug}' not found in directory, roadmap, icebox, or worktree")
