@@ -11,9 +11,13 @@ Example log query: `instrukt-ai-logs teleclaude --since 10m`.
 
 from __future__ import annotations
 
+import logging
 import os
 
 from instrukt_ai_logging import configure_logging
+
+# Sibling top-level packages whose loggers should share the app log level.
+_SIBLING_PACKAGES = ("teleclaude_events",)
 
 
 def setup_logging(level: str | None = None) -> None:
@@ -26,3 +30,10 @@ def setup_logging(level: str | None = None) -> None:
         os.environ["TELECLAUDE_LOG_LEVEL"] = level
 
     configure_logging("teleclaude")
+
+    # teleclaude_events is a separate top-level package — configure_logging only
+    # sets the "teleclaude" logger to INFO. Without this, teleclaude_events.*
+    # loggers inherit root level (WARNING) and all INFO/DEBUG output is silenced.
+    app_level = logging.getLogger("teleclaude").level
+    for pkg in _SIBLING_PACKAGES:
+        logging.getLogger(pkg).setLevel(app_level)
