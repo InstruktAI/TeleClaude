@@ -144,7 +144,7 @@ def seed_codex_prompt_from_message(session_id: str, prompt_text: str) -> None:
 
     clipped = text[:CODEX_INPUT_MAX_CHARS]
     if clipped != state.last_prompt_input:
-        logger.debug("[CODEX %s] Seeded prompt from dispatch: %r", session_id[:8], clipped[:50])
+        logger.debug("[CODEX %s] Seeded prompt from dispatch: %r", session_id, clipped[:50])
 
     state.last_prompt_input = clipped
     state.submitted_for_current_response = False
@@ -363,13 +363,13 @@ async def maybe_emit_codex_input(
         if _is_codex_prompt_placeholder(state.last_prompt_input):
             logger.debug(
                 "[CODEX %s] Ignoring synthetic placeholder prompt: %r",
-                session_id[:8],
+                session_id,
                 state.last_prompt_input[:50],
             )
             return False
         logger.info(
             "Emitting synthetic user_prompt_submit for Codex session %s: %d chars: %r",
-            session_id[:8],
+            session_id,
             len(state.last_prompt_input),
             state.last_prompt_input[:50],
         )
@@ -394,7 +394,7 @@ async def maybe_emit_codex_input(
 
     if current_input:
         if current_input != state.last_prompt_input:
-            logger.debug("[CODEX %s] Tracking input: %r", session_id[:8], current_input[:50])
+            logger.debug("[CODEX %s] Tracking input: %r", session_id, current_input[:50])
 
         overwrite_seeded_with_shorter = (
             state.has_authoritative_seed
@@ -404,7 +404,7 @@ async def maybe_emit_codex_input(
         if overwrite_seeded_with_shorter:
             logger.debug(
                 "[CODEX %s] Keeping authoritative seeded prompt over shorter snapshot (%d < %d)",
-                session_id[:8],
+                session_id,
                 len(current_input),
                 len(state.last_prompt_input),
             )
@@ -423,7 +423,7 @@ async def maybe_emit_codex_input(
         if transition_boundary:
             emitted = await _emit_captured_input("codex_marker_transition")
         elif not current_input:
-            logger.debug("[CODEX %s] Agent marker found but no input to emit", session_id[:8])
+            logger.debug("[CODEX %s] Agent marker found but no input to emit", session_id)
 
         if emitted:
             state.submitted_for_current_response = True

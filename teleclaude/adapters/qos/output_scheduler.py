@@ -163,7 +163,7 @@ class OutputQoSScheduler:
             logger.debug(
                 "[QoS %s] Priority payload enqueued: session=%s",
                 self._policy.adapter_key,
-                session_id[:8],
+                session_id,
             )
         else:
             if session_id in self._normal_slots:
@@ -172,7 +172,7 @@ class OutputQoSScheduler:
                 logger.debug(
                     "[QoS %s] Coalesced superseded payload: session=%s age=%.2fs total_coalesced=%d",
                     self._policy.adapter_key,
-                    session_id[:8],
+                    session_id,
                     age,
                     self._coalesced,
                 )
@@ -271,7 +271,7 @@ class OutputQoSScheduler:
         logger.debug(
             "[QoS %s] Dispatching: session=%s is_final=%s wait_age=%.2fs",
             self._policy.adapter_key,
-            payload.session_id[:8],
+            payload.session_id,
             payload.is_final,
             wait_age,
         )
@@ -287,7 +287,7 @@ class OutputQoSScheduler:
             logger.error(
                 "[QoS %s] Dispatch error: session=%s",
                 self._policy.adapter_key,
-                payload.session_id[:8],
+                payload.session_id,
                 exc_info=True,
             )
 

@@ -390,7 +390,7 @@ class AgentCoordinator:
             if (now - state.last_log_at).total_seconds() >= _NOOP_LOG_INTERVAL_SECONDS:
                 logger.debug(
                     "Incremental no-op persists for session %s (reason=%s, suppressed=%d, elapsed_s=%d)",
-                    session_id[:8],
+                    session_id,
                     reason,
                     state.suppressed,
                     elapsed_s,
@@ -404,7 +404,7 @@ class AgentCoordinator:
             started_at=now,
             last_log_at=now,
         )
-        logger.debug("Incremental no-op entered for session %s (reason=%s)", session_id[:8], reason)
+        logger.debug("Incremental no-op entered for session %s (reason=%s)", session_id, reason)
 
     def _clear_incremental_noop(self, session_id: str, *, outcome: str) -> None:
         """Emit a one-time resume log when exiting a no-op suppression window."""
@@ -415,7 +415,7 @@ class AgentCoordinator:
         elapsed_s = int((now - state.started_at).total_seconds())
         logger.debug(
             "Incremental no-op cleared for session %s (outcome=%s, suppressed=%d, elapsed_s=%d)",
-            session_id[:8],
+            session_id,
             outcome,
             state.suppressed,
             elapsed_s,
@@ -433,7 +433,7 @@ class AgentCoordinator:
             if (now - state.last_log_at).total_seconds() >= _NOOP_LOG_INTERVAL_SECONDS:
                 logger.debug(
                     "tool_use DB write still skipped for session %s (suppressed=%d, elapsed_s=%d)",
-                    session_id[:8],
+                    session_id,
                     state.suppressed,
                     elapsed_s,
                 )
@@ -446,7 +446,7 @@ class AgentCoordinator:
             started_at=now,
             last_log_at=now,
         )
-        logger.debug("tool_use DB write skipped (already set) for session %s", session_id[:8])
+        logger.debug("tool_use DB write skipped (already set) for session %s", session_id)
 
     def _clear_tool_use_skip(self, session_id: str) -> None:
         """Clear tool_use skip suppression when a new turn starts recording again."""
@@ -457,7 +457,7 @@ class AgentCoordinator:
         elapsed_s = int((now - state.started_at).total_seconds())
         logger.debug(
             "tool_use skip suppression cleared for session %s (suppressed=%d, elapsed_s=%d)",
-            session_id[:8],
+            session_id,
             state.suppressed,
             elapsed_s,
         )
@@ -516,7 +516,7 @@ class AgentCoordinator:
                 "Failed to emit activity event: %s",
                 exc,
                 exc_info=True,
-                extra={"session_id": session_id[:8], "event_type": event_type},
+                extra={"session_id": session_id, "event_type": event_type},
             )
 
     def _emit_status_event(
@@ -564,7 +564,7 @@ class AgentCoordinator:
             )
             logger.debug(
                 "status transition: session=%s %s (reason=%s)",
-                session_id[:8],
+                session_id,
                 status,
                 reason,
             )
@@ -573,7 +573,7 @@ class AgentCoordinator:
                 "Failed to emit status event: %s",
                 exc,
                 exc_info=True,
-                extra={"session_id": session_id[:8], "status": status},
+                extra={"session_id": session_id, "status": status},
             )
 
     def _cancel_stall_task(self, session_id: str) -> None:
@@ -614,7 +614,7 @@ class AgentCoordinator:
             except Exception as exc:
                 logger.error(
                     "Stall watcher failed for session %s: %s",
-                    session_id[:8],
+                    session_id,
                     exc,
                     exc_info=True,
                 )
@@ -664,13 +664,13 @@ class AgentCoordinator:
             logger.debug(
                 "Reaffirmed voice from service '%s' for teleclaude_session_id %s",
                 voice.service_name,
-                context.session_id[:8],
+                context.session_id,
             )
 
         logger.info(
             "Stored Agent session data: teleclaude=%s, native=%s",
-            context.session_id[:8],
-            str(native_session_id)[:8],
+            context.session_id,
+            str(native_session_id),
         )
 
         # Emit canonical lifecycle status: active — agent confirmed alive
@@ -691,18 +691,18 @@ class AgentCoordinator:
 
         session = await db.get_session(session_id)
         if not session:
-            logger.warning("Session %s not found for user_prompt_submit", session_id[:8])
+            logger.warning("Session %s not found for user_prompt_submit", session_id)
             return
 
         prompt_text = payload.prompt or ""
         if not prompt_text.strip():
-            logger.debug("Empty prompt detected, skipping user input persistence for session %s", session_id[:8])
+            logger.debug("Empty prompt detected, skipping user input persistence for session %s", session_id)
             return
 
         is_codex_synthetic = _is_codex_synthetic_prompt_event(payload.raw)
         # System-injected checkpoint — not real user input, skip entirely
         if _is_checkpoint_prompt(prompt_text, raw_payload=payload.raw):
-            logger.debug("Checkpoint prompt detected, skipping user input persistence for session %s", session_id[:8])
+            logger.debug("Checkpoint prompt detected, skipping user input persistence for session %s", session_id)
             return
 
         # Clear notification flag when new prompt starts (all sessions)
@@ -735,7 +735,7 @@ class AgentCoordinator:
                 should_update_last_message = False
                 logger.debug(
                     "Skipping synthetic Codex prompt overwrite for session %s (existing=%r incoming=%r)",
-                    session_id[:8],
+                    session_id,
                     existing_input[:50],
                     incoming_input[:50],
                 )
@@ -761,7 +761,7 @@ class AgentCoordinator:
         if not is_recent_routed_echo and existing_origin and existing_origin != InputOrigin.TERMINAL.value:
             logger.debug(
                 "Echo guard miss for session %s: origin=%s age=%.1fs text_match=%s existing=%r incoming=%r",
-                session_id[:8],
+                session_id,
                 existing_origin,
                 (now - existing_at).total_seconds() if isinstance(existing_at, datetime) else -1,
                 existing_input[:50] == incoming_input[:50] if existing_input and incoming_input else "N/A",
@@ -772,7 +772,7 @@ class AgentCoordinator:
             should_update_last_message = False
             logger.debug(
                 "Skipping duplicate hook prompt persistence for session %s (origin=%s)",
-                session_id[:8],
+                session_id,
                 existing_origin,
             )
 
@@ -790,7 +790,7 @@ class AgentCoordinator:
         await db.update_session(session_id, **update_kwargs)
         logger.debug(
             "Recorded user input via hook for session %s: %s...",
-            session_id[:8],
+            session_id,
             prompt_text[:50],
         )
 
@@ -799,7 +799,7 @@ class AgentCoordinator:
         if should_update_last_message:
             self._queue_background_task(
                 self._update_session_title_async(session_id, now),
-                f"title-summary:{session_id[:8]}",
+                f"title-summary:{session_id}",
             )
 
         # Reset threaded output state on user input.
@@ -825,7 +825,7 @@ class AgentCoordinator:
             if is_recent_routed_echo:
                 logger.debug(
                     "Skipping duplicate non-headless hook reflection for session %s",
-                    session_id[:8],
+                    session_id,
                 )
                 return
             broadcast_result = self.client.broadcast_user_input(
@@ -853,7 +853,7 @@ class AgentCoordinator:
 
         logger.debug(
             "Routing headless session %s through process_message for tmux adoption",
-            session_id[:8],
+            session_id,
         )
 
         await get_command_service().process_message(cmd)
@@ -903,7 +903,7 @@ class AgentCoordinator:
 
         logger.debug(
             "Agent stop event for session %s (title: %s)",
-            session_id[:8],
+            session_id,
             "db",
         )
 
@@ -931,7 +931,7 @@ class AgentCoordinator:
         elif codex_input:
             logger.debug(
                 "Ignoring malformed codex input tuple for session %s",
-                session_id[:8],
+                session_id,
             )
 
         if input_update_kwargs:
@@ -939,7 +939,7 @@ class AgentCoordinator:
         if emit_codex_submit_backfill:
             logger.info(
                 "Backfilling missing user_prompt_submit from codex agent_stop for session %s",
-                session_id[:8],
+                session_id,
             )
             self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
             # Safety net: when Codex prompt polling misses a live submit marker,
@@ -963,7 +963,7 @@ class AgentCoordinator:
             if config.terminal.strip_ansi:
                 raw_output = strip_ansi_codes(raw_output)
             if not raw_output.strip():
-                logger.debug("Skip stop summary/TTS (agent output empty after normalization)", session=session_id[:8])
+                logger.debug("Skip stop summary/TTS (agent output empty after normalization)", session=session_id)
                 raw_output = None
                 link_output = None
             else:
@@ -983,7 +983,7 @@ class AgentCoordinator:
             )
             logger.debug(
                 "Stored agent output: session=%s raw_len=%d summary_len=%d",
-                session_id[:8],
+                session_id,
                 len(raw_output),
                 len(summary) if summary else 0,
             )
@@ -991,7 +991,7 @@ class AgentCoordinator:
                 try:
                     await self.tts_manager.speak(summary, session_id=session_id)
                 except Exception as exc:
-                    logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id[:8]})
+                    logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id})
 
         # Persist feedback and status to DB (activity events are emitted separately).
         if feedback_update_kwargs:
@@ -1038,7 +1038,7 @@ class AgentCoordinator:
         if _is_linked_echo:
             logger.debug(
                 "Suppressing linked fan-out for session %s (turn triggered by linked output)",
-                session_id[:8],
+                session_id,
             )
         if link_output and link_output.strip() and not _is_linked_echo:
             await self._fanout_linked_stop_output(session_id, link_output, source_computer=source_computer)
@@ -1089,7 +1089,7 @@ class AgentCoordinator:
             self._clear_tool_use_skip(session_id)
             now = datetime.now(UTC)
             await db.update_session(session_id, last_tool_use_at=now.isoformat())
-            logger.debug("tool_use recorded for session %s", session_id[:8])
+            logger.debug("tool_use recorded for session %s", session_id)
 
         # Output fanout is transcript-driven from polling; hooks stay control-plane only.
         # tool_use still emits activity + checkpoint timing metadata.
@@ -1137,7 +1137,7 @@ class AgentCoordinator:
         if self._incremental_eval_state.get(session_id) != eval_state:
             logger.debug(
                 "Evaluating incremental output",
-                session=session_id[:8],
+                session=session_id,
                 agent=agent_key,
                 is_enabled=is_enabled,
             )
@@ -1179,7 +1179,7 @@ class AgentCoordinator:
                 _, user_ts = user_msg
                 # If user message is newer than our last rendered assistant block, break the block.
                 if user_ts and (turn_cursor is None or user_ts > turn_cursor):
-                    logger.info("New turn detected in transcript; forcing fresh message block for %s", session_id[:8])
+                    logger.info("New turn detected in transcript; forcing fresh message block for %s", session_id)
                     await self.client.break_threaded_turn(session)
                     # NOTE: Do NOT clear _incremental_render_digests here. The
                     # same content can be re-rendered on this tick; keeping the
@@ -1229,7 +1229,7 @@ class AgentCoordinator:
         self._clear_incremental_noop(session_id, outcome="assistant_messages_detected")
         logger.debug(
             "Incremental output analysis: session=%s msg_count=%d block_count=%d",
-            session_id[:8],
+            session_id,
             len(assistant_messages),
             renderable_block_count,
         )
@@ -1280,7 +1280,7 @@ class AgentCoordinator:
             self._clear_incremental_noop(session_id, outcome="output_changed")
             logger.info(
                 "Sending incremental output: tc_session=%s len=%d multi_message=%s",
-                session_id[:8],
+                session_id,
                 len(message),
                 is_multi,
             )
@@ -1302,7 +1302,7 @@ class AgentCoordinator:
                 from teleclaude.core.models import SessionField
 
                 update_kwargs[SessionField.LAST_TOOL_DONE_AT.value] = last_ts.isoformat()
-                logger.debug("Updating cursor for session %s to %s", session_id[:8], last_ts.isoformat())
+                logger.debug("Updating cursor for session %s to %s", session_id, last_ts.isoformat())
 
             # Persist cursor timestamp (activity events are emitted separately).
             if update_kwargs:
@@ -1310,7 +1310,7 @@ class AgentCoordinator:
 
             return True
         except Exception as exc:
-            logger.warning("Failed to send incremental output: %s", exc, extra={"session_id": session_id[:8]})
+            logger.warning("Failed to send incremental output: %s", exc, extra={"session_id": session_id})
 
         return False
 
@@ -1343,14 +1343,14 @@ class AgentCoordinator:
     async def handle_session_end(self, context: AgentEventContext) -> None:
         """Handle session_end event - agent session ended."""
         _payload = cast(AgentSessionEndPayload, context.data)
-        logger.info("Agent %s for session %s", AgentHookEvents.AGENT_SESSION_END, context.session_id[:8])
+        logger.info("Agent %s for session %s", AgentHookEvents.AGENT_SESSION_END, context.session_id)
 
     async def _maybe_send_headless_snapshot(self, session_id: str) -> None:
         session = await db.get_session(session_id)
         if not session or session.lifecycle_status != "headless":
             return
         if not session.active_agent or not session.native_log_file:
-            logger.debug("Headless snapshot skipped (missing agent or transcript)", session=session_id[:8])
+            logger.debug("Headless snapshot skipped (missing agent or transcript)", session=session_id)
             return
         await self.headless_snapshot_service.send_snapshot(session, reason="agent_session_start", client=self.client)
 
@@ -1372,7 +1372,7 @@ class AgentCoordinator:
         session = await db.get_session(session_id)
         transcript_path = payload.transcript_path or (session.native_log_file if session else None)
         if not transcript_path:
-            logger.debug("Extract skipped (missing transcript path)", session=session_id[:8])
+            logger.debug("Extract skipped (missing transcript path)", session=session_id)
             return None
 
         raw_agent_name = payload.raw.get("agent_name")
@@ -1380,7 +1380,7 @@ class AgentCoordinator:
         if not agent_name_value and session and session.active_agent:
             agent_name_value = session.active_agent
         if not agent_name_value:
-            logger.debug("Extract skipped (missing agent name)", session=session_id[:8])
+            logger.debug("Extract skipped (missing agent name)", session=session_id)
             return None
 
         try:
@@ -1391,7 +1391,7 @@ class AgentCoordinator:
 
         last_message = extract_last_agent_message(transcript_path, agent_name, 1)
         if not last_message or not last_message.strip():
-            logger.debug("Extract skipped (no agent output)", session=session_id[:8])
+            logger.debug("Extract skipped (no agent output)", session=session_id)
             return None
 
         return last_message
@@ -1403,13 +1403,13 @@ class AgentCoordinator:
             Summary text, or None if summarization fails.
         """
         if not raw_output.strip():
-            logger.debug("Summarization skipped (empty normalized output)", session=session_id[:8])
+            logger.debug("Summarization skipped (empty normalized output)", session=session_id)
             return None
         try:
             _title, summary = await summarize_agent_output(raw_output)
             return summary
         except Exception as exc:
-            logger.warning("Summarization failed: %s", exc, extra={"session_id": session_id[:8]})
+            logger.warning("Summarization failed: %s", exc, extra={"session_id": session_id})
             return None
 
     async def _extract_user_input_for_codex(
@@ -1431,7 +1431,7 @@ class AgentCoordinator:
 
         transcript_path = payload.transcript_path or session.native_log_file
         if not transcript_path:
-            logger.debug("Codex user input extraction skipped (no transcript)", session=session_id[:8])
+            logger.debug("Codex user input extraction skipped (no transcript)", session=session_id)
             return None
 
         try:
@@ -1441,18 +1441,18 @@ class AgentCoordinator:
 
         extracted = extract_last_user_message_with_timestamp(transcript_path, agent_name)
         if not extracted:
-            logger.debug("Codex user input extraction skipped (no user message)", session=session_id[:8])
+            logger.debug("Codex user input extraction skipped (no user message)", session=session_id)
             return None
         last_user_input, input_timestamp = extracted
 
         # Don't persist our own checkpoint message as user input
         if _is_checkpoint_prompt(last_user_input):
-            logger.debug("Codex user input skipped (checkpoint message) for session %s", session_id[:8])
+            logger.debug("Codex user input skipped (checkpoint message) for session %s", session_id)
             return None
 
         logger.debug(
             "Extracted Codex user input: session=%s input=%s...",
-            session_id[:8],
+            session_id,
             last_user_input[:50],
         )
         return last_user_input, input_timestamp
@@ -1473,7 +1473,7 @@ class AgentCoordinator:
         if await db.get_notification_flag(target_session_id):
             logger.debug(
                 "Skipping duplicate stop notification for session %s (already notified this turn)",
-                target_session_id[:8],
+                target_session_id,
             )
             return
         target_session = await db.get_session(target_session_id)
@@ -1585,8 +1585,8 @@ class AgentCoordinator:
                 except Exception as exc:
                     logger.warning(
                         "Linked stop output delivery failed: sender=%s peer=%s target=%s error=%s",
-                        sender_session_id[:8],
-                        peer.session_id[:8],
+                        sender_session_id,
+                        peer.session_id,
                         target_computer,
                         exc,
                     )
@@ -1594,7 +1594,7 @@ class AgentCoordinator:
         if delivered:
             logger.info(
                 "Linked stop output fan-out: sender=%s delivered=%d",
-                sender_session_id[:8],
+                sender_session_id,
                 delivered,
             )
         return delivered
@@ -1616,4 +1616,4 @@ class AgentCoordinator:
                 default_agent=AgentName.from_str(get_default_agent()),
             )
         except Exception as exc:
-            logger.warning("Checkpoint injection failed for session %s: %s", session_id[:8], exc)
+            logger.warning("Checkpoint injection failed for session %s: %s", session_id, exc)

@@ -155,7 +155,7 @@ class TTSManager:
         if voice and voice.service_name:
             logger.debug(
                 f"Using stored voice: {voice.voice} from {voice.service_name}",
-                extra={"session_id": session_id[:8]},
+                extra={"session_id": session_id},
             )
             return voice
 
@@ -169,7 +169,7 @@ class TTSManager:
         await db.assign_voice(session_id, new_voice)
         logger.info(
             f"Assigned new voice: {voice_param} from {service_name}",
-            extra={"session_id": session_id[:8]},
+            extra={"session_id": session_id},
         )
         return new_voice
 
@@ -224,7 +224,7 @@ class TTSManager:
             return False
 
         if session.last_input_origin != InputOrigin.TERMINAL.value:
-            logger.info("Skipping TTS for session %s (origin: %s)", session_id[:8], session.last_input_origin)
+            logger.info("Skipping TTS for session %s (origin: %s)", session_id, session.last_input_origin)
             return False
 
         # Get or assign voice for this session (persisted in DB)
@@ -274,7 +274,7 @@ class TTSManager:
 
         logger.debug(
             f"TTS triggered for {normalized_event_name}: {text_to_speak[:50]}...",
-            extra={"session_id": session_id[:8]},
+            extra={"session_id": session_id},
         )
 
         await self._enqueue_speech(text_to_speak, service_chain, session_id, voice.service_name)
@@ -292,16 +292,16 @@ class TTSManager:
 
         session = await db.get_session(session_id)
         if not session:
-            logger.warning("Session %s not found for TTS speak()", session_id[:8])
+            logger.warning("Session %s not found for TTS speak()", session_id)
             return False
 
         if session.last_input_origin != InputOrigin.TERMINAL.value:
-            logger.info("Skipping TTS speak for session %s (origin: %s)", session_id[:8], session.last_input_origin)
+            logger.info("Skipping TTS speak for session %s (origin: %s)", session_id, session.last_input_origin)
             return False
 
         voice = await self._get_or_assign_voice(session_id)
         if not voice:
-            logger.warning("No voice available for TTS speak()", extra={"session_id": session_id[:8]})
+            logger.warning("No voice available for TTS speak()", extra={"session_id": session_id})
             return False
 
         service_chain: list[tuple[str, str | None]] = [(voice.service_name, voice.voice)]
@@ -366,7 +366,7 @@ class TTSManager:
                 "TTS queued: pending=%d queue=%d",
                 self._audio_focus.active_claims,
                 self._speech_queue.qsize(),
-                extra={"session_id": session_id[:8]},
+                extra={"session_id": session_id},
             )
 
     async def _speech_worker(self) -> None:
@@ -378,7 +378,7 @@ class TTSManager:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.error("TTS worker failed: %s", exc, extra={"session_id": job.session_id[:8]})
+                logger.error("TTS worker failed: %s", exc, extra={"session_id": job.session_id})
             finally:
                 self._speech_queue.task_done()
                 self._audio_focus.release_foreground()
@@ -400,7 +400,7 @@ class TTSManager:
             "Promoted fallback voice %s from %s for session %s",
             used_voice or "default",
             used_service,
-            job.session_id[:8],
+            job.session_id,
         )
 
     def _log_worker_failure(self, task: asyncio.Task[None]) -> None:

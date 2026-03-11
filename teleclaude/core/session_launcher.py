@@ -110,7 +110,7 @@ async def _create_session_with_intent(
 
     queue_background_task(
         bootstrap_session(session_id, auto_command),
-        f"session_bootstrap:{session_id[:8]}",
+        f"session_bootstrap:{session_id}",
     )
 
     if not auto_command:
@@ -152,7 +152,7 @@ async def create_session(
             session_id = str(session_id_raw)
             queue_background_task(
                 bootstrap_session(session_id, None),
-                f"session_bootstrap:{session_id[:8]}",
+                f"session_bootstrap:{session_id}",
             )
         return result
     if intent.kind == SessionLaunchKind.AGENT:

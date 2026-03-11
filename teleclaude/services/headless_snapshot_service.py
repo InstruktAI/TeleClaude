@@ -34,7 +34,7 @@ class HeadlessSnapshotService:
             logger.error(
                 "Headless snapshot transcript missing",
                 reason=reason,
-                session=session.session_id[:8],
+                session=session.session_id,
                 transcript_path=transcript_path,
             )
             return
@@ -46,7 +46,7 @@ class HeadlessSnapshotService:
             logger.debug(
                 "Headless snapshot skipped (duplicate)",
                 reason=reason,
-                session=session.session_id[:8],
+                session=session.session_id,
             )
             return
 
@@ -61,13 +61,13 @@ class HeadlessSnapshotService:
         except Exception as exc:
             logger.error(
                 "Headless snapshot parse failed for session %s: %s",
-                session.session_id[:8],
+                session.session_id,
                 exc,
             )
             return
 
         if not markdown_content.strip():
-            logger.debug("Headless snapshot skipped (empty)", reason=reason, session=session.session_id[:8])
+            logger.debug("Headless snapshot skipped (empty)", reason=reason, session=session.session_id)
             return
 
         if first_snapshot:
@@ -87,6 +87,6 @@ class HeadlessSnapshotService:
         except Exception as exc:
             logger.error(
                 "Headless snapshot send failed for session %s: %s",
-                session.session_id[:8],
+                session.session_id,
                 exc,
             )

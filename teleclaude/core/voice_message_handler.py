@@ -155,10 +155,10 @@ async def handle_voice(
         send_message: Async function to send UI notices (session_id, message, metadata)
     """
     logger.info("=== DAEMON HANDLE_VOICE CALLED ===")
-    logger.info("Session ID: %s", session_id[:8])
+    logger.info("Session ID: %s", session_id)
     logger.info("Audio path: %s", audio_path)
     logger.info("Context: %s", context)
-    logger.info("Voice message for session %s, duration: %ss", session_id[:8], context.duration)
+    logger.info("Voice message for session %s, duration: %ss", session_id, context.duration)
 
     # Get session
     session = await db.get_session(session_id)
@@ -196,7 +196,7 @@ async def handle_voice(
     if msg_id is None:
         logger.info(
             "Notice not sent for session %s (non-UI adapter or topic unavailable); continuing transcription",
-            session_id[:8],
+            session_id,
         )
 
     # Transcribe audio using STT backend chain
@@ -233,7 +233,7 @@ async def handle_voice(
         try:
             await delete_message(session_id, msg_id)
         except Exception as exc:  # pragma: no cover - best-effort cleanup
-            logger.warning("Failed to delete transcribing message for session %s: %s", session_id[:8], exc)
+            logger.warning("Failed to delete transcribing message for session %s: %s", session_id, exc)
 
-    logger.debug("Transcribed voice input for session %s: %s", session_id[:8], text)
+    logger.debug("Transcribed voice input for session %s: %s", session_id, text)
     return text

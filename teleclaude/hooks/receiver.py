@@ -131,12 +131,12 @@ def _maybe_checkpoint_output(
     # Session-scoped persistent disable: while clear marker exists, skip checkpoints.
     if is_checkpoint_disabled(session_id):
         consume_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
-        logger.info("Checkpoint skipped (persistent clear flag)", session_id=session_id[:8], agent=agent)
+        logger.info("Checkpoint skipped (persistent clear flag)", session_id=session_id, agent=agent)
         return None
 
     stop_hook_active = bool(raw_data.get("stop_hook_active"))
     if stop_hook_active and consume_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG):
-        logger.info("Checkpoint skipped (recheck limit reached)", session_id=session_id[:8], agent=agent)
+        logger.info("Checkpoint skipped (recheck limit reached)", session_id=session_id, agent=agent)
         return None
 
     from sqlmodel import Session as SqlSession
@@ -166,7 +166,7 @@ def _maybe_checkpoint_output(
     turn_candidates = [dt for dt in (message_at, checkpoint_at) if dt is not None]
     turn_start = max(turn_candidates, default=None)
     if not turn_start:
-        logger.debug("Checkpoint skipped (no turn start) for session %s", session_id[:8])
+        logger.debug("Checkpoint skipped (no turn start) for session %s", session_id)
         return None
 
     elapsed = (now - turn_start).total_seconds()
@@ -175,7 +175,7 @@ def _maybe_checkpoint_output(
     transcript_path = getattr(row, "native_log_file", None)
     working_slug = getattr(row, "working_slug", None)
 
-    logger.debug("Checkpoint eval for session %s (%.1fs elapsed)", session_id[:8], elapsed)
+    logger.debug("Checkpoint eval for session %s (%.1fs elapsed)", session_id, elapsed)
 
     # Build context-aware checkpoint message from git diff + transcript
     from teleclaude.hooks.checkpoint import get_checkpoint_content
@@ -201,7 +201,7 @@ def _maybe_checkpoint_output(
     if not checkpoint_reason:
         logger.debug(
             "Checkpoint skipped: no turn-local changes for session %s (transcript=%s)",
-            session_id[:8],
+            session_id,
             transcript_path or "<none>",
         )
         return None
@@ -224,7 +224,7 @@ def _maybe_checkpoint_output(
     logger.info(
         "Checkpoint payload prepared",
         route="hook",
-        session=session_id[:8],
+        session=session_id,
         agent=agent,
         transcript_present=bool(transcript_path),
         project_path=project_path or "",
@@ -295,7 +295,7 @@ def _print_memory_injection(cwd: str | None, adapter: object, session_id: str | 
                         if person:
                             person_header = _render_person_header(person)
         except Exception:
-            logger.debug("Identity/person resolution failed for session %s", (session_id or "")[:8])
+            logger.debug("Identity/person resolution failed for session %s", (session_id or ""))
 
     context = _get_memory_context(project_name, identity_key=identity_key)
     if not context and not person_header:
@@ -440,11 +440,11 @@ def _update_session_native_fields(
 
         logger.info(
             "Native session metadata changed",
-            session_id=session_id[:8],
+            session_id=session_id,
             agent=agent,
             event_type=event_type,
-            native_session_id_before=(previous_native_session_id or "")[:8],
-            native_session_id_after=(native_session_id or "")[:8],
+            native_session_id_before=(previous_native_session_id or ""),
+            native_session_id_after=(native_session_id or ""),
             native_session_changed=session_changed,
             native_log_file_before=previous_native_log_file or "",
             native_log_file_after=native_log_file or "",
@@ -497,8 +497,8 @@ def _get_cached_session_id(agent: str, native_session_id: str | None) -> str | N
     logger.debug(
         "Session map lookup",
         agent=agent,
-        native_session_id=(native_session_id or "")[:8],
-        cached_session_id=(cached or "")[:8],
+        native_session_id=(native_session_id or ""),
+        cached_session_id=(cached or ""),
         path=str(path),
         hit=bool(cached),
     )
@@ -529,8 +529,8 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
     except Exception as exc:
         logger.debug(
             "TMUX contract DB lookup skipped (db unavailable)",
-            session_id=session_id[:8],
-            native_session_id=native_session_id[:8],
+            session_id=session_id,
+            native_session_id=native_session_id,
             error=str(exc),
         )
         return True
@@ -538,16 +538,16 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
     if not row:
         logger.debug(
             "TMUX contract session not found in DB",
-            session_id=session_id[:8],
-            native_session_id=native_session_id[:8],
+            session_id=session_id,
+            native_session_id=native_session_id,
         )
         return False
 
     if row.closed_at:
         logger.debug(
             "TMUX contract session rejected: closed row",
-            session_id=session_id[:8],
-            native_session_id=native_session_id[:8],
+            session_id=session_id,
+            native_session_id=native_session_id,
         )
         return False
 
@@ -557,17 +557,17 @@ def _is_tmux_contract_session_compatible(session_id: str, native_session_id: str
         if row_agent and incoming_agent and row_agent == incoming_agent:
             logger.debug(
                 "TMUX contract native id rollover accepted for same agent",
-                session_id=session_id[:8],
+                session_id=session_id,
                 agent=incoming_agent,
-                previous_native_session_id=(row.native_session_id or "")[:8],
-                incoming_native_session_id=native_session_id[:8],
+                previous_native_session_id=(row.native_session_id or ""),
+                incoming_native_session_id=native_session_id,
             )
             return True
         logger.debug(
             "TMUX contract session rejected: native session id mismatch",
-            session_id=session_id[:8],
-            contract_native_session_id=(row.native_session_id or "")[:8],
-            incoming_native_session_id=native_session_id[:8],
+            session_id=session_id,
+            contract_native_session_id=(row.native_session_id or ""),
+            incoming_native_session_id=native_session_id,
             contract_agent=row_agent,
             incoming_agent=incoming_agent,
         )
@@ -627,8 +627,8 @@ def _resolve_or_refresh_session_id(
                 logger.debug(
                     "Invalidating cached session mapping: session row not found",
                     agent=agent,
-                    session_id=candidate_session_id[:8],
-                    native_session_id=raw_native_session_id[:8],
+                    session_id=candidate_session_id,
+                    native_session_id=raw_native_session_id,
                 )
                 return None
 
@@ -636,8 +636,8 @@ def _resolve_or_refresh_session_id(
                 logger.debug(
                     "Invalidating cached session mapping: session closed",
                     agent=agent,
-                    session_id=candidate_session_id[:8],
-                    native_session_id=raw_native_session_id[:8],
+                    session_id=candidate_session_id,
+                    native_session_id=raw_native_session_id,
                 )
                 return None
 
@@ -648,15 +648,15 @@ def _resolve_or_refresh_session_id(
                 logger.info(
                     "Updated stale native_session_id in DB",
                     agent=agent,
-                    session_id=candidate_session_id[:8],
-                    new_native_session_id=raw_native_session_id[:8],
+                    session_id=candidate_session_id,
+                    new_native_session_id=raw_native_session_id,
                 )
 
     except Exception as exc:
         logger.debug(
             "Session refresh lookup skipped (db unavailable)",
             agent=agent,
-            session_id=candidate_session_id[:8],
+            session_id=candidate_session_id,
             error=str(exc),
         )
 
@@ -683,7 +683,7 @@ def _find_session_id_by_native(native_session_id: str | None) -> str | None:
     except Exception as exc:
         logger.debug(
             "Native session lookup skipped (db unavailable)",
-            native_session_id=native_session_id[:8],
+            native_session_id=native_session_id,
             error=str(exc),
         )
         return None
@@ -713,8 +713,8 @@ def _persist_session_map(agent: str, native_session_id: str | None, session_id: 
             logger.debug(
                 "Session map persisted",
                 agent=agent,
-                native_session_id=(native_session_id or "")[:8],
-                session_id=session_id[:8],
+                native_session_id=(native_session_id or ""),
+                session_id=session_id,
                 path=str(path),
             )
     except OSError as exc:
@@ -748,9 +748,9 @@ def _resolve_hook_session_id(
             if fallback_session_id:
                 logger.warning(
                     "TMUX contract session mismatch; falling back to native session lookup",
-                    marker_session_id=resolved_session_id[:8],
-                    fallback_session_id=fallback_session_id[:8],
-                    native_session_id=native_session_id[:8],
+                    marker_session_id=resolved_session_id,
+                    fallback_session_id=fallback_session_id,
+                    native_session_id=native_session_id,
                     agent=agent,
                 )
                 _persist_session_map(agent, native_session_id, fallback_session_id)
@@ -758,8 +758,8 @@ def _resolve_hook_session_id(
 
             logger.error(
                 "TMUX contract session mismatch and no native-session fallback",
-                marker_session_id=resolved_session_id[:8],
-                native_session_id=native_session_id[:8],
+                marker_session_id=resolved_session_id,
+                native_session_id=native_session_id,
                 agent=agent,
             )
             return None, None, resolved_session_id
@@ -941,10 +941,10 @@ def main() -> None:
         agent=args.agent,
         headless=headless_route,
         event_type=event_type,
-        cached_session_id=(cached_session_id or "")[:8],
-        existing_session_id=(existing_id or "")[:8],
-        resolved_session_id=(teleclaude_session_id or "")[:8],
-        native_session_id=(raw_native_session_id or "")[:8],
+        cached_session_id=(cached_session_id or ""),
+        existing_session_id=(existing_id or ""),
+        resolved_session_id=(teleclaude_session_id or ""),
+        native_session_id=(raw_native_session_id or ""),
     )
     if not teleclaude_session_id:
         logger.debug(
@@ -953,9 +953,9 @@ def main() -> None:
             headless=headless_route,
             event_type=event_type,
             raw_event_type=raw_event_type,
-            native_session_id=(raw_native_session_id or "")[:8],
-            cached_session_id=(cached_session_id or "")[:8],
-            existing_session_id=(existing_id or "")[:8],
+            native_session_id=(raw_native_session_id or ""),
+            cached_session_id=(cached_session_id or ""),
+            existing_session_id=(existing_id or ""),
         )
         sys.exit(0)
 
@@ -1012,8 +1012,8 @@ def main() -> None:
             logger.warning(
                 "Dropped empty user_prompt_submit hook event",
                 agent=args.agent,
-                session_id=teleclaude_session_id[:8],
-                native_session_id=(raw_native_session_id or "")[:8],
+                session_id=teleclaude_session_id,
+                native_session_id=(raw_native_session_id or ""),
                 hook_event_name=str(data.get("hook_event_name") or ""),
                 raw_event_type=str(raw_event_type or ""),
             )
@@ -1022,7 +1022,7 @@ def main() -> None:
             logger.debug(
                 "Dropped system-injected user_prompt_submit",
                 agent=args.agent,
-                session_id=teleclaude_session_id[:8],
+                session_id=teleclaude_session_id,
             )
             return
         _reset_checkpoint_flags(teleclaude_session_id)
@@ -1048,7 +1048,7 @@ def main() -> None:
             logger.warning(
                 "Checkpoint eval crashed (ignored)",
                 event_type=event_type,
-                session_id=teleclaude_session_id[:8],
+                session_id=teleclaude_session_id,
                 agent=args.agent,
                 error=str(exc),
             )

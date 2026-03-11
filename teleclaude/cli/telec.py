@@ -1844,7 +1844,7 @@ def _revive_session(session_id: str, attach: bool, *, agent: str | None = None) 
         print(result.error or "Revive failed")
         return
 
-    print(f"Revived session {result.session_id[:8]}")
+    print(f"Revived session {result.session_id}")
     try:
         asyncio.run(_send_revive_enter_via_api(result.session_id))
     except APIError as e:

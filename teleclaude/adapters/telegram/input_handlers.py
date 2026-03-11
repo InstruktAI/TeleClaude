@@ -442,7 +442,7 @@ Usage:
             logger.info(
                 "Topic %s ended for already closed session %s",
                 topic_id,
-                session.session_id[:8],
+                session.session_id,
             )
             event_bus.emit(
                 "session_closed",
@@ -456,14 +456,14 @@ Usage:
             if session_age < 10.0:
                 logger.warning(
                     "Ignoring topic_closed for new session %s (age=%.1fs)",
-                    session.session_id[:8],
+                    session.session_id,
                     session_age,
                 )
                 return
         logger.info(
             "Topic %s ended by user, terminating session %s",
             topic_id,
-            session.session_id[:8],
+            session.session_id,
         )
 
         # Emit close intent: session is active and user closed the topic externally.
@@ -493,7 +493,7 @@ Usage:
 
         logger.info(
             "Found closed session %s for topic %s, emitting session_closed",
-            session.session_id[:8],
+            session.session_id,
             topic_id,
         )
         event_bus.emit(

@@ -165,7 +165,7 @@ async def _ensure_tmux_for_headless(
 
     tmux_name = session.tmux_session_name
     if not tmux_name:
-        tmux_name = f"{TMUX_SESSION_PREFIX}{session.session_id[:8]}"
+        tmux_name = f"{TMUX_SESSION_PREFIX}{session.session_id}"
         await db.update_session(
             session.session_id,
             tmux_session_name=tmux_name,
@@ -287,7 +287,7 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
     computer_name = config.computer.name
     # Generate tmux session name with prefix for TeleClaude ownership
     session_id = str(uuid.uuid4())
-    tmux_name = f"{TMUX_SESSION_PREFIX}{session_id[:8]}"
+    tmux_name = f"{TMUX_SESSION_PREFIX}{session_id}"
 
     # Extract metadata from channel_metadata if present (AI-to-AI session)
     subfolder = cmd.subdir
@@ -435,27 +435,27 @@ async def create_session(  # pylint: disable=too-many-locals  # Session creation
             except RuntimeError:
                 logger.debug(
                     "Listener registration skipped (db unavailable): caller=%s target=%s",
-                    initiator_session_id[:8],
-                    session_id[:8],
+                    initiator_session_id,
+                    session_id,
                 )
             except Exception as exc:
                 logger.warning(
                     "Listener registration failed: caller=%s target=%s error=%s",
-                    initiator_session_id[:8],
-                    session_id[:8],
+                    initiator_session_id,
+                    session_id,
                     exc,
                 )
         else:
             logger.debug(
                 "Listener registration skipped: initiator missing or has no tmux session (caller=%s target=%s)",
-                initiator_session_id[:8],
-                session_id[:8],
+                initiator_session_id,
+                session_id,
             )
     elif initiator_session_id and initiator_session_id != session_id and cmd.skip_listener_registration:
         logger.debug(
             "Listener registration skipped by command flag (caller=%s target=%s)",
-            initiator_session_id[:8],
-            session_id[:8],
+            initiator_session_id,
+            session_id,
         )
 
     # Persist platform user_id on adapter metadata for derive_identity_key()
@@ -655,13 +655,13 @@ async def get_session_data(
     session_id = cmd.session_id
     session = await db.get_session(session_id)
     if not session:
-        logger.error("Session %s not found", session_id[:8])
+        logger.error("Session %s not found", session_id)
         return {"status": "error", "error": "Session not found"}
 
     def _pending_transcript_payload(reason: str) -> SessionDataPayload:
         logger.debug(
             "Transcript pending for session %s (%s)",
-            session_id[:8],
+            session_id,
             reason,
         )
         agent_label = str(session.active_agent or "session")
@@ -690,7 +690,7 @@ async def get_session_data(
         except Exception as exc:
             logger.warning(
                 "Tmux fallback capture failed for session %s (%s): %s",
-                session_id[:8],
+                session_id,
                 reason,
                 exc,
             )
@@ -701,7 +701,7 @@ async def get_session_data(
         messages = sanitized_output[-tail:] if len(sanitized_output) > tail else sanitized_output
         logger.debug(
             "Returning tmux fallback output for session %s (%s)",
-            session_id[:8],
+            session_id,
             reason,
         )
         return {
@@ -729,7 +729,7 @@ async def get_session_data(
     if not native_log_file_str and normalized_agent_name == "codex" and session.native_session_id:
         logger.debug(
             "Attempting to discover Codex transcript for session %s (native_id=%s)",
-            session_id[:8],
+            session_id,
             session.native_session_id,
         )
         discovered_path = discover_codex_transcript_path(session.native_session_id)
@@ -737,7 +737,7 @@ async def get_session_data(
             native_log_file_str = discovered_path
             logger.info(
                 "Discovered Codex transcript path for session %s: %s",
-                session_id[:8],
+                session_id,
                 discovered_path,
             )
             # Update database for future queries
@@ -751,7 +751,7 @@ async def get_session_data(
             return _pending_transcript_payload("no_native_log_file_codex")
         if not has_completed_turn and not session_closed:
             return _pending_transcript_payload("no_native_log_file_pre_stop")
-        logger.error("No native_log_file for session %s", session_id[:8])
+        logger.error("No native_log_file for session %s", session_id)
         return {"status": "error", "error": "Session file not found"}
 
     native_log_file = Path(native_log_file_str)
@@ -767,13 +767,13 @@ async def get_session_data(
         return {"status": "error", "error": "Session file does not exist"}
 
     if not raw_agent_name:
-        logger.error("Session %s missing active_agent metadata", session_id[:8])
+        logger.error("Session %s missing active_agent metadata", session_id)
         return {"status": "error", "error": "Active agent unknown"}
 
     try:
         agent_name = AgentName.from_str(raw_agent_name)
     except ValueError as exc:
-        logger.error("Unknown agent for session %s: %s", session_id[:8], exc)
+        logger.error("Unknown agent for session %s: %s", session_id, exc)
         return {"status": "error", "error": str(exc)}
 
     parser_info = get_transcript_parser_info(agent_name)
@@ -792,7 +792,7 @@ async def get_session_data(
             "Parsed %s transcript (%d bytes) for session %s",
             parser_info.display_name,
             len(markdown_content),
-            session_id[:8],
+            session_id,
         )
     except Exception as e:
         logger.error("Failed to parse session file %s: %s", native_log_file, e)
@@ -832,7 +832,7 @@ async def handle_voice(
     ) -> str | None:
         session = await db.get_session(session_id)
         if not session:
-            logger.warning("Session %s not found for voice status", session_id[:8])
+            logger.warning("Session %s not found for voice status", session_id)
             return None
         # Inject actor info into transcription displays so adapters can
         # attribute the transcription to the sender (e.g. Discord webhook).
@@ -849,7 +849,7 @@ async def handle_voice(
     async def _delete_feedback(session_id: str, message_id: str) -> None:
         session = await db.get_session(session_id)
         if not session:
-            logger.warning("Session %s not found for voice delete", session_id[:8])
+            logger.warning("Session %s not found for voice delete", session_id)
             return
         await client.delete_message(session, str(message_id))
 
@@ -912,7 +912,7 @@ async def handle_file(
     ) -> str | None:
         session = await db.get_session(session_id)
         if not session:
-            logger.warning("Session %s not found for file notice", session_id[:8])
+            logger.warning("Session %s not found for file notice", session_id)
             return None
         return await client.send_message(
             session,
@@ -948,7 +948,7 @@ async def _wait_for_session_ready(session_id: str) -> Session | None:
     deadline = time.monotonic() + STARTUP_GATE_TIMEOUT_S
     logger.debug(
         "Startup gate: waiting for session %s to exit initializing (timeout=%.1fs)",
-        session_id[:8],
+        session_id,
         STARTUP_GATE_TIMEOUT_S,
     )
     while time.monotonic() < deadline:
@@ -958,7 +958,7 @@ async def _wait_for_session_ready(session_id: str) -> Session | None:
         if session.lifecycle_status != "initializing":
             logger.debug(
                 "Startup gate: session %s ready (status=%s)",
-                session_id[:8],
+                session_id,
                 session.lifecycle_status,
             )
             return session
@@ -966,7 +966,7 @@ async def _wait_for_session_ready(session_id: str) -> Session | None:
 
     logger.warning(
         "Startup gate: timeout waiting for session %s to exit initializing after %.1fs",
-        session_id[:8],
+        session_id,
         STARTUP_GATE_TIMEOUT_S,
     )
     return None
@@ -984,7 +984,7 @@ async def deliver_inbound(
     session_id = row["session_id"]
     message_text = row["content"]
 
-    logger.debug("Delivering inbound row %d for session %s: %s...", row["id"], session_id[:8], message_text[:50])
+    logger.debug("Delivering inbound row %d for session %s: %s...", row["id"], session_id, message_text[:50])
 
     session = await db.get_session(session_id)
     if not session:
@@ -996,7 +996,7 @@ async def deliver_inbound(
     if session.lifecycle_status == "initializing":
         session = await _wait_for_session_ready(session_id)
         if not session:
-            raise RuntimeError(f"Startup gate timeout for session {session_id[:8]}")
+            raise RuntimeError(f"Startup gate timeout for session {session_id}")
 
     if not await _session_message_delivery_available(session):
         raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
@@ -1030,7 +1030,7 @@ async def deliver_inbound(
                 actor_avatar_url=row["actor_avatar_url"],
             )
         except Exception as exc:
-            logger.warning("broadcast_user_input failed (non-fatal): session=%s error=%s", session_id[:8], exc)
+            logger.warning("broadcast_user_input failed (non-fatal): session=%s error=%s", session_id, exc)
 
     async def _break_turn() -> None:
         if not is_threaded_output_enabled(active_agent):
@@ -1038,11 +1038,11 @@ async def deliver_inbound(
         try:
             await client.break_threaded_turn(session)
         except Exception as exc:
-            logger.warning("break_threaded_turn failed (non-fatal): session=%s error=%s", session_id[:8], exc)
+            logger.warning("break_threaded_turn failed (non-fatal): session=%s error=%s", session_id, exc)
 
     async def _tmux_inject() -> bool:
         if is_system_message:
-            logger.debug("Skipping tmux injection for system message: session=%s", session_id[:8])
+            logger.debug("Skipping tmux injection for system message: session=%s", session_id)
             return True
         sanitized_text = tmux_io.wrap_bracketed_paste(message_text, active_agent=active_agent)
         working_dir = resolve_working_dir(session.project_path, session.subdir)
@@ -1058,7 +1058,7 @@ async def deliver_inbound(
     if isinstance(tmux_result, Exception):
         raise tmux_result
     if tmux_result is False:
-        raise RuntimeError(f"tmux delivery failed for session {session_id[:8]}")
+        raise RuntimeError(f"tmux delivery failed for session {session_id}")
     if is_system_message:
         return
 
@@ -1067,7 +1067,7 @@ async def deliver_inbound(
 
     await db.update_last_activity(session_id)
     await start_polling(session_id, session.tmux_session_name)
-    logger.debug("Started polling for session %s", session_id[:8])
+    logger.debug("Started polling for session %s", session_id)
 
 
 async def process_message(
@@ -1079,7 +1079,7 @@ async def process_message(
     from teleclaude.core.inbound_queue import get_inbound_queue_manager
 
     session_id = cmd.session_id
-    logger.debug("Enqueueing message for session %s: %s...", session_id[:8], cmd.text[:50])
+    logger.debug("Enqueueing message for session %s: %s...", session_id, cmd.text[:50])
 
     session = await db.get_session(session_id)
     if not session:
@@ -1201,10 +1201,10 @@ async def cancel_command(
         logger.info(
             "Sent %s SIGINT to session %s",
             "double" if double else "single",
-            session.session_id[:8],
+            session.session_id,
         )
     else:
-        logger.error("Failed to send SIGINT to session %s", session.session_id[:8])
+        logger.error("Failed to send SIGINT to session %s", session.session_id)
 
 
 @with_session
@@ -1229,9 +1229,9 @@ async def kill_command(
     )
 
     if success:
-        logger.info("Sent SIGKILL to session %s (force kill)", session.session_id[:8])
+        logger.info("Sent SIGKILL to session %s (force kill)", session.session_id)
     else:
-        logger.error("Failed to send SIGKILL to session %s", session.session_id[:8])
+        logger.error("Failed to send SIGKILL to session %s", session.session_id)
 
 
 @with_session
@@ -1259,7 +1259,7 @@ async def escape_command(
         # Send ESCAPE first
         success = await tmux_io.send_escape(session)
         if not success:
-            logger.error("Failed to send ESCAPE to session %s", session.session_id[:8])
+            logger.error("Failed to send ESCAPE to session %s", session.session_id)
             return
 
         # Send second ESCAPE if double flag set
@@ -1267,7 +1267,7 @@ async def escape_command(
             await asyncio.sleep(0.1)
             success = await tmux_io.send_escape(session)
             if not success:
-                logger.error("Failed to send second ESCAPE to session %s", session.session_id[:8])
+                logger.error("Failed to send second ESCAPE to session %s", session.session_id)
                 return
 
         # Wait briefly for ESCAPE to register
@@ -1290,7 +1290,7 @@ async def escape_command(
         )
 
         if not success:
-            logger.error("Failed to send text to session %s", session.session_id[:8])
+            logger.error("Failed to send text to session %s", session.session_id)
             return
 
         # Update activity
@@ -1306,7 +1306,7 @@ async def escape_command(
             "Sent %s ESCAPE + '%s' to session %s",
             "double" if double else "single",
             text,
-            session.session_id[:8],
+            session.session_id,
         )
         return
 
@@ -1328,10 +1328,10 @@ async def escape_command(
         logger.info(
             "Sent %s ESCAPE to session %s",
             "double" if double else "single",
-            session.session_id[:8],
+            session.session_id,
         )
     else:
-        logger.error("Failed to send ESCAPE to session %s", session.session_id[:8])
+        logger.error("Failed to send ESCAPE to session %s", session.session_id)
 
 
 @with_session
@@ -1369,9 +1369,9 @@ async def ctrl_command(
     )
 
     if success:
-        logger.info("Sent CTRL+%s to session %s", key.upper(), session.session_id[:8])
+        logger.info("Sent CTRL+%s to session %s", key.upper(), session.session_id)
     else:
-        logger.error("Failed to send CTRL+%s to session %s", key.upper(), session.session_id[:8])
+        logger.error("Failed to send CTRL+%s to session %s", key.upper(), session.session_id)
 
 
 @with_session
@@ -1394,9 +1394,9 @@ async def tab_command(
     )
 
     if success:
-        logger.info("Sent TAB to session %s", session.session_id[:8])
+        logger.info("Sent TAB to session %s", session.session_id)
     else:
-        logger.error("Failed to send TAB to session %s", session.session_id[:8])
+        logger.error("Failed to send TAB to session %s", session.session_id)
 
 
 @with_session
@@ -1433,9 +1433,9 @@ async def shift_tab_command(
     )
 
     if success:
-        logger.info("Sent SHIFT+TAB (x%d) to session %s", count, session.session_id[:8])
+        logger.info("Sent SHIFT+TAB (x%d) to session %s", count, session.session_id)
     else:
-        logger.error("Failed to send SHIFT+TAB to session %s", session.session_id[:8])
+        logger.error("Failed to send SHIFT+TAB to session %s", session.session_id)
 
 
 @with_session
@@ -1472,9 +1472,9 @@ async def backspace_command(
     )
 
     if success:
-        logger.info("Sent BACKSPACE (x%d) to session %s", count, session.session_id[:8])
+        logger.info("Sent BACKSPACE (x%d) to session %s", count, session.session_id)
     else:
-        logger.error("Failed to send BACKSPACE to session %s", session.session_id[:8])
+        logger.error("Failed to send BACKSPACE to session %s", session.session_id)
 
 
 @with_session
@@ -1498,9 +1498,9 @@ async def enter_command(
     )
 
     if success:
-        logger.info("Sent ENTER to session %s", session.session_id[:8])
+        logger.info("Sent ENTER to session %s", session.session_id)
     else:
-        logger.error("Failed to send ENTER to session %s", session.session_id[:8])
+        logger.error("Failed to send ENTER to session %s", session.session_id)
 
 
 @with_session
@@ -1545,13 +1545,13 @@ async def arrow_key_command(
             "Sent %s arrow key (x%d) to session %s",
             direction.upper(),
             count,
-            session.session_id[:8],
+            session.session_id,
         )
     else:
         logger.error(
             "Failed to send %s arrow key to session %s",
             direction.upper(),
-            session.session_id[:8],
+            session.session_id,
         )
 
 
@@ -1595,17 +1595,17 @@ async def end_session(
     # Get session from DB
     session = await db.get_session(cmd.session_id)
     if not session:
-        return {"status": "error", "message": f"Session {cmd.session_id[:8]} not found"}
+        return {"status": "error", "message": f"Session {cmd.session_id} not found"}
 
     if session.closed_at or session.lifecycle_status in {"closed", "closing"}:
-        logger.info("Session %s already terminal; replaying session_closed", cmd.session_id[:8])
+        logger.info("Session %s already terminal; replaying session_closed", cmd.session_id)
         event_bus.emit(
             TeleClaudeEvents.SESSION_CLOSED,
             SessionLifecycleContext(session_id=session.session_id),
         )
         return {
             "status": "success",
-            "message": f"Session {cmd.session_id[:8]} already closed; session_closed replayed",
+            "message": f"Session {cmd.session_id} already closed; session_closed replayed",
         }
 
     terminated = await terminate_session(
@@ -1616,11 +1616,11 @@ async def end_session(
         delete_db=False,
     )
     if not terminated:
-        return {"status": "error", "message": f"Session {cmd.session_id[:8]} not found"}
+        return {"status": "error", "message": f"Session {cmd.session_id} not found"}
 
     return {
         "status": "success",
-        "message": f"Session {cmd.session_id[:8]} ended successfully",
+        "message": f"Session {cmd.session_id} ended successfully",
     }
 
 
@@ -1661,7 +1661,7 @@ async def start_agent(
     args = list(cmd.args)
     logger.debug(
         "agent_start: session=%s agent_name=%r args=%s config_agents=%s",
-        session.session_id[:8],
+        session.session_id,
         agent_name,
         args,
         list(config.agents.keys()),
@@ -1673,7 +1673,7 @@ async def start_agent(
         logger.error(
             "Agent start rejected: %r (session=%s, available=%s, error=%s)",
             agent_name,
-            session.session_id[:8],
+            session.session_id,
             list(config.agents.keys()),
             error,
         )
@@ -1810,7 +1810,7 @@ async def resume_agent(
     )
 
     if resume_args.native_session_id:
-        logger.info("Resuming %s session %s (from database)", agent_name, resume_args.native_session_id[:8])
+        logger.info("Resuming %s session %s (from database)", agent_name, resume_args.native_session_id)
     else:
         logger.info("Continuing latest %s session (no native session ID in database)", agent_name)
 
@@ -1840,7 +1840,7 @@ async def agent_restart(
         error = "Cannot restart agent: no active agent for this session."
         logger.error(
             "agent_restart blocked (session=%s): %s",
-            session.session_id[:8],
+            session.session_id,
             error,
         )
         event_bus.emit(
@@ -1857,7 +1857,7 @@ async def agent_restart(
         error = "Cannot restart agent: no native session ID stored. Start the agent first."
         logger.error(
             "agent_restart blocked (session=%s): %s",
-            session.session_id[:8],
+            session.session_id,
             error,
         )
         event_bus.emit(
@@ -1874,7 +1874,7 @@ async def agent_restart(
     if session.closed_at is not None:
         session_updates["closed_at"] = None
         session_updates["lifecycle_status"] = "headless"
-        logger.info("Reviving closed session before agent restart (session=%s)", session.session_id[:8])
+        logger.info("Reviving closed session before agent restart (session=%s)", session.session_id)
 
     tmux_exists = False
     if session.tmux_session_name:
@@ -1884,7 +1884,7 @@ async def agent_restart(
             session_updates["lifecycle_status"] = "headless"
             logger.info(
                 "Session tmux missing; forcing headless adoption before restart (session=%s tmux=%s)",
-                session.session_id[:8],
+                session.session_id,
                 session.tmux_session_name,
             )
 
@@ -1911,7 +1911,7 @@ async def agent_restart(
         error = str(exc)
         logger.error(
             "agent_restart blocked (session=%s): %s",
-            session.session_id[:8],
+            session.session_id,
             error,
         )
         event_bus.emit(
@@ -1924,7 +1924,7 @@ async def agent_restart(
     logger.info(
         "Restarting agent %s in session %s (tmux: %s)",
         target_agent,
-        session.session_id[:8],
+        session.session_id,
         session.tmux_session_name,
     )
 
@@ -1940,7 +1940,7 @@ async def agent_restart(
         error = "Agent did not exit after SIGINT. Restart aborted."
         logger.error(
             "agent_restart failed to stop process (session=%s)",
-            session.session_id[:8],
+            session.session_id,
         )
         event_bus.emit(
             TeleClaudeEvents.ERROR,

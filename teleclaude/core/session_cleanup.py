@@ -67,7 +67,7 @@ async def cleanup_session_resources(
         logger.debug(
             "Closed %d conversation link(s) for terminated session %s",
             closed_links,
-            session_id[:8],
+            session_id,
         )
 
     # Remove listeners waiting on this session (target listeners)
@@ -76,7 +76,7 @@ async def cleanup_session_resources(
         logger.debug(
             "Cleaned up %d listener(s) for terminated target session %s",
             len(target_listeners),
-            session_id[:8],
+            session_id,
         )
 
     # Clean up any listeners this session registered (as a caller waiting for other sessions)
@@ -86,18 +86,18 @@ async def cleanup_session_resources(
         # Delete channel/topic in all UI adapters
         try:
             await adapter_client.delete_channel(session)
-            logger.info("Deleted channels for session %s", session_id[:8])
+            logger.info("Deleted channels for session %s", session_id)
         except Exception as e:
-            logger.warning("Failed to delete channels for session %s: %s", session_id[:8], e)
+            logger.warning("Failed to delete channels for session %s: %s", session_id, e)
 
     # Clean up entire workspace directory (workspace/{session_id}/)
     workspace_dir = get_session_output_dir(session_id)
     if workspace_dir.exists():
         try:
             await asyncio.to_thread(shutil.rmtree, workspace_dir)
-            logger.debug("Deleted workspace directory for session %s", session_id[:8])
+            logger.debug("Deleted workspace directory for session %s", session_id)
         except Exception as e:
-            logger.warning("Failed to delete workspace for session %s: %s", session_id[:8], e)
+            logger.warning("Failed to delete workspace for session %s: %s", session_id, e)
 
 
 async def terminate_session(
@@ -124,7 +124,7 @@ async def terminate_session(
         True if session was terminated, False if session not found or already in flight
     """
     if session_id in _cleanup_in_flight:
-        logger.debug("Session %s cleanup already in flight; skipping duplicate", session_id[:8])
+        logger.debug("Session %s cleanup already in flight; skipping duplicate", session_id)
         return False
     _cleanup_in_flight.add(session_id)
     try:
@@ -154,13 +154,13 @@ async def _terminate_session_inner(
     """Inner implementation of terminate_session (called only when not in flight)."""
     session = session or await db.get_session(session_id)
     if not session:
-        logger.debug("Session %s not found for termination", session_id[:8])
+        logger.debug("Session %s not found for termination", session_id)
         return False
     already_closed = bool(session.closed_at)
     if already_closed and not delete_db:
-        logger.debug("Session %s already closed; proceeding with cleanup", session_id[:8])
+        logger.debug("Session %s already closed; proceeding with cleanup", session_id)
 
-    logger.info("Terminating session %s (%s)", session_id[:8], reason)
+    logger.info("Terminating session %s (%s)", session_id, reason)
 
     if not already_closed:
         await db.update_session(session_id, lifecycle_status="closing")
@@ -191,11 +191,11 @@ async def _terminate_session_inner(
 
     if delete_db:
         await db.delete_session(session.session_id)
-        logger.info("Deleted session %s from database", session.session_id[:8])
+        logger.info("Deleted session %s from database", session.session_id)
     else:
         if not already_closed:
             await db.close_session(session.session_id)
-            logger.info("Closed session %s in database", session.session_id[:8])
+            logger.info("Closed session %s in database", session.session_id)
     return not already_closed or delete_db
 
 
@@ -240,7 +240,7 @@ async def emit_recently_closed_session_events(
         if telegram_topic_id is None and discord_channel_id is None:
             logger.debug(
                 "Skipping replay for session %s: channel already cleared",
-                session.session_id[:8],
+                session.session_id,
             )
             continue
 
@@ -251,7 +251,7 @@ async def emit_recently_closed_session_events(
         emitted += 1
         logger.info(
             "Replayed session_close_requested for session %s (closed_at=%s, pending cleanup)",
-            session.session_id[:8],
+            session.session_id,
             session.closed_at.isoformat(),
         )
 
@@ -266,14 +266,14 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
     """
     session = await db.get_session(session_id)
     if not session:
-        logger.debug("Session %s not found in database", session_id[:8])
+        logger.debug("Session %s not found in database", session_id)
         return False
 
     # Don't flag sessions that are still being created (race condition guard)
     if session.created_at:
         session_age = (datetime.now(UTC) - ensure_utc(session.created_at)).total_seconds()
         if session_age < 10.0:
-            logger.debug("Session %s is too young (%.1fs), skipping stale check", session_id[:8], session_age)
+            logger.debug("Session %s is too young (%.1fs), skipping stale check", session_id, session_age)
             return False
 
     # Headless sessions have no tmux — they are never "stale" by tmux check;
@@ -287,7 +287,7 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
 
     logger.warning(
         "Found stale session %s (tmux %s no longer exists), cleaning up",
-        session_id[:8],
+        session_id,
         session.tmux_session_name,
     )
     cleaned = await terminate_session(
@@ -299,7 +299,7 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
         delete_db=True,
     )
     if cleaned:
-        logger.info("Cleaned up stale session %s", session_id[:8])
+        logger.info("Cleaned up stale session %s", session_id)
     return cleaned
 
 
@@ -404,13 +404,13 @@ async def cleanup_orphan_workspaces() -> int:
 
         session_id = workspace_dir.name
         if session_id not in known_session_ids:
-            logger.warning("Found orphan workspace: %s (not active in DB), removing", session_id[:8])
+            logger.warning("Found orphan workspace: %s (not active in DB), removing", session_id)
             try:
                 shutil.rmtree(workspace_dir)
                 removed_count += 1
-                logger.info("Removed orphan workspace: %s", session_id[:8])
+                logger.info("Removed orphan workspace: %s", session_id)
             except Exception as e:
-                logger.error("Failed to remove orphan workspace %s: %s", session_id[:8], e)
+                logger.error("Failed to remove orphan workspace %s: %s", session_id, e)
 
     if removed_count > 0:
         logger.info("Removed %d orphan workspace directories", removed_count)

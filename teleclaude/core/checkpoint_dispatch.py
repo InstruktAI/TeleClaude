@@ -43,7 +43,7 @@ async def inject_checkpoint_if_needed(
     Returns True when checkpoint was delivered to tmux; otherwise False.
     """
     if is_checkpoint_disabled(session_id):
-        logger.debug("Checkpoint skipped (persistent clear flag) for session %s", session_id[:8])
+        logger.debug("Checkpoint skipped (persistent clear flag) for session %s", session_id)
         return False
 
     from teleclaude.core import tmux_bridge
@@ -73,7 +73,7 @@ async def inject_checkpoint_if_needed(
     if include_elapsed_since_turn_start:
         turn_start = max(filter(None, [message_at, checkpoint_at]), default=None)
         if not turn_start:
-            logger.debug("Checkpoint skipped (no turn start) for session %s", session_id[:8])
+            logger.debug("Checkpoint skipped (no turn start) for session %s", session_id)
             return False
         elapsed = (now - turn_start).total_seconds()
 
@@ -91,7 +91,7 @@ async def inject_checkpoint_if_needed(
         else:
             last_input = ""
         if _is_checkpoint_prompt(last_input):
-            logger.debug("Checkpoint skipped (last input was checkpoint) for %s session %s", agent_name, session_id[:8])
+            logger.debug("Checkpoint skipped (last input was checkpoint) for %s session %s", agent_name, session_id)
             return False
 
     transcript_path = fresh.native_log_file
@@ -115,7 +115,7 @@ async def inject_checkpoint_if_needed(
     if not checkpoint_text:
         logger.debug(
             "Checkpoint skipped: no turn-local changes for session %s (transcript=%s)",
-            session_id[:8],
+            session_id,
             transcript_path or "<none>",
         )
         return False
@@ -123,7 +123,7 @@ async def inject_checkpoint_if_needed(
     logger.info(
         "Checkpoint payload prepared",
         route=route,
-        session=session_id[:8],
+        session=session_id,
         agent=agent_name,
         transcript_present=bool(transcript_path),
         project_path=project_path or "",
@@ -140,12 +140,12 @@ async def inject_checkpoint_if_needed(
         logger.warning(
             "Checkpoint injection not delivered",
             route=route,
-            session=session_id[:8],
+            session=session_id,
             tmux_session=tmux_name,
             payload_len=len(checkpoint_text),
         )
         return False
 
     await update_session(session_id, last_checkpoint_at=now.isoformat())
-    logger.debug("Checkpoint injected for session %s", session_id[:8])
+    logger.debug("Checkpoint injected for session %s", session_id)
     return True

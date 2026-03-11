@@ -140,7 +140,7 @@ class MessageOperationsMixin:
         # Reflection suppression: drop own-user reflections; format cross-source ones.
         if metadata.reflection_origin is not None:
             if metadata.reflection_origin == "telegram":
-                logger.debug("send_message: suppressing own-user reflection for session %s", session.session_id[:8])
+                logger.debug("send_message: suppressing own-user reflection for session %s", session.session_id)
                 return "0"
             # Cross-source reflection: prepend attribution header and separator.
             actor_name = (metadata.reflection_actor_name or "").strip()
@@ -156,7 +156,7 @@ class MessageOperationsMixin:
         telegram_meta = session.get_metadata().get_ui().get_telegram()
         topic_id = telegram_meta.topic_id
         if not topic_id:
-            logger.debug("send_message: skipping, topic_id not ready for session %s", session.session_id[:8])
+            logger.debug("send_message: skipping, topic_id not ready for session %s", session.session_id)
             raise RuntimeError("Telegram topic_id missing (topic_id=None)")
 
         # Extract reply_markup and parse_mode from metadata
@@ -271,7 +271,7 @@ class MessageOperationsMixin:
         if not message_id:
             logger.warning(
                 "edit_message called with None message_id for session %s, ignoring",
-                session.session_id[:8],
+                session.session_id,
             )
             return False
 
@@ -299,7 +299,7 @@ class MessageOperationsMixin:
             existing_ctx.parse_mode = parse_mode
             logger.trace(
                 "[TELEGRAM %s] Updated pending edit for message %s with latest content",
-                session.session_id[:8],
+                session.session_id,
                 message_id,
             )
             return True
@@ -315,20 +315,20 @@ class MessageOperationsMixin:
 
         try:
             start_time = time.time()
-            logger.trace("[TELEGRAM %s] Starting edit_message API call", session.session_id[:8])
+            logger.trace("[TELEGRAM %s] Starting edit_message API call", session.session_id)
             await self._edit_message_with_retry(session, ctx)
             self._last_edit_hash[message_id] = content_hash
             elapsed = time.time() - start_time
             logger.debug(
                 "[TELEGRAM %s] edit_message completed in %.2fs",
-                session.session_id[:8],
+                session.session_id,
                 elapsed,
             )
             return True
         except RetryAfter as e:
             logger.debug(
                 "[TELEGRAM %s] Rate limited, edit_message deferred: %s",
-                session.session_id[:8],
+                session.session_id,
                 e,
             )
             # Keep output_message_id so we can retry on next update without creating new messages.
@@ -339,7 +339,7 @@ class MessageOperationsMixin:
             if "message is not modified" in str(e).lower():
                 logger.trace(
                     "[TELEGRAM %s] Message not modified (content unchanged)",
-                    session.session_id[:8],
+                    session.session_id,
                 )
                 self._last_edit_hash[message_id] = content_hash
                 return True
@@ -349,7 +349,7 @@ class MessageOperationsMixin:
                 closers = _required_markdown_closers_from_state(text, state)
                 logger.error(
                     "[TELEGRAM %s] Markdown parse diagnostics: len=%d parse_mode=%s fences=%d needs_closers=%s suffix=%r",
-                    session.session_id[:8],
+                    session.session_id,
                     len(text),
                     parse_mode,
                     fence_count,
@@ -357,12 +357,12 @@ class MessageOperationsMixin:
                     text[-40:],
                 )
             # Other BadRequest errors (e.g., "Message to edit not found") are real failures
-            logger.error("[TELEGRAM %s] edit_message failed: %s", session.session_id[:8], e)
+            logger.error("[TELEGRAM %s] edit_message failed: %s", session.session_id, e)
             return False
         except (NetworkError, TimedOut, TimeoutError, ConnectionError) as e:
             logger.warning(
                 "[TELEGRAM %s] transient network error editing message %s; keeping message id and retrying later: %s",
-                session.session_id[:8],
+                session.session_id,
                 message_id,
                 e,
             )
@@ -370,7 +370,7 @@ class MessageOperationsMixin:
         except Exception as e:
             logger.error(
                 "[TELEGRAM %s] edit_message failed after retries: %s",
-                session.session_id[:8],
+                session.session_id,
                 e,
             )
             return False
@@ -403,13 +403,13 @@ class MessageOperationsMixin:
         try:
             logger.debug(
                 "[TELEGRAM %s] delete_message: chat_id=%s message_id=%s",
-                session.session_id[:8],
+                session.session_id,
                 self.supergroup_id,
                 message_id,
             )
             await self._delete_message_with_retry(int(message_id))
             self._last_edit_hash.pop(message_id, None)
-            logger.debug("[TELEGRAM %s] delete_message: SUCCESS message_id=%s", session.session_id[:8], message_id)
+            logger.debug("[TELEGRAM %s] delete_message: SUCCESS message_id=%s", session.session_id, message_id)
             return True
         except BadRequest as e:
             logger.warning("Failed to delete message %s: %s", message_id, e)
@@ -444,7 +444,7 @@ class MessageOperationsMixin:
         telegram_meta = session.get_metadata().get_ui().get_telegram()
         topic_id = telegram_meta.topic_id
         if not topic_id:
-            logger.debug("send_file: skipping, topic_id not ready for session %s", session.session_id[:8])
+            logger.debug("send_file: skipping, topic_id not ready for session %s", session.session_id)
             raise RuntimeError("Telegram topic_id missing (topic_id=None)")
 
         message = await self._send_document_with_retry(

@@ -629,7 +629,7 @@ class Db:
             async with self._session() as db_session:
                 row = await db_session.get(db_models.Session, session_id)
                 if not row:
-                    logger.warning("Attempted to update non-existent session: %s", session_id[:8])
+                    logger.warning("Attempted to update non-existent session: %s", session_id)
                     return
 
                 for key, value in fields.items():
@@ -690,7 +690,7 @@ class Db:
                         summary_len = len(str(summary_val)) if summary_val is not None else 0
                         logger.debug(
                             "Summary updated: session=%s len=%d",
-                            session_id[:8],
+                            session_id,
                             summary_len,
                         )
 
@@ -703,11 +703,11 @@ class Db:
         # very frequently. Emitting SESSION_UPDATED for digest-only writes creates
         # unnecessary event fan-out and cache churn.
         if set(updates) == {"last_output_digest"}:
-            logger.trace("Skipping SESSION_UPDATED emit for digest-only update: %s", session_id[:8])
+            logger.trace("Skipping SESSION_UPDATED emit for digest-only update: %s", session_id)
             return
 
         if not updates:
-            logger.trace("Skipping redundant update for session %s", session_id[:8])
+            logger.trace("Skipping redundant update for session %s", session_id)
             return
 
         # Emit SESSION_UPDATED event for state changes (title, status, etc.).
@@ -721,7 +721,7 @@ class Db:
         """Mark a session as closed without deleting it."""
         session = await self.get_session(session_id)
         if not session:
-            logger.warning("Attempted to close non-existent session: %s", session_id[:8])
+            logger.warning("Attempted to close non-existent session: %s", session_id)
             return
         if session.closed_at:
             return
@@ -814,7 +814,7 @@ class Db:
         except Exception as exc:
             logger.error(
                 "Failed to add pending deletion: session=%s message_id=%s deletion_type=%s error=%s",
-                session_id[:8],
+                session_id,
                 message_id,
                 deletion_type,
                 exc,
@@ -852,7 +852,7 @@ class Db:
                 db_models.Session.__table__.delete().where(db_models.Session.session_id == session_id)
             )  # type: ignore[arg-type]
             await db_session.commit()
-        logger.debug("Deleted session %s from database", session_id[:8])
+        logger.debug("Deleted session %s from database", session_id)
 
         if session:
             event_bus.emit(
@@ -1064,7 +1064,7 @@ class Db:
         async with self._session() as db_session:
             await db_session.exec(stmt)
             await db_session.commit()
-        logger.debug("Assigned voice '%s' from service '%s' to %s", voice.voice, voice.service_name, voice_id[:8])
+        logger.debug("Assigned voice '%s' from service '%s' to %s", voice.voice, voice.service_name, voice_id)
 
     async def get_voice(self, voice_id: str) -> VoiceConfig | None:
         """Get voice assignment by ID.

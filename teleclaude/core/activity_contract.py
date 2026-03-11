@@ -135,7 +135,7 @@ def serialize_activity_event(
         logger.warning(
             "activity_contract: unknown hook event type %r, skipping canonical serialization",
             hook_event_type,
-            extra={"session_id": session_id[:8] if session_id else ""},
+            extra={"session_id": session_id if session_id else ""},
         )
         return None
 
@@ -157,7 +157,7 @@ def serialize_activity_event(
         logger.error(
             "activity_contract: canonical event validation failed: %s",
             errors,
-            extra={"session_id": session_id[:8] if session_id else "", "hook_event_type": hook_event_type},
+            extra={"session_id": session_id if session_id else "", "hook_event_type": hook_event_type},
         )
         return None
 

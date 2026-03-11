@@ -180,7 +180,7 @@ class TelegramAdapter(
         meta = session.get_metadata().get_ui().get_telegram()
         meta.output_message_id = message_id
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
-        logger.debug("Stored telegram output_message_id: session=%s message_id=%s", session.session_id[:8], message_id)
+        logger.debug("Stored telegram output_message_id: session=%s message_id=%s", session.session_id, message_id)
 
     async def _clear_output_message_id(self, session: Session) -> None:
         meta = session.get_metadata().get_ui().get_telegram()
@@ -204,7 +204,7 @@ class TelegramAdapter(
         except Exception as exc:
             logger.debug(
                 "Telegram status footer update failed for session %s: %s",
-                context.session_id[:8],
+                context.session_id,
                 exc,
             )
 
@@ -232,26 +232,26 @@ class TelegramAdapter(
         telegram_meta = session.get_metadata().get_ui().get_telegram()
         logger.debug(
             "[TG_ENSURE] session=%s telegram_meta=present topic_id=%s",
-            session.session_id[:8],
+            session.session_id,
             telegram_meta.topic_id if telegram_meta.topic_id else "N/A",
         )
         if telegram_meta.topic_id:
-            logger.debug("[TG_ENSURE] Topic exists, returning session %s", session.session_id[:8])
+            logger.debug("[TG_ENSURE] Topic exists, returning session %s", session.session_id)
             return session
 
         title = await get_display_title_for_session(session)
         logger.info(
             "[TG_ENSURE] No topic_id for session %s, creating channel (title=%s)",
-            session.session_id[:8],
+            session.session_id,
             title,
         )
         try:
             await self.create_channel(session, title, metadata=ChannelMetadata())
-            logger.info("[TG_ENSURE] Channel created successfully for session %s", session.session_id[:8])
+            logger.info("[TG_ENSURE] Channel created successfully for session %s", session.session_id)
         except Exception as exc:
             logger.error(
                 "[TG_ENSURE] Telegram ensure_channel FAILED for session %s; retrying: %s",
-                session.session_id[:8],
+                session.session_id,
                 exc,
             )
             current = await db.get_session(session.session_id)
@@ -263,7 +263,7 @@ class TelegramAdapter(
             await self.create_channel(current or session, title, metadata=ChannelMetadata())
 
         refreshed = await db.get_session(session.session_id)
-        logger.debug("[TG_ENSURE] Refreshed session from DB for %s", session.session_id[:8])
+        logger.debug("[TG_ENSURE] Refreshed session from DB for %s", session.session_id)
         return refreshed or session
 
     async def recover_lane_error(
@@ -284,7 +284,7 @@ class TelegramAdapter(
 
         logger.warning(
             "[TG_RECOVER] Missing thread detected for session %s (error=%s); resetting channel metadata",
-            session.session_id[:8],
+            session.session_id,
             error,
         )
         refreshed = await db.get_session(session.session_id)
@@ -307,13 +307,13 @@ class TelegramAdapter(
             result = await task_factory(self, retry_session)
             logger.info(
                 "[TG_RECOVER] Recovered lane after missing thread for session %s",
-                session.session_id[:8],
+                session.session_id,
             )
             return result
         except Exception as retry_exc:
             logger.error(
                 "[TG_RECOVER] Recovery retry failed for session %s: initial=%s retry=%s",
-                session.session_id[:8],
+                session.session_id,
                 error,
                 retry_exc,
             )
@@ -945,12 +945,12 @@ class TelegramAdapter(
         Args:
             session: Session object
         """
-        logger.info("PRE-HANDLER CALLED for session %s", session.session_id[:8])
+        logger.info("PRE-HANDLER CALLED for session %s", session.session_id)
         # Delete pending ephemeral messages from previous interaction
         pending = await db.get_pending_deletions(session.session_id)
         logger.debug(
             "Pre-handler pending deletions: session=%s count=%d",
-            session.session_id[:8],
+            session.session_id,
             len(pending),
         )
         if pending:
@@ -960,7 +960,7 @@ class TelegramAdapter(
                     logger.debug(
                         "Deleted pending message %s for session %s",
                         msg_id,
-                        session.session_id[:8],
+                        session.session_id,
                     )
                 except Exception as e:
                     # Resilient to already-deleted messages
@@ -981,7 +981,7 @@ class TelegramAdapter(
         logger.debug(
             "Tracked message %s for deletion on next input (session %s)",
             message_id,
-            session.session_id[:8],
+            session.session_id,
         )
 
     # ==================== Output QoS Integration ====================
@@ -1224,7 +1224,7 @@ class TelegramAdapter(
             logger.debug(
                 "_get_session_from_topic: topic_id %s maps to terminal session %s",
                 thread_id,
-                session.session_id[:8],
+                session.session_id,
             )
             return None
 

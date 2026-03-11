@@ -352,8 +352,8 @@ class TmuxPaneManager:
 
         logger.debug(
             "apply_layout: active=%s sticky=%s doc_preview=%s focus=%s tui_pane=%s active_pane=%s",
-            active_session_id[:8] if active_session_id else None,
-            [s[:8] for s in sticky_session_ids],
+            active_session_id if active_session_id else None,
+            list(sticky_session_ids),
             active_doc_preview.doc_id if active_doc_preview else None,
             focus,
             self._tui_pane_id,
@@ -408,8 +408,8 @@ class TmuxPaneManager:
         if self._layout_is_unchanged():
             logger.debug(
                 "apply_layout: layout unchanged, active_spec=%s active_session=%s active_pane=%s",
-                active_spec.session_id[:8] if active_spec else None,
-                self.state.active_session_id[:8] if self.state.active_session_id else None,
+                active_spec.session_id if active_spec else None,
+                self.state.active_session_id if self.state.active_session_id else None,
                 self._active_pane_id,
             )
             if active_spec and self.state.active_session_id != active_spec.session_id:
@@ -854,7 +854,7 @@ class TmuxPaneManager:
         logger.debug(
             "_update_active_pane: respawning pane %s with session %s (tmux=%s)",
             active_pane,
-            active_spec.session_id[:8],
+            active_spec.session_id,
             active_spec.tmux_session_name,
         )
         attach_cmd = self._build_pane_command(active_spec)
@@ -900,8 +900,8 @@ class TmuxPaneManager:
             "_render_layout: tui_pane=%s specs=%d sticky=%s active=%s",
             self._tui_pane_id,
             len(session_specs),
-            [s.session_id[:8] for s in session_specs if s.is_sticky],
-            next((s.session_id[:8] for s in session_specs if not s.is_sticky), None),
+            [s.session_id for s in session_specs if s.is_sticky],
+            next((s.session_id for s in session_specs if not s.is_sticky), None),
         )
         if len(session_specs) > 5:
             logger.warning("_render_layout: truncating session panes from %d to 5", len(session_specs))
@@ -1003,7 +1003,7 @@ class TmuxPaneManager:
         """Track pane ids for lookup and cleanup."""
         logger.debug(
             "_track_session_pane: %s → %s (sticky=%s, tmux=%s)",
-            spec.session_id[:8],
+            spec.session_id,
             pane_id,
             spec.is_sticky,
             spec.tmux_session_name,
@@ -1279,8 +1279,8 @@ class TmuxPaneManager:
         pane_id = self.state.session_to_pane.get(session_id)
         if pane_id:
             self._run_tmux("select-pane", "-t", pane_id)
-            logger.debug("Focused pane %s for session %s", pane_id, session_id[:8])
+            logger.debug("Focused pane %s for session %s", pane_id, session_id)
             return True
 
-        logger.debug("No pane found for session %s", session_id[:8])
+        logger.debug("No pane found for session %s", session_id)
         return False

@@ -291,9 +291,9 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
                     if session_id in state.sessions.output_highlights:
                         logger.debug(
                             "SET_SELECTION clearing output_highlight for %s (source=%s, prev=%s)",
-                            session_id[:8],
+                            session_id,
                             source,
-                            prev_session_id[:8] if prev_session_id else None,
+                            prev_session_id if prev_session_id else None,
                         )
                     state.sessions.output_highlights.discard(session_id)
         if view == "preparation" and isinstance(idx, int):
@@ -325,19 +325,19 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             state.sessions.input_highlights.add(session_id)
             state.sessions.output_highlights.discard(session_id)
             state.sessions.temp_output_highlights.discard(session_id)
-            logger.debug("input_highlight ADDED for %s (reason=user_input)", session_id[:8])
+            logger.debug("input_highlight ADDED for %s (reason=user_input)", session_id)
         elif reason == "tool_done":
             # Agent started responding: remove input highlight and show temporary output highlight
             state.sessions.input_highlights.discard(session_id)
             state.sessions.output_highlights.discard(session_id)
             state.sessions.temp_output_highlights.add(session_id)
-            logger.debug("temp_output_highlight ADDED for %s (tool_done)", session_id[:8])
+            logger.debug("temp_output_highlight ADDED for %s (tool_done)", session_id)
         elif reason == "agent_stopped":
             # Agent finished: clear input/temp and make output highlight permanent
             state.sessions.input_highlights.discard(session_id)
             state.sessions.temp_output_highlights.discard(session_id)
             state.sessions.output_highlights.add(session_id)
-            logger.debug("output_highlight ADDED for %s (agent_stopped)", session_id[:8])
+            logger.debug("output_highlight ADDED for %s (agent_stopped)", session_id)
         # "state_change" reason: no highlight changes (status, title, etc.)
         return
 
@@ -357,7 +357,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             state.sessions.input_highlights.add(session_id)
             state.sessions.output_highlights.discard(session_id)
             state.sessions.temp_output_highlights.discard(session_id)
-            logger.debug("input_highlight ADDED for %s (event=user_prompt_submit)", session_id[:8])
+            logger.debug("input_highlight ADDED for %s (event=user_prompt_submit)", session_id)
         elif event_type == "tool_use":
             # Tool started: clear input highlight, add temp highlight, store tool name, reset timer
             state.sessions.input_highlights.discard(session_id)
@@ -372,7 +372,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
                 state.sessions.active_tool[session_id] = tool_label
             logger.debug(
                 "input CLEARED, temp_output + active_tool ADDED for %s (event=tool_use, tool=%s)",
-                session_id[:8],
+                session_id,
                 tool_label,
             )
         elif event_type == "tool_done":
@@ -381,7 +381,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             state.sessions.temp_output_highlights.add(session_id)
             state.sessions.activity_timer_reset.add(session_id)
             state.sessions.active_tool.pop(session_id, None)
-            logger.debug("input_highlight CLEARED, active_tool CLEARED for %s (event=tool_done)", session_id[:8])
+            logger.debug("input_highlight CLEARED, active_tool CLEARED for %s (event=tool_done)", session_id)
         elif event_type == "agent_stop":
             # Agent finished: clear input/temp/tool, make output highlight permanent, store summary
             state.sessions.input_highlights.discard(session_id)
@@ -394,7 +394,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             timestamp = p.get("timestamp")
             if isinstance(timestamp, str) and timestamp:
                 state.sessions.last_output_summary_at[session_id] = timestamp
-            logger.debug("output_highlight ADDED for %s (event=agent_stop)", session_id[:8])
+            logger.debug("output_highlight ADDED for %s (event=agent_stop)", session_id)
         return
 
     if t is IntentType.CLEAR_TEMP_HIGHLIGHT:
@@ -407,7 +407,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
             state.sessions.output_highlights.add(session_id)
             logger.debug(
                 "temp_output_highlight CLEARED + output_highlight ADDED for %s (timer expired safety-net)",
-                session_id[:8],
+                session_id,
             )
         return
 
@@ -421,7 +421,7 @@ def reduce_state(state: TuiState, intent: Intent) -> None:
         # Log any input highlights that will be pruned
         pruned_input = state.sessions.input_highlights - session_ids
         if pruned_input:
-            logger.info("input_highlights PRUNED by SYNC_SESSIONS: %s", [s[:8] for s in pruned_input])
+            logger.info("input_highlights PRUNED by SYNC_SESSIONS: %s", pruned_input)
         state.sessions.input_highlights.intersection_update(session_ids)
         state.sessions.output_highlights.intersection_update(session_ids)
         state.sessions.temp_output_highlights.intersection_update(session_ids)

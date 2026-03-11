@@ -61,7 +61,7 @@ async def _revive_headless_and_send(
     """
     tmux_name = session.tmux_session_name
     if not tmux_name:
-        tmux_name = f"{TMUX_SESSION_PREFIX}{session.session_id[:8]}"
+        tmux_name = f"{TMUX_SESSION_PREFIX}{session.session_id}"
 
     voice = await db.get_voice(session.session_id)
     env_vars = get_voice_env_vars(voice) if voice else {}
@@ -73,7 +73,7 @@ async def _revive_headless_and_send(
         env_vars=env_vars,
     )
     if not created:
-        logger.warning("Failed to create tmux session for headless session %s", session.session_id[:8])
+        logger.warning("Failed to create tmux session for headless session %s", session.session_id)
         return False
 
     if session.active_agent and session.native_session_id:
@@ -92,9 +92,9 @@ async def _revive_headless_and_send(
         )
         logger.info(
             "Revived headless session %s with agent %s (native=%s)",
-            session.session_id[:8],
+            session.session_id,
             session.active_agent,
-            session.native_session_id[:8],
+            session.native_session_id,
         )
 
     # Update in-place so callers see the new tmux_session_name immediately
@@ -133,7 +133,7 @@ async def _send_to_tmux(
 
     logger.warning(
         "tmux session unavailable for session %s; maintenance healing required",
-        session.session_id[:8],
+        session.session_id,
     )
     return False
 
@@ -169,14 +169,14 @@ async def send_tab(session: Session) -> bool:
 
 async def send_shift_tab(session: Session, count: int = 1) -> bool:
     if count < 1:
-        logger.warning("Invalid shift-tab count %d for session %s", count, session.session_id[:8])
+        logger.warning("Invalid shift-tab count %d for session %s", count, session.session_id)
         return False
     return await tmux_bridge.send_shift_tab(session.tmux_session_name, count)
 
 
 async def send_backspace(session: Session, count: int = 1) -> bool:
     if count < 1:
-        logger.warning("Invalid backspace count %d for session %s", count, session.session_id[:8])
+        logger.warning("Invalid backspace count %d for session %s", count, session.session_id)
         return False
     return await tmux_bridge.send_backspace(session.tmux_session_name, count)
 
@@ -187,7 +187,7 @@ async def send_enter(session: Session) -> bool:
 
 async def send_arrow_key(session: Session, direction: str, count: int = 1) -> bool:
     if count < 1:
-        logger.warning("Invalid arrow count %d for session %s", count, session.session_id[:8])
+        logger.warning("Invalid arrow count %d for session %s", count, session.session_id)
         return False
 
     return await tmux_bridge.send_arrow_key(session.tmux_session_name, direction, count)
@@ -198,7 +198,7 @@ async def send_signal(session: Session, signal: Signals | str) -> bool:
         try:
             signal = Signals[signal]
         except KeyError:
-            logger.warning("Unknown signal %s for session %s", signal, session.session_id[:8])
+            logger.warning("Unknown signal %s for session %s", signal, session.session_id)
             return False
     return await tmux_bridge.send_signal(session.tmux_session_name, signal)
 

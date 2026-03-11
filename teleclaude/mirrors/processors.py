@@ -60,7 +60,7 @@ async def process_mirror_event(event: MirrorEvent) -> None:
     try:
         agent_name = AgentName(context.agent)
     except ValueError:
-        logger.warning("Mirror processor skipped unknown agent %s for %s", context.agent, context.session_id[:8])
+        logger.warning("Mirror processor skipped unknown agent %s for %s", context.agent, context.session_id)
         return
     if not in_session_root(transcript_path, agent_name):
         logger.debug("Mirror processor skipped non-canonical transcript", transcript_path=transcript_path)

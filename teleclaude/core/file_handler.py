@@ -78,7 +78,7 @@ async def handle_file(
         send_message: Async function to send UI notices (session_id, message, metadata)
     """
     logger.info("=== FILE HANDLER CALLED ===")
-    logger.info("Session ID: %s", session_id[:8])
+    logger.info("Session ID: %s", session_id)
     logger.info("File path: %s", file_path)
     logger.info("Filename: %s", filename)
 
@@ -100,7 +100,7 @@ async def handle_file(
     # Get output_message_id from top-level DB column (not adapter_metadata blob)
     current_message_id = session.output_message_id
     if current_message_id is None:
-        logger.warning("No output message yet for session %s, polling may have just started", session_id[:8])
+        logger.warning("No output message yet for session %s, polling may have just started", session_id)
         await send_message(
             session_id,
             f"⚠️ File upload unavailable - output message not ready yet. File saved: {filename}",
@@ -138,7 +138,7 @@ async def handle_file(
     )
 
     if not success:
-        logger.error("Failed to send file path to session %s", session_id[:8])
+        logger.error("Failed to send file path to session %s", session_id)
         await send_message(
             session_id,
             "❌ Failed to send file to tmux",
@@ -163,4 +163,4 @@ async def handle_file(
             MessageMetadata(),
         )
 
-    logger.info("File path sent to session %s, existing poll will capture output", session_id[:8])
+    logger.info("File path sent to session %s, existing poll will capture output", session_id)

@@ -151,7 +151,7 @@ class UiAdapter(BaseAdapter):
         session.output_message_id = message_id  # Keep in-memory session consistent
         logger.debug(
             "Stored output_message_id: session=%s message_id=%s",
-            session.session_id[:8],
+            session.session_id,
             message_id,
         )
 
@@ -170,7 +170,7 @@ class UiAdapter(BaseAdapter):
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
             logger.debug(
                 "Stored footer_message_id: session=%s message_id=%s",
-                session.session_id[:8],
+                session.session_id,
                 message_id,
             )
 
@@ -180,7 +180,7 @@ class UiAdapter(BaseAdapter):
             metadata = session.get_metadata().get_ui().get_telegram()
             metadata.footer_message_id = None
             await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
-            logger.debug("Cleared footer_message_id: session=%s", session.session_id[:8])
+            logger.debug("Cleared footer_message_id: session=%s", session.session_id)
 
     async def _get_badge_sent(self, session: Session) -> bool:
         """Check if session badge has been sent."""
@@ -241,7 +241,7 @@ class UiAdapter(BaseAdapter):
         except Exception as exc:
             logger.debug(
                 "Best-effort stale threaded footer delete failed: session=%s message_id=%s err=%s",
-                session.session_id[:8],
+                session.session_id,
                 previous_footer_id,
                 exc,
             )
@@ -275,7 +275,7 @@ class UiAdapter(BaseAdapter):
         session.output_message_id = None  # Keep in-memory session consistent
         logger.debug(
             "Cleared output_message_id: session=%s",
-            session.session_id[:8],
+            session.session_id,
         )
 
     async def _deliver_output(
@@ -340,14 +340,14 @@ class UiAdapter(BaseAdapter):
         message_id = await self._get_output_message_id(session)
         logger.debug(
             "[TRY_EDIT] session=%s existing_message_id=%s",
-            session.session_id[:8],
+            session.session_id,
             message_id if message_id else "None",
         )
         if not message_id:
             logger.debug("[TRY_EDIT] No existing message_id, will send new message")
             return False
 
-        logger.debug("[TRY_EDIT] Attempting to edit message %s for session %s", message_id, session.session_id[:8])
+        logger.debug("[TRY_EDIT] Attempting to edit message %s for session %s", message_id, session.session_id)
         success = await self.edit_message(session, message_id, text, metadata=metadata)
         logger.debug(
             "[TRY_EDIT] Edit result for message %s: %s",
@@ -435,7 +435,7 @@ class UiAdapter(BaseAdapter):
         if self.THREADED_OUTPUT:
             logger.debug(
                 "[UI_SEND_OUTPUT] Standard output suppressed for session %s on %s (threaded output active)",
-                session.session_id[:8],
+                session.session_id,
                 self.ADAPTER_KEY,
             )
             return None
@@ -697,7 +697,7 @@ class UiAdapter(BaseAdapter):
         existing_id = await self._get_footer_message_id(session)
         logger.trace(
             "[FOOTER] session=%s existing_id=%s footer_len=%d",
-            session.session_id[:8],
+            session.session_id,
             existing_id,
             len(footer_text),
         )
@@ -709,13 +709,13 @@ class UiAdapter(BaseAdapter):
             # Do NOT fall back to sending a new message here; the next
             # render cycle will create a fresh footer naturally.
             logger.debug(
-                "[FOOTER] Edit failed for session=%s, clearing stale id %s", session.session_id[:8], existing_id
+                "[FOOTER] Edit failed for session=%s, clearing stale id %s", session.session_id, existing_id
             )
             await self._clear_footer_message_id(session)
             return None
 
         new_id = await self.send_message(session, footer_text, metadata=metadata)
-        logger.debug("[FOOTER] send_message returned %s for session=%s", new_id, session.session_id[:8])
+        logger.debug("[FOOTER] send_message returned %s for session=%s", new_id, session.session_id)
         if new_id:
             await self._store_footer_message_id(session, new_id)
         return new_id
@@ -864,7 +864,7 @@ class UiAdapter(BaseAdapter):
         async def _send_notice(sid: str, message: str, metadata: MessageMetadata) -> str | None:
             session = await db.get_session(sid)
             if not session:
-                logger.warning("Session %s not found for message", sid[:8])
+                logger.warning("Session %s not found for message", sid)
                 return None
             return await self.client.send_message(
                 session,
@@ -884,7 +884,7 @@ class UiAdapter(BaseAdapter):
     async def _delete_message_by_session_id(self, sid: str, message_id: str) -> None:
         session = await db.get_session(sid)
         if not session:
-            logger.warning("Session %s not found for delete", sid[:8])
+            logger.warning("Session %s not found for delete", sid)
             return
         await self.delete_message(session, message_id)
 
@@ -945,7 +945,7 @@ class UiAdapter(BaseAdapter):
             if session and session.lifecycle_status != "headless":
                 logger.debug(
                     "Typing trigger: session=%s status=%s adapter=%s",
-                    context.session_id[:8],
+                    context.session_id,
                     context.status,
                     self.ADAPTER_KEY,
                 )
@@ -954,13 +954,13 @@ class UiAdapter(BaseAdapter):
                 except Exception:
                     logger.debug(
                         "Typing indicator failed for session %s on status %s",
-                        context.session_id[:8],
+                        context.session_id,
                         context.status,
                     )
             else:
                 logger.debug(
                     "Typing skipped: session=%s found=%s lifecycle=%s",
-                    context.session_id[:8],
+                    context.session_id,
                     session is not None,
                     getattr(session, "lifecycle_status", None),
                 )
@@ -1016,7 +1016,7 @@ class UiAdapter(BaseAdapter):
         if updated_fields.keys() & title_affecting_fields:
             display_title = await get_display_title_for_session(session)
             await self.client.update_channel_title(session, display_title)
-            logger.info("Synced display title to UiAdapters for session %s: %s", session_id[:8], display_title)
+            logger.info("Synced display title to UiAdapters for session %s: %s", session_id, display_title)
 
         # Send output summary as a notification trigger for non-threaded adapters.
         # Telegram uses edit-in-place (silent) — the summary as a new message
@@ -1035,7 +1035,7 @@ class UiAdapter(BaseAdapter):
             if feedback:
                 logger.debug(
                     "Feedback emit: session=%s origin=%s adapter=%s len=%d",
-                    session_id[:8],
+                    session_id,
                     session.last_input_origin,
                     self.ADAPTER_KEY,
                     len(feedback),

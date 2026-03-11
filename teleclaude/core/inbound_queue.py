@@ -113,7 +113,7 @@ class InboundQueueManager:
             try:
                 await self._typing_callback(session_id, origin)
             except Exception:  # pylint: disable=broad-exception-caught
-                logger.debug("Typing callback failed for session %s", session_id[:8], exc_info=True)
+                logger.debug("Typing callback failed for session %s", session_id, exc_info=True)
 
         self._ensure_worker(session_id)
         return row_id
@@ -125,7 +125,7 @@ class InboundQueueManager:
             return
         task = asyncio.create_task(
             self._worker_loop(session_id),
-            name=f"inbound-worker-{session_id[:8]}",
+            name=f"inbound-worker-{session_id}",
         )
         self._workers[session_id] = task
         task.add_done_callback(lambda t: self._on_worker_done(session_id, t))
@@ -135,14 +135,14 @@ class InboundQueueManager:
         if not task.cancelled() and task.exception() is not None:
             logger.warning(
                 "Inbound worker for session %s crashed: %s",
-                session_id[:8],
+                session_id,
                 task.exception(),
                 exc_info=task.exception(),
             )
 
     async def _worker_loop(self, session_id: str) -> None:
         """FIFO drain loop for a single session. Self-terminates when queue is empty."""
-        logger.debug("Inbound worker starting for session %s", session_id[:8])
+        logger.debug("Inbound worker starting for session %s", session_id)
         while True:
             now = datetime.now(UTC)
             now_iso = now.isoformat()
@@ -154,7 +154,7 @@ class InboundQueueManager:
                 lock_cutoff_iso=lock_cutoff_iso,
             )
             if not rows:
-                logger.debug("Inbound worker done for session %s (queue empty)", session_id[:8])
+                logger.debug("Inbound worker done for session %s (queue empty)", session_id)
                 return
 
             row = rows[0]
@@ -163,14 +163,14 @@ class InboundQueueManager:
             claimed = await db.claim_inbound(row_id, now_iso, lock_cutoff_iso)
             if not claimed:
                 # Another worker claimed it — shouldn't happen (per-session) but be safe
-                logger.debug("Row %d claim failed for session %s; retrying", row_id, session_id[:8])
+                logger.debug("Row %d claim failed for session %s; retrying", row_id, session_id)
                 await asyncio.sleep(0.1)
                 continue
 
             try:
                 await self._deliver_fn(row)
                 await db.mark_inbound_delivered(row_id, datetime.now(UTC).isoformat())
-                logger.debug("Delivered inbound row %d for session %s", row_id, session_id[:8])
+                logger.debug("Delivered inbound row %d for session %s", row_id, session_id)
             except SessionMessageRejectedError as exc:
                 error_str = str(exc)
                 await db.mark_inbound_expired(
@@ -181,7 +181,7 @@ class InboundQueueManager:
                 logger.info(
                     "Inbound row %d expired permanently for session %s: %s",
                     row_id,
-                    session_id[:8],
+                    session_id,
                     error_str,
                 )
             except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -215,7 +215,7 @@ class InboundQueueManager:
 
         count = await db.expire_inbound_for_session(session_id, datetime.now(UTC).isoformat())
         if count:
-            logger.info("Expired %d pending inbound messages for closed session %s", count, session_id[:8])
+            logger.info("Expired %d pending inbound messages for closed session %s", count, session_id)
 
     async def startup(self) -> None:
         """Scan for pending messages and spawn workers for non-empty sessions."""

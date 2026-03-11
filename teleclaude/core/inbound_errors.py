@@ -14,11 +14,11 @@ class SessionMessageRejectedError(RuntimeError):
         self.session_id = session_id
         self.reason = reason
         if reason == "not_found":
-            message = f"Session {session_id[:8]} not found"
+            message = f"Session {session_id} not found"
         elif reason == "unavailable":
-            message = f"Session {session_id[:8]} is unavailable"
+            message = f"Session {session_id} is unavailable"
         else:
-            message = f"Session {session_id[:8]} is closed"
+            message = f"Session {session_id} is closed"
         super().__init__(message)
 
     @property

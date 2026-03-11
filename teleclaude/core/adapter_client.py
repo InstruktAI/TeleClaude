@@ -97,7 +97,7 @@ class AdapterClient:
         """Send error feedback to all UI adapters, surfacing failures."""
         ui_adapters = self._ui_adapters()
         if not ui_adapters:
-            logger.warning("No UI adapters available for error feedback (session %s)", session_id[:8])
+            logger.warning("No UI adapters available for error feedback (session %s)", session_id)
             return
 
         results = await asyncio.gather(
@@ -110,7 +110,7 @@ class AdapterClient:
                 logger.error(
                     "Error feedback failed for adapter %s session %s: %s",
                     adapter_type,
-                    session_id[:8],
+                    session_id,
                     result,
                 )
                 if first_error is None:
@@ -137,7 +137,7 @@ class AdapterClient:
                 (adapter_type, adapter) for adapter_type, adapter in ui_adapters if adapter_type in include_adapters
             ]
         if not ui_adapters:
-            logger.warning("No UI adapters available for %s (session %s)", operation, session.session_id[:8])
+            logger.warning("No UI adapters available for %s (session %s)", operation, session.session_id)
             return []
 
         output: list[tuple[str, object]] = []
@@ -256,12 +256,12 @@ class AdapterClient:
                         "UI adapter %s failed %s for session %s: %s",
                         adapter_type,
                         operation,
-                        session.session_id[:8],
+                        session.session_id,
                         result,
                     )
                 else:
                     logger.debug(
-                        "UI adapter %s completed %s for session %s", adapter_type, operation, session.session_id[:8]
+                        "UI adapter %s completed %s for session %s", adapter_type, operation, session.session_id
                     )
 
     async def _route_to_ui(
@@ -289,7 +289,7 @@ class AdapterClient:
         entry_point = session.last_input_origin
         logger.debug(
             "[ROUTING] Fanout: session=%s method=%s entry_point=%s",
-            session.session_id[:8],
+            session.session_id,
             method,
             entry_point,
         )
@@ -354,7 +354,7 @@ class AdapterClient:
             if pending:
                 logger.debug(
                     "Feedback cleanup: session=%s pending_count=%d",
-                    session.session_id[:8],
+                    session.session_id,
                     len(pending),
                 )
             deleted = 0
@@ -375,7 +375,7 @@ class AdapterClient:
             if pending:
                 logger.debug(
                     "Feedback cleanup result: session=%s deleted=%d failed=%d",
-                    session.session_id[:8],
+                    session.session_id,
                     deleted,
                     failed,
                 )
@@ -397,7 +397,7 @@ class AdapterClient:
             else:
                 logger.debug(
                     "Skipping source-only message with non-UI origin: session=%s origin=%s",
-                    session_to_use.session_id[:8],
+                    session_to_use.session_id,
                     origin_adapter or "<none>",
                 )
                 return None
@@ -420,7 +420,7 @@ class AdapterClient:
             if feedback:
                 logger.debug(
                     "Feedback tracked for deletion: session=%s message_id=%s",
-                    session.session_id[:8],
+                    session.session_id,
                     message_id,
                 )
 
@@ -447,7 +447,7 @@ class AdapterClient:
                     logger.debug(
                         "Dropped %d pending QoS payload(s) on turn break: session=%s adapter=%s",
                         dropped,
-                        session.session_id[:8],
+                        session.session_id,
                         adapter_type,
                     )
 
@@ -465,7 +465,7 @@ class AdapterClient:
         if pending:
             logger.debug(
                 "Feedback cleanup (threaded output start): session=%s pending_count=%d",
-                session.session_id[:8],
+                session.session_id,
                 len(pending),
             )
             for msg_id in pending:
@@ -563,7 +563,7 @@ class AdapterClient:
         """
         logger.debug(
             "[OUTPUT_ROUTE] send_output_update called: session=%s output_len=%d is_final=%s",
-            session.session_id[:8],
+            session.session_id,
             len(output),
             is_final,
         )
@@ -575,7 +575,7 @@ class AdapterClient:
         if pending:
             logger.debug(
                 "Feedback cleanup (output start): session=%s pending_count=%d",
-                session.session_id[:8],
+                session.session_id,
                 len(pending),
             )
             for msg_id in pending:
@@ -664,7 +664,7 @@ class AdapterClient:
         logger.debug(
             "[UI_LANE] Starting lane for adapter=%s session=%s",
             adapter_type,
-            session.session_id[:8],
+            session.session_id,
         )
 
         try:
@@ -672,7 +672,7 @@ class AdapterClient:
             logger.debug(
                 "[UI_LANE] Task completed for %s session %s: result=%s",
                 adapter_type,
-                session.session_id[:8],
+                session.session_id,
                 type(result).__name__ if result else "None",
             )
             return result
@@ -683,7 +683,7 @@ class AdapterClient:
                 logger.error(
                     "[UI_LANE] UI adapter %s failed in lane for session %s: %s",
                     adapter_type,
-                    session.session_id[:8],
+                    session.session_id,
                     exc,
                 )
                 return None
@@ -972,7 +972,7 @@ class AdapterClient:
             else:
                 channel_id = str(result)
                 all_channel_ids[adapter_type] = channel_id
-                logger.debug("Created channel in %s for session %s: %s", adapter_type, session_id[:8], channel_id)
+                logger.debug("Created channel in %s for session %s: %s", adapter_type, session_id, channel_id)
                 if adapter_type == entry_point:
                     entry_point_channel_id = channel_id
 
@@ -990,7 +990,7 @@ class AdapterClient:
                     adapter.store_channel_id(updated_session.adapter_metadata, channel_id)
 
             await db.update_session(session_id, adapter_metadata=updated_session.adapter_metadata)
-            logger.debug("Stored channel_ids for all adapters in session %s metadata", session_id[:8])
+            logger.debug("Stored channel_ids for all adapters in session %s metadata", session_id)
 
         return entry_point_channel_id
 
@@ -1017,7 +1017,7 @@ class AdapterClient:
             if session.closed_at or session.lifecycle_status in _TERMINAL_SESSION_STATUSES:
                 logger.debug(
                     "Skipping ensure_ui_channels for terminal session %s (status=%s)",
-                    session_id[:8],
+                    session_id,
                     session.lifecycle_status,
                 )
                 return session
@@ -1031,7 +1031,7 @@ class AdapterClient:
 
         refreshed = await db.get_session(session_id)
         if not refreshed:
-            raise ValueError(f"Session {session_id[:8]} missing after channel creation")
+            raise ValueError(f"Session {session_id} missing after channel creation")
         return refreshed
 
     async def get_output_message_id(self, session_id: str) -> str | None:

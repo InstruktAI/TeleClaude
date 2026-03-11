@@ -165,13 +165,13 @@ class SessionsView(Widget, can_focus=True):
         state_changed = bool(restored_hidden)
         stale_sticky = [sid for sid in self._sticky_session_ids if sid not in new_ids]
         if stale_sticky:
-            self._logger.info("Pruning %d stale sticky IDs: %s", len(stale_sticky), [s[:8] for s in stale_sticky])
+            self._logger.info("Pruning %d stale sticky IDs: %s", len(stale_sticky), stale_sticky)
             self._sticky_session_ids = [sid for sid in self._sticky_session_ids if sid in new_ids]
             state_changed = True
             # Notify bridge so panes for dead sessions are actually removed.
             self.post_message(StickyChanged(self._sticky_session_ids.copy()))
         if self.preview_session_id and self.preview_session_id not in new_ids:
-            self._logger.info("Pruning stale preview ID: %s", self.preview_session_id[:8])
+            self._logger.info("Pruning stale preview ID: %s", self.preview_session_id)
             self.preview_session_id = None
             state_changed = True
             self.post_message(PreviewChanged(None, request_focus=False))

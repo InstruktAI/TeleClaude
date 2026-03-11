@@ -159,7 +159,7 @@ async def _stream_sse(
     agent_name = _get_agent_name(session)
     chain = _get_transcript_chain(session)
 
-    message_id = f"msg-{session_id[:8]}"
+    message_id = f"msg-{session_id}"
     yield message_start(message_id)
 
     # R1/R2: Derive initial status from canonical lifecycle_status — no hardcoded bypass.
@@ -167,7 +167,7 @@ async def _stream_sse(
     logger.info(
         "Web lane stream start",
         lane="web",
-        session_id=session_id[:8],
+        session_id=session_id,
         event_type="data-session-status",
         status=initial_status,
         lifecycle_status=session.lifecycle_status,
@@ -190,7 +190,7 @@ async def _stream_sse(
             logger.warning(
                 "Web lane message delivery failed",
                 lane="web",
-                session_id=session_id[:8],
+                session_id=session_id,
                 event_type="data-session-status",
                 exc_info=True,
             )
@@ -232,7 +232,7 @@ async def _stream_sse(
             logger.info(
                 "Web lane stream closed",
                 lane="web",
-                session_id=session_id[:8],
+                session_id=session_id,
                 event_type="data-session-status",
                 reason=close_reason,
             )
@@ -275,7 +275,7 @@ async def _stream_sse(
             logger.warning(
                 "Web lane error reading live transcript",
                 lane="web",
-                session_id=session_id[:8],
+                session_id=session_id,
                 event_type="data-session-status",
                 file=live_file,
                 error=str(exc),

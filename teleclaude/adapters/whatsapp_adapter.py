@@ -378,7 +378,7 @@ class WhatsAppAdapter(UiAdapter):
         try:
             await self._post_json(self._messages_url, payload)
         except Exception:
-            logger.debug("WhatsApp read receipt failed for session %s", session.session_id[:8], exc_info=True)
+            logger.debug("WhatsApp read receipt failed for session %s", session.session_id, exc_info=True)
 
     def get_max_message_length(self) -> int:
         return self.max_message_size

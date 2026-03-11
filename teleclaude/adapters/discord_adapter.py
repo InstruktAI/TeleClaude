@@ -229,14 +229,14 @@ class DiscordAdapter(UiAdapter):
         if forum_id is not None:
             logger.debug(
                 "[DISCORD_ROUTE] session=%s project=%s -> project forum %s",
-                session.session_id[:8],
+                session.session_id,
                 session.project_path,
                 forum_id,
             )
             return forum_id
         logger.debug(
             "[DISCORD_ROUTE] session=%s project=%s -> catch-all (map has %d entries)",
-            session.session_id[:8],
+            session.session_id,
             session.project_path,
             len(self._project_forum_map),
         )
@@ -1160,35 +1160,35 @@ class DiscordAdapter(UiAdapter):
         meta = session.get_metadata().get_ui().get_discord()
         meta.output_message_id = message_id
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
-        logger.debug("Stored discord output_message_id: session=%s message_id=%s", session.session_id[:8], message_id)
+        logger.debug("Stored discord output_message_id: session=%s message_id=%s", session.session_id, message_id)
 
     async def _clear_output_message_id(self, session: Session) -> None:
         meta = session.get_metadata().get_ui().get_discord()
         meta.output_message_id = None
         await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
-        logger.debug("Cleared discord output_message_id: session=%s", session.session_id[:8])
+        logger.debug("Cleared discord output_message_id: session=%s", session.session_id)
 
     async def send_typing_indicator(self, session: Session) -> None:
         """Send typing indicator to Discord thread."""
         discord_meta = session.get_metadata().get_ui().get_discord()
         if discord_meta.thread_id is None:
-            logger.debug("Typing skipped: no thread_id for session %s", session.session_id[:8])
+            logger.debug("Typing skipped: no thread_id for session %s", session.session_id)
             return
         thread = await self._get_channel(discord_meta.thread_id)
         if thread is None:
             logger.debug(
-                "Typing skipped: channel %s not found for session %s", discord_meta.thread_id, session.session_id[:8]
+                "Typing skipped: channel %s not found for session %s", discord_meta.thread_id, session.session_id
             )
             return
         typing_fn = getattr(thread, "typing", None)
         if typing_fn and callable(typing_fn):
             await typing_fn()  # type: ignore[misc]
-            logger.debug("Typing fired: session=%s thread=%s", session.session_id[:8], discord_meta.thread_id)
+            logger.debug("Typing fired: session=%s thread=%s", session.session_id, discord_meta.thread_id)
         else:
             logger.debug(
                 "Typing skipped: typing() not available on channel %s for session %s",
                 discord_meta.thread_id,
-                session.session_id[:8],
+                session.session_id,
             )
 
     async def send_output_update(  # type: ignore[override]  # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -1267,7 +1267,7 @@ class DiscordAdapter(UiAdapter):
         except Exception as exc:
             logger.debug(
                 "Discord status message update failed for session %s: %s",
-                context.session_id[:8],
+                context.session_id,
                 exc,
             )
 
@@ -1298,7 +1298,7 @@ class DiscordAdapter(UiAdapter):
         if not edited:
             logger.debug(
                 "Discord topper refresh failed for session %s (msg=%s)",
-                session.session_id[:8],
+                session.session_id,
                 topper_message_id,
             )
 
@@ -1449,7 +1449,7 @@ class DiscordAdapter(UiAdapter):
     ) -> str:
         # Reflection suppression: drop own-user reflections silently.
         if metadata is not None and metadata.reflection_origin == self.ADAPTER_KEY:
-            logger.debug("send_message: suppressing own-user reflection for session %s", session.session_id[:8])
+            logger.debug("send_message: suppressing own-user reflection for session %s", session.session_id)
             return "0"
 
         destination = await self._resolve_destination_channel(session, metadata=metadata)
@@ -2085,7 +2085,7 @@ class DiscordAdapter(UiAdapter):
                 "Thread %s %s for already-closed session %s",
                 thread_id,
                 trigger,
-                session.session_id[:8],
+                session.session_id,
             )
             return
 
@@ -2101,7 +2101,7 @@ class DiscordAdapter(UiAdapter):
                 logger.warning(
                     "Ignoring thread %s for new session %s (age=%.1fs)",
                     trigger,
-                    session.session_id[:8],
+                    session.session_id,
                     age,
                 )
                 return
@@ -2110,7 +2110,7 @@ class DiscordAdapter(UiAdapter):
             "Discord thread %s %s by user, terminating session %s",
             thread_id,
             trigger,
-            session.session_id[:8],
+            session.session_id,
         )
         event_bus.emit(
             TeleClaudeEvents.SESSION_CLOSE_REQUESTED,
@@ -2605,7 +2605,7 @@ class DiscordAdapter(UiAdapter):
             logger.warning(
                 "Discord channel %s not found for session %s, clearing stale metadata",
                 destination_id,
-                session.session_id[:8],
+                session.session_id,
             )
             discord_meta.thread_id = None
             discord_meta.channel_id = None
@@ -2840,7 +2840,7 @@ class DiscordAdapter(UiAdapter):
         try:
             await self.client.send_message(session=session, text=text, metadata=metadata, ephemeral=False)
         except Exception:
-            logger.warning("Failed to deliver relay message to customer session %s", session.session_id[:8])
+            logger.warning("Failed to deliver relay message to customer session %s", session.session_id)
 
     def _is_agent_tag(self, text: str) -> bool:
         """Check if a message contains an @agent handback tag."""
@@ -2870,7 +2870,7 @@ class DiscordAdapter(UiAdapter):
             relay_started_at=None,
         )
 
-        logger.info("Agent handback completed for session %s (thread %s)", session.session_id[:8], thread_id)
+        logger.info("Agent handback completed for session %s (thread %s)", session.session_id, thread_id)
 
     _FORWARDING_PATTERN: str = r"^\*\*(.+?)\*\* \((\w+)\): (.+)"
 

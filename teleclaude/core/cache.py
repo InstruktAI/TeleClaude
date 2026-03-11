@@ -327,7 +327,7 @@ class DaemonCache:
         self._sessions[session_id] = CachedItem(session)
         logger.debug(
             "Updated session cache: %s (computer=%s, new=%s, title=%s)",
-            session_id[:8],
+            session_id,
             session.computer,
             is_new,
             session.title,
@@ -345,7 +345,7 @@ class DaemonCache:
         """
         if session_id in self._sessions:
             self._sessions.pop(session_id)
-            logger.debug("Removed session from cache: %s", session_id[:8])
+            logger.debug("Removed session from cache: %s", session_id)
             self._notify("session_closed", {"session_id": session_id})
 
     def set_projects(self, computer: str, projects: list[ProjectInfo]) -> None:

@@ -14,7 +14,7 @@ async def deliver_listener_message(session_id: str, tmux_session: str, message: 
     preview = message.replace("\n", "\\n")[:160]
     logger.debug(
         "Deliver listener message: session=%s tmux=%s preview=%r",
-        session_id[:8],
+        session_id,
         tmux_session,
         preview,
     )
@@ -26,5 +26,5 @@ async def deliver_listener_message(session_id: str, tmux_session: str, message: 
     if delivered:
         return True
 
-    logger.debug("Tmux delivery failed (no tmux)", session=session_id[:8])
+    logger.debug("Tmux delivery failed (no tmux)", session=session_id)
     return False

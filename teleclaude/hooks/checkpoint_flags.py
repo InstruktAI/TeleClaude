@@ -44,7 +44,7 @@ def set_checkpoint_flag(session_id: str, flag_name: str) -> None:
     except OSError as exc:
         logger.warning(
             "Failed to set checkpoint flag",
-            session_id=session_id[:8],
+            session_id=session_id,
             flag=flag_name,
             path=str(flag_path),
             error=str(exc),
@@ -64,7 +64,7 @@ def consume_checkpoint_flag(session_id: str, flag_name: str) -> bool:
     except OSError as exc:
         logger.warning(
             "Failed to consume checkpoint flag",
-            session_id=session_id[:8],
+            session_id=session_id,
             flag=flag_name,
             path=str(flag_path),
             error=str(exc),

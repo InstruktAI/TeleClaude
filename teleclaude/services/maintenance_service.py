@@ -126,8 +126,8 @@ class MaintenanceService:
             bound += 1
             logger.info(
                 "Codex transcript watcher bound transcript",
-                session_id=session.session_id[:8],
-                native_session_id=native_session_id[:8],
+                session_id=session.session_id,
+                native_session_id=native_session_id,
                 previous_path=current_log_file,
                 path=discovered_path,
             )
@@ -158,7 +158,7 @@ class MaintenanceService:
                 except Exception as exc:
                     logger.warning(
                         "Failed to ensure UI channels for session %s: %s",
-                        session.session_id[:8],
+                        session.session_id,
                         exc,
                     )
                     continue
@@ -172,7 +172,7 @@ class MaintenanceService:
             if await tmux_bridge.is_pane_dead(session.tmux_session_name):
                 logger.debug(
                     "Skipping poller recovery for session %s: tmux pane is dead",
-                    session.session_id[:8],
+                    session.session_id,
                 )
                 continue
 
@@ -190,7 +190,7 @@ class MaintenanceService:
 
         for session in sessions:
             if not session.last_activity:
-                logger.warning("No last_activity for session %s", session.session_id[:8])
+                logger.warning("No last_activity for session %s", session.session_id)
                 continue
 
             if session.closed_at:
@@ -202,7 +202,7 @@ class MaintenanceService:
                 if session.closed_at < cutoff_time:
                     logger.info(
                         "Purging old closed session %s (closed %s ago)",
-                        session.session_id[:8],
+                        session.session_id,
                         datetime.now(UTC) - session.closed_at,
                     )
                     await session_cleanup.terminate_session(
@@ -218,7 +218,7 @@ class MaintenanceService:
             if session.last_activity < cutoff_time:
                 logger.info(
                     "Cleaning up inactive session %s (inactive for %s)",
-                    session.session_id[:8],
+                    session.session_id,
                     datetime.now(UTC) - session.last_activity,
                 )
                 await session_cleanup.terminate_session(
@@ -227,7 +227,7 @@ class MaintenanceService:
                     reason="inactive_72h",
                     session=session,
                 )
-                logger.info("Session %s cleaned up (72h lifecycle)", session.session_id[:8])
+                logger.info("Session %s cleaned up (72h lifecycle)", session.session_id)
 
     async def _check_idle_compaction(self) -> None:
         """Detect idle long-lived sessions and mark them for memory extraction.
@@ -269,7 +269,7 @@ class MaintenanceService:
             )
             logger.info(
                 "Session idle compaction triggered",
-                session_id=session.session_id[:8],
+                session_id=session.session_id,
                 idle_seconds=idle_duration.total_seconds(),
                 human_role=session.human_role,
             )
@@ -305,7 +305,7 @@ class MaintenanceService:
                 env_vars=env_vars,
             )
             if not created:
-                logger.warning("Failed to recreate tmux session for %s", session.session_id[:8])
+                logger.warning("Failed to recreate tmux session for %s", session.session_id)
                 return False
         else:
             return True
@@ -331,14 +331,14 @@ class MaintenanceService:
                 logger.info(
                     "Restored agent %s for session %s (native=%s)",
                     session.active_agent,
-                    session.session_id[:8],
-                    session.native_session_id[:8],
+                    session.session_id,
+                    session.native_session_id,
                 )
             else:
                 logger.warning(
                     "Failed to restore agent %s for session %s",
                     session.active_agent,
-                    session.session_id[:8],
+                    session.session_id,
                 )
         return created
 

@@ -627,10 +627,10 @@ class TelecApp(App[str | None]):
             # Surface stall and error transitions as TUI notifications.
             if event.status in ("stalled", "error"):
                 if event.reason == "close_failed":
-                    self.notify(f"Session {event.session_id[:8]} failed to close", severity="error")
+                    self.notify(f"Session {event.session_id} failed to close", severity="error")
                     self._refresh_data()
                 else:
-                    self.notify(f"Session {event.session_id[:8]}: {event.status}", severity="warning")
+                    self.notify(f"Session {event.session_id}: {event.status}", severity="warning")
 
         elif isinstance(event, ErrorEvent):
             self.notify(event.data.message, severity="error")
@@ -703,14 +703,14 @@ class TelecApp(App[str | None]):
         logger.debug(
             "tui lane: on_agent_activity lane=tui hook=%s session=%s",
             hook,
-            message.session_id[:8] if message.session_id else "",
+            message.session_id if message.session_id else "",
             extra={"lane": "tui", "hook": hook, "session_id": message.session_id},
         )
         if message.canonical_type is None:
             logger.warning(
                 "tui lane: AgentActivity missing canonical_type lane=tui hook_type=%s session=%s",
                 hook,
-                message.session_id[:8] if message.session_id else "",
+                message.session_id if message.session_id else "",
                 extra={"lane": "tui", "canonical_type": None, "session_id": message.session_id},
             )
             return
@@ -758,7 +758,7 @@ class TelecApp(App[str | None]):
             try:
                 result = await self.api.revive_session(message.revive_session_id)
                 if result.status == "success":
-                    self.notify(f"Revived session {message.revive_session_id[:8]}...")
+                    self.notify(f"Revived session {message.revive_session_id}...")
                 else:
                     self.notify(result.error or "Revive failed", severity="error")
             except Exception as e:

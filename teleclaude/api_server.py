@@ -855,7 +855,7 @@ class APIServer:
             identity_email = request.headers.get("x-web-email", "none")
             logger.info(
                 "DELETE /sessions/%s (ua=%s, identity=%s)",
-                session_id[:8],
+                session_id,
                 user_agent,
                 identity_email,
             )
@@ -864,14 +864,14 @@ class APIServer:
             try:
                 session = await db.get_session(session_id)
                 if not session:
-                    raise HTTPException(status_code=404, detail=f"Session {session_id[:8]} not found")
+                    raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
                 close_context = SessionLifecycleContext(session_id=session_id)
                 if session.closed_at or session.lifecycle_status == "closed":
                     event_bus.emit(TeleClaudeEvents.SESSION_CLOSED, close_context)
                     return {
                         "status": "success",
-                        "message": f"Session {session_id[:8]} already closed",
+                        "message": f"Session {session_id} already closed",
                     }
 
                 if session.lifecycle_status != "closing":
@@ -882,7 +882,7 @@ class APIServer:
                     status_code=202,
                     content={
                         "status": "accepted",
-                        "message": f"Session {session_id[:8]} closing",
+                        "message": f"Session {session_id} closing",
                     },
                 )
             except HTTPException as exc:
@@ -915,9 +915,9 @@ class APIServer:
                 if request.message:
                     target_session = await db.get_session(session_id)
                     if not target_session:
-                        raise HTTPException(status_code=404, detail=f"Session {session_id[:8]} not found")
+                        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
                     if target_session.closed_at or target_session.lifecycle_status in {"closed", "closing"}:
-                        raise HTTPException(status_code=409, detail=f"Session {session_id[:8]} is closed")
+                        raise HTTPException(status_code=409, detail=f"Session {session_id} is closed")
 
                 if request.close_link:
                     if not identity.session_id:
@@ -1014,13 +1014,13 @@ class APIServer:
                     for target_id in delivery_targets:
                         target_for_delivery = await db.get_session(target_id)
                         if not target_for_delivery:
-                            logger.info("Skipping direct delivery to missing session %s", target_id[:8])
+                            logger.info("Skipping direct delivery to missing session %s", target_id)
                             continue
                         if target_for_delivery.closed_at or target_for_delivery.lifecycle_status in {
                             "closed",
                             "closing",
                         }:
-                            logger.info("Skipping direct delivery to closed session %s", target_id[:8])
+                            logger.info("Skipping direct delivery to closed session %s", target_id)
                             continue
                         cmd = CommandMapper.map_api_input(
                             "message",
@@ -1176,7 +1176,7 @@ class APIServer:
 
             await check_session_access(http_request, session_id)
             try:
-                logger.info("API agent_restart requested (session=%s, origin=api)", session_id[:8])
+                logger.info("API agent_restart requested (session=%s, origin=api)", session_id)
 
                 # Quick validation before dispatching
                 session = await db.get_session(session_id)
@@ -1220,7 +1220,7 @@ class APIServer:
                 if not resolved:
                     raise HTTPException(
                         status_code=404,
-                        detail=f"No session found for native ID {session_id[:8]} (agent={agent})",
+                        detail=f"No session found for native ID {session_id} (agent={agent})",
                     )
                 if resolved.active_agent and resolved.active_agent != agent:
                     raise HTTPException(
@@ -1476,8 +1476,8 @@ class APIServer:
 
             success = await unregister_listener(target_session_id=session_id, caller_session_id=identity.session_id)
             if success:
-                return {"status": "success", "message": f"Stopped notifications from session {session_id[:8]}"}
-            return {"status": "error", "message": f"No listener found for session {session_id[:8]}"}
+                return {"status": "success", "message": f"Stopped notifications from session {session_id}"}
+            return {"status": "error", "message": f"No listener found for session {session_id}"}
 
         @self.app.post("/sessions/self/result")
         async def send_result_endpoint(  # pyright: ignore

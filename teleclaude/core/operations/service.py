@@ -216,7 +216,7 @@ class OperationsService:
                 return
             task = self._task_registry.spawn(
                 self._run_todo_work_operation(operation_id),
-                name=f"operation-{operation_id[:8]}",
+                name=f"operation-{operation_id}",
             )
             self._live_tasks[operation_id] = task
 
@@ -238,7 +238,7 @@ class OperationsService:
 
             heartbeat_task = asyncio.create_task(
                 self._heartbeat_loop(operation_id, stop_heartbeat),
-                name=f"operation-heartbeat-{operation_id[:8]}",
+                name=f"operation-heartbeat-{operation_id}",
             )
 
             def _capture_progress(phase: str, decision: str, reason: str) -> None:

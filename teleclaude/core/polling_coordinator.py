@@ -81,7 +81,7 @@ def _log_output_metrics_summary(session_id: str, state: OutputMetricsState, *, r
     p95_cadence = _percentile(state.cadence_samples_s, 0.95)
     logger.info(
         "Output cadence summary",
-        session_id=session_id[:8],
+        session_id=session_id,
         reason=reason,
         tick_count=state.ticks,
         fanout_chars=state.fanout_chars,
@@ -297,7 +297,7 @@ def _handle_background_poller_result(task: asyncio.Task[None], session_id: str) 
     except asyncio.CancelledError:
         return
     except Exception:
-        logger.error("Background poller task crashed for session %s", session_id[:8], exc_info=True)
+        logger.error("Background poller task crashed for session %s", session_id, exc_info=True)
 
 
 async def is_polling(session_id: str) -> bool:
@@ -335,7 +335,7 @@ async def schedule_polling(
     if not await _register_polling(session_id):
         logger.warning(
             "Polling already active for session %s, ignoring duplicate request",
-            session_id[:8],
+            session_id,
         )
         return False
 
@@ -377,7 +377,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
         if not await _register_polling(session_id):
             logger.warning(
                 "Polling already active for session %s, ignoring duplicate request",
-                session_id[:8],
+                session_id,
             )
             return
 
@@ -389,7 +389,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
             if isinstance(event, OutputChanged):
                 logger.debug(
                     "[COORDINATOR %s] Received OutputChanged event from poller",
-                    session_id[:8],
+                    session_id,
                 )
                 # Output is a rendered TUI snapshot (poller reads from raw stream)
                 clean_output = event.output
@@ -399,13 +399,13 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                 if not session:
                     logger.debug(
                         "Session %s missing during polling output; stopping poller",
-                        event.session_id[:8],
+                        event.session_id,
                     )
                     return
 
                 logger.trace(
                     "[COORDINATOR %s] Fetched session for output: digest=%s",
-                    event.session_id[:8],
+                    event.session_id,
                     session.last_output_digest,
                 )
 
@@ -443,7 +443,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
 
                 # Unified output handling - ALL sessions use send_output_update
                 start_time = time.time()
-                logger.debug("[COORDINATOR %s] Calling send_output_update...", session_id[:8])
+                logger.debug("[COORDINATOR %s] Calling send_output_update...", session_id)
                 await adapter_client.send_output_update(
                     session,
                     terminal_projection.output,
@@ -457,14 +457,14 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                     except Exception:
                         logger.warning(
                             "Poller-triggered incremental output failed for %s",
-                            event.session_id[:8],
+                            event.session_id,
                             exc_info=True,
                         )
                 _record_output_tick(event.session_id, len(clean_output))
                 elapsed = time.time() - start_time
                 logger.debug(
                     "[COORDINATOR %s] send_output_update completed in %.2fs",
-                    session_id[:8],
+                    session_id,
                     elapsed,
                 )
 
@@ -483,7 +483,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                 if not session:
                     logger.debug(
                         "Session %s missing during process exit; stopping poller",
-                        event.session_id[:8],
+                        event.session_id,
                     )
                     return
 
@@ -515,13 +515,13 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                         )
                         logger.info(
                             "Terminated session %s after tmux exit (exit code: %d)",
-                            event.session_id[:8],
+                            event.session_id,
                             event.exit_code,
                         )
                     else:
                         logger.info(
                             "Polling stopped for %s (exit code: %d), output file kept for downloads",
-                            event.session_id[:8],
+                            event.session_id,
                             event.exit_code,
                         )
                 else:
@@ -529,10 +529,10 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                     # Recovery is demand-driven; do not attempt background healing here.
                     logger.warning(
                         "Tmux session missing for %s; polling stopped without recovery",
-                        event.session_id[:8],
+                        event.session_id,
                     )
     except Exception as exc:
-        logger.error("Polling failed for session %s: %s", session_id[:8], exc)
+        logger.error("Polling failed for session %s: %s", session_id, exc)
         try:
             await adapter_client.send_error_feedback(
                 session_id,
@@ -541,7 +541,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
         except Exception as feedback_exc:
             logger.error(
                 "Failed to send error feedback for session %s: %s",
-                session_id[:8],
+                session_id,
                 feedback_exc,
             )
         raise
@@ -555,4 +555,4 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
         # NOTE: Keep output_message_id in DB - it's reused for all commands in the session
         # Only cleared when session closes (/exit command)
 
-        logger.debug("Polling ended for session %s", session_id[:8])
+        logger.debug("Polling ended for session %s", session_id)

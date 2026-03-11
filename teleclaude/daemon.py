@@ -582,7 +582,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._hook_outbox_last_backlog_warn_at[session_id] = now
         logger.warning(
             "Hook outbox backlog threshold exceeded",
-            session_id=session_id[:8],
+            session_id=session_id,
             queue_depth=depth,
             threshold=HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD,
         )
@@ -616,7 +616,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._hook_outbox_last_lag_warn_at[session_id] = now
         logger.warning(
             "Hook outbox lag threshold exceeded",
-            session_id=session_id[:8],
+            session_id=session_id,
             lag_s=round(lag_s, 3),
             threshold_s=HOOK_OUTBOX_LAG_WARN_THRESHOLD_S,
             event_type=str(row.get("event_type") or ""),
@@ -695,7 +695,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         logger.info(
             "Creating headless session",
-            session_id=session_id[:8],
+            session_id=session_id,
             agent=agent_str,
             project_path=project_path or "",
         )
@@ -752,7 +752,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             ):
                 logger.debug(
                     "Ignoring hook event for unknown session (not session_start)",
-                    session_id=session_id[:8],
+                    session_id=session_id,
                     event_type=event_type,
                 )
                 return
@@ -760,7 +760,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         elif session.lifecycle_status == "closed":
             logger.debug(
                 "Ignoring hook event for closed session",
-                session_id=session_id[:8],
+                session_id=session_id,
                 event_type=event_type,
             )
             return
@@ -792,8 +792,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 has_transcript_path = True
                 logger.debug(
                     "Resolved Codex transcript in hook worker",
-                    session_id=session_id[:8],
-                    native_session_id=native_session_id[:8],
+                    session_id=session_id,
+                    native_session_id=native_session_id,
                     path=discovered_path,
                 )
         elif not has_transcript_path and has_native_log and isinstance(native_log_file, str):
@@ -819,7 +819,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             await self._ensure_output_polling(session)
 
         if event_type not in AgentHookEvents.ALL:
-            logger.debug("Transcript capture event handled", event=event_type, session=session_id[:8])
+            logger.debug("Transcript capture event handled", event=event_type, session=session_id)
             return
 
         if event_type == AgentHookEvents.AGENT_ERROR:
@@ -1013,7 +1013,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if requeue_claimed_critical and not duplicate_claimed_row:
             logger.debug(
                 "Hook outbox session queue at capacity; deferring claimed critical row",
-                session_id=session_id[:8],
+                session_id=session_id,
                 row_id=row_id or row["id"],
                 queue_depth=queue_depth,
                 max_pending=HOOK_OUTBOX_SESSION_MAX_PENDING,
@@ -1036,7 +1036,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         task = asyncio.create_task(self._run_session_outbox_worker(session_id))
         self._session_outbox_workers[session_id] = task
-        self._track_background_task(task, f"outbox-worker:{session_id[:8]}")
+        self._track_background_task(task, f"outbox-worker:{session_id}")
 
     async def _run_session_outbox_worker(self, session_id: str) -> None:
         """Process claimed outbox rows serially for a single session."""
@@ -1167,7 +1167,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             context: Session lifecycle context
         """
         ctx = context
-        logger.debug("session_closed observer: cleaning in-memory state for %s", ctx.session_id[:8])
+        logger.debug("session_closed observer: cleaning in-memory state for %s", ctx.session_id)
 
         self._session_outbox_queues.pop(ctx.session_id, None)
         self._hook_outbox_claim_paused_sessions.discard(ctx.session_id)
@@ -1199,10 +1199,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         session = await db.get_session(ctx.session_id)
         if not session:
-            logger.warning("Session %s not found for session_close_requested", ctx.session_id[:8])
+            logger.warning("Session %s not found for session_close_requested", ctx.session_id)
             return
 
-        logger.info("Handling session_close_requested for %s", ctx.session_id[:8])
+        logger.info("Handling session_close_requested for %s", ctx.session_id)
         try:
             await session_cleanup.terminate_session(
                 ctx.session_id,
@@ -1211,7 +1211,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 session=session,
             )
         except Exception as exc:
-            logger.error("Failed to close session %s: %s", ctx.session_id[:8], exc, exc_info=True)
+            logger.error("Failed to close session %s: %s", ctx.session_id, exc, exc_info=True)
 
             restored = await db.get_session(ctx.session_id)
             if restored and not restored.closed_at:
@@ -1276,7 +1276,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if cmd_name and auto_command:
             session = await db.get_session(session_id)
             if not session or not session.last_input_origin:
-                logger.error("Auto-command missing last_input_origin for session %s", session_id[:8])
+                logger.error("Auto-command missing last_input_origin for session %s", session_id)
                 await db.update_session(
                     session_id,
                     last_message_sent=auto_command[:200],
@@ -1319,7 +1319,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Create tmux + start polling + run auto command."""
         session = await db.get_session(session_id)
         if not session:
-            logger.warning("Session %s missing during bootstrap", session_id[:8])
+            logger.warning("Session %s missing during bootstrap", session_id)
             return
 
         voice = await db.get_voice(session_id)
@@ -1334,7 +1334,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             env_vars=env_vars,
         )
         if not created:
-            logger.error("Failed to create tmux session for %s", session_id[:8])
+            logger.error("Failed to create tmux session for %s", session_id)
             await db.update_session(
                 session_id,
                 lifecycle_status="closed",
@@ -1355,7 +1355,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except Exception:
                 logger.error(
                     "Bootstrap auto-command failed for session %s",
-                    session_id[:8],
+                    session_id,
                     exc_info=True,
                 )
                 auto_command_result = {"status": "error"}
@@ -1367,7 +1367,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         logger.info(
             "Bootstrap complete for session %s: auto_command=%s result=%s",
-            session_id[:8],
+            session_id,
             bool(auto_command),
             auto_command_result.get("status") if auto_command_result else "n/a",
         )
@@ -1375,7 +1375,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _handle_agent_then_message(self, session_id: str, args: list[str]) -> dict[str, str]:
         """Start agent, wait for TUI to stabilize, then inject message."""
         start_time = time.time()
-        logger.debug("agent_then_message: started for session=%s", session_id[:8])
+        logger.debug("agent_then_message: started for session=%s", session_id)
 
         if len(args) < 3:
             return {"status": "error", "message": "agent_then_message requires agent, thinking_mode, message"}
@@ -1413,7 +1413,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Step 1: Wait for output to stabilize (TUI banner and startup output complete)
         # We integrate the "process running" check into stabilization logic.
         # Gemini gets a longer quiet window to ensure heavy initialization is done.
-        logger.debug("agent_then_message: waiting for TUI to stabilize (session=%s)", session_id[:8])
+        logger.debug("agent_then_message: waiting for TUI to stabilize (session=%s)", session_id)
 
         quiet_s = AGENT_START_STABILIZE_QUIET_S
         if agent_name == AgentName.GEMINI.value:
@@ -1431,16 +1431,16 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.warning(
                 "agent_then_message: stabilization timed out after %.1fs, proceeding anyway (session=%s)",
                 AGENT_START_STABILIZE_TIMEOUT_S,
-                session_id[:8],
+                session_id,
             )
 
         # Verify agent is actually running before injecting message
         if not await tmux_io.is_process_running(session):
-            logger.error("agent_then_message: process not running after stabilization (session=%s)", session_id[:8])
+            logger.error("agent_then_message: process not running after stabilization (session=%s)", session_id)
             return {"status": "error", "message": "Agent process exited/failed to start before message injection"}
 
         # Step 2: Inject the message immediately (TUI should be ready)
-        logger.debug("agent_then_message: injecting message to session=%s", session_id[:8])
+        logger.debug("agent_then_message: injecting message to session=%s", session_id)
 
         sanitized_message = tmux_io.wrap_bracketed_paste(message, active_agent=agent_name)
         working_dir = resolve_working_dir(session.project_path, session.subdir)
@@ -1462,7 +1462,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not accepted:
             logger.warning(
                 "agent_then_message timed out waiting for command acceptance (session=%s)",
-                session_id[:8],
+                session_id,
             )
             return {"status": "error", "message": "Timeout waiting for command acceptance"}
 
@@ -1620,14 +1620,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         session = await db.get_session(context.session_id)
         if not session:
-            logger.error("Error event for unknown session %s: %s", context.session_id[:8], context.message)
+            logger.error("Error event for unknown session %s: %s", context.session_id, context.message)
             return
 
         user_message = get_user_facing_error_message(context)
         if user_message is None:
             logger.debug(
                 "Suppressing non-user-facing error event",
-                session_id=context.session_id[:8],
+                session_id=context.session_id,
                 source=context.source,
                 code=context.code,
             )
@@ -1791,7 +1791,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Get session
         session = await db.get_session(session_id)
         if not session:
-            logger.error("Session %s not found", session_id[:8])
+            logger.error("Session %s not found", session_id)
             return False
 
         sanitized_command = tmux_io.wrap_bracketed_paste(command, active_agent=session.active_agent)
@@ -1804,7 +1804,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         if not success:
             await self.client.send_message(session, f"Failed to execute command: {command}", metadata=MessageMetadata())
-            logger.error("Failed to execute command in session %s: %s", session_id[:8], command)
+            logger.error("Failed to execute command in session %s: %s", session_id, command)
             return False
 
         # Update activity
@@ -1819,7 +1819,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if start_polling:
             await self._start_polling_for_session(session_id, session.tmux_session_name)
 
-        logger.info("Executed command in session %s: %s (polling=%s)", session_id[:8], command, start_polling)
+        logger.info("Executed command in session %s: %s (polling=%s)", session_id, command, start_polling)
         return True
 
     async def _start_event_platform(self) -> None:
@@ -2564,7 +2564,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             session.tmux_session_name,
             log_missing=False,
         ):
-            logger.warning("Tmux session missing for %s; polling skipped", session.session_id[:8])
+            logger.warning("Tmux session missing for %s; polling skipped", session.session_id)
             return
 
         await self._poll_and_send_output(session.session_id, session.tmux_session_name)

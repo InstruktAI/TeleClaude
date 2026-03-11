@@ -42,14 +42,14 @@ def run_tts_with_lock(
             for service_name, voice_param in service_chain:
                 logger.debug(
                     f"Trying TTS service: {service_name}",
-                    extra={"session_id": session_id[:8]},
+                    extra={"session_id": session_id},
                 )
 
                 backend = backends.get_backend(service_name)
                 if not backend:
                     logger.debug(
                         f"Backend not available: {service_name}",
-                        extra={"session_id": session_id[:8]},
+                        extra={"session_id": session_id},
                     )
                     continue
 
@@ -57,30 +57,30 @@ def run_tts_with_lock(
                     if backend.speak(text, voice_param):
                         logger.debug(
                             f"TTS succeeded: {service_name} voice={voice_param}",
-                            extra={"session_id": session_id[:8]},
+                            extra={"session_id": session_id},
                         )
                         return True, service_name, voice_param
                 except Exception as e:
                     logger.debug(
                         f"TTS service failed: {service_name}: {e}",
-                        extra={"session_id": session_id[:8]},
+                        extra={"session_id": session_id},
                     )
                     continue
 
                 logger.debug(
                     f"TTS failed, trying next: {service_name}",
-                    extra={"session_id": session_id[:8]},
+                    extra={"session_id": session_id},
                 )
 
             logger.warning(
                 "All TTS services failed",
-                extra={"session_id": session_id[:8]},
+                extra={"session_id": session_id},
             )
         return False, None, None
     except Exception as e:
         logger.error(
             f"TTS lock error: {e}",
-            extra={"session_id": session_id[:8]},
+            extra={"session_id": session_id},
         )
         return False, None, None
 

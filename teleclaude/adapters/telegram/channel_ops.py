@@ -81,7 +81,7 @@ class ChannelOperationsMixin:
                 if existing_topic_id:
                     logger.warning(
                         "Session %s already has topic_id %s, returning existing (prevented duplicate)",
-                        session_id[:8],
+                        session_id,
                         existing_topic_id,
                     )
                     return str(existing_topic_id)
@@ -164,13 +164,13 @@ class ChannelOperationsMixin:
         if topic_id is None:
             logger.debug(
                 "Skipping Telegram close_channel for session %s: topic_id missing",
-                session.session_id[:8],
+                session.session_id,
             )
             return False
 
         try:
             await self._close_forum_topic_with_retry(topic_id)
-            logger.info("Closed topic %s for session %s", topic_id, session.session_id[:8])
+            logger.info("Closed topic %s for session %s", topic_id, session.session_id)
             return True
         except TelegramError as e:
             logger.warning("Failed to close topic %s: %s", topic_id, e)
@@ -191,7 +191,7 @@ class ChannelOperationsMixin:
 
         try:
             await self._reopen_forum_topic_with_retry(topic_id)
-            logger.info("Reopened topic %s for session %s", topic_id, session.session_id[:8])
+            logger.info("Reopened topic %s for session %s", topic_id, session.session_id)
             return True
         except TelegramError as e:
             logger.warning("Failed to reopen topic %s: %s", topic_id, e)
@@ -210,20 +210,20 @@ class ChannelOperationsMixin:
         if topic_id is None:
             logger.debug(
                 "Skipping Telegram delete_channel for session %s: topic_id missing",
-                session.session_id[:8],
+                session.session_id,
             )
             return False
 
         try:
             await self._delete_forum_topic_with_retry(topic_id)
-            logger.info("Deleted topic %s for session %s", topic_id, session.session_id[:8])
+            logger.info("Deleted topic %s for session %s", topic_id, session.session_id)
         except BadRequest as e:
             if "topic_id_invalid" in str(e).lower():
                 # Topic was already deleted (e.g. by a prior cleanup pass). Treat as success.
                 logger.info(
                     "Topic %s for session %s already deleted (Topic_id_invalid); treating as success",
                     topic_id,
-                    session.session_id[:8],
+                    session.session_id,
                 )
             else:
                 logger.warning("Failed to delete topic %s: %s", topic_id, e)
@@ -238,7 +238,7 @@ class ChannelOperationsMixin:
             telegram_meta = fresh_session.get_metadata().get_ui().get_telegram()
             telegram_meta.topic_id = None
             await db.update_session(session.session_id, adapter_metadata=fresh_session.adapter_metadata)
-            logger.debug("Cleared topic_id for session %s", session.session_id[:8])
+            logger.debug("Cleared topic_id for session %s", session.session_id)
 
         return True
 

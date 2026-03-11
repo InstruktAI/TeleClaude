@@ -108,7 +108,7 @@ class OutputPoller:
             last_output_changed_at = started_at
             last_yield_time = started_at - output_cadence_s  # Force first send after cadence check
             last_summary_time = started_at
-            logger.trace("Polling started for %s", session_id[:8])
+            logger.trace("Polling started for %s", session_id)
 
             def maybe_log_idle_summary(force: bool = False) -> None:
                 nonlocal last_summary_time, suppressed_idle_ticks
@@ -122,7 +122,7 @@ class OutputPoller:
                 idle_for = max(0.0, now - last_output_changed_at)
                 logger.trace(
                     "[POLL %s] idle: unchanged for %.1fs (suppressed=%d, cadence_s=%.2f, idle_ticks=%d)",
-                    session_id[:8],
+                    session_id,
                     idle_for,
                     suppressed_idle_ticks,
                     output_cadence_s,
@@ -149,13 +149,13 @@ class OutputPoller:
                         logger.debug(
                             "Session %s disappeared (session terminated) session=%s",
                             tmux_session_name,
-                            session_id[:8],
+                            session_id,
                         )
                     elif session.closed_at or session.lifecycle_status in _TERMINAL_SESSION_STATUSES:
                         logger.info(
                             "Session %s disappeared during close transition (watchdog close race) session=%s status=%s",
                             tmux_session_name,
-                            session_id[:8],
+                            session_id,
                             session.lifecycle_status,
                         )
                     else:
@@ -165,14 +165,14 @@ class OutputPoller:
                             "Session %s disappeared between polls (watchdog triggered) "
                             "session=%s age=%.2fs poll_iteration=%d seconds_since_last_poll=%.1f",
                             tmux_session_name,
-                            session_id[:8],
+                            session_id,
                             age_seconds,
                             poll_iteration,
                             poll_interval,
                         )
 
                 if not session_exists_now:
-                    logger.info("Process exited for %s, stopping poll", session_id[:8])
+                    logger.info("Process exited for %s, stopping poll", session_id)
 
                     # Send a final snapshot if the last observed output wasn't emitted yet.
                     if previous_output and previous_output != last_sent_output and previous_output.strip():
@@ -207,7 +207,7 @@ class OutputPoller:
                     if curr_last_lines != prev_last_lines:
                         logger.trace(
                             "[POLL %s] Last 3 lines changed: prev=%r, curr=%r",
-                            session_id[:8],
+                            session_id,
                             [line[:50] for line in prev_last_lines],
                             [line[:50] for line in curr_last_lines],
                         )
@@ -295,7 +295,7 @@ class OutputPoller:
                         final_output=current_cleaned,
                         started_at=started_at,
                     )
-                    logger.info("Shell exited for %s, stopping poll", session_id[:8])
+                    logger.info("Shell exited for %s, stopping poll", session_id)
                     break
 
                 # Increment idle counter when no new content
@@ -317,7 +317,7 @@ class OutputPoller:
                             if last_directory is not None and current_directory != last_directory:
                                 logger.info(
                                     "Directory changed for %s: %s -> %s",
-                                    session_id[:8],
+                                    session_id,
                                     last_directory,
                                     current_directory,
                                 )
@@ -334,4 +334,4 @@ class OutputPoller:
                 await asyncio.sleep(poll_interval)
 
         finally:
-            logger.debug("Polling ended for session %s", session_id[:8])
+            logger.debug("Polling ended for session %s", session_id)

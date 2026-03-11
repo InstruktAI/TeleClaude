@@ -655,7 +655,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         """Redis transport does not stream session output; noop for compatibility."""
         logger.debug(
             "send_message ignored for RedisTransport (session output streaming disabled): %s",
-            session.session_id[:8],
+            session.session_id,
         )
         return ""
 
@@ -665,7 +665,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         """No-op for Redis transport."""
         logger.debug(
             "edit_message ignored for RedisTransport (session output streaming disabled): %s",
-            session.session_id[:8],
+            session.session_id,
         )
         return True
 
@@ -673,7 +673,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         """No-op for Redis transport."""
         logger.debug(
             "delete_message ignored for RedisTransport (session output streaming disabled): %s",
-            session.session_id[:8],
+            session.session_id,
         )
         return True
 
@@ -681,7 +681,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         """No-op for Redis transport (errors surface via request/response)."""
         logger.debug(
             "send_error_feedback ignored for RedisTransport (session output streaming disabled): %s",
-            session_id[:8],
+            session_id,
         )
 
     async def send_file(
@@ -730,7 +730,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             redis_meta.target_computer = metadata.target_computer
             logger.info(
                 "Recorded Redis target for AI-to-AI session %s: target=%s",
-                session.session_id[:8],
+                session.session_id,
                 metadata.target_computer,
             )
 
@@ -1124,10 +1124,10 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             # Result is always envelope: {"status": "success/error", "data": ..., "error": ...}
             response_json = json.dumps(result)
             logger.info(
-                ">>> About to send_response for message_id: %s, response length: %d", message_id[:8], len(response_json)
+                ">>> About to send_response for message_id: %s, response length: %d", message_id, len(response_json)
             )
             await self.send_response(message_id, response_json)
-            logger.info(">>> send_response completed for message_id: %s", message_id[:8])
+            logger.info(">>> send_response completed for message_id: %s", message_id)
 
         except Exception as e:
             logger.error("Failed to handle incoming message: %s", e, exc_info=True)
@@ -1623,7 +1623,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         logger.info(
             "Signaled observation: %s observing %s on %s for %ds",
             self.computer_name,
-            session_id[:8],
+            session_id,
             target_computer,
             duration_seconds,
         )
@@ -1786,15 +1786,15 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                         "read_response() timed out after %d polls (%.1fs) for message %s",
                         poll_count,
                         elapsed,
-                        message_id[:8],
+                        message_id,
                     )
-                    raise TimeoutError(f"No response received for message {message_id[:8]} within {timeout}s")
+                    raise TimeoutError(f"No response received for message {message_id} within {timeout}s")
 
                 # Read from stream (blocking with 100ms timeout)
                 poll_count += 1
                 logger.trace(
                     "Redis response poll",
-                    request_id=message_id[:8],
+                    request_id=message_id,
                     poll=poll_count,
                     elapsed_s=round(elapsed, 1),
                 )
@@ -1810,7 +1810,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                             if chunk:
                                 logger.debug(
                                     "Redis response received",
-                                    request_id=message_id[:8],
+                                    request_id=message_id,
                                     polls=poll_count,
                                     length=len(chunk),
                                 )
@@ -1820,7 +1820,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                 await asyncio.sleep(0.1)
 
         except asyncio.CancelledError:
-            logger.debug("read_response cancelled for message %s", message_id[:8])
+            logger.debug("read_response cancelled for message %s", message_id)
             raise
 
     async def send_system_command(

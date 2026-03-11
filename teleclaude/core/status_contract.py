@@ -179,7 +179,7 @@ def serialize_status_event(
         logger.error(
             "status_contract: canonical status event validation failed: %s",
             errors,
-            extra={"session_id": session_id[:8] if session_id else "", "status": status},
+            extra={"session_id": session_id if session_id else "", "status": status},
         )
         return None
 

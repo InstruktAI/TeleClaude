@@ -141,20 +141,20 @@ async def register_listener(
         listeners = await db.get_listeners_for_target(target_session_id)
         logger.info(
             "Registered listener: caller=%s -> target=%s (total: %d)",
-            caller_session_id[:8],
-            target_session_id[:8],
+            caller_session_id,
+            target_session_id,
             len(listeners),
         )
         logger.debug(
             "Listener map snapshot: target=%s callers=%s",
-            target_session_id[:8],
-            ",".join(row.caller_session_id[:8] for row in listeners),
+            target_session_id,
+            ",".join(row.caller_session_id for row in listeners),
         )
     else:
         logger.debug(
             "Listener already exists: caller=%s -> target=%s",
-            caller_session_id[:8],
-            target_session_id[:8],
+            caller_session_id,
+            target_session_id,
         )
 
     return is_new
@@ -179,14 +179,14 @@ async def unregister_listener(target_session_id: str, caller_session_id: str) ->
     if removed:
         logger.info(
             "Unregistered listener: caller=%s -> target=%s",
-            caller_session_id[:8],
-            target_session_id[:8],
+            caller_session_id,
+            target_session_id,
         )
     else:
         logger.debug(
             "No listener found for caller=%s -> target=%s",
-            caller_session_id[:8],
-            target_session_id[:8],
+            caller_session_id,
+            target_session_id,
         )
     return removed
 
@@ -234,10 +234,10 @@ async def pop_listeners(target_session_id: str) -> list[SessionListener]:
         logger.info(
             "Popped %d listener(s) for target %s",
             len(listeners),
-            target_session_id[:8],
+            target_session_id,
         )
     else:
-        logger.debug("Pop listeners: none for target %s", target_session_id[:8])
+        logger.debug("Pop listeners: none for target %s", target_session_id)
     return listeners
 
 
@@ -259,7 +259,7 @@ async def cleanup_caller_listeners(caller_session_id: str) -> int:
         logger.info(
             "Cleaned up %d listener(s) for caller session %s",
             count,
-            caller_session_id[:8],
+            caller_session_id,
         )
     return count
 
@@ -350,14 +350,14 @@ async def _notify_listeners(target_session_id: str, message: str) -> int:
 
     listeners = await get_listeners(target_session_id)
     if not listeners:
-        logger.debug("No listeners for session %s", target_session_id[:8])
+        logger.debug("No listeners for session %s", target_session_id)
         return 0
 
     preview = message.replace("\n", "\\n")[:160]
     logger.debug(
         "Notify listeners: target=%s callers=%s message_preview=%r",
-        target_session_id[:8],
-        ",".join(listener.caller_session_id[:8] for listener in listeners),
+        target_session_id,
+        ",".join(listener.caller_session_id for listener in listeners),
         preview,
     )
     success_count = 0
@@ -368,10 +368,10 @@ async def _notify_listeners(target_session_id: str, message: str) -> int:
             message,
         )
         if delivered:
-            logger.info("Notified caller %s", listener.caller_session_id[:8])
+            logger.info("Notified caller %s", listener.caller_session_id)
             success_count += 1
         else:
-            logger.warning("Failed to notify caller %s", listener.caller_session_id[:8])
+            logger.warning("Failed to notify caller %s", listener.caller_session_id)
 
     return success_count
 
@@ -394,7 +394,7 @@ async def notify_stop(
     title_part = f' "{title}"' if title else ""
     location_part = f" on {computer}" if computer != LOCAL_COMPUTER else ""
     body = (
-        f"Session {target_session_id[:8]}{location_part}{title_part} finished its turn. "
+        f"Session {target_session_id}{location_part}{title_part} finished its turn. "
         f"Use telec sessions tail {target_session_id} to inspect."
     )
     message = format_system_message("Notification", body)
@@ -417,7 +417,7 @@ async def notify_input_request(
         Number of listeners successfully notified
     """
     body = (
-        f"Session {target_session_id[:8]} on {computer} needs input: {input_message} "
+        f"Session {target_session_id} on {computer} needs input: {input_message} "
         f"Use telec sessions tail {target_session_id} to inspect, and "
         f'Use telec sessions send {target_session_id} "your response" to respond.'
     )
@@ -490,7 +490,7 @@ async def get_active_links_for_session(session_id: str) -> list[ConversationLink
     try:
         rows = await db.get_active_links_for_session(session_id)
     except RuntimeError:
-        logger.debug("Link lookup skipped (db not initialized) for session %s", session_id[:8])
+        logger.debug("Link lookup skipped (db not initialized) for session %s", session_id)
         return []
     return [_to_conversation_link(row) for row in rows]
 
@@ -622,5 +622,5 @@ async def cleanup_session_links(session_id: str) -> int:
     try:
         return await db.cleanup_conversation_links_for_session(session_id)
     except RuntimeError:
-        logger.debug("Link cleanup skipped (db not initialized) for session %s", session_id[:8])
+        logger.debug("Link cleanup skipped (db not initialized) for session %s", session_id)
         return 0
