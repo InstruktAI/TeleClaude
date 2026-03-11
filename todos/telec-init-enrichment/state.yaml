@@ -1,15 +1,16 @@
 phase: in_progress
 build: complete
-review: pending
-deferrals_processed: false
+review: approved
+deferrals_processed: true
+deferrals_hash: 5f7e6a8c9b2d1a4f3e6c5b8d9a1f4e7c6b5a8d9e
 finalize:
   status: pending
 breakdown:
   assessed: false
   todos: []
-review_round: 0
+review_round: 2
 max_review_rounds: 3
-review_baseline_commit: ''
+review_baseline_commit: c00fbf00a226e5b7b931d185901f385ab47689c6
 unresolved_findings: []
 resolved_findings: []
 prepare_phase: prepared
