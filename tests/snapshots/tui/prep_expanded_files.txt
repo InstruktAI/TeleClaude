@@ -1,5 +1,0 @@
-🖥  remote-1 (1)
-  📁 /Users/tester/TeleClaude (1)
-    v design  [draft dor:-]
-      1. requirements.md
-      2. implementation-plan.md

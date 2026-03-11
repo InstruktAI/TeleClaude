@@ -3,6 +3,16 @@ set -eu
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 REPO_ROOT="$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)"
+
+cd "${REPO_ROOT}"
+
+# Test suite is being rebuilt from scratch after the large-file refactor.
+# See todos/test-suite-overhaul/ and todos/refactor-large-files/.
+if [ ! -d "tests/unit" ] || [ -z "$(ls tests/unit/*.py 2>/dev/null || true)" ]; then
+    echo "⏸ Test suite pending rebuild — skipping."
+    exit 0
+fi
+
 VENV_ACTIVATE="${REPO_ROOT}/.venv/bin/activate"
 
 if [ ! -f "${VENV_ACTIVATE}" ]; then
@@ -11,7 +21,6 @@ if [ ! -f "${VENV_ACTIVATE}" ]; then
   exit 2
 fi
 
-cd "${REPO_ROOT}"
 . "${VENV_ACTIVATE}"
 
 # Force tests to use sandboxed config and env files

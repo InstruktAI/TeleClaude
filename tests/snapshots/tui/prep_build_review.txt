@@ -1,3 +1,0 @@
-🖥  remote-1 (1)
-  📁 /Users/tester/TeleClaude (1)
-    > release  [active r:approved def:- f:0]

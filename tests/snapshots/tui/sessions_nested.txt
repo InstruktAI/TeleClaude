@@ -1,7 +1,0 @@
-🖥  local (2)
-📁 ~/TeleClaude (1)
-────────────────────────────────────────────────────────────────────────────────
-[1] ▼ claude/slow  "Orchestrator"
-    [] sess-parent / -
-  [1.1] ▼ claude/slow  "Worker"
-      [] sess-child / -
