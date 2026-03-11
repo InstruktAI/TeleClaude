@@ -1,0 +1,37 @@
+# docker-compose.sandbox.yml — local development override for the sandbox-runner sidecar.
+#
+# Usage:
+#   docker compose -f docker-compose.sandbox.yml up --build
+#
+# Mounts repo root read-only and sandbox-cartridges directory from the host so
+# changes to cartridges are visible without a container restart.
+#
+# The Unix socket is written to /tmp/teleclaude-sandbox (same default as the daemon).
+
+services:
+  sandbox-runner:
+    build:
+      context: .
+      dockerfile: docker/sandbox-runner/Dockerfile
+    image: teleclaude-sandbox-runner
+    read_only: true
+    network_mode: none
+    mem_limit: 256m
+    cpus: "0.5"
+    volumes:
+      - type: bind
+        source: .
+        target: /repo
+        read_only: true
+      - type: bind
+        source: ${SANDBOX_CARTRIDGES_DIR:-~/.teleclaude/sandbox-cartridges}
+        target: /sandbox-cartridges
+        read_only: true
+      - type: bind
+        source: ${SANDBOX_SOCKET_DIR:-/tmp/teleclaude-sandbox}
+        target: /run/sandbox
+    environment:
+      SANDBOX_SOCKET_PATH: /run/sandbox/sandbox.sock
+      SANDBOX_CARTRIDGES_DIR: /sandbox-cartridges
+    tmpfs:
+      - /tmp:size=64m

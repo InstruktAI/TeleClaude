@@ -1,0 +1,50 @@
+name: Sandbox Runner Image
+
+on:
+  workflow_run:
+    workflows: ["Lint and Test"]
+    branches: [main]
+    types:
+      - completed
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/instruktai/teleclaude/sandbox-runner
+
+jobs:
+  build-push:
+    name: Build and Push Sandbox Runner
+    runs-on: [self-hosted, macOS, ARM64]
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for relevant changes
+        id: changes
+        if: github.event_name != 'workflow_dispatch'
+        run: |
+          PREV_SHA="${{ github.event.workflow_run.head_commit.id }}~1"
+          if git diff --name-only "$PREV_SHA" HEAD -- teleclaude/events/ docker/sandbox-runner/ 2>/dev/null | grep -q .; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log in to ghcr.io
+        if: steps.changes.outputs.changed != 'false'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build image
+        if: steps.changes.outputs.changed != 'false'
+        run: docker build -t "$IMAGE_NAME:${{ github.sha }}" -t "$IMAGE_NAME:latest" -f docker/sandbox-runner/Dockerfile .
+
+      - name: Push image
+        if: steps.changes.outputs.changed != 'false'
+        run: |
+          docker push "$IMAGE_NAME:${{ github.sha }}"
+          docker push "$IMAGE_NAME:latest"

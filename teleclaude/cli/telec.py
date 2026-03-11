@@ -53,11 +53,11 @@ from teleclaude.constants import (
     WORKTREE_DIR,
 )
 from teleclaude.content_scaffold import _resolve_author, create_content_inbox_entry
+from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.logging_config import setup_logging
 from teleclaude.project_setup import init_project
 from teleclaude.slug import normalize_slug
 from teleclaude.todo_scaffold import create_bug_skeleton, create_todo_skeleton
-from teleclaude_events.envelope import EventEnvelope, EventLevel
 
 TMUX_ENV_KEY = "TMUX"
 TUI_ENV_KEY = "TELEC_TUI_SESSION"
@@ -3646,7 +3646,7 @@ def _handle_events(args: list[str]) -> None:
 
 def _handle_events_list(args: list[str]) -> None:
     """List all registered event schemas."""
-    from teleclaude_events import build_default_catalog
+    from teleclaude.events import build_default_catalog
 
     domain_filter: str | None = None
     i = 0
@@ -3703,7 +3703,7 @@ def _handle_signals_status() -> None:
         import aiosqlite  # pylint: disable=import-outside-toplevel
 
         from teleclaude.config import config  # pylint: disable=import-outside-toplevel
-        from teleclaude_events.signal.db import SignalDB  # pylint: disable=import-outside-toplevel
+        from teleclaude.events.signal.db import SignalDB  # pylint: disable=import-outside-toplevel
 
         db_path = config.database.path
         async with aiosqlite.connect(db_path) as conn:

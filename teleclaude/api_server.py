@@ -124,7 +124,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.task_registry import TaskRegistry
-    from teleclaude_events.db import EventDB
+    from teleclaude.events.db import EventDB
 
 logger = get_logger(__name__)
 

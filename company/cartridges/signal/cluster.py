@@ -6,9 +6,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from teleclaude_events.envelope import EventEnvelope, EventLevel, EventVisibility
-from teleclaude_events.signal.ai import SignalAIClient
-from teleclaude_events.signal.clustering import (
+from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
+from teleclaude.events.signal.ai import SignalAIClient
+from teleclaude.events.signal.clustering import (
     ClusteringConfig,
     build_cluster_key,
     detect_burst,
@@ -16,10 +16,10 @@ from teleclaude_events.signal.clustering import (
     group_by_tags,
     refine_by_embeddings,
 )
-from teleclaude_events.signal.db import SignalDB
+from teleclaude.events.signal.db import SignalDB
 
 if TYPE_CHECKING:
-    from teleclaude_events.pipeline import PipelineContext
+    from teleclaude.events.pipeline import PipelineContext
 
 logger = logging.getLogger(__name__)
 

@@ -7,14 +7,14 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from teleclaude_events.envelope import EventEnvelope, EventLevel, EventVisibility
-from teleclaude_events.signal.ai import SignalAIClient
-from teleclaude_events.signal.db import SignalDB
-from teleclaude_events.signal.fetch import fetch_url, parse_rss_feed
-from teleclaude_events.signal.sources import SignalSourceConfig, SourceType, load_sources
+from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
+from teleclaude.events.signal.ai import SignalAIClient
+from teleclaude.events.signal.db import SignalDB
+from teleclaude.events.signal.fetch import fetch_url, parse_rss_feed
+from teleclaude.events.signal.sources import SignalSourceConfig, SourceType, load_sources
 
 if TYPE_CHECKING:
-    from teleclaude_events.pipeline import PipelineContext
+    from teleclaude.events.pipeline import PipelineContext
 
 logger = logging.getLogger(__name__)
 

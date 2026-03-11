@@ -13,8 +13,8 @@ import os
 from datetime import UTC, datetime
 from typing import TypedDict
 
-from teleclaude_events.envelope import EventLevel, EventVisibility
-from teleclaude_events.producer import emit_event
+from teleclaude.events.envelope import EventLevel, EventVisibility
+from teleclaude.events.producer import emit_event
 
 logger = logging.getLogger(__name__)
 

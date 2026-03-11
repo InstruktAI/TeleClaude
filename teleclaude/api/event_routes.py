@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict
 
 from teleclaude.api.auth import CLEARANCE_EVENTS_EMIT, CallerIdentity
-from teleclaude_events.envelope import EventEnvelope
-from teleclaude_events.producer import emit_event
+from teleclaude.events.envelope import EventEnvelope
+from teleclaude.events.producer import emit_event
 
 router = APIRouter(tags=["events"])
 

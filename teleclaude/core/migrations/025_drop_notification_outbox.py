@@ -1,4 +1,4 @@
-"""Drop legacy notification_outbox table — replaced by teleclaude_events EventDB."""
+"""Drop legacy notification_outbox table — replaced by teleclaude.events EventDB."""
 
 from __future__ import annotations
 

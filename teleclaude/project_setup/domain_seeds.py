@@ -8,7 +8,7 @@ from typing import Any
 import yaml
 from instrukt_ai_logging import get_logger
 
-from teleclaude_events.domain_seeds import DEFAULT_EVENT_DOMAINS
+from teleclaude.events.domain_seeds import DEFAULT_EVENT_DOMAINS
 
 logger = get_logger(__name__)
 

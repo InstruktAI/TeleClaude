@@ -4,7 +4,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from teleclaude_events.domain_config import DomainsConfig
+from teleclaude.events.domain_config import DomainsConfig
 
 
 class AgentDispatchConfig(BaseModel):

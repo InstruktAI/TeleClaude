@@ -4,8 +4,8 @@ Handles:
   telec config cartridges install --path <src> --scope <scope> --target <name>
   telec config cartridges remove --id <id> --scope <scope> --target <name>
   telec config cartridges promote --id <id> --from <scope> --to <scope> --domain <name>
-  telec config cartridges promote --from alpha --to domain --domain <name> --id <name>
-  telec config cartridges list [--scope alpha] [--domain <name>] [--member <id>]
+  telec config cartridges promote --from sandbox --to domain --domain <name> --id <name>
+  telec config cartridges list [--scope sandbox] [--domain <name>] [--member <id>]
 """
 
 from __future__ import annotations
@@ -21,15 +21,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from teleclaude_events.lifecycle import LifecycleManager
+    from teleclaude.events.lifecycle import LifecycleManager
 
-_DEFAULT_ALPHA_DIR = Path("~/.teleclaude/alpha-cartridges")
+_DEFAULT_SANDBOX_DIR = Path("~/.teleclaude/sandbox-cartridges")
 
 
 def _get_lifecycle_manager() -> LifecycleManager:
     """Build a LifecycleManager from global config."""
     from teleclaude.config.loader import load_global_config
-    from teleclaude_events.lifecycle import LifecycleManager
+    from teleclaude.events.lifecycle import LifecycleManager
 
     config = load_global_config()
     event_domains = getattr(config, "event_domains", None)
@@ -76,32 +76,32 @@ def _caller_is_admin() -> bool:
         return False
 
 
-def _get_alpha_dir() -> Path:
-    """Resolve the alpha cartridges directory."""
+def _get_sandbox_dir() -> Path:
+    """Resolve the sandbox cartridges directory."""
     try:
         from teleclaude.config.loader import load_global_config  # pylint: disable=import-outside-toplevel
 
         config = load_global_config()
-        alpha_dir = getattr(config, "alpha_cartridges_dir", None)
-        if alpha_dir:
-            return Path(alpha_dir).expanduser()
+        sandbox_dir = getattr(config, "sandbox_cartridges_dir", None)
+        if sandbox_dir:
+            return Path(sandbox_dir).expanduser()
     except Exception as exc:
-        print(f"Warning: could not load alpha_cartridges_dir from config: {exc}", file=sys.stderr)
-    return _DEFAULT_ALPHA_DIR.expanduser()
+        print(f"Warning: could not load sandbox_cartridges_dir from config: {exc}", file=sys.stderr)
+    return _DEFAULT_SANDBOX_DIR.expanduser()
 
 
-def _list_alpha_cartridges(use_json: bool) -> None:
-    """List cartridges in the alpha cartridges directory."""
-    alpha_dir = _get_alpha_dir()
-    if not alpha_dir.exists():
+def _list_sandbox_cartridges(use_json: bool) -> None:
+    """List cartridges in the sandbox cartridges directory."""
+    sandbox_dir = _get_sandbox_dir()
+    if not sandbox_dir.exists():
         if use_json:
             print(json.dumps([]))
         else:
-            print(f"No alpha cartridges directory at {alpha_dir}")
+            print(f"No sandbox cartridges directory at {sandbox_dir}")
         return
 
     rows = []
-    for path in sorted(alpha_dir.glob("*.py")):
+    for path in sorted(sandbox_dir.glob("*.py")):
         stat = path.stat()
         rows.append({
             "id": path.stem,
@@ -114,7 +114,7 @@ def _list_alpha_cartridges(use_json: bool) -> None:
         print(json.dumps(rows))
     else:
         if not rows:
-            print(f"No alpha cartridges in {alpha_dir}")
+            print(f"No sandbox cartridges in {sandbox_dir}")
         else:
             print(f"{'ID':<30} {'SIZE':>8}  MODIFIED            FILE")
             print("-" * 75)
@@ -122,21 +122,21 @@ def _list_alpha_cartridges(use_json: bool) -> None:
                 print(f"{row['id']:<30} {row['size_bytes']:>8}  {row['modified']}  {row['file']}")
 
 
-def _promote_from_alpha(parsed: argparse.Namespace, use_json: bool) -> None:
-    """Promote an alpha cartridge (.py file) into the lifecycle cartridge directory."""
+def _promote_from_sandbox(parsed: argparse.Namespace, use_json: bool) -> None:
+    """Promote a sandbox cartridge (.py file) into the lifecycle cartridge directory."""
     cartridge_id = parsed.cartridge_id
     to_scope = parsed.to_scope
     target_domain = getattr(parsed, "target_domain", None)
 
     if to_scope != "domain" or not target_domain:
-        print("Error: --from alpha requires --to domain --domain <name>", file=sys.stderr)
+        print("Error: --from sandbox requires --to domain --domain <name>", file=sys.stderr)
         sys.exit(1)
 
-    alpha_dir = _get_alpha_dir()
-    src = alpha_dir / f"{cartridge_id}.py"
+    sandbox_dir = _get_sandbox_dir()
+    src = sandbox_dir / f"{cartridge_id}.py"
 
     if not src.exists():
-        print(f"Error: alpha cartridge '{cartridge_id}.py' not found in {alpha_dir}", file=sys.stderr)
+        print(f"Error: sandbox cartridge '{cartridge_id}.py' not found in {sandbox_dir}", file=sys.stderr)
         sys.exit(1)
 
     # Syntax check
@@ -167,7 +167,7 @@ def _promote_from_alpha(parsed: argparse.Namespace, use_json: bool) -> None:
     src.unlink()
 
     if use_json:
-        print(json.dumps({"ok": True, "action": "promote", "id": cartridge_id, "from": "alpha", "to": to_scope,
+        print(json.dumps({"ok": True, "action": "promote", "id": cartridge_id, "from": "sandbox", "to": to_scope,
                           "domain": target_domain, "dest": str(dest)}))
     else:
         print(f"Promoted {src.name} to domain/{target_domain}/cartridges/")
@@ -196,7 +196,7 @@ def handle_cartridge_cli(args: list[str]) -> None:
     p_promote = subparsers.add_parser("promote", help="Promote a cartridge to a higher scope")
     p_promote.add_argument("--id", required=True, dest="cartridge_id", help="Cartridge ID")
     p_promote.add_argument(
-        "--from", required=True, dest="from_scope", choices=["personal", "domain", "platform", "alpha"]
+        "--from", required=True, dest="from_scope", choices=["personal", "domain", "platform", "sandbox"]
     )
     p_promote.add_argument("--to", required=True, dest="to_scope", choices=["personal", "domain", "platform"])
     p_promote.add_argument("--domain", required=False, default=None, dest="target_domain", help="Target domain name")
@@ -207,8 +207,8 @@ def handle_cartridge_cli(args: list[str]) -> None:
 
     # list
     p_list = subparsers.add_parser("list", help="List installed cartridges")
-    p_list.add_argument("--scope", default=None, choices=["personal", "domain", "platform", "alpha"],
-                        help="Filter by scope (alpha lists ~/.teleclaude/alpha-cartridges/)")
+    p_list.add_argument("--scope", default=None, choices=["personal", "domain", "platform", "sandbox"],
+                        help="Filter by scope (sandbox lists ~/.teleclaude/sandbox-cartridges/)")
     p_list.add_argument("--domain", default=None, help="Filter by domain name")
     p_list.add_argument("--member", default=None, help="Filter by member id")
     p_list.add_argument("--json", action="store_true", help="Output JSON")
@@ -219,7 +219,7 @@ def handle_cartridge_cli(args: list[str]) -> None:
         parser.print_help()
         sys.exit(1)
 
-    from teleclaude_events.lifecycle import CartridgeScope
+    from teleclaude.events.lifecycle import CartridgeScope
 
     try:
         manager = _get_lifecycle_manager()
@@ -253,8 +253,8 @@ def handle_cartridge_cli(args: list[str]) -> None:
                 print(f"Removed cartridge '{parsed.cartridge_id}' from {parsed.scope}/{parsed.target}")
 
         elif parsed.action == "promote":
-            if parsed.from_scope == "alpha":
-                _promote_from_alpha(parsed, use_json)
+            if parsed.from_scope == "sandbox":
+                _promote_from_sandbox(parsed, use_json)
             else:
                 if not parsed.target_domain:
                     print("Error: --domain is required when promoting between lifecycle scopes", file=sys.stderr)
@@ -283,8 +283,8 @@ def handle_cartridge_cli(args: list[str]) -> None:
 
         elif parsed.action == "list":
             scope_filter = getattr(parsed, "scope", None)
-            if scope_filter == "alpha":
-                _list_alpha_cartridges(use_json)
+            if scope_filter == "sandbox":
+                _list_sandbox_cartridges(use_json)
                 return
 
             rows: list[dict[str, str]] = []

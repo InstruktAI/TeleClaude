@@ -2912,8 +2912,8 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
 
 def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) -> None:
     """Fire-and-forget lifecycle event emission for prepare state machine."""
-    from teleclaude_events.envelope import EventLevel
-    from teleclaude_events.producer import emit_event
+    from teleclaude.events.envelope import EventLevel
+    from teleclaude.events.producer import emit_event
 
     async def _emit() -> None:
         try:

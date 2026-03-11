@@ -108,8 +108,8 @@ coexist alongside the newer flat families — both patterns are valid.
 
 ### Event type registration
 
-All built-in event types are registered in `teleclaude_events/schemas/` and wired
-into `register_all()` in `teleclaude_events/schemas/__init__.py`. Domain-specific
+All built-in event types are registered in `teleclaude.events/schemas/` and wired
+into `register_all()` in `teleclaude.events/schemas/__init__.py`. Domain-specific
 cartridges may register additional types in the same catalog.
 
 ### Expansion Joint
@@ -133,19 +133,19 @@ The canonical JSON Schema document for `EventEnvelope` can be generated without 
 Python code:
 
 ```bash
-python -m teleclaude_events.schema_export [output_path]
+python -m teleclaude.events.schema_export [output_path]
 ```
 
 Or programmatically:
 
 ```python
-from teleclaude_events.schema_export import export_json_schema, export_json_schema_file
+from teleclaude.events.schema_export import export_json_schema, export_json_schema_file
 
 schema = export_json_schema()           # returns dict
 export_json_schema_file(Path("envelope-schema.json"))  # writes to disk
 ```
 
-The schema is versioned by `SCHEMA_VERSION` in `teleclaude_events/envelope.py` and
+The schema is versioned by `SCHEMA_VERSION` in `teleclaude.events/envelope.py` and
 regenerated on each release that changes the envelope structure.
 
 ## Known caveats

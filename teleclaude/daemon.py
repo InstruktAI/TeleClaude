@@ -67,6 +67,31 @@ from teleclaude.deployment.handler import (
     configure_deployment_handler,
     handle_deployment_event,
 )
+from teleclaude.events import (
+    EventDB,
+    EventLevel,
+    EventProcessor,
+    EventProducer,
+    EventVisibility,
+    Pipeline,
+    PipelineContext,
+    build_default_catalog,
+    configure_producer,
+)
+from teleclaude.events.cartridges import (
+    ClassificationCartridge,
+    CorrelationCartridge,
+    DeduplicationCartridge,
+    EnrichmentCartridge,
+    IntegrationTriggerCartridge,
+    NotificationProjectorCartridge,
+    PrepareQualityCartridge,
+    TrustCartridge,
+)
+from teleclaude.events.cartridges.correlation import CorrelationConfig
+from teleclaude.events.cartridges.trust import TrustConfig
+from teleclaude.events.delivery.telegram import TelegramDeliveryAdapter
+from teleclaude.events.envelope import EventEnvelope as EventsEnvelope
 from teleclaude.hooks.api_routes import set_contract_registry
 from teleclaude.hooks.bridge import EventBusBridge
 from teleclaude.hooks.config import load_hooks_config
@@ -90,31 +115,6 @@ from teleclaude.services.monitoring_service import MonitoringService
 from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ResumeAgentCommand, StartAgentCommand
-from teleclaude_events import (
-    EventDB,
-    EventLevel,
-    EventProcessor,
-    EventProducer,
-    EventVisibility,
-    Pipeline,
-    PipelineContext,
-    build_default_catalog,
-    configure_producer,
-)
-from teleclaude_events.cartridges import (
-    ClassificationCartridge,
-    CorrelationCartridge,
-    DeduplicationCartridge,
-    EnrichmentCartridge,
-    IntegrationTriggerCartridge,
-    NotificationProjectorCartridge,
-    PrepareQualityCartridge,
-    TrustCartridge,
-)
-from teleclaude_events.cartridges.correlation import CorrelationConfig
-from teleclaude_events.cartridges.trust import TrustConfig
-from teleclaude_events.delivery.telegram import TelegramDeliveryAdapter
-from teleclaude_events.envelope import EventEnvelope as EventsEnvelope
 
 init_voice_handler = voice_message_handler.init_voice_handler
 
@@ -1888,8 +1888,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 people_dir = Path("~/.teleclaude/people").expanduser()
                 from teleclaude.config.loader import load_global_config as _load_global_config_discord
                 from teleclaude.config.loader import load_person_config as _load_person_config_discord
+                from teleclaude.events.delivery.discord import DiscordDeliveryAdapter
                 from teleclaude.services.discord import send_discord_dm
-                from teleclaude_events.delivery.discord import DiscordDeliveryAdapter
 
                 try:
                     global_cfg = _load_global_config_discord()
@@ -1919,8 +1919,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
                 from teleclaude.config.loader import load_global_config as _load_global_config_whatsapp
                 from teleclaude.config.loader import load_person_config as _load_person_config_whatsapp
+                from teleclaude.events.delivery.whatsapp import WhatsAppDeliveryAdapter
                 from teleclaude.services.whatsapp import send_whatsapp_message
-                from teleclaude_events.delivery.whatsapp import WhatsAppDeliveryAdapter
 
                 try:
                     global_cfg = _load_global_config_whatsapp()
@@ -1994,7 +1994,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             event_domains_cfg = getattr(config, "event_domains", None)
             if event_domains_cfg is not None:
                 try:
-                    from teleclaude_events.startup import build_domain_pipeline_runner
+                    from teleclaude.events.startup import build_domain_pipeline_runner
 
                     domain_runner = build_domain_pipeline_runner(event_domains_cfg)
                     logger.info("Domain pipeline runner built successfully")
@@ -2019,37 +2019,37 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 domain_runner=domain_runner,
             )
 
-            # 5c. Alpha bridge (optional sidecar — advisory, last in system pipeline)
+            # 5c. Sandbox bridge (optional sidecar — advisory, last in system pipeline)
             try:
-                from teleclaude_events.alpha import (  # pylint: disable=import-outside-toplevel
-                    AlphaBridgeCartridge,
-                    AlphaContainerManager,
+                from teleclaude.events.sandbox import (  # pylint: disable=import-outside-toplevel
+                    SandboxBridgeCartridge,
+                    SandboxContainerManager,
                 )
             except ImportError:
-                logger.debug("Alpha subsystem not available — skipping")
+                logger.debug("Sandbox subsystem not available — skipping")
             else:
                 try:
-                    _alpha_socket = getattr(config, "alpha_socket_path", "/tmp/teleclaude-alpha.sock")
-                    _alpha_dir = getattr(config, "alpha_cartridges_dir", "~/.teleclaude/alpha-cartridges")
-                    _alpha_manager = AlphaContainerManager(
-                        socket_path=_alpha_socket,
-                        cartridges_dir=_alpha_dir,
+                    _sandbox_socket = getattr(config, "sandbox_socket_path", "/tmp/teleclaude-sandbox.sock")
+                    _sandbox_dir = getattr(config, "sandbox_cartridges_dir", "~/.teleclaude/sandbox-cartridges")
+                    _sandbox_manager = SandboxContainerManager(
+                        socket_path=_sandbox_socket,
+                        cartridges_dir=_sandbox_dir,
                         producer=event_producer,
                     )
-                    _alpha_bridge = AlphaBridgeCartridge(manager=_alpha_manager)
-                    pipeline.register(_alpha_bridge)
+                    _sandbox_bridge = SandboxBridgeCartridge(manager=_sandbox_manager)
+                    pipeline.register(_sandbox_bridge)
                     asyncio.create_task(
-                        _alpha_manager.watch_cartridges_dir(self.shutdown_event),
-                        name="alpha_cartridges_watcher",
-                    ).add_done_callback(self._log_background_task_exception("alpha_cartridges_watcher"))
+                        _sandbox_manager.watch_cartridges_dir(self.shutdown_event),
+                        name="sandbox_cartridges_watcher",
+                    ).add_done_callback(self._log_background_task_exception("sandbox_cartridges_watcher"))
                     asyncio.create_task(
-                        _alpha_manager.watch_health(self.shutdown_event),
-                        name="alpha_health_watcher",
-                    ).add_done_callback(self._log_background_task_exception("alpha_health_watcher"))
-                    self._alpha_manager = _alpha_manager
-                    logger.info("Alpha bridge cartridge registered (socket=%s, dir=%s)", _alpha_socket, _alpha_dir)
+                        _sandbox_manager.watch_health(self.shutdown_event),
+                        name="sandbox_health_watcher",
+                    ).add_done_callback(self._log_background_task_exception("sandbox_health_watcher"))
+                    self._sandbox_manager = _sandbox_manager
+                    logger.info("Sandbox bridge cartridge registered (socket=%s, dir=%s)", _sandbox_socket, _sandbox_dir)
                 except Exception as exc:
-                    logger.error("Alpha subsystem init failed — skipping: %s", exc, exc_info=True)
+                    logger.error("Sandbox subsystem init failed — skipping: %s", exc, exc_info=True)
 
             # 6. Processor
             computer_name = getattr(config, "computer", None)
@@ -2088,16 +2088,16 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                         SignalIngestCartridge,
                         SignalSynthesizeCartridge,
                     )
-                    from teleclaude_events.signal.ai import (  # pylint: disable=import-outside-toplevel
+                    from teleclaude.events.signal.ai import (  # pylint: disable=import-outside-toplevel
                         DefaultSignalAIClient,
                     )
-                    from teleclaude_events.signal.clustering import (  # pylint: disable=import-outside-toplevel
+                    from teleclaude.events.signal.clustering import (  # pylint: disable=import-outside-toplevel
                         ClusteringConfig,
                     )
-                    from teleclaude_events.signal.scheduler import (  # pylint: disable=import-outside-toplevel
+                    from teleclaude.events.signal.scheduler import (  # pylint: disable=import-outside-toplevel
                         IngestScheduler,
                     )
-                    from teleclaude_events.signal.sources import (  # pylint: disable=import-outside-toplevel
+                    from teleclaude.events.signal.sources import (  # pylint: disable=import-outside-toplevel
                         SignalSourceConfig,
                     )
 
@@ -2411,13 +2411,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Stop the daemon."""
         logger.info("Stopping TeleClaude daemon...")
 
-        # Stop alpha container (before other tasks to release socket)
-        if hasattr(self, "_alpha_manager"):
+        # Stop sandbox container (before other tasks to release socket)
+        if hasattr(self, "_sandbox_manager"):
             try:
-                await self._alpha_manager.stop()
-                logger.info("Alpha container stopped")
+                await self._sandbox_manager.stop()
+                logger.info("Sandbox container stopped")
             except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.warning("Alpha container stop error during shutdown: %s", exc)
+                logger.warning("Sandbox container stop error during shutdown: %s", exc)
 
         # Stop periodic cleanup task
         if hasattr(self, "cleanup_task"):

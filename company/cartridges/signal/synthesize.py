@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from teleclaude_events.envelope import EventEnvelope, EventLevel, EventVisibility
-from teleclaude_events.signal.ai import SignalAIClient
-from teleclaude_events.signal.db import SignalDB
-from teleclaude_events.signal.fetch import fetch_full_content
+from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
+from teleclaude.events.signal.ai import SignalAIClient
+from teleclaude.events.signal.db import SignalDB
+from teleclaude.events.signal.fetch import fetch_full_content
 
 if TYPE_CHECKING:
-    from teleclaude_events.pipeline import PipelineContext
+    from teleclaude.events.pipeline import PipelineContext
 
 logger = logging.getLogger(__name__)
 
