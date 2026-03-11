@@ -19,9 +19,6 @@
   - mesh-architecture
   - mesh-trust-model
   description: 'Services as events: local contracts, mesh publish, transactional capabilities'
-- slug: telec-init-enrichment
-  description: 'Rich project bootstrapping: deep analysis, doc scaffolding, intelligence
-    seeding'
 - slug: event-alpha-container
   group: event-platform
   description: Docker sidecar sandbox for experimental/alpha cartridges
@@ -158,3 +155,4 @@
   description: 'Decompose peripherals: transport, utils, hooks, helpers, validation
     (6 files, ~9,066 lines)'
 - slug: prepare-pipeline-hardening
+- slug: event-alpha-container-2

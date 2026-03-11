@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: telec-init-enrichment
+  date: '2026-03-11'
+  commit: 3d12f9ff4ef3
 - slug: mirror-runtime-isolation
   date: '2026-03-09'
   commit: 5004d629e
