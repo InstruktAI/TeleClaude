@@ -152,6 +152,12 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
                 daemon=True,
                 name="chiptunes-resume",
             ).start()
+        else:
+            # Cold resume: start a fresh random track.
+            with self._lock:
+                self._loading = True
+            self._notify_state_change()
+            threading.Thread(target=self._play_next, daemon=True, name="chiptunes-resume-cold").start()
         self._notify_state_change()
 
     @property
@@ -224,6 +230,7 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
     def enqueue_command(self, command_id: str, action: CommandAction) -> None:
         """Queue command for serial asynchronous processing."""
         with self._lock:
+            self._enabled = True
             self._pending_command_id = command_id
             self._pending_action = action
             if action in {"resume", "next", "prev"}:
@@ -270,6 +277,8 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
         If the history index is not at the end, advance it and replay from
         history. Otherwise pick a new random track, append it, and play it.
         """
+        track: Path | None = None
+        need_pick = False
         with self._lock:
             if not self._enabled:
                 self._loading = False
@@ -279,15 +288,28 @@ class _Worker:  # pyright: ignore[reportUnusedClass]
                 self._history_index += 1
                 track = self._history[self._history_index]
             else:
-                track = self._pick_random_track()
-                if track is None:
-                    logger.warning("ChipTunes: no tracks available for next()")
+                need_pick = True
+
+        if need_pick:
+            candidate = self._pick_random_track()
+            with self._lock:
+                if not self._enabled:
                     self._loading = False
                     return
-                self._history.append(track)
-                self._history_index = len(self._history) - 1
+                if self._history_index < len(self._history) - 1:
+                    self._history_index += 1
+                    track = self._history[self._history_index]
+                else:
+                    if candidate is None:
+                        logger.warning("ChipTunes: no tracks available for next()")
+                        self._loading = False
+                        return
+                    self._history.append(candidate)
+                    self._history_index = len(self._history) - 1
+                    track = candidate
 
-        self._play_track(track)
+        if track is not None:
+            self._play_track(track)
 
     def _pick_random_track_from_dir(self) -> Path | None:
         tracks = self._discover_tracks()

@@ -634,6 +634,34 @@ class TestRuntimeSettingsChiptunes:
         assert state.chiptunes.playback == "cold"
         assert state.chiptunes.position_seconds == 0.0
 
+    def test_loading_state_is_not_restored_from_disk(
+        self,
+        tmp_path: Path,
+        tts_manager: MagicMock,
+        chiptunes_manager: MagicMock,
+    ) -> None:
+        from teleclaude.config.runtime_settings import RuntimeSettings
+
+        settings_json = tmp_path / "runtime-settings.json"
+        settings_json.write_text(
+            """{
+  "tts": {"enabled": false},
+  "chiptunes": {
+    "playback": "loading",
+    "pending_command_id": "cmd-123",
+    "pending_action": "resume",
+    "state_version": 9
+  }
+}""",
+            encoding="utf-8",
+        )
+        settings = RuntimeSettings(settings_json, tts_manager, chiptunes_manager)
+        state = settings.get_state()
+
+        assert state.chiptunes.playback == "cold"
+        assert state.chiptunes.pending_command_id == ""
+        assert state.chiptunes.pending_action == ""
+
 
 # --- Task 2.3: API patch validation for chiptunes key ---
 
@@ -934,6 +962,32 @@ class TestWorkerTrackHistory:
 
         assert events == [f"play:{track.name}:True"]
         assert worker.is_paused is True
+
+    def test_resume_from_cold_triggers_play_next(self) -> None:
+        from teleclaude.chiptunes.worker import _Worker
+
+        worker = _Worker(pick_random_track=lambda: None, volume=0.0)
+        worker._enabled = True
+        called = threading.Event()
+
+        def _fake_play_next() -> None:
+            called.set()
+            with worker._lock:
+                worker._loading = False
+
+        worker._play_next = _fake_play_next  # type: ignore[assignment]
+        worker.resume()
+
+        assert called.wait(timeout=1.0), "cold resume did not trigger _play_next"
+
+    def test_enqueue_command_marks_worker_enabled(self) -> None:
+        from teleclaude.chiptunes.worker import _Worker
+
+        worker = _Worker(pick_random_track=lambda: None, volume=0.0)
+        worker._enabled = False
+        worker.enqueue_command("cmd-1", "resume")
+
+        assert worker._enabled is True
 
     def test_pause_is_idempotent(self) -> None:
         from teleclaude.chiptunes.worker import _Worker

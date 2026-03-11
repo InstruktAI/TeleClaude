@@ -44,6 +44,10 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         self._last_track_end_reason: str | None = None
         self._stream_lock = threading.RLock()
         self._pcm_queue: queue.Queue[bytes] = queue.Queue(maxsize=_QUEUE_MAX_CHUNKS)
+        self._callback_remainder = b""
+        self._status_log_interval_s = 2.0
+        self._last_status_log_ts = 0.0
+        self._suppressed_status_logs = 0
         self._playing = False
         self._paused = False
         self._pause_lock = threading.Lock()
@@ -104,6 +108,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         samples_per_frame = int(_SAMPLE_RATE * frame_duration)
         self._stream_blocksize = samples_per_frame * 4
         self._pcm_queue = queue.Queue(maxsize=_QUEUE_MAX_CHUNKS)
+        self._callback_remainder = b""
 
         self._thread = threading.Thread(
             target=self._emulation_loop,
@@ -158,7 +163,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         out: object,
         frames: int,
         _time: object,
-        _status: object,
+        status: object,
     ) -> None:
         chunk_size = frames * 2  # int16 = 2 bytes per sample
 
@@ -167,23 +172,66 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                 out[:chunk_size] = bytes(chunk_size)  # type: ignore[index]
                 return
 
-        buf = bytearray(chunk_size)
+        self._log_stream_status(status)
+        out_view = memoryview(out)[:chunk_size]  # type: ignore[index]
         pos = 0
+
+        # Consume any carry-over first to preserve strict FIFO sample ordering.
+        if self._callback_remainder:
+            use = min(chunk_size, len(self._callback_remainder))
+            out_view[:use] = self._callback_remainder[:use]
+            pos += use
+            self._callback_remainder = self._callback_remainder[use:]
+
         while pos < chunk_size:
             try:
                 chunk = self._pcm_queue.get_nowait()
                 use = min(chunk_size - pos, len(chunk))
-                buf[pos : pos + use] = chunk[:use]
+                out_view[pos : pos + use] = chunk[:use]
                 if use < len(chunk):
-                    try:
-                        self._pcm_queue.put_nowait(chunk[use:])
-                    except queue.Full:
-                        pass
+                    self._callback_remainder += chunk[use:]
                 pos += use
             except queue.Empty:
                 break  # rest stays silence-filled
 
-        out[:chunk_size] = bytes(buf)  # type: ignore[index]
+        if pos < chunk_size:
+            out_view[pos:chunk_size] = b"\x00" * (chunk_size - pos)
+
+    def _log_stream_status(self, status: object) -> None:
+        """Log callback status flags with throttling to avoid log spam."""
+        flags = self._status_flags(status)
+        if not flags:
+            return
+        now = time.monotonic()
+        if now - self._last_status_log_ts < self._status_log_interval_s:
+            self._suppressed_status_logs += 1
+            return
+        if self._suppressed_status_logs > 0:
+            logger.warning(
+                "ChipTunes: stream callback status=%s (suppressed=%d)",
+                ",".join(flags),
+                self._suppressed_status_logs,
+            )
+            self._suppressed_status_logs = 0
+        else:
+            logger.warning("ChipTunes: stream callback status=%s", ",".join(flags))
+        self._last_status_log_ts = now
+
+    @staticmethod
+    def _status_flags(status: object) -> list[str]:
+        names = [
+            "output_underflow",
+            "output_overflow",
+            "input_underflow",
+            "input_overflow",
+            "priming_output",
+        ]
+        flags = [name for name in names if bool(getattr(status, name, False))]
+        if flags:
+            return flags
+        if bool(status):
+            return [str(status)]
+        return []
 
     def _open_stream(self) -> bool:
         """Open the output stream for the current track if it is not already active."""
@@ -317,6 +365,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         self._playing = False
         self._paused = False
         self._stream_blocksize = None
+        self._callback_remainder = b""
         with self._position_lock:
             self._playback_position_seconds = 0.0
 
