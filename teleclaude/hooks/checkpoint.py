@@ -331,7 +331,7 @@ def _extract_turn_file_signals(timeline: TurnTimeline, project_path: str) -> tup
         tool_name = _canonical_tool_name(record.tool_name)
 
         # Structured file mutators (explicit file_path semantics).
-        if tool_name in {"edit", "write", "multiedit", "apply_patch"}:
+        if tool_name in {"edit", "write", "multiedit", "apply_patch", "notebookedit"}:
             saw_mutation_signal = True
             for key in ("file_path", "path", "filepath", "target_file"):
                 value = record.input_data.get(key)
@@ -519,7 +519,7 @@ def _last_category_mutation_index(
     last_index: int | None = None
     for idx, record in enumerate(timeline.tool_calls):
         tool_name = _canonical_tool_name(record.tool_name)
-        if tool_name not in {"edit", "write", "multiedit", "apply_patch"}:
+        if tool_name not in {"edit", "write", "multiedit", "apply_patch", "notebookedit"}:
             continue
 
         touched: set[str] = set()
@@ -1042,7 +1042,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         lines.append("Required actions:")
         for i, action in enumerate(result.required_actions, 1):
             lines.append(f"{i}. {action}")
-        lines.append(f"{len(result.required_actions) + 1}. Commit only after steps above are complete")
+        lines.append(f"{len(result.required_actions) + 1}. Commit after steps above are complete")
 
     # Observations (bullet points)
     if result.observations:
