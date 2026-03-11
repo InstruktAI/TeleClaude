@@ -699,44 +699,55 @@ class TelecApp(App[str | None]):
 
     def on_agent_activity(self, message: AgentActivity) -> None:
         sessions_view = self.query_one("#sessions-view", SessionsView)
-        canonical = message.canonical_type
+        hook = message.activity_type
         logger.debug(
-            "tui lane: on_agent_activity lane=tui canonical_type=%s session=%s",
-            canonical,
+            "tui lane: on_agent_activity lane=tui hook=%s session=%s",
+            hook,
             message.session_id[:8] if message.session_id else "",
-            extra={"lane": "tui", "canonical_type": canonical, "session_id": message.session_id},
+            extra={"lane": "tui", "hook": hook, "session_id": message.session_id},
         )
-        if canonical is None:
+        if message.canonical_type is None:
             logger.warning(
                 "tui lane: AgentActivity missing canonical_type lane=tui hook_type=%s session=%s",
-                message.activity_type,
+                hook,
                 message.session_id[:8] if message.session_id else "",
                 extra={"lane": "tui", "canonical_type": None, "session_id": message.session_id},
             )
             return
-        if canonical == "user_prompt_submit":
-            sessions_view.clear_active_tool(message.session_id)
-            sessions_view.set_input_highlight(message.session_id)
-        elif canonical == "agent_output_stop":
-            sessions_view.clear_active_tool(message.session_id)
-            sessions_view.set_output_highlight(message.session_id, message.summary or "")
-            if self._activity_trigger is not None:
-                from teleclaude.cli.tui.animation_triggers import ActivityTrigger
 
-                if isinstance(self._activity_trigger, ActivityTrigger):
-                    agent = self._session_agents.get(message.session_id)
-                    if agent:
-                        self._activity_trigger.on_agent_activity(agent, is_big=True)
-                        self._activity_trigger.on_agent_activity(agent, is_big=False)
-        elif canonical == "agent_output_update":
+        sid = message.session_id
+
+        if hook == "user_prompt_submit":
+            sessions_view.update_activity(sid, "user_prompt_submit")
+            sessions_view.set_input_highlight(sid)
+
+        elif hook == "tool_use":
+            tool_info = ""
             if message.tool_name:
                 preview = message.tool_preview or ""
                 if preview.startswith(message.tool_name):
                     preview = preview[len(message.tool_name) :].lstrip()
                 tool_info = f"{message.tool_name}: {preview}" if preview else message.tool_name
-                sessions_view.set_active_tool(message.session_id, tool_info)
-            else:
-                sessions_view.clear_active_tool(message.session_id)
+            sessions_view.update_activity(sid, "tool_use", tool_info)
+
+        elif hook == "tool_done":
+            sessions_view.update_activity(sid, "tool_done")
+
+        elif hook == "agent_stop":
+            sessions_view.update_activity(sid, "agent_stop", message.summary or "")
+            sessions_view.set_output_highlight(sid, message.summary or "")
+            # Animation trigger
+            if self._activity_trigger is not None:
+                from teleclaude.cli.tui.animation_triggers import ActivityTrigger
+
+                if isinstance(self._activity_trigger, ActivityTrigger):
+                    agent = self._session_agents.get(sid)
+                    if agent:
+                        self._activity_trigger.on_agent_activity(agent, is_big=True)
+                        self._activity_trigger.on_agent_activity(agent, is_big=False)
+
+        else:
+            logger.debug("tui lane: unhandled hook %r", hook)
 
     # --- Action handlers for user-initiated actions ---
 

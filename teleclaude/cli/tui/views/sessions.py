@@ -501,7 +501,7 @@ class SessionsView(Widget, can_focus=True):
         )
 
     def _clear_session_highlights(self, session_id: str) -> None:
-        """Clear input/output highlights and active tool for a session."""
+        """Clear input/output highlights and activity for a session."""
         had_input = session_id in self._input_highlights
         had_output = session_id in self._output_highlights
         self._cancel_highlight_timer(session_id)
@@ -510,10 +510,11 @@ class SessionsView(Widget, can_focus=True):
         changed = had_input or had_output
         for widget in self._nav_items:
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
-                if widget.active_tool:
+                if widget.activity_event:
                     changed = True
                 widget.highlight_type = ""
-                widget.active_tool = ""
+                widget.activity_event = ""
+                widget.activity_text = ""
                 break
         if changed:
             self._notify_state_changed()
@@ -533,7 +534,7 @@ class SessionsView(Widget, can_focus=True):
         )
 
     def _auto_clear_highlight(self, session_id: str) -> None:
-        """Auto-clear callback — remove highlights and active tool."""
+        """Auto-clear callback — remove highlights and activity."""
         self._highlight_timers.pop(session_id, None)
         had_input = session_id in self._input_highlights
         had_output = session_id in self._output_highlights
@@ -542,10 +543,11 @@ class SessionsView(Widget, can_focus=True):
         changed = had_input or had_output
         for widget in self._nav_items:
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
-                if widget.active_tool:
+                if widget.activity_event:
                     changed = True
                 widget.highlight_type = ""
-                widget.active_tool = ""
+                widget.activity_event = ""
+                widget.activity_text = ""
                 break
         if changed:
             self._notify_state_changed()
@@ -1219,36 +1221,20 @@ class SessionsView(Widget, can_focus=True):
                 widget.update_session(session)
                 break
 
-    def set_active_tool(self, session_id: str, tool_info: str) -> None:
-        """Set active tool display on a session row.
+    def update_activity(self, session_id: str, hook_type: str, text: str = "") -> None:
+        """Update activity state on a session row.
 
-        Also persists to _last_output_summary so the text survives reload.
-        Preview sessions: auto-clear after timeout.
-        Other sessions: persists until cleared by agent_stop/agent_input.
+        Replaces the old set_active_tool/clear_active_tool pair.
+        Passes the hook event type through to the widget for direct matching.
         """
-        self._last_output_summary[session_id] = {
-            "text": tool_info,
-            "ts": time.monotonic(),
-        }
         for widget in self._nav_items:
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
-                widget.active_tool = tool_info
-                widget.last_output_summary = tool_info
+                widget.activity_event = hook_type
+                widget.activity_text = text
                 break
         if session_id == self.preview_session_id:
             self._schedule_highlight_clear(session_id)
         self._notify_state_changed()
-
-    def clear_active_tool(self, session_id: str) -> None:
-        """Clear active tool display for a session."""
-        changed = False
-        for widget in self._nav_items:
-            if isinstance(widget, SessionRow) and widget.session_id == session_id:
-                changed = bool(widget.active_tool)
-                widget.active_tool = ""
-                break
-        if changed:
-            self._notify_state_changed()
 
     # --- State export for persistence ---
 

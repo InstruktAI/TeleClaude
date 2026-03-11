@@ -52,8 +52,9 @@ class SessionRow(TelecMixin, Widget):
     is_sticky = reactive(False)
     is_preview = reactive(False)
     highlight_type = reactive("")  # "" | "input" | "output"
-    active_tool = reactive("", layout=True)
-    last_output_summary = reactive("", layout=True)
+    activity_event = reactive("")  # hook event type, not persisted
+    activity_text = reactive("", layout=True)  # tool name or summary
+    last_output_summary = reactive("", layout=True)  # persisted agent_stop summary
     skip_bottom_connector = reactive(False)
     is_last_child = reactive(False)
 
@@ -134,7 +135,7 @@ class SessionRow(TelecMixin, Widget):
                 bgcolor=resolve_preview_bg_hex(self.agent),
                 bold=True,
             )
-        if self.collapsed and (self.highlight_type in ("input", "output") or self.active_tool):
+        if self.collapsed and (self.highlight_type in ("input", "output") or self.activity_event == "tool_use"):
             return resolve_style(self.agent, self._tier("highlight"))
         return resolve_style(self.agent, self._tier("normal"))
 
@@ -199,7 +200,7 @@ class SessionRow(TelecMixin, Widget):
 
         has_input_highlight = self.highlight_type == "input"
         has_output_highlight = self.highlight_type == "output"
-        has_tool_activity = bool(self.active_tool)
+        has_tool_activity = self.activity_event == "tool_use"
         input_style = highlight_style if has_input_highlight else base_style
         output_style = highlight_style if (has_output_highlight or has_tool_activity) else base_style
 
@@ -226,17 +227,45 @@ class SessionRow(TelecMixin, Widget):
             lines.append(line3)
 
         # Line 4: \u2502   [HH:MM:SS] out: <content>
-        # Whole row uses output_style color. Tool activity text is italic.
-        if self.active_tool:
+        # Match on activity_event: only tool_done (agent reasoning) is italic.
+        if self.activity_event == "tool_use" and self.activity_text:
+            # Tool executing — NOT italic
             activity_time_str = format_time(self.session.last_activity)
-            italic_style = Style(color=output_style.color, bold=output_style.bold, italic=True)
             line4 = Text(no_wrap=True)
             line4.append(connector_pad)
             line4.append("\u2502", style=connector_style)
             line4.append(f"{detail_pad}[{activity_time_str}] out: ", style=output_style)
-            line4.append(truncate_text(self.active_tool, text_limit), style=italic_style)
+            line4.append(truncate_text(self.activity_text, text_limit), style=output_style)
+            lines.append(line4)
+        elif self.activity_event == "tool_done":
+            # Agent reasoning between tools — the only italic state
+            activity_time_str = format_time(self.session.last_activity)
+            thinking_style = Style(color=output_style.color, bold=output_style.bold, italic=True)
+            line4 = Text(no_wrap=True)
+            line4.append(connector_pad)
+            line4.append("\u2502", style=connector_style)
+            line4.append(f"{detail_pad}[{activity_time_str}] out: ...", style=thinking_style)
+            lines.append(line4)
+        elif self.activity_event == "user_prompt_submit":
+            # User action — NOT italic
+            activity_time_str = format_time(self.session.last_activity)
+            line4 = Text(no_wrap=True)
+            line4.append(connector_pad)
+            line4.append("\u2502", style=connector_style)
+            line4.append(f"{detail_pad}[{activity_time_str}] out: ...", style=output_style)
+            lines.append(line4)
+        elif self.activity_event == "agent_stop" and self.activity_text:
+            # Final summary — NOT italic
+            output_text = self.activity_text.replace("\n", " ")[:text_limit]
+            summary_at = getattr(self.session, "last_output_summary_at", None) or self.session.last_activity
+            output_time = format_time(summary_at)
+            line4 = Text(no_wrap=True)
+            line4.append(connector_pad)
+            line4.append("\u2502", style=connector_style)
+            line4.append(f"{detail_pad}[{output_time}] out: {output_text}", style=output_style)
             lines.append(line4)
         elif self.last_output_summary:
+            # Idle — persisted summary, NOT italic
             summary_at = getattr(self.session, "last_output_summary_at", None) or self.session.last_activity
             output_time = format_time(summary_at)
             output_text = self.last_output_summary.replace("\n", " ")[:text_limit]
@@ -244,13 +273,6 @@ class SessionRow(TelecMixin, Widget):
             line4.append(connector_pad)
             line4.append("\u2502", style=connector_style)
             line4.append(f"{detail_pad}[{output_time}] out: {output_text}", style=output_style)
-            lines.append(line4)
-        elif has_input_highlight or has_output_highlight:
-            activity_time_str = format_time(self.session.last_activity)
-            line4 = Text(no_wrap=True)
-            line4.append(connector_pad)
-            line4.append("\u2502", style=connector_style)
-            line4.append(f"{detail_pad}[{activity_time_str}] out: ...", style=output_style)
             lines.append(line4)
 
         return lines
@@ -309,7 +331,10 @@ class SessionRow(TelecMixin, Widget):
     def watch_highlight_type(self, _value: str) -> None:
         self.refresh()
 
-    def watch_active_tool(self, _value: str) -> None:
+    def watch_activity_event(self, _value: str) -> None:
+        self.refresh()
+
+    def watch_activity_text(self, _value: str) -> None:
         self.refresh()
 
     def watch_last_output_summary(self, _value: str) -> None:
