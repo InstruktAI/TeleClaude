@@ -158,3 +158,6 @@
   description: 'Decompose peripherals: transport, utils, hooks, helpers, validation
     (6 files, ~9,066 lines)'
 - slug: prepare-pipeline-hardening
+- slug: fix-artifact-verification-gate-checks-for-im
+  description: Artifact verification gate wrongly checks for implementation-plan.md
+    on bug-fix items — should detect item type and adjust expected artifacts
