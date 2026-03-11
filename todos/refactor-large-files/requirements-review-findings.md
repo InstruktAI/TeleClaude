@@ -17,12 +17,23 @@ input. This review pass:
 
 ## Unresolved
 
-### 2. Target inventory is stale relative to the current codebase — Important
+### 2. Requirements silently expand scope beyond the human input — Important
 
-The requirements scope says this todo covers "all 20 target files listed in the
-input." The current tree contains **27** files over 1,000 lines, so the target
-inventory is no longer grounded to the repo state. These oversized files are
-missing from the input inventory:
+`input.md` defines a verified target inventory of **20** oversized files and
+does not mention the seven additional files that now exceed 1,000 lines
+([`input.md`](/Users/Morriz/Workspace/InstruktAI/TeleClaude/todos/refactor-large-files/input.md#L7),
+[`input.md`](/Users/Morriz/Workspace/InstruktAI/TeleClaude/todos/refactor-large-files/input.md#L9)).
+`requirements.md` now changes the scope to **all 27** files currently over the
+threshold
+([`requirements.md`](/Users/Morriz/Workspace/InstruktAI/TeleClaude/todos/refactor-large-files/requirements.md#L14),
+[`requirements.md`](/Users/Morriz/Workspace/InstruktAI/TeleClaude/todos/refactor-large-files/requirements.md#L31)).
+
+That is a material workload increase, changes the readiness/splitting posture of
+the todo, and is not marked as `[inferred]`. A requirements reviewer cannot
+silently add those seven files to scope or silently drop them. The scope needs
+an explicit human-backed decision.
+
+The additional files are:
 
 - `teleclaude/core/adapter_client.py` (1,161 lines)
 - `teleclaude/core/models.py` (1,095 lines)
@@ -32,9 +43,9 @@ missing from the input inventory:
 - `teleclaude/adapters/ui_adapter.py` (1,048 lines)
 - `teleclaude/cli/tui/views/preparation.py` (1,020 lines)
 
-Because the todo is framed as refactoring oversized files, the builder cannot
-tell whether these files are intentionally deferred or were accidentally
-omitted. Update `input.md` and `requirements.md` to either:
+Remediation required before approval:
 
-- expand the target inventory to match the current repo state, or
-- explicitly defer the omitted oversized files with justification
+- update `input.md` and `requirements.md` to explicitly include these seven
+  files, or
+- explicitly defer them with justification so the scope remains the original
+  20-file inventory.
