@@ -67,13 +67,12 @@ def sync(
         return len(errors) == 0
 
     # Phase 2: Build indexes
-    had_project_config = (project_root / "teleclaude.yml").exists()
     written = build_all_indexes(project_root)
     for path in written:
         if path.exists():
             print(f"Index: {path}")
-    if had_project_config:
-        _register_project_manifest(project_root)
+    # Register after build_all_indexes which may create teleclaude.yml on first init.
+    _register_project_manifest(project_root)
     _repair_broken_docs_links(project_root)
 
     # Phase 3: Build and deploy artifacts

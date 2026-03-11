@@ -116,7 +116,7 @@ make install
 make init
 ```
 
-`telec init` synchronizes your agents, documentation, and hooks. From there, `telec docs index` is your entry point into the knowledge system.
+`telec init` synchronizes your agents, documentation, and hooks. It also offers optional AI-driven project analysis that generates doc snippets from your codebase, and prompts for release-channel enrollment. From there, `telec docs index` is your entry point into the knowledge system.
 
 ---
 

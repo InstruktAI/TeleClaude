@@ -984,6 +984,16 @@ snippets:
   role: member
   visibility: internal
   source_project: TeleClaude
+- id: software-development/procedure/project-analysis
+  description: AI-driven project analysis procedure for telec init enrichment. Guides
+    the analysis session through codebase discovery, convention inference, and snippet
+    generation.
+  type: procedure
+  scope: domain
+  path: docs/software-development/procedure/project-analysis.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
 - id: software-development/procedure/research/tech-stack-documentation
   description: Research and index official documentation for project dependencies
     as reusable internal snippets stored under ~/.teleclaude/docs/third-party/ or
@@ -1059,6 +1069,16 @@ snippets:
   type: spec
   scope: domain
   path: docs/software-development/spec/hook-event-normalization-contract.md
+  role: member
+  visibility: internal
+  source_project: TeleClaude
+- id: software-development/spec/init-scaffolding
+  description: 'Schema contract for telec init enrichment output: discovery-to-taxonomy
+    mapping, snippet ID conventions, file placement, frontmatter template, and merge
+    rules for re-analysis.'
+  type: spec
+  scope: domain
+  path: docs/software-development/spec/init-scaffolding.md
   role: member
   visibility: internal
   source_project: TeleClaude

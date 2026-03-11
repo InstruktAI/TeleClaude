@@ -417,7 +417,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
         },
     ),
     "init": CommandDef(
-        desc="Initialize docs sync and auto-rebuild watcher",
+        desc="Initialize docs sync, auto-rebuild watcher, and optional project enrichment",
+        notes=[
+            "Sets up git hooks, syncs artifacts, installs file watchers.",
+            "Optionally runs AI-driven project analysis to generate doc snippets.",
+            "First init offers enrichment; re-init offers refresh of existing analysis.",
+            "Prompts for release-channel enrollment (alpha/beta/stable).",
+        ],
         auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
     ),
     "version": CommandDef(

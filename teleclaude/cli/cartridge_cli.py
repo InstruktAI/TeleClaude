@@ -4,20 +4,26 @@ Handles:
   telec config cartridges install --path <src> --scope <scope> --target <name>
   telec config cartridges remove --id <id> --scope <scope> --target <name>
   telec config cartridges promote --id <id> --from <scope> --to <scope> --domain <name>
-  telec config cartridges list [--domain <name>] [--member <id>]
+  telec config cartridges promote --from alpha --to domain --domain <name> --id <name>
+  telec config cartridges list [--scope alpha] [--domain <name>] [--member <id>]
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
+import datetime
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from teleclaude_events.lifecycle import LifecycleManager
+
+_DEFAULT_ALPHA_DIR = Path("~/.teleclaude/alpha-cartridges")
 
 
 def _get_lifecycle_manager() -> LifecycleManager:
@@ -70,6 +76,104 @@ def _caller_is_admin() -> bool:
         return False
 
 
+def _get_alpha_dir() -> Path:
+    """Resolve the alpha cartridges directory."""
+    try:
+        from teleclaude.config.loader import load_global_config  # pylint: disable=import-outside-toplevel
+
+        config = load_global_config()
+        alpha_dir = getattr(config, "alpha_cartridges_dir", None)
+        if alpha_dir:
+            return Path(alpha_dir).expanduser()
+    except Exception as exc:
+        print(f"Warning: could not load alpha_cartridges_dir from config: {exc}", file=sys.stderr)
+    return _DEFAULT_ALPHA_DIR.expanduser()
+
+
+def _list_alpha_cartridges(use_json: bool) -> None:
+    """List cartridges in the alpha cartridges directory."""
+    alpha_dir = _get_alpha_dir()
+    if not alpha_dir.exists():
+        if use_json:
+            print(json.dumps([]))
+        else:
+            print(f"No alpha cartridges directory at {alpha_dir}")
+        return
+
+    rows = []
+    for path in sorted(alpha_dir.glob("*.py")):
+        stat = path.stat()
+        rows.append({
+            "id": path.stem,
+            "file": path.name,
+            "size_bytes": stat.st_size,
+            "modified": datetime.datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+        })
+
+    if use_json:
+        print(json.dumps(rows))
+    else:
+        if not rows:
+            print(f"No alpha cartridges in {alpha_dir}")
+        else:
+            print(f"{'ID':<30} {'SIZE':>8}  MODIFIED            FILE")
+            print("-" * 75)
+            for row in rows:
+                print(f"{row['id']:<30} {row['size_bytes']:>8}  {row['modified']}  {row['file']}")
+
+
+def _promote_from_alpha(parsed: argparse.Namespace, use_json: bool) -> None:
+    """Promote an alpha cartridge (.py file) into the lifecycle cartridge directory."""
+    cartridge_id = parsed.cartridge_id
+    to_scope = parsed.to_scope
+    target_domain = getattr(parsed, "target_domain", None)
+
+    if to_scope != "domain" or not target_domain:
+        print("Error: --from alpha requires --to domain --domain <name>", file=sys.stderr)
+        sys.exit(1)
+
+    alpha_dir = _get_alpha_dir()
+    src = alpha_dir / f"{cartridge_id}.py"
+
+    if not src.exists():
+        print(f"Error: alpha cartridge '{cartridge_id}.py' not found in {alpha_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    # Syntax check
+    try:
+        ast.parse(src.read_text(encoding="utf-8"))
+    except SyntaxError as exc:
+        print(f"Error: syntax error in '{src.name}': {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    # Resolve lifecycle domain cartridge directory
+    try:
+        from teleclaude.config.loader import load_global_config  # pylint: disable=import-outside-toplevel
+
+        config = load_global_config()
+        event_domains = getattr(config, "event_domains", None)
+        if event_domains is not None:
+            domain_base = Path(event_domains.base_path).expanduser()
+        else:
+            domain_base = Path("~/.teleclaude/company").expanduser()
+    except Exception:
+        domain_base = Path("~/.teleclaude/company").expanduser()
+
+    dest_dir = domain_base / "domains" / target_domain / "cartridges"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / src.name
+
+    shutil.copy2(src, dest)
+    src.unlink()
+
+    if use_json:
+        print(json.dumps({"ok": True, "action": "promote", "id": cartridge_id, "from": "alpha", "to": to_scope,
+                          "domain": target_domain, "dest": str(dest)}))
+    else:
+        print(f"Promoted {src.name} to domain/{target_domain}/cartridges/")
+        print("Next: wire it into the domain pipeline configuration, then commit.")
+
+
 def handle_cartridge_cli(args: list[str]) -> None:
     parser = argparse.ArgumentParser(prog="telec config cartridges", add_help=True)
     subparsers = parser.add_subparsers(dest="action")
@@ -91,9 +195,11 @@ def handle_cartridge_cli(args: list[str]) -> None:
     # promote
     p_promote = subparsers.add_parser("promote", help="Promote a cartridge to a higher scope")
     p_promote.add_argument("--id", required=True, dest="cartridge_id", help="Cartridge ID")
-    p_promote.add_argument("--from", required=True, dest="from_scope", choices=["personal", "domain", "platform"])
+    p_promote.add_argument(
+        "--from", required=True, dest="from_scope", choices=["personal", "domain", "platform", "alpha"]
+    )
     p_promote.add_argument("--to", required=True, dest="to_scope", choices=["personal", "domain", "platform"])
-    p_promote.add_argument("--domain", required=True, dest="target_domain", help="Target domain name")
+    p_promote.add_argument("--domain", required=False, default=None, dest="target_domain", help="Target domain name")
     p_promote.add_argument(
         "--member", default=None, dest="source_member_id", help="Source member id (required when --from=personal)"
     )
@@ -101,6 +207,8 @@ def handle_cartridge_cli(args: list[str]) -> None:
 
     # list
     p_list = subparsers.add_parser("list", help="List installed cartridges")
+    p_list.add_argument("--scope", default=None, choices=["personal", "domain", "platform", "alpha"],
+                        help="Filter by scope (alpha lists ~/.teleclaude/alpha-cartridges/)")
     p_list.add_argument("--domain", default=None, help="Filter by domain name")
     p_list.add_argument("--member", default=None, help="Filter by member id")
     p_list.add_argument("--json", action="store_true", help="Output JSON")
@@ -145,27 +253,40 @@ def handle_cartridge_cli(args: list[str]) -> None:
                 print(f"Removed cartridge '{parsed.cartridge_id}' from {parsed.scope}/{parsed.target}")
 
         elif parsed.action == "promote":
-            manager.promote(
-                cartridge_id=parsed.cartridge_id,
-                from_scope=CartridgeScope(parsed.from_scope),
-                to_scope=CartridgeScope(parsed.to_scope),
-                target_domain=parsed.target_domain,
-                caller_is_admin=is_admin,
-                source_member_id=getattr(parsed, "source_member_id", None),
-            )
-            result = {
-                "ok": True,
-                "action": "promote",
-                "id": parsed.cartridge_id,
-                "from": parsed.from_scope,
-                "to": parsed.to_scope,
-            }
-            if use_json:
-                print(json.dumps(result))
+            if parsed.from_scope == "alpha":
+                _promote_from_alpha(parsed, use_json)
             else:
-                print(f"Promoted cartridge '{parsed.cartridge_id}' from {parsed.from_scope} to {parsed.to_scope}")
+                if not parsed.target_domain:
+                    print("Error: --domain is required when promoting between lifecycle scopes", file=sys.stderr)
+                    sys.exit(1)
+                manager.promote(
+                    cartridge_id=parsed.cartridge_id,
+                    from_scope=CartridgeScope(parsed.from_scope),
+                    to_scope=CartridgeScope(parsed.to_scope),
+                    target_domain=parsed.target_domain,
+                    caller_is_admin=is_admin,
+                    source_member_id=getattr(parsed, "source_member_id", None),
+                )
+                result = {
+                    "ok": True,
+                    "action": "promote",
+                    "id": parsed.cartridge_id,
+                    "from": parsed.from_scope,
+                    "to": parsed.to_scope,
+                }
+                if use_json:
+                    print(json.dumps(result))
+                else:
+                    print(
+                        f"Promoted cartridge '{parsed.cartridge_id}' from {parsed.from_scope} to {parsed.to_scope}"
+                    )
 
         elif parsed.action == "list":
+            scope_filter = getattr(parsed, "scope", None)
+            if scope_filter == "alpha":
+                _list_alpha_cartridges(use_json)
+                return
+
             rows: list[dict[str, str]] = []
             if parsed.domain:
                 rows.extend(manager.list_cartridges(CartridgeScope.domain, parsed.domain))
@@ -173,7 +294,7 @@ def handle_cartridge_cli(args: list[str]) -> None:
                 rows.extend(manager.list_cartridges(CartridgeScope.personal, parsed.member))
             else:
                 # List all domains from config
-                from teleclaude.config.loader import load_global_config
+                from teleclaude.config.loader import load_global_config  # pylint: disable=import-outside-toplevel
 
                 config = load_global_config()
                 event_domains = getattr(config, "event_domains", None)

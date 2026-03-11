@@ -398,8 +398,8 @@ def _get_candidate_key(checkpoint: IntegrationCheckpoint) -> CandidateKey | None
 
 
 def _is_bug_slug(cwd: str, slug: str) -> bool:
-    """Heuristic: check for a bug.md in todos/bugs/{slug}/."""
-    return (Path(cwd) / "todos" / "bugs" / slug / "bug.md").exists()
+    """Heuristic: check for a bug.md in todos/{slug}/."""
+    return (Path(cwd) / "todos" / slug / "bug.md").exists()
 
 
 def _integration_worktree_path(cwd: str) -> Path:

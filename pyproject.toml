@@ -145,6 +145,7 @@ max-complexity = 20
 # guard: ratchet-down — existing complexity violations, must decompose over time
 "teleclaude/api_server.py" = ["C901"]
 "teleclaude/cli/telec.py" = ["C901", "B904", "E402"]
+"teleclaude/cli/cartridge_cli.py" = ["C901"]
 "teleclaude/cli/tui/state.py" = ["C901"]
 "teleclaude/cli/tui/pane_manager.py" = ["C901"]
 "teleclaude/cli/tui/animations/base.py" = ["C901", "RUF001", "RUF002", "RUF003"]

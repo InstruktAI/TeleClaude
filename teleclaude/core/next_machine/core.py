@@ -2173,9 +2173,11 @@ def deliver_to_delivered(
         # Not in roadmap — check if already delivered (idempotent success)
         if slug in load_delivered_slugs(cwd):
             return True
-        return False
-
-    save_roadmap(cwd, entries)
+        # Bugs intentionally skip the roadmap; accept any slug with a todo directory
+        if not (Path(cwd) / "todos" / slug).exists():
+            return False
+    else:
+        save_roadmap(cwd, entries)
 
     if commit is None:
         try:
