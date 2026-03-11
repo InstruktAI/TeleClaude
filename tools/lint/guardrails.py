@@ -80,7 +80,7 @@ MYPY_ALLOWED_IGNORE_ERRORS_MODULES = frozenset({"teleclaude.hooks.*"})
 
 # File size gate: max lines per module.
 # Known-large files are allowlisted with a higher cap and must ratchet down.
-MODULE_MAX_LINES = 1500
+MODULE_MAX_LINES = 1000
 MODULE_SIZE_ALLOWLIST: dict[str, int] = {
     "teleclaude/cli/telec.py": 4500,
     "teleclaude/core/next_machine/core.py": 4500,
@@ -92,6 +92,17 @@ MODULE_SIZE_ALLOWLIST: dict[str, int] = {
     "teleclaude/core/command_handlers.py": 2200,
     "teleclaude/transport/redis_transport.py": 2000,
     "teleclaude/core/agent_coordinator.py": 1800,
+    "teleclaude/cli/tool_commands.py": 1500,
+    "teleclaude/core/tmux_bridge.py": 1500,
+    "teleclaude/helpers/youtube_helper.py": 1500,
+    "teleclaude/adapters/telegram_adapter.py": 1500,
+    "teleclaude/hooks/checkpoint.py": 1300,
+    "teleclaude/core/integration/state_machine.py": 1300,
+    "teleclaude/resource_validation.py": 1300,
+    "teleclaude/core/adapter_client.py": 1300,
+    "teleclaude/core/models.py": 1200,
+    "teleclaude/hooks/receiver.py": 1200,
+    "teleclaude/adapters/ui_adapter.py": 1200,
 }
 
 
