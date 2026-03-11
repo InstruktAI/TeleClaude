@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
+from instrukt_ai_logging import get_logger
 from teleclaude_events.envelope import EventEnvelope, EventLevel, EventVisibility
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Module-level singleton producer — configured by daemon on startup
 _producer: "EventProducer | None" = None
