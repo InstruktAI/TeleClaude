@@ -798,7 +798,7 @@ class AgentCoordinator:
         # Only schedule when this submit became the canonical persisted input.
         if should_update_last_message:
             self._queue_background_task(
-                self._update_session_title_async(session_id, now),
+                self._update_session_title_async(session_id, now, prompt_text),
                 f"title-summary:{session_id}",
             )
 
@@ -858,11 +858,27 @@ class AgentCoordinator:
 
         await get_command_service().process_message(cmd)
 
-    async def _update_session_title_async(self, session_id: str, expected_prompt_at: datetime) -> None:
+    async def _update_session_title_async(
+        self, session_id: str, expected_prompt_at: datetime, prompt_text: str = ""
+    ) -> None:
         """Best-effort asynchronous title update for the latest accepted prompt."""
         current = await db.get_session(session_id)
         if not current or _to_utc(current.last_message_sent_at) != _to_utc(expected_prompt_at):
             return
+
+        current_title = (current.title or "").strip()
+
+        # Slash-command titles are frozen — never overwrite them.
+        if current_title.startswith("/"):
+            return
+
+        # Untitled session receiving a slash command: set title to the command and freeze.
+        if "Untitled" in current_title and prompt_text.lstrip().startswith("/"):
+            slash_title = prompt_text.strip()[:70]
+            await db.update_session(session_id, title=slash_title)
+            logger.info("Set slash-command title for session %s: %s", session_id, slash_title)
+            return
+
         transcript_path = current.native_log_file
         if not current.active_agent or not transcript_path:
             return
