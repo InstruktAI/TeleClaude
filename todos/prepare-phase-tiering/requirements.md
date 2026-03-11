@@ -57,8 +57,8 @@ is already known and routes accordingly:
   check.
 - **Tier 2 (Abbreviated Pipeline)**: input is already concrete and detailed —
   it reads like requirements (exact files, clear constraints, grounded in
-  codebase). Discovery is skipped; the input is promoted to serve as the basis
-  for requirements. Pipeline starts at plan drafting with a single review pass.
+  codebase). Discovery and requirements review are skipped. The pipeline starts
+  at plan drafting with a single review pass.
 - **Tier 3 (Direct Build)**: mechanical changes with zero ambiguity (renames,
   config updates, formatting fixes). No preparation artifacts are needed.
   Preparation is marked complete and the todo proceeds directly to Phase B.
@@ -84,9 +84,9 @@ completed, skipped, or blocked.
 
 ### R4: Tier 2 — input promotion to requirements
 
-For Tier 2 items, the assessment step promotes `input.md` content to serve as
-the foundation for `requirements.md`. The discovery step is skipped (recorded
-as such). The pipeline advances to plan drafting.
+For Tier 2 items, the assessment step treats the existing `input.md` as already
+meeting the requirements-quality bar. The discovery and requirements-review
+steps are skipped (recorded as such). The pipeline advances to plan drafting.
 
 ### R5: Tier 3 — direct build routing
 
@@ -133,10 +133,6 @@ the phase the parent has reached:
 - Parent has approved `implementation-plan.md` → children get plan subsets
   with approval carried through, start at build.
 
-Children born from an approved parent with concrete, detailed requirements
-are assessed as Tier 2 or Tier 3 by the assessment step — the inherited
-approval is a strong signal for tier routing.
-
 ### R9: Backward compatibility
 
 [inferred] Existing todos with no tier in `state.yaml` continue to work. The
@@ -157,6 +153,9 @@ falls back to the full prepare pipeline until the tier is recorded.
       the existing tier and does not re-assess.
 - [ ] `telec todo split` on a parent with approved requirements creates
       children that start at plan drafting, not at discovery.
+- [ ] `telec todo split` on a parent with approved implementation plan creates
+      children that start at build, bypassing prepare entirely (no discovery,
+      no requirements review, no plan drafting, no gate).
 - [ ] `telec todo split` on a parent with only `input.md` creates children
       that start at discovery (unchanged behavior).
 - [ ] An `input.md` claiming "20 files over 1000 lines" on a codebase with
