@@ -1,5 +1,8 @@
 # Delivered work items. Newest first.
 
+- slug: mirror-runtime-isolation
+  date: '2026-03-09'
+  commit: 5004d629e
 - slug: session-role-metadata
   date: '2026-03-09'
   commit: ec06a63e4
