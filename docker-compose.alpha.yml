@@ -1,0 +1,37 @@
+# docker-compose.alpha.yml — local development override for the alpha-runner sidecar.
+#
+# Usage:
+#   docker compose -f docker-compose.alpha.yml up --build
+#
+# Mounts repo root read-only and alpha-cartridges directory from the host so
+# changes to cartridges are visible without a container restart.
+#
+# The Unix socket is written to /tmp/teleclaude-alpha (same default as the daemon).
+
+services:
+  alpha-runner:
+    build:
+      context: .
+      dockerfile: docker/alpha-runner/Dockerfile
+    image: teleclaude-alpha-runner
+    read_only: true
+    network_mode: none
+    mem_limit: 256m
+    cpus: "0.5"
+    volumes:
+      - type: bind
+        source: .
+        target: /repo
+        read_only: true
+      - type: bind
+        source: ${ALPHA_CARTRIDGES_DIR:-~/.teleclaude/alpha-cartridges}
+        target: /alpha-cartridges
+        read_only: true
+      - type: bind
+        source: ${ALPHA_SOCKET_DIR:-/tmp/teleclaude-alpha}
+        target: /run/alpha
+    environment:
+      ALPHA_SOCKET_PATH: /run/alpha/alpha.sock
+      ALPHA_CARTRIDGES_DIR: /alpha-cartridges
+    tmpfs:
+      - /tmp:size=64m

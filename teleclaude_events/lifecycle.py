@@ -20,6 +20,7 @@ class CartridgeScope(str, Enum):
     personal = "personal"
     domain = "domain"
     platform = "platform"
+    alpha = "alpha"
 
 
 class LifecycleManager:
@@ -38,6 +39,8 @@ class LifecycleManager:
             raise PermissionError(f"This operation requires admin role. Action: {action}")
 
     def _resolve_target_path(self, scope: CartridgeScope, target: str) -> Path:
+        if scope == CartridgeScope.alpha:
+            raise ValueError("CartridgeScope.alpha is not a lifecycle scope and cannot be used with install/remove")
         if scope == CartridgeScope.personal:
             return self._personal_base / "members" / target / "cartridges"
         elif scope == CartridgeScope.domain:

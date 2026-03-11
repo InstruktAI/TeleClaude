@@ -2019,6 +2019,38 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 domain_runner=domain_runner,
             )
 
+            # 5c. Alpha bridge (optional sidecar — advisory, last in system pipeline)
+            try:
+                from teleclaude_events.alpha import (  # pylint: disable=import-outside-toplevel
+                    AlphaBridgeCartridge,
+                    AlphaContainerManager,
+                )
+            except ImportError:
+                logger.debug("Alpha subsystem not available — skipping")
+            else:
+                try:
+                    _alpha_socket = getattr(config, "alpha_socket_path", "/tmp/teleclaude-alpha.sock")
+                    _alpha_dir = getattr(config, "alpha_cartridges_dir", "~/.teleclaude/alpha-cartridges")
+                    _alpha_manager = AlphaContainerManager(
+                        socket_path=_alpha_socket,
+                        cartridges_dir=_alpha_dir,
+                        producer=event_producer,
+                    )
+                    _alpha_bridge = AlphaBridgeCartridge(manager=_alpha_manager)
+                    pipeline.register(_alpha_bridge)
+                    asyncio.create_task(
+                        _alpha_manager.watch_cartridges_dir(self.shutdown_event),
+                        name="alpha_cartridges_watcher",
+                    ).add_done_callback(self._log_background_task_exception("alpha_cartridges_watcher"))
+                    asyncio.create_task(
+                        _alpha_manager.watch_health(self.shutdown_event),
+                        name="alpha_health_watcher",
+                    ).add_done_callback(self._log_background_task_exception("alpha_health_watcher"))
+                    self._alpha_manager = _alpha_manager
+                    logger.info("Alpha bridge cartridge registered (socket=%s, dir=%s)", _alpha_socket, _alpha_dir)
+                except Exception as exc:
+                    logger.error("Alpha subsystem init failed — skipping: %s", exc, exc_info=True)
+
             # 6. Processor
             computer_name = getattr(config, "computer", None)
             computer_label = getattr(computer_name, "name", "local") if computer_name else "local"
@@ -2378,6 +2410,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def stop(self) -> None:
         """Stop the daemon."""
         logger.info("Stopping TeleClaude daemon...")
+
+        # Stop alpha container (before other tasks to release socket)
+        if hasattr(self, "_alpha_manager"):
+            try:
+                await self._alpha_manager.stop()
+                logger.info("Alpha container stopped")
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.warning("Alpha container stop error during shutdown: %s", exc)
 
         # Stop periodic cleanup task
         if hasattr(self, "cleanup_task"):

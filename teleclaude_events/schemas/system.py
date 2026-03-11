@@ -73,3 +73,27 @@ def register_system(catalog: "EventCatalog") -> None:
             actionable=True,
         )
     )
+    catalog.register(
+        EventSchema(
+            event_type="system.alpha-container.unhealthy",
+            description="Alpha container failed repeated health checks and is permanently disabled",
+            default_level=EventLevel.OPERATIONAL,
+            domain="system",
+            default_visibility=EventVisibility.LOCAL,
+            idempotency_fields=[],
+            lifecycle=NotificationLifecycle(creates=True),
+            actionable=False,
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="system.alpha-container.docker-unavailable",
+            description="Docker is not available; alpha container subsystem is disabled",
+            default_level=EventLevel.OPERATIONAL,
+            domain="system",
+            default_visibility=EventVisibility.LOCAL,
+            idempotency_fields=[],
+            lifecycle=NotificationLifecycle(creates=True),
+            actionable=False,
+        )
+    )
