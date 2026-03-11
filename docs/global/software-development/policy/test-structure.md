@@ -17,7 +17,7 @@ type: 'policy'
 6. New source files must have a corresponding test file before merge. The test file may start as a stub, but the mapping must exist.
 7. Tests are behavioral contracts, not implementation snapshots:
    - Assert behavior and outcomes, not internal state or call counts.
-   - No hard-coded string assertions on prose, docs, or agent artifacts unless the exact text is execution-significant.
+   - No string assertions on any human-facing text — composed messages, CLI output, formatted reports, notifications, error prose, agent artifacts, documentation. Assert on the data structure that produces the output, not the rendered string. Exception: execution-significant text (parser tokens, schema keys, command names, protocol markers).
    - Maximum 5 mock patches per test. More indicates the code under test has too many dependencies.
    - Each test function must have a docstring or descriptive name that serves as a behavioral specification.
 

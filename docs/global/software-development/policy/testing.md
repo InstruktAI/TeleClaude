@@ -17,8 +17,8 @@ type: 'policy'
 1. **Use pre-commit hooks as the primary verification path**
 2. **Do not run full suites by default** - Run targeted tests only when developing, debugging, or when hooks fail
 3. Never commit code with failing hooks, lint violations, or type errors
-4. **Test behavioral contracts, not documentation prose**
-5. **Literal documentation string assertions are forbidden unless they are execution-significant**
+4. **Test behavioral contracts, not human-facing text**
+5. **Literal string assertions on any human-facing output are forbidden unless the exact text is execution-significant**
 6. **Write failing tests before production code — no exceptions**
 
 ### Test-Driven Development
@@ -63,11 +63,13 @@ Verification checkpoints:
 - Rationalizing "just this once."
 - "It's about spirit not ritual" — violating the letter is violating the spirit.
 
-### Documentation Assertion Guardrail
+### Output Text Assertion Guardrail
 
-- Allowed: exact-string assertions for execution-significant text (for example parser markers, schema keys, command tokens, required reference prefixes) when runtime behavior depends on exact text.
-- Forbidden: exact-string assertions for narrative wording, copy style, or editorial phrasing in docs/agent artifacts.
-- Preferred: assert parsed structure, extracted references, idempotence, emitted behavior, or contract outcomes.
+Assert on data, structure, and behavior — never on how text reads. If the exact string could be reworded without changing what the system does, it is not a valid assertion target. Test the function that *produces* the output, not the rendered text itself.
+
+- **Allowed:** exact-string assertions for execution-significant text (parser markers, schema keys, command tokens, protocol identifiers, required reference prefixes) where runtime behavior depends on exact text.
+- **Forbidden:** exact-string assertions on any human-facing output — composed messages, CLI help text, formatted reports, notification content, error prose, checkpoint messages, status output, agent artifacts, documentation. If the wording can change without changing behavior, the assertion is a prose-lock.
+- **Preferred:** assert on the data structure the composer receives (action lists, category sets, flag values), return types, error codes/classes, presence of required fields — not on the string that gets rendered from them.
 
 ### Test Levels (Required Strategy)
 
@@ -122,7 +124,7 @@ Run the smallest test scope that proves the change. Escalate only when needed.
 11. **Mega tests** - one test that validates many behaviors
 12. **No assertions** - tests that execute code but don't verify outcomes
 13. **Commented-out tests** - either fix or delete them
-14. **Prose-lock tests** - tests that fail only because human-facing wording changed while behavior stayed the same
+14. **Prose-lock tests** - tests that assert on rendered text (messages, help output, reports, notifications) instead of on the data that produced it. These break when wording changes while behavior stays the same. Always assert on the underlying structure, never the composed string
 
 15. All tests run on every commit
 16. Tests must pass before merging to main branch
