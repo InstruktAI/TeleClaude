@@ -122,8 +122,10 @@ Then route based on tier:
 
 - **Tier 1:** existing behavior — check for requirements.md, dispatch
   discovery if missing.
-- **Tier 2:** promote input to requirements (copy `input.md` content as
-  `requirements.md` basis), record skips for `triangulation` and
+- **Tier 2:** promote input to requirements by writing `requirements.md`
+  from `input.md` after independently verifying every measurable claim
+  against the live repository and correcting discrepancies before they are
+  incorporated. Record skips for `triangulation` and
   `requirements_review`, set `requirements_review.verdict = "approve"`,
   advance `prepare_phase` to `PLAN_DRAFTING`.
 - **Tier 3:** record skips for all preparation phases, stamp grounding as
@@ -170,7 +172,9 @@ must continue working (R9).
   (identical to current behavior).
 - Tier 2: `telec todo prepare` on a concrete input → `skipped_phases`
   contains triangulation + requirements_review, `prepare_phase` is
-  `plan_drafting`, `requirements_review.verdict` is `approve`.
+  `plan_drafting`, `requirements_review.verdict` is `approve`, and any
+  measurable claims copied into `requirements.md` reflect the verified
+  repository values rather than the raw input text.
 - Tier 3: `telec todo prepare` on a mechanical input → `prepare_phase` is
   `prepared`, all phases in `skipped_phases`, no workers dispatched.
 - Re-entry: second `telec todo prepare` call on Tier 2 item → does not
@@ -369,17 +373,22 @@ paths in the state diagram.
 - `telec todo prepare` description in CLI_SURFACE or usage output: add
   note about tier-based routing ("Evaluates input quality and routes to
   appropriate pipeline depth").
+- `docs/project/spec/telec-cli-surface.md`: update the authoritative
+  `todo.prepare` and `todo.split` descriptions so generated CLI docs stay
+  aligned with the runtime help text.
 
 **Why:** CLI help text feeds agent system prompts. Stale help text means
 agents won't know about tier routing or split inheritance. The requirements
 note this as [inferred] in-scope item 7.
 
 **Verification:** `telec todo split --help` mentions inheritance.
-`telec todo prepare --help` mentions tier assessment.
+`telec todo prepare --help` mentions tier assessment. The updated
+`project/spec/telec-cli-surface` snippet reflects the same behavior.
 
 **Referenced files:**
 - `teleclaude/cli/telec.py` (lines 2589-2635 for split, and prepare
   handler/usage)
+- `docs/project/spec/telec-cli-surface.md`
 
 ---
 
@@ -397,16 +406,19 @@ note this as [inferred] in-scope item 7.
    zero ambiguity → tier 3.
 4. `test_assess_tier_deterministic` — same input twice → same tier both
    times.
-5. `test_tier_2_skips_to_plan_drafting` — mock `_prepare_step_input_assessment`
+5. `test_tier_2_verifies_measurable_claims_before_promotion` — concrete
+   input with wrong file/count/path claims is corrected against the live
+   repository before the promoted `requirements.md` is written.
+6. `test_tier_2_skips_to_plan_drafting` — mock `_prepare_step_input_assessment`
    with concrete input → state has `prepare_phase=plan_drafting`,
    `skipped_phases` contains triangulation and requirements_review.
-6. `test_tier_3_reaches_prepared` — mock with mechanical input → state has
+7. `test_tier_3_reaches_prepared` — mock with mechanical input → state has
    `prepare_phase=prepared`, all phases skipped, no worker dispatched.
-7. `test_tier_reentry_no_reassessment` — state already has `tier=2` →
+8. `test_tier_reentry_no_reassessment` — state already has `tier=2` →
    assessment function is not called again.
-8. `test_backward_compat_no_tier_field` — state.yaml without tier field →
+9. `test_backward_compat_no_tier_field` — state.yaml without tier field →
    `read_phase_state` returns `tier=0`, assessment runs normally.
-9. `test_skipped_phases_recorded` — after Tier 2 routing, `skipped_phases`
+10. `test_skipped_phases_recorded` — after Tier 2 routing, `skipped_phases`
    has entries with phase name, reason, and timestamp.
 
 **`tests/unit/test_todo_scaffold_split.py`** (new):
