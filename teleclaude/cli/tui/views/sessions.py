@@ -501,7 +501,12 @@ class SessionsView(Widget, can_focus=True):
         )
 
     def _clear_session_highlights(self, session_id: str) -> None:
-        """Clear input/output highlights and activity for a session."""
+        """Clear input/output visual highlights for a session.
+
+        Only clears the visual emphasis (highlight_type). Activity state
+        (activity_event/activity_text) is live in-memory state that persists
+        until the next event replaces it — never cleared by UI interaction.
+        """
         had_input = session_id in self._input_highlights
         had_output = session_id in self._output_highlights
         self._cancel_highlight_timer(session_id)
@@ -510,11 +515,7 @@ class SessionsView(Widget, can_focus=True):
         changed = had_input or had_output
         for widget in self._nav_items:
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
-                if widget.activity_event:
-                    changed = True
                 widget.highlight_type = ""
-                widget.activity_event = ""
-                widget.activity_text = ""
                 break
         if changed:
             self._notify_state_changed()
@@ -534,7 +535,11 @@ class SessionsView(Widget, can_focus=True):
         )
 
     def _auto_clear_highlight(self, session_id: str) -> None:
-        """Auto-clear callback — remove highlights and activity."""
+        """Auto-clear callback — remove visual highlights only.
+
+        Activity state (activity_event/activity_text) is in-memory state
+        that leads over disk. It persists until the next event replaces it.
+        """
         self._highlight_timers.pop(session_id, None)
         had_input = session_id in self._input_highlights
         had_output = session_id in self._output_highlights
@@ -543,11 +548,7 @@ class SessionsView(Widget, can_focus=True):
         changed = had_input or had_output
         for widget in self._nav_items:
             if isinstance(widget, SessionRow) and widget.session_id == session_id:
-                if widget.activity_event:
-                    changed = True
                 widget.highlight_type = ""
-                widget.activity_event = ""
-                widget.activity_text = ""
                 break
         if changed:
             self._notify_state_changed()

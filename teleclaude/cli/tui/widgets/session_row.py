@@ -227,7 +227,7 @@ class SessionRow(TelecMixin, Widget):
             lines.append(line3)
 
         # Line 4: \u2502   [HH:MM:SS] out: <content>
-        # Match on activity_event: only tool_done (agent reasoning) is italic.
+        # Match on activity_event directly. last_output_summary is disk fallback only.
         if self.activity_event == "tool_use" and self.activity_text:
             # Tool executing — NOT italic
             activity_time_str = format_time(self.session.last_activity)
