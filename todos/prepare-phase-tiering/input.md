@@ -64,3 +64,19 @@ When the inventory was corrected from 20 to 27, the reviewer flagged it as "sile
 ### Combined cost
 
 These two failures turned what should have been a single discovery pass into three rounds of discovery + two rounds of review, all to establish that "refactor large files" means "all the large files." The tiering system should prevent this by making independent verification mandatory at assessment time, before the pipeline even starts.
+
+### Failure 3: Split reset parent progress instead of distributing it
+
+The parent had approved requirements when the drafter decided to split into 8 children. The draft procedure said to "seed each child's `input.md`" — treating children as new todos starting from scratch. Each child would then go through the full prepare pipeline: discovery → requirements review → plan → review → gate. That's 8x the ceremony on work that was already requirements-approved.
+
+The split should have distributed the parent's approved requirements directly into each child's `requirements.md` with `requirements_review.verdict: approve` already set. The children would then start at plan drafting, not at discovery.
+
+**Fix — Split inherits parent state:** The split is a fan-out at whatever phase the parent has reached. Children start where the parent left off:
+
+- Parent has only `input.md` → children get `input.md` subsets, start at discovery
+- Parent has approved `requirements.md` → children get `requirements.md` subsets with approval carried through, start at plan drafting
+- Parent has approved `implementation-plan.md` → children get plan subsets with approval, start at build
+
+The `telec todo split` command and the draft procedure both need to respect this. The split command should read the parent's state and scaffold children at the same phase. The procedure should say "seed children at the parent's current phase" not "seed input.md."
+
+This interacts with the tiering design: a child born from an approved parent with concrete, detailed requirements is by definition Tier 2 or Tier 3. The assessment step should recognize inherited approval and route accordingly.
