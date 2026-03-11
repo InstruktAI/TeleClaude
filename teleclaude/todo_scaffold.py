@@ -59,6 +59,8 @@ def create_todo_skeleton(
     slug: str,
     *,
     after: list[str] | None = None,
+    group: str | None = None,
+    seed_input: str | None = None,
 ) -> Path:
     """Create or refresh a todo skeleton folder.
 
@@ -69,7 +71,9 @@ def create_todo_skeleton(
     - todos/{slug}/demo.md
     - todos/{slug}/state.yaml
 
-    Optionally registers the slug in todos/roadmap.yaml when ``after`` is provided.
+    Optionally registers the slug in todos/roadmap.yaml when ``after`` or ``group`` is provided.
+    When ``seed_input`` is provided, writes it as the initial content of ``input.md`` instead
+    of the blank template.
     """
     validate_slug(slug)
     slug = slug.strip()
@@ -81,7 +85,7 @@ def create_todo_skeleton(
     req = _read_template("requirements.md").format(slug=slug)
     plan = _read_template("implementation-plan.md").format(slug=slug)
     checklist = _read_template("quality-checklist.md").format(slug=slug)
-    input_md = _read_template("input.md").format(slug=slug)
+    input_md = seed_input if seed_input is not None else _read_template("input.md").format(slug=slug)
     demo_md = _read_template("demo.md").format(slug=slug)
     state_content = yaml.dump(_DEFAULT_STATE, default_flow_style=False, sort_keys=False)
 
@@ -92,17 +96,17 @@ def create_todo_skeleton(
     _write_file(todo_dir / "demo.md", demo_md)
     _write_file(todo_dir / "state.yaml", state_content)
 
-    if after is not None:
+    if after is not None or group is not None:
         from teleclaude.core.next_machine.core import add_to_roadmap
 
         # Deduplicate and clean deps
         deduped: list[str] = []
-        for item in after:
+        for item in after or []:
             cleaned = item.strip()
             if cleaned and cleaned not in deduped:
                 deduped.append(cleaned)
 
-        add_to_roadmap(str(project_root), slug, after=deduped)
+        add_to_roadmap(str(project_root), slug, after=deduped or None, group=group)
 
     return todo_dir
 
@@ -185,10 +189,21 @@ def split_todo(project_root: Path, parent_slug: str, child_slugs: list[str]) -> 
         if child_dir.exists():
             raise FileExistsError(f"Child todo '{child}' already exists at {child_dir}")
 
-    # Scaffold children
+    # Read parent input.md to seed children with context
+    parent_input_path = parent_dir / "input.md"
+    parent_input_content: str | None = None
+    if parent_input_path.exists():
+        parent_input_content = parent_input_path.read_text(encoding="utf-8")
+
+    # Scaffold children — grouped under parent, seeded with parent context
     created: list[Path] = []
     for child in child_slugs:
-        child_dir = create_todo_skeleton(project_root, child, after=[parent_slug])
+        child_dir = create_todo_skeleton(
+            project_root,
+            child,
+            group=parent_slug,
+            seed_input=parent_input_content,
+        )
         created.append(child_dir)
 
     # Clean parent builder artifacts — keep only input.md and state.yaml
