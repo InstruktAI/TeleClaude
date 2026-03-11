@@ -505,6 +505,18 @@ def _dispatch_sync(
     queue = IntegrationQueue(state_path=state_dir / "queue.json")
     lease_store = IntegrationLeaseStore(state_path=state_dir / "lease.json")
 
+    # Sync repo root with origin/main on every entry.
+    # The integration worktree pushes directly to origin/main; without this
+    # pull, repo root diverges and cleanup commits cause merge conflicts.
+    rc, _, stderr = _run_git(["pull", "--ff-only", "origin", "main"], cwd=cwd)
+    if rc != 0:
+        return _format_error(
+            "REPO_ROOT_DIVERGED",
+            f"git pull --ff-only origin main failed on repo root:\n{stderr.strip()}\n\n"
+            "Repo root main has diverged from origin/main. "
+            "Resolve the divergence (merge or reset to origin/main) before re-running integration.",
+        )
+
     for _iter in range(_LOOP_LIMIT):
         checkpoint = _read_checkpoint(checkpoint_path)
 
