@@ -1,4 +1,4 @@
-# Quality Checklist: prepare-phase-tiering-2
+# Quality Checklist: prepare-pipeline-hardening
 
 This checklist is the execution projection of `definition-of-done.md` for this todo.
 
@@ -16,7 +16,7 @@ Ownership:
 - [ ] Lint passes (`make lint`)
 - [ ] No silent deferrals in implementation plan
 - [ ] Code committed
-- [ ] Demo validated (`telec todo demo validate prepare-phase-tiering-2` exits 0, or exception noted)
+- [ ] Demo validated (`telec todo demo validate prepare-pipeline-hardening` exits 0, or exception noted)
 - [ ] Working tree clean
 - [ ] Comments/docstrings updated where behavior changed
 

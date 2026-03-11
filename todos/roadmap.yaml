@@ -128,12 +128,10 @@
   - session-adaptive-runtime
 - slug: session-polling-baseline
   description: Immediate corrections + replay corpus (split from session-runtime-overhaul)
-- slug: prepare-phase-tiering-2
-- slug: prepare-phase-tiering
-  description: Tiered prepare phase — skip ceremony for well-defined inputs
 - slug: rlf-cli
   group: refactor-large-files
-  description: 'Decompose CLI entrypoint: cli/telec.py (4,329), cli/tool_commands.py (1,417)'
+  description: 'Decompose CLI entrypoint: cli/telec.py (4,329), cli/tool_commands.py
+    (1,417)'
 - slug: rlf-tui
   group: refactor-large-files
   description: 'Decompose TUI layer: 6 files in cli/tui/ (~7,231 lines total)'
@@ -159,3 +157,4 @@
   group: refactor-large-files
   description: 'Decompose peripherals: transport, utils, hooks, helpers, validation
     (6 files, ~9,066 lines)'
+- slug: prepare-pipeline-hardening
