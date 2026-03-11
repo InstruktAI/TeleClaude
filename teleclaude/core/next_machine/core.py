@@ -216,17 +216,13 @@ POST_COMPLETION: dict[str, str] = {
    b. telec todo mark-phase {args} --phase review --status changes_requested   c. Dispatch fixer: telec sessions run --command /next-fix-review --args {args} \\
         --project <project-root> --subfolder trees/{args}
    d. Save <reviewer_session_id> and <fixer_session_id>
-   e. Establish direct link from reviewer side (one-time, idempotent):
+   e. Tell the reviewer to start a direct conversation with the fixer:
         telec sessions send <reviewer_session_id> "A fixer is active at <fixer_session_id>. \\
-        Collaborate directly: telec sessions send <fixer_session_id> '<message>' --direct. \\
-        When all findings are resolved, update review-findings.md verdict to APPROVE \\
-        and report FIX COMPLETE." --direct
-   f. Notify fixer of reviewer:
-        telec sessions send <fixer_session_id> "Reviewer is active at <reviewer_session_id>. \\
-        Collaborate directly: telec sessions send <reviewer_session_id> '<message>' --direct. \\
-        Address all findings from review-findings.md, then report FIX COMPLETE." --direct
-   g. Wait for fixer to complete (monitor via heartbeat; do not poll continuously)
-   h. When fixer reports FIX COMPLETE:
+        Start a direct conversation: telec sessions send <fixer_session_id> '<your findings summary>' --direct. \\
+        Collaborate until all findings are resolved, then update review-findings.md verdict \\
+        to APPROVE and report FIX COMPLETE." (you will use regular send, NOT --direct)
+   f. Wait for fixer to complete (monitor via heartbeat; do not poll continuously)
+   g. When fixer reports FIX COMPLETE:
       - Read review-findings.md verdict
       - If APPROVE: telec sessions end <fixer_session_id>, telec sessions end <reviewer_session_id>,
           telec todo mark-phase {args} --phase review --status approved,
