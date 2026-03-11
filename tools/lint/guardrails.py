@@ -78,32 +78,8 @@ RUFF_MAX_PER_FILE_IGNORE_ENTRIES = 30
 MYPY_MAX_OVERRIDE_SECTIONS = 13
 MYPY_ALLOWED_IGNORE_ERRORS_MODULES = frozenset({"teleclaude.hooks.*"})
 
-# File size gate: max lines per module.
-# Known-large files are allowlisted with a higher cap and must ratchet down.
+# File size gate: max lines per module. No exceptions.
 MODULE_MAX_LINES = 1000
-MODULE_SIZE_ALLOWLIST: dict[str, int] = {
-    "teleclaude/cli/telec.py": 4500,
-    "teleclaude/core/next_machine/core.py": 4500,
-    "teleclaude/api_server.py": 3500,
-    "teleclaude/adapters/discord_adapter.py": 3200,
-    "teleclaude/daemon.py": 2800,
-    "teleclaude/core/db.py": 2700,
-    "teleclaude/utils/transcript.py": 2500,
-    "teleclaude/core/command_handlers.py": 2200,
-    "teleclaude/transport/redis_transport.py": 2000,
-    "teleclaude/core/agent_coordinator.py": 1800,
-    "teleclaude/cli/tool_commands.py": 1500,
-    "teleclaude/core/tmux_bridge.py": 1500,
-    "teleclaude/helpers/youtube_helper.py": 1500,
-    "teleclaude/adapters/telegram_adapter.py": 1500,
-    "teleclaude/hooks/checkpoint.py": 1300,
-    "teleclaude/core/integration/state_machine.py": 1300,
-    "teleclaude/resource_validation.py": 1300,
-    "teleclaude/core/adapter_client.py": 1300,
-    "teleclaude/core/models.py": 1200,
-    "teleclaude/hooks/receiver.py": 1200,
-    "teleclaude/adapters/ui_adapter.py": 1200,
-}
 
 
 def _check_pyright_invariants(pyright: dict[str, object]) -> None:  # guard: loose-dict-func - JSON config is untyped
@@ -245,9 +221,8 @@ def _check_module_sizes(repo_root: Path) -> None:
             except OSError:
                 continue
 
-            max_lines = MODULE_SIZE_ALLOWLIST.get(rel, MODULE_MAX_LINES)
-            if line_count > max_lines:
-                violations.append(f"{rel}: {line_count} lines (max: {max_lines})")
+            if line_count > MODULE_MAX_LINES:
+                violations.append(f"{rel}: {line_count} lines (max: {MODULE_MAX_LINES})")
 
     if violations:
         formatted = "\n".join(f"- {v}" for v in violations)
