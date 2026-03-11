@@ -4,6 +4,10 @@
 
 {description}
 
+## Detail
+
+{body}
+
 ## Discovery Context
 
 Reported by: {reporter}

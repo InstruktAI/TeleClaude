@@ -694,6 +694,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<description>",
                 flags=[
                     Flag("--slug", desc="Custom slug (default: auto-generated)"),
+                    Flag("--body", desc="Detailed description body for bug.md"),
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
@@ -3350,6 +3351,7 @@ def _handle_bugs_report(args: list[str]) -> None:
 
     description: str | None = None
     slug: str | None = None
+    body: str | None = None
     project_root = Path.cwd()
 
     i = 0
@@ -3357,6 +3359,9 @@ def _handle_bugs_report(args: list[str]) -> None:
         arg = args[i]
         if arg == "--slug" and i + 1 < len(args):
             slug = args[i + 1]
+            i += 2
+        elif arg == "--body" and i + 1 < len(args):
+            body = args[i + 1]
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
@@ -3387,6 +3392,7 @@ def _handle_bugs_report(args: list[str]) -> None:
             project_root,
             slug,
             description,
+            body=body or "",
         )
     except ValueError as exc:
         print(f"Error: {exc}")

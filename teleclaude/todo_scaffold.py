@@ -116,6 +116,7 @@ def create_bug_skeleton(
     slug: str,
     description: str,
     *,
+    body: str = "",
     reporter: str = "manual",
     session_id: str = "none",
 ) -> Path:
@@ -140,6 +141,7 @@ def create_bug_skeleton(
 
     bug_md = _read_template("bug.md").format(
         description=description,
+        body=body or "<!-- No additional detail provided -->",
         reporter=reporter,
         session_id=session_id,
         date=date,
