@@ -41,10 +41,9 @@
 - slug: a2ui-showcase-component
 - slug: web-frontend-test-bugs
 - slug: youtube-scrape-channels-job
-- slug: codex-render-semantic-runtime
-  description: 'Render-aware session runtime: preserve Codex tmux semantics, move
-    to wake-driven capture, and cut idle tmux overhead'
-- slug: tui-chiptunes-resource-leaks
+- slug: session-runtime-overhaul
+  description: 'Render-aware session runtime: wake-driven capture, adaptive cadence,
+    and reduced idle tmux overhead for all session types'
 - slug: test-suite-overhaul
 - slug: tso-adapters
   group: test-suite-overhaul
@@ -106,11 +105,11 @@
   - tso-integration
   description: 'Final validation: full suite, 1:1 mapping check, success criteria
     audit'
-- slug: codex-render-runtime
+- slug: session-adaptive-runtime
   after:
-  - codex-render-baseline
-- slug: codex-control-lane
+  - session-polling-baseline
+- slug: session-async-control-lane
   after:
-  - codex-render-runtime
-- slug: codex-render-baseline
-  description: Immediate corrections + replay corpus (split from codex-render-semantic-runtime)
+  - session-adaptive-runtime
+- slug: session-polling-baseline
+  description: Immediate corrections + replay corpus (split from session-runtime-overhaul)

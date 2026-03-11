@@ -1,0 +1,57 @@
+phase: pending
+build: pending
+review: pending
+deferrals_processed: false
+finalize:
+  status: pending
+breakdown:
+  assessed: false
+  todos: []
+review_round: 0
+max_review_rounds: 3
+review_baseline_commit: ''
+unresolved_findings: []
+resolved_findings: []
+prepare_phase: plan_review
+grounding:
+  valid: false
+  base_sha: fbbc0a1c343f73f3ed1c12e488206740f85355bc
+  input_digest: 16ce2416b1a199cdb722ed0b459e55b772250d5fd9d076dbd808bd43922a2d80
+  referenced_paths:
+  - teleclaude/constants.py
+  - teleclaude/core/tmux_bridge.py
+  - teleclaude/core/session_cleanup.py
+  - teleclaude/services/maintenance_service.py
+  - teleclaude/core/output_poller.py
+  - teleclaude/core/polling_coordinator.py
+  - tests/unit/test_tmux_bridge.py
+  - tests/unit/test_tmux_bridge_tmpdir.py
+  - tests/unit/test_session_cleanup.py
+  - tests/unit/test_output_poller.py
+  - tests/unit/test_codex_replay.py
+  - tests/fixtures/codex_pane_snapshots/
+  - todos/session-polling-baseline/demo.md
+  last_grounded_at: '2026-03-10T01:20:00Z'
+  invalidated_at: '2026-03-10T15:04:05.541368+00:00'
+  invalidation_reason: files_changed
+  changed_paths:
+  - teleclaude/constants.py
+  - teleclaude/core/polling_coordinator.py
+requirements_review:
+  verdict: approve
+  reviewed_at: '2026-03-10T00:34:19Z'
+  findings_count: 0
+plan_review:
+  verdict: ''
+  reviewed_at: '2026-03-10T01:05:00Z'
+  findings_count: 0
+dor:
+  last_assessed_at: '2026-03-10T01:08:24Z'
+  score: 9
+  status: pass
+  schema_version: 1
+  blockers: []
+  actions_taken:
+    requirements_updated: false
+    implementation_plan_updated: false
+schema_version: 1
